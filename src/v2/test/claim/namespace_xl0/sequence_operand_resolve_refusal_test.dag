@@ -164,7 +164,7 @@ fn sqo_is_unbound_at(v: SqoVerdict, spelling: Symbol) -> Bool {
   }
 }
 
-test fn an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom() -> Bool  {
   match sqo_outcomes() {
     SqoOutcomesDecided { chain_right: v, branch_right: _, negated: _, declared_right: _, left_only: _ } =>
       sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_right)
@@ -172,7 +172,7 @@ test fn an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom() 
   }
 }
 
-test fn an_undeclared_right_operand_inside_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_right_operand_inside_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool  {
   match sqo_outcomes() {
     SqoOutcomesDecided { chain_right: _, branch_right: v, negated: _, declared_right: _, left_only: _ } =>
       sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_right)
@@ -180,7 +180,7 @@ test fn an_undeclared_right_operand_inside_an_if_arm_refuses_at_resolve_at_its_a
   }
 }
 
-test fn an_undeclared_negated_operand_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_negated_operand_refuses_at_resolve_at_its_atom() -> Bool  {
   match sqo_outcomes() {
     SqoOutcomesDecided { chain_right: _, branch_right: _, negated: v, declared_right: _, left_only: _ } =>
       sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_negated)
@@ -188,7 +188,7 @@ test fn an_undeclared_negated_operand_refuses_at_resolve_at_its_atom() -> Bool {
   }
 }
 
-test fn a_declared_right_operand_resolves() -> Bool {
+test fn a_declared_right_operand_resolves() -> Bool  {
   match sqo_outcomes() {
     SqoOutcomesDecided { chain_right: _, branch_right: _, negated: _, declared_right: v, left_only: _ } =>
       sqo_is_resolved(v: v)
@@ -196,7 +196,7 @@ test fn a_declared_right_operand_resolves() -> Bool {
   }
 }
 
-test fn an_undeclared_left_operand_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_left_operand_refuses_at_resolve_at_its_atom() -> Bool  {
   match sqo_outcomes() {
     SqoOutcomesDecided { chain_right: _, branch_right: _, negated: _, declared_right: _, left_only: v } =>
       sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_left)

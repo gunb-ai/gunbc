@@ -175,19 +175,19 @@ fn dbl_verdicts() -> DblVerdicts {
   }
 }
 
-test fn a_bare_identifier_body_round_trips() -> Bool {
+test fn a_bare_identifier_body_round_trips() -> Bool  {
   dbl_verdicts().bare_body
 }
 
-test fn an_empty_brace_literal_body_round_trips() -> Bool {
+test fn an_empty_brace_literal_body_round_trips() -> Bool  {
   dbl_verdicts().empty_literal_body
 }
 
-test fn a_body_starting_with_minus_round_trips() -> Bool {
+test fn a_body_starting_with_minus_round_trips() -> Bool  {
   dbl_verdicts().minus_body
 }
 
-test fn a_bind_as_the_value_is_placed_verbatim_in_the_value_group() -> Bool {
+test fn a_bind_as_the_value_is_placed_verbatim_in_the_value_group() -> Bool  {
   let nested = dbl_bind(value: dbl_inner())
   !dbl_has_in(concrete: nested)
     && nested == dbl_wrapped(
@@ -203,7 +203,7 @@ test fn a_bind_as_the_value_is_placed_verbatim_in_the_value_group() -> Bool {
     )
 }
 
-test fn a_bind_as_the_body_is_placed_verbatim_in_the_body_block() -> Bool {
+test fn a_bind_as_the_body_is_placed_verbatim_in_the_body_block() -> Bool  {
   dbl_bind_body(value: dbl_token(binding: ^dag_binding_pick_lit_one), body: dbl_inner()) == dbl_wrapped(
     open: list_append(
       left: dbl_fixed(classes: [^dag_token_lbrace, ^dag_token_kw_let]),
@@ -220,11 +220,11 @@ test fn a_bind_as_the_body_is_placed_verbatim_in_the_body_block() -> Bool {
   )
 }
 
-test fn a_bind_parses_inside_a_value_group() -> Bool {
+test fn a_bind_parses_inside_a_value_group() -> Bool  {
   dbl_verdicts().in_value_group
 }
 
-test fn a_bind_parses_as_a_body_block_statement() -> Bool {
+test fn a_bind_parses_as_a_body_block_statement() -> Bool  {
   dbl_verdicts().as_body_statement
 }
 
@@ -233,7 +233,7 @@ test fn a_bind_parses_as_a_body_block_statement() -> Bool {
 // target's rendering puts no separation between tokens (its lex is dag_lex, with no emit
 // transforms), so a keyword and the name after it render fused -- a defect of dag text rendering that
 // predates this change and is reported on its own, not something a text round trip could check.
-test fn a_single_bind_emits_block_scoped_tokens() -> Bool {
+test fn a_single_bind_emits_block_scoped_tokens() -> Bool  {
   map(dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one)), fn(c) { dbl_class(token: c) }) == [
     ^dag_token_lbrace, ^dag_token_kw_let, ^dag_token_ident, ^dag_token_eq, ^dag_token_lparen, ^dag_token_ident,
     ^dag_token_rparen, ^dag_token_lbrace, ^dag_token_ident, ^dag_token_rbrace, ^dag_token_rbrace

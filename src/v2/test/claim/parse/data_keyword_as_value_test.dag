@@ -56,12 +56,12 @@ fn data_value_normalized() -> Bool {
 
 fn else_value_parsed() -> Bool { value_parses(name: "else") }
 
-test fn the_data_keyword_as_a_value_parses_holds() -> Bool { data_value_parsed() }
+test fn the_data_keyword_as_a_value_parses_holds() -> Bool  { data_value_parsed() }
 
 // The route past parse: the same module normalizes, so the admitted atom is one lowering reads.
-test fn the_data_keyword_as_a_value_normalizes_holds() -> Bool { data_value_normalized() }
+test fn the_data_keyword_as_a_value_normalizes_holds() -> Bool  { data_value_normalized() }
 
-test fn a_clause_keyword_is_still_not_a_value_holds() -> Bool {
+test fn a_clause_keyword_is_still_not_a_value_holds() -> Bool  {
   match else_value_parsed() {
     true => false
     false => true

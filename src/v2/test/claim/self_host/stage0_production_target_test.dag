@@ -155,7 +155,7 @@ fn stage0_emission_produced(emission: Stage0BoundaryEmission) -> Bool {
   }
 }
 
-test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Bool {
+test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Bool  {
   stage0_emission_source_equals(
     emission: stage0_boundary_profile_emitted_source(),
     expected: stage0_boundary_expected_source
@@ -167,7 +167,7 @@ test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Boo
 // requires a produced emission and asks the one thing this capability class is about: the base
 // target, which selects no visibility, emits no visibility keyword. The profile's side of the
 // same fact is the positive claim above, whose expected text leads with that keyword.
-test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
+test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool  {
   stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
     && stage0_emission_source_contains(
       emission: stage0_boundary_base_emitted_source(),
@@ -186,7 +186,7 @@ test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
 // its converse, one axis at a time. The whole-text pin that remains is the PROFILE's, in the
 // positive claim above, where an exact expected output is a fixture golden rather than one
 // class's only witness.
-test fn stage0_integer_spelling_selection_is_load_bearing_holds() -> Bool {
+test fn stage0_integer_spelling_selection_is_load_bearing_holds() -> Bool  {
   stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
     && stage0_emission_source_contains(
       emission: stage0_boundary_base_emitted_source(),
@@ -264,7 +264,7 @@ fn stage0_boundary_read_is_refused(read: Stage0BoundaryRead) -> Bool {
   }
 }
 
-test fn stage0_boundary_committed_module_reads_through_the_storage_route_holds() -> Bool {
+test fn stage0_boundary_committed_module_reads_through_the_storage_route_holds() -> Bool  {
   stage0_boundary_read_contains(
     read: stage0_boundary_read_of(path: stage0_boundary_probe_path),
     marker: stage0_boundary_probe_declaration
@@ -279,6 +279,6 @@ test fn stage0_boundary_committed_module_reads_through_the_storage_route_holds()
 // carried source did not contain an arity-1 declaration nobody could author, over a fixed
 // committed file, and was additionally green on refusal -- a check permanently green by
 // construction, which DESIGN section 4b calls worse than absent because it is cited as coverage.
-test fn stage0_boundary_absent_path_refuses_rather_than_answering_holds() -> Bool {
+test fn stage0_boundary_absent_path_refuses_rather_than_answering_holds() -> Bool  {
   stage0_boundary_read_is_refused(read: stage0_boundary_read_of(path: stage0_boundary_absent_path))
 }

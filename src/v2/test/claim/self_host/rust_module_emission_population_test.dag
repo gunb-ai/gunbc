@@ -187,11 +187,11 @@ fn population_declaration_count_add_then_add2() -> Int {
 // THE COUNT IS THE DISCRIMINATING RED for the collector itself, measured one stage before
 // emission so a fold that happened to concatenate correctly could not stand in for a collector
 // that found both declarations. Before the fix this returned 1 for the two-declaration module.
-test fn population_two_declaration_module_collects_two() -> Bool {
+test fn population_two_declaration_module_collects_two() -> Bool  {
   population_declaration_count_add_then_add2() == 2
 }
 
-test fn population_one_declaration_module_collects_one() -> Bool {
+test fn population_one_declaration_module_collects_one() -> Bool  {
   population_declaration_count_add() == 1
 }
 
@@ -199,27 +199,27 @@ test fn population_one_declaration_module_collects_one() -> Bool {
 // declared separator. This is the arm that pins the module convention rather than a bare
 // declaration: emit_produced_module terminates EVERY declaration, including the last, exactly as
 // v2.compiler.emit_module does.
-test fn population_one_declaration_module_emits_terminated_declaration() -> Bool {
+test fn population_one_declaration_module_emits_terminated_declaration() -> Bool  {
   population_emission_add() == concat(rust_source_text, emit_module_decl_separator)
 }
 
 // BOTH declarations, in SOURCE ORDER. The expected text is composed from the two modules each
 // emitted ALONE, so the arm cannot be satisfied by a fold that dropped, duplicated, or reordered a
 // declaration, and it carries no hand-transcribed copy of the emitter's own output.
-test fn population_two_declaration_module_emits_both_in_source_order() -> Bool {
+test fn population_two_declaration_module_emits_both_in_source_order() -> Bool  {
   population_emission_add_then_add2()
     == concat(population_emission_add(), population_emission_add2())
 }
 
 // The swapped-order control: same two declarations, same target, so ONLY order distinguishes it.
-test fn population_two_declaration_module_is_not_the_swapped_order() -> Bool {
+test fn population_two_declaration_module_is_not_the_swapped_order() -> Bool  {
   !(population_emission_add_then_add2()
     == concat(population_emission_add2(), population_emission_add()))
 }
 
 // The zero-declaration refusal survives the ceiling's removal: a module with no declarations
 // refuses at emission, typed and located, rather than publishing an empty module.
-test fn population_declarationless_module_refuses_at_emission() -> Bool {
+test fn population_declarationless_module_refuses_at_emission() -> Bool  {
   population_declarationless_refuses()
 }
 
@@ -228,12 +228,12 @@ test fn population_declarationless_module_refuses_at_emission() -> Bool {
 // two-declaration module rather than returning the declarations it managed to render. This is the
 // module-grain arm of the same fail-closed property v2.test.emit.produced_decl_two_target pins per
 // declaration.
-test fn population_two_declaration_module_refuses_whole_on_unwired_target() -> Bool {
+test fn population_two_declaration_module_refuses_whole_on_unwired_target() -> Bool  {
   population_unwired_two_declaration_refuses()
 }
 
 // The positive control for the arm above: the SAME two-declaration module against a wired target
 // does reach ArtifactProduced, so the refusal is the target's missing rows and not the module.
-test fn population_two_declaration_module_produces_on_wired_target() -> Bool {
+test fn population_two_declaration_module_produces_on_wired_target() -> Bool  {
   !(population_emission_add_then_add2() == "")
 }

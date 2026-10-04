@@ -508,46 +508,46 @@ fn fe_outcomes() -> FeOutcomes {
   }
 }
 
-test fn fold_encoding_carries_each_operand_at_its_authored_occurrence() -> Bool {
+test fn fold_encoding_carries_each_operand_at_its_authored_occurrence() -> Bool  {
   fe_outcomes().fold_encoding_carries_each_operand_at_its_authored_occurrence
 }
 
-test fn dropping_the_collection_turns_conservation_red_at_it() -> Bool {
+test fn dropping_the_collection_turns_conservation_red_at_it() -> Bool  {
   fe_outcomes().dropping_the_collection_turns_conservation_red_at_it
 }
 
-test fn dropping_init_turns_conservation_red_at_it() -> Bool {
+test fn dropping_init_turns_conservation_red_at_it() -> Bool  {
   fe_outcomes().dropping_init_turns_conservation_red_at_it
 }
 
-test fn dropping_the_head_edge_turns_conservation_red_at_it() -> Bool {
+test fn dropping_the_head_edge_turns_conservation_red_at_it() -> Bool  {
   fe_outcomes().dropping_the_head_edge_turns_conservation_red_at_it
 }
 
-test fn canary_fold_head_binds_to_the_collection_fold_row() -> Bool {
+test fn canary_fold_head_binds_to_the_collection_fold_row() -> Bool  {
   fe_outcomes().canary_fold_head_binds_to_the_collection_fold_row
 }
 
-test fn user_declared_fold_refuses_at_the_head() -> Bool {
+test fn user_declared_fold_refuses_at_the_head() -> Bool  {
   fe_outcomes().user_declared_fold_refuses_at_the_head
 }
 
-test fn fold_like_name_outside_the_roster_is_not_desugared() -> Bool {
+test fn fold_like_name_outside_the_roster_is_not_desugared() -> Bool  {
   fe_outcomes().fold_like_name_outside_the_roster_is_not_desugared
 }
 
-test fn piped_fold_takes_the_pipe_input_as_its_collection() -> Bool {
+test fn piped_fold_takes_the_pipe_input_as_its_collection() -> Bool  {
   fe_outcomes().piped_fold_takes_the_pipe_input_as_its_collection
 }
 
-test fn piped_chain_takes_the_whole_prefix_as_its_collection() -> Bool {
+test fn piped_chain_takes_the_whole_prefix_as_its_collection() -> Bool  {
   fe_outcomes().piped_chain_takes_the_whole_prefix_as_its_collection
 }
 
-test fn fold_step_carries_carrier_and_element_binders() -> Bool {
+test fn fold_step_carries_carrier_and_element_binders() -> Bool  {
   fe_outcomes().fold_step_carries_carrier_and_element_binders
 }
 
-test fn fold_step_binders_resolve_in_the_step_body() -> Bool {
+test fn fold_step_binders_resolve_in_the_step_body() -> Bool  {
   fe_outcomes().fold_step_binders_resolve_in_the_step_body
 }

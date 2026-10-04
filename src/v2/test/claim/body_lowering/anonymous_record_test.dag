@@ -216,7 +216,7 @@ fn ar_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
 // Control 1 and 6: every headless literal -- a data initializer, a nested record field and a declared
 // return -- resolves to the SAME construct as its headed spelling, by content, and there are four
 // of them, so a literal that stayed elided or vanished cannot pass.
-test fn ar_headless_literals_equal_their_headed_form_holds() -> Bool {
+test fn ar_headless_literals_equal_their_headed_form_holds() -> Bool  {
   let headed = ar_construct_hashes(o: ar_resolved_headed())
   (length(xs: headed) == 4) && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_headless()))
 }
@@ -224,7 +224,7 @@ test fn ar_headless_literals_equal_their_headed_form_holds() -> Bool {
 // Control 5, the mutation: ArA and ArB share the field set, and ArA is declared first. The
 // annotation says ArB, so every elaborated tag is ArB. A chooser that read the field names would
 // answer ArA (or refuse as ambiguous) and this goes red.
-test fn ar_the_annotation_chooses_not_the_field_names_holds() -> Bool {
+test fn ar_the_annotation_chooses_not_the_field_names_holds() -> Bool  {
   ar_construct_paths(o: ar_resolved_headless()) == [
     "v2.test.arp.ArB", "v2.test.arp.ArOuter", "v2.test.arp.ArB", "v2.test.arp.ArB"
   ]
@@ -232,18 +232,18 @@ test fn ar_the_annotation_chooses_not_the_field_names_holds() -> Bool {
 
 // Control 8 (review condition 3): an annotation does not reach a call argument. The argument's
 // formal is typed, but that type is a fact about the callee and is not threaded; the literal refuses.
-test fn ar_a_call_argument_has_no_expected_type_holds() -> Bool {
+test fn ar_a_call_argument_has_no_expected_type_holds() -> Bool  {
   ar_refuses_with(o: ar_resolved_call_argument(), reason: ^resolve_anonymous_record_no_expected_type)
 }
 
 // Control 3: a two-constructor coproduct is not a record, and no constructor is picked from it.
-test fn ar_a_coproduct_expectation_is_not_a_record_holds() -> Bool {
+test fn ar_a_coproduct_expectation_is_not_a_record_holds() -> Bool  {
   ar_refuses_with(o: ar_resolved_coproduct(), reason: ^resolve_anonymous_record_expected_type_not_record)
 }
 
 // Control 9 (review condition 1): the field type `T` is a binder and is not substituted, so the
 // inner literal has no record head.
-test fn ar_a_binder_field_type_is_not_substituted_holds() -> Bool {
+test fn ar_a_binder_field_type_is_not_substituted_holds() -> Bool  {
   ar_refuses_with(o: ar_resolved_binder(), reason: ^resolve_anonymous_record_expected_type_not_record)
 }
 
@@ -271,7 +271,7 @@ fn ar_infer_verdict(o: Outcome<ResolvedTree>) -> String {
 fn ar_infer_verdict_value_mismatch() -> String { ar_infer_verdict(o: ar_resolved_value_mismatch()) }
 fn ar_infer_verdict_value_mismatch_headed() -> String { ar_infer_verdict(o: ar_resolved_value_mismatch_headed()) }
 
-test fn ar_infer_verdict_is_the_headed_forms_holds() -> Bool {
+test fn ar_infer_verdict_is_the_headed_forms_holds() -> Bool  {
   (ar_construct_paths(o: ar_resolved_value_mismatch()) == ["v2.test.arp.ArB"])
     && (ar_construct_paths(o: ar_resolved_value_mismatch_headed()) == ["v2.test.arp.ArB"])
     && (ar_infer_verdict_value_mismatch() == ar_infer_verdict_value_mismatch_headed())
@@ -280,7 +280,7 @@ test fn ar_infer_verdict_is_the_headed_forms_holds() -> Bool {
 // POSITIVE (the direct control for the list-element rule): headless elements under an annotated FreeMonoid<ArB>
 // elaborate to EXACTLY their headed twins, by content, and both are tagged ArB. An absence of
 // refusals could not tell elaborated from passed-through; this compares the constructs themselves.
-test fn ar_list_elements_elaborate_under_the_list_head_holds() -> Bool {
+test fn ar_list_elements_elaborate_under_the_list_head_holds() -> Bool  {
   let headed = ar_construct_hashes(o: ar_resolved_list_headed())
   (length(xs: headed) == 2)
     && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_list_headless()))
@@ -289,7 +289,7 @@ test fn ar_list_elements_elaborate_under_the_list_head_holds() -> Bool {
 
 // PURE RENAMINGS ARE FOLLOWED (design doc, Pure-renaming aliases): under ArSeq<ArB>, List<ArB> and ArPairS<Bool,
 // Bool>, each headless literal elaborates to EXACTLY its headed twin, by content.
-test fn ar_pure_renaming_aliases_elaborate_holds() -> Bool {
+test fn ar_pure_renaming_aliases_elaborate_holds() -> Bool  {
   let headed = ar_construct_hashes(o: ar_resolved_rename_headed())
   (length(xs: headed) == 3)
     && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_rename_headless()))
@@ -297,14 +297,14 @@ test fn ar_pure_renaming_aliases_elaborate_holds() -> Bool {
 }
 
 // A reordering, a constant and a partially applied alias are not renamings, and refuse.
-test fn ar_a_non_renaming_alias_refuses_holds() -> Bool {
+test fn ar_a_non_renaming_alias_refuses_holds() -> Bool  {
   ar_refuses_with(o: ar_resolved_reorder(), reason: ^resolve_anonymous_record_expected_type_not_record)
     && ar_refuses_with(o: ar_resolved_constant(), reason: ^resolve_anonymous_record_expected_type_not_record)
     && ar_refuses_with(o: ar_resolved_partial(), reason: ^resolve_anonymous_record_expected_type_not_record)
 }
 
 // A cycle of renamings refuses located, and is not followed.
-test fn ar_an_alias_cycle_refuses_holds() -> Bool {
+test fn ar_an_alias_cycle_refuses_holds() -> Bool  {
   ar_refuses_with(o: ar_resolved_cycle(), reason: ^resolve_anonymous_record_alias_cycle)
 }
 
@@ -333,13 +333,13 @@ fn ar_string_key_production_count(subject: ReferenceConservationSubject) -> Int 
   }
 }
 
-test fn ar_a_quoted_key_takes_the_string_key_production_holds() -> Bool {
+test fn ar_a_quoted_key_takes_the_string_key_production_holds() -> Bool  {
   (ar_string_key_production_count(subject: ar_key_bare_subject()) == 0)
     && (ar_string_key_production_count(subject: ar_key_quoted_subject()) == 1)
 }
 
 // And the record arm refuses the quoted key at the item, never reading it as field `n`.
-test fn ar_a_quoted_key_is_not_a_record_field_holds() -> Bool {
+test fn ar_a_quoted_key_is_not_a_record_field_holds() -> Bool  {
   match ar_key_quoted_subject().normalized {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered

@@ -31,7 +31,7 @@ fn binary_operand_beside_match_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "binary_operand_beside_match", source: binary_operand_beside_match_source)
 }
 
-test fn a_binary_operand_beside_a_match_is_conserved_holds() -> Bool {
+test fn a_binary_operand_beside_a_match_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: binary_operand_beside_match_subject())
   reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_left) == 0)
 }
@@ -42,7 +42,7 @@ fn binary_operand_beside_if_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "binary_operand_beside_if", source: binary_operand_beside_if_source)
 }
 
-test fn a_binary_operand_beside_an_if_is_conserved_holds() -> Bool {
+test fn a_binary_operand_beside_an_if_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: binary_operand_beside_if_subject())
   reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_left) == 0)
 }
@@ -53,7 +53,7 @@ fn record_field_beside_match_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "record_field_beside_match", source: record_field_beside_match_source)
 }
 
-test fn a_record_field_beside_a_match_valued_field_is_conserved_holds() -> Bool {
+test fn a_record_field_beside_a_match_valued_field_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: record_field_beside_match_subject())
   reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_sibling) == 0)
 }
@@ -64,7 +64,7 @@ fn call_argument_beside_match_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "call_argument_beside_match", source: call_argument_beside_match_source)
 }
 
-test fn a_call_argument_beside_a_match_valued_argument_is_conserved_holds() -> Bool {
+test fn a_call_argument_beside_a_match_valued_argument_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: call_argument_beside_match_subject())
   reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_sibling) == 0)
 }
@@ -81,7 +81,7 @@ fn map_literal_value_subject() -> ReferenceConservationSubject {
 // FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
 // gunbc#12758 elaborated map literals from the declared Map type, so the literal lowers whole and its
 // module normalizes. Permanent control: the module is accepted and the entry's value is conserved.
-test fn a_map_literal_value_is_conserved_holds() -> Bool {
+test fn a_map_literal_value_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: map_literal_value_subject())
   reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_value) == 0)
 }
@@ -95,7 +95,7 @@ fn qualified_constructor_value_subject() -> ReferenceConservationSubject {
 // FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
 // gunbc#12714 made the construct tag a declaration reference, so a module-qualified construction
 // lowers whole. Permanent control: the module normalizes and the field value is conserved.
-test fn a_qualified_constructor_literal_value_is_conserved_holds() -> Bool {
+test fn a_qualified_constructor_literal_value_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: qualified_constructor_value_subject())
   reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_value) == 0)
 }
@@ -109,7 +109,7 @@ fn match_arm_statement_body_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "match_arm_statement_body", source: match_arm_statement_body_source)
 }
 
-test fn a_statement_after_a_let_in_a_match_arm_is_conserved_holds() -> Bool {
+test fn a_statement_after_a_let_in_a_match_arm_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: match_arm_statement_body_subject())
   reference_conservation_accepted(report: r)
     && (report_drop_count(report: r, wanted: ^rc_after) == 0)
@@ -126,7 +126,7 @@ fn data_initializer_match_scrutinee_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "data_initializer_match_scrutinee", source: data_initializer_match_scrutinee_source)
 }
 
-test fn a_data_initializer_match_scrutinee_is_conserved_holds() -> Bool {
+test fn a_data_initializer_match_scrutinee_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: data_initializer_match_scrutinee_subject())
   reference_conservation_accepted(report: r)
     && (report_drop_count(report: r, wanted: ^rc_arg) == 0)
@@ -143,7 +143,7 @@ fn fn_body_match_scrutinee_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "fn_body_match_scrutinee", source: fn_body_match_scrutinee_source)
 }
 
-test fn the_same_match_as_a_fn_body_conserves_its_scrutinee_holds() -> Bool {
+test fn the_same_match_as_a_fn_body_conserves_its_scrutinee_holds() -> Bool  {
   let r = conservation_report_of(subject: fn_body_match_scrutinee_subject())
   reference_conservation_accepted(report: r)
     && (report_drop_count(report: r, wanted: ^rc_arg) == 0)

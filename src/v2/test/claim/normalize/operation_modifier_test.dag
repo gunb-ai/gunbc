@@ -116,10 +116,10 @@ fn om_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> 
   }
 }
 
-test fn an_operations_modifiers_lower_onto_its_contract_edges_holds() -> Bool {
+test fn an_operations_modifiers_lower_onto_its_contract_edges_holds() -> Bool  {
   om_all_modifiers_lowered()
 }
 
-test fn a_repeated_modifier_refuses_at_the_second_holds() -> Bool {
+test fn a_repeated_modifier_refuses_at_the_second_holds() -> Bool  {
   om_repeated_modifier_refused()
 }

@@ -49,8 +49,8 @@ fn plain_normalized() -> Bool {
   }
 }
 
-test fn a_refined_parameter_parses_holds() -> Bool { refined_parsed() }
+test fn a_refined_parameter_parses_holds() -> Bool  { refined_parsed() }
 
-test fn a_refined_parameter_refuses_at_its_clause_holds() -> Bool { refined_refused_at_clause() }
+test fn a_refined_parameter_refuses_at_its_clause_holds() -> Bool  { refined_refused_at_clause() }
 
-test fn an_unrefined_parameter_still_normalizes_holds() -> Bool { plain_normalized() }
+test fn an_unrefined_parameter_still_normalizes_holds() -> Bool  { plain_normalized() }

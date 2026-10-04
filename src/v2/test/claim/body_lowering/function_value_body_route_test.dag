@@ -92,7 +92,7 @@ fn fvb_outcomes() -> FvbOutcomes {
   }
 }
 
-test fn a_function_whose_body_is_a_fn_literal_resolves_and_reaches_infer() -> Bool {
+test fn a_function_whose_body_is_a_fn_literal_resolves_and_reaches_infer() -> Bool  {
   match fvb_outcomes() {
     FvbOutcomesDecided { direct: v, curried: _, curried_undeclared: _ } =>
       match v {
@@ -103,7 +103,7 @@ test fn a_function_whose_body_is_a_fn_literal_resolves_and_reaches_infer() -> Bo
   }
 }
 
-test fn a_curried_lambda_naming_its_outer_binder_resolves_and_reaches_infer() -> Bool {
+test fn a_curried_lambda_naming_its_outer_binder_resolves_and_reaches_infer() -> Bool  {
   match fvb_outcomes() {
     FvbOutcomesDecided { direct: _, curried: v, curried_undeclared: _ } =>
       match v {
@@ -114,7 +114,7 @@ test fn a_curried_lambda_naming_its_outer_binder_resolves_and_reaches_infer() ->
   }
 }
 
-test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool {
+test fn an_undeclared_name_inside_a_curried_lambda_refuses_at_its_atom() -> Bool  {
   match fvb_outcomes() {
     FvbOutcomesDecided { direct: _, curried: _, curried_undeclared: v } =>
       match v {
@@ -185,14 +185,14 @@ fn fvb_emit_direct_verdict() -> FvbEmitVerdict {
   fvb_emit_verdict_of(source: fvb_emit_direct_source)
 }
 
-test fn a_curried_function_typed_return_emits_impl_fn_over_box_dyn_fn() -> Bool {
+test fn a_curried_function_typed_return_emits_impl_fn_over_box_dyn_fn() -> Bool  {
   match fvb_emit_curried_verdict() {
     FvbEmitted { text: t } => t == fvb_emit_curried_golden
     FvbEmitRefused { reason: _ } => false
   }
 }
 
-test fn a_fn_returning_fn_emits_impl_fn_with_a_move_closure() -> Bool {
+test fn a_fn_returning_fn_emits_impl_fn_with_a_move_closure() -> Bool  {
   match fvb_emit_direct_verdict() {
     FvbEmitted { text: t } => t == fvb_emit_direct_golden
     FvbEmitRefused { reason: _ } => false

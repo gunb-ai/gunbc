@@ -138,16 +138,16 @@ fn bare_if_body_is_branch() -> Bool {
   }
 }
 
-test fn match_heading_a_binary_chain_parses_holds() -> Bool { match_heading_chain_parsed() }
+test fn match_heading_a_binary_chain_parses_holds() -> Bool  { match_heading_chain_parsed() }
 
-test fn if_heading_a_binary_chain_parses_holds() -> Bool { if_heading_chain_parsed() }
+test fn if_heading_a_binary_chain_parses_holds() -> Bool  { if_heading_chain_parsed() }
 
-test fn bare_match_still_parses_holds() -> Bool { bare_match_parsed() }
+test fn bare_match_still_parses_holds() -> Bool  { bare_match_parsed() }
 
-test fn bare_if_still_parses_holds() -> Bool { bare_if_parsed() }
+test fn bare_if_still_parses_holds() -> Bool  { bare_if_parsed() }
 
-test fn ordinary_binary_still_parses_holds() -> Bool { ordinary_binary_parsed() }
+test fn ordinary_binary_still_parses_holds() -> Bool  { ordinary_binary_parsed() }
 
-test fn a_bare_match_still_lowers_to_the_match_itself_holds() -> Bool { bare_match_body_is_match() }
+test fn a_bare_match_still_lowers_to_the_match_itself_holds() -> Bool  { bare_match_body_is_match() }
 
-test fn a_bare_if_still_lowers_to_the_branch_itself_holds() -> Bool { bare_if_body_is_branch() }
+test fn a_bare_if_still_lowers_to_the_branch_itself_holds() -> Bool  { bare_if_body_is_branch() }

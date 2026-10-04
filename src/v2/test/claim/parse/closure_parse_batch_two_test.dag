@@ -38,11 +38,11 @@ fn cb2_normalizes(o: Outcome<NormalizedTree>) -> Bool {
 // every refusing claim pins the row's boundary.
 
 // B -- dag_grammar_generic_arg_expr (std.integer `MachineWidth<8>`).
-test fn int_literal_generic_argument_parses_holds() -> Bool {
+test fn int_literal_generic_argument_parses_holds() -> Bool  {
   cb2_parses(o: cb2_parsed_0())
 }
 
-test fn bare_int_literal_is_not_a_type_holds() -> Bool {
+test fn bare_int_literal_is_not_a_type_holds() -> Bool  {
   match cb2_parses(o: cb2_parsed_1()) {
     true => false
     false => true
@@ -50,11 +50,11 @@ test fn bare_int_literal_is_not_a_type_holds() -> Bool {
 }
 
 // C -- dag_grammar_primary_name_expr (std.cross_tree.resolution `{ module: module }`).
-test fn module_keyword_as_a_value_parses_holds() -> Bool {
+test fn module_keyword_as_a_value_parses_holds() -> Bool  {
   cb2_parses(o: cb2_parsed_2())
 }
 
-test fn other_keywords_are_not_values_holds() -> Bool {
+test fn other_keywords_are_not_values_holds() -> Bool  {
   match cb2_parses(o: cb2_parsed_3()) {
     true => false
     false => true
@@ -62,23 +62,23 @@ test fn other_keywords_are_not_values_holds() -> Bool {
 }
 
 // D -- the field_decl_block arm of dag_grammar_type_expr (std.pareto `type AxisScan = { .. }`).
-test fn anonymous_record_type_expression_parses_holds() -> Bool {
+test fn anonymous_record_type_expression_parses_holds() -> Bool  {
   cb2_parses(o: cb2_parsed_4())
 }
 
 // E -- dag_grammar_admit_callers_clause_expr (std.integer qualified_octets). Parsed and discarded
 // (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
-test fn admit_callers_clause_parses_holds() -> Bool {
+test fn admit_callers_clause_parses_holds() -> Bool  {
   cb2_parses(o: cb2_parsed_5())
 }
 
 // The clause is consumed at fn lowering: the declaration normalizes to an Arrow with the clause
 // discarded, which is the rung drop's population, so a retained clause shell would fail here.
-test fn admit_callers_clause_normalizes_holds() -> Bool {
+test fn admit_callers_clause_normalizes_holds() -> Bool  {
   cb2_normalizes(o: cb2_normalized_5())
 }
 
-test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
+test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool  {
   match cb2_parses(o: cb2_parsed_6()) {
     true => false
     false => true
@@ -90,7 +90,7 @@ test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
 // (v2.compiler.body_lowering_fold body_lower_guard_branch). It refused
 // body_lowering_reason_else_less_if_unlowered until the guard had a lowered form; a guard that falls
 // through still refuses (v2.test.claim.namespace_xl0.return_tail_position).
-test fn an_early_return_guard_parses_and_lowers_holds() -> Bool {
+test fn an_early_return_guard_parses_and_lowers_holds() -> Bool  {
   match cb2_normalized_7() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -112,11 +112,11 @@ fn named_edge_count_anywhere(root: Node, name: Symbol) -> Int {
   )
 }
 
-test fn two_declarations_named_node_projection_normalize_holds() -> Bool {
+test fn two_declarations_named_node_projection_normalize_holds() -> Bool  {
   cb2_normalizes(o: cb2_normalized_8())
 }
 
-test fn declaration_named_node_projection_is_kept_holds() -> Bool {
+test fn declaration_named_node_projection_is_kept_holds() -> Bool  {
   match cb2_normalized_9() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -126,7 +126,7 @@ test fn declaration_named_node_projection_is_kept_holds() -> Bool {
 
 // The roster still sees through real projection structure: an ordinary module normalizes and
 // its authored member is reachable once, exactly as above, so the change is not a blanket accept.
-test fn ordinary_declaration_is_kept_once_holds() -> Bool {
+test fn ordinary_declaration_is_kept_once_holds() -> Bool  {
   match cb2_normalized_10() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -227,7 +227,7 @@ fn cb2_stream_0() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_0() -> Bool {
+test fn cb2_fidelity_0() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype I8 = Compose<Int, W<8>>\n",
     file: ^closure_parse_batch_two_probe,
@@ -247,7 +247,7 @@ fn cb2_stream_1() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_1() -> Bool {
+test fn cb2_fidelity_1() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype T = 8\n",
     file: ^closure_parse_batch_two_probe,
@@ -275,7 +275,7 @@ fn cb2_stream_2() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_2() -> Bool {
+test fn cb2_fidelity_2() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn f(x: Q) -> Q {\n  module\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -303,7 +303,7 @@ fn cb2_stream_3() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_3() -> Bool {
+test fn cb2_fidelity_3() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn f(x: Q) -> Q {\n  data\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -331,7 +331,7 @@ fn cb2_stream_4() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_4() -> Bool {
+test fn cb2_fidelity_4() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype S = { p: Int, c: Int }\n",
     file: ^closure_parse_batch_two_probe,
@@ -373,7 +373,7 @@ fn cb2_stream_5() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_5() -> Bool {
+test fn cb2_fidelity_5() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"a\", decl_name: \"c\")]\n{\n  m\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -405,7 +405,7 @@ fn cb2_stream_6() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_6() -> Bool {
+test fn cb2_fidelity_6() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: []\n{\n  m\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -439,7 +439,7 @@ fn cb2_stream_7() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_7() -> Bool {
+test fn cb2_fidelity_7() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn f(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -479,7 +479,7 @@ fn cb2_stream_8() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_8() -> Bool {
+test fn cb2_fidelity_8() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn a_value_node_projection(x: V) -> P {\n  x\n}\n\nfn b_node_projection(v: V) -> P {\n  v\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -507,7 +507,7 @@ fn cb2_stream_9() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_9() -> Bool {
+test fn cb2_fidelity_9() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn a_node_projection(x: V) -> P {\n  x\n}\n",
     file: ^closure_parse_batch_two_probe,
@@ -535,7 +535,7 @@ fn cb2_stream_10() -> TokenStream {
   ])
 }
 
-test fn cb2_fidelity_10() -> Bool {
+test fn cb2_fidelity_10() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\nfn a(x: V) -> P {\n  x\n}\n",
     file: ^closure_parse_batch_two_probe,

@@ -517,7 +517,7 @@ fn ingested_classical_not_verdict_is_semantic_mismatch(run: TestClaimRun<Node, R
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Bool {
+test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Bool  {
   match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       match eval(
@@ -533,7 +533,7 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
   }
 }
 
-test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
+test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool  {
   match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
@@ -547,7 +547,7 @@ test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
+test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool  {
   match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
@@ -560,7 +560,7 @@ test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool {
+test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool  {
   match ingested_canonical_inferred_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
@@ -580,11 +580,11 @@ test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool {
 // tokenize->parse->normalize->resolve->find-arrow path executes every floor run and this claim
 // asserts its route (a Match body). An ingest break makes the served producer Rejected, and the
 // control below executes that arm.
-test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
+test fn ingested_classical_not_arrow_has_match_holds() -> Bool  {
   ingested_arrow_has_match_body(arrow: ingested_classical_not_arrow_with_body())
 }
 
-test fn ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds() -> Bool {
+test fn ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds() -> Bool  {
   !ingested_arrow_has_match_body(
     arrow: outcome_rejected(
       d: ingested_classical_not_diagnostic(
@@ -608,15 +608,15 @@ fn ingested_classical_not_staging_emit_accepts_arrow(arrow: Outcome<ResolvedTree
   }
 }
 
-test fn ingested_classical_not_staging_emit_accepts_holds() -> Bool {
+test fn ingested_classical_not_staging_emit_accepts_holds() -> Bool  {
   ingested_classical_not_staging_emit_accepts_arrow(arrow: ingested_classical_not_arrow_with_body())
 }
 
-test fn ingested_classical_not_staging_swapped_emit_accepts_holds() -> Bool {
+test fn ingested_classical_not_staging_swapped_emit_accepts_holds() -> Bool  {
   ingested_classical_not_staging_emit_accepts_arrow(arrow: ingested_classical_not_swapped_arrow_with_body())
 }
 
-test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
+test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool  {
   match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_source) {
     Accepted { value: tree, diagnostics: _ } =>
       ingested_classical_not_verdict_is_pass(
@@ -629,7 +629,7 @@ test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
   }
 }
 
-test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
+test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool  {
   match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_swapped_source) {
     Accepted { value: tree, diagnostics: _ } =>
       ingested_classical_not_verdict_is_semantic_mismatch(
@@ -642,7 +642,7 @@ test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_emit_accepts_holds() -> Bool {
+test fn ingested_classical_not_emit_accepts_holds() -> Bool  {
   match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
@@ -653,7 +653,7 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_real_infer_holds() -> Bool {
+test fn ingested_classical_not_real_infer_holds() -> Bool  {
   match ingested_classical_not_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match infer(tree: arrow) {
@@ -697,7 +697,7 @@ fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: 
   }
 }
 
-test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() -> Bool {
+test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() -> Bool  {
   ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
     tree: ingested_classical_not_match_only_param_body_fixture()
   )
@@ -729,7 +729,7 @@ test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() 
 // eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR
 // CommitCheckEnrollment.
 
-test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool {
+test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool  {
   ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
     tree: ingested_classical_not_arrow_empty_domain_fixture()
   )

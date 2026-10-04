@@ -142,13 +142,13 @@ fn mab_resolved_9() -> Outcome<ResolvedTree> {
 
 // (1) A binder shadowing an outer name binds the ARM's binding: the outer `x` is test code, and
 // the arm's `x` never reaches it.
-test fn mab_shadowing_binder_binds_the_arm() -> Bool {
+test fn mab_shadowing_binder_binds_the_arm() -> Bool  {
   mab_outcome_accepts(o: mab_resolved_0())
 }
 
 // The wall the frame bypasses is real: the same outer test-code name, referenced from an arm that
 // binds no `x`, refuses through the root exactly as the frame-less reading of (1) would.
-test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool {
+test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool  {
   mab_outcome_refuses_with(
     o: mab_resolved_1(),
     reason: ^resolve_reason_test_code_referenced
@@ -157,11 +157,11 @@ test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool {
 
 // A binder with no outer name at all binds through the frame (green) -- and the body naming a
 // different, unbound name refuses (red): the frame binds exactly the binder.
-test fn mab_fresh_binder_binds() -> Bool {
+test fn mab_fresh_binder_binds() -> Bool  {
   mab_outcome_accepts(o: mab_resolved_2())
 }
 
-test fn mab_unbound_name_in_arm_body_refuses() -> Bool {
+test fn mab_unbound_name_in_arm_body_refuses() -> Bool  {
   mab_outcome_refuses_with(
     o: mab_resolved_3(),
     reason: ^resolve_reason_unbound_symbol
@@ -170,7 +170,7 @@ test fn mab_unbound_name_in_arm_body_refuses() -> Bool {
 
 // (3) The constructor tag is not a binder: a misspelled variant refuses as an unbound reference
 // instead of becoming a fresh binder that matches everything.
-test fn mab_misspelled_tag_refuses() -> Bool {
+test fn mab_misspelled_tag_refuses() -> Bool  {
   mab_outcome_refuses_with(
     o: mab_resolved_4(),
     reason: ^resolve_reason_unbound_symbol
@@ -178,7 +178,7 @@ test fn mab_misspelled_tag_refuses() -> Bool {
 }
 
 // (4) The binder does not leak: a sibling arm naming it is unbound.
-test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool {
+test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool  {
   mab_outcome_refuses_with(
     o: mab_resolved_5(),
     reason: ^resolve_reason_unbound_symbol
@@ -187,7 +187,7 @@ test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool {
 
 // Nested constructs bind at depth, braced and shorthand spellings bind their field's binder, and
 // a wildcard binds nothing.
-test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
+test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool  {
   mab_outcome_accepts(o: mab_resolved_6())
     && mab_outcome_accepts(o: mab_resolved_7())
     && mab_outcome_accepts(o: mab_resolved_8())
@@ -236,16 +236,16 @@ fn mab_resolved_record_data_binder() -> Outcome<ResolvedTree> {
 }
 
 // The instrument is live: with no outer W, the binder's Atom survives.
-test fn mab_unshadowed_binder_atom_survives() -> Bool {
+test fn mab_unshadowed_binder_atom_survives() -> Bool  {
   mab_has_atom(o: mab_resolved_unshadowed_binder(), id: ^W)
 }
 
-test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
+test fn mab_binder_spelling_a_where_alias_binds() -> Bool  {
   mab_outcome_accepts(o: mab_resolved_where_alias_binder())
     && mab_has_atom(o: mab_resolved_where_alias_binder(), id: ^W)
 }
 
-test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
+test fn mab_binder_spelling_a_record_data_row_binds() -> Bool  {
   mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
 }
 
@@ -285,7 +285,7 @@ fn mab_resolved_ambiguous_binder() -> Outcome<ResolvedTree> {
   )
 }
 
-test fn mab_binder_spelling_a_non_payload_declared_in_two_modules_binds() -> Bool {
+test fn mab_binder_spelling_a_non_payload_declared_in_two_modules_binds() -> Bool  {
   mab_outcome_accepts(o: mab_resolved_ambiguous_binder())
     && mab_has_atom(o: mab_resolved_ambiguous_binder(), id: ^n)
 }
@@ -315,7 +315,7 @@ fn mab_resolved_two_module_variant() -> Outcome<ResolvedTree> {
   )
 }
 
-test fn mab_binder_spelling_a_variant_declared_in_two_modules_refuses() -> Bool {
+test fn mab_binder_spelling_a_variant_declared_in_two_modules_refuses() -> Bool  {
   mab_outcome_refuses_with(
     o: mab_resolved_two_module_variant(),
     reason: ^resolve_reason_unbound_symbol
@@ -356,7 +356,7 @@ fn mab_record_declarations_specimen() -> Outcome<FreeMonoid<Symbol>> {
   mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where string_non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
 }
 
-test fn mab_where_alias_is_not_a_record() -> Bool {
+test fn mab_where_alias_is_not_a_record() -> Bool  {
   match mab_record_declarations_specimen() {
     Rejected { diagnostics: _ } => false
     Accepted { value: names, diagnostics: _ } =>
@@ -389,7 +389,7 @@ fn mab_resolved_module_named_binder() -> Outcome<ResolvedTree> {
   )
 }
 
-test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
+test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool  {
   mab_outcome_accepts(o: mab_resolved_module_named_binder())
     && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
 }
@@ -403,7 +403,7 @@ fn mab_resolved_declared_constructor() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype T = True | False\ntype C = A(T) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(True) => 1\n    A(_) => 0\n    B => 0\n  }\n}\n")
 }
 
-test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() -> Bool {
+test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() -> Bool  {
   match mab_resolved_declared_constructor() {
     Rejected { diagnostics: _ } => false
     Accepted { value: n, diagnostics: _ } =>
@@ -442,7 +442,7 @@ fn mab_resolved_unimported_constructor() -> Outcome<ResolvedTree> {
   )
 }
 
-test fn mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding() -> Bool {
+test fn mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding() -> Bool  {
   mab_outcome_refuses_with(
     o: mab_resolved_unimported_constructor(),
     reason: ^resolve_reason_unbound_symbol

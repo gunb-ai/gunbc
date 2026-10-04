@@ -73,14 +73,14 @@ fn bns_verdicts() -> BnsVerdicts {
   }
 }
 
-test fn bare_node_arm_body_before_the_next_arm_takes_the_expression_route() -> Bool {
+test fn bare_node_arm_body_before_the_next_arm_takes_the_expression_route() -> Bool  {
   bns_verdicts().arm_before_arm
 }
 
-test fn bare_node_statement_before_an_if_takes_the_expression_route() -> Bool {
+test fn bare_node_statement_before_an_if_takes_the_expression_route() -> Bool  {
   bns_verdicts().node_before_if
 }
 
-test fn node_let_sugar_still_takes_the_let_route() -> Bool {
+test fn node_let_sugar_still_takes_the_let_route() -> Bool  {
   bns_verdicts().sugar
 }

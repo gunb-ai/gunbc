@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.single_arm_match
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
   ExplainedDrop,
   no_explained_drops,
@@ -38,30 +39,30 @@ data src_one_arm_shorthand_field: String = "module m.t\ntype T = B { x: Int } | 
 
 data src_zero_arm_refuses: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
 
-test fn single_arm_wildcard_match_normalizes_holds() -> Bool {
+test fn single_arm_wildcard_match_normalizes_holds() -> Bool  {
   normalize_outcome(src: src_single_arm_wildcard) == "ACCEPTED"
 }
 
-test fn two_arm_match_still_accepts_holds() -> Bool {
+test fn two_arm_match_still_accepts_holds() -> Bool  {
   normalize_outcome(src: src_two_arm_accepts) == "ACCEPTED"
 }
 
-test fn three_arm_match_keeps_every_arm_holds() -> Bool {
+test fn three_arm_match_keeps_every_arm_holds() -> Bool  {
   match conserved_normalize(subject: three_arm_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn one_arm_constructor_pattern_normalizes_holds() -> Bool {
+test fn one_arm_constructor_pattern_normalizes_holds() -> Bool  {
   normalize_outcome(src: src_one_arm_constructor) == "ACCEPTED"
 }
 
-test fn one_arm_shorthand_field_pattern_normalizes_holds() -> Bool {
+test fn one_arm_shorthand_field_pattern_normalizes_holds() -> Bool  {
   normalize_outcome(src: src_one_arm_shorthand_field) == "ACCEPTED"
 }
 
-test fn zero_arm_match_still_refuses_holds() -> Bool {
+test fn zero_arm_match_still_refuses_holds() -> Bool  {
   match conserved_normalize(subject: zero_arm_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_match_arm_navigation_refused

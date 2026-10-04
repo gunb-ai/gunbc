@@ -195,7 +195,7 @@ fn cascade_single_root_is_a(roots: List<NativeCensusCauseMember>, fan_out: Int, 
 // observed resolve refusal (b). RED if the census reports three walls -- b's resolve refusal filed as
 // its own cause, or c counted as a refused root -- because `walls` would read 2 or 3; RED if the
 // fan-out counted only observed refusals (1) or included a itself (3).
-test fn census_linear_cascade_is_one_wall_with_fan_out_two_holds() -> Bool {
+test fn census_linear_cascade_is_one_wall_with_fan_out_two_holds() -> Bool  {
   match cascade_linear_census().single {
     CascadeCensusContextRefused => false
     CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: members } =>
@@ -206,7 +206,7 @@ test fn census_linear_cascade_is_one_wall_with_fan_out_two_holds() -> Bool {
 // CONTROL 2, DIAMOND d -> {b, c} -> a. ONE wall, fan-out 3 ({b, c, d}) with two observed resolve
 // refusals (b and c). RED if paths are counted: d is reached from a along two paths, so a path
 // count reads 4.
-test fn census_diamond_cascade_counts_modules_not_paths_holds() -> Bool {
+test fn census_diamond_cascade_counts_modules_not_paths_holds() -> Bool  {
   match cascade_diamond_census() {
     CascadeCensusContextRefused => false
     CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: members } =>
@@ -235,7 +235,7 @@ fn cascade_root_is_at_least(roots: List<NativeCensusCauseMember>, path: Symbol, 
 // file with no tree, so a's known closure is empty -- and the census must NOT report that as an
 // exact Counted 0: a is AtLeast 0 with one refused file (b) unread, and b is AtLeast 1 ({c}) with
 // one (a) unread. RED under the pre-fix fold, which answered Counted 0 for a.
-test fn census_hidden_refused_importer_makes_fan_out_a_lower_bound_holds() -> Bool {
+test fn census_hidden_refused_importer_makes_fan_out_a_lower_bound_holds() -> Bool  {
   match cascade_linear_census().double_refused {
     CascadeCensusContextRefused => false
     CascadeCensusReported { walls: _, roots: roots, cascade_members_of_a: _ } =>

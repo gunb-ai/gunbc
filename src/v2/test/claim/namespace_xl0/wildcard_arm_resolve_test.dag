@@ -142,28 +142,28 @@ fn wc_is_resolved(v: WcVerdict) -> Bool {
   }
 }
 
-test fn a_match_exhaustive_through_a_wildcard_arm_resolves() -> Bool {
+test fn a_match_exhaustive_through_a_wildcard_arm_resolves() -> Bool  {
   match wc_outcomes() {
     WcOutcomesDecided { arm: v, field: _, binder: _, body: _ } => wc_is_resolved(v: v)
     WcContextRefused => false
   }
 }
 
-test fn a_wildcard_in_a_constructor_field_resolves() -> Bool {
+test fn a_wildcard_in_a_constructor_field_resolves() -> Bool  {
   match wc_outcomes() {
     WcOutcomesDecided { arm: _, field: v, binder: _, body: _ } => wc_is_resolved(v: v)
     WcContextRefused => false
   }
 }
 
-test fn a_named_binder_arm_still_binds() -> Bool {
+test fn a_named_binder_arm_still_binds() -> Bool  {
   match wc_outcomes() {
     WcOutcomesDecided { arm: _, field: _, binder: v, body: _ } => wc_is_resolved(v: v)
     WcContextRefused => false
   }
 }
 
-test fn an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom() -> Bool  {
   match wc_outcomes() {
     WcOutcomesDecided { arm: _, field: _, binder: _, body: v } =>
       match v {

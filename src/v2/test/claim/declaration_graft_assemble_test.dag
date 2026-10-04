@@ -169,25 +169,25 @@ fn declaration_graft_refuses_with(out: Outcome<ResolvedTree>, reason: Symbol) ->
   }
 }
 
-test fn declaration_graft_empty_module_accepts() -> Bool {
+test fn declaration_graft_empty_module_accepts() -> Bool  {
   declaration_graft_accepts(out: declaration_graft_empty_assembled())
 }
 
-test fn declaration_graft_fn_only_accepts() -> Bool {
+test fn declaration_graft_fn_only_accepts() -> Bool  {
   declaration_graft_accepts(out: declaration_graft_fn_only_assembled())
 }
 
-test fn declaration_graft_type_only_accepts() -> Bool {
+test fn declaration_graft_type_only_accepts() -> Bool  {
   declaration_graft_accepts(out: declaration_graft_type_only_assembled())
 }
 
 // The headline: a one-member module whose member targets a Conj reads as module `p`
 // (gunbc#11694) and its coproduct is a Named containment edge.
-test fn declaration_graft_type_only_flag_is_named() -> Bool {
+test fn declaration_graft_type_only_flag_is_named() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_type_only_assembled(), lexeme: "Flag")
 }
 
-test fn declaration_graft_where_alias_accepts() -> Bool {
+test fn declaration_graft_where_alias_accepts() -> Bool  {
   declaration_graft_accepts(out: declaration_graft_where_alias_only_assembled())
 }
 
@@ -201,7 +201,7 @@ test fn declaration_graft_where_alias_accepts() -> Bool {
 // where-alias's declaration, as resolved, holds its carrier as the kernel Int binding. RED if the head
 // reached resolve unlowered (a preserved qualified-name shell) or were read from symbol_index, which
 // holds the declaration as authored (the bare spelling Int).
-test fn declaration_graft_where_alias_carrier_is_resolved_in_resolved_declarations() -> Bool {
+test fn declaration_graft_where_alias_carrier_is_resolved_in_resolved_declarations() -> Bool  {
   match declaration_graft_where_alias_only_assembled() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -220,7 +220,7 @@ test fn declaration_graft_where_alias_carrier_is_resolved_in_resolved_declaratio
   }
 }
 
-test fn declaration_graft_where_alias_over_an_undeclared_carrier_refuses() -> Bool {
+test fn declaration_graft_where_alias_over_an_undeclared_carrier_refuses() -> Bool  {
   match declaration_graft_where_alias_undeclared_carrier_assembled() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -229,31 +229,31 @@ test fn declaration_graft_where_alias_over_an_undeclared_carrier_refuses() -> Bo
   }
 }
 
-test fn declaration_graft_combined_accepts() -> Bool {
+test fn declaration_graft_combined_accepts() -> Bool  {
   declaration_graft_accepts(out: declaration_graft_combined_assembled())
 }
 
 // The silent-drop control: a where-alias beside fns used to be dropped by the flatten.
-test fn declaration_graft_silent_drop_control_type_is_named() -> Bool {
+test fn declaration_graft_silent_drop_control_type_is_named() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "Name")
 }
 
 // Partial graft must not drop a sibling: Flag Named and f Named on the same Accepted tree.
-test fn declaration_graft_coproduct_beside_fn_keeps_both() -> Bool {
+test fn declaration_graft_coproduct_beside_fn_keeps_both() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "Flag")
     && declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "f")
 }
 
 // Referencing, constructing and matching the coproduct's variants all live in the same
 // accepted module (g, h, flip): one Accepted covers the three former per-source rows.
-test fn declaration_graft_variant_reference_construct_and_match_accept() -> Bool {
+test fn declaration_graft_variant_reference_construct_and_match_accept() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "g")
     && declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "h")
     && declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "flip")
 }
 
 // Prefix-heuristic control: a user fn spelled `dag_...` is a member.
-test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool {
+test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "dag_user")
 }
 
@@ -261,14 +261,14 @@ test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool {
 // identity, so it reaches the graft through the FLATTEN, not the partition. The
 // flatten must not decide membership by spelling (review 68542): a user alias whose
 // name spells an emitted identity or a production name is still a declaration.
-test fn declaration_graft_alias_spelled_as_emitted_identity_survives_flatten() -> Bool {
+test fn declaration_graft_alias_spelled_as_emitted_identity_survives_flatten() -> Bool  {
   declaration_graft_named_in(
     out: declaration_graft_alias_spelled_as_emitted_id_assembled(),
     lexeme: "dag_surface_type_expr"
   )
 }
 
-test fn declaration_graft_alias_spelled_as_production_name_survives_flatten() -> Bool {
+test fn declaration_graft_alias_spelled_as_production_name_survives_flatten() -> Bool  {
   declaration_graft_named_in(
     out: declaration_graft_alias_spelled_as_production_name_assembled(),
     lexeme: "dag_production_type_decl"
@@ -280,7 +280,7 @@ test fn declaration_graft_alias_spelled_as_production_name_survives_flatten() ->
 // one-module ingest does NOT contain v2.std.logic: carried as a residual shell, resolve
 // walks `logic` / `Bool` as bare mentions and refuses (v2.test.native_decl_selection went
 // red on exactly this).
-test fn declaration_graft_import_beside_fn_accepts_and_dissolves_the_import() -> Bool {
+test fn declaration_graft_import_beside_fn_accepts_and_dissolves_the_import() -> Bool  {
   match declaration_graft_combined_assembled() {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
@@ -294,21 +294,21 @@ test fn declaration_graft_import_beside_fn_accepts_and_dissolves_the_import() ->
 // shell was residual and unlowered, and resolve refused its bare mentions); body lowering now
 // declares the record's fields (v2.compiler.body_lowering_fold body_lower_record_type_decl) and
 // the graft skip is deleted, so the row is the permanent regression control the class named.
-test fn declaration_graft_coproduct_beside_record_names_both() -> Bool {
+test fn declaration_graft_coproduct_beside_record_names_both() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_flag_and_rec_assembled(), lexeme: "Flag")
     && declaration_graft_named_in(out: declaration_graft_flag_and_rec_assembled(), lexeme: "Rec")
 }
 
 // The record spelling alone assembles, Named, with its field a declared identity under it (the
 // containment index carries p.Rec.n because the payload's Named edge is the field).
-test fn declaration_graft_record_type_only_accepts_and_is_named() -> Bool {
+test fn declaration_graft_record_type_only_accepts_and_is_named() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_record_type_only_assembled(), lexeme: "Rec")
     && declaration_graft_label_present_in(out: declaration_graft_record_type_only_assembled(), lexeme: "n")
 }
 
 // Constructing the record in a fn body assembles too: `Rec { n: 1 }` is the construct shape
 // (tag edge + field edge), whose tag atom resolves to the Named declaration beside it.
-test fn declaration_graft_record_construct_accepts() -> Bool {
+test fn declaration_graft_record_construct_accepts() -> Bool  {
   declaration_graft_named_in(out: declaration_graft_record_construct_assembled(), lexeme: "Rec")
     && declaration_graft_named_in(out: declaration_graft_record_construct_assembled(), lexeme: "mk")
 }

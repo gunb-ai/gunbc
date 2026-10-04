@@ -78,12 +78,12 @@ fn field_key_refused_as_interface() -> Bool {
   }
 }
 
-test fn a_parameter_default_parses_holds() -> Bool { param_default_parsed() }
+test fn a_parameter_default_parses_holds() -> Bool  { param_default_parsed() }
 
-test fn a_parameter_default_lowers_onto_its_binder_holds() -> Bool { param_default_lowered_onto_its_binder() }
+test fn a_parameter_default_lowers_onto_its_binder_holds() -> Bool  { param_default_lowered_onto_its_binder() }
 
-test fn a_record_field_default_lowers_onto_its_binder_holds() -> Bool { field_default_lowered_onto_its_binder() }
+test fn a_record_field_default_lowers_onto_its_binder_holds() -> Bool  { field_default_lowered_onto_its_binder() }
 
-test fn a_service_io_default_lowers_onto_its_binder_holds() -> Bool { io_default_lowered_onto_its_binder() }
+test fn a_service_io_default_lowers_onto_its_binder_holds() -> Bool  { io_default_lowered_onto_its_binder() }
 
-test fn a_record_wire_key_keeps_its_interface_reason_holds() -> Bool { field_key_refused_as_interface() }
+test fn a_record_wire_key_keeps_its_interface_reason_holds() -> Bool  { field_key_refused_as_interface() }

@@ -108,24 +108,24 @@ fn qsd_call_body_has_exactly(row: String) -> Bool {
 }
 
 // A qualified parameter type reaches the collector.
-test fn collector_sees_a_qualified_parameter_type_holds() -> Bool {
+test fn collector_sees_a_qualified_parameter_type_holds() -> Bool  {
   collector_sees(spelling: qsd_param_spelling)
 }
 
 // A qualified field type reaches the collector. It stood as a measured disagreement until
 // declaration grafting (gunbc#11574) carried the record declaration into the normalized tree.
-test fn collector_sees_a_qualified_field_type_holds() -> Bool {
+test fn collector_sees_a_qualified_field_type_holds() -> Bool  {
   collector_sees(spelling: qsd_field_spelling)
 }
 
 // EXACT SITE SET, CALLEE: qsd_call's body carries exactly two sites, and the dotted callee is one,
 // whole, at the body edge itself.
-test fn collector_sees_exactly_the_dotted_callee_site_holds() -> Bool {
+test fn collector_sees_exactly_the_dotted_callee_site_holds() -> Bool  {
   qsd_call_body_has_exactly(row: qsd_callee_row)
 }
 
 // EXACT SITE SET, ARGUMENT: qsd_call's body carries exactly two sites, and the qualified argument is
 // one, whole, under its argument label x.
-test fn collector_sees_exactly_the_call_argument_site_holds() -> Bool {
+test fn collector_sees_exactly_the_call_argument_site_holds() -> Bool  {
   qsd_call_body_has_exactly(row: qsd_argument_row)
 }

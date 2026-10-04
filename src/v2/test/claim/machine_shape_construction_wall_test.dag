@@ -77,7 +77,7 @@ fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
   }
 }
 
-test fn gate_red_synthetic_machine_shape_call() -> Bool {
+test fn gate_red_synthetic_machine_shape_call() -> Bool  {
   match machine_shape_compile_gate(node: machine_shape_literal_fixture()) {
     Rejected { diagnostics: d } =>
       non_empty_contains_reason(d: d, reason: ^machine_shape_unsanctioned_construction)
@@ -85,7 +85,7 @@ test fn gate_red_synthetic_machine_shape_call() -> Bool {
   }
 }
 
-test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
+test fn gate_green_synthetic_shape_from_catalog_call() -> Bool  {
   gate_accepts(o: machine_shape_compile_gate(node: shape_from_catalog_call_fixture()))
 }
 
@@ -122,7 +122,7 @@ fn gate_over_subject(subject: ReferenceConservationSubject) -> Outcome<Witness<N
 // probed on srv1 for gunbc#12202), so no pattern reaches this gate on the admitted route today, and
 // the gate carries no pattern exemption it could not exercise. If patterns come to lower whole as
 // constructs, the gate refuses them loudly, and that is the trigger to model the exemption.
-test fn gate_red_machine_shape_record_literal_outside_its_home() -> Bool {
+test fn gate_red_machine_shape_record_literal_outside_its_home() -> Bool  {
   match gate_over_subject(subject: machine_shape_record_literal_subject()) {
     Rejected { diagnostics: d } =>
       non_empty_contains_reason(d: d, reason: ^machine_shape_unsanctioned_construction)
@@ -130,6 +130,6 @@ test fn gate_red_machine_shape_record_literal_outside_its_home() -> Bool {
   }
 }
 
-test fn gate_green_machine_shape_record_literal_in_its_home() -> Bool {
+test fn gate_green_machine_shape_record_literal_in_its_home() -> Bool  {
   gate_accepts(o: gate_over_subject(subject: machine_shape_record_literal_home_subject()))
 }

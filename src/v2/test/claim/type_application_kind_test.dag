@@ -74,39 +74,39 @@ fn tak_order_authored() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_
 fn tak_order_swapped() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type Swapped = Pair<Ak, Zk>\n")) }
 fn tak_arity_nongeneric() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type NotGeneric = Other<Foreign>\n")) }
 
-test fn tak_kinded_parameter_accepts_a_variant_of_its_kind() -> Bool {
+test fn tak_kinded_parameter_accepts_a_variant_of_its_kind() -> Bool  {
   tak_accepts(o: tak_kind_conforms())
 }
 
-test fn tak_kinded_parameter_accepts_a_nat_literal_unjudged() -> Bool {
+test fn tak_kinded_parameter_accepts_a_nat_literal_unjudged() -> Bool  {
   tak_accepts(o: tak_kind_literal())
 }
 
-test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool {
+test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool  {
   tak_refuses_with(o: tak_kind_foreign_variant(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
 }
 
-test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool {
+test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool  {
   tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
 }
 
-test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool {
+test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool  {
   tak_accepts(o: tak_order_authored())
 }
 
-test fn tak_arguments_swapped_against_authored_order_refuse() -> Bool {
+test fn tak_arguments_swapped_against_authored_order_refuse() -> Bool  {
   tak_refuses_with(o: tak_order_swapped(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
 }
 
-test fn tak_unkinded_parameter_is_unchanged() -> Bool {
+test fn tak_unkinded_parameter_is_unchanged() -> Bool  {
   tak_accepts(o: tak_unkinded())
 }
 
-test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool {
+test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool  {
   tak_refuses_with(o: tak_arity_over(), reason: ^resolve_reason_type_application_arity_mismatch)
 }
 
-test fn tak_application_of_a_non_generic_declaration_refuses() -> Bool {
+test fn tak_application_of_a_non_generic_declaration_refuses() -> Bool  {
   tak_refuses_with(o: tak_arity_nongeneric(), reason: ^resolve_reason_type_application_arity_mismatch)
 }
 
@@ -156,28 +156,28 @@ fn tak_pair_judge(argument: Node, kind: Node) -> KindInhabitance {
 }
 
 
-test fn tak_unjudged_literal_argument_is_admitted() -> Bool {
+test fn tak_unjudged_literal_argument_is_admitted() -> Bool  {
   match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^eight)], inhabits: fn(a, k) { ArgumentLiteralUnjudged }) {
     TypeApplicationConforms => true
     _ => false
   }
 }
 
-test fn tak_pairing_follows_declared_order_not_stored_sequence() -> Bool {
+test fn tak_pairing_follows_declared_order_not_stored_sequence() -> Bool  {
   match type_application_conformance(binders: tak_pair_binders_label_sorted(), arguments: [tak_atom(id: ^Zk), tak_atom(id: ^Ak)], inhabits: fn(a, k) { tak_pair_judge(argument: a, kind: k) }) {
     TypeApplicationConforms => true
     _ => false
   }
 }
 
-test fn tak_arguments_swapped_against_declared_order_refuse_at_the_interface() -> Bool {
+test fn tak_arguments_swapped_against_declared_order_refuse_at_the_interface() -> Bool  {
   match type_application_conformance(binders: tak_pair_binders_label_sorted(), arguments: [tak_atom(id: ^Ak), tak_atom(id: ^Zk)], inhabits: fn(a, k) { tak_pair_judge(argument: a, kind: k) }) {
     TypeApplicationKindNotInhabited { argument: _, kind: _ } => true
     _ => false
   }
 }
 
-test fn tak_arity_is_decided_before_kind() -> Bool {
+test fn tak_arity_is_decided_before_kind() -> Bool  {
   match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^a), tak_atom(id: ^b)], inhabits: fn(a, k) { ArgumentOutsideKind }) {
     TypeApplicationArityMismatch { declared: d, supplied: s } => (d == 1) && (s == 2)
     _ => false

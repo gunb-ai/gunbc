@@ -27,11 +27,11 @@ fn alias_then_service_parsed() -> Bool { parses(tag: "alias_then_service", text:
 fn two_predicates_parsed() -> Bool { parses(tag: "two_predicates", text: two_predicates_source) }
 fn adjacent_predicates_parsed() -> Bool { parses(tag: "adjacent_predicates", text: adjacent_predicates_source) }
 
-test fn a_service_after_a_refined_alias_parses_holds() -> Bool { alias_then_service_parsed() }
+test fn a_service_after_a_refined_alias_parses_holds() -> Bool  { alias_then_service_parsed() }
 
-test fn comma_separated_predicates_still_parse_holds() -> Bool { two_predicates_parsed() }
+test fn comma_separated_predicates_still_parse_holds() -> Bool  { two_predicates_parsed() }
 
-test fn adjacent_predicates_without_a_comma_refuse_holds() -> Bool {
+test fn adjacent_predicates_without_a_comma_refuse_holds() -> Bool  {
   match adjacent_predicates_parsed() {
     true => false
     false => true

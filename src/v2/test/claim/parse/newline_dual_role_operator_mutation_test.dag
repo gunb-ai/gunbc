@@ -173,21 +173,21 @@ fn accepts_prepared(text: String, file: Symbol, prepared: Outcome<PreparedGramma
   }
 }
 
-test fn witness_the_live_grammar_carries_the_newline_refusal() -> Bool {
+test fn witness_the_live_grammar_carries_the_newline_refusal() -> Bool  {
   nlm_refusal_arm_census().newline > 0
 }
 
 // The live grammar's refusals are the controls in v2.test.parse.newline_dual_role_operator_parse;
 // this module asserts only what they cannot: that the refusal arms are what produce them. One claim
 // per source, so each pays one tokenize and one parse against the supplied mutant.
-test fn witness_without_the_refusal_a_next_line_minus_after_an_operand_merges_RED() -> Bool {
+test fn witness_without_the_refusal_a_next_line_minus_after_an_operand_merges_RED() -> Bool  {
   accepts_prepared(text: newline_minus_after_operand_source, file: ^nlm_plain, prepared: nlm_mutant_prepared())
 }
 
-test fn witness_without_the_refusal_a_next_line_minus_after_a_block_merges_RED() -> Bool {
+test fn witness_without_the_refusal_a_next_line_minus_after_a_block_merges_RED() -> Bool  {
   accepts_prepared(text: newline_minus_after_block_source, file: ^nlm_block, prepared: nlm_mutant_prepared())
 }
 
-test fn witness_without_the_refusal_a_same_line_minus_still_parses() -> Bool {
+test fn witness_without_the_refusal_a_same_line_minus_still_parses() -> Bool  {
   accepts_prepared(text: same_line_minus_source, file: ^nlm_same, prepared: nlm_mutant_prepared())
 }

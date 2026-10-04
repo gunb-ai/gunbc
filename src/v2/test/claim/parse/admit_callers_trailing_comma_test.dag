@@ -59,11 +59,11 @@ fn only_a_comma_parsed() -> Bool {
   admit_parses(list: ",")
 }
 
-test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool { trailing_comma_parsed() }
+test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool  { trailing_comma_parsed() }
 
-test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool { no_trailing_comma_parsed() }
+test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool  { no_trailing_comma_parsed() }
 
-test fn an_admit_callers_list_of_only_a_comma_refuses_holds() -> Bool {
+test fn an_admit_callers_list_of_only_a_comma_refuses_holds() -> Bool  {
   match only_a_comma_parsed() {
     true => false
     false => true

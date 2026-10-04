@@ -65,7 +65,7 @@ fn indexes(index: SymbolIndex, names: List<String>) -> Bool {
 
 // The census door admits the declaration, indexes its capability as a member, and marks the resource
 // path -- and only it -- as a declared resource: the record beside it is not one.
-test fn census_admits_a_resource_and_marks_only_its_path_holds() -> Bool {
+test fn census_admits_a_resource_and_marks_only_its_path_holds() -> Bool  {
   match census_of_stream(tokens: valid_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
@@ -79,7 +79,7 @@ test fn census_admits_a_resource_and_marks_only_its_path_holds() -> Bool {
 
 // THE FULL DOOR ADMITS IT TOO, with every property entry read against its home. A resource sets nothing aside, so unlike a service with a transport it
 // reaches resolution: a fn's `requires`/`uses` reference to it must resolve on the route that compiles.
-test fn full_door_admits_a_resource_holds() -> Bool {
+test fn full_door_admits_a_resource_holds() -> Bool  {
   match full_of_stream(tokens: entries_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: _ } => true
@@ -88,7 +88,7 @@ test fn full_door_admits_a_resource_holds() -> Bool {
 
 // The normalize capture names the resource, and only it: the record beside it is captured as a
 // record, so the resource names the index marks are exactly the admitted resource declarations.
-test fn the_capture_names_the_resource_and_only_it_holds() -> Bool {
+test fn the_capture_names_the_resource_and_only_it_holds() -> Bool  {
   match supplied_stream_parse(tokens: valid_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -106,28 +106,28 @@ test fn the_capture_names_the_resource_and_only_it_holds() -> Bool {
   }
 }
 
-test fn an_unknown_kind_refuses_located_RED() -> Bool {
+test fn an_unknown_kind_refuses_located_RED() -> Bool  {
   match census_of_stream(tokens: unknown_kind_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_value_unknown
   }
 }
 
-test fn a_repeated_kind_refuses_located_RED() -> Bool {
+test fn a_repeated_kind_refuses_located_RED() -> Bool  {
   match census_of_stream(tokens: repeated_kind_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_entry_repeated
   }
 }
 
-test fn a_missing_mode_refuses_RED() -> Bool {
+test fn a_missing_mode_refuses_RED() -> Bool  {
   match census_of_stream(tokens: missing_mode_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_entry_missing
   }
 }
 
-test fn an_acquire_body_other_than_hermetic_refuses_RED() -> Bool {
+test fn an_acquire_body_other_than_hermetic_refuses_RED() -> Bool  {
   match census_of_stream(tokens: acquire_unknown_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -159,7 +159,7 @@ fn valid_stream() -> TokenStream {
   ])
 }
 
-test fn valid_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn valid_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: valid_source, file: ^resource_lowering_probe, supplied: valid_stream())
 }
 
@@ -180,7 +180,7 @@ fn unknown_kind_stream() -> TokenStream {
   ])
 }
 
-test fn unknown_kind_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn unknown_kind_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: unknown_kind_source, file: ^resource_lowering_probe, supplied: unknown_kind_stream())
 }
 
@@ -204,7 +204,7 @@ fn repeated_kind_stream() -> TokenStream {
   ])
 }
 
-test fn repeated_kind_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn repeated_kind_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: repeated_kind_source, file: ^resource_lowering_probe, supplied: repeated_kind_stream())
 }
 
@@ -222,7 +222,7 @@ fn missing_mode_stream() -> TokenStream {
   ])
 }
 
-test fn missing_mode_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn missing_mode_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: missing_mode_source, file: ^resource_lowering_probe, supplied: missing_mode_stream())
 }
 
@@ -247,7 +247,7 @@ fn acquire_unknown_stream() -> TokenStream {
   ])
 }
 
-test fn acquire_unknown_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn acquire_unknown_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: acquire_unknown_source, file: ^resource_lowering_probe, supplied: acquire_unknown_stream())
 }
 
@@ -278,7 +278,7 @@ fn entries_stream() -> TokenStream {
   ])
 }
 
-test fn entries_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn entries_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: entries_source, file: ^resource_lowering_probe, supplied: entries_stream())
 }
 
@@ -293,7 +293,7 @@ fn rdl_default_tail_census() -> Outcome<CensusTree> {
   census_of_stream(tokens: default_tail_stream())
 }
 
-test fn a_default_tail_lowers_onto_its_binder_holds() -> Bool {
+test fn a_default_tail_lowers_onto_its_binder_holds() -> Bool  {
   match rdl_default_tail_census() {
     Accepted { value: _, diagnostics: d } => reason_count_is_zero(d: d, reason: ^body_lowering_reason_interface_member_unmodeled)
     Rejected { diagnostics: _ } => false
@@ -329,7 +329,7 @@ fn default_tail_stream() -> TokenStream {
   ])
 }
 
-test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: default_tail_source, file: ^resource_lowering_probe, supplied: default_tail_stream())
 }
 
@@ -338,7 +338,7 @@ test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
 // interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
 data wire_key_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int from \"k\" }\n  }\n}\n"
 
-test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool  {
   match census_of_stream(tokens: wire_key_tail_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
@@ -377,7 +377,7 @@ fn wire_key_tail_stream() -> TokenStream {
   ])
 }
 
-test fn wire_key_tail_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn wire_key_tail_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: wire_key_tail_source, file: ^resource_lowering_probe, supplied: wire_key_tail_stream())
 }
 

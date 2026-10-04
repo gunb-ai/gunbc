@@ -176,7 +176,7 @@ fn ce_arm_count(e: ClosureEmission, name: String) -> Int {
 // typed Refused is the emit stages' answer, not the door's -- on this tree an ordinary fn still
 // answers translate_rejected_grounding_not_derived (v2.compiler.infer's grounding frontier), and that
 // refusal is carried as the member's arm rather than stopping the others, which is the point.
-test fn a_module_outside_the_closure_whose_body_does_not_lower_does_not_stop_the_emission_holds() -> Bool {
+test fn a_module_outside_the_closure_whose_body_does_not_lower_does_not_stop_the_emission_holds() -> Bool  {
   match ce_emission_outsider_body_refuses().outcome {
     Rejected { diagnostics: _ } => false
     Accepted { value: e, diagnostics: _ } =>
@@ -191,7 +191,7 @@ test fn a_module_outside_the_closure_whose_body_does_not_lower_does_not_stop_the
 
 // DIRECTION 2. The census is total: a file that does not parse refuses the emission even though no
 // member reaches it, because its declarations are unreadable and one of them could have been bound.
-test fn a_module_outside_the_closure_that_does_not_parse_refuses_the_emission_holds() -> Bool {
+test fn a_module_outside_the_closure_that_does_not_parse_refuses_the_emission_holds() -> Bool  {
   match ce_emission_outsider_unparseable().outcome {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -206,7 +206,7 @@ fn ce_census_names(located: ClosureEmissionLocated, path: String) -> Bool {
 // THE CENSUS REPORTS EVERY FILE IT COULD NOT READ, NOT THE FIRST: two unparseable outsiders are two
 // refusal rows, and EACH file is named by one of them -- two rows naming the same file fail, which is
 // the first-only behaviour this row exists to catch (review 71156).
-test fn the_census_names_every_file_it_could_not_read_holds() -> Bool {
+test fn the_census_names_every_file_it_could_not_read_holds() -> Bool  {
   let located = ce_emission_outsider_unparseable()
   length(xs: located.census_refusals) == 2
     && ce_census_names(located: located, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
@@ -218,7 +218,7 @@ test fn the_census_names_every_file_it_could_not_read_holds() -> Bool {
 }
 
 // A clean census reports no refusal row.
-test fn a_census_that_reads_every_file_reports_no_refusal_holds() -> Bool {
+test fn a_census_that_reads_every_file_reports_no_refusal_holds() -> Bool  {
   length(xs: ce_emission_outsider_body_refuses().census_refusals) == 0
 }
 
@@ -228,7 +228,7 @@ test fn a_census_that_reads_every_file_reports_no_refusal_holds() -> Bool {
 // emitting the rest would be a closure silently smaller than the program (DESIGN section 5). A
 // refusal AFTER membership is known -- resolve, infer, translate, emit -- is that member's typed arm
 // instead (direction 1 shows one).
-test fn a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds() -> Bool {
+test fn a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds() -> Bool  {
   match ce_emission_member_body_refuses().outcome {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
@@ -312,7 +312,7 @@ fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
   }
 }
 
-test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds() -> Bool {
+test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds() -> Bool  {
   match ce_emission_outsider_body_refuses().outcome {
     Rejected { diagnostics: _ } => false
     Accepted { value: e, diagnostics: _ } => ce_round_trip_holds(e: e)
@@ -321,7 +321,7 @@ test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identitie
 
 // A MODULE IDENTITY DECLARED BY TWO FILES REFUSES THE EMISSION AT THE CENSUS, even when the two
 // files' declarations are independent and neither is a closure member.
-test fn two_files_declaring_one_module_refuse_the_emission_at_the_census_holds() -> Bool {
+test fn two_files_declaring_one_module_refuse_the_emission_at_the_census_holds() -> Bool  {
   match ce_emission_duplicate_module().outcome {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^closure_census_duplicate_module
@@ -345,7 +345,7 @@ fn ce_census_row_names(rows: FreeMonoid<JsonValue>, path: String) -> Bool {
 // codec's other direction as exactly one row per refused file, each naming its own file with a
 // non-empty reason. A serializer that dropped a row, repeated one file, or emptied the reason reds
 // here (review 71289: the payload was carried end to end but pinned by no claim).
-test fn the_census_refusal_set_renders_one_row_per_refused_file_holds() -> Bool {
+test fn the_census_refusal_set_renders_one_row_per_refused_file_holds() -> Bool  {
   let located = ce_emission_outsider_unparseable()
   match parse_json_document(s: closure_census_refusals_json(refusals: located.census_refusals, spans: located.spans)) {
     JsonDocumentUnreadable { gap: _ } => false

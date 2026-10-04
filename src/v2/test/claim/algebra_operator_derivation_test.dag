@@ -59,26 +59,26 @@ fn aod_int_add_ok_reason() -> Symbol {
 
 // (1) `||` OVER BOOL DERIVES BOOL: declared Int, so the derived Bool body refuses. RED ON THE BASE: no arm
 // derived `||`, the body was underived, and the program was accepted with an undecidable advisory.
-test fn aod_bool_join_derives_bool() -> Bool {
+test fn aod_bool_join_derives_bool() -> Bool  {
   aod_bool_join_declared_int_reason() == ^arrow_body_does_not_inhabit_declared_return
 }
 
 // (2) `+` OVER INT STILL DERIVES INT, now through Int's ordered-ring row: declared Bool, so it refuses.
-test fn aod_int_add_still_derives_int() -> Bool {
+test fn aod_int_add_still_derives_int() -> Bool  {
   aod_int_add_declared_bool_reason() == ^arrow_body_does_not_inhabit_declared_return
 }
 
 // (3) NO ROW, NO DERIVATION: Bool carries no ring add, and Int no lattice join -- each refuses at the operator.
-test fn aod_bool_add_refuses() -> Bool {
+test fn aod_bool_add_refuses() -> Bool  {
   aod_bool_add_reason() == ^infer_transform_operand_type_mismatch
 }
 
-test fn aod_int_join_refuses() -> Bool {
+test fn aod_int_join_refuses() -> Bool  {
   aod_int_join_reason() == ^infer_transform_operand_type_mismatch
 }
 
 // (4) THE ACCEPTED CONTROLS: each operator over its own carrier, declared correctly, is accepted.
-test fn aod_well_typed_operators_are_accepted() -> Bool {
+test fn aod_well_typed_operators_are_accepted() -> Bool  {
   aod_bool_join_ok_reason() == ^accepted
     && aod_int_add_ok_reason() == ^accepted
 }
@@ -109,7 +109,7 @@ fn aod_result_not_carried(r: InferAlgebraFieldResult) -> Bool {
 }
 
 // An outer Int over a Bool boolean algebra lends Int no lattice join.
-test fn aod_outer_inhabitant_lends_no_join() -> Bool {
+test fn aod_outer_inhabitant_lends_no_join() -> Bool  {
   aod_result_not_carried(r: infer_algebra_field_result_type(
     rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
     operand_type: integer_int_type_node(),
@@ -118,7 +118,7 @@ test fn aod_outer_inhabitant_lends_no_join() -> Bool {
 }
 
 // The inverse: an outer Bool over an Int ordered ring lends Bool no ring add.
-test fn aod_outer_inhabitant_lends_no_add() -> Bool {
+test fn aod_outer_inhabitant_lends_no_add() -> Bool  {
   aod_result_not_carried(r: infer_algebra_field_result_type(
     rows: aod_mismatched_row(outer: bool_node(), algebra: ordered_ring_node(inhabitant: integer_int_type_node())),
     operand_type: bool_node(),
@@ -128,7 +128,7 @@ test fn aod_outer_inhabitant_lends_no_add() -> Bool {
 
 // The positive arm of the same mutation: the structure answers for the carrier it IS over, whatever the outer copy
 // says, so the derivation cannot be passing merely by refusing every mismatched row.
-test fn aod_embedded_carrier_selects_the_row() -> Bool {
+test fn aod_embedded_carrier_selects_the_row() -> Bool  {
   aod_result_is_type(
     r: infer_algebra_field_result_type(
       rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),

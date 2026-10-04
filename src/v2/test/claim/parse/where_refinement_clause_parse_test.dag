@@ -190,25 +190,25 @@ fn where_refinement_empty_clause_parse_refuses_holds() -> Bool {
   )
 }
 
-test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
+test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool  {
   where_refinement_positive_parse_carries_clause_holds()
 }
 
-test fn where_refinement_brand_clause_parses_holds() -> Bool {
+test fn where_refinement_brand_clause_parses_holds() -> Bool  {
   where_refinement_parse_accepted(
     text: where_refinement_positive_brand_source,
     file: ^where_refinement_positive_brand
   )
 }
 
-test fn where_refinement_range_clause_parses_holds() -> Bool {
+test fn where_refinement_range_clause_parses_holds() -> Bool  {
   where_refinement_parse_accepted(
     text: where_refinement_positive_range_source,
     file: ^where_refinement_positive_range
   )
 }
 
-test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
+test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool  {
   match where_refinement_bare_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -220,6 +220,6 @@ test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
   }
 }
 
-test fn where_refinement_empty_clause_is_refused_holds() -> Bool {
+test fn where_refinement_empty_clause_is_refused_holds() -> Bool  {
   where_refinement_empty_clause_parse_refuses_holds()
 }

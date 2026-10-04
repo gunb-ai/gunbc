@@ -302,7 +302,7 @@ fn mbt_positive_reading() -> MbtReading { mbp_reading(src: mbt_positive_src) }
 // declares no type, so infer leaves it underived (v2.compiler.infer infer_lexical_reference_facts), and the
 // arm body `artifact.tree` is reported at ITS OWN LOCUS as infer_match_arm_body_type_underived. Both halves are
 // required: a program refused for an unrelated cause, or an underived binder reported somewhere else, reds it.
-test fn mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds() -> Bool {
+test fn mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds() -> Bool  {
   (mbt_positive_reading().binder_base_fact == ^mbp_underived)
     && mbt_positive_reading().arm_body_underived_at_binder_projection
 }
@@ -316,7 +316,7 @@ test fn mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds() -> Bool
 // DECLARED RUNG DROP, as above: the match is accepted at the frontier and NOT typed, because the arm that
 // projects off the binder is underived at the binder projection's locus. Flips back to `== ^ParseTree`
 // with the same trigger.
-test fn mbt_match_is_not_yet_typed_at_the_binder_arm_holds() -> Bool {
+test fn mbt_match_is_not_yet_typed_at_the_binder_arm_holds() -> Bool  {
   (mbt_positive_reading().match_fact == ^mbp_underived)
     && mbt_positive_reading().arm_body_underived_at_binder_projection
 }
@@ -342,13 +342,13 @@ data mbt_hiding_src: String = mbt_decls + "fn g(artifact: Int, h: Outcome<ParseA
 
 fn mbt_hiding_reading() -> MbtReading { mbp_reading(src: mbt_hiding_src) }
 
-test fn mbt_a_binder_hiding_a_same_named_parameter_refuses_holds() -> Bool {
+test fn mbt_a_binder_hiding_a_same_named_parameter_refuses_holds() -> Bool  {
   mbp_reports(reading: mbt_hiding_reading(), reason: ^resolve_reason_binder_hides_visible_value)
 }
 
 // (2) REFUSALS, EACH DISCRIMINATING: the same match with one pattern edit, so the positive control
 // above is the other half of every pair.
-test fn mbt_a_variant_the_coproduct_does_not_declare_refuses_holds() -> Bool {
+test fn mbt_a_variant_the_coproduct_does_not_declare_refuses_holds() -> Bool  {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_outcome_of(args: [mbt_ref(segs: [^p, ^ParseArtifact])]),
@@ -361,7 +361,7 @@ test fn mbt_a_variant_the_coproduct_does_not_declare_refuses_holds() -> Bool {
   )
 }
 
-test fn mbt_a_field_the_variant_does_not_declare_refuses_holds() -> Bool {
+test fn mbt_a_field_the_variant_does_not_declare_refuses_holds() -> Bool  {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_outcome_of(args: [mbt_ref(segs: [^p, ^ParseArtifact])]),
@@ -380,7 +380,7 @@ test fn mbt_a_field_the_variant_does_not_declare_refuses_holds() -> Bool {
   )
 }
 
-test fn mbt_too_many_type_arguments_refuses_holds() -> Bool {
+test fn mbt_too_many_type_arguments_refuses_holds() -> Bool  {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_outcome_of(args: [mbt_ref(segs: [^p, ^ParseArtifact]), mbt_parse_tree_type()]),
@@ -390,7 +390,7 @@ test fn mbt_too_many_type_arguments_refuses_holds() -> Bool {
   )
 }
 
-test fn mbt_no_type_arguments_to_a_generic_refuses_holds() -> Bool {
+test fn mbt_no_type_arguments_to_a_generic_refuses_holds() -> Bool  {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_ref(segs: [^p, ^Outcome]),
@@ -400,7 +400,7 @@ test fn mbt_no_type_arguments_to_a_generic_refuses_holds() -> Bool {
   )
 }
 
-test fn mbt_a_missing_variant_refuses_as_non_exhaustive_holds() -> Bool {
+test fn mbt_a_missing_variant_refuses_as_non_exhaustive_holds() -> Bool  {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_outcome_of(args: [mbt_ref(segs: [^p, ^ParseArtifact])]),
@@ -410,7 +410,7 @@ test fn mbt_a_missing_variant_refuses_as_non_exhaustive_holds() -> Bool {
   )
 }
 
-test fn mbt_a_record_scrutinee_refuses_holds() -> Bool {
+test fn mbt_a_record_scrutinee_refuses_holds() -> Bool  {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_ref(segs: [^p, ^ParseArtifact]),
@@ -445,7 +445,7 @@ data mbt_seven_src: String = mbt_decls + "fn parse_module_prepared(tokens: Int) 
 // pair rather than a duplicate: this row says the arm is reached, that one says what the arm returns.
 fn mbt_seven_reading() -> MbtReading { mbp_reading(src: mbt_seven_src) }
 
-test fn mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds() -> Bool {
+test fn mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds() -> Bool  {
   mbp_infers(reading: mbt_seven_reading())
     && mbp_reports(reading: mbt_seven_reading(), reason: ^infer_match_scrutinee_type_underived)
 }
@@ -454,7 +454,7 @@ test fn mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds() -> Bool {
 // ACCEPTED rather than convicted, and the acceptance CARRIES the located advisory. Both halves are
 // properties of the returned Outcome, so they are read from it directly instead of through a whole
 // module's inference. Its inhabitance is the row above.
-test fn mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds() -> Bool {
+test fn mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds() -> Bool  {
   mbt_supplied_accepts_reporting(
     o: infer_match_coproduct(
       node: mbt_match_node(scrutinee: mbt_scrutinee(), arms: mbt_supplied_arms()),
@@ -486,7 +486,7 @@ data mbt_constructor_body_src: String = mbt_with_match(scrutinee_type: "Outcome<
 
 fn mbt_constructor_body_reading() -> MbtReading { mbp_reading(src: mbt_constructor_body_src) }
 
-test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool {
+test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool  {
   mbp_infers(reading: mbt_constructor_body_reading())
     && mbp_reports(reading: mbt_constructor_body_reading(), reason: ^infer_match_arm_body_type_underived)
     && (mbt_constructor_body_reading().binder_base_fact == ^mbp_underived)
@@ -764,7 +764,7 @@ fn mbt_supplied_accepts_reporting(o: Outcome<InferredFacts>, reason: Symbol) -> 
 // scrutinee type never read at all. If the index, the declaration, the arm encoding, the entries or the
 // instantiation were wrong, this row goes red and every refusal above stops being evidence about the
 // judgment it names.
-test fn mbt_the_supplied_match_is_accepted_and_typed_holds() -> Bool {
+test fn mbt_the_supplied_match_is_accepted_and_typed_holds() -> Bool  {
   match mbt_supplied_match(
     scrutinee_type: mbt_outcome_of(args: [mbt_ref(segs: [^p, ^ParseArtifact])]),
     arms: mbt_supplied_arms()

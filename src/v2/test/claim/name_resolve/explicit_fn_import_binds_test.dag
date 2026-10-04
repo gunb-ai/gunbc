@@ -122,7 +122,7 @@ fn efib_plain_resolve_refusal(v: NativeModuleResolveVerdict) -> Bool {
 
 // THE RED. The imported module's file was refused at ingest, so the verdict must name that refusal,
 // with the refused module read from the file's header -- not only the unbound `broken_value`.
-test fn an_import_of_a_refused_module_is_attributed_to_its_file_refusal() -> Bool {
+test fn an_import_of_a_refused_module_is_attributed_to_its_file_refusal() -> Bool  {
   match efib_verdicts() {
     Absent => false
     Present { value: vs } => efib_attributed_to(v: vs.refused_user, path: ^efib_broken, module: [^v2, ^test, ^efib, ^broken])
@@ -131,7 +131,7 @@ test fn an_import_of_a_refused_module_is_attributed_to_its_file_refusal() -> Boo
 
 // THE DISCRIMINATOR. A reference that is unbound for an ordinary reason imports no refused module,
 // so it keeps the plain resolve refusal: attribution fires only where an import target was refused.
-test fn an_ordinary_unbound_reference_is_not_attributed_to_a_file_refusal() -> Bool {
+test fn an_ordinary_unbound_reference_is_not_attributed_to_a_file_refusal() -> Bool  {
   match efib_verdicts() {
     Absent => false
     Present { value: vs } => efib_plain_resolve_refusal(v: vs.undeclared_user)
@@ -141,14 +141,14 @@ test fn an_ordinary_unbound_reference_is_not_attributed_to_a_file_refusal() -> B
 // THE POSITIVE CONTROLS. A fn named like its own module binds through an explicit import, and an
 // explicit type import binds the imported declaration although another module in the closure,
 // not imported, declares the same name.
-test fn fn_import_named_like_its_module_binds() -> Bool {
+test fn fn_import_named_like_its_module_binds() -> Bool  {
   match efib_verdicts() {
     Absent => false
     Present { value: vs } => efib_accepted(v: vs.user)
   }
 }
 
-test fn explicit_type_import_beats_an_unimported_same_name_declaration() -> Bool {
+test fn explicit_type_import_beats_an_unimported_same_name_declaration() -> Bool  {
   match efib_verdicts() {
     Absent => false
     Present { value: vs } => efib_accepted(v: vs.rival_user)

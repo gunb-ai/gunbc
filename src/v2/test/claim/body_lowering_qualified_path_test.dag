@@ -306,14 +306,14 @@ fn body_lowering_door_lowers_to_call_through_path(node: Node, dotted: String) ->
 
 // THE SHAPE ROWS. Each hands the door a supplied node and reads what it returns.
 
-test fn body_lowering_qualified_value_lowers_to_the_whole_path() -> Bool {
+test fn body_lowering_qualified_value_lowers_to_the_whole_path() -> Bool  {
   body_lowering_door_lowers_to_path(
     node: dotted_fixture_qualified_value(),
     dotted: body_lowering_qualified_path_dotted
   )
 }
 
-test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool {
+test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool  {
   body_lowering_door_lowers_to_call_through_path(
     node: dotted_fixture_qualified_call(),
     dotted: body_lowering_qualified_path_dotted
@@ -329,7 +329,7 @@ test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool {
 // call_before_end rows demonstrate), and
 // what `x` denotes is the resolver's (a local head refuses Unbound there, loud where the route
 // was silent).
-test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
+test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool  {
   match body_lower_dotted_chain_lowered_optional(node: dotted_fixture_local_receiver_call()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: Absent, diagnostics: _ } => false
@@ -346,7 +346,7 @@ test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
 // step and erased the rest. It is now read as a chain of STEPS and lowered whole. The row asserts
 // the walk's own verdict (the chain is FOUND, with both steps present) so that a reader which
 // simply stopped recognising the shape cannot satisfy it by answering NotThisShape.
-test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
+test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool  {
   match body_lower_postfix_chain_read(node: dotted_fixture_call_before_end()) {
     PostfixChainNotThisShape => false
     PostfixChainSuffixCarried { at: _ } => false
@@ -359,7 +359,7 @@ test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
 // so the read answers PostfixChainBare with both segments, and a chain with a call (the row above)
 // answers PostfixChainFound. The two rows together discriminate the decision the read makes once;
 // a read that answered Found for every chain fails this one.
-test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool {
+test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool  {
   match body_lower_postfix_chain_read(node: dotted_fixture_qualified_value()) {
     PostfixChainNotThisShape => false
     PostfixChainSuffixCarried { at: _ } => false
@@ -381,7 +381,7 @@ test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool {
 // tail.segments Empty and exercises body_lower_dotted_chain_read's own guard converting a found
 // tail with no segments into DottedChainTailNotThisShape. A naked atom declines one step earlier,
 // at sugar_sequence_pair_optional, and never reaches that guard, so it would establish less.
-test fn body_lowering_bare_local_is_not_claimed_by_the_door() -> Bool {
+test fn body_lowering_bare_local_is_not_claimed_by_the_door() -> Bool  {
   match body_lower_dotted_chain_lowered_optional(
     node: dotted_fixture_chain(
       head: ^peer_leaf,
@@ -393,7 +393,7 @@ test fn body_lowering_bare_local_is_not_claimed_by_the_door() -> Bool {
   }
 }
 
-test fn body_lowering_bare_local_stays_an_atom() -> Bool {
+test fn body_lowering_bare_local_stays_an_atom() -> Bool  {
   match body_lower_postfix_expr(
     shell: dotted_fixture_shell(captured: dotted_fixture_atom(identity: ^peer_leaf))
   ) {
@@ -409,7 +409,7 @@ test fn body_lowering_bare_local_stays_an_atom() -> Bool {
 // THE SITE ROWS. The two expression sites are exercised over supplied nodes, because "the door is
 // consulted before the first-atom fallback" is a fact about each SITE and not about the door.
 
-test fn body_lowering_expression_body_site_keeps_the_whole_path() -> Bool {
+test fn body_lowering_expression_body_site_keeps_the_whole_path() -> Bool  {
   match body_lower_postfix_expr(
     shell: dotted_fixture_shell(captured: dotted_fixture_qualified_value())
   ) {
@@ -419,7 +419,7 @@ test fn body_lowering_expression_body_site_keeps_the_whole_path() -> Bool {
   }
 }
 
-test fn body_lowering_block_body_site_keeps_the_whole_call() -> Bool {
+test fn body_lowering_block_body_site_keeps_the_whole_call() -> Bool  {
   match body_lower_try_body_lowered(node: dotted_fixture_qualified_call()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: lowered_opt, diagnostics: _ } =>
@@ -438,7 +438,7 @@ test fn body_lowering_block_body_site_keeps_the_whole_call() -> Bool {
 // fallback the door sits above answers the HEAD ATOM -- the truncation the two rows above assert
 // is gone. Without this row "the door runs first" would be an assumption about source order; with
 // it, the two readings are established to differ on one input.
-test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool {
+test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool  {
   match body_lower_pattern_first_atom_optional(node: dotted_fixture_qualified_value()) {
     Absent => false
     Present { value: atom } =>
@@ -469,7 +469,7 @@ test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool {
 // and `.b` is then a FIELD PROJECTION off that computed receiver -- the construct that exists
 // because v2.std.qualified_name QualifiedName is FreeMonoid<Symbol> and therefore has no slot for
 // a computed root at all.
-test fn body_lowering_call_before_end_keeps_every_step() -> Bool {
+test fn body_lowering_call_before_end_keeps_every_step() -> Bool  {
   match body_lower_postfix_expr(
     shell: dotted_fixture_shell(captured: dotted_fixture_call_before_end())
   ) {
@@ -494,7 +494,7 @@ data body_lowering_call_before_end_callee_dotted: String = "a.f"
 // lowered body is NOT an atom at all, so a fold that produced a projection off the bare head
 // instead of off the call would still fail the row above, and a fold that regressed to the head
 // atom fails this one too.
-test fn body_lowering_call_before_end_is_not_the_head_atom() -> Bool {
+test fn body_lowering_call_before_end_is_not_the_head_atom() -> Bool  {
   match body_lower_postfix_expr(
     shell: dotted_fixture_shell(captured: dotted_fixture_call_before_end())
   ) {
@@ -582,7 +582,7 @@ fn body_lowering_door_lowerings_agree(parsed_node: Node, supplied_node: Node) ->
   }
 }
 
-test fn body_lowering_real_parser_emits_the_supplied_dotted_shape() -> Bool {
+test fn body_lowering_real_parser_emits_the_supplied_dotted_shape() -> Bool  {
   match body_lowering_qualified_call_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -641,7 +641,7 @@ fn body_lowering_qualified_value_normalized() -> Outcome<NormalizedTree> {
   )
 }
 
-test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
+test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool  {
   match body_lowering_qualified_value_normalized() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -677,7 +677,7 @@ test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
 // TRUE here, with the supplied-shape row red, means this file's fixture does not inhabit the real
 // producer and the repair is to the fixture -- DESIGN section 3's pairing obligation, where a
 // supplied input is a hypothesis and the inhabitance claim is what makes it a reading.
-test fn body_lowering_parsed_zero_arg_call_lowers_through_its_path() -> Bool {
+test fn body_lowering_parsed_zero_arg_call_lowers_through_its_path() -> Bool  {
   match body_lowering_qualified_call_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -695,7 +695,7 @@ test fn body_lowering_parsed_zero_arg_call_lowers_through_its_path() -> Bool {
 // The supplied half of the same pair, alone. Run beside the row above, the two SEPARATE the arms:
 // both TRUE is no defect; parsed TRUE and supplied FALSE is an unfaithful fixture; parsed FALSE is
 // a real loss on the production route whatever the fixture does.
-test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool {
+test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool  {
   body_lowering_door_lowers_to_call_through_path(
     node: dotted_fixture_qualified_call(),
     dotted: body_lowering_qualified_path_dotted
@@ -742,7 +742,7 @@ fn parsed_zero_arg_call_suffix_optional() -> Optional<Node> {
   }
 }
 
-test fn body_lowering_supplied_call_suffix_inhabits_the_parser() -> Bool {
+test fn body_lowering_supplied_call_suffix_inhabits_the_parser() -> Bool  {
   match parsed_zero_arg_call_suffix_optional() {
     Absent => false
     Present { value: parsed_suffix } =>
@@ -756,7 +756,7 @@ test fn body_lowering_supplied_call_suffix_inhabits_the_parser() -> Bool {
 // together they say how `()` is actually nested. They are kept rather than deleted once the
 // fixture is corrected: they are cheap, and they name the facts the corrected fixture depends on,
 // so a grammar change that moves the shape reddens them beside the inhabitance row.
-test fn probe_parsed_zero_arg_suffix_right_is_a_sequence() -> Bool {
+test fn probe_parsed_zero_arg_suffix_right_is_a_sequence() -> Bool  {
   match parsed_zero_arg_call_suffix_optional() {
     Absent => false
     Present { value: suffix } =>
@@ -771,7 +771,7 @@ test fn probe_parsed_zero_arg_suffix_right_is_a_sequence() -> Bool {
   }
 }
 
-test fn probe_parsed_zero_arg_suffix_inner_left_is_empty_conj() -> Bool {
+test fn probe_parsed_zero_arg_suffix_inner_left_is_empty_conj() -> Bool  {
   match parsed_zero_arg_call_suffix_optional() {
     Absent => false
     Present { value: suffix } =>
@@ -792,7 +792,7 @@ test fn probe_parsed_zero_arg_suffix_inner_left_is_empty_conj() -> Bool {
 // row a false above is uninterpretable, which is the absent-versus-unreadable conflation this
 // very slice has now produced three times in three places. This row asserts the walk FOUND a
 // suffix; only then does a false from a shape probe mean the shape.
-test fn probe_parsed_zero_arg_suffix_is_found_at_all() -> Bool {
+test fn probe_parsed_zero_arg_suffix_is_found_at_all() -> Bool  {
   match parsed_zero_arg_call_suffix_optional() {
     Absent => false
     Present { value: _ } => true

@@ -148,35 +148,35 @@ fn eam_unbound_at(v: EamVerdict, atom: Symbol) -> Bool {
   }
 }
 
-test fn the_scrutinee_of_a_match_in_an_else_arm_is_read() -> Bool {
+test fn the_scrutinee_of_a_match_in_an_else_arm_is_read() -> Bool  {
   match eam_outcomes() {
     EamOutcomesDecided { scrutinee: v, first_arm: _, nested_if: _, else_if: _, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_scrutinee)
     EamContextRefused => false
   }
 }
 
-test fn the_first_arm_of_a_match_in_an_else_arm_is_read() -> Bool {
+test fn the_first_arm_of_a_match_in_an_else_arm_is_read() -> Bool  {
   match eam_outcomes() {
     EamOutcomesDecided { scrutinee: _, first_arm: v, nested_if: _, else_if: _, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_first_arm)
     EamContextRefused => false
   }
 }
 
-test fn the_if_nested_in_the_match_arm_is_still_read() -> Bool {
+test fn the_if_nested_in_the_match_arm_is_still_read() -> Bool  {
   match eam_outcomes() {
     EamOutcomesDecided { scrutinee: _, first_arm: _, nested_if: v, else_if: _, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_nested_if)
     EamContextRefused => false
   }
 }
 
-test fn a_real_else_if_chain_still_reads_its_nested_else() -> Bool {
+test fn a_real_else_if_chain_still_reads_its_nested_else() -> Bool  {
   match eam_outcomes() {
     EamOutcomesDecided { scrutinee: _, first_arm: _, nested_if: _, else_if: v, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_else_if)
     EamContextRefused => false
   }
 }
 
-test fn the_declared_shape_resolves() -> Bool {
+test fn the_declared_shape_resolves() -> Bool  {
   match eam_outcomes() {
     EamOutcomesDecided { scrutinee: _, first_arm: _, nested_if: _, else_if: _, declared: v } => match v {
       EamResolved => true

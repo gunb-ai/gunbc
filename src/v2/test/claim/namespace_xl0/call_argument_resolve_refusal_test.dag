@@ -164,7 +164,7 @@ fn xl2_is_unbound_at(v: Xl2Verdict, spelling: Symbol) -> Bool {
   }
 }
 
-test fn an_undeclared_named_call_argument_refuses_at_resolve_at_the_argument() -> Bool {
+test fn an_undeclared_named_call_argument_refuses_at_resolve_at_the_argument() -> Bool  {
   match xl2_outcomes() {
     Xl2OutcomesDecided { named: v, positional: _, declared: _, callee_only: _ } =>
       xl2_is_unbound_at(v: v, spelling: ^xl2_undeclared_argument)
@@ -172,7 +172,7 @@ test fn an_undeclared_named_call_argument_refuses_at_resolve_at_the_argument() -
   }
 }
 
-test fn an_undeclared_positional_call_argument_refuses_at_resolve_at_the_argument() -> Bool {
+test fn an_undeclared_positional_call_argument_refuses_at_resolve_at_the_argument() -> Bool  {
   match xl2_outcomes() {
     Xl2OutcomesDecided { named: _, positional: v, declared: _, callee_only: _ } =>
       xl2_is_unbound_at(v: v, spelling: ^xl2_undeclared_argument)
@@ -180,14 +180,14 @@ test fn an_undeclared_positional_call_argument_refuses_at_resolve_at_the_argumen
   }
 }
 
-test fn a_declared_call_argument_resolves() -> Bool {
+test fn a_declared_call_argument_resolves() -> Bool  {
   match xl2_outcomes() {
     Xl2OutcomesDecided { named: _, positional: _, declared: v, callee_only: _ } => xl2_is_resolved(v: v)
     Xl2ContextRefused => false
   }
 }
 
-test fn a_callee_only_call_resolves() -> Bool {
+test fn a_callee_only_call_resolves() -> Bool  {
   match xl2_outcomes() {
     Xl2OutcomesDecided { named: _, positional: _, declared: _, callee_only: v } => xl2_is_resolved(v: v)
     Xl2ContextRefused => false

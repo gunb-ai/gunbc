@@ -106,7 +106,7 @@ fn clean_control_report() -> ReferenceConservationReport {
   conservation_report_of(subject: clean_control_subject())
 }
 
-test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
+test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool  {
   reference_conservation_admitted(report: clean_control_report())
 }
 
@@ -116,7 +116,7 @@ test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
 // header -- and, now that the parameter lists are read (v2.compiler.occurrence_role
 // ReadParamListBinders), no locus-erased atom: before that reader its parameters were the
 // locus-erased number, so a zero here is the reader's receipt, not an empty disposition.
-test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
+test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool  {
   let r = clean_control_report()
   r.conserved > 0 && r.locus_erased == 0 && r.role_excluded > 0 && r.header_channel > 0
     && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
@@ -124,11 +124,11 @@ test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_
 
 // THE HEADER IS ITS OWN CHANNEL (HeaderSegmentsNotRefusalSites): the clean control's header
 // `v2.test.reference_conservation_clean` is exactly three segments, all counted there.
-test fn the_clean_control_counts_its_header_segments_in_the_header_channel_holds() -> Bool {
+test fn the_clean_control_counts_its_header_segments_in_the_header_channel_holds() -> Bool  {
   clean_control_report().header_channel == 3
 }
 
-test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
+test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool  {
   clean_control_report().import_channel > 0
 }
 
@@ -159,7 +159,7 @@ fn block_second_statement_report() -> ReferenceConservationReport {
   conservation_report_of(subject: block_second_statement_subject())
 }
 
-test fn a_block_with_a_second_statement_is_refused_not_accepted_holds() -> Bool {
+test fn a_block_with_a_second_statement_is_refused_not_accepted_holds() -> Bool  {
   let r = block_second_statement_report()
   (r.refused > 0)
     && !reference_conservation_accepted(report: r)
@@ -194,7 +194,7 @@ fn if_arm_call_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: if_arm_call_argument_subject())
 }
 
-test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
+test fn the_if_arm_call_argument_is_conserved_holds() -> Bool  {
   let r = if_arm_call_argument_report()
   reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
 }
@@ -215,7 +215,7 @@ fn infix_right_operand_report() -> ReferenceConservationReport {
   conservation_report_of(subject: infix_right_operand_subject())
 }
 
-test fn the_infix_right_operand_is_conserved_holds() -> Bool {
+test fn the_infix_right_operand_is_conserved_holds() -> Bool  {
   let r = infix_right_operand_report()
   reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
 }
@@ -236,7 +236,7 @@ fn caret_symbol_payload_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "caret_symbol_payload", source: caret_symbol_payload_source)
 }
 
-test fn caret_symbol_payloads_are_conserved_holds() -> Bool {
+test fn caret_symbol_payloads_are_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: caret_symbol_payload_subject())
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: ^rc_sym_less) == 0
@@ -263,7 +263,7 @@ fn named_argument_label_report() -> ReferenceConservationReport {
   conservation_report_of(subject: named_argument_label_subject())
 }
 
-test fn a_named_argument_label_is_conserved_holds() -> Bool {
+test fn a_named_argument_label_is_conserved_holds() -> Bool  {
   let r = named_argument_label_report()
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: ^rc_label) == 0
@@ -291,7 +291,7 @@ fn list_literal_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: list_literal_argument_subject())
 }
 
-test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
+test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool  {
   let r = list_literal_argument_report()
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: ^rc_elsewhere) == 0
@@ -320,7 +320,7 @@ fn repeated_spelling_report() -> ReferenceConservationReport {
   conservation_report_of(subject: repeated_spelling_subject())
 }
 
-test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool {
+test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> Bool  {
   let r = repeated_spelling_report()
   reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
 }
@@ -340,7 +340,7 @@ fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "where_refinement_predicate", source: where_refinement_predicate_source)
 }
 
-test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
+test fn the_where_refinement_predicates_are_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: where_refinement_predicate_subject())
   reference_conservation_admitted(report: r)
 }
@@ -358,7 +358,7 @@ test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
 // used nowhere else in the declaration, so a returning drop reds at it.
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
 
-test fn the_third_match_arm_is_conserved_holds() -> Bool {
+test fn the_third_match_arm_is_conserved_holds() -> Bool  {
   let r = conservation_report_of(subject: match_later_arm_subject())
   reference_conservation_accepted(report: r) && (report_drops_identity(report: r, wanted: ^rc_third) == false)
 }
@@ -368,7 +368,7 @@ test fn the_third_match_arm_is_conserved_holds() -> Bool {
 // of the name is conserved at its own occurrence.
 data statement_let_binder_source: String = "module v2.test.reference_conservation_let\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
 
-test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
+test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool  {
   let r = conservation_report_of(subject: statement_let_binder_subject())
   reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
 }
@@ -395,7 +395,7 @@ fn construct_tags_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "construct_tags", source: construct_tags_source)
 }
 
-test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
+test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool  {
   let r = conservation_report_of(subject: construct_tags_subject())
   r.authored == 22 && r.conserved == 11 && r.locus_erased + r.role_excluded + r.header_channel == 11 && length(xs: r.dropped) == 0
 }
@@ -406,7 +406,7 @@ test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
 // label, the two parameters n and r, and the `v` field declaration); three are the header; none is
 // left in locus_erased, and no production is left unread. Before the parameter and field-block
 // readers landed those three binders were locus_erased and role_not_yet_read counted them.
-test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
+test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool  {
   let r = conservation_report_of(subject: construct_tags_subject())
   r.role_excluded == 8 && r.header_channel == 3 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0
 }
@@ -425,7 +425,7 @@ fn dotted_spine_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "spine", source: dotted_spine_source)
 }
 
-test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
+test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool  {
   let r = conservation_report_of(subject: dotted_spine_subject())
   r.authored == 18 && r.conserved == 10 && r.locus_erased + r.role_excluded + r.header_channel == 8 && length(xs: r.dropped) == 0
 }
@@ -442,7 +442,7 @@ fn anonymous_slots_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "anonymous_slots", source: anonymous_slots_source)
 }
 
-test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -> Bool {
+test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -> Bool  {
   let r = conservation_report_of(subject: anonymous_slots_subject())
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
@@ -484,7 +484,7 @@ fn normalization_refused_subject() -> ReferenceConservationSubject {
 // the module is admitted to the required gate at exact grain (v2.workflow.required_floor
 // required_gate_authored_modules). MUTATION: a fixture without the service (the plain fn alone)
 // normalizes Accepted and reds this.
-test fn the_refused_normalization_fixture_refuses_for_the_service_realization_reason_holds() -> Bool {
+test fn the_refused_normalization_fixture_refuses_for_the_service_realization_reason_holds() -> Bool  {
   match normalization_refused_subject().normalized {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ne } =>
@@ -505,7 +505,7 @@ fn refused_normalization_report() -> ReferenceConservationReport {
   reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
 }
 
-test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
+test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool  {
   let r = refused_normalization_report()
   refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
 }
@@ -517,7 +517,7 @@ fn planted_refused_admission() -> NameProductionTableAdmission {
   NameProductionTableRefused { unlisted: [^reference_conservation_planted_unlisted], unknown: [], unkeyed: [] }
 }
 
-test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds() -> Bool {
+test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds() -> Bool  {
   let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_refused_admission())
   refusal_accounts_for_population(r: r)
     && fold_list(xs: r.unmeasured, empty: false, cons: fn(acc, u) {
@@ -543,7 +543,7 @@ fn string_literal_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "string_literal_value", source: string_literal_value_source)
 }
 
-test fn a_string_literal_is_conserved_by_its_value_holds() -> Bool {
+test fn a_string_literal_is_conserved_by_its_value_holds() -> Bool  {
   let r = conservation_report_of(subject: string_literal_value_subject())
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "hello")) == 0

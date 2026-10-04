@@ -322,11 +322,11 @@ fn census_probe_outcomes() -> CensusProbeOutcomes {
 // THE ROSTER IS READ FROM THE INGEST AND IT IS TOTAL. A census whose module roster silently dropped
 // a file would under-report by exactly the files it dropped, and no per-module claim below could
 // see it: each of them asks about a module the roster already produced.
-test fn census_roster_carries_every_declared_module_holds() -> Bool {
+test fn census_roster_carries_every_declared_module_holds() -> Bool  {
   length(xs: native_census_modules(ingest: census_probe_ingest)) == 6
 }
 
-test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
+test fn census_unbound_module_is_resolve_refused_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _, two: _, advised_two: _ } =>
@@ -341,7 +341,7 @@ test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
 // ONE REFUSED SITE IS ONE ROW, AND THE ROW NAMES ITS SITE. This replaces a control that compared
 // the row count to the chain's own diagnostic count (rows == tail + 1): that arithmetic made every
 // pending advisory a residual site, so it was green on exactly the inflation it should refuse.
-test fn census_single_refusal_is_one_row_naming_its_site_holds() -> Bool {
+test fn census_single_refusal_is_one_row_naming_its_site_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, advised: _, unbound_residual_rows: rows, two_residual_rows: _, advised_rows: _, two: _, advised_two: _ } =>
@@ -358,7 +358,7 @@ test fn census_single_refusal_is_one_row_naming_its_site_holds() -> Bool {
 // The advised module's chain is [declared-elsewhere advisory, unbound fatal]: two diagnostics, one
 // occurrence. RED under a per-diagnostic fan-out (two rows), and RED if the row dropped the
 // advisory or carried anything but the unbound fatal as its diagnostics_fatal.
-test fn census_advised_chain_is_one_row_carrying_its_chain_holds() -> Bool {
+test fn census_advised_chain_is_one_row_carrying_its_chain_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: rows, two: _, advised_two: _ } =>
@@ -376,7 +376,7 @@ test fn census_advised_chain_is_one_row_carrying_its_chain_holds() -> Bool {
 // so the census must attribute it to the CONTEXT and not to the resolver it never entered. Without
 // this arm every claim here is satisfied by a census that reports every refusal as a resolve
 // refusal, which would inflate the residual with files the strip never affected.
-test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool {
+test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: _, poison: poison, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _, two: _, advised_two: _ } =>
@@ -391,7 +391,7 @@ test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool
 // THE DENOMINATOR IS NOT EMPTY AND IT IS NOT ALL REFUSALS. Without this arm every claim above is
 // satisfied by a census that refuses everything, which is the failure gunbc#11582 landed and
 // withdrew: a discriminator that agreed with its subject for the wrong reason.
-test fn census_clean_module_resolves_holds() -> Bool {
+test fn census_clean_module_resolves_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _, two: _, advised_two: _ } =>
@@ -414,7 +414,7 @@ test fn census_clean_module_resolves_holds() -> Bool {
 //
 // RESTORING THE SHORT-CIRCUIT TURNS THIS RED AND LEAVES EVERY OTHER ARM GREEN, which is what makes
 // it the discriminator rather than a restatement of the single-site claim above it.
-test fn census_two_independent_refusals_both_reach_the_census_holds() -> Bool {
+test fn census_two_independent_refusals_both_reach_the_census_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: rows, advised_rows: _, two: _, advised_two: _ } =>
@@ -425,7 +425,7 @@ test fn census_two_independent_refusals_both_reach_the_census_holds() -> Bool {
 // EACH CHAIN KEEPS ITS OWN ADVISORY. The first chain is [declared-elsewhere advisory, unbound
 // fatal]; the second is the unbound fatal alone. RED if the advisory drifted to the second chain,
 // was duplicated onto it, or became a chain of its own.
-test fn census_advisory_stays_with_its_own_fatal_holds() -> Bool {
+test fn census_advisory_stays_with_its_own_fatal_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _, two: _, advised_two: advised_two } =>
@@ -445,7 +445,7 @@ test fn census_advisory_stays_with_its_own_fatal_holds() -> Bool {
 // A FILE THAT NEVER REACHED RESOLVE HAS NO OCCURRENCE COMPLETENESS TO REPORT, and the census says
 // so as a typed answer rather than as the absence of rows -- which would read as "complete, zero
 // residual". The resolved and the two-refusal modules were walked in full and say that instead.
-test fn census_completeness_is_unavailable_for_a_file_that_never_resolved_holds() -> Bool {
+test fn census_completeness_is_unavailable_for_a_file_that_never_resolved_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: poison, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _, two: two, advised_two: _ } =>
@@ -483,7 +483,7 @@ fn census_cause_group_of(groups: List<NativeCensusCauseGroup>, reason: Symbol) -
   fold_list(xs: groups, empty: 0, cons: fn(n, g) { if g.fatal_reason == reason { n + length(xs: g.members) } else { n } })
 }
 
-test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
+test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool  {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: rows, two: _, advised_two: _ } =>
@@ -525,7 +525,7 @@ fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRe
   }
 }
 
-test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
+test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool  {
   let refusals = [
     census_supplied_file_refusal(path: ^census_supplied_a, fatal: ^tokenize_lex_e0_source_not_exhausted),
     census_supplied_file_refusal(path: ^census_supplied_b, fatal: ^parse_unexpected_token),

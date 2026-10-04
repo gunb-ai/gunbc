@@ -91,7 +91,7 @@ fn iard_tally_holds(c: IardCensus, check: fn(IardTally) -> Bool) -> Bool {
   }
 }
 
-test fn an_if_nested_in_the_then_arm_differs_on_the_outer_else_only_holds() -> Bool {
+test fn an_if_nested_in_the_then_arm_differs_on_the_outer_else_only_holds() -> Bool  {
   iard_tally_holds(c: iard_fixture_censuses().nested_then, check: fn(t) {
     (t.files_read == 1) && (t.files_refused == 0) && (t.sites == 2)
       && (t.sites_differing == 1) && (t.else_differs == 1) && (t.then_differs == 0)
@@ -100,7 +100,7 @@ test fn an_if_nested_in_the_then_arm_differs_on_the_outer_else_only_holds() -> B
 
 // THE EXPECTED EXTENTS ARE THE SOURCE'S UTF-8 OCTETS: the outer `if` token, the nested else's `{`
 // (what the old reader answered) and the outer else's `{` (the real arm).
-test fn the_differing_row_names_the_declaration_the_arm_and_each_byte_range_holds() -> Bool {
+test fn the_differing_row_names_the_declaration_the_arm_and_each_byte_range_holds() -> Bool  {
   string_contains(
     s: if_arm_reader_differential_text(c: iard_fixture_censuses().nested_then),
     pattern: "if_arm_differs file=src/v2/test/fixture/cli/iard_nested_then.dag decl=iard_nested_then_probe at=[bytes=145..147] arm=else differ old_at=[bytes=172..173] new_at=[bytes=187..188]\n"
@@ -110,20 +110,20 @@ test fn the_differing_row_names_the_declaration_the_arm_and_each_byte_range_hold
 // MULTIBYTE UTF-8 BEFORE THE SITE (calm-boar-904's objection to gunbc#13051): the label holds
 // 2-, 3- and 4-octet scalars, so the outer `if` is at octet 234 but at scalar 220. A location
 // counted in scalars anywhere on the route reports 220 and is red here.
-test fn multibyte_source_before_a_site_is_located_in_octets_holds() -> Bool {
+test fn multibyte_source_before_a_site_is_located_in_octets_holds() -> Bool  {
   string_contains(
     s: if_arm_reader_differential_text(c: iard_fixture_censuses().multibyte),
     pattern: "if_arm_differs file=src/v2/test/fixture/cli/iard_multibyte.dag decl=iard_multibyte_probe at=[bytes=234..236] arm=else differ old_at=[bytes=261..262] new_at=[bytes=276..277]\n"
   )
 }
 
-test fn an_else_if_chain_and_an_if_nested_in_the_else_arm_agree_holds() -> Bool {
+test fn an_else_if_chain_and_an_if_nested_in_the_else_arm_agree_holds() -> Bool  {
   iard_tally_holds(c: iard_fixture_censuses().agreeing, check: fn(t) {
     (t.sites == 4) && (t.sites_differing == 0) && (t.else_differs == 0) && (t.then_differs == 0)
   })
 }
 
-test fn a_file_that_does_not_parse_is_counted_refused_and_named_holds() -> Bool {
+test fn a_file_that_does_not_parse_is_counted_refused_and_named_holds() -> Bool  {
   iard_tally_holds(c: iard_fixture_censuses().agreeing, check: fn(t) {
     (t.files_read == 1) && (t.files_refused == 1)
   })

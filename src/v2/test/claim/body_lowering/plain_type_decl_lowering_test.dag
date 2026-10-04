@@ -137,7 +137,7 @@ fn ptd_payload_single_variant_verdict() -> PtdVerdict {
 // member representation a generic coproduct's <type-body> carries, with no wrapper because it binds
 // nothing -- and the index descends into it. Fresh names, so a variant resolved through a predeclared
 // roster cannot stand in for it.
-test fn a_plain_coproduct_lowers_to_its_named_alternatives_holds() -> Bool {
+test fn a_plain_coproduct_lowers_to_its_named_alternatives_holds() -> Bool  {
   match ptd_coproduct_verdict() {
     PtdDeclared { view: v, member_kind: k, labels: ls, binders: _, declares_members: dm, aliased_atom: _ } =>
       (v == ^ptd_view_plain) && (k == ^ptd_kind_disj) && (ls == [^Allowed, ^Blocked]) && dm
@@ -148,7 +148,7 @@ test fn a_plain_coproduct_lowers_to_its_named_alternatives_holds() -> Bool {
 // A plain alias is the alias wrapper with an EMPTY binder list and its right-hand side preserved as a
 // resolved atom, and the alias is usable where a type is expected: the module assembles with
 // `keep(x: Id) -> Id` (an assembly refusal would leave the name undeclared, which is false).
-test fn a_plain_alias_lowers_to_the_alias_wrapper_with_no_binders_holds() -> Bool {
+test fn a_plain_alias_lowers_to_the_alias_wrapper_with_no_binders_holds() -> Bool  {
   match ptd_alias_used_verdict() {
     PtdDeclared { view: v, member_kind: _, labels: _, binders: b, declares_members: _, aliased_atom: at } =>
       (v == ^ptd_view_alias) && (b == 0) && at
@@ -160,7 +160,7 @@ test fn a_plain_alias_lowers_to_the_alias_wrapper_with_no_binders_holds() -> Boo
 // to the wrapper and does not descend, so the right-hand side's own names never become declarations
 // under the alias. Read on the real lowered alias-of-an-alias, whose right-hand side is itself a
 // declared name.
-test fn a_plain_alias_declares_no_members_holds() -> Bool {
+test fn a_plain_alias_declares_no_members_holds() -> Bool  {
   match ptd_alias_of_alias_verdict() {
     PtdDeclared { view: v, member_kind: _, labels: _, binders: b, declares_members: dm, aliased_atom: _ } =>
       (v == ^ptd_view_alias) && (b == 0) && !dm
@@ -171,7 +171,7 @@ test fn a_plain_alias_declares_no_members_holds() -> Bool {
 // A plain bodyless declaration is the OPAQUE wrapper with no binders -- never an empty member, which
 // would assert a record with no fields, and never its parse shell -- and the index declares no member
 // under it.
-test fn a_plain_bodyless_declaration_is_opaque_not_an_empty_record_holds() -> Bool {
+test fn a_plain_bodyless_declaration_is_opaque_not_an_empty_record_holds() -> Bool  {
   match ptd_bodyless_verdict() {
     PtdDeclared { view: v, member_kind: _, labels: _, binders: b, declares_members: dm, aliased_atom: _ } =>
       (v == ^ptd_view_opaque) && (b == 0) && !dm
@@ -182,7 +182,7 @@ test fn a_plain_bodyless_declaration_is_opaque_not_an_empty_record_holds() -> Bo
 // A single variant WITH A PAYLOAD is a member, not an alias: the dispatch the generic arm already had
 // (a lowered Conj rides as a member) now serves plain declarations too, so this does not become an
 // alias naming `Only`.
-test fn a_plain_payload_single_variant_stays_a_member_holds() -> Bool {
+test fn a_plain_payload_single_variant_stays_a_member_holds() -> Bool  {
   match ptd_payload_single_variant_verdict() {
     PtdDeclared { view: v, member_kind: _, labels: _, binders: _, declares_members: dm, aliased_atom: _ } =>
       (v == ^ptd_view_plain) && dm

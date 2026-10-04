@@ -104,7 +104,7 @@ fn srl_refused_as(o: Outcome<CensusTree>, reason: Symbol) -> Bool {
   }
 }
 
-test fn the_realization_facts_lower_into_the_sibling_holds() -> Bool {
+test fn the_realization_facts_lower_into_the_sibling_holds() -> Bool  {
   let body = srl_body(o: srl_accepted())
   srl_has(n: body, names: [realization_root_label(), ^s, ^F, realization_config_label()])
     && srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_transport_label()])
@@ -116,7 +116,7 @@ test fn the_realization_facts_lower_into_the_sibling_holds() -> Bool {
 
 // The siblings of two services under one prefix merge through the spine's marked-body merge: one
 // <realization>.s holding both F and E.
-test fn the_siblings_of_a_shared_prefix_merge_holds() -> Bool {
+test fn the_siblings_of_a_shared_prefix_merge_holds() -> Bool  {
   let body = srl_body(o: srl_shared_prefix())
   srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run])
     && srl_has(n: body, names: [realization_root_label(), ^s, ^E, ^Get])
@@ -124,7 +124,7 @@ test fn the_siblings_of_a_shared_prefix_merge_holds() -> Bool {
 
 // Each refusal located, on the census route: a transport kind with no declared binding, a second exit
 // block, and an HTTP class on a shell exit status.
-test fn an_unrealizable_realization_refuses_located_holds() -> Bool {
+test fn an_unrealizable_realization_refuses_located_holds() -> Bool  {
   srl_refused_as(o: srl_local(), reason: ^service_realization_transport_unmodeled)
     && srl_refused_as(o: srl_repeated_exit(), reason: ^body_lowering_reason_realization_block_repeated)
     && srl_refused_as(o: srl_class_on_shell(), reason: ^service_realization_status_pattern_not_of_transport)
@@ -142,7 +142,7 @@ fn srl_config_only_full() -> Outcome<NormalizedTree> {
   conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: srl_config_only_source).normalized
 }
 
-test fn a_config_only_realization_is_held_off_the_full_route_holds() -> Bool {
+test fn a_config_only_realization_is_held_off_the_full_route_holds() -> Bool  {
   srl_has(n: srl_body(o: srl_config_only_census()), names: [realization_root_label(), ^S, realization_config_label()])
     && srl_full_refused_as(o: srl_config_only_full(), reason: ^body_lowering_reason_service_realization_unreachable)
 }

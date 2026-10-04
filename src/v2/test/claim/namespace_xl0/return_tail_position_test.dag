@@ -273,119 +273,119 @@ fn rtp_unbound_at(v: RtpVerdict, atom: Symbol) -> Bool {
   }
 }
 
-test fn a_return_inside_a_let_bound_if_refuses_rather_than_binding_its_operand() -> Bool {
+test fn a_return_inside_a_let_bound_if_refuses_rather_than_binding_its_operand() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: v, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
     RtpContextRefused => false
   }
 }
 
-test fn a_return_followed_by_a_statement_refuses_as_not_in_tail_position() -> Bool {
+test fn a_return_followed_by_a_statement_refuses_as_not_in_tail_position() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: v, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
     RtpContextRefused => false
   }
 }
 
-test fn a_return_before_another_statement_in_a_fn_value_refuses() -> Bool {
+test fn a_return_before_another_statement_in_a_fn_value_refuses() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: v, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
     RtpContextRefused => false
   }
 }
 
-test fn an_else_less_if_that_falls_through_still_refuses_as_unlowered() -> Bool {
+test fn an_else_less_if_that_falls_through_still_refuses_as_unlowered() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: v, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
     RtpContextRefused => false
   }
 }
 
-test fn an_else_less_if_as_the_last_statement_still_refuses_as_unlowered() -> Bool {
+test fn an_else_less_if_as_the_last_statement_still_refuses_as_unlowered() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: v, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
     RtpContextRefused => false
   }
 }
 
-test fn a_guard_in_a_non_tail_spine_still_refuses_as_unlowered() -> Bool {
+test fn a_guard_in_a_non_tail_spine_still_refuses_as_unlowered() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: v, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
     RtpContextRefused => false
   }
 }
 
-test fn a_tail_return_of_a_fn_body_is_accepted() -> Bool {
+test fn a_tail_return_of_a_fn_body_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: v, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
     RtpContextRefused => false
   }
 }
 
-test fn a_tail_return_after_a_let_is_accepted() -> Bool {
+test fn a_tail_return_after_a_let_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: v, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
     RtpContextRefused => false
   }
 }
 
-test fn a_tail_return_of_a_fn_value_block_body_is_accepted() -> Bool {
+test fn a_tail_return_of_a_fn_value_block_body_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: v, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
     RtpContextRefused => false
   }
 }
 
-test fn a_tail_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+test fn a_tail_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: v, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_tail)
     RtpContextRefused => false
   }
 }
 
-test fn a_return_in_an_arm_of_a_tail_if_is_accepted() -> Bool {
+test fn a_return_in_an_arm_of_a_tail_if_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: v, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
     RtpContextRefused => false
   }
 }
 
-test fn a_guard_followed_by_statements_is_accepted() -> Bool {
+test fn a_guard_followed_by_statements_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: v, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
     RtpContextRefused => false
   }
 }
 
-test fn a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+test fn a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: v, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_guard_arm)
     RtpContextRefused => false
   }
 }
 
-test fn the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom() -> Bool {
+test fn the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: v, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_guard_rest)
     RtpContextRefused => false
   }
 }
 
-test fn a_return_in_an_arm_of_a_tail_match_is_accepted() -> Bool {
+test fn a_return_in_an_arm_of_a_tail_match_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: v, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
     RtpContextRefused => false
   }
 }
 
-test fn a_tail_match_arm_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+test fn a_tail_match_arm_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: v, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_match_arm)
     RtpContextRefused => false
   }
 }
 
-test fn a_return_in_an_arm_of_a_match_nested_in_a_tail_match_arm_is_accepted() -> Bool {
+test fn a_return_in_an_arm_of_a_match_nested_in_a_tail_match_arm_is_accepted() -> Bool  {
   match rtp_outcomes() {
     RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: v } => rtp_is_resolved(v: v)
     RtpContextRefused => false

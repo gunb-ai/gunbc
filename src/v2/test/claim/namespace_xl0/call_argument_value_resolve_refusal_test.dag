@@ -317,7 +317,7 @@ fn cav_is_unbound_at(v: CavVerdict, spelling: Symbol) -> Bool {
   }
 }
 
-test fn a_named_list_argument_reaches_resolve() -> Bool {
+test fn a_named_list_argument_reaches_resolve() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: v, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_reached_resolve(v: v)
@@ -325,7 +325,7 @@ test fn a_named_list_argument_reaches_resolve() -> Bool {
   }
 }
 
-test fn a_positional_list_argument_reaches_resolve() -> Bool {
+test fn a_positional_list_argument_reaches_resolve() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: v, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_reached_resolve(v: v)
@@ -333,7 +333,7 @@ test fn a_positional_list_argument_reaches_resolve() -> Bool {
   }
 }
 
-test fn an_undeclared_name_in_a_nested_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_nested_call_argument_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: v, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_call_named)
@@ -341,7 +341,7 @@ test fn an_undeclared_name_in_a_nested_call_argument_refuses_at_resolve_at_its_a
   }
 }
 
-test fn a_list_inside_a_nested_call_argument_reaches_resolve() -> Bool {
+test fn a_list_inside_a_nested_call_argument_reaches_resolve() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: v, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_reached_resolve(v: v)
@@ -349,7 +349,7 @@ test fn a_list_inside_a_nested_call_argument_reaches_resolve() -> Bool {
   }
 }
 
-test fn an_undeclared_name_in_a_positional_nested_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_positional_nested_call_argument_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: v, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_call_positional)
@@ -357,7 +357,7 @@ test fn an_undeclared_name_in_a_positional_nested_call_argument_refuses_at_resol
   }
 }
 
-test fn an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: v, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_record)
@@ -365,7 +365,7 @@ test fn an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_it
   }
 }
 
-test fn a_list_inside_a_record_literal_argument_reaches_resolve() -> Bool {
+test fn a_list_inside_a_record_literal_argument_reaches_resolve() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: v, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_reached_resolve(v: v)
@@ -373,7 +373,7 @@ test fn a_list_inside_a_record_literal_argument_reaches_resolve() -> Bool {
   }
 }
 
-test fn an_undeclared_name_in_a_parenthesised_argument_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_parenthesised_argument_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: v, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_group)
@@ -381,7 +381,7 @@ test fn an_undeclared_name_in_a_parenthesised_argument_refuses_at_resolve_at_its
   }
 }
 
-test fn literal_and_string_arguments_resolve() -> Bool {
+test fn literal_and_string_arguments_resolve() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: v, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -389,7 +389,7 @@ test fn literal_and_string_arguments_resolve() -> Bool {
   }
 }
 
-test fn a_nullary_call_argument_resolves() -> Bool {
+test fn a_nullary_call_argument_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: v, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -397,7 +397,7 @@ test fn a_nullary_call_argument_resolves() -> Bool {
   }
 }
 
-test fn declared_names_inside_nested_call_and_record_arguments_resolve() -> Bool {
+test fn declared_names_inside_nested_call_and_record_arguments_resolve() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: v, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -405,7 +405,7 @@ test fn declared_names_inside_nested_call_and_record_arguments_resolve() -> Bool
   }
 }
 
-test fn an_undeclared_plain_name_argument_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_plain_name_argument_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: v, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_plain)
@@ -413,7 +413,7 @@ test fn an_undeclared_plain_name_argument_refuses_at_resolve_at_its_atom() -> Bo
   }
 }
 
-test fn an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: v, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_scrutinee)
@@ -421,7 +421,7 @@ test fn an_undeclared_name_in_a_call_match_scrutinee_refuses_at_resolve_at_its_a
   }
 }
 
-test fn a_call_match_scrutinee_resolves() -> Bool {
+test fn a_call_match_scrutinee_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: v, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -429,7 +429,7 @@ test fn a_call_match_scrutinee_resolves() -> Bool {
   }
 }
 
-test fn a_multi_line_call_match_scrutinee_resolves() -> Bool {
+test fn a_multi_line_call_match_scrutinee_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: v, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -437,7 +437,7 @@ test fn a_multi_line_call_match_scrutinee_resolves() -> Bool {
   }
 }
 
-test fn a_match_with_a_call_scrutinee_nested_in_an_arm_resolves() -> Bool {
+test fn a_match_with_a_call_scrutinee_nested_in_an_arm_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: v, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -445,7 +445,7 @@ test fn a_match_with_a_call_scrutinee_nested_in_an_arm_resolves() -> Bool {
   }
 }
 
-test fn an_undeclared_name_in_a_parenthesised_call_operand_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_a_parenthesised_call_operand_refuses_at_resolve_at_its_atom() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: v, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_unbound_at(v: v, spelling: ^cav_undeclared_paren_call)
@@ -453,7 +453,7 @@ test fn an_undeclared_name_in_a_parenthesised_call_operand_refuses_at_resolve_at
   }
 }
 
-test fn a_parenthesised_call_operand_resolves() -> Bool {
+test fn a_parenthesised_call_operand_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: v, caret_operand: _, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -467,7 +467,7 @@ test fn a_parenthesised_call_operand_resolves() -> Bool {
 // whole (dag_symbol_literal_name_optional) rather than reading it as a reference. It refused
 // operator_operand_unread, then (MQ-1 PR-1) caret_symbol_not_lowered at the `^`, before
 // v2.compiler.body_lowering_fold lowered a caret to its symbol literal (MQ-1 PR-2).
-test fn a_caret_symbol_operand_resolves_without_lookup() -> Bool {
+test fn a_caret_symbol_operand_resolves_without_lookup() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: v, as_cast_operand: _, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -480,7 +480,7 @@ test fn a_caret_symbol_operand_resolves_without_lookup() -> Bool {
 // before the operator reader sees it, and resolve binds `Bool` in type role
 // (gunbc.recurring_failure_mode as_cast_has_no_lowered_form). It refused operator_operand_unread,
 // then type_annotation_not_carried at `Bool`, before the node carried the target.
-test fn an_as_cast_operand_resolves() -> Bool {
+test fn an_as_cast_operand_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: v, else_less_if: _ } =>
       cav_is_resolved(v: v)
@@ -490,7 +490,7 @@ test fn an_as_cast_operand_resolves() -> Bool {
 
 // The early-return guard (gunbc.recurring_failure_mode else_less_if_statement_has_no_lowered_form)
 // lowers to Branch(c, arm, rest of the spine), so the statements after it resolve.
-test fn an_else_less_if_guard_resolves() -> Bool {
+test fn an_else_less_if_guard_resolves() -> Bool  {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: _, as_cast_operand: _, else_less_if: v } =>
       cav_is_resolved(v: v)

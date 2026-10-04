@@ -112,19 +112,19 @@ fn g_parsed_accepted(parsed: Outcome<Node>) -> Bool {
   }
 }
 
-test fn expression_bodied_fn_decl_parses_holds() -> Bool {
+test fn expression_bodied_fn_decl_parses_holds() -> Bool  {
   g_parsed_accepted(parsed: expression_bodied_fn_parsed())
 }
 
-test fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {
+test fn expression_bodied_literal_fn_decl_parses_holds() -> Bool  {
   g_parsed_accepted(parsed: expression_bodied_literal_fn_parsed())
 }
 
-test fn braced_fn_decl_still_parses_holds() -> Bool {
+test fn braced_fn_decl_still_parses_holds() -> Bool  {
   g_parsed_accepted(parsed: braced_fn_control_parsed())
 }
 
-test fn braced_fn_decl_survives_normalize_holds() -> Bool {
+test fn braced_fn_decl_survives_normalize_holds() -> Bool  {
   g_normalize_has_arrow_body(parsed: braced_fn_control_parsed())
 }
 
@@ -157,7 +157,7 @@ fn g_fatal_at(parsed: Outcome<Node>, reason: ParseRefusalReason, file: Symbol, s
 }
 
 // `=` is bytes 43..44 of empty_eq_fn_source.
-test fn empty_eq_fn_decl_refuses_holds() -> Bool {
+test fn empty_eq_fn_decl_refuses_holds() -> Bool  {
   g_fatal_at(
     parsed: g_tokenize_parse(text: empty_eq_fn_source, file: ^probe_empty_eq),
     reason: FnExpressionBodyMissingAfterEq,
@@ -170,7 +170,7 @@ test fn empty_eq_fn_decl_refuses_holds() -> Bool {
 data empty_eq_data_source: String = "module probe.empty_data\n\ndata x: Int =\n"
 
 // `=` is bytes 37..38 of empty_eq_data_source.
-test fn empty_eq_data_decl_refuses_holds() -> Bool {
+test fn empty_eq_data_decl_refuses_holds() -> Bool  {
   g_fatal_at(
     parsed: g_tokenize_parse(text: empty_eq_data_source, file: ^probe_empty_data),
     reason: DataValueMissingAfterEq,
@@ -180,10 +180,10 @@ test fn empty_eq_data_decl_refuses_holds() -> Bool {
   )
 }
 
-test fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+test fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool  {
   g_normalize_has_arrow_body(parsed: expression_bodied_fn_parsed())
 }
 
-test fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+test fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool  {
   g_normalize_has_arrow_body(parsed: expression_bodied_literal_fn_parsed())
 }

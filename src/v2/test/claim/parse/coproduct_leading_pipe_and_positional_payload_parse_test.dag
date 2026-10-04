@@ -40,33 +40,33 @@ fn cp_normalizes(o: Outcome<NormalizedTree>) -> Bool {
   }
 }
 
-test fn leading_pipe_multiline_coproduct_parses_and_normalizes_holds() -> Bool {
+test fn leading_pipe_multiline_coproduct_parses_and_normalizes_holds() -> Bool  {
   cp_normalizes(o: cps_normalized_0())
 }
 
-test fn leading_pipe_single_line_coproduct_parses_holds() -> Bool {
+test fn leading_pipe_single_line_coproduct_parses_holds() -> Bool  {
   cp_parses(o: cps_parsed_1())
 }
 
-test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool {
+test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool  {
   match cp_parses(o: cps_parsed_2()) {
     true => false
     false => true
   }
 }
 
-test fn positional_payload_variants_parse_and_normalize_holds() -> Bool {
+test fn positional_payload_variants_parse_and_normalize_holds() -> Bool  {
   cp_normalizes(o: cps_normalized_3())
 }
 
-test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool {
+test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool  {
   match cp_parses(o: cps_parsed_4()) {
     true => false
     false => true
   }
 }
 
-test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
+test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool  {
   match cp_parses(o: cps_parsed_5()) {
     true => false
     false => true
@@ -78,7 +78,7 @@ test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
 // normalize to the same provenance-free tree (the leading `|` mints occurrence ids of its own, so
 // the comparison is over canonicalize_node_strip_provenance), so the
 // optional `|` cannot change the alternatives the rhs production yields.
-test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> Bool {
+test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> Bool  {
   match cps_normalized_1() {
     Rejected { diagnostics: _ } => false
     Accepted { value: with_pipe, diagnostics: _ } =>
@@ -94,7 +94,7 @@ test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> B
 // The positional row alone, with no leading `|`, at its construction site: the front end CONSUMES
 // the spelling through normalize. The field-"0" lowering itself, the construction's operand and
 // the binder are the subject of v2.test.parse.variant_field_lowering.
-test fn positional_payload_without_leading_pipe_with_construction_normalizes_holds() -> Bool {
+test fn positional_payload_without_leading_pipe_with_construction_normalizes_holds() -> Bool  {
   cp_normalizes(o: cps_normalized_7())
 }
 
@@ -102,7 +102,7 @@ test fn positional_payload_without_leading_pipe_with_construction_normalizes_hol
 // typed refusal until variant fields lowered; they lower now, the refusal is retired, and the arm
 // normalizes -- the shape it binds through is asserted by v2.test.parse.variant_field_lowering
 // vf_positional_pattern_binds_field_zero, so this row keeps only the route half.
-test fn positional_pattern_binder_normalizes_holds() -> Bool {
+test fn positional_pattern_binder_normalizes_holds() -> Bool  {
   cp_normalizes(
     o: cps_normalized_8()
   )
@@ -110,14 +110,14 @@ test fn positional_pattern_binder_normalizes_holds() -> Bool {
 
 // A wildcard payload binds nothing, so nothing is lost and it still lowers: std.content_hash
 // content_hash_family is exactly this shape (`Fnv1a64(_) => Fnv1a64StructuralFamily`).
-test fn positional_wildcard_pattern_still_normalizes_holds() -> Bool {
+test fn positional_wildcard_pattern_still_normalizes_holds() -> Bool  {
   cp_normalizes(
     o: cps_normalized_9()
   )
 }
 
 // The refusal is not over-broad: the braced spelling of the same elimination still lowers.
-test fn braced_pattern_binder_still_normalizes_holds() -> Bool {
+test fn braced_pattern_binder_still_normalizes_holds() -> Bool  {
   cp_normalizes(
     o: cps_normalized_10()
   )
@@ -125,7 +125,7 @@ test fn braced_pattern_binder_still_normalizes_holds() -> Bool {
 
 // The discriminating half of the equality above: the same projection DOES separate two coproducts
 // whose alternatives differ, so the leading-pipe equality is not a comparison that cannot fail.
-test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool {
+test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool  {
   match cps_normalized_1() {
     Rejected { diagnostics: _ } => false
     Accepted { value: left, diagnostics: _ } =>
@@ -154,7 +154,7 @@ fn cps_stream_0() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_0() -> Bool {
+test fn cps_fidelity_0() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype H =\n  | A\n  | B\n",
     file: ^coproduct_parse_probe,
@@ -178,7 +178,7 @@ fn cps_stream_1() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_1() -> Bool {
+test fn cps_fidelity_1() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype H = | A | B\n",
     file: ^coproduct_parse_probe,
@@ -199,7 +199,7 @@ fn cps_stream_2() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_2() -> Bool {
+test fn cps_fidelity_2() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype H =\n  |\n",
     file: ^coproduct_parse_probe,
@@ -233,7 +233,7 @@ fn cps_stream_3() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_3() -> Bool {
+test fn cps_fidelity_3() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C =\n  | A(X)\n  | B { n: Int }\n  | D\n",
     file: ^coproduct_parse_probe,
@@ -261,7 +261,7 @@ fn cps_stream_4() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_4() -> Bool {
+test fn cps_fidelity_4() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(X, Z) | B\n",
     file: ^coproduct_parse_probe,
@@ -283,7 +283,7 @@ fn cps_stream_5() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_5() -> Bool {
+test fn cps_fidelity_5() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype R(X)\n",
     file: ^coproduct_parse_probe,
@@ -306,7 +306,7 @@ fn cps_stream_6() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_6() -> Bool {
+test fn cps_fidelity_6() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype H = A | B\n",
     file: ^coproduct_parse_probe,
@@ -347,7 +347,7 @@ fn cps_stream_7() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_7() -> Bool {
+test fn cps_fidelity_7() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n",
     file: ^coproduct_parse_probe,
@@ -397,7 +397,7 @@ fn cps_stream_8() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_8() -> Bool {
+test fn cps_fidelity_8() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
     file: ^coproduct_parse_probe,
@@ -447,7 +447,7 @@ fn cps_stream_9() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_9() -> Bool {
+test fn cps_fidelity_9() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n",
     file: ^coproduct_parse_probe,
@@ -501,7 +501,7 @@ fn cps_stream_10() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_10() -> Bool {
+test fn cps_fidelity_10() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n",
     file: ^coproduct_parse_probe,
@@ -524,7 +524,7 @@ fn cps_stream_11() -> TokenStream {
   ])
 }
 
-test fn cps_fidelity_11() -> Bool {
+test fn cps_fidelity_11() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype H = A | C\n",
     file: ^coproduct_parse_probe,

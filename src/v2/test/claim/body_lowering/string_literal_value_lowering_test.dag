@@ -122,12 +122,12 @@ fn slv_carries_expected(v: StringValueVerdict) -> Bool {
 }
 
 // THE ROUTE: the real parser builds each literal carrying its value.
-test fn every_parsed_string_literal_carries_its_decoded_value() -> Bool {
+test fn every_parsed_string_literal_carries_its_decoded_value() -> Bool  {
   slv_carries_expected(v: slv_verdicts().parsed)
 }
 
 // THE SURVIVAL: normalize keeps every value, none reduced to a bare atom.
-test fn every_normalized_string_literal_keeps_its_decoded_value() -> Bool {
+test fn every_normalized_string_literal_keeps_its_decoded_value() -> Bool  {
   slv_carries_expected(v: slv_verdicts().normalized)
 }
 
@@ -152,16 +152,16 @@ fn slv_decode_refusal(lexeme: String) -> Symbol {
 }
 
 // Each of the eight dag_string_escapes rows decodes to its code point, with the quotes removed.
-test fn every_string_escape_decodes_to_its_scalar() -> Bool {
+test fn every_string_escape_decodes_to_its_scalar() -> Bool  {
   slv_decode_value(lexeme: "\"\\\"\\\\\\0\\n\\r\\t\\{\\}\"") == "\"\\\0\n\r\t\{\}"
 }
 
 // The two numeric forms: exactly two hex digits after \x, one to six naming a scalar inside \u{}.
-test fn numeric_string_escapes_decode_to_their_code_points() -> Bool {
+test fn numeric_string_escapes_decode_to_their_code_points() -> Bool  {
   slv_decode_value(lexeme: "\"\\x41\\x7a\\u\{e9\}\\u\{1F600\}\"") == "Az\u{e9}\u{1F600}"
 }
 
-test fn malformed_numeric_string_escapes_refuse() -> Bool {
+test fn malformed_numeric_string_escapes_refuse() -> Bool  {
   (slv_decode_refusal(lexeme: "\"\\x4g\"") == ^dag_string_literal_escape_malformed)
     && (slv_decode_refusal(lexeme: "\"\\x4\"") == ^dag_string_literal_escape_malformed)
     && (slv_decode_refusal(lexeme: "\"\\u\{\}\"") == ^dag_string_literal_escape_malformed)
@@ -170,7 +170,7 @@ test fn malformed_numeric_string_escapes_refuse() -> Bool {
     && (slv_decode_refusal(lexeme: "\"\\u12\"") == ^dag_string_literal_escape_malformed)
 }
 
-test fn two_different_string_literals_are_two_different_nodes() -> Bool {
+test fn two_different_string_literals_are_two_different_nodes() -> Bool  {
   match dag_string_literal_node_from_lexeme(lexeme: "\"a\"", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: a, diagnostics: _ } =>
       match dag_string_literal_node_from_lexeme(lexeme: "\"b\"", occurrence_id: OccurrenceSynthetic) {
@@ -182,15 +182,15 @@ test fn two_different_string_literals_are_two_different_nodes() -> Bool {
 }
 
 // A backslash followed by a character with no escape row refuses; it is never carried raw.
-test fn an_unknown_string_escape_refuses_as_malformed() -> Bool {
+test fn an_unknown_string_escape_refuses_as_malformed() -> Bool  {
   slv_decode_refusal(lexeme: "\"a\\qb\"") == ^dag_string_literal_escape_malformed
 }
 
 // A backslash with nothing after it before the closing quote refuses the same way.
-test fn a_trailing_string_escape_refuses_as_malformed() -> Bool {
+test fn a_trailing_string_escape_refuses_as_malformed() -> Bool  {
   slv_decode_refusal(lexeme: "\"a\\\"") == ^dag_string_literal_escape_malformed
 }
 
-test fn an_unquoted_lexeme_refuses_as_unframed() -> Bool {
+test fn an_unquoted_lexeme_refuses_as_unframed() -> Bool  {
   slv_decode_refusal(lexeme: "alpha") == ^dag_string_literal_lexeme_unframed
 }

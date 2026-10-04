@@ -420,7 +420,7 @@ fn family_crate_member_run_refused(
   }
 }
 
-test fn family_crate_digest_differs_from_member_digests_holds() -> Bool {
+test fn family_crate_digest_differs_from_member_digests_holds() -> Bool  {
   let d_meet = inferred_tree_digest(tree: family_crate_meet_tree())
   let d_join = inferred_tree_digest(tree: family_crate_join_tree())
   let d_complement = inferred_tree_digest(tree: family_crate_complement_tree())
@@ -431,13 +431,13 @@ test fn family_crate_digest_differs_from_member_digests_holds() -> Bool {
     && family_closure_digest(members: [d_meet]) != d_meet
 }
 
-test fn family_crate_member_change_key_sensitivity_holds() -> Bool {
+test fn family_crate_member_change_key_sensitivity_holds() -> Bool  {
   let key_primary = family_crate_native_key(members: family_crate_members())
   let key_alt = family_crate_native_key(members: family_crate_alt_members())
   key_primary != key_alt
 }
 
-test fn family_crate_member_order_key_sensitivity_holds() -> Bool {
+test fn family_crate_member_order_key_sensitivity_holds() -> Bool  {
   let d_meet = inferred_tree_digest(tree: family_crate_meet_tree())
   let d_join = inferred_tree_digest(tree: family_crate_join_tree())
   let forward = family_closure_digest(members: [d_meet, d_join])
@@ -445,7 +445,7 @@ test fn family_crate_member_order_key_sensitivity_holds() -> Bool {
   forward != reversed
 }
 
-test fn family_crate_one_build_members_warm_holds() -> Bool {
+test fn family_crate_one_build_members_warm_holds() -> Bool  {
   let members = family_crate_members()
   let workspace = family_crate_evict_and_workspace(
     test_id: "one_build_members_warm",
@@ -511,7 +511,7 @@ test fn family_crate_one_build_members_warm_holds() -> Bool {
   }
 }
 
-test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
+test fn family_crate_member_change_cold_rebuild_holds() -> Bool  {
   let members = family_crate_members()
   let alt_members = family_crate_alt_members()
   if family_crate_native_key(members: members) == family_crate_native_key(members: alt_members) {
@@ -554,7 +554,7 @@ test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
 
 data family_crate_realization_key_regression_note: String = "srv2-05 root-cause RED: inferred-tree member digests do not change when only the transport dispatcher/workspace changes. Before artifact_realization_digest joined the effective workspace identity, the second run below reused the first target's .native_ready marker and returned meet=1 instead of meet=0 with compile_skipped=true. The executing control keeps the outer family key and emitted member source identical, changes only the dispatcher suffix, and requires a cold realization child followed by a warm hit on that exact child."
 
-test fn family_crate_dispatch_change_cold_rebuild_holds() -> Bool {
+test fn family_crate_dispatch_change_cold_rebuild_holds() -> Bool  {
   let members = family_crate_members()
   let workspace = family_crate_evict_and_workspace(
     test_id: "dispatch_change_cold_rebuild",
@@ -595,10 +595,10 @@ test fn family_crate_dispatch_change_cold_rebuild_holds() -> Bool {
 
 data family_crate_pr_native_note: String = "Per-PR native carrier (routing frontier, 2026-07-22): the NO-EVICT agreement leg — same one-build workspace derivation as the receipts above but under the fixed pr_native test_id and never evicted, so the first CI run on a runner cold-builds once and every later PR run is warm (compile_skipped observed via the cached transport receipts). Assertions are agreement-only (interpreted == native per member), skip-state-agnostic by design: cold and warm runs both green, which is what a per-PR gate needs. Hermetic-clean: no evict intrinsic (which refuses hermetic), and the cached transport runs on the std.access Permit decision in every mode."
 
-test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool {
+test fn emit_on_demand_family_crate_pr_native_agreement_holds() -> Bool  {
   length(xs: family_crate_pr_native_agreement_divergences()) == 0
 }
 
-test fn family_crate_emit_family_rejected_divergence_holds() -> Bool {
+test fn family_crate_emit_family_rejected_divergence_holds() -> Bool  {
   format_native_agreement_divergence(d: family_crate_emit_family_rejected_divergence()) == "member=emit_family interpreted=emit_rejected native=emit_rejected"
 }

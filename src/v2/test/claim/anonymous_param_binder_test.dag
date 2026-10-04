@@ -128,7 +128,7 @@ fn apb_domain_hashes(o: Outcome<ResolvedTree>) -> List<Hash> {
 
 // (1) TWO ANONYMOUS SLOTS ARE ACCEPTED, each under its own minted binder, in slot order, and the
 // program is well formed. RED BEFORE: refused, two `_` labels in one name-keyed Conj.
-test fn apb_two_anonymous_slots_are_accepted_as_distinct_binders() -> Bool {
+test fn apb_two_anonymous_slots_are_accepted_as_distinct_binders() -> Bool  {
   match apb_two_anonymous() {
     Rejected { diagnostics: _ } => false
     Accepted { value: n, diagnostics: _ } =>
@@ -141,7 +141,7 @@ test fn apb_two_anonymous_slots_are_accepted_as_distinct_binders() -> Bool {
 // (2) N IS THE POSITION WITHIN THE SLOT'S OWN BINDER LIST: the same signature at two sites carries
 // the same labels and its domain has the same content hash, and a named neighbour keeps its name
 // while the `_` beside it is slot 2, not slot 1 -- no walk-order or module-wide counter.
-test fn apb_slot_label_is_the_position_in_its_own_binder_list() -> Bool {
+test fn apb_slot_label_is_the_position_in_its_own_binder_list() -> Bool  {
   let hashes = apb_domain_hashes(o: apb_two_sites())
   count(hashes) == 2
     && first(hashes) == last(hashes)
@@ -157,7 +157,7 @@ test fn apb_slot_label_is_the_position_in_its_own_binder_list() -> Bool {
 // resolve_reason_anonymous_parameter_referenced, located at the mention's own authored occurrence
 // (an atom spelled `_` whose occurrence is not synthetic), never at the slot's label.
 // RED BEFORE: accepted, the `_` bound to the slot.
-test fn apb_body_reference_to_an_anonymous_slot_refuses_located() -> Bool {
+test fn apb_body_reference_to_an_anonymous_slot_refuses_located() -> Bool  {
   match apb_body_reference() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -190,7 +190,7 @@ fn apb_diag_at_authored_wildcard(d: Diagnostic) -> Bool {
 
 // (4) THE MARKER IS NOT AUTHORED SPELLING: the recogniser admits every minted label and refuses the
 // authored `_` and an ordinary name, so no reader keyed on it can mistake one for the other.
-test fn apb_recogniser_separates_minted_from_authored() -> Bool {
+test fn apb_recogniser_separates_minted_from_authored() -> Bool  {
   is_anonymous_param_label(sym: anonymous_param_label(slot: 1))
     && is_anonymous_param_label(sym: anonymous_param_label(slot: 12))
     && !is_anonymous_param_label(sym: pattern_wildcard_name())

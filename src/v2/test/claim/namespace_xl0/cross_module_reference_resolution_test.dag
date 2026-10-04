@@ -371,7 +371,7 @@ fn xl0r_last_reason(d: NonEmptyDiagnostics) -> Symbol {
   fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
 }
 
-test fn the_resolution_fixture_ingests_holds() -> Bool {
+test fn the_resolution_fixture_ingests_holds() -> Bool  {
   match xl0r_fixture_normalized() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -381,7 +381,7 @@ test fn the_resolution_fixture_ingests_holds() -> Bool {
 // THE CONTROL: a module whose only reference is same-module resolves, so a red on the row after it
 // is about the cross-module chain and not about this route being dead. It is its own module so
 // that the primary's verdict cannot leak into it.
-test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool {
+test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool  {
   match xl0r_resolved_local_consumer() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -398,7 +398,7 @@ test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool
 // and this row asserted that refusal. The carrier landed (fierce-wren-487), the refusal is deleted,
 // and the row is re-stated as DESIGN section 4b(4) says it must be: the accepted body carries
 // exactly the path v2.test.xl0r_provider.xl0r_provided_fn.
-test fn a_cross_module_reference_to_a_declared_fn_resolves_to_its_declaring_path_holds() -> Bool {
+test fn a_cross_module_reference_to_a_declared_fn_resolves_to_its_declaring_path_holds() -> Bool  {
   xl0r_resolved_carries_reference(
     o: xl0r_resolved_declared_consumer(),
     dotted: "v2.test.xl0r_provider.xl0r_provided_fn"
@@ -412,7 +412,7 @@ test fn a_cross_module_reference_to_a_declared_fn_resolves_to_its_declaring_path
 // identity-unrepresentable while no carrier existed; re-stated on the carrier's landing, as the
 // previous revision said it must be: each resolves to ITS provider's path, and neither carries the
 // other's -- the identities DIFFER, which is the fact, rather than "both resolve".
-test fn two_same_leaf_targets_in_different_modules_resolve_to_distinct_declaring_paths_holds() -> Bool {
+test fn two_same_leaf_targets_in_different_modules_resolve_to_distinct_declaring_paths_holds() -> Bool  {
   let a = xl0r_resolved_consumer_a()
   let b = xl0r_resolved_consumer_b()
   xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
@@ -440,13 +440,13 @@ test fn two_same_leaf_targets_in_different_modules_resolve_to_distinct_declaring
 // THE NEGATIVE IS THE DISCRIMINATOR, not the positive: an index that stops at the relay still
 // RESOLVES, so "the chain resolves at all" cannot see this. Red before
 // v2.std.symbol_index symbol_index_declaring_path_of, green after.
-test fn a_re_export_resolves_to_the_home_not_the_relay_holds() -> Bool {
+test fn a_re_export_resolves_to_the_home_not_the_relay_holds() -> Bool  {
   let c = xl0r_resolved_relay_consumer()
   xl0r_resolved_carries_reference(o: c, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
     && !xl0r_resolved_carries_reference(o: c, dotted: "v2.test.xl0r_relay.xl0r_same_leaf")
 }
 
-test fn two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_holds() -> Bool {
+test fn two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_holds() -> Bool  {
   let a = xl0r_resolved_import_consumer_a()
   let b = xl0r_resolved_import_consumer_b()
   xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
@@ -455,14 +455,14 @@ test fn two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_h
     && !xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
 }
 
-test fn a_selectively_imported_type_in_parameter_position_resolves_to_its_declaring_path_holds() -> Bool {
+test fn a_selectively_imported_type_in_parameter_position_resolves_to_its_declaring_path_holds() -> Bool  {
   xl0r_resolved_carries_reference(
     o: xl0r_resolved_imported_param_type_consumer(),
     dotted: "v2.test.xl0r_type_provider.Xl0rOpaque"
   )
 }
 
-test fn an_unimported_type_in_parameter_position_refuses_unbound() -> Bool {
+test fn an_unimported_type_in_parameter_position_refuses_unbound() -> Bool  {
   match xl0r_resolved_unimported_param_type_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
@@ -471,7 +471,7 @@ test fn an_unimported_type_in_parameter_position_refuses_unbound() -> Bool {
 
 // THE BOUNDARY: the same chain shape naming a declaration that does not exist refuses, at resolve,
 // with the unbound-symbol reason -- reassembling the chain widened nothing.
-test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool {
+test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool  {
   match xl0r_resolved_undeclared_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
@@ -483,7 +483,7 @@ test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool
 // moved from unbound to the interim identity-unrepresentable refusal. When the declaring-identity
 // carrier landed (fierce-wren-487) the refusal was deleted and the row flips again, as it said it
 // would: Accepted, carrying the data declaration's own path.
-test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring_path_holds() -> Bool {
+test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring_path_holds() -> Bool  {
   xl0r_resolved_carries_reference(
     o: xl0r_resolved_data_target_consumer(),
     dotted: "v2.test.xl0r_provider.xl0r_provided_value"
@@ -542,7 +542,7 @@ fn xl0r_method_call_infer_reason() -> Symbol {
 
 // PINNED TO THE CONTRACT, NOT TO "SOME REFUSAL": the receiver's established type (Bool) is not a record
 // declaration, so infer refuses the projection as declaring no fields. A refusal for any other cause reds it.
-test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
+test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool  {
   xl0r_field_access_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
 }
 
@@ -561,7 +561,7 @@ test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
 // a callee at the first call suffix, so the callee `r.v` is now the projection resolve commits, and
 // infer refuses it for the same reason as the bare form -- `Bool` declares no fields. What the row is
 // FOR is that a method call on a local receiver is not silently admitted, and that is what it now says.
-test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
+test fn a_local_receiver_method_call_never_accepts_holds() -> Bool  {
   xl0r_method_call_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
 }
 
@@ -589,7 +589,7 @@ test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
 //
 // IT IS STILL DISCRIMINATING: an implementation that consulted the absolute candidates first would
 // resolve this to the provider's declaring path, and the projection assertion below would fail.
-test fn a_binder_shadowing_a_root_segment_projects_from_the_binder_holds() -> Bool {
+test fn a_binder_shadowing_a_root_segment_projects_from_the_binder_holds() -> Bool  {
   match xl0r_resolved_shadowing_consumer() {
     Rejected { diagnostics: _ } => false
     Accepted { value: resolved, diagnostics: _ } =>
@@ -652,12 +652,12 @@ fn xl0r_roster_has_declared_carrier(roster: RepairInputOriginRoster, spelling: S
   )
 }
 
-test fn the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_route_holds() -> Bool {
+test fn the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_route_holds() -> Bool  {
   let roster = xl0r_roster()
   repair_input_origin_roster_is_total(roster: roster) && length(xs: roster.carriers) > 0
 }
 
-test fn the_repair_input_origin_roster_carries_the_cross_module_mention_with_a_spelling_derived_declared_arm_today() -> Bool {
+test fn the_repair_input_origin_roster_carries_the_cross_module_mention_with_a_spelling_derived_declared_arm_today() -> Bool  {
   xl0r_roster_has_declared_carrier(
     roster: xl0r_roster(),
     spelling: "v2.test.xl0r_provider.xl0r_provided_fn"

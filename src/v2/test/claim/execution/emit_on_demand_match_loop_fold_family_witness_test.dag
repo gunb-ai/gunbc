@@ -459,7 +459,7 @@ fn mlf_family_one_build_with_sources(
     )
 }
 
-test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool {
+test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool  {
   match match_primary_tree() {
     Accepted { value: match_tree, diagnostics: _ } =>
       match loop_primary_tree() {
@@ -534,7 +534,7 @@ test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool {
   }
 }
 
-test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
+test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool  {
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       let digest = inferred_tree_digest(tree: tree)
@@ -555,7 +555,7 @@ test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
   }
 }
 
-test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool {
+test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool  {
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match family_open_test_store() {
@@ -580,7 +580,7 @@ test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool 
   }
 }
 
-test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> Bool {
+test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> Bool  {
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match family_open_test_store() {
@@ -599,11 +599,11 @@ test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> 
   }
 }
 
-test fn emit_on_demand_match_loop_fold_interpreter_roles_bounded_holds() -> Bool {
+test fn emit_on_demand_match_loop_fold_interpreter_roles_bounded_holds() -> Bool  {
   interpreter_surviving_roles_bounded()
 }
 
-test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds() -> Bool {
+test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds() -> Bool  {
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match witness_family_realize_width(

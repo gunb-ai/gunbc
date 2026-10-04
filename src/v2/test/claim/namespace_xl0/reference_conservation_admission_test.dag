@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ---- the fixture grain -------------------------------------------------------------------------
 
-test fn the_admitted_route_accepts_the_clean_control_holds() -> Bool {
+test fn the_admitted_route_accepts_the_clean_control_holds() -> Bool  {
   match conserved_normalize(subject: clean_control_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -42,7 +42,7 @@ test fn the_admitted_route_accepts_the_clean_control_holds() -> Bool {
 
 // The discriminating red of the route: normalize ACCEPTS this source (the let binder is lost silently),
 // and the admitted route refuses it, located at the lost atom's own byte range.
-test fn the_admitted_route_refuses_an_unexplained_drop_at_the_lost_atom_holds() -> Bool {
+test fn the_admitted_route_refuses_an_unexplained_drop_at_the_lost_atom_holds() -> Bool  {
   match conserved_normalize(subject: statement_let_binder_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -59,7 +59,7 @@ test fn the_admitted_route_refuses_an_unexplained_drop_at_the_lost_atom_holds() 
 // declared drop still live.)
 data rc_bound_explained: ExplainedDrop = ExplainedDrop { start: 70, end: 78, shape: StatementLetBinder }
 
-test fn a_declared_explanation_admits_exactly_the_drop_it_names_holds() -> Bool {
+test fn a_declared_explanation_admits_exactly_the_drop_it_names_holds() -> Bool  {
   match conserved_normalize(subject: statement_let_binder_subject(), explained: Cons { head: rc_bound_explained, tail: Empty }) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -68,7 +68,7 @@ test fn a_declared_explanation_admits_exactly_the_drop_it_names_holds() -> Bool 
 
 // An explanation for a drop that does not happen is a refusal, so a repaired shape reds every
 // fixture still excusing it.
-test fn an_explanation_that_consumes_no_drop_refuses_holds() -> Bool {
+test fn an_explanation_that_consumes_no_drop_refuses_holds() -> Bool  {
   match conserved_normalize(subject: clean_control_subject(), explained: Cons { head: rc_bound_explained, tail: Empty }) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^conservation_reason_explanation_stale
@@ -81,7 +81,7 @@ data two_same_spelled_let_binders_source: String = "module v2.test.rc_two_lets\n
 
 data first_binder_explained: ExplainedDrop = ExplainedDrop { start: 53, end: 61, shape: StatementLetBinder }
 
-test fn explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds() -> Bool {
+test fn explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds() -> Bool  {
   match conserved_normalize(subject: two_same_spelled_let_binders_subject(), explained: Cons { head: first_binder_explained, tail: Empty }) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -110,14 +110,14 @@ data operator_call_argument_source: String = "module v2.test.rc_operator_arg\n\n
 
 data operator_if_arm_source: String = "module v2.test.rc_operator_branch\n\nimport std.types { Bool }\n\nfn rc_branch(p: Bool, rc_q: Bool) -> Bool { if p { p && rc_q } else { false } }\n"
 
-test fn an_operator_expression_call_argument_is_admitted_holds() -> Bool {
+test fn an_operator_expression_call_argument_is_admitted_holds() -> Bool  {
   match conserved_normalize(subject: operator_call_argument_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn an_operator_expression_in_an_if_arm_is_admitted_holds() -> Bool {
+test fn an_operator_expression_in_an_if_arm_is_admitted_holds() -> Bool  {
   match conserved_normalize(subject: operator_if_arm_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -131,12 +131,12 @@ fn restoration_named(shape: KnownDropShape) -> Bool {
   t.retired_by.module_path == "v2.compiler.body_lowering_fold" && t.pinned_by.module_path == "v2.test.claim.namespace_xl0.reference_conservation"
 }
 
-test fn every_known_drop_shape_names_its_restoration_trigger_holds() -> Bool {
+test fn every_known_drop_shape_names_its_restoration_trigger_holds() -> Bool  {
   restoration_named(shape: StatementLetBinder)
 }
 
 // Removing a declaration reds the fixture: the same source, with and without its explanation.
-test fn removing_a_declared_explanation_reds_its_fixture_holds() -> Bool {
+test fn removing_a_declared_explanation_reds_its_fixture_holds() -> Bool  {
   match conserved_normalize(subject: statement_let_binder_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } =>
@@ -157,14 +157,14 @@ data scope_outsider_dropping_source: String = "module v2.test.rc_scope_outsider\
 
 data scope_member_clean_source: String = "module v2.test.rc_scope_member_clean\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport std.types { Bool }\n\nfn rc_bare(c: Bool) -> Bool { c }\n"
 
-test fn a_change_outside_body_lowering_is_a_typed_no_change_observation_holds() -> Bool {
+test fn a_change_outside_body_lowering_is_a_typed_no_change_observation_holds() -> Bool  {
   match changed_scope_observation_of_subjects(subjects: Cons { head: scope_outsider_dropping_subject(), tail: Empty }) {
     NoBodyLoweringChange { rows: _ } => true
     _ => false
   }
 }
 
-test fn a_dropping_body_lowering_member_is_observed_dropped_holds() -> Bool {
+test fn a_dropping_body_lowering_member_is_observed_dropped_holds() -> Bool  {
   let observation = changed_scope_observation_of_subjects(subjects: Cons {
     head: scope_member_dropping_subject(),
     tail: Cons { head: scope_outsider_dropping_subject(), tail: Empty }
@@ -175,7 +175,7 @@ test fn a_dropping_body_lowering_member_is_observed_dropped_holds() -> Bool {
   }
 }
 
-test fn a_conserving_body_lowering_member_is_observed_conserved_holds() -> Bool {
+test fn a_conserving_body_lowering_member_is_observed_conserved_holds() -> Bool  {
   match changed_scope_observation_of_subjects(subjects: Cons { head: scope_member_clean_subject(), tail: Empty }) {
     ChangedScopeObservedConserved { rows: _, in_scope: n } => n == 1
     _ => false
@@ -223,7 +223,7 @@ fn call_projection_operand_subject() -> ReferenceConservationSubject {
   conservation_subject_of_text(path: "rc_call_projection", text: call_projection_operand_source)
 }
 
-test fn a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds() -> Bool {
+test fn a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds() -> Bool  {
   match conserved_normalize(subject: call_projection_operand_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

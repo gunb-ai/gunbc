@@ -50,11 +50,11 @@ fn bdj_not_inhabiting_inferred() -> Outcome<Bool> {
   bdj_infers(o: bdj_not_inhabiting())
 }
 
-test fn a_default_that_inhabits_its_binder_type_infers() -> Bool {
+test fn a_default_that_inhabits_its_binder_type_infers() -> Bool  {
   tpb_accepts(o: bdj_inhabiting_inferred())
 }
 
-test fn a_default_that_does_not_inhabit_its_binder_type_refuses() -> Bool {
+test fn a_default_that_does_not_inhabit_its_binder_type_refuses() -> Bool  {
   bdj_refused_as_not_inhabiting(o: bdj_not_inhabiting_inferred())
 }
 
@@ -86,19 +86,19 @@ fn bdj_refused_with(o: Outcome<Bool>, reason: Symbol) -> Bool {
   }
 }
 
-test fn a_default_sees_an_outer_value_holds() -> Bool {
+test fn a_default_sees_an_outer_value_holds() -> Bool  {
   tpb_accepts(o: bdj_outer_value_inferred())
 }
 
-test fn a_default_does_not_see_a_sibling_parameter_holds() -> Bool {
+test fn a_default_does_not_see_a_sibling_parameter_holds() -> Bool  {
   !tpb_accepts(o: bdj_sibling_param_assembled())
 }
 
-test fn a_type_parameter_spelling_is_not_a_default_value_holds() -> Bool {
+test fn a_type_parameter_spelling_is_not_a_default_value_holds() -> Bool  {
   !tpb_accepts(o: bdj_type_param_as_default_assembled())
 }
 
-test fn a_generic_default_refuses_until_modeled_holds() -> Bool {
+test fn a_generic_default_refuses_until_modeled_holds() -> Bool  {
   bdj_refused_with(o: bdj_generic_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
 }
 
@@ -110,6 +110,6 @@ fn bdj_generic_coproduct_default_inferred() -> Outcome<Bool> {
   bdj_infers(o: tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T = 1 } | Empty\n"))
 }
 
-test fn a_default_in_a_generic_coproduct_payload_refuses_until_modeled_holds() -> Bool {
+test fn a_default_in_a_generic_coproduct_payload_refuses_until_modeled_holds() -> Bool  {
   bdj_refused_with(o: bdj_generic_coproduct_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
 }

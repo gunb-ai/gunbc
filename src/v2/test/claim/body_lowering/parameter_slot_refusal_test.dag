@@ -115,14 +115,14 @@ fn psr_verdicts() -> PsrVerdicts {
   }
 }
 
-test fn an_unread_parameter_slot_refuses_the_declaration() -> Bool {
+test fn an_unread_parameter_slot_refuses_the_declaration() -> Bool  {
   match psr_verdicts().doctored {
     PsrRefused { reason: r } => r == ^body_lowering_reason_parameter_unlowered
     _ => false
   }
 }
 
-test fn a_declaration_whose_every_slot_reads_lowers() -> Bool {
+test fn a_declaration_whose_every_slot_reads_lowers() -> Bool  {
   match psr_verdicts().control {
     PsrAccepted => true
     _ => false

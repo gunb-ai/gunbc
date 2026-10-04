@@ -84,7 +84,7 @@ fn cont_artifact_tree(artifact: ParseArtifact) -> Outcome<Node> {
 // reason this control now forwards the real thing rather than parsing under a residue the seven
 // never use. bind_outcome cannot supply it, because it merges diagnostics into the continuation
 // instead of handing them back, so the residue is read with v2.std.diagnostic outcome_diagnostics.
-test fn cont_the_prepared_grammar_carries_residue_holds() -> Bool {
+test fn cont_the_prepared_grammar_carries_residue_holds() -> Bool  {
   match outcome_diagnostics(o: dag_prepared_grammar()) {
     None => false
     _ => true
@@ -148,15 +148,15 @@ fn cont_braced_parsed() -> Outcome<Node> {
 }
 
 // THE THREE PARSE ROWS, over the subject's own sources.
-test fn cont_expression_bodied_fn_decl_parses_holds() -> Bool {
+test fn cont_expression_bodied_fn_decl_parses_holds() -> Bool  {
   cont_accepted(o: cont_expression_bodied_parsed())
 }
 
-test fn cont_expression_bodied_literal_fn_decl_parses_holds() -> Bool {
+test fn cont_expression_bodied_literal_fn_decl_parses_holds() -> Bool  {
   cont_accepted(o: cont_expression_bodied_literal_parsed())
 }
 
-test fn cont_braced_fn_decl_still_parses_holds() -> Bool {
+test fn cont_braced_fn_decl_still_parses_holds() -> Bool  {
   cont_accepted(o: cont_braced_parsed())
 }
 
@@ -165,7 +165,7 @@ test fn cont_braced_fn_decl_still_parses_holds() -> Bool {
 // is the one row here whose green is a refusal, so it is written as the refusal and not as the
 // negation of a helper that could go green for an unrelated reason: a source that failed to TOKENIZE
 // would also make `cont_accepted` false, so the arm is read directly.
-test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool {
+test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool  {
   match cont_parse(text: empty_eq_fn_source, file: ^probe_empty_eq) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
@@ -199,15 +199,15 @@ fn cont_expression_bodied_literal_survives_normalize() -> Bool {
   cont_normalize_has_arrow_body(parsed: cont_expression_bodied_literal_parsed())
 }
 
-test fn cont_braced_fn_decl_survives_normalize_holds() -> Bool {
+test fn cont_braced_fn_decl_survives_normalize_holds() -> Bool  {
   cont_braced_survives_normalize()
 }
 
-test fn cont_expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+test fn cont_expression_bodied_fn_decl_survives_normalize_holds() -> Bool  {
   cont_expression_bodied_survives_normalize()
 }
 
-test fn cont_expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+test fn cont_expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool  {
   cont_expression_bodied_literal_survives_normalize()
 }
 
@@ -224,7 +224,7 @@ fn cont_leaf_atom() -> Node {
   }
 }
 
-test fn cont_the_arrow_body_search_answers_false_for_a_leaf_holds() -> Bool {
+test fn cont_the_arrow_body_search_answers_false_for_a_leaf_holds() -> Bool  {
   !cont_tree_has_arrow_body(root: cont_leaf_atom())
 }
 
@@ -260,7 +260,7 @@ fn cont_root_over(child: Node) -> Node {
   }
 }
 
-test fn cont_the_arrow_body_search_recurses_to_find_a_body_holds() -> Bool {
+test fn cont_the_arrow_body_search_recurses_to_find_a_body_holds() -> Bool  {
   let root = cont_root_over(child: cont_arrow_with_body(body: cont_leaf_atom()))
   cont_tree_has_arrow_body(root: root)
     && !cont_root_itself_has_arrow_body(root: root)
@@ -300,21 +300,21 @@ fn cont_agrees_with_subject(mine: Outcome<Node>, theirs: Outcome<Node>) -> Bool 
 // ONE SOURCE PER ROW. The three agreements are independent cases over three different texts, so
 // folding them into one row forced six parses through one enrolment budget and lost no coverage when
 // split -- which is the conjunction tell DESIGN section 3 names beside the reach it is a symptom of.
-test fn cont_the_continuation_parses_the_same_tree_as_the_subject_holds() -> Bool {
+test fn cont_the_continuation_parses_the_same_tree_as_the_subject_holds() -> Bool  {
   cont_agrees_with_subject(
     mine: cont_expression_bodied_parsed(),
     theirs: g_tokenize_parse(text: expression_bodied_fn_source, file: ^probe_expr_fn)
   )
 }
 
-test fn cont_the_continuation_parses_the_literal_form_as_the_subject_does_holds() -> Bool {
+test fn cont_the_continuation_parses_the_literal_form_as_the_subject_does_holds() -> Bool  {
   cont_agrees_with_subject(
     mine: cont_expression_bodied_literal_parsed(),
     theirs: g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
   )
 }
 
-test fn cont_the_continuation_parses_the_braced_control_as_the_subject_does_holds() -> Bool {
+test fn cont_the_continuation_parses_the_braced_control_as_the_subject_does_holds() -> Bool  {
   cont_agrees_with_subject(
     mine: cont_braced_parsed(),
     theirs: g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
@@ -323,7 +323,7 @@ test fn cont_the_continuation_parses_the_braced_control_as_the_subject_does_hold
 
 // AND IT AGREES ON THE REFUSAL TOO, so the empty-`=` row is the subject's refusal and not merely a
 // refusal of the same shape.
-test fn cont_the_continuation_refuses_where_the_subject_refuses_holds() -> Bool {
+test fn cont_the_continuation_refuses_where_the_subject_refuses_holds() -> Bool  {
   cont_agrees_with_subject(
     mine: cont_parse(text: empty_eq_fn_source, file: ^probe_empty_eq),
     theirs: g_tokenize_parse(text: empty_eq_fn_source, file: ^probe_empty_eq)

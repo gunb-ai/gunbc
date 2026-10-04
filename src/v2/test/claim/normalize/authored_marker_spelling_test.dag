@@ -134,23 +134,23 @@ fn stays_authored(v: MarkerSpellingVerdict) -> Bool {
 
 // THE HEADLINE: the silent one. RED before this change: the identifier became an empty Arrow, so
 // the module was ACCEPTED without the atom.
-test fn an_identifier_spelled_like_the_fn_sugar_marker_stays_an_identifier() -> Bool {
+test fn an_identifier_spelled_like_the_fn_sugar_marker_stays_an_identifier() -> Bool  {
   stays_authored(v: ams_verdicts().sugar_fn)
 }
 
-test fn an_identifier_spelled_like_the_operation_sugar_marker_stays_an_identifier() -> Bool {
+test fn an_identifier_spelled_like_the_operation_sugar_marker_stays_an_identifier() -> Bool  {
   stays_authored(v: ams_verdicts().sugar_operation)
 }
 
-test fn an_identifier_spelled_like_the_service_sugar_marker_stays_an_identifier() -> Bool {
+test fn an_identifier_spelled_like_the_service_sugar_marker_stays_an_identifier() -> Bool  {
   stays_authored(v: ams_verdicts().sugar_service)
 }
 
-test fn an_identifier_spelled_like_the_type_sugar_marker_stays_an_identifier() -> Bool {
+test fn an_identifier_spelled_like_the_type_sugar_marker_stays_an_identifier() -> Bool  {
   stays_authored(v: ams_verdicts().sugar_type)
 }
 
-test fn an_identifier_spelled_like_the_top_level_item_marker_is_not_counted_as_one() -> Bool {
+test fn an_identifier_spelled_like_the_top_level_item_marker_is_not_counted_as_one() -> Bool  {
   stays_authored(v: ams_verdicts().top_level_item)
 }
 
@@ -159,7 +159,7 @@ test fn an_identifier_spelled_like_the_top_level_item_marker_is_not_counted_as_o
 // instead of refusing as unresolved. The prelude now holds only the lex token classes. RED if the
 // sugar symbols are put back in dag_canonical_symbols; the token class keeps the check from passing
 // vacuously.
-test fn the_sugar_marker_spellings_are_not_canonical_symbols() -> Bool {
+test fn the_sugar_marker_spellings_are_not_canonical_symbols() -> Bool  {
   !dag_canonical_symbols().member(^dag_c3_surface_sugar_fn)
     && !dag_canonical_symbols().member(^dag_c3_surface_sugar_service)
     && !dag_canonical_symbols().member(^dag_c3_surface_sugar_type)

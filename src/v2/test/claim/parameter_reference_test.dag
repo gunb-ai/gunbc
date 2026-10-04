@@ -135,7 +135,7 @@ fn pr_paths_contain(paths: FreeMonoid<QualifiedName>, path: QualifiedName) -> Bo
 // (1) BESIDE fn positive(x: Int), `x` IN fn f(x: Pos) AND fn g(x: Int) ARE EACH FN'S OWN PARAMETER, BY
 // PATH. positive's body does not mention x, so no p.positive.x appears -- the scope search this
 // replaces walked the tree for the first Arrow naming `x`.
-test fn pr_named_fn_parameter_is_a_parameter_reference_holds() -> Bool {
+test fn pr_named_fn_parameter_is_a_parameter_reference_holds() -> Bool  {
   pr_paths_hold(pred: fn(paths) {
     pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.f.x"))
       && pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.g.x"))
@@ -160,13 +160,13 @@ fn pr_let_shadowing_reason() -> Symbol {
   }
 }
 
-test fn pr_let_shadowing_a_parameter_refuses_holds() -> Bool {
+test fn pr_let_shadowing_a_parameter_refuses_holds() -> Bool  {
   pr_let_shadowing_reason() == ^resolve_reason_binder_hides_visible_value
 }
 
 // (3) A LAMBDA'S PARAMETER STAYS ON THE LEXICAL ROUTE. Its Arrow is met below k's body, so its frame is
 // Lexical and resolve mints nothing under k (the declared frontier on v2.compiler.resolve FrameKind).
-test fn pr_lambda_parameter_binds_lexically_holds() -> Bool {
+test fn pr_lambda_parameter_binds_lexically_holds() -> Bool  {
   pr_paths_hold(pred: fn(paths) {
     !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.k.y"))
       && !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.k.a"))
@@ -213,7 +213,7 @@ fn pr_site_is_minted(site: NodeOccurrenceIdentity) -> Bool {
 // (L1) h's body `z` IS A LEXICAL REFERENCE ANSWERED BY THE `let`, recorded with the let binder's minted
 // site and no declared type. Before the lexical carrier it was a bare atom and nothing recorded which
 // binder answered it, so this row reads Absent.
-test fn pr_let_reference_is_lexical_with_recorded_binder_holds() -> Bool {
+test fn pr_let_reference_is_lexical_with_recorded_binder_holds() -> Bool  {
   match pr_program_lexical_reads() {
     Absent => false
     Present { value: reads } =>
@@ -230,7 +230,7 @@ test fn pr_let_reference_is_lexical_with_recorded_binder_holds() -> Bool {
 
 // (L2) k's lambda body `y` IS A LEXICAL REFERENCE WHOSE RECORDED BINDING CARRIES THE DOMAIN'S DECLARED
 // TYPE, sited at the lambda's Arrow.
-test fn pr_lambda_reference_is_lexical_with_declared_type_holds() -> Bool {
+test fn pr_lambda_reference_is_lexical_with_declared_type_holds() -> Bool  {
   match pr_program_lexical_reads() {
     Absent => false
     Present { value: reads } =>
@@ -282,7 +282,7 @@ fn pr_lambda_grounding_matches_recorded() -> Bool {
   }
 }
 
-test fn pr_lambda_reference_grounds_through_recorded_binding_holds() -> Bool {
+test fn pr_lambda_reference_grounds_through_recorded_binding_holds() -> Bool  {
   pr_lambda_grounding_matches_recorded()
 }
 
@@ -322,7 +322,7 @@ fn pr_ctx(kind: FrameKind) -> ResolveContext {
 
 data pr_x_atom: Node = Node { kind: TypeNode { connective: Atom { identity: ^pr_x } }, children: [], occurrence_id: OccurrenceSynthetic }
 
-test fn pr_unindexed_parameter_path_refuses_at_resolve_holds() -> Bool {
+test fn pr_unindexed_parameter_path_refuses_at_resolve_holds() -> Bool  {
   let refused = match resolve_node(ctx: pr_ctx(kind: ParameterFrame { arrow_path: pr_qn(dotted: "m.f") }), n: pr_x_atom) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_parameter_path_not_indexed
     Accepted { value: _, diagnostics: _ } => false
@@ -340,7 +340,7 @@ data pr_x_atom_minted: Node = Node { kind: TypeNode { connective: Atom { identit
 // over an atom with NO minted occurrence refuses resolve_reason_lexical_reference_unkeyed, because no
 // consumer could read its binding back; the minted twin above accepts, so the red is the key. A
 // TypeParameterFrame answers the same name with the bare atom (how infer recognizes a type variable).
-test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds() -> Bool {
+test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds() -> Bool  {
   let refused = match resolve_node(ctx: pr_ctx(kind: LexicalFrame { binders: pr_lexical_binders }), n: pr_x_atom) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_lexical_reference_unkeyed
     Accepted { value: _, diagnostics: _ } => false
@@ -355,7 +355,7 @@ test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds
 // (L5) EVAL READS A LEXICAL REFERENCE BY LABEL, AND A MISS IS A REFUSAL, NEVER A LITERAL. With an empty
 // environment the bare atom `x` would be allocated as a literal; the lexical reference to it is a name,
 // so it refuses runtime_binding_lookup_miss located at the reference.
-test fn pr_eval_lexical_reference_miss_refuses_holds() -> Bool {
+test fn pr_eval_lexical_reference_miss_refuses_holds() -> Bool  {
   let reference = lexical_reference_node(label: ^pr_x, occurrence_id: OccurrenceSynthetic)
   match eval_with_context(
     tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup } },
@@ -383,7 +383,7 @@ fn pr_facts_lookup(key: Node) -> Optional<InferredFacts> {
   ))
 }
 
-test fn pr_eval_refuses_a_parameter_reference_holds() -> Bool {
+test fn pr_eval_refuses_a_parameter_reference_holds() -> Bool  {
   let reference = parameter_reference_node(qn: pr_qn(dotted: "p.f.x"), occurrence_id: OccurrenceSynthetic)
   match eval_with_context(
     tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup } },
@@ -401,7 +401,7 @@ test fn pr_eval_refuses_a_parameter_reference_holds() -> Bool {
 
 // (6) A PARAMETER REFERENCE PULLS NO MODULE INTO THE REFERENCE CLOSURE; a declaration reference beside
 // it does. The two differ only in their marker, so the red is the kind.
-test fn pr_parameter_reference_pulls_no_module_holds() -> Bool {
+test fn pr_parameter_reference_pulls_no_module_holds() -> Bool  {
   let parameter = parameter_reference_node(qn: pr_qn(dotted: "q.f.x"), occurrence_id: OccurrenceSynthetic)
   let declaration = declaration_reference_node(qn: pr_qn(dotted: "q.T"), occurrence_id: OccurrenceSynthetic)
   (reference_closure_declaring_paths(n: parameter, acc: Empty) == Empty)
@@ -409,7 +409,7 @@ test fn pr_parameter_reference_pulls_no_module_holds() -> Bool {
 }
 
 // (7) THE TWO MARKERS NEVER READ AS EACH OTHER: one path, two carriers, two readers.
-test fn pr_parameter_and_declaration_markers_are_disjoint_holds() -> Bool {
+test fn pr_parameter_and_declaration_markers_are_disjoint_holds() -> Bool  {
   let path = pr_qn(dotted: "q.f.x")
   let parameter = parameter_reference_node(qn: path, occurrence_id: OccurrenceSynthetic)
   let declaration = declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic)
@@ -467,7 +467,7 @@ fn pr_program_grounding() -> PrGrounding {
   }
 }
 
-test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
+test fn pr_parameter_grounds_through_the_index_holds() -> Bool  {
   let g = pr_program_grounding()
   match g.f_grounded {
     Present { value: _ } =>
@@ -495,6 +495,6 @@ fn pr_named_call_deficit_reason() -> Symbol {
   }
 }
 
-test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool {
+test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool  {
   pr_named_call_deficit_reason() == ^application_positional_deficit
 }
