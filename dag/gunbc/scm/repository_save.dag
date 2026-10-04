@@ -52,7 +52,7 @@ import extdeps.languages.json.emit { serialize_json, JsonValue }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }
 import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for, shard_partition, shard_members_of, shard_identity_of, shard_roster_of, envelope_parent_dir, envelope_file_name }
-import gunbc.scm.object_store { ScmObject, scm_object_identity, store_is_partial, store_unrostered_objects }
+import gunbc.scm.object_store { ScmObject, scm_object_identity, store_unrostered_objects, WholeResidence, PartialResidence }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryEncodeOutcome,
@@ -346,27 +346,28 @@ fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardW
 // load_repository_indexed -- writes only its unrostered objects and extends the persisted roster,
 // so a capture's save is denominated in the change. The two are one verb because which applies is a
 // fact about the store, not a choice the caller makes.
-fn sharded_save_objects(repo: RepositoryEnvelope) -> List<ScmObject> {
-  if store_is_partial(store: repo.store) {
-    store_unrostered_objects(store: repo.store)
-  } else {
-    repo.store.objects
-  }
+type ShardedSavePlan {
+  encoded: RepositoryEncodeOutcome
+  objects: List<ScmObject>
+  shards: List<String>
 }
 
-fn sharded_save_roster(repo: RepositoryEnvelope) -> List<String> {
-  if store_is_partial(store: repo.store) {
-    appended_shards_and_rows(store: repo.store).shards
-  } else {
-    shard_roster_of(objects: repo.store.objects)
-  }
-}
-
-fn sharded_encode_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
-  if store_is_partial(store: repo.store) {
-    encode_repository_appended_checked(repo: repo)
-  } else {
-    encode_repository_sharded_checked(repo: repo)
+// ONE MATCH ON THE STORE'S DECLARED RESIDENCE decides the encoder, the objects written and the shard
+// roster the index will carry, so the three cannot be chosen from different answers.
+fn sharded_save_plan(repo: RepositoryEnvelope) -> ShardedSavePlan {
+  match repo.store.residence {
+    WholeResidence =>
+      ShardedSavePlan {
+        encoded: encode_repository_sharded_checked(repo: repo),
+        objects: repo.store.objects,
+        shards: shard_roster_of(objects: repo.store.objects),
+      }
+    PartialResidence { rostered: _, shards: _ } =>
+      ShardedSavePlan {
+        encoded: encode_repository_appended_checked(repo: repo),
+        objects: store_unrostered_objects(store: repo.store),
+        shards: appended_shards_and_rows(store: repo.store).shards,
+      }
   }
 }
 
@@ -397,14 +398,14 @@ fn missing_rostered_shard(envelope_path: String, shards: List<String>) -> String
   }
 }
 
-fn persist_sharded_repository(path: String, repo: RepositoryEnvelope, v: JsonValue) -> RepositorySave {
-  match save_object_shards(envelope_path: path, objects: sharded_save_objects(repo: repo)) {
+fn persist_sharded_repository(path: String, plan: ShardedSavePlan, v: JsonValue) -> RepositorySave {
+  match save_object_shards(envelope_path: path, objects: plan.objects) {
     ShardWriteAcc { written: _, refused } =>
       match refused {
         Present { value: detail } =>
           RepositoryFileUnwritable { path: path, error: detail }
         Absent =>
-      match missing_rostered_shard(envelope_path: path, shards: sharded_save_roster(repo: repo)) {
+      match missing_rostered_shard(envelope_path: path, shards: plan.shards) {
         Present { value: detail } =>
           RepositoryFileUnwritable { path: path, error: detail }
         Absent => {
@@ -423,11 +424,12 @@ fn persist_sharded_repository(path: String, repo: RepositoryEnvelope, v: JsonVal
 }
 
 fn save_repository_sharded(path: String, repo: RepositoryEnvelope) -> RepositorySave {
-  match sharded_encode_checked(repo: repo) {
+  let plan = sharded_save_plan(repo: repo)
+  match plan.encoded {
     RepositoryEncodeRefused { cause: cause } =>
       RepositorySaveRefusedByCodec { path: path, cause: cause }
     RepositoryEncoded { value: v } =>
-      persist_sharded_repository(path: path, repo: repo, v: v)
+      persist_sharded_repository(path: path, plan: plan, v: v)
   }
 }
 
@@ -451,7 +453,8 @@ fn save_repository_sharded_guarded(
   repo: RepositoryEnvelope,
   expected: RepositoryGenerationExpectation,
 ) -> RepositoryGuardedSave {
-  match sharded_encode_checked(repo: repo) {
+  let plan = sharded_save_plan(repo: repo)
+  match plan.encoded {
     RepositoryEncodeRefused { cause: cause } =>
       RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: path, cause: cause })
     RepositoryEncoded { value: v } =>
@@ -461,7 +464,7 @@ fn save_repository_sharded_guarded(
         EnvelopeGenerationObserved { found } =>
           match admit_repository_generation(expected: expected, found: found) {
             RepositoryGenerationAdmitted =>
-              RepositoryGuardedSaveOutcome(persist_sharded_repository(path: path, repo: repo, v: v))
+              RepositoryGuardedSaveOutcome(persist_sharded_repository(path: path, plan: plan, v: v))
             RepositoryGenerationStale { expected: stale_expected, found: stale_found } =>
               RepositoryStaleGenerationRefused { path: path, expected: stale_expected, found: stale_found }
           }

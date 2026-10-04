@@ -133,7 +133,7 @@ import gunbc.scm.object_store {
   CorpusManifestRefLookup, CorpusManifestRefFound, CorpusManifestRefAbsent,
   CorpusManifestRefIsSemanticNode, CorpusManifestRefIsAuthoredSource,
   find_corpus_manifest_ref,
-  store_is_partial, store_unrostered_objects, store_rostered_rows, store_rostered_shards,
+  WholeResidence, PartialResidence, store_unrostered_objects, store_rostered_rows, store_rostered_shards,
   store_rostered_lookup, store_object_index, find_object_via,
   authored_source_target_locator, scm_object_kind,
 }
@@ -1923,11 +1923,15 @@ fn an_uncontained_target(census: ClosureCensus) -> ObjectId? {
 // different propositions about different kinds, and merging them would be the kind-blind
 // observation this branch has spent its length removing. What is shared is the derivation, not the
 // question.
+// A PARTIAL STORE IS ITS OWN DECLARED ARM, and this whole-store encoder answers it by refusal: the
+// envelope type is shared by every SCM verb, so the encoder can be handed one, and writing it whole
+// would roster away every object it does not hold. The append-only writer
+// (encode_repository_appended_checked) is the only route that writes a partial store.
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
-  if store_is_partial(store: repo.store) {
-    RepositoryEncodeRefused { cause: RepositoryEncodeStoreIsPartial { rostered_shards: count(store_rostered_shards(store: repo.store)) } }
-  } else {
-    encode_repository_checked_whole(repo: repo)
+  match repo.store.residence {
+    WholeResidence => encode_repository_checked_whole(repo: repo)
+    PartialResidence { rostered: _, shards } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeStoreIsPartial { rostered_shards: count(shards) } }
   }
 }
 

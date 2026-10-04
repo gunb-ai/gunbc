@@ -226,7 +226,7 @@ test fn an_indexed_load_holds_no_object_and_rosters_every_one() -> Bool {
         Absent => false
         Present { value: indexed } =>
           store_object_count(store: indexed.store) == 0
-            && count(map_values(indexed.store.rostered)) == store_object_count(store: whole.store)
+            && count(store_rostered_rows(store: indexed.store)) == store_object_count(store: whole.store)
             && count(indexed.commits) == 1
       }
   }
