@@ -10,7 +10,8 @@ use crate::std_literal_elaboration::LiteralUnfolding::{
     BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
 };
 pub use crate::std_literal_elaboration::{
-    KernelGrounding, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
+    KernelGrounding, KernelMintDeclaration, LiteralHomomorphism, LiteralSourceKind,
+    LiteralUnfolding,
 };
 pub use crate::std_operator_realization::{StructuralConnectiveBinding, StructuralOrderingBinding};
 use crate::std_types::Bool::*;
@@ -127,4 +128,16 @@ pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<KernelGrounding>>>| c.clone())
+}
+
+pub fn kernel_mint_declaration_rows() -> Rc<Vec<Rc<KernelMintDeclaration>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<KernelMintDeclaration>>> = {
+                Rc::new(vec![Rc::new(KernelMintDeclaration {
+        minted_name: "Optional".to_string(),
+        declaration: crate::std_decl_ref::decl_ref("v2.std.optional".to_string(), "Optional".to_string()),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<KernelMintDeclaration>>>| c.clone())
 }
