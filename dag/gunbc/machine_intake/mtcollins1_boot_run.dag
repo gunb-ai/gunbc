@@ -2530,6 +2530,7 @@ fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, passwor
         attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "no BMC credential path is bound" })
       } else {
         attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr))      }
+      }
   }
 }
 
