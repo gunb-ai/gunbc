@@ -13,6 +13,7 @@ import gunbc.machine_intake_mtjade1_factory_network {
   mtjade1_bmc_reconfigured_network,
 }
 import extdeps.network.mac { Eui48Address }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.numeric.base16 { hex_digit_char_upper }
 import std.integer { UInt8 }
 import extdeps.filesystem.filesystem_io {
@@ -43,14 +44,8 @@ import gunbc.machine_intake_bmc_firmware_family_discriminator {
 }
 import gunbc.machine_intake_subject {
   AssemblyManifest,
-  BmcFru,
-  HostSmbios,
-  BoardSerialReading,
-  BoardSerialsObserved,
-  BoardSerialCaptureRefused,
   ChassisComponent,
   ComponentIdentity,
-  BoardSerialObservation,
 }
 import std.types { Int, List, NonEmptyStr, String }
 import std.algebra { trim }
@@ -420,16 +415,24 @@ type FruIdentityFields {
   chassis_serial: NonEmptyStr
 }
 
+// THE PURE DECODE'S ANSWER: open, for parser controls over supplied bytes. It is never the
+// production observation: only read_mtjade1_fru seals a decode into RecordedFruObservation.
 type FruDecode
   = FruDecoded { fields: FruIdentityFields }
   | FruRefused { gap: FruCaptureGap }
 
-type RecordedFruObservation {
+// SEALED: minted only by read_mtjade1_fru, downstream of the file read, the digest check and the
+// Board Extra binding, and it keeps the subject and exact artifact it was read from.
+type RecordedFruObservation sole_constructor {
   subject: NonEmptyStr
   capture_path: NonEmptyStr
   capture_sha256: NonEmptyStr
-  decoded: FruDecode
+  fields: FruIdentityFields
 }
+
+type FruRead
+  = FruObserved { observation: RecordedFruObservation }
+  | FruReadRefused { gap: FruCaptureGap }
 
 fn fru_gap_text(gap: FruCaptureGap) -> NonEmptyStr {
   match gap {
@@ -527,30 +530,35 @@ fn decode_fru_capture(content: String, expected_sha256: NonEmptyStr, link: Eui48
   }
 }
 
-fn read_mtjade1_fru_observation() -> RecordedFruObservation uses fs: std.resources.Filesystem {
+fn read_mtjade1_fru() -> FruRead uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: mtjade1_fru_capture_path as String)
-  let decoded = match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: e } => FruRefused { gap: FruCaptureUnreadable { error: e } }
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => FruReadRefused { gap: FruCaptureUnreadable { error: e } }
     FilesystemReadSucceeded { content: text } =>
-      decode_fru_capture(content: text, expected_sha256: mtjade1_fru_capture_sha256, link: observed_bmc_link(network: mtjade1_bmc_observed_network))
-  }
-  RecordedFruObservation {
-    subject: "mtjade1",
-    capture_path: mtjade1_fru_capture_path,
-    capture_sha256: mtjade1_fru_capture_sha256,
-    decoded: decoded,
+      match decode_fru_capture(content: text, expected_sha256: mtjade1_fru_capture_sha256, link: observed_bmc_link(network: mtjade1_bmc_observed_network)) {
+        FruRefused { gap: g } => FruReadRefused { gap: g }
+        FruDecoded { fields: f } =>
+          FruObserved {
+            observation: RecordedFruObservation {
+              subject: "mtjade1",
+              capture_path: mtjade1_fru_capture_path,
+              capture_sha256: mtjade1_fru_capture_sha256,
+              fields: f,
+            },
+          }
+      }
   }
 }
 
 // THE HOST SMBIOS READ (PR #13259). The raw SOL transcript of `smbiosview -t 2` at the UEFI shell,
-// committed verbatim. It carries no link address, so nothing in its bytes binds it to this unit: its
-// binding is its provenance (a SOL session to this controller), and the check that it describes this
-// board is agreement with the FRU serial, which gunbc.machine_intake_subject bind_unit_key refuses as
-// BoardSerialContradictory when it fails. Its sha256 is checked, carriage returns are dropped, and the
-// transcript must carry exactly one Base Board Information structure and exactly one SerialNumber.
+// committed verbatim. Its sha256 is checked and carriage returns are dropped; the transcript's
+// structures are the blocks between its separator lines, exactly one block must be the Base Board
+// Information structure, and its SerialNumber is read INSIDE that block, exactly once.
 data mtjade1_smbios_type2_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-uefi-smbiosview-type2-sol-2026-10-04.txt"
 
 data mtjade1_smbios_type2_capture_sha256: NonEmptyStr = "b40dde96a64c4d04c5440235a05a9571467472ba0b1ed0f35c907f675e817442"
+
+data smbiosview_structure_separator: String = "========================================================="
 
 type SmbiosCaptureGap
   = SmbiosCaptureUnreadable { error: String }
@@ -559,6 +567,8 @@ type SmbiosCaptureGap
   | SmbiosSerialLineCount { count: Int }
   | SmbiosSerialEmpty
 
+// The pure decode's answer: open, for parser controls over supplied bytes, and never the production
+// observation.
 type SmbiosBaseBoardDecode
   = SmbiosBaseBoardSerial { serial: NonEmptyStr }
   | SmbiosBaseBoardRefused { gap: SmbiosCaptureGap }
@@ -568,8 +578,31 @@ fn smbios_gap_text(gap: SmbiosCaptureGap) -> NonEmptyStr {
     SmbiosCaptureUnreadable { error: e } => join(["the recorded SMBIOS capture could not be read: ", e], "") as NonEmptyStr
     SmbiosCaptureDigestMismatch { expected: x, observed: o } => join(["the recorded SMBIOS capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
     SmbiosBaseBoardStructureCount { count: n } => join(["the recorded SMBIOS capture carries ", to_string(n), " Base Board Information structures, not one"], "") as NonEmptyStr
-    SmbiosSerialLineCount { count: n } => join(["the recorded SMBIOS capture carries ", to_string(n), " SerialNumber lines, not one"], "") as NonEmptyStr
-    SmbiosSerialEmpty => "the recorded SMBIOS capture's SerialNumber is empty"
+    SmbiosSerialLineCount { count: n } => join(["the Base Board Information structure carries ", to_string(n), " SerialNumber lines, not one"], "") as NonEmptyStr
+    SmbiosSerialEmpty => "the Base Board Information structure's SerialNumber is empty"
+  }
+}
+
+fn smbios_block_rows(block: String) -> List<String> {
+  map(split(s: block, delimiter: "\n"), l => trim(l))
+}
+
+fn decode_smbios_base_board_block(rows: List<String>) -> SmbiosBaseBoardDecode {
+  let serials = rows |> filter(l => starts_with(l, "SerialNumber:"))
+  if length(serials) != 1 {
+    SmbiosBaseBoardRefused { gap: SmbiosSerialLineCount { count: length(serials) } }
+  } else {
+    match serials.first() {
+      Absent => SmbiosBaseBoardRefused { gap: SmbiosSerialLineCount { count: 0 } }
+      Present { value: line } => {
+        let serial = trim(join(split(s: line, delimiter: "SerialNumber:").skip(n: 1), "SerialNumber:"))
+        if serial == "" {
+          SmbiosBaseBoardRefused { gap: SmbiosSerialEmpty }
+        } else {
+          SmbiosBaseBoardSerial { serial: serial as NonEmptyStr }
+        }
+      }
+    }
   }
 }
 
@@ -578,72 +611,85 @@ fn decode_smbios_type2_capture(content: String, expected_sha256: NonEmptyStr) ->
   if observed != (expected_sha256 as String) {
     SmbiosBaseBoardRefused { gap: SmbiosCaptureDigestMismatch { expected: expected_sha256, observed: observed } }
   } else {
-    let rows = map(split(s: join(split(s: content, delimiter: "\r"), ""), delimiter: "\n"), l => trim(l))
-    let boards = rows |> filter(l => l == "Structure Type: Base Board Information")
-    let serials = rows |> filter(l => starts_with(l, "SerialNumber:"))
+    let blocks = map(split(s: join(split(s: content, delimiter: "\r"), ""), delimiter: smbiosview_structure_separator), b => smbios_block_rows(block: b))
+    let boards = blocks |> filter(rows => rows |> any(l => l == "Structure Type: Base Board Information"))
     if length(boards) != 1 {
       SmbiosBaseBoardRefused { gap: SmbiosBaseBoardStructureCount { count: length(boards) } }
-    } else if length(serials) != 1 {
-      SmbiosBaseBoardRefused { gap: SmbiosSerialLineCount { count: length(serials) } }
     } else {
-      match serials.first() {
-        Absent => SmbiosBaseBoardRefused { gap: SmbiosSerialLineCount { count: 0 } }
-        Present { value: line } => {
-          let serial = trim(join(split(s: line, delimiter: "SerialNumber:").skip(n: 1), "SerialNumber:"))
-          if serial == "" {
-            SmbiosBaseBoardRefused { gap: SmbiosSerialEmpty }
-          } else {
-            SmbiosBaseBoardSerial { serial: serial as NonEmptyStr }
-          }
-        }
+      match boards.first() {
+        Absent => SmbiosBaseBoardRefused { gap: SmbiosBaseBoardStructureCount { count: 0 } }
+        Present { value: rows } => decode_smbios_base_board_block(rows: rows)
       }
     }
   }
 }
 
-fn read_mtjade1_smbios_type2() -> SmbiosBaseBoardDecode uses fs: std.resources.Filesystem {
-  let read = Filesystem.Read(path: mtjade1_smbios_type2_capture_path as String)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: e } => SmbiosBaseBoardRefused { gap: SmbiosCaptureUnreadable { error: e } }
-    FilesystemReadSucceeded { content: text } => decode_smbios_type2_capture(content: text, expected_sha256: mtjade1_smbios_type2_capture_sha256)
+// WHO SAYS THE SOL SESSION WAS THIS CONTROLLER'S: the operator. The transcript's bytes say only that
+// some SOL session was operational; they name no controller and no unit. So the binding is carried as
+// what it is, an OPERATOR-ATTESTED standing naming the controller, the observer host and the record
+// (the shape of gunbc.machine_intake_mtcollins1_power_on_account PopulationOperatorAttested), and is
+// never presented as a machine-derived binding. A machine-derived arm joins this type when a capture
+// carries a discriminator of its own (for example the SOL session's own controller address).
+type SolSessionAttribution
+  = SolSessionOperatorAttested { controller: BmcControllerEndpoint, observer_host: NonEmptyStr, attested_by: NonEmptyStr, record: NonEmptyStr }
+
+data mtjade1_smbios_sol_attribution: SolSessionAttribution = SolSessionOperatorAttested {
+  controller: BmcControllerEndpoint { host: "192.168.1.246" },
+  observer_host: "srv1",
+  attested_by: "the operator, through the eager-gull-22 session",
+  record: "PR #13259: smbiosview -t 2 typed at the UEFI shell over an ipmitool sol session from srv1 to the controller at 192.168.1.246, 2026-10-04",
+}
+
+fn sol_session_controller(a: SolSessionAttribution) -> BmcControllerEndpoint {
+  match a {
+    SolSessionOperatorAttested { controller: c, observer_host: _, attested_by: _, record: _ } => c
   }
 }
 
-// mtjade1's BOARD-SERIAL OBSERVATIONS: two sources, the BMC FRU and the host SMBIOS Type 2, each
-// read from its own committed capture. Either capture failing is the reading's typed refusal, never
-// a shorter list.
-fn board_serial_reading_of(fru: RecordedFruObservation, smbios: SmbiosBaseBoardDecode) -> BoardSerialReading {
-  match fru.decoded {
-    FruRefused { gap: g } => BoardSerialCaptureRefused { cause: fru_gap_text(gap: g) }
-    FruDecoded { fields: f } =>
-      match smbios {
-        SmbiosBaseBoardRefused { gap: g } => BoardSerialCaptureRefused { cause: smbios_gap_text(gap: g) }
-        SmbiosBaseBoardSerial { serial: s } =>
-          BoardSerialsObserved {
-            observations: [
-              BoardSerialObservation { source: BmcFru, serial: f.board_serial },
-              BoardSerialObservation { source: HostSmbios, serial: s },
-            ],
+// SEALED: minted only by read_mtjade1_smbios_type2, downstream of the file read and the scoped decode,
+// keeping the subject, the exact artifact and the SOL attribution beside the serial.
+type RecordedSmbiosObservation sole_constructor {
+  subject: NonEmptyStr
+  capture_path: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  sol_session: SolSessionAttribution
+  serial: NonEmptyStr
+}
+
+type SmbiosRead
+  = SmbiosObserved { observation: RecordedSmbiosObservation }
+  | SmbiosReadRefused { gap: SmbiosCaptureGap }
+
+fn read_mtjade1_smbios_type2() -> SmbiosRead uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: mtjade1_smbios_type2_capture_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => SmbiosReadRefused { gap: SmbiosCaptureUnreadable { error: e } }
+    FilesystemReadSucceeded { content: text } =>
+      match decode_smbios_type2_capture(content: text, expected_sha256: mtjade1_smbios_type2_capture_sha256) {
+        SmbiosBaseBoardRefused { gap: g } => SmbiosReadRefused { gap: g }
+        SmbiosBaseBoardSerial { serial: sn } =>
+          SmbiosObserved {
+            observation: RecordedSmbiosObservation {
+              subject: "mtjade1",
+              capture_path: mtjade1_smbios_type2_capture_path,
+              capture_sha256: mtjade1_smbios_type2_capture_sha256,
+              sol_session: mtjade1_smbios_sol_attribution,
+              serial: sn,
+            },
           }
       }
   }
 }
 
-// mtjade1's PROVISIONAL ASSEMBLY, from the same FRU capture: the chassis part number, and the chassis
-// as its one component identified by the chassis serial. The board's identity is the unit key (the
-// board serial) and the BMC's is the firmware manifest's bmc entry; gunbc.machine_intake_subject
+// mtjade1's PROVISIONAL ASSEMBLY, from the sealed FRU observation: the chassis part number, and the
+// chassis as its one component identified by the chassis serial. The board's identity is the unit key
+// (the board serial) and the BMC's is the firmware manifest's bmc entry; gunbc.machine_intake_subject
 // ComponentKind has no board or BMC arm and none is added here. InventoryConform re-derives the
 // assembly from the booted host.
-fn provisional_assembly_of_fru(fru: RecordedFruObservation) -> AssemblyManifest? {
-  match fru.decoded {
-    FruDecoded { fields: f } =>
-      Present {
-        value: AssemblyManifest {
-          chassis_part_number: f.chassis_part_number,
-          components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: f.chassis_serial }],
-        },
-      }
-    FruRefused { gap: _ } => none
+fn provisional_assembly_of_fru(fru: RecordedFruObservation) -> AssemblyManifest {
+  AssemblyManifest {
+    chassis_part_number: fru.fields.chassis_part_number,
+    components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: fru.fields.chassis_serial }],
   }
 }
 

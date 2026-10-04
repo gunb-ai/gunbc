@@ -43,13 +43,6 @@ type BoardSerialObservation {
   serial: NonEmptyStr
 }
 
-// A UNIT'S BOARD-SERIAL OBSERVATIONS AS READ FROM ITS COMMITTED CAPTURES, or the typed reason a
-// capture could not be read. A capture that fails to read is never an empty observation list: that
-// would turn a broken read into BoardSerialAbsent.
-type BoardSerialReading
-  = BoardSerialsObserved { observations: List<BoardSerialObservation> }
-  | BoardSerialCaptureRefused { cause: NonEmptyStr }
-
 type UnitKey = NonEmptyStr where brand("UnitKey")
 
 type UnitKeyRefusalCause
