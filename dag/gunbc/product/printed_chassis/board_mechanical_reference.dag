@@ -1,0 +1,38 @@
+module product.printed_chassis.board_mechanical_reference
+import std.types {Int,List,String}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_array,json_string,json_int,json_null}
+
+// Product planning inference authorized by the operator on 2026-10-04. These are
+// candidate board fastening features, not an authoritative or complete hole map.
+// OCP Jade rev 1.0 p9 Fig1 is less obscured and has a more consistent aspect ratio
+// than the annotated p13 Fig3. Render at 2 PDF pixels/point (1224x1584). PCB bounds
+// x394..830, y594..1083; connector projections excluded. Source PDF SHA256:
+// 1ca9adc18543ef4686537aaafa386fa09075f75612dd3ea57c03b7d8d438f6ae.
+// Independent axis scaling is an approximation. No diameter, thread, underside
+// clearance, accuracy guarantee or fabrication admission follows from these rows.
+type CandidateMountPixel {id:String,x:Int,y:Int}
+data jade_candidate_mount_pixels:List<CandidateMountPixel> = [
+ CandidateMountPixel {id:"J01",x:496,y:604},CandidateMountPixel {id:"J02",x:702,y:604},
+ CandidateMountPixel {id:"J03",x:405,y:829},CandidateMountPixel {id:"J04",x:821,y:831},
+ CandidateMountPixel {id:"J05",x:490,y:859},CandidateMountPixel {id:"J06",x:663,y:859},
+ CandidateMountPixel {id:"J07",x:749,y:869},CandidateMountPixel {id:"J08",x:540,y:882},
+ CandidateMountPixel {id:"J09",x:499,y:904},CandidateMountPixel {id:"J10",x:478,y:1050},
+ CandidateMountPixel {id:"J11",x:498,y:1047},CandidateMountPixel {id:"J12",x:565,y:1062},
+ CandidateMountPixel {id:"J13",x:739,y:1047},
+]
+fn jade_from_left_um(p:CandidateMountPixel) -> Int {(p.x-394)*428000/436}
+fn jade_from_front_um(p:CandidateMountPixel) -> Int {(p.y-594)*479360/489}
+fn mounting_reference_json(id:String) -> JsonValue {
+ if id=="mt-jade" {json_object(members:[
+ json_kv(key:"source",value:json_string(s:"https://www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1")),
+ json_kv(key:"figure",value:json_string(s:"p9 Fig1; outline p13 section 7.2; archived PDF hash recorded in model")),
+ json_kv(key:"standing",value:json_string(s:"Image-derived candidate mounts; incomplete and unverified. Double-check feature identity, board revision and coordinates before mounting.")),
+ json_kv(key:"datum",value:json_string(s:"Left/front bounding-box corner; front is image top/fan edge; coordinates positive right and toward rear. Outline is nonrectangular.")),
+ json_kv(key:"candidates",value:json_array(elements:map(jade_candidate_mount_pixels,p=>json_object(members:[json_kv(key:"id",value:json_string(s:p.id)),json_kv(key:"from_left_um",value:json_int(n:jade_from_left_um(p:p))),json_kv(key:"from_front_um",value:json_int(n:jade_from_front_um(p:p))),json_kv(key:"diameter_um",value:json_null())])))),
+ json_kv(key:"accuracy_bound_um",value:json_null())
+ ])} else {if id=="mt-collins" {json_object(members:[
+ json_kv(key:"source",value:json_string(s:"https://portwell.com/pdf/server/APTSA-627211-B4.pdf")),
+ json_kv(key:"standing",value:json_string(s:"User-supplied secondary outline reference; 424.2 mm width / 512 mm depth is a planning inference. Double-check dimensions and revision. Held guide p36 Fig12 is cropped/occluded; no global hole coordinates inferred from it. Jade mounts must not be copied.")),
+ json_kv(key:"candidates",value:json_array(elements:[])),json_kv(key:"accuracy_bound_um",value:json_null())
+ ])} else {json_null()}}
+}

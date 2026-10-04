@@ -4,9 +4,9 @@ import v2.std.optional {Present,Absent}
 import product.printed_chassis.cassette_profile {board_grid_tiles,RetainPlatformPowerAssembly,IndependentPowerCassette}
 import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
 import product.printed_chassis.cassette_layout {layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline,InvalidEdgeMargin}
-test fn unknown_boards_do_not_borrow_jade_geometry() -> Bool {
+test fn unknown_board_refuses_and_collins_uses_its_own_provisional_outline() -> Bool {
  let gh=match board_grid_tiles(project:gh200_p4261_profile,usable_tile_um:180000) {Absent=>true Present {value:_}=>false}
- let mc=match board_grid_tiles(project:mt_collins_profile,usable_tile_um:180000) {Absent=>true Present {value:_}=>false}
+ let mc=match layout_for(profile:mt_collins_profile,edge_margin_um:0) {LayoutKnown {layout:l}=>l.board_width==424200 && l.board_depth==512000 LayoutNeedsBoardOutline=>false InvalidEdgeMargin=>false}
  gh && mc
 }
 test fn jade_requires_segmentation_and_invalid_bed_refuses() -> Bool {

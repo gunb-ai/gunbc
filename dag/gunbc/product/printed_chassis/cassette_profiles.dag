@@ -1,6 +1,7 @@
 module product.printed_chassis.cassette_profiles
+import std.measure {micrometer}
 import std.types {List}
-import product.printed_chassis.cassette_profile {CassetteProfile,PublishedBoardOutline,BoardOutlinePending,RetainPlatformPowerAssembly,IndependentPowerCassette,transplant_obligations,retained_platform_subsystems}
+import product.printed_chassis.cassette_profile {CassetteProfile,ProvisionalBoardOutline,PublishedBoardOutline,BoardOutlinePending,RetainPlatformPowerAssembly,IndependentPowerCassette,transplant_obligations,retained_platform_subsystems}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
 import extdeps.boards.asrock_rack {asrock_altrad8ud_extent_along_rear_io,asrock_altrad8ud_extent_depth}
 // Configuration rows for ONE design. Board-specific facts stay in their upstream
@@ -9,5 +10,5 @@ data altra_profile:CassetteProfile=CassetteProfile {id:"altrad8ud",requested_har
 // Exact user-requested identity; unknown geometry does not borrow another GH200's drawing.
 data gh200_p4261_profile:CassetteProfile=CassetteProfile {id:"gh200-p4261",requested_hardware:"NVIDIA P4261 / 694-24261-000-100 K1",outline:BoardOutlinePending,power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
 data mt_jade_profile:CassetteProfile=CassetteProfile {id:"mt-jade",requested_hardware:"Ampere Mt. Jade board transplant",outline:PublishedBoardOutline {width:mt_jade_motherboard_mechanical.outline_width,depth:mt_jade_motherboard_mechanical.outline_depth},power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
-data mt_collins_profile:CassetteProfile=CassetteProfile {id:"mt-collins",requested_hardware:"Ampere Mt. Collins board transplant; exact chassis/board revision pending",outline:BoardOutlinePending,power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
+data mt_collins_profile:CassetteProfile=CassetteProfile {id:"mt-collins",requested_hardware:"Ampere Mt. Collins board transplant; exact chassis/board revision pending",outline:ProvisionalBoardOutline {width:micrometer(count:424200),depth:micrometer(count:512000),reference:"https://portwell.com/pdf/server/APTSA-627211-B4.pdf; user-supplied research, secondary-source dimensions and axis assignment require recheck"},power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
 data cassette_profiles:List<CassetteProfile> = [altra_profile,gh200_p4261_profile,mt_collins_profile,mt_jade_profile]

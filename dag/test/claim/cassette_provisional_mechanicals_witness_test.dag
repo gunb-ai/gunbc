@@ -1,0 +1,13 @@
+module test.claim.cassette_provisional_mechanicals_witness
+import std.types {Bool}
+import product.printed_chassis.cassette_profiles {mt_collins_profile}
+import product.printed_chassis.cassette_profile {ProvisionalBoardOutline,PublishedBoardOutline,BoardOutlinePending}
+import product.printed_chassis.cassette_layout {partition_profile,TrayPartitionKnown,TrayPartitionInvalid,TrayPartitionNeedsOutline}
+import product.printed_chassis.board_mechanical_reference {jade_candidate_mount_pixels,jade_from_left_um,jade_from_front_um}
+test fn collins_planning_outline_is_explicitly_provisional_and_uses_shared_partition() -> Bool {
+ let standing=match mt_collins_profile.outline {ProvisionalBoardOutline {width:_,depth:_,reference:_}=>true PublishedBoardOutline {width:_,depth:_}=>false BoardOutlinePending=>false}
+ standing && match partition_profile(profile:mt_collins_profile,edge_margin_um:14000,bed_um:180000,feature_budget_um:30000) {TrayPartitionKnown {partition:p}=>p.columns==4 && p.rows==4 && count(p.cells)==16 TrayPartitionInvalid=>false TrayPartitionNeedsOutline=>false}
+}
+test fn jade_candidates_have_unique_ids_and_stay_inside_outline() -> Bool {
+ count(jade_candidate_mount_pixels)==13 && all(jade_candidate_mount_pixels,p=>count(filter(jade_candidate_mount_pixels,q=>q.id==p.id))==1 && jade_from_left_um(p:p)>0 && jade_from_left_um(p:p)<428000 && jade_from_front_um(p:p)>0 && jade_from_front_um(p:p)<479360)
+}
