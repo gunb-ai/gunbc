@@ -11106,22 +11106,30 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
   }
 }
 
-fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+// THE EMPTY-MAP TURBOFISH RENDERS ITS KEY AND VALUE IN THE ENCLOSING FN'S GENERIC SCOPE, through
+// render_rust_arrow_position -- the renderer render_rust_arrow_position's own note already moved the
+// arrow positions onto, for the same defect. Through render_rust_type with an empty emit info a
+// fn-scope generic rendered by its erased inference: std.list duplicated_by_key's
+// `DuplicatedScan { firsts: empty_map(), .. }`, a field typed `Map<String, T>`, emitted
+// `rc_empty_map::<String, compile_error!("UNRESOLVED_CompilerError")>()`, and the record then
+// inferred as `DuplicatedScan<()>` (E0308 `Vector<()>` vs `Vector<T>` at the reverse). A concrete
+// field such as `Map<String, Int>` rendered the same either way.
+fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      let rendered = render_rust_arrow_position(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
 }
 
-fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      render_rust_arrow_position(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => ""
   }
-  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
   } else { "" }
@@ -11138,7 +11146,7 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_
 // all. Two sites asking one question is the second representation DESIGN section 2 forbids, so the
 // question is asked once, here, and both sites read the answer.
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names) {
