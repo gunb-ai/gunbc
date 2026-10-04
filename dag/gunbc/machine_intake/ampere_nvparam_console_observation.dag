@@ -1,0 +1,181 @@
+module gunbc.machine_intake_ampere_nvparam_console_observation
+
+import v2.std.algebra { filter, any, list_reverse }
+import std.algebra { Cons }
+import std.measure { byte_size_count }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.ampere.nvparam {
+  NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
+  NvParamKey, NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_index, nvparam_key_in, nvparam_key_text, nvparam_size, nvparam_region_start, nvparam_region_max,
+}
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line }
+
+// THE NVPARAM DUMP A BOOT PRINTS, READ INTO NAMED SETTINGS. The firmware's PrintNVRAM
+// (edk2-platforms@2170c80c Silicon/Ampere/AmpereAltraPkg/Drivers/DebugInfoPei/DebugInfoPei.c) walks
+// each region and, for every key NVParamGet answers, prints a section header once --
+// "Pre-boot Configuration Setting:", "Manufacturer Configuration Setting:", "User Configuration
+// Setting:", "Board Configuration Setting:" -- then one row per key in the format
+// "    %04X: 0x%X (%d)\n": the key in hex, the value in hex, the value in decimal.
+//
+// The KEY's name comes from extdeps.ampere.nvparam (NVParamDef.h); a key the header does not define
+// stays its number. What a VALUE means is not stated by any public source and is not decoded.
+//
+// The loop steps Idx by NVPARAM_SIZE from each region's start, so a printed key is always on the
+// 8-byte stride; an off-stride key is malformed, while an on-stride key the header does not name
+// stays an explicit unknown.
+//
+// A ROW IS READ ONLY INSIDE A SECTION, and a section ends at any line that is not a row, so an
+// unrelated indented line elsewhere in a capture is never taken for a setting. A row whose hex and
+// decimal renderings disagree, or whose key lies outside the section's region, is MALFORMED and
+// kept as its text, never coerced.
+
+type NvParamSetting {
+  region: NvParamRegion
+  key: NvParamKeyReading
+  value: Int
+}
+
+type NvParamMalformedRow {
+  region: NvParamRegion
+  line: String
+  reason: NonEmptyStr
+}
+
+type NvParamConsoleObservation {
+  settings: List<NvParamSetting>
+  malformed: List<NvParamMalformedRow>
+}
+
+fn nvparam_section_of(line: String) -> NvParamRegion? {
+  let t = trim(line)
+  if t == "Pre-boot Configuration Setting:" { Present { value: NvPreboot } }
+  else if t == "Manufacturer Configuration Setting:" { Present { value: NvManufacturing } }
+  else if t == "User Configuration Setting:" { Present { value: NvUser } }
+  else if t == "Board Configuration Setting:" { Present { value: NvBoard } }
+  else { none }
+}
+
+// Hex through the corpus's one bounded base-16 word authority. Fifteen digits is that authority's
+// cap; the UINT32 bound on a value is checked separately, so 0x100000000 parses and is then refused.
+fn hex_of(text: String) -> Int? {
+  base16_word_value(word: text, max_digits: 15)
+}
+
+// PrintNVRAM's Val is a UINT32 printed with %X and with %d: the hex is 0..0xFFFFFFFF and the decimal
+// is that same 32 bits read as signed, so a value at or above 2^31 prints negative.
+data nvparam_uint32_max: Int = 4294967295
+
+fn nvparam_signed32_rendering(value: Int) -> Int {
+  if value >= 2147483648 { value - 4294967296 } else { value }
+}
+
+// "    KKKK: 0xV (D)" -> (key, value), or why it is not one.
+type NvParamRowRead
+  = NvParamRowParsed { key: Int, value: Int }
+  | NvParamRowRejected { reason: NonEmptyStr }
+  | NvParamNotARow
+
+fn nvparam_row_of(line: String) -> NvParamRowRead {
+  if !starts_with(s: line, prefix: "    ") { NvParamNotARow } else {
+    let parts = split(s: trim(line), delimiter: ": 0x")
+    if count(parts) != 2 { NvParamNotARow } else {
+      let key_text = match parts.first() { Present { value: k } => k Absent => "" }
+      let rest = match parts.skip(n: 1).first() { Present { value: r } => r Absent => "" }
+      let value_parts = split(s: rest, delimiter: " (")
+      let hex_text = match value_parts.first() { Present { value: h } => h Absent => "" }
+      let dec_text = match value_parts.skip(n: 1).first() { Present { value: d } => join(split(s: d, delimiter: ")"), "") Absent => "" }
+      match hex_of(text: key_text) {
+        Absent => NvParamNotARow
+        Present { value: key } => match hex_of(text: hex_text) {
+          Absent => NvParamRowRejected { reason: "the value is not hex" }
+          Present { value: v } => match parse_int(s: dec_text) {
+            Absent => NvParamRowRejected { reason: "the decimal rendering is missing or not a number" }
+            Present { value: d } => if v > nvparam_uint32_max { NvParamRowRejected { reason: "the value exceeds the UINT32 Val PrintNVRAM prints" } }
+              else if d == nvparam_signed32_rendering(value: v) { NvParamRowParsed { key: key, value: v } }
+              else { NvParamRowRejected { reason: "the decimal is not the %d (signed 32-bit) rendering of the hex value" } }
+          }
+        }
+      }
+    }
+  }
+}
+
+type NvParamReadState {
+  index: Map<Int, NvParamKey>
+  section: NvParamRegion?
+  observation: NvParamConsoleObservation
+}
+
+// The fold accumulates newest-first (one cons per row) and ampere_nvparam_console_observation
+// reverses once at the end: appending per row would copy the accumulator every row.
+fn with_setting(o: NvParamConsoleObservation, s: NvParamSetting) -> NvParamConsoleObservation {
+  NvParamConsoleObservation { settings: Cons { head: s, tail: o.settings }, malformed: o.malformed }
+}
+
+fn with_malformed(o: NvParamConsoleObservation, m: NvParamMalformedRow) -> NvParamConsoleObservation {
+  NvParamConsoleObservation { settings: o.settings, malformed: Cons { head: m, tail: o.malformed } }
+}
+
+// Outside a section only a header can matter, and every header ends "Configuration Setting:", so a
+// line without that text is passed over before it is normalized: a whole boot capture costs one
+// substring test per line until the dump begins.
+fn nvparam_read_step(state: NvParamReadState, raw: String) -> NvParamReadState {
+  match state.section {
+    Absent => if !raw.contains("Configuration Setting:") { state } else { nvparam_read_line(state: state, raw: raw) }
+    Present { value: _ } => nvparam_read_line(state: state, raw: raw)
+  }
+}
+
+fn nvparam_read_line(state: NvParamReadState, raw: String) -> NvParamReadState {
+  let line = ampere_dram_console_line(raw: raw)
+  match nvparam_section_of(line: line) {
+    Present { value: r } => NvParamReadState { index: state.index, section: Present { value: r }, observation: state.observation }
+    Absent => match state.section {
+      Absent => state
+      Present { value: region } => match nvparam_row_of(line: line) {
+        NvParamNotARow => NvParamReadState { index: state.index, section: none, observation: state.observation }
+        NvParamRowRejected { reason: why } => NvParamReadState { index: state.index, section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: why }) }
+        NvParamRowParsed { key: k, value: v } => {
+          let base = nvparam_region_start(r: region)
+          if k < base || k > nvparam_region_max(r: region) {
+            NvParamReadState { index: state.index, section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key lies outside the START..MAX range PrintNVRAM walks for this section's region" }) }
+          } else if (k - base) % (byte_size_count(b: nvparam_size) as Int) != 0 {
+            NvParamReadState { index: state.index, section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key is not on the 8-byte NVPARAM_SIZE stride from its region base" }) }
+          } else {
+            NvParamReadState { index: state.index, section: state.section, observation: with_setting(o: state.observation, s: NvParamSetting { region: region, key: nvparam_key_in(index: state.index, key: k), value: v }) }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ampere_nvparam_console_observation(lines: List<String>) -> NvParamConsoleObservation {
+  let none_set: List<NvParamSetting> = []
+  let none_bad: List<NvParamMalformedRow> = []
+  let rev = fold(lines, init: NvParamReadState { index: nvparam_key_index(), section: none, observation: NvParamConsoleObservation { settings: none_set, malformed: none_bad } }, f: (s, l) => nvparam_read_step(state: s, raw: l)).observation
+  NvParamConsoleObservation { settings: list_reverse(xs: rev.settings), malformed: list_reverse(xs: rev.malformed) }
+}
+
+fn nvparam_setting_text(s: NvParamSetting) -> String {
+  concat(nvparam_key_text(r: s.key), " = ", to_string(s.value))
+}
+
+fn nvparam_region_label(r: NvParamRegion) -> String {
+  match r { NvPreboot => "pre-boot" NvManufacturing => "manufacturer" NvUser => "user" NvBoard => "board" }
+}
+
+// The dump as the boot bundle renders it: every setting by name, then every malformed row with its
+// reason. A capture that printed no NVPARAM section says so rather than rendering an empty list.
+fn ampere_nvparam_console_text(o: NvParamConsoleObservation) -> String {
+  if count(o.settings) == 0 && count(o.malformed) == 0 { "NVPARAM: no Configuration Setting section in this capture" } else {
+    join(concat(
+      [concat("NVPARAM: ", to_string(count(o.settings)), " setting(s), ", to_string(count(o.malformed)), " malformed row(s) (edk2-platforms PrintNVRAM, keys named by NVParamDef.h)")],
+      concat(
+        map(o.settings, s => concat("  ", nvparam_region_label(r: s.region), " ", nvparam_setting_text(s: s))),
+        map(o.malformed, m => concat("  MALFORMED ", nvparam_region_label(r: m.region), " row [", trim(m.line), "]: ", m.reason as String)))), "\n")
+  }
+}

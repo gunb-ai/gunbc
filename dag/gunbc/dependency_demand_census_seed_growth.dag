@@ -1,0 +1,28 @@
+module gunbc.dependency_demand_census_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data dependency_demand_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "run_v2_demand_census",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "run_dependency_demand_census",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The producer arm for D13's dependency-demand census (gunbc.target_binding DependencyDemandCensusProducer). Its host part is only what no .dag fold can do: emit and build the compiler closure through the existing prepare_emitted_compiler, spawn the built binary in its demand-census verb, and relay its stdout and status unjudged. Every line and the exit are decided by v2.compiler.compile native_demand_census_output inside the emitted binary, so the host adds no verdict. It sits in the host because the census reads the whole corpus through the emitted front end, which no interpreted .dag entry can afford, and the instrument is how D13's row-deletion change executes it at its own head.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can spawn a built program and hand its stdout and status to a .dag fold, SUFFICIENT FOR //gunbc/instruments:dependency-demand-census to run with no hand-authored producer body.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_v2_demand_census, called once from src/v1/stage0/src/target_invocation_host.rs run_dependency_demand_census, behind gunbc test //gunbc/instruments:dependency-demand-census"
+}

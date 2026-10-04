@@ -69,3 +69,9 @@ test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
     && any(names, n => n == "Checkout")
     && any(names, n => n == "Build the compiler")
 }
+
+// THE FLEET ROUTE SELECTS THE D13 CENSUS: the generated choice carries that exact label, so D13's
+// row-deletion change can dispatch the census at its own head (review of gunbc#12992).
+test fn the_dispatch_choice_offers_the_dependency_demand_census_holds() -> Bool {
+  contains(generated_text(), "//gunbc/instruments:dependency-demand-census")
+}

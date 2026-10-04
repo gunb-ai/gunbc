@@ -4,12 +4,21 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.serialization { CoproductWireContract, StringVariant, ScreamingSnakeCase }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/graphql/reference/enums#mergestatestatus"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.github.merge_state_contracts", decl_name: "merge_state_status_wire_contract", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data merge_state_status_wire_contract: CoproductWireContract = {

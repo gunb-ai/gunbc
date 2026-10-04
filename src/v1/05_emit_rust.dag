@@ -944,6 +944,12 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 // answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
 // argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
 //
+// NOT YET THE CHECKER'S AUTHORITY, AND DECLARED AS SUCH (gunbc.rung_drop text_boundary_identity_wall):
+// the checker decides text representation by declaration identity (v1.compiler.infer_env
+// text_representation_by_identity), which needs the TypeEnv census; these renderers hold no env, so
+// this arm keeps its provenance-keyed answer, measured to render the self-host crate byte-identically
+// to the pre-change emitter. The trigger that unifies them is the render paths carrying the env.
+//
 // The String arm is keyed on the resolved declaration's PROVENANCE, never on the spelling alone
 // (DESIGN section 3, and gunbc.recurring_failure_mode
 // alias_resolution_collides_with_kernel_spelling): v2.std.text declares `type String =
@@ -7712,6 +7718,12 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
 // that answers it and both surfaces read the same list. Splitting `has_fn_fields` without this
 // would have put the two out of step: the header would gain a WF bound the impl header did not,
 // which does not compile.
+//
+// EVERY hand-written impl for the item reads this list, not only GroupCompletion's: the
+// FreeMonoid and Set supplemental Debug/PartialEq impls (v1.compiler.trait_derive_emit
+// v1_freemonoid_impl_type_params / v1_set_impl_type_params) take it as a parameter and union it
+// under the trait's own requirement. They used to render from the trait requirement alone, which
+// is the out-of-step state this note describes, reached through a second door.
 fn emit_item_header_clone_param_names(
   item: Node,
   item_name: String,
@@ -7750,47 +7762,17 @@ fn emit_type_params_from_clone_param_names(
   }
 }
 
-fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-  let clone_param_names = v1_item_clone_bounded_param_names(
-    item_name: item_name,
-    generic_param_names: generic_param_names,
-    bounds: emit_info.clone_bounded_type_params
-  )
-  if (clone_param_names |> count) > 0 {
-    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
-  } else {
-    emit_type_params(params: params, source_indices: source_indices)
-  }
-}
-
-// The SINGLE well-formedness fact the GroupCompletion supplemental impls need, read from the same
-// record `emit_item_type_params_with_clone_bounds` reads (`clone_bounded_type_params`) rather than
-// re-derived beside it. Rust REQUIRES an impl's generics to satisfy the type's own bounds, so
-// `struct S<M: Clone>` with `impl<M> Neg for S<M>` cannot compile: the item header and the impl
-// header are ONE decision rendered twice, which makes single authority the construction answer
-// here rather than a style preference.
-//
-// What crosses into `extdeps.languages.rust.emit` is this Bool — a compiler fact about the
-// carrier's declaration. The SPELLING (`Clone`, the trait paths, the where-clauses) stays in
-// extdeps, so the §3 duty is intact. It is deliberately NOT routed through
-// `spelling.where_bounds`: that field carries the OP's own requirement (a fact about `Neg`/`Add`),
-// and the carrier bound is a fact about `GroupCompletion` — merging them would recreate the fused
-// flag this change exists to split, and the two have different lifetimes (a new op row changes
-// where_bounds and never changes the carrier's WF bound).
+// THE GroupCompletion SUPPLEMENTAL IMPLS READ THE SAME DECISION. What crosses into
+// `extdeps.languages.rust.emit` is one Bool derived from the header list at the capability table
+// (`v1_emit_struct_from_capability_table`) -- a compiler fact about the carrier's declaration. The
+// SPELLING (`Clone`, the trait paths, the where-clauses) stays in extdeps, so the §3 duty is
+// intact. It is deliberately NOT routed through `spelling.where_bounds`: that field carries the
+// OP's own requirement (a fact about `Neg`/`Add`), and the carrier bound is a fact about
+// `GroupCompletion` -- merging them would recreate the fused flag that split exists to remove.
 //
 // KNOWN ASYMMETRY, named rather than fixed here: the item header is rendered compiler-side
-// (`emit_item_type_params_with_clone_bounds`) while the impl header is rendered in extdeps, so the
-// tree answers "where does a Rust bound get spelled" two different ways. Out of scope for this
-// change.
-fn v1_carrier_param_needs_clone_bound(item_name: String, generic_param_names: List<String>, emit_info: EmitGraphInfo) -> Bool {
-  (v1_item_clone_bounded_param_names(
-    item_name: item_name,
-    generic_param_names: generic_param_names,
-    bounds: emit_info.clone_bounded_type_params
-  ) |> count) > 0
-}
-
+// (`emit_type_params_from_clone_param_names`) while the GroupCompletion impl header is rendered in
+// extdeps, so the tree answers "where does a Rust bound get spelled" two different ways.
 fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if (item.params |> count) == 0 {
     ""
@@ -7809,7 +7791,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 }
 
 // Struct header bareness is keyed on the FIELD-DERIVED property, not on `impl_bodies` being
-// nonempty. `emit_item_type_params_with_clone_bounds` reads `clone_bounded_type_params`, the
+// nonempty. `emit_item_header_clone_param_names` reads `clone_bounded_type_params`, the
 // WELL-FORMEDNESS fixpoint — "does NAMING G<A..> require P: Clone" — which is exactly "does some
 // field's type require this parameter to carry a bound".
 //
@@ -7887,19 +7869,6 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     )
     let sealed = item_seals_construction(item: item)
     let deserialize_forbidden = item_forbids_deserialize(item: item, emit_info: emit_info, source_indices: env.source_indices)
-    let capability_surface = v1_emit_struct_from_capability_table(
-      module_path: env.module_path,
-      name: item_text,
-      children: item.children,
-      shared_types: shared_types,
-      has_fn_fields: has_fn_fields,
-      map_key_required: set_contains(emit_info.map_key_required_type_names, item_text),
-      generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
-      source_indices: env.source_indices,
-      carrier_param_needs_clone: (header_clone_param_names |> count) > 0,
-      deserialize_forbidden: deserialize_forbidden,
-      type_decl_items: emit_info.type_decl_items
-    )
     let type_params = emit_type_params_from_clone_param_names(
       params: item.params,
       clone_param_names: header_clone_param_names,
@@ -7907,7 +7876,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
+    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
     if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
   } else if is_host_optional_carrier_alias(name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
@@ -7934,10 +7903,22 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     } else {
       concat(policy_validation, "\n", rename_validations)
     }
-    let type_params = emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+    let header_clone_param_names = emit_item_header_clone_param_names(
+      item: item,
+      item_name: item_text,
+      has_fn_fields: false,
+      generic_param_names: generic_param_names,
+      emit_info: emit_info,
+      source_indices: env.source_indices
+    )
+    let type_params = emit_type_params_from_clone_param_names(
+      params: item.params,
+      clone_param_names: header_clone_param_names,
+      source_indices: env.source_indices
+    )
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
+    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
     let validations = if clone_bound_refusal == "" {
       validations
     } else if validations == "" {
@@ -8045,7 +8026,7 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
@@ -8056,11 +8037,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     map_key_required: set_contains(emit_info.map_key_required_type_names, name),
     generic_param_names: generic_param_names,
     source_indices: env.source_indices,
-    carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
-      item_name: name,
-      generic_param_names: generic_param_names,
-      emit_info: emit_info
-    ),
+    header_clone_param_names: header_clone_param_names,
     deserialize_forbidden: deserialize_forbidden,
     type_decl_items: emit_info.type_decl_items
   )
@@ -8252,7 +8229,7 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
 // in this scope" -- trading one error for another rather than removing it. The derive decision
 // and the attribute decision are therefore one decision with two renderings, and both read the
 // same has_fn_fields here rather than deriving it twice.
-fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
+fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let deserialize_forbidden = members_forbid_deserialize(name: name, members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
@@ -8264,7 +8241,7 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
   let tag_line = if effective_serde_policy.enum_attr == "" { "" } else { concat(effective_serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
-  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, source_indices: env.source_indices)
+  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, source_indices: env.source_indices)
   let with_accessors = if accessor_impl == "" { enum_def } else { concat(enum_def, "\n", accessor_impl) }
   if supplemental == "" { with_accessors } else { concat(with_accessors, supplemental) }
 }
@@ -11016,8 +10993,18 @@ fn member_type_nodes(is_product: Bool, children: List<Node>) -> List<Node> {
   }
 }
 
+// A DECLARATION'S MEMBERS ARE READ BY ITS SHAPE, and an alias is the third shape. A product's members
+// are its fields and a coproduct's its variant payloads; an ALIAS (a leaf type item, connective
+// NoConnective) has neither, and its one member is the type it names (resolved_type). Reading an alias
+// as a coproduct visited no member at all, so `type ParseTree = Node` hid Node's seal and
+// `DagSourceAst { tree: ParseTree }` kept a derived Deserialize (the emitted v2.compiler.compile crate
+// refused E0277 at v2.compiler.source_authority, #12942).
 fn decl_member_type_nodes(decl: Node) -> List<Node> {
-  member_type_nodes(is_product: is_product_type(n: decl), children: decl.children)
+  if is_leaf_type(n: decl) {
+    [resolved_type(n: decl)]
+  } else {
+    member_type_nodes(is_product: is_product_type(n: decl), children: decl.children)
+  }
 }
 
 fn members_forbid_deserialize(name: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -16875,6 +16862,16 @@ fn value_inferred_type_is_rc_wrapped(value: Node, shared_types: Set<String>, sco
 // serde_json parses it into the declared field type, so parsing the same text is the realization the
 // document's own format defines. A per-literal i64 suffix was the other repair and is refused: it
 // would put a non-JSON spelling into emit_data_value_json, whose output is also read as real JSON.
+// A DATA ROW IS NOT DESERIALIZED INTO A TYPE THAT CANNOT BE. The JSON realization below parses the
+// document through serde, which is exactly the second, unsealed mint the deserialize walk removes from
+// a type that reaches a sealed carrier; such a type has no Deserialize, so the parse does not compile
+// (an empty `data x: List<Frame> = []` refused E0277 in the emitted v2.compiler.compile crate, #12942,
+// six sites). A row of that type takes the typed-expression arm instead, which builds the value with
+// the same constructors the source wrote.
+fn data_row_type_forbids_deserialize(type_node: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  type_expr_reaches_sealed_carrier(n: type_node, emit_info: emit_info, source_indices: source_indices, seen: empty_map())
+}
+
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
@@ -16932,7 +16929,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
     }
   } else if match value.expr_data { ExprElaboratedLiteral { value: _, elaboration: _ } => true _ => false } {
     concat("            ", emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
+  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) && !data_row_type_forbids_deserialize(type_node: type_node, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_str(\"", escape_string_literal_body(s: json_str), "\")\n",
@@ -17877,6 +17874,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
       "    native_census_residual_rows,", "\n",
+      "    native_census_cause_groups_add_residual, native_census_cause_groups_from_file_refusals,", "\n",
+      "    native_census_cause_group_rows,", "\n",
+      "    native_demand_census_output,", "\n",
       "    native_lane_controls, native_lane_file_refusal_index,", "\n",
       "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,", "\n",
       "    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,", "\n",
@@ -17904,7 +17904,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    program_assembly_memo_lookup_calls, program_assembly_memo_misses,", "\n",
       "    program_assembly_allocator_next, program_assembly_measured_alloc,", "\n",
       "    program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome,", "\n",
-      "    program_assembly_normalized_alloc, program_assembly_ingest_scope_outcome,", "\n",
+      "    program_assembly_normalized_alloc, program_assembly_normalized_spans, program_assembly_ingest_scope_outcome,", "\n",
       "    program_assembly_phase_parse_measured_seeded,", "\n",
       "    program_assembly_phase_token_count, program_assembly_phase_tokenize,", "\n",
       "\};", "\n",
@@ -18047,7 +18047,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for refusal in context.file_refusals.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
-      "    println!(\"{}\", serde_json::json!(\{ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len() \}));", "\n",
+      "    for advised in context.accepted_file_advisories.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
+      "    \}", "\n",
+      "    // GROUPED BY THE FATAL REASON, BY THE FOLD THAT OWNS THE GROUPING", "\n",
+      "    // (v2.compiler.compile native_census_cause_groups_add); this main only prints the groups.", "\n",
+      "    let groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone());", "\n",
+      "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",
+      "    for group in cause_groups.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
+      "    \}", "\n",
+      "    println!(\"{}\", serde_json::json!(\{ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len(), \"advised_files\": context.accepted_file_advisories.len(), \"cause_groups\": cause_groups.len() \}));", "\n",
       "\}", "\n",
       "\n",
       "// THE THIRD MODE: THE WHOLE TREE, RESOLVED PER MODULE.", "\n",
@@ -18099,6 +18109,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
       "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
+      "    // THE CAUSE GROUPS START FROM THE FRONT-END REFUSALS and take each resolve row as it is", "\n",
+      "    // reported, so both populations are filed under the fatal reason by one fold.", "\n",
+      "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone());", "\n",
       "    let roster_started = Instant::now();", "\n",
       "    let modules = native_census_modules(ingest.clone());", "\n",
       "    let roster_nanos = span_nanos(roster_started);", "\n",
@@ -18136,6 +18149,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                for row in native_census_residual_rows(entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
       "                    residual_rows += 1;", "\n",
       "                    println!(\"{}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
+      "                    groups = native_census_cause_groups_add_residual(groups.clone(), row.clone());", "\n",
       "                \}", "\n",
       "                \"resolve_refused\"", "\n",
       "            \}", "\n",
@@ -18155,6 +18169,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        );", "\n",
       "    \}", "\n",
       "    resolve_samples.sort_unstable();", "\n",
+      "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",
+      "    for group in cause_groups.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
+      "    \}", "\n",
       "    // THE TERMINAL LINE CARRIES THE COST AND THE POPULATION TOGETHER, because the reading this", "\n",
       "    // mode exists to support is whether a whole-tree resolve is affordable at all, and a residual", "\n",
       "    // count without the wall and the peak beside it cannot answer that.", "\n",
@@ -18170,6 +18188,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"file_refused\": file_refused,", "\n",
       "            \"resolve_refused\": resolve_refused,", "\n",
       "            \"residual_rows\": residual_rows,", "\n",
+      "            \"cause_groups\": cause_groups.len(),", "\n",
       "            \"load_nanos\": load_nanos,", "\n",
       "            \"context_nanos\": context_nanos,", "\n",
       "            \"roster_nanos\": roster_nanos,", "\n",
@@ -18182,6 +18201,23 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    );", "\n",
       "\}", "\n",
       "\n",
+      "// THE FOURTH MODE: D13's DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output).", "\n",
+      "// The fold decides every line and the exit -- 0 held, 1 a census whose rows do not account for", "\n",
+      "// every uses fn, 2 no observation -- and this function only reads the ingest, prints and exits.", "\n",
+      "fn run_demand_census(source_roots: &[String]) \{", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
+      "    let reads = read_ingest(source_roots);", "\n",
+      "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
+      "    let output = native_demand_census_output(ingest);", "\n",
+      "    for line in output.lines.iter() \{", "\n",
+      "        println!(\"{}\", line);", "\n",
+      "    \}", "\n",
+      "    std::process::exit(output.exit as i32);", "\n",
+      "\}", "\n",
+      "", "\n",
       "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 \{", "\n",
       "    if sorted.is_empty() \{ return 0; \}", "\n",
       "    let idx = (sorted.len() - 1) * numer / denom;", "\n",
@@ -18474,6 +18510,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        // next file seeds from the mark normalize reached, not the one parse reached.", "\n",
       "        let normalized = program_assembly_phase_normalize_seeded(parsed.clone(), file_alloc.clone(), ingest_scope.clone());", "\n",
       "        let root = program_assembly_normalized_outcome(normalized.clone());", "\n",
+      "        let file_spans = program_assembly_normalized_spans(normalized.clone());", "\n",
       "        let file_alloc = program_assembly_normalized_alloc(normalized);", "\n",
       "        let file_alloc_reported = file_alloc.clone();", "\n",
       "        let file_normalize_nanos = cpu_span_nanos(normalize_started);", "\n",
@@ -18481,7 +18518,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        // that is not the front end, timed separately because a quadratic accumulator would", "\n",
       "        // live here and nowhere else in this loop.", "\n",
       "        let absorb_started = cpu_mark();", "\n",
-      "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone(), file_alloc);", "\n",
+      "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone(), file_alloc, file_spans);", "\n",
       "        let file_absorb_nanos = cpu_span_nanos(absorb_started);", "\n",
       "        let file_nanos = cpu_span_nanos(file_started);", "\n",
       "        tokenize_nanos += file_tokenize_nanos;", "\n",
@@ -18735,6 +18772,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for refusal in receipt.file_refusals.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
+      "    for advised in context.accepted_file_advisories.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
+      "    \}", "\n",
       "    for row in population.iter() \{", "\n",
       "        println!(\"{}\", serde_json::to_string(row).unwrap());", "\n",
       "        // THE OPERATOR'S LINE, BESIDE THE PERSISTED ROW. The JSON above is the receipt; this is", "\n",
@@ -18887,6 +18927,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"universe\": universe.identities.len(),", "\n",
       "            \"file_refusals\": receipt.file_refusals.len(),", "\n",
       "            \"file_refusal_tally\": file_refusal_tally,", "\n",
+      "            \"advised_files\": context.accepted_file_advisories.len(),", "\n",
       "            \"admitted\": admitted,", "\n",
       "            \"summary\": summary,", "\n",
       "            \"frontier\": frontier_word,", "\n",
@@ -18916,6 +18957,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            match verb \{", "\n",
       "                NativeDriverVerb::NativeDriverCensus \{ .. \} => run_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",

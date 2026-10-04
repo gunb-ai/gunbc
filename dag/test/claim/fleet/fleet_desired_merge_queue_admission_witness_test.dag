@@ -317,7 +317,7 @@ test fn the_emitted_fleet_desired_workflow_routes_push_to_its_entry_and_carries_
       contains(y, "push:")
         && contains(y, "--function admit_fleet_desired_from_push_wet")
         && contains(y, "actions: read")
-        && !contains(y, "workflow_run")
+        && !contains(split(s: y, delimiter: "jobs:").first(), "workflow_run")
         && !contains(y, "admit_fleet_desired_from_floor_event_wet")
     FleetDesiredGenerationRefused { reason: _ } => false
   }
