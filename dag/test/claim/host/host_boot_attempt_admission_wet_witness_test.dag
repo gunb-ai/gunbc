@@ -1,5 +1,6 @@
 module test.claim.host_boot_attempt_admission_wet_witness
 
+import gunbc.durable_cas_file_store { KeepAllGenerations }
 import extdeps.shell
 import std.types { Bool, NonEmptyStr, String }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
@@ -77,9 +78,9 @@ fn refused_as_consumed(cause: AttemptReceiptRefusal) -> Bool {
 // a release frees only the hold's own slot.
 fn hold_taken_and_released(root: NonEmptyStr) -> Bool {
   let owner = "boot-run:wet-witness" as DurableHoldOwnerRef
-  match file_hold_acquire(root: root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: owner) {
+  match file_hold_acquire(root: root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: owner, retention: KeepAllGenerations) {
     FileHoldAcquired { slot_key: k, owner: o, generation: g } =>
-      match file_hold_release_assess(root: root, slot_key: k, owner: o, acquired_generation: g, released_by: "boot-run:wet-witness" as DurableHoldReleaseRef) {
+      match file_hold_release_assess(root: root, slot_key: k, owner: o, acquired_generation: g, released_by: "boot-run:wet-witness" as DurableHoldReleaseRef, retention: KeepAllGenerations) {
         FileHoldReleasePlanned { plan: p } =>
           match file_hold_release_commit(plan: p) {
             FileHoldReleased { slot_key: _, generation: _ } => true
