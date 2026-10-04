@@ -1,0 +1,52 @@
+module test.claim.harness_tool_kind_test
+
+import std.types { Bool, String }
+import gunbc.harness.harness_tool_kind {
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  HarnessToolRecognized, HarnessToolUnrecognized,
+  harness_tool_item_type, harness_tool_read_item_type, harness_unrecognized_tool_item_type,
+  ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
+  harness_tool_item_read,
+}
+
+// THE ITEM KIND IS ONE DECLARATION READ IN BOTH DIRECTIONS, so each tool's kind reads back as that
+// tool and no other. The tag is this file's exhaustive discriminator over the read.
+fn item_read_tag(item_type: String) -> String {
+  match harness_tool_item_read(item_type: item_type) {
+    ItemIsHarnessToolUse { tool: t } =>
+      match t {
+        RunCommandTool => "run"
+        ReadFileTool => "read"
+        WriteFileTool => "write"
+        EditFileTool => "edit"
+      }
+    ItemIsUnrecognizedToolUse => "undeclared"
+    ItemIsNotAHarnessToolUse => "not-a-tool-use"
+  }
+}
+
+fn tool_round_trip_tag(tool: HarnessTool) -> String {
+  item_read_tag(item_type: harness_tool_item_type(tool: tool))
+}
+
+test fn each_harness_tool_item_kind_reads_back_as_its_own_tool() -> Bool {
+  tool_round_trip_tag(tool: RunCommandTool) == "run"
+    && tool_round_trip_tag(tool: ReadFileTool) == "read"
+    && tool_round_trip_tag(tool: WriteFileTool) == "write"
+    && tool_round_trip_tag(tool: EditFileTool) == "edit"
+}
+
+test fn an_unrecognized_tool_name_is_written_as_the_undeclared_kind_never_a_tool_kind() -> Bool {
+  let written = harness_tool_read_item_type(read: HarnessToolUnrecognized { name: "delete_everything" })
+  written == harness_unrecognized_tool_item_type && item_read_tag(item_type: written) == "undeclared"
+}
+
+test fn a_recognized_tool_is_written_as_its_own_kind() -> Bool {
+  harness_tool_read_item_type(read: HarnessToolRecognized { tool: ReadFileTool })
+    == harness_tool_item_type(tool: ReadFileTool)
+}
+
+test fn an_item_type_the_harness_does_not_own_is_left_to_its_owner() -> Bool {
+  item_read_tag(item_type: "file_change") == "not-a-tool-use"
+    && item_read_tag(item_type: "agent_message") == "not-a-tool-use"
+}
