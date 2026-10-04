@@ -27,6 +27,9 @@ import gunbc.auth.gcp_iam_converge {
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
   iam_converge_denied_permissions, iam_converge_create_role_permissions,
   service_account_resource,
+  iam_converge_conditioned_readback, iam_converge_conditioned_bindings, conditioned_binding_expression,
+  r2_custody_secret_resources, r2_custody_out_of_population_control, iam_converge_role_permissions,
+  iam_converge_secret_create_role_permissions,
 }
 import gunbc.auth.privileged_effect_census {
   PrivilegedEffectSite, privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code,
@@ -442,4 +445,24 @@ test fn namecheap_has_a_dedicated_secret_scoped_federation() -> Bool {
     && string_contains(s: f.attribute_condition, pattern: "namecheap-dns")
     && string_contains(s: f.attribute_condition, pattern: "refs/heads/main")
   )
+}
+
+// ── The R2 custody population (conditioned project reach) ───────────────────────────────────
+
+// THE CONDITION NAMES EXACTLY THE FIVE CUSTODY SECRETS, AND THE READBACK REFUSES OUTSIDE THEM.
+// Each conditioned role is admitted on every named secret and denied on the out-of-population
+// control, and versions.access stays denied on every named secret. The RED is a condition widened
+// to a prefix, or a role whose readback carries only the admitted half.
+test fn r2_custody_reach_is_conditioned_to_its_five_names_and_never_reads() -> Bool {
+  let rb = iam_converge_conditioned_readback()
+  let names = r2_custody_secret_resources()
+  length(names) == 5
+    && all(iam_converge_conditioned_bindings(), b =>
+      all(names, r => string_contains(s: conditioned_binding_expression(b: b), pattern: concat(concat("resource.name == \"", r), "\"")))
+        && !string_contains(s: conditioned_binding_expression(b: b), pattern: "startsWith")
+        && all(iam_converge_role_permissions(r: b.role), p =>
+          all(names, r => any(rb, q => match q { ExpectAdmitted { resource: x, permission: y } => x == r && y == p  ExpectDenied { resource: _, permission: _ } => false }))
+            && any(rb, q => match q { ExpectDenied { resource: x, permission: y } => x == r2_custody_out_of_population_control() && y == p  ExpectAdmitted { resource: _, permission: _ } => false })))
+    && all(names, r => any(rb, q => match q { ExpectDenied { resource: x, permission: y } => x == r && y == "secretmanager.versions.access"  ExpectAdmitted { resource: _, permission: _ } => false }))
+    && !any(iam_converge_secret_create_role_permissions, p => p == "secretmanager.versions.access" || p == "secretmanager.versions.add")
 }

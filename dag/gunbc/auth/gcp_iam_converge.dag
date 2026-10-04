@@ -29,6 +29,10 @@ import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+import gunbc.cloudflare.r2_origin {
+  cloudflare_bootstrap_custody_secret_id, fabric_durable_origin_write_secret_id, cloudflare_r2_bucket_admin_secret_id,
+  fabric_workspace_read_secret_id, fabric_workspace_write_secret_id,
+}
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
@@ -145,6 +149,14 @@ data iam_converge_secret_policy_role_permissions: List<String> = [
   "secretmanager.secrets.setIamPolicy",
 ]
 
+//    SECRET CREATE, bound on the PROJECT under a resource.name condition naming the R2 custody
+//    population (iam_converge_conditioned_bindings): a secret is created on the project, so no
+//    resource-local policy exists to hold this before the secret does.
+data iam_converge_secret_create_role_permissions: List<String> = [
+  "secretmanager.secrets.create",
+  "secretmanager.secrets.get",
+]
+
 data iam_observe_role_permissions: List<String> = [
   "iam.workloadIdentityPools.get",
   "iam.workloadIdentityPoolProviders.get",
@@ -241,6 +253,7 @@ type IamConvergeRole
   | ConvergeProviderRole
   | ConvergeAccountPolicyRole
   | ConvergeSecretPolicyRole
+  | ConvergeSecretCreateRole
 
 fn iam_converge_role_permissions(r: IamConvergeRole) -> List<String> {
   match r {
@@ -248,6 +261,7 @@ fn iam_converge_role_permissions(r: IamConvergeRole) -> List<String> {
     ConvergeProviderRole => iam_converge_provider_role_permissions
     ConvergeAccountPolicyRole => iam_converge_account_policy_role_permissions
     ConvergeSecretPolicyRole => iam_converge_secret_policy_role_permissions
+    ConvergeSecretCreateRole => iam_converge_secret_create_role_permissions
   }
 }
 
@@ -257,6 +271,7 @@ fn iam_converge_role_id(r: IamConvergeRole) -> String {
     ConvergeProviderRole => "gunbcIamConvergeProvider"
     ConvergeAccountPolicyRole => "gunbcIamConvergeAccountPolicy"
     ConvergeSecretPolicyRole => "gunbcIamConvergeSecretPolicy"
+    ConvergeSecretCreateRole => "gunbcIamConvergeSecretCreate"
   })
 }
 
@@ -319,12 +334,74 @@ type ReachProbe
 
 fn iam_converge_bootstrap_readback() -> List<ReachProbe> {
   concat(
-    flat_map(iam_converge_bindings(), b => map(iam_converge_role_permissions(r: b.role), p => ExpectAdmitted { resource: b.resource, permission: p })),
+    concat(
+      flat_map(iam_converge_bindings(), b => map(iam_converge_role_permissions(r: b.role), p => ExpectAdmitted { resource: b.resource, permission: p })),
+      iam_converge_conditioned_readback(),
+    ),
     [
       ExpectDenied { resource: pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id), permission: "iam.workloadIdentityPoolProviders.create" },
       ExpectDenied { resource: service_account_resource(email: iam_converge_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
       ExpectDenied { resource: service_account_resource(email: iam_observe_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
     ],
+  )
+}
+
+// ── The R2 custody population: the one reach that is project-bound under a condition ─────────
+// The custody secrets of gunbc.cloudflare.r2_mint_secret_access are created by the mint flow
+// (gunbc.cloudflare.r2_token_mint_run ensure_r2_mint_custody_container) and their accessor cells are
+// granted by it, both under iam-converge. Two of them do not exist until that create runs, so a
+// resource-local binding cannot precede them. The reach is therefore bound ONCE on the project and
+// narrowed by an IAM Condition over resource.name. Secret Manager evaluates resource.name on secrets,
+// unlike the IAM resources that review 5326588564 found it cannot narrow. The population is these
+// five names and nothing derived wider.
+data r2_custody_secret_ids: List<NonEmptyStr> = [
+  cloudflare_bootstrap_custody_secret_id,
+  fabric_durable_origin_write_secret_id,
+  cloudflare_r2_bucket_admin_secret_id,
+  fabric_workspace_read_secret_id,
+  fabric_workspace_write_secret_id,
+]
+
+fn r2_custody_secret_resources() -> List<String> {
+  map(r2_custody_secret_ids, id => gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: id))
+}
+
+// ONE ROLE BOUND IN THE PROJECT POLICY, admitted only on the named resources.
+type ConditionedProjectBinding {
+  role: IamConvergeRole
+  admitted_resources: List<String>
+}
+
+fn conditioned_binding_expression(b: ConditionedProjectBinding) -> String {
+  join(map(b.admitted_resources, r => join(["resource.name == \"", r, "\""], "")), " || ")
+}
+
+fn iam_converge_conditioned_bindings() -> List<ConditionedProjectBinding> {
+  [
+    ConditionedProjectBinding { role: ConvergeSecretCreateRole, admitted_resources: r2_custody_secret_resources() },
+    ConditionedProjectBinding { role: ConvergeSecretPolicyRole, admitted_resources: r2_custody_secret_resources() },
+  ]
+}
+
+// THE CONTROL NAME OUTSIDE THE POPULATION: the condition must refuse it, or it was never narrowing.
+fn r2_custody_out_of_population_control() -> String {
+  gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: "gunbc-iam-converge-out-of-population-control" as NonEmptyStr)
+}
+
+// BOTH HALVES AGAIN. Every role permission is admitted on every named secret. The same permissions
+// are denied on a name outside the condition, and the payload read stays denied on every named
+// secret: the deny policy still wins, so iam-converge grants these secrets and never reads them.
+// testIamPermissions on an ABSENT secret has no resource to answer for. The admitted probes for a
+// secret the mint flow has not yet created are therefore discharged by that create itself, which
+// is the first effect that needs them.
+fn iam_converge_conditioned_readback() -> List<ReachProbe> {
+  concat(
+    flat_map(iam_converge_conditioned_bindings(), b =>
+      concat(
+        flat_map(b.admitted_resources, r => map(iam_converge_role_permissions(r: b.role), p => ExpectAdmitted { resource: r, permission: p })),
+        map(iam_converge_role_permissions(r: b.role), p => ExpectDenied { resource: r2_custody_out_of_population_control(), permission: p }),
+      )),
+    map(r2_custody_secret_resources(), r => ExpectDenied { resource: r, permission: "secretmanager.versions.access" }),
   )
 }
 
