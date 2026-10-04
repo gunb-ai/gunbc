@@ -473,6 +473,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "an_unconverged_store_root_refuses_the_start_record" },
+      entry: "dag/test/claim/roadmap/roadmap_dogfood_route_wet_witness_test.dag",
+      function: "an_unconverged_store_root_refuses_the_start_record",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds" },
+      entry: "dag/test/claim/roadmap/roadmap_dogfood_route_wet_witness_test.dag",
+      function: "a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted" },
+      entry: "dag/test/claim/roadmap/roadmap_dogfood_route_wet_witness_test.dag",
+      function: "a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded" },
+      entry: "dag/test/claim/roadmap/roadmap_dogfood_route_wet_witness_test.dag",
+      function: "an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_terminal_verdict_outside_the_closed_set_is_unreadable" },
       entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
       function: "a_terminal_verdict_outside_the_closed_set_is_unreadable",

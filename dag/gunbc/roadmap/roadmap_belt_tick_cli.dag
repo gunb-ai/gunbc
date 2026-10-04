@@ -1,7 +1,7 @@
 module gunbc.roadmap_belt_tick_cli
 
 import std.types { String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
 import gunbc.host_layout { belt_spawn_workdir_env_var }
@@ -30,6 +30,10 @@ import gunbc.roadmap_belt_actuate {
   IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
 }
 import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+import gunbc.roadmap_dogfood_route {
+  dogfood_start_record_for_instance, DogfoodStartRecord,
+  DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
+}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
@@ -40,7 +44,7 @@ import gunbc.roadmap.roadmap_review_function { review_report_json }
 // snapshot module imports the belt's observers, so the tick that also writes the snapshot must sit
 // above both — the import graph's only law is acyclicity (DESIGN 3).
 
-data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). EXIT SEMANTICS (operator P0, 2026-08-02): exit 0 when the tick COMPLETED and PERSISTED its BeltTickReceipt and its served observation — spawn failures, recorded validation refusals, and observe_refused on the spawn pass do NOT flip the exit, because those are counted outcomes in the receipt, not a failure to run or record the tick. Nonzero ONLY when the tick could not persist its receipt or its served observation (BeltPassFailed on write) or when GUNBC_BELT_SPAWN_WORKDIR is missing/empty. systemd therefore distinguishes 'tick crashed' from 'tick ran, work refused'. The stdout JSON (roadmap-belt-tick/v1) remains the per-tick operational receipt for journald; the persisted BeltTickReceipt is what /workflow.json's producer reads, and the persisted served observation is what the dashboard serves."
+data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). EXIT SEMANTICS (operator P0, 2026-08-02): exit 0 when the tick COMPLETED and PERSISTED its BeltTickReceipt and its served observation — spawn failures, recorded validation refusals, and observe_refused on the spawn pass do NOT flip the exit, because those are counted outcomes in the receipt, not a failure to run or record the tick. Nonzero ONLY when the tick could not persist its receipt or its served observation (BeltPassFailed on write), when GUNBC_BELT_SPAWN_WORKDIR is missing/empty, or when the dogfood start record (gunbc.roadmap_dogfood_route dogfood_start_record_for_instance), which runs only after the served observation is persisted, refuses. systemd therefore distinguishes 'tick crashed' from 'tick ran, work refused'. The stdout JSON (roadmap-belt-tick/v1) remains the per-tick operational receipt for journald; the persisted BeltTickReceipt is what /workflow.json's producer reads, and the persisted served observation is what the dashboard serves."
 
 // THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK; MAKING IT A LITERAL WAS THE DEFECT.
 // belt_actuate_workdir projects srv1_gunbc_repo_root, so a tick ran `git worktree add` into
@@ -100,13 +104,29 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
             r,
           ], ""))
         BeltPassRecorded =>
-          belt_served_observation_exit(instance: instance, observed_at: observed_at)
+          match belt_served_observation_exit(instance: instance, observed_at: observed_at) {
+            ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+            ExitSuccess => belt_start_record_exit(start: dogfood_start_record_for_instance(instance: instance))
+          }
         BeltPassDeferred { reason: r } =>
           exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
         BeltPassRefused { reason: r } =>
           exit_failure(reason: join(["belt tick receipt write returned refused: ", r], ""))
       }
     }
+  }
+}
+
+// THE START RECORD'S EXIT. The recorder runs only after the served observation was written (the
+// match at the tick's tail above makes that a dependency, not an ordering of independent lets), so a
+// slow, failing or terminated recorder can no longer freeze the page; a refused start then fails
+// the tick loudly, and the other outcomes leave it successful.
+fn belt_start_record_exit(start: DogfoodStartRecord) -> ProcessExit {
+  match start {
+    DogfoodStartRefused { reason: r } => exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
+    DogfoodStartRecorded { receipt: _ } => ExitSuccess
+    DogfoodStartAlreadyRecorded => ExitSuccess
+    DogfoodStartNoCompleteAttempt => ExitSuccess
   }
 }
 
