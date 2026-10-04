@@ -52,10 +52,10 @@ data head: String = "b04485cffb000000000000000000000000000000"
 
 fn wire(pr: String) -> String {
   join([
-    "{\"schema\": \"dogfood-start-receipt/v2\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"head_sha\": \"", head,
+    "{\"schema\": \"dogfood-start-receipt/v3\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"head_sha\": \"", head,
     "\", \"submission_digest\": \"d1\", \"review_subject\": \"n1@", head,
     "\", \"review_plan_revision\": \"plan-r1\", \"review_digest\": \"rd1\", \"pr_number\": ", pr,
-    ", \"pr_url\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"grant_identity\": \"evt-7\", \"fence_generation\": 7, \"cleanup_outcome\": \"released\", \"established_at\": \"2026-10-03T07:00:00Z\"}",
+    ", \"pr_url\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"grant_identity\": \"evt-7\", \"fence_generation\": 7, \"cleanup_outcome\": \"released\", \"service_evidence_digest\": \"sed1\", \"service_evidence_fields\": [{\"field\": \"placement\", \"standing\": \"observed\"}, {\"field\": \"wait_time\", \"standing\": \"owed\"}], \"established_at\": \"2026-10-03T07:00:00Z\"}",
   ], "")
 }
 
@@ -110,7 +110,7 @@ test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool {
 // recorded start, and the acceptance read does not hold.
 test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded() -> Bool {
   let instance = converge_root(instance: fresh_instance(tag: "invalid"))
-  plant(root: dogfood_start_store_root(instance: instance), bytes: "{\"schema\": \"dogfood-start-receipt/v2\", \"attempt_key\": \"fabricated\"}")
+  plant(root: dogfood_start_store_root(instance: instance), bytes: "{\"schema\": \"dogfood-start-receipt/v3\", \"attempt_key\": \"fabricated\"}")
     && is_refused(r: dogfood_start_record_for_instance(instance: instance))
     && !dogfood_route_acceptance_holds_on(instance: instance)
 }
