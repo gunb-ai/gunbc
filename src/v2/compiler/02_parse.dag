@@ -5039,8 +5039,8 @@ fn parse_production_prepared_measured(
 // analysis's prepared_exprs row, exactly as every nested nonterminal already reads it
 // (parse_nonterminal_memoized). Routing the entry through parse_expr re-ran prepare_grammar_expr --
 // choice-plan compilation plus the authored-choice overlap residue, which the parse then discarded --
-// and an O(P) non-short-circuiting fold over every production, on EVERY parse: a fixed ~65k eval
-// steps against the dag grammar for a property of the grammar computed once in prepare_grammar.
+// and an O(P) non-short-circuiting fold over every production, on EVERY parse, re-deriving a
+// property of the grammar that prepare_grammar already computed once.
 fn parse_production_prepared_measured_seeded(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,

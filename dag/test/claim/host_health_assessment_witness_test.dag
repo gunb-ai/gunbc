@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { celsius }
 import product.placement_supply { HostIdentity }
 import product.fan_tach { FanTachWindow }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_fan_tach_expectation { srv1_fan_tach_expectation, srv2_fan_tach_expectation }
 import gunbc.fleet_fan_tach_observation { srv1_windows, srv2_windows }
 import product.fan_tach_health { fan_tach_goal }
