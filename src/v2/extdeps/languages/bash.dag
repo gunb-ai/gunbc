@@ -2732,3 +2732,9 @@ fn bash_redir_to_file_target_model(path: String) -> TargetModel {
     binding_spellings: bash_redir_to_file_binding_spellings(path: path)
   )
 }
+
+// The serializer's spelling of a stderr-to-file redirect. Only the spelling has a consumer
+// (v2.workflow.bash_command_fold_serialize), so only the spelling is declared.
+fn bash_redir_stderr_to_file_source_text(path: String) -> String {
+  concat("2> ", path)
+}
