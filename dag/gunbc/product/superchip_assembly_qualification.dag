@@ -156,7 +156,7 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
   },
   provenance: "seller: 'told when I purchased this board was out of a working machine'; untested, no visible damage",
   boot: CarrierBootUnobserved,
-  source: "eBay listing 'Nvidia GH200 P4261 694-24261-000-100 K1 Grace Hopper Superchip Dev BaseBoard' (item 157373033242) and its photographs; no NVIDIA document names P4261",
+  source: "the operator's purchase, eBay item 168742238639 (titled 'Nvidia GH200 P4261 694-24261-000-100 K1 ...'), and its photographs; item 157373033242 is a different listing of the same title and was not bought; no NVIDIA document names P4261",
 }
 
 

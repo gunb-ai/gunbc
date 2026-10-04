@@ -82,7 +82,7 @@ data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the m
 
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   labels: [
-    "sticker: S/N 1582023110038, Model: P4261, 694-24261-0000-100 K1, Made In USA",
+    "sticker: Model: P4261, 694-24261-0000-100 K1, Made In USA. The listing photographs show TWO serials on this label, S/N 1582023110038 in one close-up and S/N 1582023110033 in another, so the listing photographed more than one unit (or one was misread); the received unit's serial is unread",
     "silkscreen: 'Rework' above '180-14261-DAAF-A01' -- a printed marking; whether rework was performed is unknown",
   ],
   module_receptacles: ["J3", "J4"],
