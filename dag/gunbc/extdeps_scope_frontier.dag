@@ -592,18 +592,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/tailscale/acl_api.dag",
   "dag/extdeps/process/gnu_bash_exit.dag",
   "dag/extdeps/llm/openai_rest.dag",
-  "dag/extdeps/ssh/session.dag",
-  "dag/extdeps/crypto/hash.dag",
-  "dag/extdeps/rust/cargo_build.dag",
-  "dag/extdeps/languages/json/grammar.dag",
-  "dag/extdeps/tools/curl.dag",
   "dag/extdeps/auth/jwt.dag",
   "dag/extdeps/uuid/uuid.dag",
   "dag/extdeps/time/rfc3339.dag",
-  "dag/extdeps/version/semver.dag",
-  "dag/extdeps/languages/markdown.dag",
-  "dag/extdeps/os/ubuntu_autoinstall.dag",
-  "dag/extdeps/unicode/blocks.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [

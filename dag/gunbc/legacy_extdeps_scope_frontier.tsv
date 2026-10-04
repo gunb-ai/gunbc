@@ -85,6 +85,7 @@ dag/extdeps/crm/hubspot_lifecycle.dag
 dag/extdeps/crm/salesforce_opportunity.dag
 dag/extdeps/cron/cron.dag
 dag/extdeps/cron/schedule_model.dag
+dag/extdeps/crypto/hash.dag
 dag/extdeps/ctrl/gunbc_pin.dag
 dag/extdeps/currency/currency.dag
 dag/extdeps/dhcp/v4.dag
@@ -166,7 +167,9 @@ dag/extdeps/languages/go/types.dag
 dag/extdeps/languages/gpu/wgsl/kernel.dag
 dag/extdeps/languages/html.dag
 dag/extdeps/languages/json/emit.dag
+dag/extdeps/languages/json/grammar.dag
 dag/extdeps/languages/json/parse.dag
+dag/extdeps/languages/markdown.dag
 dag/extdeps/languages/python/emit.dag
 dag/extdeps/languages/python/primitives.dag
 dag/extdeps/languages/python/syntax.dag
@@ -217,6 +220,7 @@ dag/extdeps/object_storage/object_storage.dag
 dag/extdeps/observability.dag
 dag/extdeps/os.dag
 dag/extdeps/os/macos.dag
+dag/extdeps/os/ubuntu_autoinstall.dag
 dag/extdeps/os/ubuntu.dag
 dag/extdeps/os/windows.dag
 dag/extdeps/package_managers/apt.dag
@@ -270,6 +274,7 @@ dag/extdeps/runtime/architecture/x86_64_linux.dag
 dag/extdeps/runtime/errno.dag
 dag/extdeps/runtime/local.dag
 dag/extdeps/runtime/syscalls/linux.dag
+dag/extdeps/rust/cargo_build.dag
 dag/extdeps/rust/cargo.dag
 dag/extdeps/rust/rustup.dag
 dag/extdeps/rust/std_process.dag
@@ -297,6 +302,7 @@ dag/extdeps/shell/exec.dag
 dag/extdeps/sql/migration.dag
 dag/extdeps/ssh/keys.dag
 dag/extdeps/ssh/password_session.dag
+dag/extdeps/ssh/session.dag
 dag/extdeps/storage/nbd.dag
 dag/extdeps/storage/samsung.dag
 dag/extdeps/storage/types.dag
@@ -317,6 +323,7 @@ dag/extdeps/tmux/tmux.dag
 dag/extdeps/toolchain/architecture_profile.dag
 dag/extdeps/toolchain/types.dag
 dag/extdeps/tools/busybox.dag
+dag/extdeps/tools/curl.dag
 dag/extdeps/tools.dag
 dag/extdeps/tools/diffutils.dag
 dag/extdeps/tools/free.dag
@@ -340,6 +347,7 @@ dag/extdeps/transports/file.dag
 dag/extdeps/transports/rest.dag
 dag/extdeps/transports/shell.dag
 dag/extdeps/transports/sql.dag
+dag/extdeps/unicode/blocks.dag
 dag/extdeps/unicode/display.dag
 dag/extdeps/units/dimensionless.dag
 dag/extdeps/units/iec_80000_13.dag
@@ -350,5 +358,6 @@ dag/extdeps/vendor/ampere.dag
 dag/extdeps/vendor.dag
 dag/extdeps/version.dag
 dag/extdeps/version/pep440.dag
+dag/extdeps/version/semver.dag
 dag/extdeps/web_audio/web_audio.dag
 dag/extdeps/project_schedule/cpm_pert.dag

@@ -2,16 +2,12 @@
 // Source module: extdeps.version.semver
 
 use self::SemVerIdentifier::*;
-pub use crate::extdeps_external_authority::{
-    ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-};
+pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-use crate::std_decl_ref::DeclField::WholeDeclaration;
-pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
@@ -34,25 +30,6 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
-pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
-    thread_local! {
-            static CACHED: Rc<ExternalModelScope> = {
-                Rc::new(ExternalModelScope {
-        subject: Rc::new(ExternalSubjectRef {
-        declaration: Rc::new(DeclarationRef {
-        module_path: "extdeps.version.semver".to_string(),
-        decl_name: "semver_scheme".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
-    }),
-    }),
-        first_citation: extdeps_external_authority_anchor(),
-        further_citations: Rc::new(vec![]),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
 pub type SemVerIdentity = NonEmptyStr;

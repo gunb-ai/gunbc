@@ -11,7 +11,6 @@ import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref, RejectedUrlScheme,
 }
 import std.render_repeat_string_bootstrap { repeat_string }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
@@ -74,15 +73,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "spec.commonmark.org/0.31.2/"
   }
-}
-
-// Reading: CommonMark 0.31.2 (spec.commonmark.org/0.31.2) owns the markdown construct spellings; data commonmark_gfm_spellings transcribes those spellings (GFM inherits the base spellings from this spec).
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.languages.markdown", decl_name: "commonmark_gfm_spellings", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 type MarkdownSpellings {

@@ -5,23 +5,12 @@ import std.unicode.types { DisplayWidth, UnicodeBlock, ZeroWidth, Wide }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.unicode.org/reports/tr11/"
   }
-}
-
-// Reading: Unicode UAX #11 (East Asian Width) owns the zero-width block ranges; data zero_width_blocks transcribes exactly those ranges.
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.unicode.blocks", decl_name: "zero_width_blocks", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // East Asian Width block ranges transcribed from Unicode Standard UAX #11 (Unicode 15.1 UCD block
