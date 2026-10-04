@@ -833,6 +833,11 @@ import v2.std.algebra { any }
 // tpb_assemble and inspected one Bool. The rows now read three nullary producers, one per program -- the
 // call-projection program's producer serving two rows -- whose values are a record of two Bools and two
 // Bools. WARM: one assembly is more than one claim's budget.
+// THE collection_callback_realization PROGRAMS ARE ASSEMBLED ONCE EACH. Each claim assembled a one-module
+// source through fmi_assemble (and, for two, infer) and inspected one Bool or Symbol, well over the new-witness
+// eval-step cap. The rows now read five nullary producers, one per program -- the map-over-records program's
+// producer, a record of three Bools, serving three rows -- and the others a Symbol and three Bools. WARM: one
+// assembly is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1477,7 +1482,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.infer_fold_member_instance.fmi_body_not_carrier_reason",
   "v2.test.claim.value_base_projection.vbp_call_projection_reading",
   "v2.test.claim.value_base_projection.vbp_field_spelled_like_a_param_keeps_field",
-  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried"
+  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_map_records_reading",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_map_undeclared_field_reason",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_piped_map_binds_its_row",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_all_binds_its_row",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
