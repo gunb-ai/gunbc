@@ -17,7 +17,8 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   rejected_with_pending,
-  UserInputBoundary
+  UserInputBoundary,
+  Unavailable
 }
 import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
