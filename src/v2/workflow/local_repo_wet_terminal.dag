@@ -2726,6 +2726,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
       function: "client_list_reconciles_recorded_intent",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_typed_unavailable_disables_create" },
+      entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
+      function: "client_typed_unavailable_disables_create",
+      expectation: ExpectedToHold {}
     }
   ]
 }
@@ -2790,6 +2796,10 @@ fn local_repo_wet_premise_roster() -> List<WetPremisedClaim> {
     },
     WetPremisedClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_list_reconciles_recorded_intent" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    },
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_typed_unavailable_disables_create" },
       premise: RunnerBrowserToolchainReadyForJobUser {}
     }
   ]
