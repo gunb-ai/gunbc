@@ -3424,6 +3424,24 @@ fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
   }
 }
 
+// A REFINED ARGUMENT MATCHES THROUGH ITS DECLARED CARRIER, by the judge's own subsumption fact. The judge
+// widens a produced refinement to the carrier its declaration states (refinement_declared_carrier, one
+// step, never walked) after an exact comparison refuses; the generic match asks the SAME fact on a shape
+// mismatch, so `type Ns = List<Int> where nonempty` at `xs: List<T>` binds T to Int exactly as it would
+// inhabit a declared `List<Int>`. A mismatch is refused only when neither the argument nor its declared
+// carrier matches. Routing a mismatch to the judge with T still unbound would not decide it: a formal that
+// mentions a type variable is UndecidableGenericFormal there, which re-admits `g(1)` at `List<T>`.
+fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
+  match infer_match_generic_formal(formal: formal, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
+    InferFormalMatched { instances: matched } => InferFormalMatched { instances: matched }
+    InferFormalShapeMismatch =>
+      match refinement_declared_carrier(index: declarations, source_type: produced) {
+        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: carrier, type_params: type_params, instances: instances, declarations: declarations)
+        Absent => InferFormalShapeMismatch
+      }
+  }
+}
+
 type InferTypePair {
   formal: Node
   produced: Node
@@ -3485,7 +3503,7 @@ fn infer_judge_generic_formal(
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
     Present { value: produced } =>
-      match infer_match_generic_formal(formal: formal.declared, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
+      match infer_match_generic_formal_or_carrier(formal: formal.declared, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
         InferFormalShapeMismatch =>
           outcome_rejected(
             application_argument_does_not_inhabit_diagnostic(
