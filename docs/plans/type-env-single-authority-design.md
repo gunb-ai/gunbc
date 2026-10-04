@@ -883,7 +883,7 @@ trace marks in `04_infer.dag`.
   - The persisted store that produced the warm-route delta was deleted from main by #13064, as a regression of the same size per entry; that is this class, fixed by deletion.
   - The same encoder survives only in the in-memory cross-worker store. On main it is armed only in a `cfg(test)` module and in `run_discovery_corpus_with_options_inner`, whose sole entry has a unit test as its only caller.
   - No production consumer demands typed-snapshot sharing (DESIGN §2's demand-first rule), so nothing is built.
-  - The class is filed as `gunbc.recurring_failure_mode` `typed_snapshot_serializes_shared_structure_by_value`. Its next-rung trigger carries the build conditions for when a consumer appears.
+  - The class is filed as `gunbc.recurring_failure_mode` `typed_snapshot_serializes_shared_structure_by_value`, a declared frontier: the row lands with #13163 and does not resolve until then. Its next-rung trigger carries the build conditions for when a consumer appears.
 - **This closes the type_env attribution:**
   - PR-2 withdrawn;
   - the chartered memory win delivered by #13076;
