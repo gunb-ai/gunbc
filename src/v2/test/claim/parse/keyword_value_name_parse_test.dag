@@ -20,7 +20,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE CONTROLS ARE THE PROBED POSITIONS THE GUARD MUST NOT FIRE IN: keyword LABELS (a field decl, a record
 // init, a projection, a field-pattern label), the contextual value names declared and used, `true` / `false`
-// as literal patterns, a match arm led by `true`, and a statement value named `node` followed by an `if`.
+// as literal patterns, and a match arm led by `true`. A statement value named `node` followed by an `if` is the same
+// probed position, and it is already enrolled as v2.test.parse.bare_node_statement_route
+// bare_node_statement_before_an_if_takes_the_expression_route (the same fixture), so it is not repeated here.
 // Each would refuse if a guard were unconditional or its follow set too wide.
 
 data kvn_param_source: String = "module m.t\nfn f(then: Int) -> Int {\n  0\n}\n"
@@ -123,7 +125,7 @@ test fn kvn_contextual_module_data_control_holds() -> Bool {
   }
 }
 
-data kvn_bool_literal_pattern_source: String = "module m.t\ndata d: Int = match r {\n  R { ok: true } => 1\n}\n"
+data kvn_bool_literal_pattern_source: String = "module m.t\ndata d: Int = match r {\n  R { ok: true } => 0\n}\n"
 
 // Control: true and false stay literal patterns in a field pattern.
 test fn kvn_bool_literal_pattern_control_holds() -> Bool {
@@ -143,16 +145,6 @@ test fn kvn_match_arm_true_control_holds() -> Bool {
   }
 }
 
-data kvn_node_then_if_statement_source: String = "module m.t\nfn f() -> Int {\n  node\n  if c { 1 } else { 0 }\n}\n"
-
-// Control: a value named node followed by an if statement is not a node-NAME binder.
-test fn kvn_node_then_if_statement_control_holds() -> Bool {
-  match g_tokenize_parse(text: kvn_node_then_if_statement_source, file: ^probe_kvn_node_then_if_statement) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 data kvn_field_decl_label_source: String = "module m.t\ntype R = R { then: Int }\n"
 
 // Control: a field DECLARATION label is a label, not a value name, so it still admits a keyword.
@@ -163,9 +155,9 @@ test fn kvn_field_decl_label_control_holds() -> Bool {
   }
 }
 
-data kvn_contextual_pattern_binder_source: String = "module m.t\ndata d: Int = match r {\n  R { module: module } => module\n}\n"
+data kvn_contextual_pattern_binder_source: String = "module m.t\ndata d: Int = match r {\n  R { module: module } => 0\n}\n"
 
-// Control: a contextual value name binds in a field pattern and is referenced in the arm.
+// Control: a contextual value name binds in a field pattern (its reference half is kvn_contextual_module_data).
 test fn kvn_contextual_pattern_binder_control_holds() -> Bool {
   match g_tokenize_parse(text: kvn_contextual_pattern_binder_source, file: ^probe_kvn_contextual_pattern_binder) {
     Accepted { value: _, diagnostics: _ } => true
