@@ -134,15 +134,16 @@ pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
     declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
     empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
-    global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_with_children, node_with_inferred, put_inductive_field, put_inductive_field_cross,
-    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
+    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
+    lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
+    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
@@ -7905,14 +7906,19 @@ match app.matched_argument_index.clone() {
     Some(arg_index) => match typed_args.clone().iter().cloned().skip(arg_index.clone() as usize).next() {
     Some(ta) => {
                 let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-if (!direct_call_formal_has_unbound_type_variable(app.formal.clone().substitution_basis.clone()) && ((literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone()) || structured_application_site_type_mismatch_with_peeled(formal_subst.clone(), formal.clone(), carried_structural_type_name(formal.clone(), source_indices.clone(), 0), actual_expr.clone(), scope.clone())) || direct_call_structured_record_literal_resolved_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()))) {
-                    {
-                        let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
+let host_into_sequence = crate::v1_compiler_infer_env::host_text_into_structural_sequence(formal.clone(), crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone(), module_name.clone()), type_env.clone());
+if host_into_sequence.clone() {
+                    Rc::new(vec![text_crossing_route_error(formal.clone(), crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), "unicode_scalar_unfold".to_string(), source_indices.clone(), actual_expr.span.clone(), module_name.clone())])
+                } else {
+                    if (!direct_call_formal_has_unbound_type_variable(app.formal.clone().substitution_basis.clone()) && ((literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone()) || structured_application_site_type_mismatch_with_peeled(formal_subst.clone(), formal.clone(), carried_structural_type_name(formal.clone(), source_indices.clone(), 0), actual_expr.clone(), scope.clone())) || direct_call_structured_record_literal_resolved_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()))) {
+                        {
+                            let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
 Rc::new(vec![text_crossing_or_type_mismatch_error(formal.clone(), actual.clone(), type_env.clone(), actual_expr.span.clone(), module_name.clone())])
 }
-                } else {
-                    Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![])
+                    }
                 }
 },
     std::option::Option::None => Rc::new(vec![]),
