@@ -4,7 +4,6 @@ import v2.extdeps.languages.dag {
   dag_surface_edge,
   dag_surface_module_header_metadata_edge
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.namespace_graft {

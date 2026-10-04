@@ -2,7 +2,6 @@ module v2.test.lens_cost.nested_product
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, ProductCost, SizeVariable, cost_lens }
-import v2.std.logic { Bool }
 import v2.std.node {
   Cardinality,
   ComputationNode,

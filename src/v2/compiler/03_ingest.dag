@@ -1,12 +1,12 @@
 module v2.compiler.ingest
 
+import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.algebra { Empty, list_append }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,

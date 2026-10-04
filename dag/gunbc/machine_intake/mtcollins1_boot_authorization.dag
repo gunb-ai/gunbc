@@ -15,7 +15,7 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 // recurring automated effect under workload identity (gunbc.auth.privileged_effect_census); it
 // remains the one record the attach, the handoff and the terminal verdict all read, and the
 // physical-safety interlock the approval implicitly provided is
-// gunbc.machine_intake_mtcollins1_maintenance_hold.
+// gunbc.managed_host_unit_hold.
 type MtCollins1BootSubject {
   machine: NonEmptyStr
   bmc_host: NonEmptyStr

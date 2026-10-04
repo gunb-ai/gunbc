@@ -1,6 +1,7 @@
 module v2.workflow.floor_pure_producer_share
 
-import v2.std.collection { List }
+import std.types { List }
+import v2.std.algebra { any }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE ROSTER — which pure functions the required floor may
 // serve from one evaluation across claims.
@@ -637,6 +638,9 @@ import v2.std.collection { List }
 // stores four. Each claim that paid its own parse measured at the new-witness budget's edge on the
 // floor runs of #13056 (eval steps 66-72k, enrolment margin refused on cpu). Portable because each
 // holds only Bools.
+// THE BARE node STATEMENT ROW: v2.test.parse.bare_node_statement_route bns_verdicts parses three
+// one-function modules once each and stores three Bool verdicts, on the same ground. Portable because it
+// holds only Bools.
 // THE dag BIND BLOCK-SCOPED ROW: v2.test.emit.dag_bind_let_block_scoped dbl_verdicts parses five emitted
 // token sequences once each and stores five Bool verdicts; each claim that paid its own parse measured
 // over the new-witness budget on the floor runs of #13099 (eval steps 72-105k). Portable because it
@@ -655,6 +659,11 @@ import v2.std.collection { List }
 // THE XL-2 RETURN-TAIL-POSITION ROW IS THE SAME GROUND AT NINE SPECIMENS:
 // v2.test.claim.namespace_xl0.return_tail_position rtp_outcomes drives one front end over nine inline
 // modules and stores one verdict arm per module, portable for the same reason cav_outcomes is.
+// v2.test.claim.namespace_xl0.let_match_early_return lme_outcomes is the same ground at nine more, and its
+// lme_shape normalizes one inline module and stores four scalars (the match-arm list row's ground).
+// v2.test.claim.callexec.let_match_early_return_eval lmee_exit_path and lmee_binding_path each run
+// one assemble -> infer -> discharge -> eval and store two typed results (an Int or a stage and
+// reason Symbol), no tree and no closure.
 // THE XL-2 WILDCARD-PATTERN-FORM ROW IS THE MATCH-ARM LIST ROW'S GROUND AT ONE MORE SPECIMEN:
 // v2.test.claim.body_lowering.wildcard_pattern_form wpf_patterns tokenizes and parses one inline
 // module and calls body_lower_match_arms_optional on its match capture; the stored value is the
@@ -707,6 +716,11 @@ import v2.std.collection { List }
 // resolution context and no closure. adhoc-68dc5afb-a90 changed lcr_index, so the file's identities
 // read as changed and each claim was judged at ~210,000 eval steps against the 72,300 new-witness
 // budget, almost all of it the ingest the claims are not about.
+// THE CENSUS CASCADE ROWS ARE THE census_probe_outcomes GROUND AGAIN: test.claim.native_census
+// .cascade_root_fan_out drives native_test_context_from_ingest and the census folds once per shape
+// (a three-file chain and a four-file diamond), and each claim reads one CascadeCensus -- counts
+// and census member rows (Symbols, qualified names, Ints), no resolution context, no closure. WARM
+// because one front end is more than one claim's budget.
 // THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
 // .namespace_xl2_rehearsal_census drives native_test_context_from_ingest once per field of
 // Xl2ControlRuns (read the type for the roster, not a count here) over two- and three-specimen ingests, and its
@@ -829,6 +843,14 @@ import v2.std.collection { List }
 // tpb_assemble and inspected one Bool. The rows now read three nullary producers, one per program -- the
 // call-projection program's producer serving two rows -- whose values are a record of two Bools and two
 // Bools. WARM: one assembly is more than one claim's budget.
+// THE algebra_operator_derivation PROGRAMS ARE ASSEMBLED AND INFERRED ONCE EACH: six one-function sources,
+// each a whole tpb_assemble + infer, each claim reading one Symbol (the fatal reason, or ^accepted). WARM: one
+// assembly is more than one claim's budget.
+// THE collection_callback_realization PROGRAMS ARE ASSEMBLED ONCE EACH. Each claim assembled a one-module
+// source through fmi_assemble (and, for two, infer) and inspected one Bool or Symbol, well over the new-witness
+// eval-step cap. The rows now read five nullary producers, one per program -- the map-over-records program's
+// producer, a record of three Bools, serving three rows -- and the others a Symbol and three Bools. WARM: one
+// assembly is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -914,6 +936,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.caret_symbol_value_lowering.csv_verdicts",
   "v2.test.parse.else_less_if_value_category.elif_verdicts",
   "v2.test.parse.brace_and_lambda_head_route.bhr_verdicts",
+  "v2.test.parse.bare_node_statement_route.bns_verdicts",
   "v2.test.emit.dag_bind_let_block_scoped.dbl_verdicts",
   "v2.test.emit.dag_target_text_round_trip.trt_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
@@ -929,6 +952,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.reify_operand_refusal.ror_verdicts",
   "v2.test.claim.body_lowering.parameter_slot_refusal.psr_verdicts",
   "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
+  "v2.test.claim.namespace_xl0.let_match_early_return.lme_outcomes",
+  "v2.test.claim.namespace_xl0.let_match_early_return.lme_shape",
+  "v2.test.claim.callexec.let_match_early_return_eval.lmee_exit_path",
+  "v2.test.claim.callexec.let_match_early_return_eval.lmee_binding_path",
   "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
@@ -969,6 +996,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.emit.int_literal_form_unwired_located.int_literal_probe_table",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
+  "v2.test.claim.native_census.cascade_root_fan_out.cascade_linear_census",
+  "v2.test.claim.native_census.cascade_root_fan_out.cascade_diamond_census",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.test.name_resolve.explicit_fn_import_binds.efib_verdicts",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -1472,7 +1501,18 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.infer_fold_member_instance.fmi_body_not_carrier_reason",
   "v2.test.claim.value_base_projection.vbp_call_projection_reading",
   "v2.test.claim.value_base_projection.vbp_field_spelled_like_a_param_keeps_field",
-  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried"
+  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_join_declared_int_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_add_declared_bool_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_add_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_join_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_join_ok_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_add_ok_reason",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_map_records_reading",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_map_undeclared_field_reason",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_piped_map_binds_its_row",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_all_binds_its_row",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

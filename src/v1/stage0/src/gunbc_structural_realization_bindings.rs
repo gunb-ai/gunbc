@@ -3,17 +3,12 @@
 
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
-use crate::std_literal_elaboration::LiteralSourceKind::{
-    KernelBoolLiteral, KernelIntLiteral, KernelStringLiteral,
-};
-use crate::std_literal_elaboration::LiteralUnfolding::{
-    BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
-};
+use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral, KernelStringLiteral};
+use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
     KernelGrounding, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
-pub use crate::std_operator_realization::{StructuralConnectiveBinding, StructuralOrderingBinding};
-use crate::std_types::Bool::*;
+pub use crate::std_operator_realization::StructuralOrderingBinding;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -41,30 +36,10 @@ pub fn peano_literal_homomorphism(
     })
 }
 
-pub fn boolean_literal_homomorphism(
-    module_path: String,
-    bool_decl: String,
-    true_variant: String,
-    false_variant: String,
-) -> Rc<LiteralHomomorphism> {
-    Rc::new(LiteralHomomorphism {
-        source_kind: LiteralSourceKind::KernelBoolLiteral,
-        destination: crate::std_decl_ref::decl_ref(module_path.clone(), bool_decl.clone()),
-        element: std::option::Option::None,
-        producer: Rc::new(LiteralUnfolding::BooleanUnfold {
-            true_variant: crate::std_decl_ref::decl_ref(module_path.clone(), true_variant.clone()),
-            false_variant: crate::std_decl_ref::decl_ref(
-                module_path.clone(),
-                false_variant.clone(),
-            ),
-        }),
-    })
-}
-
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-                Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string()), Rc::new(LiteralHomomorphism {
+                Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelStringLiteral,
         destination: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
         element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
@@ -97,24 +72,6 @@ pub fn structural_ordering_rows() -> Rc<Vec<Rc<StructuralOrderingBinding>>> {
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<StructuralOrderingBinding>>>| c.clone())
-}
-
-pub fn structural_connective_binding(
-    carrier_module: String,
-    carrier: String,
-) -> Rc<StructuralConnectiveBinding> {
-    Rc::new(StructuralConnectiveBinding {
-        carrier: crate::std_decl_ref::decl_ref(carrier_module.clone(), carrier.clone()),
-    })
-}
-
-pub fn structural_connective_rows() -> Rc<Vec<Rc<StructuralConnectiveBinding>>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Rc<StructuralConnectiveBinding>>> = {
-            Rc::new(vec![structural_connective_binding("v2.std.logic".to_string(), "Bool".to_string())])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<StructuralConnectiveBinding>>>| c.clone())
 }
 
 pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {

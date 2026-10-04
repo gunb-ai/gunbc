@@ -6,7 +6,7 @@ import v2.std.source_position { SourceLineCol, source_line_col_at_byte }
 // UTF-8 bytes, so in "a\u{00e9} x" the `x` is at byte 4: byte column 5. A code-point walk says 4.
 test fn a_multibyte_character_shifts_the_byte_column() -> Bool {
   let at = source_line_col_at_byte(text: "a\u{00e9} x", offset: 4)
-  at.line == 1 && at.byte_column == 5
+  at.line == 1 && at.byte_column.value == 5
 }
 
 // Across a newline that follows multibyte text: "\u{00e9}\u{000a}ab" puts `b` at byte 4, line 2,
@@ -14,11 +14,11 @@ test fn a_multibyte_character_shifts_the_byte_column() -> Bool {
 // line 2 -- but at column 3, so the column is what discriminates.
 test fn a_newline_after_multibyte_text_starts_the_next_line_at_its_byte() -> Bool {
   let at = source_line_col_at_byte(text: "\u{00e9}\u{000a}ab", offset: 4)
-  at.line == 2 && at.byte_column == 2
+  at.line == 2 && at.byte_column.value == 2
 }
 
 // The newline byte itself belongs to the line it ends.
 test fn the_newline_byte_is_on_the_line_it_ends() -> Bool {
   let at = source_line_col_at_byte(text: "ab\u{000a}c", offset: 2)
-  at.line == 1 && at.byte_column == 3
+  at.line == 1 && at.byte_column.value == 3
 }

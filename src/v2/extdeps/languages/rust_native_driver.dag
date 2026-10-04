@@ -1,7 +1,7 @@
 module v2.extdeps.languages.rust_native_driver
 
 import v2.std.text { String }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.algebra { fold_list }
 
 // Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per

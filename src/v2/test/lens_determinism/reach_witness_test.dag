@@ -31,7 +31,6 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Absent, Present }
 

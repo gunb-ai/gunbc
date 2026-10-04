@@ -395,17 +395,3 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
 // own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
 // DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
 // token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
-
-/// Wall time for the languages census over prepared inventory (floor path).
-pub fn languages_decl_records_inventory_wall_ms(inventory: &[PreparedSourceView]) -> u128 {
-    let started = std::time::Instant::now();
-    languages_decl_records_from_inventory(inventory);
-    started.elapsed().as_millis()
-}
-
-/// Wall time for the languages census filesystem scan (legacy path).
-pub fn languages_decl_records_disk_scan_wall_ms() -> u128 {
-    let started = std::time::Instant::now();
-    languages_decl_records_inner();
-    started.elapsed().as_millis()
-}

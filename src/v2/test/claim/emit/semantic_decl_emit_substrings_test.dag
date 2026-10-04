@@ -5,7 +5,6 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
-import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.text { String }
 import std.algebra { Empty }

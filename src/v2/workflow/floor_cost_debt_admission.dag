@@ -1,7 +1,7 @@
 module v2.workflow.floor_cost_debt_admission
 
-import v2.std.collection { List }
-import std.types { NonEmptyStr }
+import v2.std.algebra { list_reverse }
+import std.types { NonEmptyStr, List }
 
 // TYPED ROSTER ADMISSION FOR THE ENROLMENT MARGIN: AN IDENTITY AND A REASON, NEVER A READING.
 //
@@ -142,12 +142,34 @@ data import_closure_real_corpus_typed_admissions: List<FloorCostDebtTypedAdmissi
   },
 ]
 
+// THE APPROVAL-INTENT DIGEST ROWS (gunbc#13004, 2026-10-02), granted by the allocation landing lane
+// (snappy-gull-889 msg_75d78dfe), declared down at gunbc.rung_drop
+// approval_intent_digest_new_witness_eval_step_cost. Each is the ONE real-path inhabitance claim of an approval-request
+// constructor: the request digests its intent with an interpreted SHA-256 and the gate admits
+// exactly that revision. Every sibling claim reads the intent instead (the binding of target, role,
+// member and attempt; the material/policy separation; the run-attempt binding) and stays under the
+// line by construction, so these rows are the real path those siblings lean on (DESIGN section 3
+// pairing obligation). The cost is the primitive's realization, not the claim's shape: the same
+// constructors measured 1.4M-2.6M eval steps when each sibling paid them, in the enrolment-margin
+// lines of PR required floor run 37062802746, and one digest per claim is what remains. Retired by that
+// drop's restoration trigger: SHA-256 executing as natively emitted code on the merge path.
+data approval_intent_digest_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.auth.approved_secret_grants_witness_test.the_real_request_digests_its_intent_and_admits_only_that_revision",
+    reason: "the one inhabitance claim of gunbc.auth.approved_secret_grants secret_grants_approval_request: one interpreted SHA-256 over the real grants intent, then the gate over that revision and a refused other revision; its binding siblings read secret_grants_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision",
+    reason: "the one inhabitance claim of gunbc.fabric_storage_state_provision fabric_state_provision_request: one interpreted SHA-256 over the real material intent, then the gate over that revision and a refused other revision; its siblings read fabric_state_provision_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+  },
+]
+
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions)
+  concat(concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions), approval_intent_digest_typed_admissions)
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {
-  reverse(fold(
+  list_reverse(xs: fold(
     floor_cost_debt_typed_admissions(),
     init: [],
     f: fn(acc, row) { concat([row.identity], acc) },

@@ -18,6 +18,7 @@ import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import v2.std.optional { Optional }
 import v2.std.integer { Int }
+import v2.std.source_position { SourceByteColumn }
 import v2.std.collection { List }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
@@ -207,7 +208,7 @@ type FileRefusalLink {
 // grammar-construction residue heads every file this way); a node the span index does not cover
 // is unresolved, never guessed.
 type FileRefusalAt
-  = FileRefusalAtLine { line: Int, byte_column: Int }
+  = FileRefusalAtLine { line: Int, byte_column: SourceByteColumn }
   | FileRefusalAtWholeFile
   | FileRefusalAtOtherFile { file: Symbol }
   | FileRefusalAtInvariant { invariant: Symbol }

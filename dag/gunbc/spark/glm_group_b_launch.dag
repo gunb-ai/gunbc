@@ -1,6 +1,7 @@
 module gunbc.spark.glm_group_b_launch
 
 import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_vllm_engine_ready_timeout }
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -156,6 +157,7 @@ fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
         profile: executable.profile,
         deployment_env: glm_group_b_deployment_env(),
         container: glm_native_arm_container,
+        promotion_receipts: no_promotion_receipts,
       )
   }
 }

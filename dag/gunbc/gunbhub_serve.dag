@@ -1,5 +1,6 @@
 module gunbc.gunbhub_serve
 
+import v2.std.algebra { filter }
 import std.types { HttpStatus }
 import extdeps.uri_path { PathTemplate, UrlPathToken }
 import extdeps.uri_path {
@@ -235,7 +236,7 @@ fn request_path_segments(path: String) -> List<String> {
   if path_only == "/" {
     []
   } else {
-    filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
+    filter(xs: split(s: path_only, delimiter: "/"), predicate: s => s != "")
   }
 }
 

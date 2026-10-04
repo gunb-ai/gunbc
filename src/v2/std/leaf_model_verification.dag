@@ -1,6 +1,6 @@
 module v2.std.leaf_model_verification
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.host_run { ValueDiff }
 import std.nat { Nat }
 import v2.std.node { Node, Symbol }

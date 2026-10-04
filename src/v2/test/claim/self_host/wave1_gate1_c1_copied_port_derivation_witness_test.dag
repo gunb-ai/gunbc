@@ -5,7 +5,6 @@ import v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers {
   wave1_gate1_c1_unpriceable_combiner_refuses_holds,
   wave1_gate1_c1_citation_retained_frontier_count_holds
 }
-import v2.std.logic { Bool }
 
 // Wave 1 Gate 1 C1 fast-lane witness: derived copied-port indices replace hand registry;
 // unpriceable combiner fail-closed. Full cost-lens execution proofs (arrow domain exclusion RED,

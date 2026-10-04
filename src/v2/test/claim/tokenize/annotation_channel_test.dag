@@ -2,7 +2,6 @@ module v2.test.tokenize.annotation_channel
 
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }

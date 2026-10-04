@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_pure_deletion_force_runs_its_unchanged_neighbour
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_pure_deletion_force_runs_its_unchanged_neighbour: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_pure_deletion_force_runs_its_unchanged_neighbour" as NonEmptyStr,
+
+  receipts: [
+    "**INVALID STATE: the required floor's changed-witness attribution charges a pure-deletion diff hunk to the UNCHANGED declaration that follows it, so deleting witnesses force-runs a neighbour whose text did not change.** The floor maps the PR's changed line ranges to declarations (`v1_compiler.cli_run.required_floor_runner` `floor_diff_edits_from_line_ranges_reading`). A deletion leaves no line in the head file; its range lands at the deletion point, which is the first line of the next declaration, so that declaration is attributed as edited.",
+
+    "HARM: an unchanged, cost-withheld witness is run under `ChangedCostDebtVerdictOnly` with the 8s wall armed, and if its real cost exceeds the wall the floor reports INTERRUPTED-BEFORE-VERDICT and refuses the change. Nothing about the neighbour changed, so the red says nothing about the change, which is the FLOOR-CHANGED-COST-0 failure the changed-witness policy exists to prevent, reached through attribution rather than through the policy. Because any deletion between two declarations is adjacent to one of them, placement cannot avoid it: the only escapes today are an operator override or editing the neighbour into something cheaper, which widens the change beyond its subject.",
+
+    "**SPECIMEN, measured 2026-10-03 on gunbc#13103 (advisories step 2) at head 8015248470.** Deleting `v2.test.claim.enforcement.grammar_coverage_witness`'s three v1-file `*_by_execution` claims (replaced by supplied-chain claims) left one deletion hunk directly above `grammar_coverage_v1_tree_receipt_by_execution`. The floor planned that claim as a changed witness (changed_witnesses=16, changed_witness_blocking=2) and interrupted it at the wall (wall 8009ms / 8000ms, cpu 6173ms), although its text and assertions were untouched. It went into the same one-time operator override as the long door-ledger claim, which hit the same wall for a different reason (`restoration_promise_names_a_route_that_does_not_exist`, third specimen).",
+
+    "DISTINGUISHING FACTS: not `restoration_promise_names_a_route_that_does_not_exist`, which is about the remedy text promising a lane that is absent. Here the remedy is irrelevant, because the witness should not have been selected at all. And not a cost defect of the neighbour: it was withheld honestly, and the floor's own roster says so.",
+
+    "RECOGNITION RULE: a changed-witness interruption whose identity has no line in the PR's diff of its own declaration, only an adjacent deletion, is this class.",
+
+    "RUNG: 1 (mitigatable). The interruption is typed, located and counted, so the line stops loudly; what is wrong is which line it stops. CEILING: 3. Whether a range is a pure deletion, and which declarations it lies BETWEEN, is decidable from the same base and head token streams the floor already reads (`v2.workflow.floor_cost_debt_edit` already compares base and head streams for its pure-removal tier).",
+
+    "NEXT-RUNG TRIGGER, a CAPABILITY: changed-witness attribution that classifies a pure-deletion hunk by the declarations it REMOVED (base side) rather than by the head-side line it lands on, so a deletion selects only the deleted identities (which no longer exist to run) and never an unchanged neighbour.",
+
+    "**REPAIRED IN THE CHANGE THAT FOUND IT (gunbc#13103), after a reshape attempt failed.** Leaving a blank separator where the claims were deleted only moved the charge: the next run charged the PRECEDING claim (`grammar_coverage_dag_tree_receipt_by_execution`, wall 8010ms / 8000ms at head 18e2c4aa4b), because a declaration's attributed span ran to the next declaration's start and so owned the blank line. The repair is in the attribution: `v1_compiler.cli_run` `parse_unified_diff_line_ranges` marks a zero-width `-U0` range as `deletion_gap`. `v1_compiler.cli_run.required_floor_runner` `floor_diff_edits_from_line_ranges_reading` then charges a gap to a declaration only when the gap lies inside it, between its start and its last non-blank line; a gap at or before the first declaration stays a file-grain edit, and a gap between declarations charges nothing. The bound errs toward charging: a deleted leading comment of the next declaration charges the previous one. DISCRIMINATING CONTROLS: `a_deletion_between_declarations_charges_neither_neighbour` (red with gap handling disabled: it charged `c`) and `a_deletion_inside_a_declaration_still_charges_it` (an interior deletion still selects its declaration). RUNG NOW: 1 (mitigatable), NOT 2. The production behaviour is fixed, and the floor's own run on gunbc#13103 (a deletion-only change) executed it once. But the two controls are seed unit tests that no CI path runs (`gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`), so nothing re-executes them on every change, and DESIGN section 4b(1) counts only enrolled, executing evidence. NEXT-RUNG TRIGGER, a CAPABILITY: seed unit tests executing as a blocking lane on the merge path (the restoration that rung drop names). That enrols these controls, and the class reaches rung 2."
+  ],
+
+  evidence: [],
+}

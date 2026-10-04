@@ -28,14 +28,13 @@ import v2.std.optional { Optional }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.algebra { contains, fold_list, length, list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
-import v2.std.logic { Bool }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import std.primitives {
   primitive_contract_roster,
   PrimitiveContract,

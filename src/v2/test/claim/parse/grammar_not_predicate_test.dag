@@ -2,7 +2,7 @@ module v2.test.parse.grammar_not_predicate
 
 import v2.compiler.parse { ParseArtifact, parse_module }
 import v2.std.algebra { length }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.compilers.lexing { Token, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar {
@@ -21,7 +21,6 @@ import v2.std.grammar {
 }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol, content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -15,7 +15,7 @@ use crate::std_algebra::AlgebraProfile::{
     PointwisePowerCollectionProfile,
 };
 pub use crate::std_termination::positive_descent_count;
-use crate::std_termination::DescentEvidence::DescentUnknown;
+use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;

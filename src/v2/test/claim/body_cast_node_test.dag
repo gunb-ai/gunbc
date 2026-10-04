@@ -1,5 +1,6 @@
 module v2.test.claim.body_cast_node
 
+import std.types { List }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, list_snoc_item }
@@ -16,7 +17,6 @@ import v2.test.lens_common.infer_fixture { claim_canonical_grounding, claim_infe
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -30,7 +30,6 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,

@@ -1,6 +1,7 @@
 module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { token_count_value }
@@ -224,6 +225,7 @@ fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
     profile: glm_native_initial_profile,
     deployment_env: [] as List<DockerEnvAssignment>,
     container: glm_native_arm_container,
+    promotion_receipts: no_promotion_receipts,
   )
 }
 

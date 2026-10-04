@@ -42,6 +42,42 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dark_in
 // reader under the derived NewWitnessTier budget on the acceptance path.
 data live_deploy_dark_install_render_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_dark_install_render_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_dark_install_render_rows; measured by "), m.measured_by))
 
+// NOTE 2026-10-03 (PR gunbc#13119, head c97aa92a5ef) — the repair this row waited for is IN, and
+// the trigger is NOT established; the drop STAYS.
+//
+// WHAT WAS REMOVED: `orch_emit_from_registry` — the per-call payment of one registry bundle
+// lookup + grounding walk + translate + fidelity decode + token fold per step and per seq2 join
+// (plus a per-call rebuild of the realize targets' payload-independent parts, including the
+// derive_grammar_relation_row_for_lhs witness derivation). Each medium/production now computes an
+// `OrchEmitPrepared` plan once (lazy, per construct, from the first call's own target) and the
+// fold carries it; serialize goes through target_serialize_source_from_selected_row. The
+// redirect-suffix bypass (hand-written source-text string rows) is dissolved the same way. Output
+// is BYTE-IDENTICAL: the generated-artifact agreement lane went red on the pre-fix head only
+// because of an Exit-arm carried-unwrap defect (filed as recurring_failure_mode
+// a_record_accepted_where_a_declared_scalar_slot_is_declared), and after the unwrap fix the gate's
+// own main_wet_one renders .github/workflows/fleet-converge.yml byte-identical to the committed
+// file (323483 bytes pre-merge, 345134 post-merge, empty git diff), with 16/16 orchestration_emit_test,
+// 8/8 tier2 and 80/82 live_deploy emit_test fixture claims green, and CI floor+generated+witnesses
+// green (run 37154118158).
+//
+// WHY THE TRIGGER IS NOT ESTABLISHED: no run BILLS this identity. While the drop stands, the
+// identity is EXEMPT from the eval-step standing gate, so it cannot appear on the over-cost list
+// at any cost; the required floor bills only changed or new witnesses, so an unrelated PR does not
+// re-bill it; and the floor's per-claim cost record is not persisted as an artifact on current
+// acceptance runs (this lane's own rows cite `artifact required-floor-claim-cost` from earlier
+// runs 34854812903/35174104379; run 37154118158 uploaded only required-ci-measurement-receipt), so
+// an acceptance run records no billed reading for a rostered
+// identity. The only measured frame is the hermetic single-claim frame (claim_batch --hermetic,
+// dag/test/claim/live_deploy/emit_test.dag): 986,167 eval steps at this PR's own pre-refactor base
+// 5251e7fb31f, 981,593 on origin/main fetched 2026-10-03T23:31Z, and 960,614 on this PR's head
+// (dispatch 2026-10-04T00:14Z) — the lever moved the frame by about 25,000 steps on its own
+// lineage, but every reading sits far above the NewWitnessTier budget, which is NOT under.
+//
+// MISSING CAPABILITY THIS ROW NOW NEEDS: a billed floor reading for a rostered drop-lane identity
+// on the acceptance run — persist required_floor_claim_cost.tsv (or bill rostered identities every
+// acceptance run) so a drop can leave on a measurement instead of an absence. Until a run bills
+// the identity under the NewWitnessTier budget, this row stands.
+
 data live_deploy_dark_install_render_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "live_deploy_dark_install_render_new_witness_eval_step_cost" as NonEmptyStr,
 
@@ -61,3 +97,4 @@ data live_deploy_dark_install_render_new_witness_eval_step_cost: RungDrop = Rung
     restoration_trigger: "THE CAPABILITY: the generic bash emit path's per-step overhead is reduced SUFFICIENT FOR the first reader of test.claim.live_deploy.emit witness_approval_broker_dark_script_text to measure under the NewWitnessTier budget v2.workflow.required_floor claim_ceiling_eval_step_budget derives, on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Moving the bill to another claim (reordering, narrowing, or a different first reader) does not retire the row, nor does deleting the identity, replacing the rendered script with a fixture, or raising the budget.",
   }
 }
+

@@ -1,5 +1,6 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap_nesting { roadmap_memberships }
 import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
 
@@ -1261,6 +1262,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   })
 }
 
@@ -1349,6 +1351,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       submission_capture: CaptureAbsent,
       integration: IntegrationReceiptAbsent,
       goal_audit: [],
+      session_placement: SessionPlacementAbsent { unit: "" },
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -2411,6 +2414,7 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
     graph: graph,
     merged: [],
     node_id: node_id,
+    request: LaunchAutonomous,
   )
 }
 

@@ -12,7 +12,7 @@ import extdeps.docker.cli {
   docker_create_command, docker_start_command, docker_stop_command, docker_rename_command,
   docker_remove_force_command,
 }
-import extdeps.vllm.engine_args { vllm_max_num_seqs_flag, vllm_gpu_memory_utilization_flag }
+import extdeps.vllm.engine_args { vllm_max_num_seqs_flag, vllm_gpu_memory_utilization_flag, vllm_kv_cache_dtype_flag, vllm_argv_without_admission_flags, vllm_argv_scheduler_admission, vllm_argv_indexer_kv_dtype_request, vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key }
 import extdeps.docker.container_inspect {
   ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectUlimit,
   docker_capability_canonical, docker_memlock_ulimit_name,
@@ -83,12 +83,16 @@ type RelaunchAxis
   = TransportAxis
   | BatchingAxis
   | UtilizationAxis
+  | KvCacheDtypeAxis
+  | AdmissionControlsAxis
 
 fn relaunch_axis_wire(a: RelaunchAxis) -> NonEmptyStr {
   match a {
     TransportAxis => "collective-transport" as NonEmptyStr
     BatchingAxis => "batching-bounds" as NonEmptyStr
     UtilizationAxis => "gpu-memory-utilization" as NonEmptyStr
+    KvCacheDtypeAxis => "kv-cache-dtype" as NonEmptyStr
+    AdmissionControlsAxis => "admission-controls" as NonEmptyStr
   }
 }
 
@@ -646,16 +650,21 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
       field: SpecCommand,
       cause: "the inspect document carries no Config.Cmd, so the engine arguments this container was created with were not compared" as NonEmptyStr,
     }
-    Present { value: argv } =>
-      if count(argv) != count(spec.command) {
+    Present { value: full_argv } =>
+      match admission_controls_comparison(planned: spec.command, observed: full_argv) {
+       AdmissionControlsUnreadable { cause: c } => FieldUnreadable { field: SpecCommand, cause: c }
+       AdmissionControlsCompared { moved: admission_moved } => {
+      let planned_core = vllm_argv_without_admission_flags(argv: spec.command)
+      let argv = vllm_argv_without_admission_flags(argv: full_argv)
+      if count(argv) != count(planned_core) {
         FieldDiffersOffAxis {
           field: SpecCommand,
-          planned: join([to_string(count(spec.command)), " words"], ""),
+          planned: join([to_string(count(planned_core)), " words"], ""),
           observed: join([to_string(count(argv)), " words"], ""),
         }
       } else {
-        let differences = argv_word_differences(planned: spec.command, observed: argv)
-        let off_axis = filter(differences, d => axis_is_absent(a: argv_difference_axis(planned: spec.command, d: d)))
+        let differences = argv_word_differences(planned: planned_core, observed: argv)
+        let off_axis = filter(differences, d => axis_is_absent(a: argv_difference_axis(planned: planned_core, d: d)))
         match off_axis.first() {
           Present { value: d } => FieldDiffersOffAxis {
             field: SpecCommand,
@@ -663,14 +672,14 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
             observed: d.observed,
           }
           Absent =>
-            match differences.first() {
-              Absent => FieldAgrees { field: SpecCommand }
-              Present { value: _ } => FieldDiffersOnAxis {
+            if length(differences) == 0 && !admission_moved { FieldAgrees { field: SpecCommand } }
+            else {
+              FieldDiffersOnAxis {
                 field: SpecCommand,
-                axes: argv_difference_axes(planned: spec.command, differences: differences),
+                axes: concat(argv_difference_axes(planned: planned_core, differences: differences), if admission_moved { [AdmissionControlsAxis] } else { [] }),
                 planned: join(map(differences, x => join([
                   "word ", to_string(x.index), " (",
-                  match argv_difference_axis(planned: spec.command, d: x) {
+                  match argv_difference_axis(planned: planned_core, d: x) {
                     Present { value: a } => relaunch_axis_wire(a: a) as String
                     Absent => "no axis"
                   },
@@ -681,6 +690,35 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
             }
         }
       }
+      }
+       }
+  }
+}
+
+// THE ADMISSION CONTROLS ARE COMPARED AS TYPED VALUES, not as words: a launch that adds the full-input
+// gate and a watermark changes the argv's length, which a word-wise reading can only call off-axis.
+// Both sides are read through extdeps.vllm.engine_args' readers; an unreadable side refuses rather than
+// guessing, and a difference is the AdmissionControlsAxis.
+type AdmissionControlsComparison
+  = AdmissionControlsCompared { moved: Bool }
+  | AdmissionControlsUnreadable { cause: NonEmptyStr }
+
+fn admission_controls_comparison(planned: List<String>, observed: List<String>) -> AdmissionControlsComparison {
+  match vllm_argv_scheduler_admission(argv: planned) {
+    Absent => AdmissionControlsUnreadable { cause: "the planned argv's scheduler admission controls cannot be read (a repeated or conflicting flag)" as NonEmptyStr }
+    Present { value: ps } => match vllm_argv_scheduler_admission(argv: observed) {
+      Absent => AdmissionControlsUnreadable { cause: "the running container's scheduler admission controls cannot be read (a repeated or conflicting flag)" as NonEmptyStr }
+      Present { value: os } => match vllm_argv_indexer_kv_dtype_request(argv: planned) {
+        Absent => AdmissionControlsUnreadable { cause: "the planned argv's indexer KV dtype cannot be read" as NonEmptyStr }
+        Present { value: pi } => match vllm_argv_indexer_kv_dtype_request(argv: observed) {
+          Absent => AdmissionControlsUnreadable { cause: "the running container's indexer KV dtype cannot be read" as NonEmptyStr }
+          Present { value: oi } => AdmissionControlsCompared {
+            moved: vllm_scheduler_admission_key(r: ps) != vllm_scheduler_admission_key(r: os)
+              || vllm_indexer_kv_dtype_key(r: pi) != vllm_indexer_kv_dtype_key(r: oi),
+          }
+        }
+      }
+    }
   }
 }
 
@@ -722,6 +760,8 @@ fn argv_difference_axis(planned: List<String>, d: ArgvDifference) -> RelaunchAxi
           Present { value: BatchingAxis }
         } else if flag == vllm_gpu_memory_utilization_flag {
           Present { value: UtilizationAxis }
+        } else if flag == vllm_kv_cache_dtype_flag {
+          Present { value: KvCacheDtypeAxis }
         } else {
           none
         }

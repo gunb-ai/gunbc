@@ -4,7 +4,6 @@
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::Bool;
-use crate::std_types::Bool::*;
 pub use crate::v1_compiler_emit_core_support::{is_leaf_type_item, is_type_def_item};
 pub use crate::v1_compiler_emit_python::emit_py_resource_def;
 pub use crate::v1_compiler_infer_env::empty_type_env;

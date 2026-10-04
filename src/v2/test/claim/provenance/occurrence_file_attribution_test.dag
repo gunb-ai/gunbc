@@ -29,7 +29,6 @@ import v2.std.text { char_eq }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -54,9 +53,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // silently, plausibly and wrongly. Seeded from the ingest's running mark they are different ids, and
 // each answers its own file. The claim below is therefore a discriminator and not a demonstration:
 // delete the seeding and it reports one file twice.
-data attribution_source_a: String = "module v2.test.fixture.attribution_a\n\nimport v2.std.logic { Bool }\n\nfn attribution_a_fn() -> Bool { true }\n"
+data attribution_source_a: String = "module v2.test.fixture.attribution_a\n\nimport std.types { Bool }\n\nfn attribution_a_fn() -> Bool { true }\n"
 
-data attribution_source_b: String = "module v2.test.fixture.attribution_b\n\nimport v2.std.logic { Bool }\n\nfn attribution_b_fn() -> Bool { true }\n"
+data attribution_source_b: String = "module v2.test.fixture.attribution_b\n\nimport std.types { Bool }\n\nfn attribution_b_fn() -> Bool { true }\n"
 
 fn attribution_read_a() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -251,7 +250,7 @@ test fn attributed_occurrence_carries_a_byte_range_holds() -> Bool {
 // file was a second source for one fact, free to drift from this one -- DESIGN section 2's
 // duplication test, and section 6's "new artifact with no final consumer". The string is the single
 // source; the path is a value under test (it is what the rendered line must name), not a lookup.
-data door_probe_source: String = "module fixture.native_cli_door.door_probe\n\nimport v2.std.logic { Bool }\n\nfn door_probe_fn() -> Bool { true }\n"
+data door_probe_source: String = "module fixture.native_cli_door.door_probe\n\nimport std.types { Bool }\n\nfn door_probe_fn() -> Bool { true }\n"
 
 data door_probe_path: String = "fixtures/native_cli_door/door_probe.dag"
 

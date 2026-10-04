@@ -374,6 +374,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/instrument/fs_box_v3_v4_v5_faq.dag",
   "dag/extdeps/linux/edac.dag",
   "dag/extdeps/linux/kernel.dag",
+  "dag/extdeps/linux/efi_stub.dag",
+  "dag/extdeps/linux/boot_console.dag",
   "dag/extdeps/linux/mlx5_core.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
   "dag/extdeps/os/debian.dag",
@@ -590,6 +592,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/tailscale/acl_api.dag",
   "dag/extdeps/process/gnu_bash_exit.dag",
   "dag/extdeps/llm/openai_rest.dag",
+  "dag/extdeps/auth/jwt.dag",
+  "dag/extdeps/uuid/uuid.dag",
+  "dag/extdeps/time/rfc3339.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
