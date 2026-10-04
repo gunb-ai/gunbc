@@ -1703,7 +1703,7 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "aria-label", value: join(["Assign ", view.headline], "")),
           attr(name: "data-assign-node", value: view.node_id),
         ], match issue_assignee_holder(view: view, attempts: []) {
-          Absent => [issue_avatar_chip_node(display: EventPrincipalDisplay { name: "Unassigned", detail: "Choose an assignee", initials: "?", avatar: AvatarAbsent, picture: "" }, workflow: false), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
+          Absent => [el_attrs("span", [attr(name: "class", value: "site-avatar site-avatar-default"), attr(name: "data-avatar", value: "absent"), attr(name: "title", value: "Choose an assignee")], [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: "Unassigned")]), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
           Present { value: holder } => [
             issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder)),
             el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
@@ -2524,7 +2524,7 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
 // The current identity becomes the editor in place; closing restores the projected holder.
 fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   let face = match assignment.holder {
-    Absent => issue_avatar_chip_node(display: EventPrincipalDisplay { name: "Unassigned", detail: "Choose an assignee", initials: "?", avatar: AvatarAbsent, picture: "" }, workflow: false)
+    Absent => el_attrs("span", [attr(name: "class", value: "site-avatar site-avatar-default"), attr(name: "data-avatar", value: "absent"), attr(name: "title", value: "Choose an assignee")], [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: "Unassigned")])
     Present { value: holder } => issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder))
   }
   let label = match assignment.holder { Absent => "Unassigned" Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).detail }
