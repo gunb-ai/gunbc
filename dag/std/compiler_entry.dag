@@ -124,12 +124,27 @@ type NativeClaimReport {
   terminal: NativeClaimTerminal
 }
 
+// NativeServeDriver -- a NATIVELY EMITTED HTTP REQUEST/RESPONSE SERVICE, the native route for
+// every program `gunbc serve` (a seed verb, DESIGN section 7) serves today. Its `.dag` entry
+// declares `native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
+// ServeWireResponse` -- the seed's handler contract unchanged -- and imports gunbc.native_serve,
+// whose folds decide everything between the bytes: which address to bind and which release the
+// process is (argv in, a refusal before any bind), whether a request head is admissible and how
+// many body bytes follow, and whether the request is answered before the handler (/livez). The
+// rendered main performs only what no fold can -- read argv, bind and accept the TCP listener,
+// read the request line, header lines and exactly the body length it was handed within the
+// contract's byte limits and timeout, call the handler once per request, write the returned
+// value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
+// NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
+// served program's main shares nothing with the compile CLI's. Instrument:
+// `gunbc test //gunbc/instruments:native-serve`.
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
   | NativeCliDriver
   | NativeClaimDriver
+  | NativeServeDriver
 
 // MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
 // loop closed its prepare span and then let the module's resolved tree fall out of scope at the end
