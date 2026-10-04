@@ -57,7 +57,12 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
 // destination-key note in std.literal_elaboration). v2.std.node Symbol (host String, lexeme-backed,
 // RustStdString row in gunbc.rust_source_type_bindings) and the kernel String never present that
 // structure and must never acquire a row -- a native realization takes the kernel literal directly.
+// std.nat Nat's literal row: an integer literal at an expected std.nat Nat IS Zero / Succ^n(Zero). The seed
+// does not reach it -- std.nat Nat is grounded to the kernel integer (kernel_grounding_rows), so the seed's
+// literal_boundary_elaboration answers DirectLiteral before reading any row -- while v2 infer, which keeps Nat and
+// Int distinct types, admits a literal at Nat through it (v2.compiler.infer infer_literal_elaborates_at).
 data literal_homomorphism_rows: List<LiteralHomomorphism> = [
+  peano_literal_homomorphism(module_path: "std.nat", nat: "Nat", zero: "Zero", succ: "Succ", prev_field: "prev"),
   peano_literal_homomorphism(module_path: "test.fixture.structural_peano_nat", nat: "StructuralNat", zero: "StructuralZero", succ: "StructuralSucc", prev_field: "prev"),
   unicode_scalar_literal_homomorphism
 ]

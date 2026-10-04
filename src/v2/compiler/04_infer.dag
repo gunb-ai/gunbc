@@ -31,6 +31,9 @@ import v2.compiler.inferred_tree {
 }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_reading }
 import v2.std.model_core { AlgebraInhabitanceDecl }
+import std.literal_elaboration { DirectLiteral, KernelIntLiteral, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows }
+import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
   dag_algebra_inhabitance_decls,
@@ -69,12 +72,12 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, qualified_name_init, qualified_name_last_segment, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
-import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
+import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -3007,7 +3010,19 @@ fn infer_unify_transform_operand_types(
           if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
             Accepted { value: left_type, diagnostics: None }
           } else {
-            outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
+            match infer_literal_elaborates_at(literal_node: right_node, expected: left_type, declarations: resolved.resolved_declarations) {
+              InferLiteralElaboratesTo { destination_type: _ } => Accepted { value: left_type, diagnostics: None }
+              InferLiteralElaborationRefused { cause: cause } =>
+                outcome_rejected(Diagnostic { reason: cause, at: node_locus(node: right_node), correction: Unavailable { reason: CorrectionNotModeled } })
+              InferLiteralNotElaborated =>
+                match infer_literal_elaborates_at(literal_node: left_node, expected: right_type, declarations: resolved.resolved_declarations) {
+                  InferLiteralElaboratesTo { destination_type: _ } => Accepted { value: right_type, diagnostics: None }
+                  InferLiteralElaborationRefused { cause: cause } =>
+                    outcome_rejected(Diagnostic { reason: cause, at: node_locus(node: left_node), correction: Unavailable { reason: CorrectionNotModeled } })
+                  InferLiteralNotElaborated =>
+                    outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
+                }
+            }
           }
       }
   }
@@ -3320,6 +3335,11 @@ fn infer_judge_declared_position(
         reason: reason
       )
     Absent =>
+  match infer_literal_elaborates_at(literal_node: produced_at, expected: infer_declared_type_denotation(declared: formal.declared), declarations: declarations) {
+    InferLiteralElaboratesTo { destination_type: _ } => Accepted { value: true, diagnostics: None }
+    InferLiteralElaborationRefused { cause: cause } =>
+      outcome_rejected(Diagnostic { reason: cause, at: node_locus(node: produced_at), correction: Unavailable { reason: CorrectionNotModeled } })
+    InferLiteralNotElaborated =>
   match lookup_inferred_facts_in_entries(entries: entries, key: produced_at) {
     Absent =>
       infer_inhabitance_undecidable_accepted(
@@ -3353,7 +3373,9 @@ fn infer_judge_declared_position(
       }
   }
   }
+  }
 }
+
 
 fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
   Empty
@@ -3529,6 +3551,65 @@ fn infer_declared_type_obligation(
     },
     application: application,
     type_variables: type_variables
+  }
+}
+
+// A LITERAL ELABORATES AT AN EXPECTED TYPE THROUGH THE ONE DECLARED TABLE. An integer literal reaching a
+// position whose expected type is a declaration with a literal homomorphism row -- std.nat Nat by
+// gunbc.structural_realization_bindings literal_homomorphism_rows' Peano row -- IS a value of that type: 0 is
+// Zero, 3 is Succ^3(Zero). The decision is std.literal_elaboration elaborate_literal_at over that ONE table,
+// the same function and rows the seed's inference consults (v1.compiler.infer literal_boundary_elaboration),
+// so the two routes cannot disagree on which literal elaborates where. Read by BOTH places that hold an
+// expected type when they judge: the declared-type obligation (infer_judge_declared_position, every declared
+// position) and the binary-operator operand unify (infer_unify_transform_operand_types, the other operand's
+// type) -- one rule.
+//
+// destination_realizes_natively IS false HERE, AND THAT IS A DECISION, NOT AN OMISSION. The seed answers it from
+// kernel_grounding_rows, so std.nat Nat (grounded to the kernel integer) takes DirectLiteral there and the seed
+// then treats Nat as the kernel Int. That is a REALIZATION fact; v2 infer decides TYPES and keeps Nat and Int
+// distinct, so it asks the typing question -- is there a declared homomorphism into this type -- and the
+// realization of an elaborated literal stays the realizer's (Nat is realized as the kernel integer, so the
+// literal's value does not move, only its type).
+//
+// SCOPE, STATED: integer literals. A string literal at the free monoid over Char (the Unicode scalar row) is
+// not elaborated here; that crossing stays the text-boundary lane's (DESIGN section 4, Ruling 3).
+type InferLiteralElaboration
+  = InferLiteralElaboratesTo { destination_type: Node }
+  | InferLiteralNotElaborated
+  | InferLiteralElaborationRefused { cause: Symbol }
+
+fn infer_type_declaration_ref(t: Node) -> Optional<DeclarationRef> {
+  match declaration_reference_path_optional(node: infer_type_head_and_args(t: t).head) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Absent => optional_absent()
+        Present { value: leaf } =>
+          optional_present(value: decl_ref(module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)), decl_name: symbol_lexeme(sym: leaf)))
+      }
+  }
+}
+
+fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
+  match dag_canonical_literal_from_node(node: literal_node) {
+    Rejected { diagnostics: _ } => InferLiteralNotElaborated
+    Accepted { value: literal, diagnostics: _ } =>
+      match literal {
+        DagCanonicalIntLiteral { magnitude: _ } =>
+          let wanted = infer_type_alias_normalized(t: expected, declarations: declarations)
+          match infer_type_declaration_ref(t: wanted) {
+            Absent => InferLiteralNotElaborated
+            Present { value: destination } =>
+              match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: destination, element: none, destination_realizes_natively: false) {
+                ViaHomomorphism { homomorphism: _ } => InferLiteralElaboratesTo { destination_type: wanted }
+                DirectLiteral => InferLiteralNotElaborated
+                LiteralElaborationRefused { cause: _ } => InferLiteralElaborationRefused { cause: ^infer_reason_literal_elaboration_refused }
+              }
+          }
+        DagCanonicalBoolLiteral { value: _ } => InferLiteralNotElaborated
+        DagCanonicalSymbolLiteral { symbol: _ } => InferLiteralNotElaborated
+        DagCanonicalStringLiteral { value: _ } => InferLiteralNotElaborated
+      }
   }
 }
 

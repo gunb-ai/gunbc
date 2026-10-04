@@ -1,0 +1,173 @@
+module v2.test.claim.compiler.literal_elaboration
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer, infer_application_callee_use }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_runtime_value, v2_evaluator_interpretation }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, NodeFold, Symbol, fold_node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.runtime { RuntimeValue }
+import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2 infer elaborates an integer literal at an expected type through the ONE declared table
+// (std.literal_elaboration elaborate_literal_at over gunbc.structural_realization_bindings
+// literal_homomorphism_rows; v2.compiler.infer infer_literal_elaborates_at), at a declared position and at a
+// binary operator's typed partner -- and the elaborated literal EXECUTES on the v2 eval route with the meaning
+// the type gives it. BOUNDARY: source text in (module p plus a std.nat peer carrying the real declaration's
+// shape), through the production assembly route, infer, and v2.compiler.eval with the v2 evaluator.
+
+data lel_artifact: Artifact = Artifact { kind: SourceFile, id: ^literal_elaboration_p_artifact, file_path: "src/v2/pilot/literal_elaboration_p.dag" }
+data lel_nat_artifact: Artifact = Artifact { kind: SourceFile, id: ^literal_elaboration_nat_artifact, file_path: "src/v2/pilot/literal_elaboration_nat.dag" }
+
+data lel_nat_peer: String = "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n"
+
+fn lel_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: cu, source_root: V2Tree }
+}
+
+fn lel_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: lel_source(src: src, artifact: lel_artifact, cu: ^literal_elaboration_p_cu),
+      tail: Cons { head: lel_source(src: lel_nat_peer, artifact: lel_nat_artifact, cu: ^literal_elaboration_nat_cu), tail: Empty }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn lel_inferred(src: String) -> Outcome<InferredTree> {
+  match lel_assemble(src: src) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn lel_reason(src: String) -> Symbol {
+  match lel_inferred(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+data lel_prelude: String = "module p\n\nimport std.nat { Nat, Zero, Succ }\n\ntype Pair {\n  target: Int\n}\n\nfn g(n: Nat) -> Bool {\n  true\n}\n\nfn gi(n: Int) -> Bool {\n  true\n}\n\nfn gp(p: Pair) -> Bool {\n  true\n}\n\n"
+
+fn lel_zero_at_nat_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  g(n: 0)\n}\n") }
+fn lel_three_at_nat_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  g(n: 3)\n}\n") }
+fn lel_literal_at_int_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  gi(n: 3)\n}\n") }
+fn lel_literal_at_rowless_type_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  gp(p: 0)\n}\n") }
+fn lel_negative_literal_at_nat_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  g(n: -1)\n}\n") }
+fn lel_string_literal_at_nat_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  g(n: \"a\")\n}\n") }
+fn lel_nat_compared_to_literal_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k(n: Nat) -> Bool {\n  n == 0\n}\n") }
+fn lel_literal_against_literal_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k() -> Int {\n  0 + 1\n}\n") }
+fn lel_nat_compared_to_int_expression_reason() -> Symbol { lel_reason(src: lel_prelude + "fn k(n: Nat) -> Bool {\n  n == (0 + 1)\n}\n") }
+
+// ELABORATES at a declared Nat: 0 (Zero) and 3 (Succ^3(Zero)) inhabit it.
+test fn lel_literals_elaborate_at_a_declared_nat() -> Bool {
+  lel_zero_at_nat_reason() == ^accepted && lel_three_at_nat_reason() == ^accepted
+}
+
+// A literal at Int stays Int: no row is consulted for the kernel type.
+test fn lel_literal_at_int_stays_int() -> Bool {
+  lel_literal_at_int_reason() == ^accepted
+}
+
+// RED: a literal at a type with no row refuses, located, with the judge's own cause.
+test fn lel_literal_at_a_type_without_a_row_refuses() -> Bool {
+  lel_literal_at_rowless_type_reason() == ^application_argument_does_not_inhabit
+}
+
+// RED: a negative literal at Nat refuses (pinned so a later parse change cannot make it silent).
+test fn lel_negative_literal_at_nat_refuses() -> Bool {
+  lel_negative_literal_at_nat_reason() != ^accepted
+}
+
+// RED: a literal of another source kind (a string) has no row into Nat and refuses rather than picking one.
+test fn lel_literal_of_another_kind_refuses_at_nat() -> Bool {
+  lel_string_literal_at_nat_reason() != ^accepted
+}
+
+// The operator partner: a Nat compared with 0 unifies at Nat with the literal as written.
+test fn lel_literal_elaborates_at_its_typed_operand_partner() -> Bool {
+  lel_nat_compared_to_literal_reason() == ^accepted
+}
+
+// No elaboration without a typed partner: 0 + 1 stays Int, so it refuses against a Nat operand.
+test fn lel_literal_without_a_typed_partner_stays_int() -> Bool {
+  lel_literal_against_literal_reason() == ^accepted && lel_nat_compared_to_int_expression_reason() != ^accepted
+}
+
+// EXECUTION ON THE v2 EVAL ROUTE (red-capable): z(n) = n == 0, at Zero and at Succ { prev: Zero }. If Nat
+// values were constructors while the literal stayed the integer 0, one of these would answer wrongly.
+data lel_eval_prelude: String = "module p\n\nimport std.nat { Nat, Zero, Succ }\n\nfn z(n: Nat) -> Bool {\n  n == 0\n}\n\n"
+
+fn lel_callee_path_is(callee: Node, name: Symbol) -> Bool {
+  match declaration_reference_path_optional(node: callee) {
+    Absent => false
+    Present { value: path } => path == Cons { head: ^p, tail: Cons { head: name, tail: Empty } }
+  }
+}
+
+fn lel_calls_to(root: Node, name: Symbol) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match infer_application_callee_use(node: n0) {
+          Absent => []
+          Present { value: callee } => if lel_callee_path_is(callee: callee, name: name) { [n0] } else { [] }
+        }
+      },
+      step: fn(acc, _e, child) { list_append(left: acc, right: child) }
+    }
+  )
+}
+
+fn lel_eval_bool(src: String) -> Optional<Bool> {
+  match lel_inferred(src: src) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      match lel_calls_to(root: inferred.root, name: ^z) {
+        Cons { head: call, tail: Empty } =>
+          match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: v, diagnostics: _ } =>
+              if v == v2_eval_bool_runtime_value(is_true: true) {
+                optional_present(value: true)
+              } else if v == v2_eval_bool_runtime_value(is_true: false) {
+                optional_present(value: false)
+              } else {
+                optional_absent()
+              }
+          }
+        Cons { head: _, tail: _ } => optional_absent()
+        Empty => optional_absent()
+      }
+  }
+}
+
+fn lel_eval_zero() -> Optional<Bool> { lel_eval_bool(src: lel_eval_prelude + "fn k() -> Bool {\n  z(n: Zero)\n}\n") }
+fn lel_eval_one() -> Optional<Bool> { lel_eval_bool(src: lel_eval_prelude + "fn k() -> Bool {\n  z(n: Succ { prev: Zero })\n}\n") }
+
+test fn lel_elaborated_literal_executes_with_its_meaning_on_v2_eval() -> Bool {
+  lel_eval_zero() == optional_present(value: true) && lel_eval_one() == optional_present(value: false)
+}
+
+// THE SEED ROUTE EXECUTES THE SAME COMPARISON (the claim body runs on the seed interpreter).
+test fn lel_count_compared_with_a_literal_executes_on_the_seed() -> Bool {
+  count([]) == 0 && !(count([1]) == 0)
+}
