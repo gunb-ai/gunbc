@@ -1,77 +1,129 @@
 module v2.test.claim.compiler.declared_return_result
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason }
+import v2.compiler.infer {
+  infer_application_result_type,
+  infer_arrow_declared_return_type,
+  infer_projected_field_type,
+  infer_type_equal_ignoring_provenance
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.inhabitance { TypeVariableInstance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Instantiation, Node, Positional, Symbol, TypeNode, node_synthetic }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.algebra { length, list_map }
+import std.algebra { list_snoc_item }
+import std.types { List, String }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.type_binder { type_params_edge }
 import std.types { Bool }
-import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: a call whose callee DECLARES a non-kernel return type has that type as its result
-// (v2.compiler.infer infer_application_result_type), so the call is judged at the declared position it
-// reaches. BOUNDARY: source text in, through the production assembly route
-// (v2.test.claim.compiler.infer_fold_member_instance fmi_assemble), then v2.compiler.infer infer.
-// RED ON THE BASE for the refusal controls: each was ACCEPTED, the call staying underived
-// (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer). The
-// accepted controls hold that deriving the result does not over-refuse, and the unbound-variable
-// control holds that a return still mentioning the callee's own type parameter stays on the counted
-// frontier instead of being typed as anything.
+// SUBJECT: a call's result type when its callee declares a non-kernel return
+// (v2.compiler.infer infer_application_result_type), and a field read off an instantiated generic
+// record (infer_projected_field_type). gunbc.recurring_failure_mode
+// call_result_of_a_declared_return_type_unjudged_in_v2_infer.
+//
+// WITNESS SHAPE (DESIGN section 3, a witness discriminates at one interface): five claims SUPPLY the
+// callee's arrow and the call's instances at the result-type interface, built here, so each judges
+// only its own case and pays no assembly. Each asserts where the replaced reader disagrees:
+// infer_arrow_declared_return_type, the only reader before this change, answers Absent for a
+// declared return. ONE claim runs the real path, source through the production assembly route into
+// infer, and asserts the ROUTE: a generic declared return, instantiated at the call, projected, and
+// judged at a declared parameter, refuses for a reason only that whole route produces.
 
-data drr_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Tally\n  = Nil0\n  | More { prev: Tally }\n\ntype Box<T> {\n  item: T\n}\n\nfn mk() -> Tally {\n  Nil0\n}\n\nfn mkg<T>(xs: List<T>) -> Tally {\n  Nil0\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn none_of<T>(n: Int) -> List<T> {\n  []\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn wants_tally(t: Tally) -> Int {\n  0\n}\n\nfn wants_int(n: Int) -> Int {\n  0\n}\n\n"
+fn drr_atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
 
-data drr_plain_at_bool: String = drr_prelude + "fn k() -> Int {\n  wants_bool(mk())\n}\n"
-data drr_generic_at_bool: String = drr_prelude + "fn k(xs: List<Int>) -> Int {\n  wants_bool(mkg(xs))\n}\n"
-data drr_plain_at_own_type: String = drr_prelude + "fn k() -> Int {\n  wants_tally(mk())\n}\n"
-data drr_instantiated_field_agrees: String = drr_prelude + "fn k() -> Int {\n  wants_int(boxed(1).item)\n}\n"
-data drr_instantiated_field_disagrees: String = drr_prelude + "fn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
-data drr_unbound_variable: String = drr_prelude + "fn k() -> Int {\n  wants_bool(none_of(1))\n}\n"
+fn drr_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
 
-fn drr_reason(src: String) -> Symbol {
-  match fmi_assemble(src: src) {
-    Rejected { diagnostics: _ } => ^drr_assembly_refused
-    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+// fn <params>(<no domain>) -> ret
+fn drr_arrow(params: List<Symbol>, ret: Node) -> Node {
+  let domain = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  let positional = [drr_positional(target: domain), drr_positional(target: ret)]
+  if length(xs: params) == 0 {
+    node_synthetic(kind: TypeNode { connective: Arrow }, children: positional)
+  } else {
+    let binders = node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: list_map(xs: params, f: fn(p) { Edge { label: Authored { name: p }, target: drr_atom(sym: p) } })
+    )
+    node_synthetic(kind: TypeNode { connective: Arrow }, children: list_snoc_item(xs: positional, item: type_params_edge(conj: binders)))
   }
 }
 
-// The unbound-variable call is ACCEPTED only as the counted frontier: its acceptance carries the
-// not-derived undecidable obligation, so a fabricated instance (which would type and then judge it)
-// cannot pass as this control.
-fn drr_unbound_variable_stays_on_the_frontier() -> Bool {
-  match fmi_assemble(src: drr_unbound_variable) {
+fn drr_box_of(arg: Node) -> Node {
+  node_synthetic(kind: TypeNode { connective: Instantiation }, children: [drr_positional(target: drr_atom(sym: ^drr_box)), drr_positional(target: arg)])
+}
+
+fn drr_present_equals(o: Optional<Node>, expected: Node) -> Bool {
+  match o {
+    Absent => false
+    Present { value: v } => infer_type_equal_ignoring_provenance(a: v, b: expected)
+  }
+}
+
+fn drr_is_absent(o: Optional<Node>) -> Bool {
+  match o {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// DECLARED RETURN: `fn mk() -> Tally` types its call as Tally. The replaced reader answered Absent.
+test fn drr_a_declared_return_is_the_call_result() -> Bool {
+  let arrow = drr_arrow(params: [], ret: drr_atom(sym: ^drr_tally))
+  drr_is_absent(o: infer_arrow_declared_return_type(arrow: arrow))
+    && drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index()), expected: drr_atom(sym: ^drr_tally))
+}
+
+// KERNEL FIRST: a kernel return answers exactly what the replaced reader answers.
+test fn drr_a_kernel_return_is_unchanged() -> Bool {
+  let arrow = drr_arrow(params: [], ret: drr_atom(sym: ^dag_binding_type_int))
+  match infer_arrow_declared_return_type(arrow: arrow) {
+    Absent => false
+    Present { value: kernel } =>
+      drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index()), expected: kernel)
+  }
+}
+
+// INSTANTIATED: `fn boxed<T>(..) -> Box<T>` called with T bound to Tally types as Box<Tally>.
+test fn drr_a_generic_return_is_instantiated_at_the_call() -> Bool {
+  let arrow = drr_arrow(params: [^drr_t], ret: drr_box_of(arg: drr_atom(sym: ^drr_t)))
+  let instances = [TypeVariableInstance { binder: ^drr_t, instance: drr_atom(sym: ^drr_tally) }]
+  drr_is_absent(o: infer_arrow_declared_return_type(arrow: arrow))
+    && drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: instances, declarations: empty_symbol_index()), expected: drr_box_of(arg: drr_atom(sym: ^drr_tally)))
+}
+
+// FRONTIER: the same callee with T bound by no argument stays NOT derived -- never typed as Box<T>.
+test fn drr_a_return_mentioning_an_unbound_type_parameter_is_not_derived() -> Bool {
+  let arrow = drr_arrow(params: [^drr_t], ret: drr_box_of(arg: drr_atom(sym: ^drr_t)))
+  drr_is_absent(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index()))
+}
+
+// PROJECTED FIELD: `item: T` read off a Box<Tally> receiver is Tally (the replaced reader kept T as
+// written); a receiver that binds nothing keeps the field's declared type.
+test fn drr_a_generic_record_field_projects_at_its_instantiation() -> Bool {
+  let bound = [TypeVariableInstance { binder: ^drr_t, instance: drr_atom(sym: ^drr_tally) }]
+  infer_type_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: bound), b: drr_atom(sym: ^drr_tally))
+    && infer_type_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: []), b: drr_atom(sym: ^drr_t))
+}
+
+// THE ONE REAL-PATH CLAIM, ASSERTING THE ROUTE. `boxed(1).item` at a Bool parameter refuses as an
+// argument mismatch only if the call's generic declared return is derived (Box<Int>), the field is
+// projected at that instantiation (Int), and the projection is judged at the declared Bool. Before
+// this change the call stayed underived and the program was ACCEPTED.
+data drr_route_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
+
+test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
+  match fmi_assemble(src: drr_route_source) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
-      match fmi_infer_tree(tree: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: d } =>
-          diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
-      }
+      fmi_reason(o: fmi_infer_tree(tree: tree)) == ^application_argument_does_not_inhabit
   }
-}
-
-// RED: a plain call declared to return Tally, at a Bool parameter.
-test fn drr_plain_declared_return_at_a_mismatched_parameter_refuses() -> Bool {
-  drr_reason(src: drr_plain_at_bool) == ^application_argument_does_not_inhabit
-}
-
-// RED: the same through a generic callee whose return mentions none of its type parameters.
-test fn drr_generic_declared_return_at_a_mismatched_parameter_refuses() -> Bool {
-  drr_reason(src: drr_generic_at_bool) == ^application_argument_does_not_inhabit
-}
-
-// ACCEPTED: the derived result at its own declared type.
-test fn drr_declared_return_at_its_own_type_is_accepted() -> Bool {
-  drr_reason(src: drr_plain_at_own_type) == ^accepted
-}
-
-// INSTANTIATED: boxed(1) derives Box<Int> (T bound by this call's argument), so its item field
-// grounds as Int: admitted at Int, refused at Bool.
-test fn drr_instantiated_generic_return_grounds_its_field_read() -> Bool {
-  drr_reason(src: drr_instantiated_field_agrees) == ^accepted
-    && drr_reason(src: drr_instantiated_field_disagrees) == ^application_argument_does_not_inhabit
-}
-
-// FRONTIER: List<T> with T bound by no argument stays not derived, never typed as some instance.
-test fn drr_return_mentioning_an_unbound_type_parameter_stays_on_the_frontier() -> Bool {
-  drr_unbound_variable_stays_on_the_frontier()
 }
