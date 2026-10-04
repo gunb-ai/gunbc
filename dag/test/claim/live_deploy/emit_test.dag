@@ -138,6 +138,7 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deploy_apply_preamble_steps,
   apply_intent_from_effects,
+  deploy_apply_frame_steps,
   deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
@@ -390,10 +391,11 @@ test fn witness_apply_preamble_installs_only_the_deploy_sudoers() -> Bool {
 }
 
 // THE ROUTE. This is the one claim that runs the real apply assembly, apply_intent_from_effects,
-// and it asserts that the steps immediately after the seven-step frame (strict options, four
-// comments, the stage let, the trap) ARE deploy_apply_preamble_steps. Deleting the preamble from
+// and it asserts that the steps immediately after the frame (gunbc.live_deploy.emit
+// deploy_apply_frame_steps, whose length is the offset) ARE deploy_apply_preamble_steps. Deleting the preamble from
 // the fold, or moving it, reds it. Its supplied inputs are the ones the route does not read: the
-// srv1 spec with its member steps emptied, no member effects, and a withheld cap decision. The
+// srv1 spec with its member steps emptied, the empty host's effects over it
+// (apply_empty_host_effects), and a withheld cap decision. The
 // member flat_map is what made the full render cost ~271k floor steps, and the preamble never
 // reads it. The member population's own emission is claimed through
 // test.claim.live_deploy.apply_emission_projection.
@@ -412,12 +414,12 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
       let pre = deploy_apply_preamble_steps(access: a, spec: spec)
       let p = apply_intent_from_effects(
         spec: spec,
-        effects: [],
+        effects: apply_empty_host_effects(spec: spec),
         access: a,
         plan: deploy_witness_full_install_plan(spec: spec),
         cap_authorization: CapConvergeWithheld { cause: "the route claim is not about the cap step" },
       )
-      pipeline_steps_text(steps: p.steps.skip(n: 7).take(n: pre.length())) == pipeline_steps_text(steps: pre)
+      pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
     DeployAccessJobPrincipalRefused { refusal: _ } => false
   }
 }
