@@ -9,7 +9,7 @@ import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
   approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, EscalationUnreadable, EscalationPending, EscalationDecided, EscalationNotFiled,
 }
-import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_ntfy_publish { hermetic_ntfy_publish_message_id }
 import gunbc.auth.approval_broker { BrokerDenied }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id,
