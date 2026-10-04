@@ -1,8 +1,11 @@
 module test.claim.runner_slot_allocation_witness
 
-import gunbc.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
+import gunbc.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import std.nat { Nat }
+import gunbc.fleet_intent { ComputeHost, CpuProcessor, srv3_host, fleet_intent_cpu }
+import extdeps.cpu.types { CpuFacts }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import gunbc.floor_demand {
@@ -137,6 +140,7 @@ test fn srv2_width_resolves_to_a_typed_refusal_naming_its_denominator() -> Bool 
     RunnerWidthUnresolved { cause: c } =>
       match c {
         WidthSlotShapeInadmissible { reason: _ } => false
+        WidthComputeOfferAbsent { host: _ } => false
         WidthMemoryDenominatorUnestablished { host: h, cause: policy_cause } =>
           (h as String) == (operator_host_srv2 as String)
             && string_contains(
@@ -191,8 +195,59 @@ test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> B
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
-    && host_cpu_admitted_width(host: operator_host_srv1) == 128
-    && host_cpu_admitted_width(host: operator_host_srv3) > host_memory_admitted_width(host: operator_host_srv3)
+    && cpu_width_is(host: operator_host_srv1, expected: 128)
+    && cpu_width_exceeds(host: operator_host_srv3, bound: host_memory_admitted_width(host: operator_host_srv3))
+}
+
+// THE CPU AXIS READS EACH HOST'S OWN OFFER, AND NO CURRENT HOST'S WIDTH MOVED. Each enrolled host
+// is checked against the cited catalog row its offer carries, so the claim is that reading the
+// offer instead of the catalog changed nothing for the hosts that exist.
+fn cpu_width_is(host: HostIdentity, expected: Int) -> Bool {
+  match host_cpu_admitted_width(host: host) {
+    CpuWidthDerived { slots: n } => n == expected
+    CpuWidthOfferAbsent { host: _ } => false
+  }
+}
+
+fn cpu_width_exceeds(host: HostIdentity, bound: Int) -> Bool {
+  match host_cpu_admitted_width(host: host) {
+    CpuWidthDerived { slots: n } => n > bound
+    CpuWidthOfferAbsent { host: _ } => false
+  }
+}
+
+test fn runner_slot_allocation_cpu_axis_unchanged_for_every_enrolled_host() -> Bool {
+  cpu_width_is(host: operator_host_srv1, expected: altra_max_m12830_catalog.cores)
+    && cpu_width_is(host: operator_host_srv2, expected: altra_max_m12830_catalog.cores)
+    && cpu_width_is(host: operator_host_srv3, expected: altra_max_m12830_catalog.cores)
+    && cpu_width_is(host: operator_host_srv4, expected: altra_max_m12830_catalog.cores)
+}
+
+// THE DISCRIMINATING RED: THE SOCKET COUNT AND THE PART REACH THE WIDTH. The previous axis answered
+// 128 for any host, so both cases below were indistinguishable from srv3. A two-socket host of the
+// same part admits twice the width, and a one-socket host of an 80-core part admits 80 -- the
+// supplied hosts are ComputeHost values, the interface this function owns.
+test fn runner_slot_allocation_RED_cpu_axis_reads_the_hosts_processors() -> Bool {
+  let two_socket = ComputeHost { identity: srv3_host.identity, baseboard: srv3_host.baseboard, bmc_intent: srv3_host.bmc_intent, processors: [CpuProcessor { cpu: fleet_intent_cpu }, CpuProcessor { cpu: fleet_intent_cpu }], memory: srv3_host.memory, storage: srv3_host.storage, network_interfaces: srv3_host.network_interfaces }
+  let one_socket_q80 = ComputeHost { identity: srv3_host.identity, baseboard: srv3_host.baseboard, bmc_intent: srv3_host.bmc_intent, processors: [CpuProcessor { cpu: CpuFacts { catalog: altra_q8030_catalog, deployment: fleet_intent_cpu.deployment } }], memory: srv3_host.memory, storage: srv3_host.storage, network_interfaces: srv3_host.network_interfaces }
+  compute_host_cpu_admitted_width(host: srv3_host) == altra_max_m12830_catalog.cores
+    && compute_host_cpu_admitted_width(host: two_socket) == 2 * altra_max_m12830_catalog.cores
+    && compute_host_cpu_admitted_width(host: one_socket_q80) == altra_q8030_catalog.cores
+}
+
+// A HOST WITH NO OFFER IS REFUSED BY TYPE, NOT ANSWERED WITH ZERO (review 75298): the axis names the
+// absent offer, and the width report states no number for it rather than a binding zero.
+test fn runner_slot_allocation_RED_no_offer_host_has_no_cpu_width() -> Bool {
+  let unenrolled: HostIdentity = "not-an-enrolled-host"
+  let axis_refuses = match host_cpu_admitted_width(host: unenrolled) {
+    CpuWidthDerived { slots: _ } => false
+    CpuWidthOfferAbsent { host: h } => (h as String) == (unenrolled as String)
+  }
+  axis_refuses
+    && all(host_width_axes(host: unenrolled), a => match a {
+      AxisAdmits { axis: name, slots: _ } => (name as String) != "cores"
+      AxisUnmeasured { axis: _, reason: _ } => true
+    })
 }
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
@@ -225,6 +280,7 @@ test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
     RunnerWidthUnresolved { cause: c } =>
       match c {
         WidthSlotShapeInadmissible { reason: _ } => false
+        WidthComputeOfferAbsent { host: _ } => false
         WidthMemoryDenominatorUnestablished { host: h, cause: _ } => (h as String) == "srv-does-not-exist"
       }
   }
