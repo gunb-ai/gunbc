@@ -886,11 +886,20 @@ pub fn is_host_freemonoid_vec_alias(name: String) -> bool {
 }
 
 pub fn is_host_optional_carrier_alias(name: String) -> bool {
-    (name.clone() == "Optional".to_string())
+    (name.clone() == kernel_optional_mint_name())
 }
 
 pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
-    (name.clone() == "Diagnostics".to_string())
+    {
+        let mut __found = false;
+        for d in rust_host_option_carrier_declarations().iter().cloned() {
+            if (d.decl_name.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
@@ -926,8 +935,10 @@ pub fn is_host_diagnostics_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-        == "Diagnostics".to_string())
+    is_host_diagnostics_carrier_alias(crate::v1_std_core::authored_name_at(
+        source_indices.clone(),
+        n.clone(),
+    ))
 }
 
 pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
@@ -20963,7 +20974,8 @@ pub fn is_optional_variant_name(name: String) -> bool {
 }
 
 pub fn is_optional_like_parent_name(name: String) -> bool {
-    ((name.clone() == "Optional".to_string()) || (name.clone() == "Diagnostics".to_string()))
+    ((name.clone() == kernel_optional_mint_name())
+        || is_host_diagnostics_carrier_alias(name.clone()))
 }
 
 pub fn is_some_like_variant_name(name: String) -> bool {

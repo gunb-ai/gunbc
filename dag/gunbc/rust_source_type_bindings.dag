@@ -235,13 +235,15 @@ fn symbol_capture_declarers() -> List<SymbolCaptureDeclarer> {
   ]
 }
 
-// WHICH DECLARED COPRODUCTS THE RUST TARGET REALIZES AS ITS HOST OPTION, at declaration grain. The
-// emitter has answered this by name (v1.compiler.emit_rust is_host_diagnostics_carrier_alias); a
-// pattern arm now carries its owner's identity, and an identified owner is judged by identity and
-// never by its spelling, so the realization the name table states is restated here at the exact
-// key. It adds no realization: v2.std.diagnostic Diagnostics = None | Some is rendered as the host
-// option today. The kernel optional is NOT a row here: its declaration is bound by
-// gunbc.structural_realization_bindings kernel_mint_declaration_rows, and the consumer reads both.
+// WHICH DECLARED COPRODUCTS THE RUST TARGET REALIZES AS ITS HOST OPTION, at declaration grain, and
+// the ONE place that says so. A pattern arm that carries its owner's identity is judged against
+// these declarations (v1.compiler.emit_rust host_option_arm_reading). The emitter's name-keyed
+// readers -- is_host_diagnostics_carrier_alias and the sites that call it -- no longer hold their
+// own spelling: they project the declaration names off this row, so the fact has one authority
+// and a name-keyed site cannot disagree with an identity-keyed one. It adds no realization:
+// v2.std.diagnostic Diagnostics = None | Some is rendered as the host option today. The kernel
+// optional is NOT a row here: its declaration is bound by gunbc.structural_realization_bindings
+// kernel_mint_declaration_rows, and the consumer reads both.
 data rust_host_option_carrier_declarations: List<DeclarationRef> = [
   decl_ref(module_path: "v2.std.diagnostic", decl_name: "Diagnostics")
 ]

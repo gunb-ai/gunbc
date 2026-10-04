@@ -542,11 +542,17 @@ fn is_host_freemonoid_vec_alias(name: String) -> Bool {
 }
 
 fn is_host_optional_carrier_alias(name: String) -> Bool {
-  name == "Optional"
+  name == kernel_optional_mint_name
 }
 
+// THE NAME PROJECTION OF ONE ROW, not a second table. Which declarations the Rust target realizes
+// as its host option is gunbc.rust_source_type_bindings rust_host_option_carrier_declarations; the
+// sites that still hold only a type's NAME (type rendering, and pattern arms inference did not
+// identify) ask this, which reads the declaration names off that row. A carrier added, renamed or
+// re-homed changes the row and this follows. The name-keyed sites themselves are the population
+// that remains until identity reaches them.
 fn is_host_diagnostics_carrier_alias(name: String) -> Bool {
-  name == "Diagnostics"
+  rust_host_option_carrier_declarations |> any(d => (d.decl_name as String) == name)
 }
 
 fn is_grounded_coproduct_native_alias(name: String) -> Bool {
@@ -575,7 +581,7 @@ fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineInd
 }
 
 fn is_host_diagnostics_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  authored_name_at(source_indices: source_indices, node: n) == "Diagnostics"
+  is_host_diagnostics_carrier_alias(name: authored_name_at(source_indices: source_indices, node: n))
 }
 
 fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String {
@@ -9854,7 +9860,7 @@ fn is_optional_variant_name(name: String) -> Bool {
 }
 
 fn is_optional_like_parent_name(name: String) -> Bool {
-  name == "Optional" || name == "Diagnostics"
+  name == kernel_optional_mint_name || is_host_diagnostics_carrier_alias(name: name)
 }
 
 fn is_some_like_variant_name(name: String) -> Bool {
