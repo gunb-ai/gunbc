@@ -16,7 +16,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "phase_profile.rs",
     "pre_push.rs",
     "census_exclude_derive.rs",
-    "derived_realization_schedule.rs",
     "memory_governor.rs",
     "namespace_baseline.rs",
     "cssl_seed_linked_closure_assembly.rs",

@@ -131,8 +131,6 @@ Sequence, as standalone realization cuts owned by the CLI lane and not blocking 
 | hand-authored DependencyView rows | `v2.program` `program_run_dependencies` and fixture rows |
 | v2.lens.parallelism (no independent arm; coupling evidence always unresolved) | `v2.lens.parallelism` |
 | eval as a recursive child fold | `00_compile` native driver, `v2.program`, `runtime_run` |
-| floor discovery width (`DiscoveryWidthPolicy`, `CONTROLLED_WIDTH`) | required-floor discovery Rust |
-| `derived_realization_schedule.rs` | `derived_realization_schedule.rs` |
 | `std.realize_pack` advisory width | `std.realize_pack` |
 | `std.realization_width` fallback / minimum-one | `std.realization_width` |
 | parse sweep unbounded threads | `claim_executor`, `declaration_index`, `module_path_index`, `namespace_baseline` |
