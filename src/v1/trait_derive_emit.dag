@@ -12,7 +12,7 @@ import v1.compiler.emit_core_support { unique_strings, is_type_alias_item }
 import v1.compiler.coercion { realized_checkpoint, declaration_realization }
 import v1.compiler.infer_emit_info {
   TypeDeclIndex, TypeDeclResolution, TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared,
-  resolve_type_decl_reference, resolve_type_decl_leaf, type_decl_of_reference, type_decl_identities_of_leaf
+  resolve_type_decl_reference, resolve_type_decl_leaf, type_decl_identities_of_leaf
 }
 import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
@@ -1021,9 +1021,11 @@ fn v1_field_type_expr_ord_propagated_for_param(
   type_decl_items: TypeDeclIndex,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  match type_decl_of_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
-    Absent => false
-    Present { value: decl } =>
+  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclNotDeclared => false
+    TypeDeclKernelSpellingUndecided { leaf: _ } => false
+    TypeDeclLeafAmbiguous { leaf: _ } => false
+    TypeDeclResolved { identity: _, decl: decl } =>
       v1_ord_propagated_zip_loop(
         param_name: param_name,
         decl_params: decl.params,
@@ -1758,7 +1760,12 @@ fn v1_type_expr_head_is_known(
   type_decl_items: TypeDeclIndex,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  is_container_type(name: name) || type_decl_of_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) != none
+  is_container_type(name: name) || match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclResolved { identity: _, decl: _ } => true
+    TypeDeclLeafAmbiguous { leaf: _ } => false
+    TypeDeclKernelSpellingUndecided { leaf: _ } => false
+    TypeDeclNotDeclared => false
+  }
 }
 
 fn v1_item_generic_param_name_set(
@@ -2171,9 +2178,13 @@ fn v1_fn_param_wf_needs_clone(
 // THE REFUSAL FOR A REFERENCE NO ARM RESOLVES. v1.compiler.infer_emit_info
 // resolve_type_decl_reference answers TypeDeclLeafAmbiguous when a reference carries no declaration
 // identity, is not itself a declaration node, and spells a leaf two modules of the closure declare.
-// The predicates in this module read that as "not a declared head", which is the answer for a type
-// with no corpus declaration and would be a guess here, so the emit sites ask this first and
-// refuse. Empty means every reference in the walk resolved or names no declared type.
+// The Bool predicates in this module have no refusal of their own and answer that arm as they
+// answer a type with no corpus declaration, which would be a guess if anything were emitted from
+// it. Nothing is: every type position those predicates are handed belongs to an item's fields, a
+// function's signature or a data row's annotation, and v1.compiler.emit_rust asks this walk about
+// that whole position set FIRST and emits compile_error! in place of the item
+// (emit_item_clone_bound_refusal, emit_fn_def, emit_data_def). Empty means every reference in the
+// walk resolved, is a kernel spelling, or names no declared type.
 fn v1_type_expr_ambiguous_declared_head(
   type_expr: Node,
   type_decl_items: TypeDeclIndex,

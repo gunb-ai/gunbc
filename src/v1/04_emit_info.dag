@@ -146,7 +146,10 @@ type DataVariantWireSpelling
 // (v1.std.core callable_identity over DeclaredCallableIdentity), so there is one key space for a
 // declaration across the registry and this index. A reader holds a type REFERENCE, which carries no
 // module in its spelling; resolve_type_decl_reference below is the one route from a reference to a
-// row, and its ambiguous arm is a value the reader must write an arm for.
+// row, and its ambiguous arm is a value the reader must write an arm for: there is deliberately no
+// Optional projection of the resolution, because one that answers `none` for an ambiguous leaf hands
+// its readers the same `no declaration` they read for a type the corpus does not declare, and they
+// proceed on a default.
 type TypeDeclIndex {
   by_identity: Map<String, Node>
   identity_by_declaring_span: Map<String, String>
@@ -301,15 +304,6 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
     TypeDeclLeafAmbiguous { leaf: leaf } => concat(route, ":LeafAmbiguous:", leaf)
     TypeDeclKernelSpellingUndecided { leaf: leaf } => concat(route, ":KernelSpellingUndecided:", leaf)
     TypeDeclNotDeclared => concat(route, ":NotDeclared")
-  }
-}
-
-fn type_decl_of_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  match resolve_type_decl_reference(index: index, type_expr: type_expr, source_indices: source_indices) {
-    TypeDeclResolved { identity: _, decl: decl } => Present { value: decl }
-    TypeDeclLeafAmbiguous { leaf: _ } => none
-    TypeDeclKernelSpellingUndecided { leaf: _ } => none
-    TypeDeclNotDeclared => none
   }
 }
 
@@ -476,10 +470,6 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
   map_get(emit_info.type_summaries, type_name)
-}
-
-fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  type_decl_of_reference(index: emit_info.type_decl_items, type_expr: type_expr, source_indices: source_indices)
 }
 
 fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {

@@ -229,8 +229,9 @@ import v1.compiler.infer {
 }
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
+  lookup_emit_type_summary, empty_emit_graph_info,
   TypeDeclIndex, type_decl_identity,
+  TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
@@ -445,7 +446,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           emit_rust_compile_error_expr(message: "Set element type unresolved")
         } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) {
           let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, rust_set_element_ineligibility_reason(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)))
         } else {
           render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
         }
@@ -2200,10 +2201,25 @@ fn rust_nominal_ord_type_ref_eligible(elem_node: Node, source_indices: Map<Strin
   (elem_node.children |> count) == 0
     && (elem_node.params |> count) == 0
     && elem_node.connective == NoConnective
-    && match lookup_emit_type_decl(emit_info: emit_info, type_expr: elem_node, source_indices: source_indices) {
-      Present { value: decl } => rust_nominal_ord_type_decl_ord_eligible(decl: decl, source_indices: source_indices)
-      Absent => false
+    && match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: elem_node, source_indices: source_indices) {
+      TypeDeclResolved { identity: _, decl: decl } => rust_nominal_ord_type_decl_ord_eligible(decl: decl, source_indices: source_indices)
+      TypeDeclLeafAmbiguous { leaf: _ } => false
+      TypeDeclKernelSpellingUndecided { leaf: _ } => false
+      TypeDeclNotDeclared => false
     }
+}
+
+// WHY A SET ELEMENT WAS REFUSED, WHEN THE REASON IS THE REFERENCE AND NOT THE TYPE. Every caller of
+// rust_btree_set_element_ord_eligible that renders text turns `false` into compile_error!; an
+// element whose leaf two modules declare is refused there like any other, and this names the
+// actual cause so the diagnostic does not blame a declaration that was never chosen.
+fn rust_set_element_ineligibility_reason(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: elem_node, source_indices: source_indices) {
+    TypeDeclLeafAmbiguous { leaf: leaf } => concat(" names a type more than one module of this closure declares ('", leaf, "') and carries no declaration identity, so its Ord eligibility is not decided")
+    TypeDeclResolved { identity: _, decl: _ } => " is not Ord-eligible for BTreeSet"
+    TypeDeclKernelSpellingUndecided { leaf: _ } => " is not Ord-eligible for BTreeSet"
+    TypeDeclNotDeclared => " is not Ord-eligible for BTreeSet"
+  }
 }
 
 fn rust_nominal_ord_type_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
@@ -7920,10 +7936,20 @@ fn item_seals_construction(item: Node) -> Bool {
 // resolves through the emitter's own declaration index (`type_decl_items`) and then
 // asks the declaration -- so the answer still comes from the declaration node, with
 // the index acting as the lookup rather than as the authority.
-fn type_reference_seals_construction(type_expr: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match lookup_emit_type_decl(emit_info: emit_info, type_expr: type_expr, source_indices: source_indices) {
-    Present { value: decl } => item_seals_construction(item: decl)
-    Absent => false
+// THREE ANSWERS, because the reader is an EXPRESSION's type and no item-level refusal stands in front
+// of it: a base expression's type is not one of the declared positions an item refuses on. A leaf two
+// modules declare is neither sealed nor unsealed here, and the field-access seam refuses on it.
+type SealReading
+  = ReferenceSealsConstruction
+  | ReferenceDoesNotSealConstruction
+  | SealUndecidedForAmbiguousLeaf { leaf: String }
+
+fn type_reference_seal_reading(type_expr: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> SealReading {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclResolved { identity: _, decl: decl } => if item_seals_construction(item: decl) { ReferenceSealsConstruction } else { ReferenceDoesNotSealConstruction }
+    TypeDeclLeafAmbiguous { leaf: leaf } => SealUndecidedForAmbiguousLeaf { leaf: leaf }
+    TypeDeclKernelSpellingUndecided { leaf: _ } => ReferenceDoesNotSealConstruction
+    TypeDeclNotDeclared => ReferenceDoesNotSealConstruction
   }
 }
 
@@ -8152,7 +8178,7 @@ fn enum_derives(module_path: String, name: String, children: List<Node>, has_fn_
 // same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let deserialize_forbidden = members_forbid_deserialize(name: name, members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
+  let deserialize_forbidden = members_forbid_deserialize(owner_identity: type_decl_identity(owner_module: env.module_path, decl_name: name), members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(module_path: env.module_path, name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let effective_serde_policy = if has_fn_fields {
     rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
@@ -9163,15 +9189,13 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-  let ambiguous_signature_head = if (generic_param_names |> count) == 0 { "" } else {
-    v1_type_exprs_ambiguous_declared_head(
-      type_exprs: concat(value_params |> map(p => param_node_type_expr(n: p)), [inferred]),
-      type_decl_items: emit_info.type_decl_items,
-      source_indices: si
-    )
-  }
+  let ambiguous_signature_head = v1_type_exprs_ambiguous_declared_head(
+    type_exprs: concat(value_params |> map(p => param_node_type_expr(n: p)), [inferred]),
+    type_decl_items: emit_info.type_decl_items,
+    source_indices: si
+  )
   if ambiguous_signature_head != "" {
-    return concat(v1_ambiguous_declared_head_refusal(subject: concat("generic fn '", name, "'"), leaf: ambiguous_signature_head), "\n")
+    return concat(v1_ambiguous_declared_head_refusal(subject: concat("fn '", name, "'"), leaf: ambiguous_signature_head), "\n")
   }
   let body_emit_info = emit_info_with_fn_return(
     emit_info: emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env),
@@ -10884,6 +10908,13 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
 // the type graph is finite and a repeat visit adds nothing, so exhaustion is reached rather
 // than assumed, and a recursive carrier terminates on its second visit instead of at a
 // depth limit that would have to answer "unknown" and pick an arm.
+// THE SEEN-SET IS KEYED ON THE DECLARATION, like the index it walks: keyed on the leaf, a visit to
+// one declaration ended the walk at a different declaration of the same spelling, and a seal behind
+// the second was never reached.
+// THE TypeDeclLeafAmbiguous ARM ANSWERS false AND NOTHING IS EMITTED FROM THAT ANSWER. This walk is
+// handed an item's member types and a data row's annotation, and both positions are refused whole
+// before it is consulted (emit_item_clone_bound_refusal, emit_data_def), so the arm is reached only
+// under an item whose text is already compile_error!.
 fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, seen: Map<String, Bool>) -> Bool {
   let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
   let child_reaches = n.children |> any(child =>
@@ -10891,20 +10922,24 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
   )
   if child_reaches {
     true
-  } else if name == "" || emit_map_has(m: seen, key: name) {
+  } else if name == "" {
     false
   } else {
-    match lookup_emit_type_decl(emit_info: emit_info, type_expr: n, source_indices: source_indices) {
-      Present { value: decl } =>
-        if item_seals_construction(item: decl) {
+    match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: n, source_indices: source_indices) {
+      TypeDeclResolved { identity: identity, decl: decl } =>
+        if emit_map_has(m: seen, key: identity) {
+          false
+        } else if item_seals_construction(item: decl) {
           true
         } else {
-          let next_seen = map_insert(seen, name, true)
+          let next_seen = map_insert(seen, identity, true)
           decl_member_type_nodes(decl: decl) |> any(member =>
             type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: next_seen)
           )
         }
-      Absent => false
+      TypeDeclLeafAmbiguous { leaf: _ } => false
+      TypeDeclKernelSpellingUndecided { leaf: _ } => false
+      TypeDeclNotDeclared => false
     }
   }
 }
@@ -10938,8 +10973,19 @@ fn decl_member_type_nodes(decl: Node) -> List<Node> {
   }
 }
 
-fn members_forbid_deserialize(name: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
+// A declaration item names itself by its declaring span, so its identity is read through the same
+// resolution every reference takes; the empty answer seeds nothing and costs the walk one visit.
+fn declaration_item_identity(item: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: item, source_indices: source_indices) {
+    TypeDeclResolved { identity: identity, decl: _ } => identity
+    TypeDeclLeafAmbiguous { leaf: _ } => ""
+    TypeDeclKernelSpellingUndecided { leaf: _ } => ""
+    TypeDeclNotDeclared => ""
+  }
+}
+
+fn members_forbid_deserialize(owner_identity: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let seen = map_insert(empty_map(), owner_identity, true)
   members |> any(member =>
     type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: seen)
   )
@@ -10949,7 +10995,7 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
   if item_seals_construction(item: item) {
     true
   } else {
-    members_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), members: decl_member_type_nodes(decl: item), emit_info: emit_info, source_indices: source_indices)
+    members_forbid_deserialize(owner_identity: declaration_item_identity(item: item, emit_info: emit_info, source_indices: source_indices), members: decl_member_type_nodes(decl: item), emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -10997,7 +11043,12 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               _ => false
             }
             let field_is_boxed = field_access_field_is_boxed(base: base, field: field, scope: scope, shared_types: shared_types, emit_info: emit_info)
-            if type_reference_seals_construction(type_expr: resolved_type(n: base), emit_info: emit_info, source_indices: scope.type_env.source_indices) {
+            let seal = type_reference_seal_reading(type_expr: resolved_type(n: base), emit_info: emit_info, source_indices: scope.type_env.source_indices)
+            let seal_undecided_leaf = match seal { SealUndecidedForAmbiguousLeaf { leaf: leaf } => leaf  ReferenceSealsConstruction => ""  ReferenceDoesNotSealConstruction => "" }
+            let sealed = match seal { ReferenceSealsConstruction => true  ReferenceDoesNotSealConstruction => false  SealUndecidedForAmbiguousLeaf { leaf: _ } => false }
+            if seal_undecided_leaf != "" {
+              emit_rust_compile_error_expr(message: concat("field access '.", field, "': the base expression's type names '", seal_undecided_leaf, "', which more than one module of this closure declares, and carries no declaration identity -- whether the field is read directly or through a sealed accessor is not decided"))
+            } else if sealed {
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
             } else if field_is_boxed {
               apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
@@ -11167,7 +11218,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
         "v1_rt::rc_empty_set::<_>()"
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) {
         let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, rust_set_element_ineligibility_reason(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)))
       } else {
         let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         if elem_str != "" {
@@ -16729,6 +16780,10 @@ fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map
 // threaded into emit_data_def_body, so the value took the same answer as the signature. Routed to
 // the carrier authority; the spelling key is deleted rather than kept beside it.
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let ambiguous_annotation_head = v1_type_exprs_ambiguous_declared_head(type_exprs: [type_node], type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices)
+  if ambiguous_annotation_head != "" {
+    return concat(v1_ambiguous_declared_head_refusal(subject: concat("data '", name, "'"), leaf: ambiguous_annotation_head), "\n")
+  }
   let annotation_type_node = type_node
   let ann_name = authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node)
   let preserves_declared_brand = ann_name != "" && annotation_type_node.children |> count == 0 && !is_container_type(name: ann_name) && !is_kernel_type(name: ann_name)

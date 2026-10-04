@@ -28,11 +28,7 @@ pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
 pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
-pub use crate::v1_compiler_infer::{build_emit_graph_info, declared_return_type_node};
-pub use crate::v1_compiler_infer_emit_info::TypeDeclIndex;
-pub use crate::v1_compiler_infer_emit_info::{
-    resolve_type_decl_routed, type_decl_routed_resolution_label,
-};
+pub use crate::v1_compiler_infer::declared_return_type_node;
 use crate::v1_compiler_infer_env::TypeNodeUnidentifiedCause::{
     TypeNodeAuthoredNameEmpty, TypeNodeCarriesNoSpan, TypeNodeNameDeclaredNowhere,
     TypeNodeQualifierMatchesNoDeclarer, TypeNodeSpanDeclaresNothing,
@@ -112,7 +108,6 @@ pub struct TypedCarrierRow {
     pub authority_base: String,
     pub outcome: CensusOutcome,
     pub recorded_declaration: Option<Rc<DeclarationRef>>,
-    pub emitter_decl_route: String,
 }
 
 pub fn identity_observation(
@@ -257,7 +252,6 @@ pub fn typed_decision_row(
     n: Rc<Node>,
     decl_identity: Rc<TypeReferenceDeclarationReading>,
     env: Rc<TypeEnv>,
-    type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedCarrierRow> {
     {
@@ -286,14 +280,6 @@ pub fn typed_decision_row(
             legacy_base: legacy_base_label(n.clone(), si.clone()),
             authority_base: authority_base_of(name.clone(), query_provenance.clone()),
             recorded_declaration: n.declaration.clone(),
-            emitter_decl_route:
-                crate::v1_compiler_infer_emit_info::type_decl_routed_resolution_label(
-                    crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
-                        type_decls.clone(),
-                        n.clone(),
-                        si.clone(),
-                    ),
-                ),
             outcome: outcome_of(
                 claims_text.clone(),
                 authority_realizes(name.clone(), query_provenance.clone()),
@@ -313,7 +299,6 @@ pub fn typed_occurrence_rows(
     position_kind: String,
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -334,7 +319,6 @@ pub fn typed_occurrence_rows(
                                 v1_rt::concat(position_kind.clone(), "/fn_type_param".to_string()),
                                 crate::v1_std_core::param_node_type_expr(p.clone()),
                                 env.clone(),
-                                type_decls.clone(),
                                 si.clone(),
                             ),
                         )
@@ -347,7 +331,6 @@ pub fn typed_occurrence_rows(
                         v1_rt::concat(position_kind.clone(), "/fn_type_return".to_string()),
                         rt.clone(),
                         env.clone(),
-                        type_decls.clone(),
                         si.clone(),
                     ),
                     _ => no_typed_rows(),
@@ -390,7 +373,6 @@ pub fn typed_occurrence_rows(
                                     v1_rt::concat(position_kind.clone(), "/type_arg".to_string()),
                                     a.clone(),
                                     env.clone(),
-                                    type_decls.clone(),
                                     si.clone(),
                                 ),
                             )
@@ -403,7 +385,6 @@ pub fn typed_occurrence_rows(
                         n.clone(),
                         decl_identity.clone(),
                         env.clone(),
-                        type_decls.clone(),
                         si.clone(),
                     )]),
                     arg_rows.clone(),
@@ -418,7 +399,6 @@ pub fn typed_field_rows(
     enclosing: String,
     fields: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-    type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     fields
@@ -433,7 +413,6 @@ pub fn typed_field_rows(
                     "declaration_field".to_string(),
                     crate::v1_compiler_infer_types::child_type_node(fld.clone()),
                     env.clone(),
-                    type_decls.clone(),
                     si.clone(),
                 ),
             )
@@ -444,7 +423,6 @@ pub fn typed_item_rows(
     module_file: String,
     item: Rc<Node>,
     env: Rc<TypeEnv>,
-    type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     {
@@ -463,7 +441,6 @@ pub fn typed_item_rows(
                                 enclosing.clone(),
                                 variant.children.clone(),
                                 env.clone(),
-                                type_decls.clone(),
                                 si.clone(),
                             ),
                         )
@@ -475,7 +452,6 @@ pub fn typed_item_rows(
                     enclosing.clone(),
                     item.children.clone(),
                     env.clone(),
-                    type_decls.clone(),
                     si.clone(),
                 )
             }
@@ -495,7 +471,6 @@ pub fn typed_item_rows(
                             "fn_signature_param".to_string(),
                             crate::v1_std_core::param_node_type_expr(prm.clone()),
                             env.clone(),
-                            type_decls.clone(),
                             si.clone(),
                         ),
                     )
@@ -512,7 +487,6 @@ pub fn typed_item_rows(
                 "fn_signature_return".to_string(),
                 crate::v1_compiler_infer::declared_return_type_node(item.clone()),
                 env.clone(),
-                type_decls.clone(),
                 si.clone(),
             )
         };
@@ -525,7 +499,6 @@ pub fn typed_item_rows(
 
 pub fn typed_module_rows(
     m: Rc<TypedModule>,
-    type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     {
@@ -541,7 +514,6 @@ pub fn typed_module_rows(
                         module_file.clone(),
                         item.clone(),
                         m.type_env.clone(),
-                        type_decls.clone(),
                         si.clone(),
                     ),
                 )
@@ -716,7 +688,7 @@ pub fn tsv_escape(v: String) -> String {
 }
 
 pub fn typed_census_header() -> String {
-    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome\trecorded_declaration\temitter_decl_route".to_string()
+    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome\trecorded_declaration".to_string()
 }
 
 pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
@@ -734,7 +706,6 @@ pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
         tsv_escape(r.authority_base.clone()),
         outcome_label(r.outcome.clone()),
         recorded_declaration_label(r.recorded_declaration.clone()),
-        tsv_escape(r.emitter_decl_route.clone()),
     ])
     .join(&"\t".to_string())
 }
@@ -757,27 +728,15 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
             std::option::Option::None => {
                 "REFUSED\tcompile_to_resolved produced no graph".to_string()
             }
-            Some(g) => {
-                let type_decls = crate::v1_compiler_infer::build_emit_graph_info(
-                    g.modules.clone(),
-                    g.item_registry.clone(),
-                )
-                .type_decl_items
-                .clone();
-                typed_census_tsv(g.modules.clone().iter().cloned().fold(
-                    no_typed_rows(),
-                    |acc: _, m: Rc<TypedModule>| {
-                        v1_rt::concat(
-                            acc,
-                            typed_module_rows(
-                                m.clone(),
-                                type_decls.clone(),
-                                result.source_indices.clone(),
-                            ),
-                        )
-                    },
-                ))
-            }
+            Some(g) => typed_census_tsv(g.modules.clone().iter().cloned().fold(
+                no_typed_rows(),
+                |acc: _, m: Rc<TypedModule>| {
+                    v1_rt::concat(
+                        acc,
+                        typed_module_rows(m.clone(), result.source_indices.clone()),
+                    )
+                },
+            )),
         }
     }
 }
