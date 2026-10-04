@@ -519,15 +519,15 @@ pub fn parser_state_arg_expr(
                     let idx = pair.0.clone();
                     let arg_node = pair.1.clone();
                     let matches_state =
-                        if (crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone())
-                            .as_deref()
-                            != Some("".to_string()).as_deref())
-                        {
-                            (crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone())
-                                .as_deref()
-                                == Some(state_param.name.clone()).as_deref())
-                        } else {
-                            (idx.clone() == state_param.index.clone())
+                        match crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone()) {
+                            Some(label) => {
+                                if (label.clone() != "".to_string()) {
+                                    (label.clone() == state_param.name.clone())
+                                } else {
+                                    (idx.clone() == state_param.index.clone())
+                                }
+                            }
+                            std::option::Option::None => (idx.clone() == state_param.index.clone()),
                         };
                     if matches_state.clone() {
                         Some(crate::v1_std_core::arg_value(arg_node.clone()))

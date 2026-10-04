@@ -280,10 +280,10 @@ use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
-    EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
+    EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOptionalityMismatch,
+    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
     SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
     TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
     TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
@@ -5020,6 +5020,22 @@ pub fn equality_operand_is_presence_literal(
     }
 }
 
+pub fn equality_operand_is_optional(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            ((rt.return_cardinality.clone() == Cardinality::CardOptional)
+                || ((crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
+                ) == "Optional".to_string())
+                    && ((rt.children.clone().len() as i64) == 1)))
+        }
+        _ => false,
+    }
+}
+
 pub fn equality_admission_refusal_diag(
     r: Rc<EqualityAdmissionRefusal>,
     span: Rc<SourceSpan>,
@@ -5095,18 +5111,32 @@ pub fn equality_admission_diags(
                 {
                     Rc::new(vec![])
                 } else {
-                    match equality_operand_admission(
-                        lt.clone(),
-                        scope.clone(),
-                        v1_rt::rc_empty_map::<String, bool>(),
-                        0,
-                    ) {
-                        Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                            equality_admission_refusal_diag(r.clone(), span.clone()),
-                            scope.module_name.clone(),
-                        )]),
-                        std::option::Option::None => match equality_operand_admission(
-                            rt.clone(),
+                    if (equality_operand_is_optional(left_typed.clone(), source_indices.clone())
+                        != equality_operand_is_optional(
+                            right_typed.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
+                        {
+                            let side = if equality_operand_is_optional(
+                                left_typed.clone(),
+                                source_indices.clone(),
+                            ) {
+                                "left".to_string()
+                            } else {
+                                "right".to_string()
+                            };
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::EqualityOptionalityMismatch {
+                                    optional_side: side.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )])
+                        }
+                    } else {
+                        match equality_operand_admission(
+                            lt.clone(),
                             scope.clone(),
                             v1_rt::rc_empty_map::<String, bool>(),
                             0,
@@ -5115,8 +5145,19 @@ pub fn equality_admission_diags(
                                 equality_admission_refusal_diag(r.clone(), span.clone()),
                                 scope.module_name.clone(),
                             )]),
-                            std::option::Option::None => Rc::new(vec![]),
-                        },
+                            std::option::Option::None => match equality_operand_admission(
+                                rt.clone(),
+                                scope.clone(),
+                                v1_rt::rc_empty_map::<String, bool>(),
+                                0,
+                            ) {
+                                Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    equality_admission_refusal_diag(r.clone(), span.clone()),
+                                    scope.module_name.clone(),
+                                )]),
+                                std::option::Option::None => Rc::new(vec![]),
+                            },
+                        }
                     }
                 }
             }
@@ -6109,6 +6150,45 @@ pub fn declared_type_inhabitance(
     }
 }
 
+pub fn position_is_declared_return(position: DeclaredTypePosition) -> bool {
+    match position.clone() {
+        DeclaredTypePosition::PositionDeclaredReturn => true,
+        _ => false,
+    }
+}
+
+pub fn required_produced_at_optional_declared(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let declared_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
+        let produced_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
+        let produced_carries_optional = ((produced.return_cardinality.clone()
+            == Cardinality::CardOptional)
+            || (crate::v1_std_core::qualified_last_segment(produced_name.clone())
+                == "Optional".to_string()));
+        let produced_is_generic = (((((produced.params.clone().len() as i64) > 0)
+            || (produced.inferred.clone() == std::option::Option::None))
+            || crate::v1_std_core::is_compiler_error(produced.inferred.clone().clone().unwrap()))
+            || match produced.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            });
+        (((((((declared.return_cardinality.clone() == Cardinality::CardOptional)
+            && !produced_carries_optional.clone())
+            && !produced_is_generic.clone())
+            && (produced_name.clone() != "".to_string()))
+            && (declared_name.clone() != "".to_string()))
+            && !type_node_is_callable(declared.clone()))
+            && !type_node_is_callable(produced.clone()))
+    }
+}
+
 pub fn optional_produced_at_required_declared(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -6156,11 +6236,17 @@ pub fn optional_at_required_obligation_diags(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if optional_produced_at_required_declared(
+    if (optional_produced_at_required_declared(
         obligation.declared.clone(),
         obligation.produced.clone(),
         scope.clone(),
-    ) {
+    ) || (position_is_declared_return(obligation.position.clone())
+        && required_produced_at_optional_declared(
+            obligation.declared.clone(),
+            obligation.produced.clone(),
+            scope.clone(),
+        )))
+    {
         Rc::new(vec![crate::v1_std_core::make_error_node(
             Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
                 position: declared_type_position_label(
