@@ -1,5 +1,6 @@
 module gunbc.roadmap_serve
 
+import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
 
 import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
@@ -502,7 +503,7 @@ fn serve_dispatch_handler_response_over(
     )
   } else {
     belt_dispatch_response(
-      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
+      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous),
     )
   }
 }
@@ -1003,7 +1004,12 @@ fn serve_assignment_launch_follow_through_over(
       node_id: node_id,
       assignee_display: assignee_display,
       event_id: event_id,
-      outcome: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
+      outcome: belt_dispatch_node_for_instance_over(
+        instance: instance,
+        plan: plan,
+        node_id: node_id,
+        request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
+      ),
     )
   } else {
     serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
