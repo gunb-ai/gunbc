@@ -78,7 +78,7 @@ data process_lifecycle_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
-      decl_name: "exit_status_code" as NonEmptyStr,
+      decl_name: "process_reap_outcome_variant" as NonEmptyStr,
       field: WholeDeclaration,
     },
     DeclarationRef {

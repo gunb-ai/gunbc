@@ -12,6 +12,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Reap's authority: wait and waitpid share one POSIX page -- pid-specific nonblocking reaping
+// (WNOHANG), exit-status decomposition (WIFEXITED / WIFSIGNALED), and ECHILD for a pid that is
+// not a child of the caller. StartDetached and Reap are ONE lifecycle, but the two halves have
+// different POSIX pages, so the scope cites both.
+data extdeps_external_authority_anchor_wait: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -21,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [extdeps_external_authority_anchor_wait]
 }
 
 // PROCESS LIFECYCLE, typed at the spawn boundary. `tools.emit_host_transport` (the node-http

@@ -17169,9 +17169,11 @@ fn render_shell_detached_trace(pid: u32, stdout_path: &str, argv: &[String], int
 /// Native realization of `extdeps.posix.process` `Reap` for THIS process's detached children.
 /// waitpid(3) is parent-only; no argv transport can answer it for a pid that is not our child,
 /// so the registry the detached spawn keeps IS the realization. Non-blocking (WNOHANG): a server
-/// still running answers `exited: false` and the caller decides; a reaped child is removed from
-/// the registry so the pid cannot be answered twice. Signal deaths report as 128 + signal, the
-/// shell exit-status convention extdeps.process.posix_exit records for >128 codes.
+/// still running answers `StillRunning`; a reaped child is removed from the registry so the pid
+/// cannot be answered twice. The answer is the closed `ProcessReapOutcome`: `Exited { code }`
+/// decomposes by WIFEXITED, `Signaled { signal }` by WIFSIGNALED (SIGTERM is not an exit 143),
+/// and ECHILD -- a pid this process never owned, already reaped, or nonpositive -- answers
+/// `ReapRefused { cause }`, never a fabricated "still running".
 fn dispatch_process_reap_native(
     op_node: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -17185,56 +17187,56 @@ fn dispatch_process_reap_native(
             })
         }
     };
-    let pid = match pid_value {
-        Value::Int(pid) if pid > 0 => pid as u32,
-        other => {
-            return Err(InterpError::TypeError {
-                msg: format!("posix.Process.Reap `pid` must be a positive Int, found `{other}`"),
-            })
-        }
-    };
 
     // One waitpid(2) observation, typed exactly as the modeled authority
     // (dag/extdeps/posix/process.dag ProcessReapOutcome) reports it: StillRunning is WNOHANG's 0,
     // Exited is WIFEXITED's raw code, Signaled is WIFSIGNALED's signal number (a killed child is
     // NOT an exit; folding 15 into 128+15 would make SIGTERM indistinguishable from a normal exit
     // 143), and ReapRefused is ECHILD or any waitpid error -- a typed answer about a pid this
-    // process does not own, never a fabricated "still running".
+    // process does not own, never a fabricated "still running". A nonpositive pid is closed over
+    // the same way: it is a ReapRefused answer about a pid no child can have, not an interpreter
+    // error.
     enum ReapObservation {
         StillRunning,
         Exited(i32),
         Signaled(i32),
         Refused(String),
     }
-    let observation: ReapObservation = {
-        let mut registry = detached_children()
-            .lock()
-            .expect("detached child registry poisoned");
-        match registry.get_mut(&pid) {
-            Some(child) => match child.try_wait() {
-                Ok(Some(status)) => {
-                    registry.remove(&pid);
-                    #[cfg(unix)]
-                    {
-                        match std::os::unix::process::ExitStatusExt::signal(&status) {
-                            Some(signal) => ReapObservation::Signaled(signal),
-                            None => ReapObservation::Exited(status.code().unwrap_or(-1)),
+    let observation: ReapObservation = match pid_value {
+        Value::Int(pid) if pid > 0 => {
+            let pid = pid as u32;
+            let mut registry = detached_children()
+                .lock()
+                .expect("detached child registry poisoned");
+            match registry.get_mut(&pid) {
+                Some(child) => match child.try_wait() {
+                    Ok(Some(status)) => {
+                        registry.remove(&pid);
+                        #[cfg(unix)]
+                        {
+                            match std::os::unix::process::ExitStatusExt::signal(&status) {
+                                Some(signal) => ReapObservation::Signaled(signal),
+                                None => ReapObservation::Exited(status.code().unwrap_or(-1)),
+                            }
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            ReapObservation::Exited(status.code().unwrap_or(-1))
                         }
                     }
-                    #[cfg(not(unix))]
-                    {
-                        ReapObservation::Exited(status.code().unwrap_or(-1))
-                    }
-                }
-                Ok(None) => ReapObservation::StillRunning,
-                Err(err) => ReapObservation::Refused(format!(
-                    "waitpid on pid {pid} failed: {err}"
+                    Ok(None) => ReapObservation::StillRunning,
+                    Err(err) => ReapObservation::Refused(format!(
+                        "waitpid on pid {pid} failed: {err}"
+                    )),
+                },
+                None => ReapObservation::Refused(format!(
+                    "pid {pid} was not started by this process (waitpid ECHILD): Reap answers only about detached children of the calling process"
                 )),
-            },
-            None => ReapObservation::Refused(format!(
-                "pid {pid} was not started by this process (waitpid ECHILD): Reap answers only about detached children of the calling process"
-            )),
+            }
         }
+        other => ReapObservation::Refused(format!(
+            "pid `{other}` is not a positive Int (waitpid: no such child)"
+        )),
     };
     let outcome = match observation {
         ReapObservation::StillRunning => {
