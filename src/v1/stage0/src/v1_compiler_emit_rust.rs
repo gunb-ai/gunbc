@@ -64,7 +64,7 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
 pub use crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
 pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, structural_connective_rows, structural_ordering_rows,
+    kernel_grounding_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
 pub use crate::std_algebra::AlgebraFieldTemplate;
@@ -162,8 +162,14 @@ use crate::v1_compiler_emit::FileResultChannel::{
     FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
-    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteCreateNewWithMode,
-    FileWriteOwnerOnly,
+    FileDelete, FileLinkCreateNew, FileList, FileRead, FileWrite, FileWriteCreateNew,
+    FileWriteCreateNewWithMode, FileWriteOwnerOnly,
+};
+use crate::v1_compiler_emit::NativeEffectContract::{NativeResourceEffect, NativeServiceEffect};
+use crate::v1_compiler_emit::NativeEffectHandler::{NativeCapabilityToken, NativeTransportHandler};
+use crate::v1_compiler_emit::NativeEffectRealizationAdmission::{
+    NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator,
+    NativeEffectRealizationUnavailable,
 };
 use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
 use crate::v1_compiler_emit::ShellResultChannel::{
@@ -171,25 +177,28 @@ use crate::v1_compiler_emit::ShellResultChannel::{
     ShellChanStderrTotalBytes, ShellChanStderrTruncated, ShellChanStdout, ShellChanStdoutLines,
 };
 pub use crate::v1_compiler_emit::{
-    bind_operation_transport, child_from_key, compute_service_fields,
-    effective_operation_transport, emit_bin_op_symbol, emit_container, emit_data_value_json,
-    emit_error_expr, emit_ident, emit_keyed_container_type, emit_keyword, emit_lambda,
-    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
-    emit_literal, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
-    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
-    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
-    extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
-    is_self_recursive, is_tco_eligible, keyed_container_has_target_inhabitant,
-    lookup_item_by_identity, module_emit_scope, order_typed_call_args_from_semantics,
-    render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
-    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    shared_tco_reassign, shell_emission_refusal_fact, shell_result_channel_key,
-    tco_loop_iteration_lets, tco_loop_slot_name, tco_reassign_core, transport_binding_refusal_fact,
+    admit_native_resource_effect, admit_native_service_effect, bind_operation_transport,
+    child_from_key, compute_service_fields, effective_operation_transport, emit_bin_op_symbol,
+    emit_container, emit_data_value_json, emit_error_expr, emit_ident, emit_keyed_container_type,
+    emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding, emit_let_binding_annotated,
+    emit_list_lit_expr, emit_literal, emit_node_type, emit_null_coalesce, emit_return,
+    emit_shared_expr, emit_shared_tco_expr, emit_simple_expr, emit_string_literal,
+    emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
+    escape_rust_interp_text, extract_modifier_names, has_nested_records_node, has_service_items,
+    is_null_coalesce, is_self_recursive, is_tco_eligible, keyed_container_has_target_inhabitant,
+    lookup_item_by_identity, module_emit_scope, native_compiler_route_denominator,
+    native_effect_admission_refusal, native_service_route_denominator,
+    order_typed_call_args_from_semantics, render_node_type, render_tuple_parts,
+    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
+    service_field_ctors, service_field_decls, shared_tco_reassign, shell_emission_refusal_fact,
+    shell_result_channel_key, tco_loop_iteration_lets, tco_loop_slot_name, tco_reassign_core,
+    transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
-    InterpPart, ServiceFieldSet, ShellEmissionRefusal, ShellResultChannel, ShellResultField,
-    TcoFrame, TcoReassignInput,
+    InterpPart, NativeEffectContract, NativeEffectDenominator, NativeEffectHandler,
+    NativeEffectRealizationAdmission, ServiceFieldSet, ShellEmissionRefusal, ShellResultChannel,
+    ShellResultField, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -292,8 +301,8 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, EffectfulSelfRecursionUnrealized,
-    InternalError, ReferenceDerivedImportExportUnproven, ReferenceDerivedImportProviderUnknown,
-    UnlistedImportUse,
+    InternalError, NativeEffectRealizationRefused, ReferenceDerivedImportExportUnproven,
+    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -887,6 +896,21 @@ pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
         || is_host_diagnostics_carrier_alias(name.clone()))
 }
 
+pub fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name: String) -> bool {
+    match (*crate::v1_compiler_coercion::rust_lookup_exact_binding(Some(
+        crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+    )))
+    .clone()
+    {
+        ExactBindingResolution::ResolvedExactBinding { binding: _, .. } => true,
+        ExactBindingResolution::ExactBindingAbsent => false,
+        ExactBindingResolution::ExactBindingAmbiguous {
+            candidate_count: _, ..
+        } => false,
+        ExactBindingResolution::ExactSourceIdentityUnavailable { cause: _, .. } => false,
+    }
+}
+
 pub fn is_host_optional_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1128,7 +1152,7 @@ pub fn numeric_realization_relocation_note() -> String {
 pub fn checkpoint_table_bypasses_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Nat carries no row and therefore discriminates correctly -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag refuses. Names WITH a row do not. This is not a regression introduced here: the table was already bare-name keyed and the global corpus mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is v1.tests.claim.checkpoint_identity_keying_witness_test, which asserts the CURRENT bypassing answers on purpose so the gap is counted instead of assumed closed. THAT CITATION WAS FALSE WHEN THIS NOTE FIRST LANDED AND IS REPAIRED RATHER THAN SOFTENED. It named the residue block generated by v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into a module declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate -- while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package consuming v1-compiler as an ordinary dependency, so cfg(test) is never set for it and the block is not compiled, let alone executed. Measured rather than reasoned: that step's binary enumerates 30 tests and none is this one, against a positive control confirming the enumeration is non-empty. So a ceiling disclosure cited evidence that had never run -- DESIGN section 4b(1) rung honesty violated in the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The assertions were re-authored as an enrolled .dag witness and now execute (seven rows PASS, including the discriminating row where two declarations share the spelling Nat and answer differently); the superseded generated-Rust block is deleted rather than left standing as a second, silent copy. POPULATION (census by vivid-wren-870, who owns the rows): SEVEN of the table's names are also declared under src/v2 -- Int, Float, Bool, Symbol, Unit, String, Hash; Bytes, Secret and Json are not. That is a LOWER BOUND obtained by grepping line-start `type <name>` declarations under src/v2; it does not find names introduced any other way, and it says NOTHING about how many sites bite in any real closure. Three of the seven are the same shape as Int in that the v2 declaration is a genuinely different STRUCTURE rather than a spelling coincidence -- Int is GroupCompletion<Nat>, String is FreeMonoid<Char>, Bool is a two-variant coproduct. Symbol and Unit are bodyless and may be declared-abstract rather than competing realizations, so their bypass may be harmless. Hash is the one that costs a GUARANTEE rather than merely a representation, and it belongs with the same-shape three rather than apart from them: the row targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2 declaration of Fnv1a64Structural -- a single-field record whose digest field is `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note states the public forgeable record constructors are DELETED and that the where-refinement IS the construction wall, so realizing that type as a bare String alias renders away the carrier the wall is attached to. A name-keyed spelling row can therefore silently drop a §4b construction rung. Established from declarations at both ends (vivid-wren-870, re-read here); NO live site is claimed, because no closure reaching a v2-declared Hash through lookup_checkpoint has been emitted by either of us. NEXT-RUNG TRIGGER -- AND THE OBVIOUS SHAPE IS THE WRONG ONE. An earlier revision of this note named `the checkpoint rows gain a declaring-module column`. vivid-wren-870 refused that shape with an argument this note adopts: a TypeCheckpoint row is cited to the Rust reference and states how RUST spells a type, whereas which dag module declares Int is a gunbc-corpus fact, so a declaring-module column puts corpus data inside an extdeps upstream authority -- a layer inversion, and the same class as a row being asked a question its cited authority cannot answer. The expected terminal shape is TWO authorities rather than one wider one: extdeps keeps Rust type -> spelling, a corpus-side binding says this dag declaration realizes as that Rust type, and lookup_checkpoint keys on the second. That also lets the seven differ from each other, which one column keyed on a single module cannot express. Recorded as a proposal from the rows owner, not as a decision, and unbuilt at the time of writing. When it lands the residue assertions flip to None and the flip is the dissolution signal, not a regression. LANDED FOR HASH (this PR, T7): the second authority is v1.compiler.coercion structural_declaration_modules_for, a corpus-side row roster keyed on the dag_name and enumerating the modules whose declaration of that name is structural rather than native -- \"Hash\" => [\"src/v2/std/node.dag\"] is its one row. lookup_checkpoint (v1.compiler.coercion) now consults it before the bare-name table: when decl_file_declares_structurally holds, lookup_checkpoint refuses (none) rather than answering from the table, and every consumer that already carried a correct identity-arm fallback -- coerce_primitive_type, is_copy, literal_suffix, and the direct callers of lookup_checkpoint itself -- inherits the refusal once decl_file is threaded to the call, which it now is at every production call site across v1.compiler.emit_rust and v1.compiler.emit. table_present_hash_refuses_under_structural_declaration in the witness below is the flip this note predicted; it is no longer residue. LANDED FOR STRING (session merry-lark-67, per smart-ram-730's dispatch): structural_declaration_modules_for gained a second row, \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"] -- both declare `type String = FreeMonoid<Char>`, the structural free-monoid-over-Char carrier, never a host string, so a reference resolving to either module now refuses the bare-name table's `String`/`.to_string()` spelling instead of silently rendering it. residue_table_present_string_bypasses_identity in the legacy oracle (src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag) is retired for the same reason table_present_hash_refuses_under_structural_declaration closed for Hash, and is replaced there by table_present_string_refuses_under_structural_declaration_text / _string_type rather than repaired back to a passing bypass -- the flip is the dissolution signal, not a regression. LANDED FOR BOOL (session merry-lark-67, corpus-wide histogram from smart-ram-730; corrected same session, commit 127ad848070, per review 54257): structural_declaration_modules_for gained a third row, \"Bool\" => [\"src/v2/std/logic.dag\"] -- the initial enrollment mirrored String's two-row shape onto Bool and also listed dag/std/types.dag, but that module is the ordinary corpus-wide native Bool prelude (imported by 300+ dag/test/claim modules with no bit/width/encoding modeling riding on it), directly analogous to dag/std/integer.dag for Int, which sits in the POSITIVE numeric_realization_declaring_modules roster, never the negative structural one. Only src/v2/std/logic.dag's Bool is genuinely structural, carrying BoolWidthFact/BoolEncodingFact/BooleanAlgebra<Bool> modeling over the two-variant coproduct; a reference resolving to it refuses the bare-name table's `bool`/`false` spelling instead of silently rendering it, while a reference resolving to dag/std/types.dag renders natively as designed. The over-broad row caused required-floor to refuse native bool rendering for 5 unrelated fixtures (e0308_mechanical_trio_test, optional_carrier_signature_test) and caused required-regen to see drift across the self-hosted std_*.rs mirrors; both are the fabricated-plausible-ceiling failure this note elsewhere criticizes, disclosed and repaired here rather than left standing. Bool never had a residue row in the legacy oracle to flip; it lands directly as one CLOSED row, table_present_bool_refuses_under_structural_declaration_logic, alongside table_present_bool_renders_natively_for_the_corpus_prelude confirming dag/std/types.dag's native rendering. KNOWN GAP THIS ROW DOES NOT CLOSE, FOUND WHILE MEASURING IT: emit_typed_item's type-alias arm special-cases `item_text == \"String\"` UNCONDITIONALLY -- rust_string_grounded_type_alias_decl_line emits `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file, never consulting rust_scalar_checkpoint_render_base or this roster at all. So the module that declares `type String = FreeMonoid<Char>` keeps emitting itself as a host-String alias even after this row makes every REFERENCE to it refuse the bare-name table; the declaration and its own references can now disagree in the SAME emitted file. THAT KNOWN GAP IS NOW CLOSED, AND THE ROOT WAS NOT WHERE THIS NOTE PUT IT. The gap as recorded: emit_typed_item's type-alias arm special-cased `item_text == \"String\"` UNCONDITIONALLY, emitting `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file and never consulting the identity-keyed authority every REFERENCE already routed through, so one emitted file could disagree with itself. This note framed that as a second bare-name bypass to be deleted. IT WAS NOT. The arm was COMPENSATING, and deleting it alone would have emitted `pub type String = String;` -- self-referential, because the checkpoint's target_type for String is the bare spelling `String` and the declaration site uses target_type as the alias's right-hand side. The real defect was that ONE FIELD CARRIED TWO SPELLING ROLES (the word arity is avoided here on purpose -- in this module it already means type-parameter count, see AliasDeclArityVerdict and rust_checkpoint_scalar_declared_arity_guard_note): one field answering two questions -- what a REFERENCE renders (bare `String`, correct and idiomatic) and what a DECLARATION is GROUNDED IN (`std::string::String`, the spelling no alias can shadow). Whichever spelling one field carried, one consumer was wrong, and the arm was the visible cost of making it try. std.coercion TypeCheckpoint now carries both spellings as separate fields; rust_scalar_checkpoint_reference_base and rust_scalar_checkpoint_grounding_base are two named entry points over one shared identity-keyed body, so every PRODUCTION caller states which question it asks by visibly naming it rather than by passing an argument. That is mechanically preventable, NOT structurally impossible: the shared body stays reachable and carries the discriminator, .dag has no function-privacy concept to hide it behind (the emitted emitter carries 665 pub fn and zero non-pub), and the next-rung trigger is a module-private function boundary in the language. The standing evidence for the narrower claim is that the shared body's only direct callers are the two wrappers; the three reference callers read the reference spelling, the single declaration-RHS caller reads grounding, and the arm is DELETED rather than guarded. WHAT THIS STILL DOES NOT CLOSE, stated so the ceiling is not read as retired: lookup_checkpoint's FIRST arm answers straight from the bare-name table when decl_file is the empty string, consulting no roster at all, so every site reaching emission with UNKNOWN declaration identity still realizes from the table exactly as this note describes. That bypass is live, its population is UNCOUNTED, and no estimate is offered here. It is a separate defect from the two-role split -- the split governs what a row can SAY once identity is known; the bypass governs whether identity is consulted at all -- and it is filed as its own row rather than folded into this one. HOW THIS CLOSURE AND THE REACHABILITY CORRECTION BELOW RELATE, because each narrows the other and reading either alone overstates it: the two-role split is what makes the DECLARATION site able to consult the identity-keyed authority at all, and royal-dove-436's finding is that the REFERENCE site for a String-spelled type never reaches lookup_checkpoint in the first place. So for String specifically the split repairs a position that was answering wrongly, while the position this note elsewhere calls gated is not yet reached -- the declaration half is closed and the reference half is unreachable, which is one authority with two different reasons its consumers do not see it, not one gap. Neither finding weakens the other and neither is the whole story for String; the split is stated here as closing the arm it deletes, never as making every String position identity-keyed. REACHABILITY CORRECTION (royal-dove-436, adhoc-c735d227-60b, 2026-08-21, measured on the 03_ingest closure): TWO CLAIMS ABOVE ARE FALSE FOR STRING AND ARE CORRECTED HERE RATHER THAN SOFTENED -- the LANDED FOR STRING clause's 'a reference resolving to either module now refuses the bare-name table's String/.to_string() spelling instead of silently rendering it', and the KNOWN GAP clause's 'even after this row makes every REFERENCE to it refuse the bare-name table'. The row does not make every reference refuse, because a String-spelled reference in TYPE position never reaches lookup_checkpoint at all. SIX type renderers in this module -- render_rust_type, render_rust_type_without_applied_binding, render_rust_applied_type, render_rust_type_with_applied_binding, render_rust_decl_type and render_rust_fn_sig_type -- each RETURN ON THEIR FIRST LINE (verified: the call is the statement immediately following each fn's own declaration) via is_host_text_carrier_type, rendering the literal \"String\" unconditionally on decl_file, ahead of every checkpoint or roster consultation; and is_host_text_carrier_type accepts the spelling String outright, so no path through those six can reach type_realization_decision's Unrealized-via-structural-gate arm for it. THE ROW IS THEREFORE PRESENT, UNREACHABLE, AND MIS-KEYED FOR THE TEXT CARRIER IN TYPE POSITION -- an unreachable wall rather than a missing one, which is DESIGN section 6's coverage-by-illusion and a section 4b rung this note previously reported as held. THAT SENTENCE READ 'PRESENT, CORRECT, AND UNREACHABLE' UNTIL THIS EDIT, AND IT WAS WRONG IN THE DIRECTION THAT MATTERS. The authority's LOGIC was checked and its KEY was not, and a total function over a wrong key does not fail -- it returns a confidently wrong answer. The key defect is type_reference_decl_file's fallback arm, which cannot distinguish 'this node IS the declaration' from 'this is a reference whose declaration was not recovered here' and in the second case returns the file containing the REFERENCE: the identity key is a LOCATION. THE CONSEQUENCE FOR THE OBVIOUS REPAIR IS THE REASON THIS CORRECTION IS WORTH A REGEN: reading 'correct but unreachable' makes deleting the six short-circuits look SUFFICIENT, and it is not, because what the deletion then reaches is mis-keyed. The deletion is the right EVENTUAL repair and the wrong FIRST move, and the prescribed first step is instead the STATIC decision-divergence census -- how many occurrences the authority answers differently from the short-circuit -- which is computable without emitting, where a deletion produces only the diagnostic-conversion quantity and no record of the divergence that would make it adjudicable. The retraction is restated HERE rather than left in the design document alone because THIS NOTE WAS RELAYED UPWARD AND ITS SUPERSEDED SENTENCE WAS RESTATED AS FACT, which is the DESIGN section 4b(1) rung-honesty failure applied to the compiler's own self-description: a reader who stops at this sentence must not leave with the retracted claim. Authority for every clause above: docs/plans/carrier-realization-arbiter-repair-design.md, whose sections 1 and 2 carry the 52-row arm census and the two refuted repairs. This is a REACHABILITY claim about String's reference-site gate; it does NOT touch the Hash clause above, whose 'NO live site is claimed' is scoped to a v2-declared Hash reaching lookup_checkpoint and is unaffected, and it is a DIFFERENT mechanism from the declaration-site alias line the KNOWN GAP clause otherwise describes. SUPPORTING EVIDENCE, cited as a population rather than as the basis of the claim: 34 live E0308 sites in the 03_ingest closure pair a String-declared field or parameter against a FreeMonoid-realized value, every one of them a type position that rendered the native spelling while the roster says the declaration is structural (docs/probes/t2_t3_realization_route_2026-08-21.md, per-site TSV beside it). ESTABLISHED HOW, because the distinction decides what would falsify this: the reachability claim is decidable from the five renderers' control flow, which is how it was established -- NOT by a discriminating execution, and it says nothing about a sixth renderer that may handle some type position without that preamble. NEXT-RUNG TRIGGER: the short-circuit family is deleted so the existing authority becomes reachable, per docs/plans/carrier-realization-arbiter-repair-design.md, which also counts the decl_file == \"\" residue this module contributes (four sites) that the DECLARED RESIDUE note in v1.compiler.coercion says is uncounted. That design leaves the structural-vs-native direction to its owner and proposes an emit-only blast-radius measurement, not a merge, as the next step -- deliberately, because the over-broad Bool row recorded above is what picking a direction without that measurement already cost once. Int, Float, Symbol remain open -- they have no row in structural_declaration_modules_for -- and are the population the next instance of this class (a name question answered by authored spelling instead of declaration identity) inherits, per the class-level framing this ceiling was folded into. The roster is deliberately a single generic, identity-keyed mechanism with one row rather than a Hash-specific special case, so a future row for Int or String is an addition to this same authority, not a new mechanism. MEASURED CONSEQUENCE AT ARTIFACT GRAIN, added after this note first landed: the bypass is observable in the emitted FILE SET, not only in the emitter's answer. In a two-arm emission of one v2-only closure the file v2_std_integer.rs is present before the cut and ABSENT after it. That module declares exactly one item, the v2-declared structural Int, and its only type-position consumer was a single generated re-export line in std_algebra.rs; with Int reaching the bare-name checkpoint the re-export is no longer generated, nothing references the module, and it is not emitted. Every other hunk in that file is an offset shift from the deleted line -- the Int string literals are unchanged and the i64 count in the file is identical across arms, so nothing became native that was structural. AND THE DROP IS THE MINORITY CASE -- THE WRONG REALIZATION IS EMITTED, NOT AVOIDED. Across eleven emitted closures measured by smart-ibex-716 (corpus a6bceb6903, binaries a6bceb6903 and ad05a2f2d5), the module disappears in only 2; in the other 9 it SURVIVES with its content changed, from pub type Int = GroupCompletion<Rc<Nat>> to pub type Int = i64. So the native realization of the v2-declared Peano-completion type is already present in the emitted artifact. What is absent is only a consumer: the same census found ZERO type-position uses of the v2 Int in any of the eleven -- every qualified occurrence sits on a use line, and the only bare occurrences surviving a use-line exclusion were four string literals inside prose, one of them a parser test fixture. Two false positives were found and discarded on the way to that zero, both by pulling the specimen rather than trusting the count. The residue is therefore NOT a dead re-export being dropped, which was this note's first reading and is corrected here; it is a wrong realization sitting inert with no diagnostic attached, so the day any declaration binds a bare Int in one of those closures it binds i64 silently. THE HAZARD TRIGGER IS THEREFORE A TYPE POSITION APPEARING, not the re-export returning. This is recorded because a module leaving OR silently changing an alias target is the kind of consequence a content-only diff of one closure reads as offset noise: the instruments that name it are a file-set diff and a cross-closure alias-target read, and neither was in this PR's original receipt. UPSTREAM OF THE SIX SHORT-CIRCUITS, RECORDED HERE BECAUSE THE REACHABILITY CORRECTION ABOVE READS AS THOUGH THE SPELLING HAD ONE MEANING TO SHORT-CIRCUIT ON (2026-09-01). It does not. A callee parameter type is re-resolved in the CALLER environment, so one declaration denotes two different types depending on which module is asking: measured on a fixture pair, a module declaring `type String = FreeMonoid<Char>` and calling its own `fn f(s: String)` refuses with the STRUCTURAL destination, while a foreign module with no import calling `v2.std.text` `string_head` refuses with the KERNEL one -- same declaration, same parameter, nothing between. So `is_host_text_carrier_type` is not merely answering from a spelling instead of an identity; the spelling it answers from is already CALLER-DEPENDENT before the renderer sees it, and deleting the short-circuits would expose an authority keyed on a location whose value is itself scope-relative. Three further facts belong to `calm-boar-314` measurements at gunbc#9929 and are cited rather than restated: the qualified spelling SILENCES the destination rather than pinning it (an `Int` is admitted at a qualified parameter in both scopes, against two different qualification targets); returns re-resolve on the same axis as parameters; and a single refusal can carry TWO disagreeing destinations for one parameter, which arises when two bindings for the spelling are simultaneously live in the resolving scope. None of that changes this note's next-rung trigger, and it is recorded because a reader planning the short-circuit deletion from the paragraph above would be planning against a one-meaning spelling that does not exist.".to_string()
+            "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Nat carries no row and therefore discriminates correctly -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag refuses. Names WITH a row do not. This is not a regression introduced here: the table was already bare-name keyed and the global corpus mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is v1.tests.claim.checkpoint_identity_keying_witness_test, which asserts the CURRENT bypassing answers on purpose so the gap is counted instead of assumed closed. THAT CITATION WAS FALSE WHEN THIS NOTE FIRST LANDED AND IS REPAIRED RATHER THAN SOFTENED. It named the residue block generated by v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into a module declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate -- while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package consuming v1-compiler as an ordinary dependency, so cfg(test) is never set for it and the block is not compiled, let alone executed. Measured rather than reasoned: that step's binary enumerates 30 tests and none is this one, against a positive control confirming the enumeration is non-empty. So a ceiling disclosure cited evidence that had never run -- DESIGN section 4b(1) rung honesty violated in the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The assertions were re-authored as an enrolled .dag witness and now execute (seven rows PASS, including the discriminating row where two declarations share the spelling Nat and answer differently); the superseded generated-Rust block is deleted rather than left standing as a second, silent copy. POPULATION (census by vivid-wren-870, who owns the rows): SEVEN of the table's names are also declared under src/v2 -- Int, Float, Bool, Symbol, Unit, String, Hash; Bytes, Secret and Json are not. That is a LOWER BOUND obtained by grepping line-start `type <name>` declarations under src/v2; it does not find names introduced any other way, and it says NOTHING about how many sites bite in any real closure. Three of the seven are the same shape as Int in that the v2 declaration is a genuinely different STRUCTURE rather than a spelling coincidence -- Int is GroupCompletion<Nat>, String is FreeMonoid<Char>, Bool is a two-variant coproduct. Symbol and Unit are bodyless and may be declared-abstract rather than competing realizations, so their bypass may be harmless. Hash is the one that costs a GUARANTEE rather than merely a representation, and it belongs with the same-shape three rather than apart from them: the row targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2 declaration of Fnv1a64Structural -- a single-field record whose digest field is `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note states the public forgeable record constructors are DELETED and that the where-refinement IS the construction wall, so realizing that type as a bare String alias renders away the carrier the wall is attached to. A name-keyed spelling row can therefore silently drop a §4b construction rung. Established from declarations at both ends (vivid-wren-870, re-read here); NO live site is claimed, because no closure reaching a v2-declared Hash through lookup_checkpoint has been emitted by either of us. NEXT-RUNG TRIGGER -- AND THE OBVIOUS SHAPE IS THE WRONG ONE. An earlier revision of this note named `the checkpoint rows gain a declaring-module column`. vivid-wren-870 refused that shape with an argument this note adopts: a TypeCheckpoint row is cited to the Rust reference and states how RUST spells a type, whereas which dag module declares Int is a gunbc-corpus fact, so a declaring-module column puts corpus data inside an extdeps upstream authority -- a layer inversion, and the same class as a row being asked a question its cited authority cannot answer. The expected terminal shape is TWO authorities rather than one wider one: extdeps keeps Rust type -> spelling, a corpus-side binding says this dag declaration realizes as that Rust type, and lookup_checkpoint keys on the second. That also lets the seven differ from each other, which one column keyed on a single module cannot express. Recorded as a proposal from the rows owner, not as a decision, and unbuilt at the time of writing. When it lands the residue assertions flip to None and the flip is the dissolution signal, not a regression. LANDED FOR HASH (this PR, T7): the second authority is v1.compiler.coercion structural_declaration_modules_for, a corpus-side row roster keyed on the dag_name and enumerating the modules whose declaration of that name is structural rather than native -- \"Hash\" => [\"src/v2/std/node.dag\"] is its one row. lookup_checkpoint (v1.compiler.coercion) now consults it before the bare-name table: when decl_file_declares_structurally holds, lookup_checkpoint refuses (none) rather than answering from the table, and every consumer that already carried a correct identity-arm fallback -- coerce_primitive_type, is_copy, literal_suffix, and the direct callers of lookup_checkpoint itself -- inherits the refusal once decl_file is threaded to the call, which it now is at every production call site across v1.compiler.emit_rust and v1.compiler.emit. table_present_hash_refuses_under_structural_declaration in the witness below is the flip this note predicted; it is no longer residue. LANDED FOR STRING (session merry-lark-67, per smart-ram-730's dispatch): structural_declaration_modules_for gained a second row, \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"] -- both declare `type String = FreeMonoid<Char>`, the structural free-monoid-over-Char carrier, never a host string, so a reference resolving to either module now refuses the bare-name table's `String`/`.to_string()` spelling instead of silently rendering it. residue_table_present_string_bypasses_identity in the legacy oracle (src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag) is retired for the same reason table_present_hash_refuses_under_structural_declaration closed for Hash, and is replaced there by table_present_string_refuses_under_structural_declaration_text / _string_type rather than repaired back to a passing bypass -- the flip is the dissolution signal, not a regression. LANDED FOR BOOL (session merry-lark-67, corpus-wide histogram from smart-ram-730; corrected same session, commit 127ad848070, per review 54257): structural_declaration_modules_for gained a third row, \"Bool\" => [\"src/v2/std/logic.dag\"] -- the initial enrollment mirrored String's two-row shape onto Bool and also listed dag/std/types.dag, but that module is the ordinary corpus-wide native Bool prelude (imported by 300+ dag/test/claim modules with no bit/width/encoding modeling riding on it), directly analogous to dag/std/integer.dag for Int, which sits in the POSITIVE numeric_realization_declaring_modules roster, never the negative structural one. Only src/v2/std/logic.dag's Bool is genuinely structural, carrying BoolWidthFact/BoolEncodingFact/BooleanAlgebra<Bool> modeling over the two-variant coproduct; a reference resolving to it refuses the bare-name table's `bool`/`false` spelling instead of silently rendering it, while a reference resolving to dag/std/types.dag renders natively as designed. The over-broad row caused required-floor to refuse native bool rendering for 5 unrelated fixtures (e0308_mechanical_trio_test, optional_carrier_signature_test) and caused required-regen to see drift across the self-hosted std_*.rs mirrors; both are the fabricated-plausible-ceiling failure this note elsewhere criticizes, disclosed and repaired here rather than left standing. Bool never had a residue row in the legacy oracle to flip; it landed directly as one CLOSED row, table_present_bool_refuses_under_structural_declaration_logic (RETIRED as dissolution by the Bool de-fork, gunbc.defork_type_name_census ResolvedByDeletingV2: v2.std.logic's Bool declaration was deleted, so there is no structural Bool left for the gate to refuse and the row's premise no longer exists; the positive control stays), alongside table_present_bool_renders_natively_for_the_corpus_prelude confirming dag/std/types.dag's native rendering. KNOWN GAP THIS ROW DOES NOT CLOSE, FOUND WHILE MEASURING IT: emit_typed_item's type-alias arm special-cases `item_text == \"String\"` UNCONDITIONALLY -- rust_string_grounded_type_alias_decl_line emits `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file, never consulting rust_scalar_checkpoint_render_base or this roster at all. So the module that declares `type String = FreeMonoid<Char>` keeps emitting itself as a host-String alias even after this row makes every REFERENCE to it refuse the bare-name table; the declaration and its own references can now disagree in the SAME emitted file. THAT KNOWN GAP IS NOW CLOSED, AND THE ROOT WAS NOT WHERE THIS NOTE PUT IT. The gap as recorded: emit_typed_item's type-alias arm special-cased `item_text == \"String\"` UNCONDITIONALLY, emitting `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file and never consulting the identity-keyed authority every REFERENCE already routed through, so one emitted file could disagree with itself. This note framed that as a second bare-name bypass to be deleted. IT WAS NOT. The arm was COMPENSATING, and deleting it alone would have emitted `pub type String = String;` -- self-referential, because the checkpoint's target_type for String is the bare spelling `String` and the declaration site uses target_type as the alias's right-hand side. The real defect was that ONE FIELD CARRIED TWO SPELLING ROLES (the word arity is avoided here on purpose -- in this module it already means type-parameter count, see AliasDeclArityVerdict and rust_checkpoint_scalar_declared_arity_guard_note): one field answering two questions -- what a REFERENCE renders (bare `String`, correct and idiomatic) and what a DECLARATION is GROUNDED IN (`std::string::String`, the spelling no alias can shadow). Whichever spelling one field carried, one consumer was wrong, and the arm was the visible cost of making it try. std.coercion TypeCheckpoint now carries both spellings as separate fields; rust_scalar_checkpoint_reference_base and rust_scalar_checkpoint_grounding_base are two named entry points over one shared identity-keyed body, so every PRODUCTION caller states which question it asks by visibly naming it rather than by passing an argument. That is mechanically preventable, NOT structurally impossible: the shared body stays reachable and carries the discriminator, .dag has no function-privacy concept to hide it behind (the emitted emitter carries 665 pub fn and zero non-pub), and the next-rung trigger is a module-private function boundary in the language. The standing evidence for the narrower claim is that the shared body's only direct callers are the two wrappers; the three reference callers read the reference spelling, the single declaration-RHS caller reads grounding, and the arm is DELETED rather than guarded. WHAT THIS STILL DOES NOT CLOSE, stated so the ceiling is not read as retired: lookup_checkpoint's FIRST arm answers straight from the bare-name table when decl_file is the empty string, consulting no roster at all, so every site reaching emission with UNKNOWN declaration identity still realizes from the table exactly as this note describes. That bypass is live, its population is UNCOUNTED, and no estimate is offered here. It is a separate defect from the two-role split -- the split governs what a row can SAY once identity is known; the bypass governs whether identity is consulted at all -- and it is filed as its own row rather than folded into this one. HOW THIS CLOSURE AND THE REACHABILITY CORRECTION BELOW RELATE, because each narrows the other and reading either alone overstates it: the two-role split is what makes the DECLARATION site able to consult the identity-keyed authority at all, and royal-dove-436's finding is that the REFERENCE site for a String-spelled type never reaches lookup_checkpoint in the first place. So for String specifically the split repairs a position that was answering wrongly, while the position this note elsewhere calls gated is not yet reached -- the declaration half is closed and the reference half is unreachable, which is one authority with two different reasons its consumers do not see it, not one gap. Neither finding weakens the other and neither is the whole story for String; the split is stated here as closing the arm it deletes, never as making every String position identity-keyed. REACHABILITY CORRECTION (royal-dove-436, adhoc-c735d227-60b, 2026-08-21, measured on the 03_ingest closure): TWO CLAIMS ABOVE ARE FALSE FOR STRING AND ARE CORRECTED HERE RATHER THAN SOFTENED -- the LANDED FOR STRING clause's 'a reference resolving to either module now refuses the bare-name table's String/.to_string() spelling instead of silently rendering it', and the KNOWN GAP clause's 'even after this row makes every REFERENCE to it refuse the bare-name table'. The row does not make every reference refuse, because a String-spelled reference in TYPE position never reaches lookup_checkpoint at all. SIX type renderers in this module -- render_rust_type, render_rust_type_without_applied_binding, render_rust_applied_type, render_rust_type_with_applied_binding, render_rust_decl_type and render_rust_fn_sig_type -- each RETURN ON THEIR FIRST LINE (verified: the call is the statement immediately following each fn's own declaration) via is_host_text_carrier_type, rendering the literal \"String\" unconditionally on decl_file, ahead of every checkpoint or roster consultation; and is_host_text_carrier_type accepts the spelling String outright, so no path through those six can reach type_realization_decision's Unrealized-via-structural-gate arm for it. THE ROW IS THEREFORE PRESENT, UNREACHABLE, AND MIS-KEYED FOR THE TEXT CARRIER IN TYPE POSITION -- an unreachable wall rather than a missing one, which is DESIGN section 6's coverage-by-illusion and a section 4b rung this note previously reported as held. THAT SENTENCE READ 'PRESENT, CORRECT, AND UNREACHABLE' UNTIL THIS EDIT, AND IT WAS WRONG IN THE DIRECTION THAT MATTERS. The authority's LOGIC was checked and its KEY was not, and a total function over a wrong key does not fail -- it returns a confidently wrong answer. The key defect is type_reference_decl_file's fallback arm, which cannot distinguish 'this node IS the declaration' from 'this is a reference whose declaration was not recovered here' and in the second case returns the file containing the REFERENCE: the identity key is a LOCATION. THE CONSEQUENCE FOR THE OBVIOUS REPAIR IS THE REASON THIS CORRECTION IS WORTH A REGEN: reading 'correct but unreachable' makes deleting the six short-circuits look SUFFICIENT, and it is not, because what the deletion then reaches is mis-keyed. The deletion is the right EVENTUAL repair and the wrong FIRST move, and the prescribed first step is instead the STATIC decision-divergence census -- how many occurrences the authority answers differently from the short-circuit -- which is computable without emitting, where a deletion produces only the diagnostic-conversion quantity and no record of the divergence that would make it adjudicable. The retraction is restated HERE rather than left in the design document alone because THIS NOTE WAS RELAYED UPWARD AND ITS SUPERSEDED SENTENCE WAS RESTATED AS FACT, which is the DESIGN section 4b(1) rung-honesty failure applied to the compiler's own self-description: a reader who stops at this sentence must not leave with the retracted claim. Authority for every clause above: docs/plans/carrier-realization-arbiter-repair-design.md, whose sections 1 and 2 carry the 52-row arm census and the two refuted repairs. This is a REACHABILITY claim about String's reference-site gate; it does NOT touch the Hash clause above, whose 'NO live site is claimed' is scoped to a v2-declared Hash reaching lookup_checkpoint and is unaffected, and it is a DIFFERENT mechanism from the declaration-site alias line the KNOWN GAP clause otherwise describes. SUPPORTING EVIDENCE, cited as a population rather than as the basis of the claim: 34 live E0308 sites in the 03_ingest closure pair a String-declared field or parameter against a FreeMonoid-realized value, every one of them a type position that rendered the native spelling while the roster says the declaration is structural (docs/probes/t2_t3_realization_route_2026-08-21.md, per-site TSV beside it). ESTABLISHED HOW, because the distinction decides what would falsify this: the reachability claim is decidable from the five renderers' control flow, which is how it was established -- NOT by a discriminating execution, and it says nothing about a sixth renderer that may handle some type position without that preamble. NEXT-RUNG TRIGGER: the short-circuit family is deleted so the existing authority becomes reachable, per docs/plans/carrier-realization-arbiter-repair-design.md, which also counts the decl_file == \"\" residue this module contributes (four sites) that the DECLARED RESIDUE note in v1.compiler.coercion says is uncounted. That design leaves the structural-vs-native direction to its owner and proposes an emit-only blast-radius measurement, not a merge, as the next step -- deliberately, because the over-broad Bool row recorded above is what picking a direction without that measurement already cost once. Int, Float, Symbol remain open -- they have no row in structural_declaration_modules_for -- and are the population the next instance of this class (a name question answered by authored spelling instead of declaration identity) inherits, per the class-level framing this ceiling was folded into. The roster is deliberately a single generic, identity-keyed mechanism with one row rather than a Hash-specific special case, so a future row for Int or String is an addition to this same authority, not a new mechanism. MEASURED CONSEQUENCE AT ARTIFACT GRAIN, added after this note first landed: the bypass is observable in the emitted FILE SET, not only in the emitter's answer. In a two-arm emission of one v2-only closure the file v2_std_integer.rs is present before the cut and ABSENT after it. That module declares exactly one item, the v2-declared structural Int, and its only type-position consumer was a single generated re-export line in std_algebra.rs; with Int reaching the bare-name checkpoint the re-export is no longer generated, nothing references the module, and it is not emitted. Every other hunk in that file is an offset shift from the deleted line -- the Int string literals are unchanged and the i64 count in the file is identical across arms, so nothing became native that was structural. AND THE DROP IS THE MINORITY CASE -- THE WRONG REALIZATION IS EMITTED, NOT AVOIDED. Across eleven emitted closures measured by smart-ibex-716 (corpus a6bceb6903, binaries a6bceb6903 and ad05a2f2d5), the module disappears in only 2; in the other 9 it SURVIVES with its content changed, from pub type Int = GroupCompletion<Rc<Nat>> to pub type Int = i64. So the native realization of the v2-declared Peano-completion type is already present in the emitted artifact. What is absent is only a consumer: the same census found ZERO type-position uses of the v2 Int in any of the eleven -- every qualified occurrence sits on a use line, and the only bare occurrences surviving a use-line exclusion were four string literals inside prose, one of them a parser test fixture. Two false positives were found and discarded on the way to that zero, both by pulling the specimen rather than trusting the count. The residue is therefore NOT a dead re-export being dropped, which was this note's first reading and is corrected here; it is a wrong realization sitting inert with no diagnostic attached, so the day any declaration binds a bare Int in one of those closures it binds i64 silently. THE HAZARD TRIGGER IS THEREFORE A TYPE POSITION APPEARING, not the re-export returning. This is recorded because a module leaving OR silently changing an alias target is the kind of consequence a content-only diff of one closure reads as offset noise: the instruments that name it are a file-set diff and a cross-closure alias-target read, and neither was in this PR's original receipt. UPSTREAM OF THE SIX SHORT-CIRCUITS, RECORDED HERE BECAUSE THE REACHABILITY CORRECTION ABOVE READS AS THOUGH THE SPELLING HAD ONE MEANING TO SHORT-CIRCUIT ON (2026-09-01). It does not. A callee parameter type is re-resolved in the CALLER environment, so one declaration denotes two different types depending on which module is asking: measured on a fixture pair, a module declaring `type String = FreeMonoid<Char>` and calling its own `fn f(s: String)` refuses with the STRUCTURAL destination, while a foreign module with no import calling `v2.std.text` `string_head` refuses with the KERNEL one -- same declaration, same parameter, nothing between. So `is_host_text_carrier_type` is not merely answering from a spelling instead of an identity; the spelling it answers from is already CALLER-DEPENDENT before the renderer sees it, and deleting the short-circuits would expose an authority keyed on a location whose value is itself scope-relative. Three further facts belong to `calm-boar-314` measurements at gunbc#9929 and are cited rather than restated: the qualified spelling SILENCES the destination rather than pinning it (an `Int` is admitted at a qualified parameter in both scopes, against two different qualification targets); returns re-resolve on the same axis as parameters; and a single refusal can carry TWO disagreeing destinations for one parameter, which arises when two bindings for the spelling are simultaneously live in the resolving scope. None of that changes this note's next-rung trigger, and it is recorded because a reader planning the short-circuit deletion from the paragraph above would be planning against a one-meaning spelling that does not exist.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -7059,10 +7083,21 @@ pub fn emit_rust_selected(
                 renders_async_services: has_services.clone(),
             },
         );
+        let native_effects = native_entry_effects(typed.modules.clone(), registry.clone());
+        let native_effect_refusals =
+            native_entry_effect_diagnostics(native_effects.clone(), typed.modules.clone());
+        if ((native_effect_refusals.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: native_effect_refusals.clone(),
+                emitted_edges: Rc::new(vec![]),
+            });
+        }
         let main_file = emit_main_rs(
             typed.modules.clone(),
             has_services.clone(),
             crate_name.clone(),
+            native_effects.clone(),
         );
         let cli_dispatch_file = if has_pipeline.clone() {
             Rc::new(vec![emit_gunbc_cli_dispatch_generated(crate_name.clone())])
@@ -11114,9 +11149,19 @@ pub fn emit_module_full(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
-                    if (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    if ((((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         && crate::v1_compiler_infer_types::is_coproduct_type(item.clone()))
                         && !is_grounded_coproduct_native_alias(
+                            crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                item.clone(),
+                            ),
+                        ))
+                        && !rust_declaration_realizes_as_native_alias(
+                            crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                m.clone(),
+                            ),
                             crate::v1_compiler_infer_env::authored_name(
                                 scope.type_env.clone(),
                                 item.clone(),
@@ -14416,7 +14461,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.iter().cloned() {
-                        __result.extend((*if is_grounded_coproduct_native_alias(parent.clone()) {
+                        __result.extend((*if (is_grounded_coproduct_native_alias(parent.clone()) || rust_declaration_realizes_as_native_alias(import_module.clone(), parent.clone())) {
                     Rc::new(vec![])
                 } else {
                     {
@@ -14479,7 +14524,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                     for en in Rc::new({
                         let mut __result = Vec::new();
                         for en in final_imported_enums.iter().cloned() {
-                            if ((({
+                            if (((({
                                 let mut __found = false;
                                 for p in parent_list.iter().cloned() {
                                     if (p.clone() == en.clone()) {
@@ -14490,6 +14535,10 @@ Rc::new(vec![Rc::new(RustUseLine {
                                 __found
                             } == false)
                                 && !is_grounded_coproduct_native_alias(en.clone()))
+                                && !rust_declaration_realizes_as_native_alias(
+                                    import_module.clone(),
+                                    en.clone(),
+                                ))
                                 && (rust_kernel_grounded_type_decl(
                                     import_module.clone(),
                                     en.clone(),
@@ -15498,118 +15547,64 @@ pub fn emit_typed_item(
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         match item.module_item_kind.clone() {
             ParsedModuleItemKind::ModuleItemTypeDeclaration => {
-                if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
-                    match rust_kernel_grounded_type_decl(module_name.clone(), item_text.clone()) {
-                        Some(grounded_decl) => grounded_decl.clone(),
-                        std::option::Option::None => emit_type_def_from_connective(
+                if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && rust_declaration_realizes_as_native_alias(
+                        module_name.clone(),
+                        item_text.clone(),
+                    ))
+                {
+                    match rust_declaration_checkpoint_grounding_at(
+                        module_name.clone(),
+                        item_text.clone(),
+                        crate::v1_compiler_coercion::declaration_realization(
                             item.clone(),
-                            emit_info.recursive_type_set.clone(),
-                            shared_types.clone(),
-                            env.clone(),
-                            emit_info.clone(),
-                            wire_contract_item.clone(),
-                            data_items.clone(),
-                            module_items.clone(),
-                            imports.clone(),
+                            item_text.clone(),
+                            RenderTarget::Rust,
                         ),
+                    ) {
+                        Some(host) => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                rust_visibility_prefix(),
+                                                rust_items().type_alias_keyword.clone(),
+                                            ),
+                                            " ".to_string(),
+                                        ),
+                                        item_text.clone(),
+                                    ),
+                                    " = ".to_string(),
+                                ),
+                                host.clone(),
+                            ),
+                            ";".to_string(),
+                        ),
+                        std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
+                            v1_rt::concat("declaration '".to_string(), item_text.clone()),
+                            "' is bound natively but its binding yields no spelling".to_string(),
+                        )),
                     }
                 } else {
-                    if crate::v1_compiler_emit_core_support::is_type_alias_item(
-                        item.clone(),
-                        env.source_indices.clone(),
-                    ) {
-                        if (((item.params.clone().len() as i64) == 0)
-                            && (rust_opaque_kernel_alias_type_eligible(item_text.clone())
-                                || rust_opaque_declaration_has_exact_row(
-                                    module_name.clone(),
-                                    item_text.clone(),
-                                )))
+                    if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
+                        match rust_kernel_grounded_type_decl(module_name.clone(), item_text.clone())
                         {
-                            rust_opaque_kernel_alias_type_decl(
-                                item_text.clone(),
-                                module_name.clone(),
-                            )
-                        } else {
-                            if is_zero_param_self_referential_opaque_decl(
+                            Some(grounded_decl) => grounded_decl.clone(),
+                            std::option::Option::None => emit_type_def_from_connective(
                                 item.clone(),
-                                env.source_indices.clone(),
-                            ) {
-                                emit_zero_param_phantom_opaque_struct(
-                                    item.clone(),
-                                    v1_rt::set_contains(
-                                        &emit_info.map_key_required_type_names.clone(),
-                                        item_text.clone(),
-                                    ),
-                                    env.source_indices.clone(),
-                                )
-                            } else {
-                                match rust_declaration_checkpoint_grounding_at(
-                                    module_name.clone(),
-                                    item_text.clone(),
-                                    crate::v1_compiler_coercion::declaration_realization(
-                                        item.clone(),
-                                        item_text.clone(),
-                                        RenderTarget::Rust,
-                                    ),
-                                ) {
-                                    Some(host) => v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            rust_visibility_prefix(),
-                                                            rust_items().type_alias_keyword.clone(),
-                                                        ),
-                                                        " ".to_string(),
-                                                    ),
-                                                    item_text.clone(),
-                                                ),
-                                                " = ".to_string(),
-                                            ),
-                                            host.clone(),
-                                        ),
-                                        ";".to_string(),
-                                    ),
-                                    std::option::Option::None => v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            rust_visibility_prefix(),
-                                                            rust_items().type_alias_keyword.clone(),
-                                                        ),
-                                                        " ".to_string(),
-                                                    ),
-                                                    item_text.clone(),
-                                                ),
-                                                " = ".to_string(),
-                                            ),
-                                            render_rust_alias_rhs_type(
-                                                crate::v1_compiler_infer_types::resolved_type(
-                                                    item.clone(),
-                                                ),
-                                                Rc::new(vec![]),
-                                                shared_types.clone(),
-                                                env.source_indices.clone(),
-                                                scope.clone(),
-                                                imports.clone(),
-                                                registry.clone(),
-                                                module_name.clone(),
-                                                export_sets.clone(),
-                                                typed_modules.clone(),
-                                                module_index.clone(),
-                                                emit_info.variant_to_enum.clone(),
-                                            ),
-                                        ),
-                                        ";".to_string(),
-                                    ),
-                                }
-                            }
+                                emit_info.recursive_type_set.clone(),
+                                shared_types.clone(),
+                                env.clone(),
+                                emit_info.clone(),
+                                wire_contract_item.clone(),
+                                data_items.clone(),
+                                module_items.clone(),
+                                imports.clone(),
+                            ),
                         }
                     } else {
-                        if crate::v1_compiler_emit_core_support::is_type_decl_item(
+                        if crate::v1_compiler_emit_core_support::is_type_alias_item(
                             item.clone(),
                             env.source_indices.clone(),
                         ) {
@@ -15625,51 +15620,149 @@ pub fn emit_typed_item(
                                     module_name.clone(),
                                 )
                             } else {
-                                match rust_seed_host_container_base(item_text.clone()) {
-                                    Some(host) => {
-                                        let type_params = emit_type_params(
-                                            item.params.clone(),
-                                            env.source_indices.clone(),
-                                        );
-                                        let generic_names = item_generic_param_names(
-                                            item.clone(),
-                                            env.source_indices.clone(),
-                                        );
-                                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), type_params.clone()), " = ".to_string()), host.clone()), "<".to_string()), Rc::new({ let mut __result = Vec::new(); for n in generic_names.iter().cloned() { __result.push(crate::v1_compiler_emit_core_support::to_pascal(n.clone())); } __result }).join(&", ".to_string())), ">;".to_string())
-                                    }
-                                    std::option::Option::None => {
-                                        if is_emittable_parametric_type_alias_item(
+                                if is_zero_param_self_referential_opaque_decl(
+                                    item.clone(),
+                                    env.source_indices.clone(),
+                                ) {
+                                    emit_zero_param_phantom_opaque_struct(
+                                        item.clone(),
+                                        v1_rt::set_contains(
+                                            &emit_info.map_key_required_type_names.clone(),
+                                            item_text.clone(),
+                                        ),
+                                        env.source_indices.clone(),
+                                    )
+                                } else {
+                                    match rust_declaration_checkpoint_grounding_at(
+                                        module_name.clone(),
+                                        item_text.clone(),
+                                        crate::v1_compiler_coercion::declaration_realization(
                                             item.clone(),
                                             item_text.clone(),
-                                            env.source_indices.clone(),
-                                            module_name.clone(),
-                                            imports.clone(),
-                                            scope.clone(),
-                                            registry.clone(),
-                                            export_sets.clone(),
-                                            typed_modules.clone(),
-                                            module_index.clone(),
-                                        ) {
-                                            {
-                                                let type_params = emit_type_params(
-                                                    item.params.clone(),
-                                                    env.source_indices.clone(),
-                                                );
-                                                let generic_names = item_generic_param_names(
-                                                    item.clone(),
-                                                    env.source_indices.clone(),
-                                                );
-                                                let alias_rhs =
+                                            RenderTarget::Rust,
+                                        ),
+                                    ) {
+                                        Some(host) => v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                rust_visibility_prefix(),
+                                                                rust_items()
+                                                                    .type_alias_keyword
+                                                                    .clone(),
+                                                            ),
+                                                            " ".to_string(),
+                                                        ),
+                                                        item_text.clone(),
+                                                    ),
+                                                    " = ".to_string(),
+                                                ),
+                                                host.clone(),
+                                            ),
+                                            ";".to_string(),
+                                        ),
+                                        std::option::Option::None => v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                rust_visibility_prefix(),
+                                                                rust_items()
+                                                                    .type_alias_keyword
+                                                                    .clone(),
+                                                            ),
+                                                            " ".to_string(),
+                                                        ),
+                                                        item_text.clone(),
+                                                    ),
+                                                    " = ".to_string(),
+                                                ),
+                                                render_rust_alias_rhs_type(
                                                     crate::v1_compiler_infer_types::resolved_type(
                                                         item.clone(),
-                                                    );
-                                                let unused_params = alias_unused_param_names(
-                                                    generic_names.clone(),
-                                                    alias_rhs.clone(),
+                                                    ),
+                                                    Rc::new(vec![]),
+                                                    shared_types.clone(),
                                                     env.source_indices.clone(),
-                                                );
-                                                let rhs_str =
-                                                    if ((unused_params.clone().len() as i64) > 0) {
+                                                    scope.clone(),
+                                                    imports.clone(),
+                                                    registry.clone(),
+                                                    module_name.clone(),
+                                                    export_sets.clone(),
+                                                    typed_modules.clone(),
+                                                    module_index.clone(),
+                                                    emit_info.variant_to_enum.clone(),
+                                                ),
+                                            ),
+                                            ";".to_string(),
+                                        ),
+                                    }
+                                }
+                            }
+                        } else {
+                            if crate::v1_compiler_emit_core_support::is_type_decl_item(
+                                item.clone(),
+                                env.source_indices.clone(),
+                            ) {
+                                if (((item.params.clone().len() as i64) == 0)
+                                    && (rust_opaque_kernel_alias_type_eligible(item_text.clone())
+                                        || rust_opaque_declaration_has_exact_row(
+                                            module_name.clone(),
+                                            item_text.clone(),
+                                        )))
+                                {
+                                    rust_opaque_kernel_alias_type_decl(
+                                        item_text.clone(),
+                                        module_name.clone(),
+                                    )
+                                } else {
+                                    match rust_seed_host_container_base(item_text.clone()) {
+                                        Some(host) => {
+                                            let type_params = emit_type_params(
+                                                item.params.clone(),
+                                                env.source_indices.clone(),
+                                            );
+                                            let generic_names = item_generic_param_names(
+                                                item.clone(),
+                                                env.source_indices.clone(),
+                                            );
+                                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), type_params.clone()), " = ".to_string()), host.clone()), "<".to_string()), Rc::new({ let mut __result = Vec::new(); for n in generic_names.iter().cloned() { __result.push(crate::v1_compiler_emit_core_support::to_pascal(n.clone())); } __result }).join(&", ".to_string())), ">;".to_string())
+                                        }
+                                        std::option::Option::None => {
+                                            if is_emittable_parametric_type_alias_item(
+                                                item.clone(),
+                                                item_text.clone(),
+                                                env.source_indices.clone(),
+                                                module_name.clone(),
+                                                imports.clone(),
+                                                scope.clone(),
+                                                registry.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                module_index.clone(),
+                                            ) {
+                                                {
+                                                    let type_params = emit_type_params(
+                                                        item.params.clone(),
+                                                        env.source_indices.clone(),
+                                                    );
+                                                    let generic_names = item_generic_param_names(
+                                                        item.clone(),
+                                                        env.source_indices.clone(),
+                                                    );
+                                                    let alias_rhs = crate::v1_compiler_infer_types::resolved_type(item.clone());
+                                                    let unused_params = alias_unused_param_names(
+                                                        generic_names.clone(),
+                                                        alias_rhs.clone(),
+                                                        env.source_indices.clone(),
+                                                    );
+                                                    let rhs_str = if ((unused_params.clone().len()
+                                                        as i64)
+                                                        > 0)
+                                                    {
                                                         v1_rt::concat(
                                                             v1_rt::concat(
                                                                 "std::marker::PhantomData<"
@@ -15696,59 +15789,37 @@ pub fn emit_typed_item(
                                                             emit_info.variant_to_enum.clone(),
                                                         )
                                                     };
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    v1_rt::concat(
-                                                                        v1_rt::concat(
-                                                                            rust_visibility_prefix(
-                                                                            ),
-                                                                            rust_items()
-                                                                                .type_alias_keyword
-                                                                                .clone(),
-                                                                        ),
-                                                                        " ".to_string(),
-                                                                    ),
-                                                                    item_text.clone(),
-                                                                ),
-                                                                type_params.clone(),
-                                                            ),
-                                                            " = ".to_string(),
-                                                        ),
-                                                        rhs_str.clone(),
-                                                    ),
-                                                    ";".to_string(),
-                                                )
-                                            }
-                                        } else {
-                                            if is_parametric_opaque_type_decl_item(
-                                                item.clone(),
-                                                env.source_indices.clone(),
-                                            ) {
-                                                emit_parametric_phantom_opaque_struct(
-                                                    item.clone(),
-                                                    v1_rt::set_contains(
-                                                        &emit_info
-                                                            .map_key_required_type_names
-                                                            .clone(),
-                                                        item_text.clone(),
-                                                    ),
-                                                    env.source_indices.clone(),
-                                                )
+                                                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), type_params.clone()), " = ".to_string()), rhs_str.clone()), ";".to_string())
+                                                }
                                             } else {
-                                                "".to_string()
+                                                if is_parametric_opaque_type_decl_item(
+                                                    item.clone(),
+                                                    env.source_indices.clone(),
+                                                ) {
+                                                    emit_parametric_phantom_opaque_struct(
+                                                        item.clone(),
+                                                        v1_rt::set_contains(
+                                                            &emit_info
+                                                                .map_key_required_type_names
+                                                                .clone(),
+                                                            item_text.clone(),
+                                                        ),
+                                                        env.source_indices.clone(),
+                                                    )
+                                                } else {
+                                                    "".to_string()
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            } else {
+                                emit_rust_item_refusal(
+                                    item_text.clone(),
+                                    "type declaration matches no declared type structure"
+                                        .to_string(),
+                                )
                             }
-                        } else {
-                            emit_rust_item_refusal(
-                                item_text.clone(),
-                                "type declaration matches no declared type structure".to_string(),
-                            )
                         }
                     }
                 }
@@ -33445,7 +33516,6 @@ pub fn binop_operator_realization(
             op.clone(),
             realization.clone(),
             structural_ordering_rows(),
-            structural_connective_rows(),
         )
     }
 }
@@ -35796,7 +35866,7 @@ pub fn emit_operation_method(
         } else {
             v1_rt::concat("&self, ".to_string(), params_str.clone())
         };
-        let ret_type = render_rust_type(
+        let output_type = render_rust_type(
             crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
             shared_types.clone(),
             env.source_indices.clone(),
@@ -35811,6 +35881,24 @@ pub fn emit_operation_method(
             op_node.clone(),
             env.source_indices.clone(),
         );
+        let is_rest = match (*bound.clone()).clone() {
+            BoundOperation::RestBound { transport: _, .. } => true,
+            _ => false,
+        };
+        let ret_type = if is_rest.clone() {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("std::rc::Rc<".to_string(), rust_rest_result_path()),
+                        "<".to_string(),
+                    ),
+                    output_type.clone(),
+                ),
+                ">>".to_string(),
+            )
+        } else {
+            output_type.clone()
+        };
         let real_body = emit_transport_call(
             bound.clone(),
             op_text.clone(),
@@ -35836,7 +35924,7 @@ pub fn emit_operation_method(
             }
             __result
         });
-        let dry_run_body = emit_dry_run_branch_from_props(
+        let mock_body = emit_dry_run_branch_from_props(
             op_text.clone(),
             crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
             mock_props.clone(),
@@ -35847,6 +35935,11 @@ pub fn emit_operation_method(
             shared_types.clone(),
             emit_info.clone(),
         );
+        let dry_run_body = if is_rest.clone() {
+            emit_rust_rest_answered_mock(mock_body.clone(), output_type.clone())
+        } else {
+            mock_body.clone()
+        };
         let body = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -36173,10 +36266,16 @@ pub fn emit_rest_call(
                     }
                     __result
                 });
-                let send_line = "let response = request.send().await?;".to_string();
-                let response_handling = emit_response_code_handling(
+                let output_type = render_rust_type(
+                    crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                );
+                let result_lowering = emit_rust_rest_result_lowering(
                     op_node.clone(),
                     transport.clone(),
+                    output_type.clone(),
                     source_indices.clone(),
                     shared_types.clone(),
                     env.clone(),
@@ -36196,8 +36295,7 @@ pub fn emit_rest_call(
                         Rc::new(vec![
                             query_line.clone(),
                             body_line.clone(),
-                            send_line.clone(),
-                            response_handling.clone(),
+                            result_lowering.clone(),
                         ]),
                     )
                     .iter()
@@ -36674,14 +36772,6 @@ v1_rt::concat(v1_rt::concat(Rc::new(vec![body_init.clone()]), opt_lines.clone())
 }
 }
 
-pub fn has_response_prefix(name: String) -> bool {
-    if (v1_rt::string_length(&name) < 9) {
-        false
-    } else {
-        (v1_rt::substring(&name, 0, 9) == "response_".to_string())
-    }
-}
-
 pub fn has_from_key_fields(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -37153,20 +37243,20 @@ pub fn emit_from_key_extraction(
                 let prelude = match wire_opt.clone() {
                     Some(tn) => {
                         if is_json_wire_declaration_type(tn.clone(), source_indices.clone()) {
-                            "let json_body: serde_json::Value = response.json().await?;\n"
-                                .to_string()
+                            "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n".to_string()
                         } else {
                             {
                                 let wire_ty = match tn.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
                                     _ => tn.clone(),
                                 };
-                                v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())), " = response.json().await?;\n".to_string())
+                                v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())), " = serde_json::from_str(&__rest_text)?;\n".to_string())
                             }
                         }
                     }
                     std::option::Option::None => {
-                        "let json_body: serde_json::Value = response.json().await?;\n".to_string()
+                        "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
+                            .to_string()
                     }
                 };
                 let extract_lines = Rc::new({
@@ -37208,13 +37298,7 @@ match ch.inferred.clone().as_deref().cloned() {
                     __result
                 });
                 let tuple_body = if ((field_names.clone().len() as i64) == 1) {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "(".to_string(),
-                            field_names.clone().first().cloned().clone().unwrap(),
-                        ),
-                        ",)".to_string(),
-                    )
+                    field_names.clone().first().cloned().clone().unwrap()
                 } else {
                     v1_rt::concat(
                         v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())),
@@ -37256,9 +37340,9 @@ pub fn emit_plain_response_body(
             std::option::Option::None => false,
         };
         if is_text.clone() {
-            "let result = response.text().await?;\nOk(result)".to_string()
+            "Ok(__rest_text.clone())".to_string()
         } else {
-            "let result = response.json().await?;\nOk(result)".to_string()
+            "let result = serde_json::from_str(&__rest_text)?;\nOk(result)".to_string()
         }
     }
 }
@@ -37270,167 +37354,100 @@ pub fn emit_rust_boxed_error_return(message_expr: String) -> String {
     )
 }
 
-pub fn emit_response_code_handling(
-    op_node: Rc<Node>,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-) -> String {
-    {
-        let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
-        let response_props = Rc::new({
-            let mut __result = Vec::new();
-            for p in op_node.properties.clone().iter().cloned() {
-                if has_response_prefix(crate::v1_std_core::field_init_node_name_at(
-                    p.clone(),
-                    source_indices.clone(),
-                )) {
-                    __result.push(p);
-                }
-            }
-            __result
-        });
-        if ((response_props.clone().len() as i64) == 0) {
-            if use_from_key.clone() {
-                emit_from_key_extraction(
-                    op_node.clone(),
-                    source_indices.clone(),
-                    shared_types.clone(),
-                    env.clone(),
-                )
-            } else {
-                emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
-            }
-        } else {
-            {
-                let arms = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in response_props.iter().cloned() {
-                        __result.push(emit_response_arm(
-                            p.clone(),
-                            op_node.clone(),
-                            use_from_key.clone(),
-                            transport.clone(),
-                            source_indices.clone(),
-                            shared_types.clone(),
-                            env.clone(),
-                        ));
-                    }
-                    __result
-                });
+pub fn rust_rest_result_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "crate::".to_string(),
+            crate::gunbc_rust_emitted_edge::module_to_filename(
+                "extdeps.transports.rest".to_string(),
+            ),
+        ),
+        "::RestResult".to_string(),
+    )
+}
+
+pub fn rust_rest_refused(refusal_arm: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
+                        "::RestRefused { refusal: std::rc::Rc::new(crate::".to_string(),
+                    ),
+                    crate::gunbc_rust_emitted_edge::module_to_filename(
+                        "extdeps.transports.rest".to_string(),
+                    ),
+                ),
+                "::RestRefusal::".to_string(),
+            ),
+            refusal_arm.clone(),
+        ),
+        ") })".to_string(),
+    )
+}
+
+pub fn rust_rest_answered(answer_expr: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
+                "::RestAnswered { answer: ".to_string(),
+            ),
+            answer_expr.clone(),
+        ),
+        " })".to_string(),
+    )
+}
+
+pub fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(
-                                        "let status = response.status().as_u16();\n".to_string(),
-                                        "match status {\n".to_string(),
-                                    ),
-                                    arms.clone().join(&"\n".to_string()),
+                                    "let __rest_answer = (|| -> Result<".to_string(),
+                                    output_type.clone(),
                                 ),
-                                "\n    _ => ".to_string(),
+                                ", Box<dyn std::error::Error>> {\n".to_string(),
                             ),
-                            emit_rust_boxed_error_return(
-                                "format!(\"unexpected status code: {}\", status)".to_string(),
-                            ),
+                            mock_body.clone(),
                         ),
                         "\n".to_string(),
                     ),
-                    "}".to_string(),
-                )
-            }
-        }
-    }
+                    "})();\n".to_string(),
+                ),
+                "Ok(".to_string(),
+            ),
+            rust_rest_answered("__rest_answer?".to_string()),
+        ),
+        ")".to_string(),
+    )
 }
 
-pub fn emit_response_arm(
-    prop: Rc<Node>,
+pub fn emit_rust_rest_result_lowering(
     op_node: Rc<Node>,
-    use_from_key: bool,
     transport: Rc<Node>,
+    output_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
-        let name =
-            crate::v1_std_core::field_init_node_name_at(prop.clone(), source_indices.clone());
-        let code_str = v1_rt::substring(&name, 9, v1_rt::string_length(&name));
-        let is_success = if (v1_rt::string_length(&code_str) >= 1) {
-            (v1_rt::substring(&code_str, 0, 1) == "2".to_string())
-        } else {
-            false
-        };
-        let pattern = if (code_str.clone() == "nonzero".to_string()) {
-            "_".to_string()
-        } else {
-            if ((v1_rt::string_length(&code_str) == 3)
-                && (v1_rt::substring(&code_str, 1, 3) == "xx".to_string()))
-            {
-                {
-                    let prefix = v1_rt::substring(&code_str, 0, 1);
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(prefix.clone(), "00..=".to_string()),
-                            prefix.clone(),
-                        ),
-                        "99".to_string(),
-                    )
-                }
-            } else {
-                code_str.clone()
-            }
-        };
-        if is_success.clone() {
-            if use_from_key.clone() {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("    ".to_string(), pattern.clone()),
-                            " => { ".to_string(),
-                        ),
-                        emit_from_key_extraction(
-                            op_node.clone(),
-                            source_indices.clone(),
-                            shared_types.clone(),
-                            env.clone(),
-                        ),
-                    ),
-                    " },".to_string(),
-                )
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("    ".to_string(), pattern.clone()),
-                            " => { ".to_string(),
-                        ),
-                        emit_plain_response_body(
-                            op_node.clone(),
-                            transport.clone(),
-                            source_indices.clone(),
-                        ),
-                    ),
-                    " },".to_string(),
-                )
-            }
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("    ".to_string(), pattern.clone()),
-                        " => { let err_body = response.text().await.unwrap_or_default(); "
-                            .to_string(),
-                    ),
-                    emit_rust_boxed_error_return(
-                        "format!(\"HTTP {}: {}\", status, err_body)".to_string(),
-                    ),
-                ),
-                " },".to_string(),
+        let decode = if has_from_key_fields(op_node.clone(), source_indices.clone()) {
+            emit_from_key_extraction(
+                op_node.clone(),
+                source_indices.clone(),
+                shared_types.clone(),
+                env.clone(),
             )
-        }
+        } else {
+            emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
+        };
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> Result<".to_string()), output_type.clone()), ", Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
     }
 }
 
@@ -38156,6 +38173,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
         FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
         FileVerb::FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr(),
+        FileVerb::FileLinkCreateNew => file_link_create_new_expr(),
         FileVerb::FileDelete => file_delete_match_expr(),
         FileVerb::FileList => file_list_match_expr(),
     }
@@ -38297,7 +38315,7 @@ pub fn file_empty_path_guard() -> String {
 pub fn file_io_error_kind_fn() -> String {
     thread_local! {
         static CACHED: String = {
-            "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        _ => \"other\",\n    }\n    .to_string()\n};".to_string()
+            "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        std::io::ErrorKind::CrossesDevices => \"cross_device\",\n        _ => \"other\",\n    }\n    .to_string()\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -38352,6 +38370,15 @@ pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), None) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_link_create_new_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match v1_rt::gunbc_file_link_create_new(&source, &file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64, String::new()),\n    Err(link_err) => (false, String::new(), format!(\"{}\", link_err), 0i64, file_io_error_kind(&link_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -40130,10 +40157,476 @@ pub fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> Rc<TextFile> {
     )
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeEntryEffects {
+    pub entry_module: String,
+    pub entry_function: String,
+    pub admissions: Rc<Vec<Rc<NativeEffectRealizationAdmission>>>,
+    pub module_files: Rc<Vec<String>>,
+}
+
+pub fn native_entry_function_name(modules: Rc<Vec<Rc<TypedModule>>>) -> Option<String> {
+    if compiler_pipeline_entry_is_native_serve(modules.clone()) {
+        Some(native_serve_entry_function())
+    } else {
+        if compiler_pipeline_entry_is_native_cli(modules.clone()) {
+            Some(native_cli_entry_function())
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn native_serve_entry_function() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "native_serve_handle".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn native_cli_entry_function() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "v2_cli_main".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeEffectDeclSite {
+    pub item: Rc<Node>,
+    pub module_file: String,
+}
+
+pub fn native_effect_decl_sites(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    kind: ParsedModuleItemKind,
+    name: String,
+) -> Rc<Vec<Rc<NativeEffectDeclSite>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for tm in modules.iter().cloned() {
+            __result.extend(
+                (*{
+                    let si = tm.type_env.clone().source_indices.clone();
+                    let file = crate::gunbc_rust_emitted_edge::module_to_filename(
+                        crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone()),
+                    );
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if ((item.module_item_kind.clone() == kind.clone())
+                                    && (crate::v1_std_core::authored_name_at(
+                                        si.clone(),
+                                        item.clone(),
+                                    ) == name.clone()))
+                                {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(Rc::new(NativeEffectDeclSite {
+                                item: item.clone(),
+                                module_file: file.clone(),
+                            }));
+                        }
+                        __result
+                    })
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn native_entry_effects(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Option<Rc<NativeEntryEffects>> {
+    match native_entry_function_name(modules.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(entry_fn) => {
+            let entry_module = compiler_pipeline_entry_module_name(modules.clone());
+            let denominator = if compiler_pipeline_entry_is_native_serve(modules.clone()) {
+                native_service_route_denominator()
+            } else {
+                native_compiler_route_denominator()
+            };
+            let entry_si = Rc::new({
+                let mut __result = Vec::new();
+                for tm in Rc::new({
+                    let mut __result = Vec::new();
+                    for tm in modules.iter().cloned() {
+                        if (crate::v1_std_core::authored_name_at(
+                            tm.type_env.clone().source_indices.clone(),
+                            tm.module.clone(),
+                        ) == entry_module.clone())
+                        {
+                            __result.push(tm);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(tm.type_env.clone().source_indices.clone());
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            let si = match entry_si.clone() {
+                Some(x) => x.clone(),
+                std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            };
+            let info = crate::v1_compiler_emit::lookup_item_by_identity(
+                registry.clone(),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: entry_module.clone(),
+                    decl_name: entry_fn.clone(),
+                }),
+            );
+            let resources = match info.clone() {
+                Some(i) => i.resource_requirements.clone(),
+                std::option::Option::None => Rc::new(vec![]),
+            };
+            let services = match info.clone() {
+                Some(i) => i.service_names.clone(),
+                std::option::Option::None => Rc::new(vec![]),
+            };
+            let resource_rows = Rc::new({
+                let mut __result = Vec::new();
+                for r in resources.iter().cloned() {
+                    __result.push({
+                        let rname = type_leaf_name_for_collapse(r.resource.clone(), si.clone());
+                        let sites = native_effect_decl_sites(
+                            modules.clone(),
+                            ParsedModuleItemKind::ModuleItemResource,
+                            rname.clone(),
+                        );
+                        let site = if ((sites.clone().len() as i64) == 1) {
+                            sites.clone().first().cloned()
+                        } else {
+                            std::option::Option::None
+                        };
+                        Rc::new(NativeEntryEffectRow {
+                            admission: crate::v1_compiler_emit::admit_native_resource_effect(
+                                r.binding_name.clone(),
+                                rname.clone(),
+                                match site.clone() {
+                                    Some(d) => Some((d.item.clone().children.clone().len() as i64)),
+                                    std::option::Option::None => std::option::Option::None,
+                                },
+                                denominator.clone(),
+                            ),
+                            module_file: match site.clone() {
+                                Some(d) => d.module_file.clone(),
+                                std::option::Option::None => "".to_string(),
+                            },
+                        })
+                    });
+                }
+                __result
+            });
+            let service_rows = Rc::new({
+                let mut __result = Vec::new();
+                for sn in services.iter().cloned() {
+                    __result.push({
+                        let sites = native_effect_decl_sites(
+                            modules.clone(),
+                            ParsedModuleItemKind::ModuleItemService,
+                            sn.clone(),
+                        );
+                        let site = if ((sites.clone().len() as i64) == 1) {
+                            sites.clone().first().cloned()
+                        } else {
+                            std::option::Option::None
+                        };
+                        Rc::new(NativeEntryEffectRow {
+                            admission: crate::v1_compiler_emit::admit_native_service_effect(
+                                sn.clone(),
+                                match site.clone() {
+                                    Some(d) => Some(d.item.clone()),
+                                    std::option::Option::None => std::option::Option::None,
+                                },
+                                denominator.clone(),
+                                si.clone(),
+                            ),
+                            module_file: match site.clone() {
+                                Some(d) => d.module_file.clone(),
+                                std::option::Option::None => "".to_string(),
+                            },
+                        })
+                    });
+                }
+                __result
+            });
+            let rows = v1_rt::concat(resource_rows.clone(), service_rows.clone());
+            Some(Rc::new(NativeEntryEffects {
+                entry_module: entry_module.clone(),
+                entry_function: entry_fn.clone(),
+                admissions: Rc::new({
+                    let mut __result = Vec::new();
+                    for r in rows.iter().cloned() {
+                        __result.push(r.admission.clone());
+                    }
+                    __result
+                }),
+                module_files: Rc::new({
+                    let mut __result = Vec::new();
+                    for r in rows.iter().cloned() {
+                        __result.push(r.module_file.clone());
+                    }
+                    __result
+                }),
+            }))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeEntryEffectRow {
+    pub admission: Rc<NativeEffectRealizationAdmission>,
+    pub module_file: String,
+}
+
+pub fn native_entry_effect_diagnostics(
+    effects: Option<Rc<NativeEntryEffects>>,
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match effects.clone() {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(e) => {
+            let refusals = Rc::new({
+                let mut __result = Vec::new();
+                for a in e.admissions.clone().iter().cloned() {
+                    __result.extend(
+                        (*match crate::v1_compiler_emit::native_effect_admission_refusal(a.clone())
+                        {
+                            Some(r) => Rc::new(vec![r.clone()]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        })
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            if ((refusals.clone().len() as i64) == 0) {
+                Rc::new(vec![])
+            } else {
+                {
+                    let span = Rc::new({
+                        let mut __result = Vec::new();
+                        for tm in Rc::new({
+                            let mut __result = Vec::new();
+                            for tm in modules.iter().cloned() {
+                                if (crate::v1_std_core::authored_name_at(
+                                    tm.type_env.clone().source_indices.clone(),
+                                    tm.module.clone(),
+                                ) == e.entry_module.clone())
+                                {
+                                    __result.push(tm);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(tm.module.clone().span.clone());
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned();
+                    match span.clone() {
+                        Some(sp) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::NativeEffectRealizationRefused {
+                                entry: v1_rt::concat(
+                                    e.entry_module.clone(),
+                                    v1_rt::concat(".".to_string(), e.entry_function.clone()),
+                                ),
+                                refusals: refusals.clone(),
+                                span: sp.clone(),
+                            }),
+                            e.entry_module.clone(),
+                        )]),
+                        std::option::Option::None => {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::NativeEffectRealizationRefused {
+                                    entry: v1_rt::concat(
+                                        e.entry_module.clone(),
+                                        v1_rt::concat(".".to_string(), e.entry_function.clone()),
+                                    ),
+                                    refusals: v1_rt::concat(
+                                        refusals.clone(),
+                                        Rc::new(vec![
+                                            "the entry module is not in the closure".to_string()
+                                        ]),
+                                    ),
+                                    span: crate::v1_std_core::no_span(),
+                                }),
+                                e.entry_module.clone(),
+                            )])
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeEffectBindingText {
+    pub var: String,
+    pub type_path: String,
+    pub binding_line: String,
+    pub argument: String,
+}
+
+pub fn native_effect_binding_of(
+    var: String,
+    type_path: String,
+    constructor: String,
+) -> Rc<NativeEffectBindingText> {
+    Rc::new(NativeEffectBindingText {
+        var: var.clone(),
+        type_path: type_path.clone(),
+        binding_line: v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("    let ".to_string(), var.clone()),
+                    " = ".to_string(),
+                ),
+                constructor.clone(),
+            ),
+            ";\n".to_string(),
+        ),
+        argument: v1_rt::concat("&".to_string(), var.clone()),
+    })
+}
+
+pub fn native_effect_binding_text(
+    a: Rc<NativeEffectRealizationAdmission>,
+    module_file: String,
+    crate_name: String,
+) -> Option<Rc<NativeEffectBindingText>> {
+    match (*a.clone()).clone() {
+        NativeEffectRealizationAdmission::NativeEffectHandlerBound {
+            effect_contract: c, ..
+        } => match (*c.clone()).clone() {
+            NativeEffectContract::NativeServiceEffect { service: sn, .. } => {
+                let path = v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(crate_name.clone(), "::".to_string()),
+                            module_file.clone(),
+                        ),
+                        "::".to_string(),
+                    ),
+                    crate::v1_compiler_emit_core_support::sanitize_service_name(sn.clone()),
+                );
+                Some(native_effect_binding_of(
+                    crate::v1_compiler_emit_core_support::service_var_name(sn.clone()),
+                    path.clone(),
+                    v1_rt::concat(path.clone(), "::new(Default::default())".to_string()),
+                ))
+            }
+            NativeEffectContract::NativeResourceEffect {
+                binding: b,
+                resource: r,
+                ..
+            } => {
+                let path = v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(crate_name.clone(), "::".to_string()),
+                            module_file.clone(),
+                        ),
+                        "::".to_string(),
+                    ),
+                    r.clone(),
+                );
+                Some(native_effect_binding_of(
+                    crate::v1_compiler_emit::emit_ident(b.clone(), RenderTarget::Rust),
+                    path.clone(),
+                    path.clone(),
+                ))
+            }
+        },
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn native_effect_bindings(
+    effects: Option<Rc<NativeEntryEffects>>,
+    crate_name: String,
+) -> Rc<Vec<Rc<NativeEffectBindingText>>> {
+    match effects.clone() {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(e) => Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                e.admissions
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let file = match e
+                            .module_files
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(pair.0.clone() as usize)
+                            .next()
+                        {
+                            Some(f) => f.clone(),
+                            std::option::Option::None => "".to_string(),
+                        };
+                        match native_effect_binding_text(
+                            pair.1.clone(),
+                            file.clone(),
+                            crate_name.clone(),
+                        ) {
+                            Some(t) => Rc::new(vec![t.clone()]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
 pub fn emit_main_rs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     has_services: bool,
     crate_name: String,
+    effects: Option<Rc<NativeEntryEffects>>,
 ) -> Rc<TextFile> {
     {
         let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules.clone());
@@ -40163,6 +40656,7 @@ pub fn emit_main_rs(
                     return emit_native_cli_driver_main_rs(
                         crate_name.clone(),
                         pipeline_module.clone(),
+                        native_effect_bindings(effects.clone(), crate_name.clone()),
                     );
                 }
                 if compiler_pipeline_entry_is_native_claim(modules.clone()) {
@@ -40175,6 +40669,7 @@ pub fn emit_main_rs(
                     return emit_native_serve_driver_main_rs(
                         crate_name.clone(),
                         pipeline_module.clone(),
+                        native_effect_bindings(effects.clone(), crate_name.clone()),
                     );
                 }
                 if compiler_pipeline_entry_is_direct_ingest(modules.clone()) {
@@ -40272,24 +40767,108 @@ pub fn emit_native_claim_driver_main_rs(
 pub fn emit_native_serve_driver_main_rs(
     crate_name: String,
     pipeline_module: String,
+    bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
 ) -> Rc<TextFile> {
     {
         let pipeline_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
+        let effectful = ((bindings.clone().len() as i64) > 0);
+        let binding_lines = Rc::new({
+            let mut __result = Vec::new();
+            for b in bindings.iter().cloned() {
+                __result.push(b.binding_line.clone());
+            }
+            __result
+        })
+        .join(&"".to_string());
+        let exchange_effect_params = if effectful.clone() {
+            v1_rt::concat(
+                ", runtime: &tokio::runtime::Runtime".to_string(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for b in bindings.iter().cloned() {
+                        __result.push(v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(", ".to_string(), b.var.clone()),
+                                ": &".to_string(),
+                            ),
+                            b.type_path.clone(),
+                        ));
+                    }
+                    __result
+                })
+                .join(&"".to_string()),
+            )
+        } else {
+            "".to_string()
+        };
+        let exchange_effect_args = if effectful.clone() {
+            v1_rt::concat(
+                ", &runtime".to_string(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for b in bindings.iter().cloned() {
+                        __result.push(v1_rt::concat(", ".to_string(), b.argument.clone()));
+                    }
+                    __result
+                })
+                .join(&"".to_string()),
+            )
+        } else {
+            "".to_string()
+        };
+        let handler_effect_args = Rc::new({
+            let mut __result = Vec::new();
+            for b in bindings.iter().cloned() {
+                __result.push(v1_rt::concat(", ".to_string(), b.var.clone()));
+            }
+            __result
+        })
+        .join(&"".to_string());
+        let handler_call = if effectful.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        NativeServeRoute::NativeServeToHandler => match runtime.block_on(native_serve_handle(".to_string(), "\n".to_string()), "            head.method.clone(), head.target.clone(), body, head.tailscale_identity.clone(), contract.release_revision.clone()".to_string()), handler_effect_args.clone()), ",".to_string()), "\n".to_string()), "        )) {".to_string()), "\n".to_string()), "            Ok(response) => Exchange::Answer(response),".to_string()), "\n".to_string()), "            Err(cause) => Exchange::Answer(native_serve_effect_failed(cause.to_string())),".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string())
+        } else {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(".to_string(), "\n".to_string()), "            head.method.clone(),".to_string()), "\n".to_string()), "            head.target.clone(),".to_string()), "\n".to_string()), "            body,".to_string()), "\n".to_string()), "            head.tailscale_identity.clone(),".to_string()), "\n".to_string()), "            contract.release_revision.clone(),".to_string()), "\n".to_string()), "        )),".to_string()), "\n".to_string())
+        };
+        let runtime_line = if effectful.clone() {
+            "    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() { Ok(runtime) => runtime, Err(cause) => { eprintln!(\"REFUSED: native effect executor: {}\", cause); std::process::exit(2); } };\n".to_string()
+        } else {
+            "".to_string()
+        };
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::ServeWireResponse;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement, native_serve_frame, native_serve_handler_name, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_outgoing, native_serve_route, native_serve_start, NativeServeContract, NativeServeFrame,".to_string()), "\n".to_string()), "    NativeServeOutgoing, NativeServeRoute, NativeServeStart,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_handle;".to_string()), "\n".to_string()), "\n".to_string()), "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            if let Err(cause) = reader.read_exact(&mut body) {".to_string()), "\n".to_string()), "                return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause)));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(".to_string()), "\n".to_string()), "            head.method.clone(),".to_string()), "\n".to_string()), "            head.target.clone(),".to_string()), "\n".to_string()), "            body,".to_string()), "\n".to_string()), "            head.tailscale_identity.clone(),".to_string()), "\n".to_string()), "            contract.release_revision.clone(),".to_string()), "\n".to_string()), "        )),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let contract = match &*native_serve_start(Rc::new(argv.into())) {".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeListen { contract } => contract.clone(),".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeStartRefused { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) {".to_string()), "\n".to_string()), "        Ok(listener) => listener,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: failed to bind {}:{}: {}\", contract.host, contract.port, cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound = match listener.local_addr() {".to_string()), "\n".to_string()), "        Ok(addr) => addr,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: bound but could not read the bound address: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound_host = bound.ip().to_string();".to_string()), "\n".to_string()), "    let bound_port = bound.port() as i64;".to_string()), "\n".to_string()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    for accepted in listener.incoming() {".to_string()), "\n".to_string()), "        let mut stream = match accepted {".to_string()), "\n".to_string()), "            Ok(stream) => stream,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: accept error: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &bound_host, bound_port) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::ServeWireResponse;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement, native_serve_effect_failed, native_serve_frame, native_serve_handler_name, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_outgoing, native_serve_route, native_serve_start, NativeServeContract, NativeServeFrame,".to_string()), "\n".to_string()), "    NativeServeOutgoing, NativeServeRoute, NativeServeStart,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_handle;".to_string()), "\n".to_string()), "\n".to_string()), "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64".to_string()), exchange_effect_params.clone()), ") -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            if let Err(cause) = reader.read_exact(&mut body) {".to_string()), "\n".to_string()), "                return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause)));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), handler_call.clone()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let contract = match &*native_serve_start(Rc::new(argv.into())) {".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeListen { contract } => contract.clone(),".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeStartRefused { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) {".to_string()), "\n".to_string()), "        Ok(listener) => listener,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: failed to bind {}:{}: {}\", contract.host, contract.port, cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound = match listener.local_addr() {".to_string()), "\n".to_string()), "        Ok(addr) => addr,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: bound but could not read the bound address: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound_host = bound.ip().to_string();".to_string()), "\n".to_string()), "    let bound_port = bound.port() as i64;".to_string()), "\n".to_string()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), runtime_line.clone()), binding_lines.clone()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    for accepted in listener.incoming() {".to_string()), "\n".to_string()), "        let mut stream = match accepted {".to_string()), "\n".to_string()), "            Ok(stream) => stream,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: accept error: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &bound_host, bound_port".to_string()), exchange_effect_args.clone()), ") {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
 })
     }
 }
 
-pub fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> Rc<TextFile> {
+pub fn emit_native_cli_driver_main_rs(
+    crate_name: String,
+    pipeline_module: String,
+    bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
+) -> Rc<TextFile> {
     {
         let pipeline_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
+        let binding_lines = Rc::new({
+            let mut __result = Vec::new();
+            for b in bindings.iter().cloned() {
+                __result.push(b.binding_line.clone());
+            }
+            __result
+        })
+        .join(&"".to_string());
+        let effect_args = Rc::new({
+            let mut __result = Vec::new();
+            for b in bindings.iter().cloned() {
+                __result.push(v1_rt::concat(", ".to_string(), b.argument.clone()));
+            }
+            __result
+        })
+        .join(&"".to_string());
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_main,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), "#[tokio::main(flavor = \"current_thread\")]".to_string()), "\n".to_string()), "async fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let filesystem = ".to_string()), crate_name.clone()), "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());".to_string()), "\n".to_string()), "    let outcome = match v2_cli_main(Rc::new(argv.into()), &filesystem).await {".to_string()), "\n".to_string()), "        Ok(outcome) => outcome,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    print!(\"{text}\");".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_main,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), "#[tokio::main(flavor = \"current_thread\")]".to_string()), "\n".to_string()), "async fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), binding_lines.clone()), "    let outcome = match v2_cli_main(Rc::new(argv.into())".to_string()), effect_args.clone()), ").await {".to_string()), "\n".to_string()), "        Ok(outcome) => outcome,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: native effect transport: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    print!(\"{text}\");".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
 })
     }
 }
