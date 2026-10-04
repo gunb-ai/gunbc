@@ -6477,26 +6477,39 @@ fn infer_malformed_tree_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// THE CALLER-ADMISSION WALL RUNS AFTER THE FACTS GATHER, with the gather's entries in hand: a
+// callee is reached as a resolved reference (a Conj, not an Arrow), and the one authority for the
+// arrow behind such a reference is the use's facts entry (infer_application_callee_arrow_with_facts)
+// — the same accessor every other callee-arrow consumer (formals, type parameters, argument
+// inhabitance) runs through. Before this reorder the wall read infer_operator_arrow on the
+// reference itself and answered Absent for every name-resolved callee, admitting them unjudged —
+// the exact silent widen DESIGN section 5 refuses. Refusal keeps the gather's diagnostics, so no
+// evidence is dropped by the short-circuit.
 fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
-  match infer_caller_admission_diags(tree: tree) {
-    Some { diagnostics: ned } => Rejected { diagnostics: ned }
-    None =>
-      match infer_entries_for_tree(tree: tree) {
+  match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
-      match facts_map_from_entries(entries: entries) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: facts_map, diagnostics: md } =>
-          Accepted {
-            value: ObligatedInferredTree {
-              root: tree.root,
-              facts: facts_map,
-              obligations: Empty
-            },
-            diagnostics: diagnostics_merge(outer: d, inner: md)
+      match infer_caller_admission_diags(tree: tree, entries: entries) {
+        Some { diagnostics: ned } =>
+          match d {
+            None => Rejected { diagnostics: ned }
+            Some { diagnostics: da } =>
+              Rejected { diagnostics: non_empty_diagnostics_append(a: da, b: ned) }
+          }
+        None =>
+          match facts_map_from_entries(entries: entries) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: facts_map, diagnostics: md } =>
+              Accepted {
+                value: ObligatedInferredTree {
+                  root: tree.root,
+                  facts: facts_map,
+                  obligations: Empty
+                },
+                diagnostics: diagnostics_merge(outer: d, inner: md)
+              }
           }
       }
-    }
   }
 }
 
@@ -6602,72 +6615,61 @@ fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
   }
 }
 
-// THE ENTRIES OF A PRESERVED admit_callers CLAUSE. POSITIONAL READER: the spine is
-// v2.extdeps.languages.dag dag_grammar_admit_callers_clause_expr — from the clause's captured
-// sequence, three right projections reach the entry sequence; its left is the first entry and its
-// right's left is the repeat capture whose left holds each further entry beside its comma. Adding
-// or reordering a constituent there is a change to this reader's contract and not a local grammar
-// edit. The walk mirrors v2.compiler.body_lowering_fold
-// body_lower_collect_typed_param_slots (the same parse-shape walk over a comma list).
-fn infer_admit_entries_from_clause_sequence(sequence_capture: Node) -> List<Node> {
-  match body_infer_projection_child(node: sequence_capture, name: ^grammar_sequence_left_node_projection) {
-    Absent => []
-    Present { value: first_entry } =>
-      match body_infer_projection_child(node: sequence_capture, name: ^grammar_sequence_right_node_projection) {
-        Absent => [first_entry]
-        Present { value: outer_right } =>
-          match body_infer_projection_child(node: outer_right, name: ^grammar_sequence_left_node_projection) {
-            Absent => [first_entry]
-            Present { value: repeat_capture } =>
-              list_snoc_item(
-                xs: infer_admit_entries_from_repeat_tail(repeat_capture: repeat_capture),
-                item: first_entry
-              )
+// THE CLAUSE'S ENTRIES, reached from the clause shell the carrier put on the Arrow.
+// POSITIONAL READER: the spine is v2.extdeps.languages.dag dag_grammar_admit_callers_clause_expr
+// — from the clause's captured sequence, three right projections reach the entry sequence; its
+// left is the first entry and its right's left is the repeat capture whose left holds each further
+// entry beside its comma. Adding or reordering a constituent there is a change to this reader's
+// contract and not a local grammar edit. The repeat's spine walk is
+// v2.extdeps.languages.dag parse_repeat_capture_items_with — ONE authority for the
+// grammar_sequence_left/right_node_projection encoding (no second walker); this reader supplies
+// the item reader, and an admit entry is an opaque parsed expression, so identity. Every missing
+// projection REFUSES with ^infer_reason_admit_callers_entries_unreadable: a malformed clause spine
+// is not a shorter roster — a listed caller must never go silent, and the refusal must name the
+// cause instead of the downstream refused-call verdict (DESIGN §5: a failure arm must refuse,
+// never widen).
+fn infer_admit_clause_entries(clause: Node) -> Outcome<List<Node>> {
+  match parse_production_captured_child_optional(node: clause) {
+    Absent => infer_admit_entries_refused(clause: clause)
+    Present { value: captured } =>
+      match body_infer_projection_child(node: captured, name: ^grammar_sequence_left_node_projection) {
+        Absent => infer_admit_entries_refused(clause: clause)
+        Present { value: first_entry } =>
+          match body_infer_projection_child(node: captured, name: ^grammar_sequence_right_node_projection) {
+            Absent => infer_admit_entries_refused(clause: clause)
+            Present { value: outer_right } =>
+              match body_infer_projection_child(node: outer_right, name: ^grammar_sequence_left_node_projection) {
+                Absent => infer_admit_entries_refused(clause: clause)
+                Present { value: repeat_capture } =>
+                  match parse_repeat_capture_items_with(
+                    repeat_capture: repeat_capture,
+                    root: clause,
+                    item: fn(entry, _root) { outcome_accepted(value: entry) }
+                  ) {
+                    Rejected { diagnostics: _ } => infer_admit_entries_refused(clause: clause)
+                    Accepted { value: suffixes, diagnostics: _ } =>
+                      outcome_accepted(value: Cons { head: first_entry, tail: suffixes })
+                  }
+              }
           }
       }
   }
 }
 
-fn infer_admit_entries_from_repeat_tail(repeat_capture: Node) -> List<Node> {
-  if is_empty_conj_root_infer(n: repeat_capture) {
-    []
-  } else {
-    match body_infer_projection_child(node: repeat_capture, name: ^grammar_sequence_left_node_projection) {
-      Absent => []
-      Present { value: head_sequence } =>
-        match body_infer_projection_child(node: head_sequence, name: ^grammar_sequence_right_node_projection) {
-          Absent => []
-          Present { value: entry } =>
-            match body_infer_projection_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-              Absent => [entry]
-              Present { value: tail } =>
-                list_snoc_item(xs: infer_admit_entries_from_repeat_tail(repeat_capture: tail), item: entry)
-            }
-        }
-    }
-  }
+// THE UNREADABLE-CLAUSE REFUSAL, located at the clause itself. Real parses cannot produce a
+// malformed spine, so the reader proposes no correction.
+fn infer_admit_entries_refused(clause: Node) -> Outcome<List<Node>> {
+  outcome_rejected(Diagnostic {
+    reason: ^infer_reason_admit_callers_entries_unreadable,
+    at: node_locus(node: clause),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
 
 fn body_infer_projection_child(node: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: node, name: name) {
     Accepted { value: child, diagnostics: _ } => Present { value: child }
     Rejected { diagnostics: _ } => Absent
-  }
-}
-
-// THE CLAUSE'S ENTRIES, reached from the clause shell the carrier put on the Arrow.
-fn infer_admit_clause_entries_optional(clause: Node) -> Optional<List<Node>> {
-  match parse_production_captured_child_optional(node: clause) {
-    Absent => Absent
-    Present { value: captured } => Present { value: infer_admit_entries_from_clause_sequence(sequence_capture: captured) }
-  }
-}
-
-// IS_EMPTY CONJ ROOT — the repeat-tail terminator, as body_lowering reads it.
-fn is_empty_conj_root_infer(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Conj } => length(xs: n.children) == 0
-    _ => false
   }
 }
 
@@ -6682,21 +6684,28 @@ fn infer_admission_diags_of(ds: List<Diagnostic>) -> Diagnostics {
 }
 
 // ONE APPLICATION'S VERDICT UNDER `caller`. Only a callee whose Arrow carries the admit edge is
-// judged; every other call is outside this wall. Failure arms FAIL CLOSED: more than one
-// AdmitCallersEdge on a callee Arrow is not "no restriction" -- it refuses with a typed, located
-// diagnostic rather than passing the application unjudged.
+// judged; every other call is outside this wall's scope — the clause only ever rides a fn Arrow,
+// and a call whose callee grounds to no Arrow has no clause to violate (v1's gate was the same:
+// only constructor calls were judged). The callee's Arrow is read through
+// infer_application_callee_arrow_with_facts, the ONE authority for the arrow behind a resolved
+// reference: a name-resolved callee stays a Conj, so a direct infer_operator_arrow on it answers
+// Absent and the arrow is reached through the use's facts entry — whose grounding evidence is the
+// declared Arrow, carrying its declared edges (the admit clause among them). That is what makes
+// the wall reach an IMPORTED callee: the facts gather grounds the reference through the closure
+// index, so a call in the subject module to a fn declared in a peer module is judged against the
+// peer's declared list. Failure arms FAIL CLOSED: more than one AdmitCallersEdge on a callee Arrow
+// is not "no restriction" -- it refuses with a typed, located diagnostic rather than passing the
+// application unjudged.
 fn infer_caller_admission_application_diags(
   application: Node,
   caller: Optional<InferAdmitCallerCoords>,
-  module_symbol: Symbol
+  module_symbol: Symbol,
+  entries: List<InferredFactsEntry>
 ) -> Diagnostics {
-  match infer_application_callee_use(node: application) {
+  match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
     Absent => None
-    Present { value: operator } =>
-      match infer_operator_arrow(operator: operator) {
-        Absent => None
-        Present { value: arrow } =>
-          match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
+    Present { value: arrow } =>
+      match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
         Ambiguous =>
           infer_admission_diags_of([
             Diagnostic {
@@ -6707,15 +6716,9 @@ fn infer_caller_admission_application_diags(
           ])
         Absent => None
         Found { target: clause } =>
-          match infer_admit_clause_entries_optional(clause: clause) {
-            Absent => infer_admission_diags_of([
-              Diagnostic {
-                reason: ^infer_reason_admit_callers_entries_unreadable,
-                at: node_locus(node: application),
-                correction: Unavailable { reason: UserInputBoundary }
-              }
-            ])
-            Present { value: entries } =>
+          match infer_admit_clause_entries(clause: clause) {
+            Rejected { diagnostics: d } => Some { diagnostics: d }
+            Accepted { value: roster, diagnostics: _ } =>
               match caller {
                 Absent => infer_admission_diags_of([
                   Diagnostic {
@@ -6727,13 +6730,12 @@ fn infer_caller_admission_application_diags(
                 Present { value: coords } =>
                   infer_admission_judge_entries(
                     application: application,
-                    entries: entries,
+                    entries: roster,
                     caller: coords,
                     module_symbol: module_symbol
                   )
               }
           }
-      }
       }
   }
 }
@@ -6826,7 +6828,7 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
 // declaration it sits in. Failure arms FAIL CLOSED (DESIGN.md §5: refuse, never widen): an
 // unreadable module name cannot key the judge, so the tree refuses with a typed, located
 // diagnostic rather than passing unjudged.
-fn infer_caller_admission_diags(tree: ResolvedTree) -> Diagnostics {
+fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsEntry>) -> Diagnostics {
   match qualified_name_from_module_node(root: tree.root) {
     Rejected { diagnostics: _ } =>
       infer_admission_diags_of([
@@ -6845,7 +6847,12 @@ fn infer_caller_admission_diags(tree: ResolvedTree) -> Diagnostics {
         },
         algebra: NodeFoldTopDown {
           init: fn(self, ctx) {
-            infer_caller_admission_application_diags(application: self, caller: ctx.caller, module_symbol: ctx.module_symbol)
+            infer_caller_admission_application_diags(
+              application: self,
+              caller: ctx.caller,
+              module_symbol: ctx.module_symbol,
+              entries: entries
+            )
           },
           child_context: fn(self, ctx, edge) { infer_admission_child_context(self: self, ctx: ctx, edge: edge) },
           step: fn(acc, _edge, sub) { diagnostics_merge(outer: acc, inner: sub) }

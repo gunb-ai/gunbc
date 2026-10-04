@@ -7135,18 +7135,17 @@ fn parse_qn_segment_with<T>(sym_node: Node, root: Node, seg: fn(Node, Symbol) ->
   }
 }
 
-fn parse_qn_repeat_suffix_ident_with<T>(sequence_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
-  match find_named_child(
-    root: sequence_capture,
-    name: ^grammar_sequence_right_node_projection
-  ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: ident_node, diagnostics: _ } =>
-      parse_qn_segment_with(sym_node: ident_node, root: root, seg: seg)
-  }
-}
-
-fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
+// ONE REPEAT-CAPTURE SPINE, by the rule above: one walker for the encoding, per-item readers on
+// top of it. THE ENCODING: a repeat capture is either an empty conj (no items) or a conj whose
+// left projection is the element sequence and whose right projection is the next capture, and each
+// element sequence's right projection is the item. The spine refuses when a projection the
+// encoding promises is missing -- a malformed spine is not an empty list -- and the item reader
+// owns every refusal about what an item is.
+fn parse_repeat_capture_items_with<T>(
+  repeat_capture: Node,
+  root: Node,
+  item: fn(Node, Node) -> Outcome<T>
+) -> Outcome<List<T>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
@@ -7156,30 +7155,45 @@ fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(No
     ) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: head_sequence, diagnostics: _ } =>
-        match parse_qn_repeat_suffix_ident_with(sequence_capture: head_sequence, root: root, seg: seg) {
+        match find_named_child(
+          root: head_sequence,
+          name: ^grammar_sequence_right_node_projection
+        ) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: item, diagnostics: _ } =>
-            match find_named_child(
-              root: repeat_capture,
-              name: ^grammar_sequence_right_node_projection
-            ) {
+          Accepted { value: item_node, diagnostics: _ } =>
+            match item(item_node, root) {
               Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-              Accepted { value: tail, diagnostics: _ } =>
-                match parse_qn_repeat_suffixes_with(repeat_capture: tail, root: root, seg: seg) {
+              Accepted { value: item_value, diagnostics: _ } =>
+                match find_named_child(
+                  root: repeat_capture,
+                  name: ^grammar_sequence_right_node_projection
+                ) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-                  Accepted { value: suffixes, diagnostics: tail_diag } =>
-                    outcome_with_diagnostics(
-                      value: list_append(
-                        left: Cons { head: item, tail: Empty },
-                        right: suffixes
-                      ),
-                      diagnostics: tail_diag
-                    )
+                  Accepted { value: tail, diagnostics: _ } =>
+                    match parse_repeat_capture_items_with(repeat_capture: tail, root: root, item: item) {
+                      Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                      Accepted { value: suffixes, diagnostics: tail_diag } =>
+                        outcome_with_diagnostics(
+                          value: list_append(
+                            left: Cons { head: item_value, tail: Empty },
+                            right: suffixes
+                          ),
+                          diagnostics: tail_diag
+                        )
+                    }
                 }
             }
         }
     }
   }
+}
+
+fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
+  parse_repeat_capture_items_with(
+    repeat_capture: repeat_capture,
+    root: root,
+    item: fn(n, r) { parse_qn_segment_with(sym_node: n, root: r, seg: seg) }
+  )
 }
 
 fn parse_qualified_name_segments_from_capture_with<T>(qn_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {

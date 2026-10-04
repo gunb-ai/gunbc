@@ -1,15 +1,21 @@
 module v2.test.claim.caller_admission_native_wall
 
-// THE DISCRIMINATING RED AND ITS CONTROLS for gunbc.rung_drop
+// THE DISCRIMINATING REDS AND THEIR CONTROLS for gunbc.rung_drop
 // admit_callers_discarded_on_the_native_route. The clause was parsed by the v2 grammar and then
 // discarded at Arrow lowering, so the native route never checked caller admission; the wall now
 // lives in v2.compiler.infer (infer_caller_admission_diags), keyed on the admit_callers edge
-// v2.compiler.body_lowering_fold body_lower_fn_admit_clause_edges carries onto the Arrow. These
-// claims drive a fixture module through the real pipeline (tokenize -> parse -> normalize ->
-// admitted normalized tree -> resolve -> infer) and assert the seed's verdicts, copied symbol for
-// symbol from v1's constructor_call_admission_diags:
-//   - a call from a declaration outside the list refuses (^infer_reason_caller_admission_refused);
-//   - a call from the listed declaration is admitted (the floor's own behavior unchanged);
+// v2.compiler.body_lowering_fold body_lower_fn_admit_clause_edges carries onto the Arrow. The
+// claims drive fixture modules through the real pipeline (tokenize -> parse -> normalize ->
+// admitted normalized tree -> resolve -> infer, or assemble_program_from_ingest for the
+// cross-module fixtures) and assert the seed's verdicts, copied symbol for symbol from v1's
+// constructor_call_admission_diags:
+//   - a call from a declaration outside the list refuses (^infer_reason_caller_admission_refused),
+//     SAME-MODULE (caller and sealed fn in one module) and CROSS-MODULE (the subject module calls a
+//     sealed fn imported from a peer module -- the clause's real work: the judge reads the callee's
+//     declared Arrow through the use's facts entry, whose grounding evidence is the peer's
+//     declaration, edges included);
+//   - a call from the listed declaration is admitted (the floor's own behavior unchanged),
+//     SAME-MODULE and CROSS-MODULE;
 //   - an entry that is not a decl_ref(module_path: "...", decl_name: "...") call refuses at the
 //     entry (^infer_reason_admit_callers_entry_not_decl_ref), never shrinking the roster silently.
 // The fixtures are strings, so a refusal here is a verdict ABOUT the fixture, not a refusal of
@@ -19,14 +25,20 @@ module v2.test.claim.caller_admission_native_wall
 // trailing-comma claim records.
 
 import v2.compiler.infer { ObligatedInferredTree, infer }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_type_declaration_modifiers }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar, program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome }
+import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar, program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome }
+import v2.compiler.source_authority { DagSourceReadWitness }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { OccurrenceIdAllocator }
 import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
 import v2.extdeps.languages.dag { dag_language_model, dag_lex }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -61,7 +73,7 @@ fn aca_resolved(text: String) -> Outcome<ResolvedTree> {
   match aca_normalized(text: text) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: t, diagnostics: _ } =>
-      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, diagnostics: None) {
+      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: no_type_declaration_modifiers(), diagnostics: None) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
       }
@@ -70,6 +82,50 @@ fn aca_resolved(text: String) -> Outcome<ResolvedTree> {
 
 fn aca_inferred(text: String) -> Outcome<ObligatedInferredTree> {
   match aca_resolved(text: text) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: rt, diagnostics: _ } => infer(tree: rt)
+  }
+}
+
+// THE CROSS-MODULE PIPELINE: the subject module (whose calls the wall walks) plus peer modules it
+// imports. Admission carries no import-level bindings -- the subject's own `import` lines are what
+// bind the peers' names -- the same shape body_let_annotation_test drives for imported types.
+data aca_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^aca_subject_artifact,
+  file_path: "src/v2/pilot/caller_admission_subject.dag"
+}
+
+data aca_peer_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^aca_peer_artifact,
+  file_path: "src/v2/pilot/caller_admission_peer.dag"
+}
+
+fn aca_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+fn aca_assembled_with_peer(subject_src: String, peer_src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: aca_source(src: subject_src, artifact: aca_subject_artifact, cu: ^caller_admission_subject_cu),
+      tail: [
+        aca_source(src: peer_src, artifact: aca_peer_artifact, cu: ^caller_admission_peer_cu)
+      ]
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^bcb, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn aca_cross_inferred(subject_src: String, peer_src: String) -> Outcome<ObligatedInferredTree> {
+  match aca_assembled_with_peer(subject_src: subject_src, peer_src: peer_src) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: rt, diagnostics: _ } => infer(tree: rt)
   }
@@ -94,11 +150,39 @@ fn aca_bare_entry_text() -> String {
   "module aca.u\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [listed_caller]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
 }
 
+// THE CROSS-MODULE PEER: the sealed fn in module aca, naming its one permitted caller by the
+// caller's OWN module path and declaration name.
+fn aca_cross_peer_text() -> String {
+  "module aca\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"bcb\", decl_name: \"listed_caller\")]\n  = n + 1\n"
+}
+
+// THE CROSS-MODULE RED: the subject module imports the sealed fn and calls it from a declaration
+// the peer's list does not name. The refusal must reach across the import: the judge reads the
+// callee's declared Arrow through the call's facts entry, so the edge the peer's body_lowering
+// carried survives into the subject module's judgment.
+fn aca_cross_red_subject_text() -> String {
+  "module bcb\n\nimport aca { sealed_mint }\n\nfn unlisted_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+}
+
+// THE CROSS-MODULE CONTROL: the same import, called from the listed declaration in the subject
+// module. Admitted -- the roster spans modules exactly as v1's did.
+fn aca_cross_control_subject_text() -> String {
+  "module bcb\n\nimport aca { sealed_mint }\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+}
+
 fn aca_outside_inferred() -> Outcome<ObligatedInferredTree> { aca_inferred(text: aca_outside_caller_text()) }
 
 fn aca_listed_inferred() -> Outcome<ObligatedInferredTree> { aca_inferred(text: aca_listed_caller_text()) }
 
 fn aca_bare_entry_inferred() -> Outcome<ObligatedInferredTree> { aca_inferred(text: aca_bare_entry_text()) }
+
+fn aca_cross_red_inferred() -> Outcome<ObligatedInferredTree> {
+  aca_cross_inferred(subject_src: aca_cross_red_subject_text(), peer_src: aca_cross_peer_text())
+}
+
+fn aca_cross_control_inferred() -> Outcome<ObligatedInferredTree> {
+  aca_cross_inferred(subject_src: aca_cross_control_subject_text(), peer_src: aca_cross_peer_text())
+}
 
 fn aca_rejected_with(r: Outcome<ObligatedInferredTree>, reason: Symbol) -> Bool {
   match r {
@@ -107,17 +191,29 @@ fn aca_rejected_with(r: Outcome<ObligatedInferredTree>, reason: Symbol) -> Bool 
   }
 }
 
-test fn the_native_wall_refuses_a_call_from_outside_the_list_holds() -> Bool {
-  aca_rejected_with(r: aca_outside_inferred(), reason: ^infer_reason_caller_admission_refused)
-}
-
-test fn the_native_wall_admits_a_call_from_the_listed_caller_holds() -> Bool {
-  match aca_listed_inferred() {
+fn aca_accepted_clean(r: Outcome<ObligatedInferredTree>) -> Bool {
+  match r {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
+test fn the_native_wall_refuses_a_call_from_outside_the_list_holds() -> Bool {
+  aca_rejected_with(r: aca_outside_inferred(), reason: ^infer_reason_caller_admission_refused)
+}
+
+test fn the_native_wall_admits_a_call_from_the_listed_caller_holds() -> Bool {
+  aca_accepted_clean(r: aca_listed_inferred())
+}
+
 test fn the_native_wall_refuses_an_entry_that_is_not_a_decl_ref_call_holds() -> Bool {
   aca_rejected_with(r: aca_bare_entry_inferred(), reason: ^infer_reason_admit_callers_entry_not_decl_ref)
+}
+
+test fn the_native_wall_refuses_a_cross_module_call_from_outside_the_list_holds() -> Bool {
+  aca_rejected_with(r: aca_cross_red_inferred(), reason: ^infer_reason_caller_admission_refused)
+}
+
+test fn the_native_wall_admits_a_cross_module_call_from_the_listed_caller_holds() -> Bool {
+  aca_accepted_clean(r: aca_cross_control_inferred())
 }
