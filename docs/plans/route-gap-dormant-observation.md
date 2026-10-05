@@ -1,7 +1,7 @@
 # Where the route-gap population drops out of the required run — finding, then proposed repair
 
-Lane: calm-koi-257 (claim-execution-route). Status: finding complete; repair **proposed, not built** — it
-touches `required_floor_runner.rs` (the selection/admission path), which waits for coordinator ack.
+Lane: calm-koi-257 (claim-execution-route). Status: finding complete; repair BUILT and under review on
+PR #13376 (coordinator ack covered all four conditions; reviews 38602/76419/76431 addressed).
 
 ## The population and the run
 
@@ -130,7 +130,21 @@ header contract is amended below); Rust executes them.
    families with the same join armed — which would need a required lane to hang it on, because the rung
    drop rules receipt-only runs out as a retirement path. Neither is built in this PR.
 
-The acceptance fixture: `dag/test/claim/route_gap_dormancy_receipt_test.dag` (module outside the gate) +
-one typed enrollment at the head of `floor_route_gap_expectation_chunk_00`, labeled FIXTURE in both files;
-on the PR's required run the floor names that identity with ground `outside_required_gate` — and if the
-identity ever stops resolving, the run refuses instead.
+**The wall's real standing (corrected per review 76431 — an earlier revision of this paragraph claimed a
+shipped fixture; the fixture is gone, per review 38602, and this is what actually holds):**
+
+- **Green by execution on the required path:** the partition IS the run's own admission step — on every
+  required run it executes over the real roster, names every suppressed enrollment per identity with its
+  ground (the `[floor-route-gap]` suppressed lines), and the reverse join decides over the observable
+  remainder. The consumer is the fold itself; nothing about the green arm is test-only. A freshly authored
+  claim shaped like the dropped population (declared, out-of-gate, enrolled) gets the same typed, located
+  disposition on that run as the 536 do.
+- **Discriminating red: unit-authored only, no CI path.** The misnamed-enrollment control lives in
+  `route_gap_admission_partition_tests` and runs via `cargo test --release -p v1-compiler --lib`, which
+  `docs/onboarding.md` (line 175) says runs on NO required step — a unit-test red does not block a merge.
+  The refusal arm's red has no CI author today, and shipping one would mean shipping a misnamed enrollment
+  to the production roster — rejected by review 38602, because it would red main forever and fabricate a
+  gap the §5 oracle forbids. The named follow-up that could author it on a required lane is the same (b)
+  follow-up above: a dispatch instrument row that runs a probe roster with the join armed. Until then, this
+  PR does not claim a CI-authored red for the wall; it claims the typed refusal, green by execution, with
+  the discriminator at unit grain.
