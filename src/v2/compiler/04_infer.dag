@@ -76,7 +76,7 @@ import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construc
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
-import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, Found, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
+import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -132,6 +132,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Locus,
   NonEmptyDiagnostics,
+  Suggested,
   UserInputBoundary,
   node_locus,
   Outcome,
@@ -6813,15 +6814,31 @@ fn infer_caller_admission_application_diags(
 ) -> Diagnostics {
   match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
     Absent =>
-      match infer_callee_arrow_from_declarations(declarations: declarations, operator: application) {
+      match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
         Absent => None
-        Present { value: arrow } =>
-          infer_caller_admission_judged_diags(
-            application: application,
-            caller: caller,
-            module_symbol: module_symbol,
-            arrow: arrow
-          )
+        Present { value: child0 } =>
+          match resolved_reference_body_kind(target: child0) {
+            NotMarkedReference => None
+            MarkedReference { kind: DeclarationReferenceKind } =>
+              match infer_callee_arrow_from_declarations(declarations: declarations, callee_ref: child0) {
+                Absent =>
+                  infer_admission_diags_of([
+                    Diagnostic {
+                      reason: ^infer_reason_caller_admission_callee_unreadable,
+                      at: node_locus(node: application),
+                      correction: Suggested { node: child0 }
+                    }
+                  ])
+                Present { value: arrow } =>
+                  infer_caller_admission_judged_diags(
+                    application: application,
+                    caller: caller,
+                    module_symbol: module_symbol,
+                    arrow: arrow
+                  )
+              }
+            MarkedReference { kind: _ } => None
+          }
       }
     Present { value: arrow } =>
       infer_caller_admission_judged_diags(
@@ -6837,17 +6854,13 @@ fn infer_caller_admission_application_diags(
 // the subject's gather (the gather walks the subject root), so the wall reads the callee's own
 // declaration node from resolved_declarations -- declarations WITH RESOLVED BODIES, imported modules
 // included. Absent when the operator's child is not a declaration reference or names no declaration.
-fn infer_callee_arrow_from_declarations(declarations: SymbolIndex, operator: Node) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: operator), index: 0) {
+fn infer_callee_arrow_from_declarations(declarations: SymbolIndex, callee_ref: Node) -> Optional<Node> {
+  match declaration_reference_path_optional(node: callee_ref) {
     Absent => optional_absent()
-    Present { value: callee_ref } =>
-      match declaration_reference_path_optional(node: callee_ref) {
+    Present { value: qn } =>
+      match symbol_index_lookup(index: declarations, qualified_path: qn) {
         Absent => optional_absent()
-        Present { value: qn } =>
-          match symbol_index_lookup(index: declarations, qualified_path: qn) {
-            Absent => optional_absent()
-            Present { value: decl } => infer_operator_arrow(operator: decl)
-          }
+        Present { value: decl } => infer_operator_arrow(operator: decl)
       }
   }
 }
