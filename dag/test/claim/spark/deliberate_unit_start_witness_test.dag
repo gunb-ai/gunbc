@@ -1,0 +1,124 @@
+module test.claim.spark.deliberate_unit_start_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
+import gunbc.spark.host_occupancy_admission { restore_spark_serving_units }
+import gunbc.spark.native_serving_apply {
+  spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_rollback_prepare_script, spark_native_rollback_finish_script,
+  spark_native_preserve_script, spark_native_commit_script, spark_native_apply_sequence, SparkNativeLegRunner, SparkNativeLegRun, spark_native_leg_with_retry,
+  spark_native_arm_steps, NativeArmSteps, NativeArmStepsRefused,
+}
+import gunbc.spark.pair_serving_apply { SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached }
+import gunbc.spark.pair_serving_launch_receipt { serving_standing }
+import product.host_identity { HostIdentity }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
+
+// ── A DELIBERATE START IS ONE OPERATION, AT EVERY SITE (side-chat ruling on #13319, finding 4) ───
+//
+// THE INCIDENT SHAPE: a bounded unit (StartLimitBurst=1 / 600 s) the previous staircase step just started
+// is stopped by the next launch; that launch refuses before actuation, and the incumbent restore must
+// start the unit again inside the window. The outer restore (restore_spark_serving_units) used a plain
+// SystemctlStart, so it would be refused exactly as the transaction's own rollback was (run 37241423753).
+//
+// THE SUPPLIED HOST stands in for systemd at the leg interface: each argv is answered as systemctl would.
+// A pure claim cannot hold the start-limit counter across calls, so the discriminating RED is the other
+// half: a host on which `reset-failed` FAILS makes the restore refuse, which can only happen if the
+// restore issues the clear -- a plain start never asks for it and would pass.
+
+data w_unit: NonEmptyStr = "gunbc-glm53-stair-rank.service" as NonEmptyStr
+
+fn w_host(load_state: String, reset_ok: Bool) -> fn(List<String>) -> ArgvRun {
+  fn(argv) {
+    let line = join(argv, " ")
+    if line == "systemctl show gunbc-glm53-stair-rank.service --property=LoadState --value" { ArgvRan { exit_code: 0, stdout: join([load_state, "\n"], ""), stderr: "" } }
+    else if line == "systemctl reset-failed gunbc-glm53-stair-rank.service" {
+      if reset_ok { ArgvRan { exit_code: 0, stdout: "", stderr: "" } } else { ArgvRan { exit_code: 1, stdout: "", stderr: "Failed to reset failed state of unit" } }
+    }
+    else if line == "systemctl restart gunbc-glm53-stair-rank.service" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
+    else if line == "systemctl is-active gunbc-glm53-stair-rank.service" { ArgvRan { exit_code: 0, stdout: "active\n", stderr: "" } }
+    else { ArgvLegDidNotRun { cause: join(["the witness host does not answer `", line, "`"], "") } }
+  }
+}
+
+// THE CONTROL THE RULING ASKS FOR, at the incumbent restore's own interface: a just-started, now-stopped
+// bounded unit reads loaded; the restore clears its counter and starts it, and reads it back active.
+test fn w_the_incumbent_restore_is_a_deliberate_start() -> Bool {
+  match restore_spark_serving_units(run: w_host(load_state: "loaded", reset_ok: true), units: [w_unit]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE RED: the same restore on a host whose `reset-failed` fails refuses, naming the counter. A restore
+// that started with a plain `systemctl start` would never ask and would pass.
+test fn w_the_incumbent_restore_refuses_when_the_counter_cannot_be_cleared() -> Bool {
+  match restore_spark_serving_units(run: w_host(load_state: "loaded", reset_ok: false), units: [w_unit]) {
+    Absent => false
+    Present { value: why } => string_contains(s: why, pattern: "start-limit counter could not be cleared")
+  }
+}
+
+// AN UNLOADED UNIT CARRIES NO COUNTER, so the clear is not issued at all (it would be an error, run
+// 37254736596): the same failing reset host starts a not-loaded unit cleanly.
+test fn w_an_unloaded_unit_is_started_without_a_clear() -> Bool {
+  match deliberate_unit_start_leg(run: w_host(load_state: "not-found", reset_ok: false), unit: w_unit) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ONE REALIZATION (review 76352, ruled by valiant-crab-775): no stage script spells a start or a clear --
+// the transaction's apply and rollback split their scripts around the typed leg instead.
+test fn w_no_stage_script_spells_a_start() -> Bool {
+  let scripts = [
+    spark_native_host_apply_prepare_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name),
+    spark_native_host_apply_wait_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
+    spark_native_rollback_prepare_script(unit_name: w_unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_rollback_finish_script(unit_name: w_unit, transaction_id: "T"),
+    spark_native_preserve_script(unit_name: w_unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_commit_script(unit_name: w_unit, transaction_id: "T"),
+  ]
+  all(scripts, t => !string_contains(s: t, pattern: "systemctl restart") && !string_contains(s: t, pattern: "systemctl start") && !string_contains(s: t, pattern: "reset-failed"))
+}
+
+// THE APPLY'S ROUTE: write the unit, the typed deliberate start, then the rendezvous wait, in that order --
+// and a host whose unit was not written is never started (the RED: a prepare that refuses yields one leg).
+fn w_leg(host: HostIdentity, ok: Bool, word: String) -> SparkNativeLegRun {
+  spark_native_leg_with_retry(budget: 0, attempt: fn(i) {
+    if ok { SparkPairHostApplied { host: host, wire: "management-lan", stdout: word, standing: serving_standing(attempts: []) } }
+    else { SparkPairHostApplyFailed { host: host, cause: word } }
+  })
+}
+
+fn w_runner(host: HostIdentity, prepare_ok: Bool) -> SparkNativeLegRunner {
+  SparkNativeLegRunner {
+    script: fn(script) { w_leg(host: host, ok: prepare_ok || string_contains(s: script, pattern: "distributed_init_method"), word: if string_contains(s: script, pattern: "distributed_init_method") { "rendezvous-entered" } else { "unit-written" }) },
+    deliberate_start: fn(unit) { w_leg(host: host, ok: true, word: "deliberate-start-accepted") },
+  }
+}
+
+fn w_words(legs: List<SparkNativeLegRun>) -> List<String> {
+  map(legs, l => match l.outcome {
+    SparkPairHostApplied { host: _, wire: _, stdout: out, standing: _ } => out
+    SparkPairHostApplyFailed { host: _, cause: c } => c
+    SparkPairHostUnreached { host: _, cause: c } => c
+  })
+}
+
+test fn w_the_apply_writes_then_starts_typed_then_waits() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let ok = w_words(legs: spark_native_apply_sequence(st: st, run: w_runner(host: st.host, prepare_ok: true)))
+          let refused = w_words(legs: spark_native_apply_sequence(st: st, run: w_runner(host: st.host, prepare_ok: false)))
+          join(ok, ",") == "unit-written,deliberate-start-accepted,rendezvous-entered"
+            && join(refused, ",") == "unit-written"
+        }
+      }
+  }
+}
