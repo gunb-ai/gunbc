@@ -109,9 +109,9 @@ fn pinned_standing_with(libraries_output: String) -> QemuHostStanding {
   pinned_standing_on(host: HostnameShortCaptured { value: "srv1" }, libraries_output: libraries_output)
 }
 
+// THROUGH THE OBSERVER'S OWN CONSTRUCTION (gunbc.runner_qemu_host_standing qemu_host_standing_of,
+// the projection observe_qemu_host_standing_wet returns): only the reads are supplied.
 fn pinned_standing_on(host: HostnameShortCapture, libraries_output: String) -> QemuHostStanding {
-  // THROUGH THE OBSERVER'S OWN CONSTRUCTION (gunbc.runner_qemu_host_standing qemu_host_standing_of,
-  // the projection observe_qemu_host_standing_wet returns): only the reads are supplied.
   qemu_host_standing_of(
     host: host,
     root: witness_root,
