@@ -9,21 +9,21 @@ import v2.std.collection { Map }
 import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, project_root_for_node, MembershipStandalone, MembershipMember, MembershipAmbiguous }
 
 // The prerequisite is shared by two projects but belongs to neither by implication.
-test fn shared_prerequisite_does_not_assign_ownership() -> Bool {
+test fn shared_prerequisite_does_not_assign_ownership() -> Bool  {
   let nesting = [RoadmapMembership { member: "task", project: "project-A", contribution: "fixture contribution" }]
   match node_project_membership(node_id: "shared-prerequisite", memberships: nesting) { MembershipStandalone => true _ => false }
     && project_member_ids(arc: "project-A", memberships: nesting) == ["task"]
     && project_member_ids(arc: "project-B", memberships: nesting) == []
 }
 
-test fn nesting_is_recursive_without_type_labels() -> Bool {
+test fn nesting_is_recursive_without_type_labels() -> Bool  {
   let nesting = [RoadmapMembership { member: "task", project: "subproject", contribution: "fixture contribution" }, RoadmapMembership { member: "subproject", project: "root", contribution: "fixture contribution" }]
   project_root_for_node(node_id: "task", memberships: nesting) == Present { value: "root" }
     && project_root_for_node(node_id: "subproject", memberships: nesting) == Present { value: "root" }
     && project_root_for_node(node_id: "root", memberships: nesting) == Present { value: "root" }
 }
 
-test fn cycles_and_multiple_parents_have_no_focus_root() -> Bool {
+test fn cycles_and_multiple_parents_have_no_focus_root() -> Bool  {
   project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b", contribution: "fixture contribution" }, RoadmapMembership { member: "b", project: "a", contribution: "fixture contribution" }]) == none
     && project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b", contribution: "fixture contribution" }, RoadmapMembership { member: "a", project: "c", contribution: "fixture contribution" }]) == none
 }
@@ -89,7 +89,7 @@ fn planted(id: String, parent: NodeParent?) -> RoadmapNode {
 
 // The planted controls: a rooted chain resolves; a cycle, an undeclared project and a parentless
 // ancestor each refuse, each by its own arm.
-test fn planted_lineage_controls_discriminate() -> Bool {
+test fn planted_lineage_controls_discriminate() -> Bool  {
   let root = planted(id: "gunbc-project-root", parent: admitted_root())
   let mid = planted(id: "p-mid", parent: in_project(project: "gunbc-project-root", contribution: "planted"))
   let leaf = planted(id: "p-leaf", parent: in_project(project: "p-mid", contribution: "planted"))
@@ -106,7 +106,7 @@ test fn planted_lineage_controls_discriminate() -> Bool {
     && !walks_to_root(id: "p-dangling", index: index, fuel: fuel)
 }
 
-test fn every_member_of_target_is_a_declared_node() -> Bool {
+test fn every_member_of_target_is_a_declared_node() -> Bool  {
   let ids = declared_node_ids()
   count(member_of_targets()) > 0
     && all(member_of_targets(), t => any(ids, i => i == t))
@@ -117,7 +117,7 @@ test fn every_member_of_target_is_a_declared_node() -> Bool {
 // lineage_index(nodes) at count(nodes) + 1 fuel, so the index is built once, not once per node. Every
 // stated node's walk is required to end LineageRooted at the root, which already excludes the
 // LineageCyclic arm (the walk returns one arm), so each node is walked once.
-test fn every_node_that_states_a_parent_reaches_the_one_admitted_root() -> Bool {
+test fn every_node_that_states_a_parent_reaches_the_one_admitted_root() -> Bool  {
   let nodes = declared_roadmap_nodes()
   let index = lineage_index(nodes: nodes)
   let fuel = count(nodes) + 1

@@ -50,7 +50,7 @@ fn claim_runner_environment() -> DispatchHostEnvironment {
   }
 }
 
-test fn dag_claim_derives_only_the_claim_runner() -> Bool {
+test fn dag_claim_derives_only_the_claim_runner() -> Bool  {
   let capabilities = execution_contract_required_capabilities(
     contract: gunbc_claim_execution_contract(
       entry: "dag/test/claim/example_test.dag" as FilePath,
@@ -61,7 +61,7 @@ test fn dag_claim_derives_only_the_claim_runner() -> Bool {
     && execution_capability_label(capability: capabilities.first().value) == "gunbc-claim-runner"
 }
 
-test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
+test fn cargo_test_derives_cargo_and_rustc_once() -> Bool  {
   let capabilities = execution_contract_required_capabilities(
     contract: ExecutionContract {
       validations: [
@@ -84,7 +84,7 @@ test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
     )
 }
 
-test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool {
+test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool  {
   let caps = execution_contract_required_capabilities(
     contract: ExecutionContract {
       validations: [CargoFmtValidation],
@@ -102,7 +102,7 @@ test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool {
       execution_capability_label(capability: cap) == "rustc")) == 0
 }
 
-test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool {
+test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool  {
   let contract = gunbc_claim_execution_contract(
     entry: "dag/test/claim/example_test.dag" as FilePath,
     function: "example_holds" as NonEmptyStr,
@@ -122,7 +122,7 @@ test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool {
     )
 }
 
-test fn claim_validation_projects_exact_typed_argv() -> Bool {
+test fn claim_validation_projects_exact_typed_argv() -> Bool  {
   match validation_operation_command(
     validation: GunbcClaimValidation {
       entry: "dag/test/claim/example_test.dag" as FilePath,
@@ -139,7 +139,7 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
 }
 
 // The 'unspecified is a refusal state' claim moved to where the decision lives: roadmap_dispatch_environment_witness_test proves ExecutionContractUnspecified and an empty-validation contract each refuse with their own located reason. Restating it here through the deleted execution_contract_is_specified predicate only re-asserted the coproduct's own shape, and rewriting it as a match of a literal against itself would have been vacuous. What is worth pinning here is the CONSTRUCTOR's output, which nothing else covers.
-test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
+test fn claim_contract_declares_exactly_one_claim_validation() -> Bool  {
   match gunbc_claim_execution_contract(
     entry: "dag/test/claim/example_test.dag" as FilePath,
     function: "example_holds" as NonEmptyStr,
@@ -164,7 +164,7 @@ test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
   }
 }
 
-test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool {
+test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool  {
   contract_awaits_closing_validation_authoring(contract: ExecutionContractUnspecified)
     && contract_awaits_closing_validation_authoring(
       contract: ExecutionContract {

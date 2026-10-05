@@ -125,7 +125,7 @@ fn all_distinct(items: List<String>) -> Bool {
 // principles, project, task -- each obligation carrying the checkpoint it was minted under, each
 // key distinct, and the plan's checkpoint_digest is the checkpoint identity's own digest, the
 // idempotency root the scheduler keys its durable records on.
-test fn a_checkpoint_over_a_three_level_chain_derives_three_obligations_root_to_leaf() -> Bool {
+test fn a_checkpoint_over_a_three_level_chain_derives_three_obligations_root_to_leaf() -> Bool  {
   let chain = three_level_chain()
   let checkpoint = fixture_checkpoint(chain: chain)
   let fingerprint = alignment_chain_fingerprint(chain: chain)
@@ -145,7 +145,7 @@ test fn a_checkpoint_over_a_three_level_chain_derives_three_obligations_root_to_
 // state yields the identical obligation keys and guidance -- a crash after the plan derived but
 // before the scheduler recorded it re-derives exactly the same population, so the durable records
 // key on the same obligations and no duplicate verdicts can be minted for one checkpoint.
-test fn re_deriving_under_the_same_checkpoint_identity_yields_identical_obligation_keys() -> Bool {
+test fn re_deriving_under_the_same_checkpoint_identity_yields_identical_obligation_keys() -> Bool  {
   let chain = three_level_chain()
   let checkpoint = fixture_checkpoint(chain: chain)
   let state = AlignmentCadenceState {
@@ -168,7 +168,7 @@ test fn re_deriving_under_the_same_checkpoint_identity_yields_identical_obligati
 // THE FINGERPRINT GATE, negative control: a checkpoint whose recorded chain_fingerprint is not
 // the resolved chain's current fingerprint refuses -- a typed refusal naming both fingerprints,
 // never a derived population under a stale checkpoint.
-test fn a_checkpoint_whose_fingerprint_does_not_match_the_chain_refuses() -> Bool {
+test fn a_checkpoint_whose_fingerprint_does_not_match_the_chain_refuses() -> Bool  {
   let chain = three_level_chain()
   let stale = AlignmentCheckpointIdentity {
     attempt_lineage: "worker:task-a-lineage",
@@ -191,7 +191,7 @@ test fn a_checkpoint_whose_fingerprint_does_not_match_the_chain_refuses() -> Boo
 // principles at 2 -- the same index alignment_levels_due reads -- so the state's last_verdicts
 // apply task-first. A MISALIGNED direction and an EXTREMELY MISALIGNED direction surface as
 // their levels' guidance; ALIGNED surfaces as none.
-test fn outstanding_guidance_carries_the_recorded_verdict_payload_and_none_for_aligned() -> Bool {
+test fn outstanding_guidance_carries_the_recorded_verdict_payload_and_none_for_aligned() -> Bool  {
   let chain = three_level_chain()
   let checkpoint = fixture_checkpoint(chain: chain)
   let state = AlignmentCadenceState {
@@ -212,7 +212,7 @@ test fn outstanding_guidance_carries_the_recorded_verdict_payload_and_none_for_a
 // THE PAYLOAD EXTRACTION COVERS EVERY NON-ALIGNED ARM: CATASTROPHICALLY MISALIGNED surfaces its
 // reason and a RoutedConflict its conflict -- the guidance is the verdict's own recorded detail,
 // never a re-interpretation of it.
-test fn guidance_extracts_the_reason_and_conflict_arms_too() -> Bool {
+test fn guidance_extracts_the_reason_and_conflict_arms_too() -> Bool  {
   let chain = three_level_chain()
   let checkpoint = fixture_checkpoint(chain: chain)
   let state = AlignmentCadenceState {
@@ -233,7 +233,7 @@ test fn guidance_extracts_the_reason_and_conflict_arms_too() -> Bool {
 // A STATE THAT PREDATES A LEVEL leaves that level's guidance empty: one recorded verdict (the
 // task's, at leaf distance 0) reads for the task alone; the project and principles levels were
 // never judged, and an unrecorded level carries no fabricated guidance.
-test fn a_level_the_state_has_not_reached_carries_no_guidance() -> Bool {
+test fn a_level_the_state_has_not_reached_carries_no_guidance() -> Bool  {
   let chain = three_level_chain()
   let checkpoint = fixture_checkpoint(chain: chain)
   let partial = AlignmentCadenceState {
@@ -251,7 +251,7 @@ test fn a_level_the_state_has_not_reached_carries_no_guidance() -> Bool {
 // minted under the original chain's fingerprint; the retitled chain derives a different
 // fingerprint, and the plan refuses rather than minting obligations the stale checkpoint would
 // execute against links it never saw.
-test fn the_same_checkpoint_identity_over_a_moved_chain_refuses_never_derives() -> Bool {
+test fn the_same_checkpoint_identity_over_a_moved_chain_refuses_never_derives() -> Bool  {
   let chain = three_level_chain()
   let checkpoint = fixture_checkpoint(chain: chain)
   let moved = moved_three_level_chain()

@@ -153,7 +153,7 @@ fn admitted_fixture() -> DispatchEnvironmentAdmission
   )
 }
 
-test fn all_required_grounded_receipts_admit() -> Bool {
+test fn all_required_grounded_receipts_admit() -> Bool  {
   match admitted_fixture() {
     EnvironmentAdmitted { receipts, validation_summary } =>
       count(receipts) == 9 && validation_summary != ""
@@ -161,7 +161,7 @@ test fn all_required_grounded_receipts_admit() -> Bool {
   }
 }
 
-test fn missing_capability_realization_refuses() -> Bool {
+test fn missing_capability_realization_refuses() -> Bool  {
   let missing = missing_capability_receipt(cap: GunbcClaimRunnerCapability)
   match dispatch_environment_admission_decision(
     contract: admitted_contract(),
@@ -174,7 +174,7 @@ test fn missing_capability_realization_refuses() -> Bool {
   }
 }
 
-test fn observe_only_absence_never_fabricates_apply() -> Bool {
+test fn observe_only_absence_never_fabricates_apply() -> Bool  {
   let receipt = refused_capability_ensure_witness_fixture(
     realization: claim_realization(),
     reason: "gunbc missing",
@@ -187,7 +187,7 @@ test fn observe_only_absence_never_fabricates_apply() -> Bool {
   }
 }
 
-test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
+test fn may_apply_without_a_typed_plan_still_refuses() -> Bool  {
   let realization = CapabilityRealization {
     capability: CargoCapability,
     executable: "/home/briansrls/.cargo/bin/cargo" as FilePath,
@@ -207,7 +207,7 @@ test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
   }
 }
 
-test fn unspecified_contract_refuses_before_capability_checks() -> Bool {
+test fn unspecified_contract_refuses_before_capability_checks() -> Bool  {
   match dispatch_environment_admission_decision(
     contract: ExecutionContractUnspecified,
     receipts: [],
@@ -219,7 +219,7 @@ test fn unspecified_contract_refuses_before_capability_checks() -> Bool {
   }
 }
 
-test fn admission_receipt_is_structured_and_located() -> Bool {
+test fn admission_receipt_is_structured_and_located() -> Bool  {
   let wire = dispatch_environment_admission_json(admission: admitted_fixture())
   string_contains(s: wire, pattern: "\"status\": \"admitted\"")
     && string_contains(s: wire, pattern: "\"capability\": \"git-workspace\"")
@@ -237,7 +237,7 @@ test fn admission_receipt_is_structured_and_located() -> Bool {
 // now matches the coproduct directly and each state gets its own located diagnostic. This is the
 // arm that had no witness at all before, because the predicate hid it.
 
-test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool {
+test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool  {
   match dispatch_environment_admission_decision(
     contract: ExecutionContract { validations: [], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     receipts: [],

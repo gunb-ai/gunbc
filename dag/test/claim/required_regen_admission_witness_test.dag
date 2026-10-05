@@ -40,7 +40,7 @@ data witness_note: String = "Discriminating RED controls for the required-regen 
 // unverifiable hand-maintained row must each refuse and name their subject; hand-maintained DRIFT
 // alone must still admit — what separates this wall from one refusing on any non-match.
 
-test fn witness_zero_planned_population_refuses() -> Bool {
+test fn witness_zero_planned_population_refuses() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [],
     hand_outcomes: [],
@@ -54,7 +54,7 @@ test fn witness_zero_planned_population_refuses() -> Bool {
   }
 }
 
-test fn witness_zero_executed_population_refuses() -> Bool {
+test fn witness_zero_executed_population_refuses() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [],
     hand_outcomes: [],
@@ -68,7 +68,7 @@ test fn witness_zero_executed_population_refuses() -> Bool {
   }
 }
 
-test fn witness_planned_executed_mismatch_refuses() -> Bool {
+test fn witness_planned_executed_mismatch_refuses() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [],
     hand_outcomes: [],
@@ -85,7 +85,7 @@ test fn witness_planned_executed_mismatch_refuses() -> Bool {
   }
 }
 
-test fn witness_nonempty_matching_population_admits() -> Bool {
+test fn witness_nonempty_matching_population_admits() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [SurfaceMatches { relative_path: "std_algebra.rs" }],
     hand_outcomes: [],
@@ -99,7 +99,7 @@ test fn witness_nonempty_matching_population_admits() -> Bool {
   }
 }
 
-test fn witness_drifted_surface_refuses_naming_the_path() -> Bool {
+test fn witness_drifted_surface_refuses_naming_the_path() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [
       SurfaceMatches { relative_path: "std_algebra.rs" },
@@ -131,7 +131,7 @@ test fn witness_drifted_surface_refuses_naming_the_path() -> Bool {
 // It now asserts the opposite: three states, three refusals, no path under a remedy that does not
 // apply to it. Written as a separation check, not membership: it fails if ANY of the three lists
 // contains a path belonging to another state, which is what a re-fusion would look like.
-test fn witness_three_population_states_refuse_separately() -> Bool {
+test fn witness_three_population_states_refuse_separately() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [
       SurfaceDrifted {
@@ -178,7 +178,7 @@ test fn witness_three_population_states_refuse_separately() -> Bool {
 // because the author obviously just added a module, this goes red — the point, because that same
 // population is what the emitter inventing an unauthored surface looks like; the two are
 // indistinguishable from the populations alone.
-test fn witness_new_surface_alone_still_refuses() -> Bool {
+test fn witness_new_surface_alone_still_refuses() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [
       SurfaceMatches { relative_path: "std_algebra.rs" },
@@ -207,7 +207,7 @@ test fn witness_new_surface_alone_still_refuses() -> Bool {
 // MirrorMissingForEmittedSurface. A fix silencing the collision by excluding it from the compared
 // population would take the orphan with it, and this test would green on a fallen wall.
 // Separation, not membership: neither path may appear under the other's cause.
-test fn witness_hand_maintained_collision_refuses_under_its_own_remedy() -> Bool {
+test fn witness_hand_maintained_collision_refuses_under_its_own_remedy() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [
       SurfaceMatches { relative_path: "std_algebra.rs" },
@@ -245,7 +245,7 @@ test fn witness_hand_maintained_collision_refuses_under_its_own_remedy() -> Bool
   }
 }
 
-test fn witness_hand_unverifiable_refuses_naming_the_entry() -> Bool {
+test fn witness_hand_unverifiable_refuses_naming_the_entry() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [SurfaceMatches { relative_path: "std_algebra.rs" }],
     hand_outcomes: [
@@ -272,7 +272,7 @@ test fn witness_hand_unverifiable_refuses_naming_the_entry() -> Bool {
 // The near-miss positive control. HandDrifted is one variant from HandUnverifiable and must NOT
 // refuse: hand-maintained drift is expected on a clean tree, so a wall refusing here would refuse
 // on any non-match and the RED above would prove nothing about which distinction it draws.
-test fn witness_hand_drift_alone_admits() -> Bool {
+test fn witness_hand_drift_alone_admits() -> Bool  {
   match required_regen_sync_admission(
     generated_outcomes: [SurfaceMatches { relative_path: "std_algebra.rs" }],
     hand_outcomes: [
@@ -301,7 +301,7 @@ test fn witness_hand_drift_alone_admits() -> Bool {
 // that the refusal arrives WITH the candidate tree, containing the mirror the committed population
 // lacks. A carrier permitting a bare `RequiredRegenSyncRefused` here would fail to typecheck this
 // test at all — the wall being asserted.
-test fn witness_new_seed_module_refuses_and_carries_the_first_mirror() -> Bool {
+test fn witness_new_seed_module_refuses_and_carries_the_first_mirror() -> Bool  {
   match required_regen_run(
     production: CandidateTreeProduced {
       tree: CandidateTree {
@@ -333,7 +333,7 @@ test fn witness_new_seed_module_refuses_and_carries_the_first_mirror() -> Bool {
 // The near-miss control on the other side: emit producing nothing is NOT a verdict about a tree,
 // so it lands on the one arm carrying none. Without this, the test above would be satisfied by a
 // carrier that always carries a tree, including one fabricated for a run that produced no files.
-test fn witness_unproduced_run_carries_no_tree_and_names_its_cause() -> Bool {
+test fn witness_unproduced_run_carries_no_tree_and_names_its_cause() -> Bool  {
   match required_regen_run(
     production: CandidateTreeUnproduced { cause: EmptyEmitResult },
     generated_outcomes: [],
@@ -353,7 +353,7 @@ test fn witness_unproduced_run_carries_no_tree_and_names_its_cause() -> Bool {
 // The positive control: a clean tree admits, and the admitting arm carries the tree too
 // — so the tree is a fact about every run that reached a verdict, not a decoration
 // attached to failures.
-test fn witness_clean_run_admits_and_still_carries_the_tree() -> Bool {
+test fn witness_clean_run_admits_and_still_carries_the_tree() -> Bool  {
   match required_regen_run(
     production: CandidateTreeProduced {
       tree: CandidateTree {

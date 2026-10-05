@@ -74,7 +74,7 @@ fn w_file(id: String) -> DriveFile {
 // AN UNREAD FIELD IS NOT AN EMPTY ONE, and this is the discriminating case: if the absent
 // permissions field folded to MembershipAbsent, a converge would create a permission for a writer
 // that may already be a member, against a response it never actually read.
-test fn absent_permissions_field_is_unreadable_not_absent() -> Bool {
+test fn absent_permissions_field_is_unreadable_not_absent() -> Bool  {
   match membership_from_permissions(
     list: DrivePermissionList { permissions: none, nextPageToken: none },
     writer: w_writer(),
@@ -88,7 +88,7 @@ test fn absent_permissions_field_is_unreadable_not_absent() -> Bool {
 
 // An empty list IS an absence -- the field was read and carried no rows. Paired with the claim
 // above so the two are held apart rather than one standing for both.
-test fn empty_permission_list_is_absence() -> Bool {
+test fn empty_permission_list_is_absence() -> Bool  {
   match membership_from_permissions(
     list: DrivePermissionList { permissions: Present { value: [] }, nextPageToken: none },
     writer: w_writer(),
@@ -103,7 +103,7 @@ test fn empty_permission_list_is_absence() -> Bool {
 // A role this model cannot read is not an absent member either. The writer IS there; creating a
 // second permission would not change its role, so absence would authorize a pointless write and
 // hide a principal we failed to understand.
-test fn writer_present_with_unmodeled_role_is_unreadable() -> Bool {
+test fn writer_present_with_unmodeled_role_is_unreadable() -> Bool  {
   match membership_from_permissions(
     list: DrivePermissionList {
       permissions: Present {
@@ -127,7 +127,7 @@ test fn writer_present_with_unmodeled_role_is_unreadable() -> Bool {
   }
 }
 
-test fn a_different_principal_does_not_count_as_the_writer() -> Bool {
+test fn a_different_principal_does_not_count_as_the_writer() -> Bool  {
   match membership_from_permissions(
     list: DrivePermissionList {
       permissions: Present {
@@ -146,7 +146,7 @@ test fn a_different_principal_does_not_count_as_the_writer() -> Bool {
 
 // ORGANIZER IS NOT CORRECTED DOWNWARD. It is strictly more than content-manager, the writer
 // already holds it, and revoking authority this converge never granted is a different decision.
-test fn organizer_satisfies_and_is_not_downgraded() -> Bool {
+test fn organizer_satisfies_and_is_not_downgraded() -> Bool  {
   match ensure_drive_membership(
     policy: EnsureMayApply,
     observed: MembershipObserved { role: RoleOrganizer },
@@ -159,7 +159,7 @@ test fn organizer_satisfies_and_is_not_downgraded() -> Bool {
   }
 }
 
-test fn file_organizer_is_the_converged_role() -> Bool {
+test fn file_organizer_is_the_converged_role() -> Bool  {
   match ensure_drive_membership(
     policy: EnsureMayApply,
     observed: MembershipObserved { role: RoleFileOrganizer },
@@ -174,7 +174,7 @@ test fn file_organizer_is_the_converged_role() -> Bool {
 
 // A WRONG ROLE REFUSES RATHER THAN APPLYING, because a second permissions.create does not replace
 // the first: Drive would answer about the same principal and the writer would stay a reader.
-test fn insufficient_role_refuses_because_a_second_grant_would_not_replace_it() -> Bool {
+test fn insufficient_role_refuses_because_a_second_grant_would_not_replace_it() -> Bool  {
   match ensure_drive_membership(
     policy: EnsureMayApply,
     observed: MembershipObserved { role: RoleReader },
@@ -187,7 +187,7 @@ test fn insufficient_role_refuses_because_a_second_grant_would_not_replace_it() 
   }
 }
 
-test fn absent_membership_under_may_apply_grants_file_organizer() -> Bool {
+test fn absent_membership_under_may_apply_grants_file_organizer() -> Bool  {
   match ensure_drive_membership(
     policy: EnsureMayApply,
     observed: MembershipAbsent,
@@ -202,7 +202,7 @@ test fn absent_membership_under_may_apply_grants_file_organizer() -> Bool {
   }
 }
 
-test fn absent_membership_under_observe_only_refuses() -> Bool {
+test fn absent_membership_under_observe_only_refuses() -> Bool  {
   match ensure_drive_membership(
     policy: EnsureObserveOnly,
     observed: MembershipAbsent,
@@ -215,7 +215,7 @@ test fn absent_membership_under_observe_only_refuses() -> Bool {
   }
 }
 
-test fn absent_files_field_is_unreadable_not_absent() -> Bool {
+test fn absent_files_field_is_unreadable_not_absent() -> Bool  {
   match spreadsheet_from_file_list(
     list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
   ) {
@@ -231,7 +231,7 @@ test fn absent_files_field_is_unreadable_not_absent() -> Bool {
 // The query names the marker property key and the spreadsheet mime type, and excludes trashed
 // files -- a trashed sheet is not a sheet to adopt, and adopting one would write into a file the
 // operator has already thrown away.
-test fn search_query_keys_on_properties_and_excludes_trashed() -> Bool {
+test fn search_query_keys_on_properties_and_excludes_trashed() -> Bool  {
   let q = review_sheet_search_query(marker_value: "ci-prospect-sheet" as NonEmptyStr)
   string_contains(s: q, pattern: review_sheet_marker_property_key as String)
     && string_contains(s: q, pattern: "trashed=false")
@@ -250,7 +250,7 @@ test fn search_query_keys_on_properties_and_excludes_trashed() -> Bool {
 // credential rather than a renamed one. The class is rostered as gunbc.recurring_failure_mode
 // a_pin_claim_compares_two_copies_while_a_third_drifts; the wall that would close it is a config
 // parse that evaluates a declaration reference, leaving one spelling and nothing to drift from.
-test fn drive_token_env_matches_the_configured_literal() -> Bool {
+test fn drive_token_env_matches_the_configured_literal() -> Bool  {
   drive_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
 }
 
@@ -264,7 +264,7 @@ test fn drive_token_env_matches_the_configured_literal() -> Bool {
 // for produces a file that exists and cannot be found, reading as "the create did not take" rather
 // than "the create wrote a different name". A claim cited as catching that, which cannot, is worse
 // than no claim at all.
-test fn marker_property_key_matches_the_created_property() -> Bool {
+test fn marker_property_key_matches_the_created_property() -> Bool  {
   (review_sheet_marker_property_key as String) == "gunbcReviewSheet"
 }
 
@@ -273,7 +273,7 @@ test fn marker_property_key_matches_the_created_property() -> Bool {
 // a writer absent from page one is not absent from the drive, and one matching file on page one is
 // not one matching file in the drive. Folding either to a complete observation is the
 // incompleteSearch failure reached by a different route, so a present token refuses.
-test fn a_partial_permission_page_refuses_rather_than_granting() -> Bool {
+test fn a_partial_permission_page_refuses_rather_than_granting() -> Bool  {
   match ensure_drive_membership(
     policy: EnsureMayApply,
     observed: membership_from_permissions(
@@ -298,7 +298,7 @@ test fn a_partial_permission_page_refuses_rather_than_granting() -> Bool {
 // observation answered Absent -- and Absent under EnsureMayApply is Apply, a create against a
 // principal that may already hold access. This is the same shape the unmodeled-ROLE claim above
 // covers, one field over, and it had no claim at all.
-test fn writer_present_under_unreadable_type_is_unreadable_not_absent() -> Bool {
+test fn writer_present_under_unreadable_type_is_unreadable_not_absent() -> Bool  {
   match membership_from_permissions(
     list: DrivePermissionList {
       permissions: Present {
@@ -326,7 +326,7 @@ test fn writer_present_under_unreadable_type_is_unreadable_not_absent() -> Bool 
 // NOT name the writer is genuinely not about this membership: it must not poison the observation,
 // or any drive carrying one exotic permission would become permanently unreadable and the converge
 // could never proceed.
-test fn an_unreadable_type_for_another_principal_does_not_poison_the_read() -> Bool {
+test fn an_unreadable_type_for_another_principal_does_not_poison_the_read() -> Bool  {
   match membership_from_permissions(
     list: DrivePermissionList {
       permissions: Present {

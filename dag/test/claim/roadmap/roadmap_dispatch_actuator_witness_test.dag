@@ -238,11 +238,11 @@ fn fixture_ready_resolution(node_id: String, project_ids: List<String>) -> Align
   )
 }
 
-test fn witness_tmux_session_name_prefix() -> Bool {
+test fn witness_tmux_session_name_prefix() -> Bool  {
   dispatch_tmux_session_name(node_id: roadmap_dispatch_actuator_nid(s: "node-1")) == "gunbc-dispatch-node-1"
 }
 
-test fn witness_brief_fill_includes_node_metadata() -> Bool {
+test fn witness_brief_fill_includes_node_metadata() -> Bool  {
   let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = fill_dispatch_brief(
     template: dispatch_brief_template,
@@ -252,7 +252,7 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
     && string_contains(s: brief, pattern: "Brief Title")
 }
 
-test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
+test fn witness_dispatch_effort_ignores_intricacy() -> Bool  {
   let instance = srv1_live_dashboard_instance()
   let inventory = fixture_inventory_codex_only_available(instance: instance)
   let high = resolve_dispatch_selection(
@@ -283,7 +283,7 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
   }
 }
 
-test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
+test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool  {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
@@ -297,7 +297,7 @@ test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
     && !string_contains(s: join(argv, separator: "\0"), pattern: "--resume")
 }
 
-test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
+test fn witness_git_worktree_argv_is_execfile_safe() -> Bool  {
   let cmd = git_worktree_add_argv(
     worktree_path: "/opt/gunbc/dispatch-worktrees/node-1",
     branch_name: "dispatch/node-1",
@@ -307,7 +307,7 @@ test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
     && cmd.args == ["worktree", "add", "/opt/gunbc/dispatch-worktrees/node-1", "-b", "dispatch/node-1", "origin/main"]
 }
 
-test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
+test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool  {
   let claude = claude_spawn_argv(
     effort: ReasoningMedium,
     model: ProviderAccountDefaultModel,
@@ -325,7 +325,7 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
     && string_contains(s: join(cmd.args, separator: "\0"), pattern: "CLAUDE_CODE_NO_FLICKER=1")
 }
 
-test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() -> Bool {
+test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() -> Bool  {
   let instance = srv1_live_dashboard_instance()
   match dashboard_instance_provider_executable(instance: instance) {
     Absent => false
@@ -373,7 +373,7 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
   }
 }
 
-test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
+test fn witness_actuator_projection_refuses_missing_provider() -> Bool  {
   match dispatch_actuator_selection_for_provider(
     provider: ClaudeCodeProvider,
     sizing_expectation: NoDerivedSizingExpectation,
@@ -383,7 +383,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   }
 }
 
-test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bool {
+test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bool  {
   match resolve_dispatch_selection(
     inventory: fixture_inventory_codex_only_available(
       instance: srv1_live_dashboard_instance(),
@@ -397,7 +397,7 @@ test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bo
   }
 }
 
-test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
+test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool  {
   let argv = codex_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
@@ -442,7 +442,7 @@ fn codex_tmux_arm_shape_holds(spawn: HostExecArgv, provider_start: HostExecArgv,
     && !string_contains(s: provider_wire, pattern: "\0claude\0")
 }
 
-test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
+test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool  {
   let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
   match dispatch_spawn_commands_for_inventory(
     instance: srv1_live_dashboard_instance(),
@@ -529,7 +529,7 @@ fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashb
   }
 }
 
-test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
+test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   match dispatch_spawn_commands_for_inventory(
     instance: lab,
@@ -556,7 +556,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
   }
 }
 
-test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
+test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool  {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
   ) {
@@ -569,7 +569,7 @@ test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
   }
 }
 
-test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
+test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool  {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t1\tbogus\tnode\n",
   ) {
@@ -592,7 +592,7 @@ fn emitted_pipe_body_matches(body: String) -> Bool {
   body == "'exec' '/usr/bin/tee' '-a' '--' '/tmp/a'\\'';$(touch nope)'"
 }
 
-test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool {
+test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool  {
   match dispatch_event_pipe_emission(
     tee_program: "/usr/bin/tee",
     events_path: "/tmp/a';$(touch nope)",
@@ -603,7 +603,7 @@ test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool {
   }
 }
 
-test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
+test fn witness_provider_projection_is_exact_bounded_capability() -> Bool  {
   let cmd = dispatch_current_attempt_events_projection_argv_for_instance(
     instance: srv1_lab_dashboard_instance(),
     node_id: roadmap_dispatch_actuator_nid(s: "projection-node"),
@@ -620,12 +620,12 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
     && !string_contains(s: wire, pattern: "aggregated_output")
 }
 
-test fn witness_stop_argv_targets_session() -> Bool {
+test fn witness_stop_argv_targets_session() -> Bool  {
   let cmd = tmux_kill_session_argv(session_name: "gunbc-dispatch-node-3")
   cmd.args == ["kill-session", "-t", "gunbc-dispatch-node-3"]
 }
 
-test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
+test fn witness_tmux_ls_parse_filters_prefix() -> Bool  {
   let output = "other: 1 windows (created Fri Jul  3 04:14:00 2026)\ngunbc-dispatch-node-4: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
   match parse_tmux_ls_output(output: output) {
     TmuxLsParsed { entries } => {
@@ -638,7 +638,7 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
   }
 }
 
-test fn witness_not_ready_node_refused() -> Bool {
+test fn witness_not_ready_node_refused() -> Bool  {
   let parent = sized_derivable(id: "parent", prs: [100], title: "Parent")
   let child = sized_derivable(id: "child", prs: [200], title: "Child")
   let edges = [RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
@@ -658,7 +658,7 @@ test fn witness_not_ready_node_refused() -> Bool {
   }
 }
 
-test fn witness_ready_node_permitted_without_live_session() -> Bool {
+test fn witness_ready_node_permitted_without_live_session() -> Bool  {
   let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
@@ -681,7 +681,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
   }
 }
 
-test fn witness_live_lease_refused() -> Bool {
+test fn witness_live_lease_refused() -> Bool  {
   let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
@@ -702,7 +702,7 @@ test fn witness_live_lease_refused() -> Bool {
   }
 }
 
-test fn witness_absent_lease_classifies_spawn() -> Bool {
+test fn witness_absent_lease_classifies_spawn() -> Bool  {
   let scope = dispatch_tmux_session_scope_for_process_fingerprint(
     node_id: roadmap_dispatch_actuator_nid(s: "lease-absent"),
     process_fingerprint: dispatch_codex_process_fingerprint,
@@ -713,11 +713,11 @@ test fn witness_absent_lease_classifies_spawn() -> Bool {
   }
 }
 
-test fn witness_hostile_node_id_single_argv_token() -> Bool {
+test fn witness_hostile_node_id_single_argv_token() -> Bool  {
   hostile_node_id_stays_single_argv_token(node_id: "foo;rm -rf /")
 }
 
-test fn witness_live_sessions_panel_rows() -> Bool {
+test fn witness_live_sessions_panel_rows() -> Bool  {
   let output = "gunbc-dispatch-panel-a: 1 windows (created Fri Jul  3 04:14:00 2026)\n"
   match parse_tmux_ls_output(output: output) {
     TmuxLsParsed { entries } => {
@@ -764,7 +764,7 @@ test fn witness_live_sessions_panel_rows() -> Bool {
 // The assertions are deliberately NOT weakened to "refuses for any reason". That would have made the
 // witness pass while losing the only thing it discriminates: that the STANDING-INELIGIBLE cause is
 // what propagates. A check weakened until it greens is the escape hatch DESIGN section 5 forbids.
-test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
+test fn witness_projection_standing_refusal_specimen_holds() -> Bool  {
   let entry = fixture_projection_standing_refusal_tmux_entry()
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
@@ -788,7 +788,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
     }
 }
 
-test fn witness_name_only_observation_not_converged() -> Bool {
+test fn witness_name_only_observation_not_converged() -> Bool  {
   let scope = dispatch_tmux_session_scope_for_process_fingerprint(
     node_id: roadmap_dispatch_actuator_nid(s: "name-only"),
     process_fingerprint: dispatch_codex_process_fingerprint,
@@ -806,7 +806,7 @@ test fn witness_name_only_observation_not_converged() -> Bool {
   }
 }
 
-test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
+test fn witness_foreign_process_fingerprint_is_conflict() -> Bool  {
   let scope = dispatch_tmux_session_scope_for_process_fingerprint(
     node_id: roadmap_dispatch_actuator_nid(s: "foreign-proc"),
     process_fingerprint: dispatch_codex_process_fingerprint,
@@ -825,14 +825,14 @@ test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
   }
 }
 
-test fn witness_fingerprint_scaffold_marker_present() -> Bool {
+test fn witness_fingerprint_scaffold_marker_present() -> Bool  {
   match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
     Scaffold { dissolves_to: _, bind: _ } => false
     Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
   }
 }
 
-test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
+test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool  {
   let worktree_args = shape_git_worktree_add_argv(
     path: "/opt/gunbc/dispatch-worktrees/bound-node" as FilePath,
     branch: "dispatch/bound-node" as NonEmptyStr,
@@ -890,7 +890,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
     && !string_contains(s: join(codex_args, separator: "\0"), pattern: "--ephemeral")
 }
 
-test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
+test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool  {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
@@ -902,7 +902,7 @@ test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
     && dispatch_claude_permission_args == ["--dangerously-skip-permissions"]
 }
 
-test fn witness_tmux_new_session_service_op_splices_inner_argv() -> Bool {
+test fn witness_tmux_new_session_service_op_splices_inner_argv() -> Bool  {
   let via_service_shape = shape_tmux_new_session_argv(
     session_name: "gunbc-dispatch-splice",
     working_dir: "/opt/gunbc/dispatch-worktrees/splice",
@@ -915,7 +915,7 @@ test fn witness_tmux_new_session_service_op_splices_inner_argv() -> Bool {
   ]
 }
 
-test fn witness_session_lease_shape_reused() -> Bool {
+test fn witness_session_lease_shape_reused() -> Bool  {
   session_lease_reuses_process_port_classifier_shape()
 }
 
@@ -935,7 +935,7 @@ fn ticket_fixture_node() -> RoadmapNode {
   }, repo: "gunbc")
 }
 
-test fn witness_ticket_brief_fills_real_slots() -> Bool {
+test fn witness_ticket_brief_fills_real_slots() -> Bool  {
   let brief = filled_dispatch_brief_for_node(node: ticket_fixture_node())
   string_contains(s: brief, pattern: "the real displaced cost")
     && string_contains(s: brief, pattern: "the real current state")
@@ -945,7 +945,7 @@ test fn witness_ticket_brief_fills_real_slots() -> Bool {
     && string_contains(s: brief, pattern: "the real handback")
 }
 
-test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
+test fn witness_legacy_brief_still_stubs_with_title() -> Bool  {
   let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = filled_dispatch_brief_for_node(node: node)
   string_contains(s: brief, pattern: "Brief Title")
@@ -964,7 +964,7 @@ test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
 // this cannot pass by agreeing with a transcription of today's paths. The third conjunct is the
 // discriminating one: it is the publication path SPECIFICALLY, so restoring the single-directory
 // install -d reds it while the attempt-directory conjunct stays green.
-test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_directory() -> Bool {
+test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_directory() -> Bool  {
   let instance = srv1_live_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
@@ -994,7 +994,7 @@ test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_dire
 // list and would happily create a sibling, so a projection that lost the containment would still
 // produce two created directories and satisfy the claim above. This is the control that says the
 // second operand is the attempt's own subdirectory.
-test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> Bool {
+test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> Bool  {
   let instance = srv1_live_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
@@ -1039,7 +1039,7 @@ test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> 
 
 data witness_pinned_dispatch_model: NonEmptyStr = "claude-opus-4-1-20250805" as NonEmptyStr
 
-test fn witness_pinned_model_reaches_claude_argv() -> Bool {
+test fn witness_pinned_model_reaches_claude_argv() -> Bool  {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderModelPinned { model: witness_pinned_dispatch_model },
@@ -1053,7 +1053,7 @@ test fn witness_pinned_model_reaches_claude_argv() -> Bool {
   )
 }
 
-test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
+test fn witness_claude_account_default_passes_no_model_flag() -> Bool  {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
@@ -1064,7 +1064,7 @@ test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
   !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
 }
 
-test fn witness_pinned_model_reaches_codex_argv() -> Bool {
+test fn witness_pinned_model_reaches_codex_argv() -> Bool  {
   let argv = codex_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderModelPinned { model: witness_pinned_dispatch_model },
@@ -1077,7 +1077,7 @@ test fn witness_pinned_model_reaches_codex_argv() -> Bool {
   )
 }
 
-test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
+test fn witness_codex_account_default_passes_no_model_flag() -> Bool  {
   let argv = codex_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
@@ -1102,7 +1102,7 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
   }
 }
 
-test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
+test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool  {
   let pinned = ProviderModelPinned { model: witness_pinned_dispatch_model }
   let expected = concat("\0--model\0", witness_pinned_dispatch_model as String)
   let claude_wire = witness_inner_argv_wire(
@@ -1140,11 +1140,11 @@ test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
 // the lanes of one attempt share the node id and attempt key, and each lane's identity must stay
 // distinct, and the head is part of it because one criterion is reviewed again at each new head.
 
-test fn witness_review_attempt_identity_is_a_safe_path_segment() -> Bool {
+test fn witness_review_attempt_identity_is_a_safe_path_segment() -> Bool  {
   path_segment_is_safe(raw: dispatch_reviewer_attempt_identity(node_id: "node-1", attempt_key: "att-20260920", criterion_key: "conformance-external-facts", head_sha: "abc123"))
 }
 
-test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
+test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool  {
   let argv = gunbc_harness_review_argv(
     gunbc_program: "/opt/gunbc/target/release/gunbc",
     repo_root: "/opt/gunbc/repo",
@@ -1165,7 +1165,7 @@ test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
 // re-drops the argument between the unit fold and the argv row, which compilation alone would not
 // catch once the parameter exists and could be ignored.
 
-test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool {
+test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool  {
   let cmd = dispatch_review_unit_argv(
     systemd_run_program: "/usr/bin/systemd-run" as FilePath,
     instance: srv1_lab_dashboard_instance(),
@@ -1183,7 +1183,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
 // piece -- the pre-fix reviewer's join(["reviewer:", verdict_path]) -- is refused by the same
 // safe-segment law the fleet ssh context enforces.
 
-test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool {
+test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool  {
   !path_segment_is_safe(raw: join(["reviewer:", "/state/node-1/att/review/abc123.c.json"], ""))
 }
 
@@ -1192,7 +1192,7 @@ test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool {
 // already holds the committed work. This is the fold the belt's spawn consumes through
 // belt_resolved_spawn_plan; a regression that fell back to the instance base ref here would
 // silently discard the lineage the decision just chose to continue.
-test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt_branch() -> Bool {
+test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt_branch() -> Bool  {
   match dispatch_spawn_commands_for_resolved_instance(
     instance: srv1_lab_dashboard_instance(),
     node: sized_derivable(id: "ts-continuation-origin", prs: [], title: "Continuation origin wiring"),
@@ -1232,7 +1232,7 @@ fn authority_node_opt(id: String) -> RoadmapNode? {
 // no parent -- the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
 // naming where the walk halted (review 5354823380), never a confident projection rendered while
 // execution proceeded.
-test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
+test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool  {
   let resolution = alignment_resolve(
     node_id: "2-scm-git-upstream-model",
     turns_elapsed: 2,
@@ -1257,7 +1257,7 @@ test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
 // 5354823380): the L0 pointer, the root-most project first, the nearer project below it, the task
 // contract last, and the bounded ask — each level carrying its ticket's approach and red control,
 // not a two-field reduction.
-test fn the_preamble_renders_every_chain_level_when_the_resolution_is_ready() -> Bool {
+test fn the_preamble_renders_every_chain_level_when_the_resolution_is_ready() -> Bool  {
   let preamble = dispatch_continuation_alignment_preamble(
     resolution: fixture_ready_resolution(node_id: "ts-alignment-deep", project_ids: ["arc-near", "arc-far"]),
   )
@@ -1272,7 +1272,7 @@ test fn the_preamble_renders_every_chain_level_when_the_resolution_is_ready() ->
 
 // A CHAIN WITH NO PROJECT LEVELS renders its task contract as the single level below the
 // principles pointer — the shape the admitted root's own chain takes.
-test fn a_projectless_ready_chain_renders_its_task_as_the_single_level() -> Bool {
+test fn a_projectless_ready_chain_renders_its_task_as_the_single_level() -> Bool  {
   let preamble = dispatch_continuation_alignment_preamble(
     resolution: fixture_ready_resolution(node_id: "ts-alignment-project-of-one", project_ids: []),
   )
@@ -1286,7 +1286,7 @@ test fn a_projectless_ready_chain_renders_its_task_as_the_single_level() -> Bool
 // the fixture node's REAL resolution — which is Unresolved, the node declares no authority row —
 // and still renders byte-identically: the fresh path's refusal is the spawn fold's gate, not the
 // brief's shape, so the brief cannot smuggle an alignment answer onto a fresh dispatch either way.
-test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() -> Bool {
+test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() -> Bool  {
   let node = sized_derivable(id: "ts-alignment-fresh", prs: [], title: "Fresh brief shape")
   let fields = dispatch_brief_fields_for_environment(
     node: node,
@@ -1324,7 +1324,7 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
 // The subject moved on 2026-09-30, when the former subject (extended-admission-cardinality) got its
 // parent: an accepted history row with no parent stays unrooted by construction of the lineage
 // rule, so it keeps this control discriminating without a row kept unrooted for the purpose.
-test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
+test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool  {
   match authority_node_opt(id: "2-scm-git-upstream-model") {
     Absent => false
     Present { value: node } =>
@@ -1352,7 +1352,7 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
 // derive from (node, attempt, turn) -- the turn is what makes the record's one session distinct
 // from the lineage's other turns, and the verdict lands at the basename the continuation decision
 // reads. The session invokes the supervisor's own CLI function, never the worker's.
-test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() -> Bool {
+test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let argv = dispatch_supervisor_unit_argv(
     systemd_run_program: "/usr/bin/systemd-run" as FilePath,

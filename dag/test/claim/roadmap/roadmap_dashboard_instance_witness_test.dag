@@ -109,7 +109,7 @@ import gunbc.roadmap_dashboard_instance {
   dispatch_worker_memory_ceiling,
 }
 
-test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
+test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   dashboard_instance_paths_are_owned(instance: lab)
     && lab.provision_parent_root == "/home/briansrls/.local/share"
@@ -118,14 +118,14 @@ test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
     && lab.local_origin_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/origin.git"
 }
 
-test fn dashboard_lab_and_production_owned_paths_are_disjoint() -> Bool {
+test fn dashboard_lab_and_production_owned_paths_are_disjoint() -> Bool  {
   dashboard_instances_have_disjoint_owned_paths(
     a: srv1_lab_dashboard_instance(),
     b: srv1_live_dashboard_instance(),
   )
 }
 
-test fn dashboard_actuation_posture_is_instance_data() -> Bool {
+test fn dashboard_actuation_posture_is_instance_data() -> Bool  {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
   let preview = srv2_preview_dashboard_instance()
@@ -134,7 +134,7 @@ test fn dashboard_actuation_posture_is_instance_data() -> Bool {
     && preview.actuation == DashboardObserveOnly
 }
 
-test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
+test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool  {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
   let preview = srv2_preview_dashboard_instance()
@@ -221,7 +221,7 @@ fn plan_binds_source_ref_translation(
     })
 }
 
-test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
+test fn dashboard_provision_plan_consumes_one_instance() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
   count(plan) == 18
@@ -265,7 +265,7 @@ fn lab_observed(
   }
 }
 
-test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool {
+test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool  {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -281,7 +281,7 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
   }
 }
 
-test fn dashboard_reconcile_converges_without_health_this_apply_does_not_launch() -> Bool {
+test fn dashboard_reconcile_converges_without_health_this_apply_does_not_launch() -> Bool  {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -297,7 +297,7 @@ test fn dashboard_reconcile_converges_without_health_this_apply_does_not_launch(
   }
 }
 
-test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
+test fn dashboard_reconcile_refuses_production_overlap() -> Bool  {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -313,7 +313,7 @@ test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
   }
 }
 
-test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
+test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool  {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -330,7 +330,7 @@ test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
   }
 }
 
-test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
+test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool  {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -346,7 +346,7 @@ test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
   }
 }
 
-test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
+test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool  {
   match dashboard_instance_reconcile(
     instance: srv1_lab_dashboard_instance(),
     observed: lab_observed(
@@ -363,7 +363,7 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
   }
 }
 
-test fn dashboard_bundle_is_required_for_convergence() -> Bool {
+test fn dashboard_bundle_is_required_for_convergence() -> Bool  {
   let observed = DashboardInstanceObserved {
     observation_refusals: [],
     root_present: true,
@@ -393,7 +393,7 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
   }
 }
 
-test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
+test fn dashboard_source_capture_has_no_manual_await_step() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
   any(plan, op => match op {
@@ -425,7 +425,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
     })
 }
 
-test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
+test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool  {
   let observed = DashboardInstanceObserved {
     observation_refusals: [],
     root_present: true,
@@ -481,7 +481,7 @@ fn retract_plan_is_safe(
     })
 }
 
-test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool {
+test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   match dashboard_instance_retract_plan(instance: lab) {
     DashboardInstanceRetractPlan { plan } =>
@@ -497,7 +497,7 @@ test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool
   }
 }
 
-test fn dashboard_retract_refuses_production_existing_repo() -> Bool {
+test fn dashboard_retract_refuses_production_existing_repo() -> Bool  {
   match dashboard_instance_retract_plan(instance: srv1_live_dashboard_instance()) {
     DashboardInstanceRetractPlan { plan: _ } => false
     DashboardInstanceRetractRefused { reason } =>
@@ -539,7 +539,7 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
 // per-instance and DIFFER, so collapsing them back to one shared literal fails whichever way it
 // collapses.
 
-test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
+test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool  {
   let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
   let srv2_lab = instance_anchor_ref(i: srv2_lab_dashboard_instance())
   let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
@@ -561,7 +561,7 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
 // declaration, which is the dissolution trigger recorded on that row: it is a per-instance fact
 // wearing a per-host name.
 
-test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
+test fn isolated_instance_carries_the_layout_it_was_given() -> Bool  {
   let i = witness_synthetic_instance()
   i.host_identity == "witness-host"
     && i.serve_binary == "/witness/root/bin/gunbc"
@@ -593,7 +593,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
 }
 
 // srv2's lab differs from its preview sibling in the two ways that made the preview unusable, and both are asserted here rather than left to the reader of a posture field. It is DashboardActuating, so the dispatch endpoint is admitted instead of refusing by construction; and it produces a non-empty provision plan bound to its own paths, which is what the preview's declaration never had an actuation entry to execute. Owned-path disjointness from BOTH the preview and production is asserted because two instances on one machine sharing a root would have them provisioning over each other — the preview's root and this one's are siblings under the same parent directory.
-test fn srv2_lab_is_actuating_unlike_its_preview_sibling() -> Bool {
+test fn srv2_lab_is_actuating_unlike_its_preview_sibling() -> Bool  {
   let lab = srv2_lab_dashboard_instance()
   let preview = srv2_preview_dashboard_instance()
   lab.actuation == DashboardActuating
@@ -604,7 +604,7 @@ test fn srv2_lab_is_actuating_unlike_its_preview_sibling() -> Bool {
     && !(lab.serve_function == preview.serve_function)
 }
 
-test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
+test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool  {
   dashboard_instance_paths_are_owned(instance: srv2_lab_dashboard_instance())
     && dashboard_instances_have_disjoint_owned_paths(
       a: srv2_lab_dashboard_instance(),
@@ -619,7 +619,7 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
     ]
 }
 
-test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
+test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool  {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
   count(plan) == 18
@@ -665,7 +665,7 @@ fn plan_ensures_serve_binary(
   })
 }
 
-test fn the_plan_creates_every_path_it_later_verifies() -> Bool {
+test fn the_plan_creates_every_path_it_later_verifies() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let srv2 = srv2_lab_dashboard_instance()
   let lab_plan = dashboard_instance_provision_plan(instance: lab)
@@ -686,7 +686,7 @@ test fn the_plan_creates_every_path_it_later_verifies() -> Bool {
     })
 }
 
-test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool {
+test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let srv2 = srv2_lab_dashboard_instance()
   !(lab.serve_binary == srv2.serve_binary)
@@ -695,7 +695,7 @@ test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool {
 }
 
 // THE DERIVED PATH MUST EQUAL THE DIRECTORY THAT ACTUALLY HOLDS THE CREDENTIAL, which is the only thing that makes the derivation an improvement rather than a rewrite. gunbc.provider_account composes it from three facts owned at three layers — the operator home, codex's default root name, and the @label convention — and if that composition produced anything other than /home/briansrls/.codex@gunbc-roadmap the provider would preflight against an empty directory and report unauthenticated forever while a perfectly good login sat one path away.\n\nThe literal here is deliberate and is not a duplicate of the derivation. It is the OBSERVED path on srv2, recorded independently so the claim compares a computation against a measurement; asserting the derivation equals itself would pass unconditionally and prove nothing. Both hosts are checked because they share the convention and a divergence between them would mean the shared label had stopped being shared.
-test fn derived_codex_home_matches_the_authenticated_directory() -> Bool {
+test fn derived_codex_home_matches_the_authenticated_directory() -> Bool  {
   let observed = "/home/briansrls/.codex@gunbc-roadmap"
   (srv1_host_layout().roadmap_codex_home as String) == observed
     && (srv2_host_layout().roadmap_codex_home as String) == observed
@@ -729,7 +729,7 @@ fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
   }
 }
 
-test fn a_refused_observation_never_derives_a_plan() -> Bool {
+test fn a_refused_observation_never_derives_a_plan() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let genuinely_absent = observed_all_absent(refusals: [])
   let could_not_look = observed_all_absent(
@@ -822,13 +822,13 @@ fn witness_slot_keeping_its_own_dispatch_state() -> HostDashboardInstance {
 // The pair-disagreement direction is not lost — the counterfactual constructor below still produces
 // an agreeing slot and a self-rooted one off one definition, which is where that discrimination
 // actually lived (see the discriminator note above).
-test fn a_production_slot_resolves_dispatch_state_to_the_host_roots() -> Bool {
+test fn a_production_slot_resolves_dispatch_state_to_the_host_roots() -> Bool  {
   let live = srv1_live_dashboard_instance()
   dashboard_instance_dispatch_worktree_root(instance: live) == srv1_dispatch_worktree_root
     && dashboard_instance_dispatch_attempt_state_root(instance: live) == srv1_dispatch_attempt_state_root
 }
 
-test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
+test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool  {
   let live = srv1_live_dashboard_instance()
   let agreeing = witness_agreeing_slot()
   let own_state = witness_slot_keeping_its_own_dispatch_state()
@@ -851,7 +851,7 @@ test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
 // Closing it needs host-shared roots DERIVED from a total host-identity-to-layout lookup rather
 // than carried, which is a host_layout change; dissolve-on: feature:host-dispatch-roots-derived.
 
-test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool {
+test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let live = srv1_live_dashboard_instance()
   dashboard_path_is_under(
@@ -877,7 +877,7 @@ test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool {
 // roots -- the same shape the deleted slot had, built from the constructor this file already uses
 // for exactly this purpose. Per the discriminator note above, the counterfactual pair is where this
 // law's discrimination has always lived; the declared slots were only ever a convenient instance.
-test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool {
+test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool  {
   let shared = witness_agreeing_slot()
   let lab = srv1_lab_dashboard_instance()
   dashboard_instance_paths_are_owned(instance: shared)
@@ -894,7 +894,7 @@ test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool
 // collapsing the different-host arm back into disjointness reds the first conjunct, and dropping
 // the same-host equality check reds the second.
 
-test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
+test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool  {
   let live = srv1_live_dashboard_instance()
   let other_host = witness_production_slot(
     instance_id: "srv2-witness-live" as NonEmptyStr,
@@ -922,7 +922,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 // are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
 // control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
 // machinery, never the evidence).
-test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
+test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool  {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
   live.serve_binary != lab.serve_binary
@@ -954,7 +954,7 @@ fn witness_endpoint_instance(
   )
 }
 
-test fn a_same_host_same_port_roster_is_refused() -> Bool {
+test fn a_same_host_same_port_roster_is_refused() -> Bool  {
   !dashboard_instances_listen_endpoints_are_unique(instances: [
     witness_endpoint_instance(
       instance_id: "srv2-lab-v1-deletion" as NonEmptyStr,
@@ -969,7 +969,7 @@ test fn a_same_host_same_port_roster_is_refused() -> Bool {
   ])
 }
 
-test fn different_hosts_or_different_ports_do_not_collide() -> Bool {
+test fn different_hosts_or_different_ports_do_not_collide() -> Bool  {
   let first = witness_endpoint_instance(
     instance_id: "first" as NonEmptyStr,
     layout: srv2_host_layout(),
@@ -996,7 +996,7 @@ fn roster_has_id(id: NonEmptyStr) -> Bool {
   any(public_builtin_dashboard_instances(), i => i.instance_id == id)
 }
 
-test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
+test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool  {
   dashboard_declared_instance_ids_are_unique()
     && dashboard_declared_instances_listen_endpoints_are_unique()
     && dashboard_declared_repo_roots_are_unique()
@@ -1084,7 +1084,7 @@ fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
   )
 }
 
-test fn an_outside_instance_on_its_own_root_joins_clean() -> Bool {
+test fn an_outside_instance_on_its_own_root_joins_clean() -> Bool  {
   dashboard_instance_is_disjoint_from_public_builtins(
     candidate: outside_instance_at(
       root: "/home/briansrls/.local/share/gunbc-dashboard-instances/outside-repository-v0" as FilePath,
@@ -1102,7 +1102,7 @@ test fn an_outside_instance_on_its_own_root_joins_clean() -> Bool {
 // The real overlap is a candidate on the SAME root, where all three footprint paths collide
 // exactly. The two candidates now differ only in that root, so the root is what the verdict turns
 // on, and this arm goes green only because the join actually refuses.
-test fn an_outside_instance_on_a_public_root_is_refused() -> Bool {
+test fn an_outside_instance_on_a_public_root_is_refused() -> Bool  {
   !dashboard_instance_is_disjoint_from_public_builtins(
     candidate: outside_instance_at(root: srv1_dashboard_lab_root),
   )
@@ -1143,7 +1143,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
   }
 }
 
-test fn an_outside_instance_claiming_a_public_id_on_that_footprint_is_refused() -> Bool {
+test fn an_outside_instance_claiming_a_public_id_on_that_footprint_is_refused() -> Bool  {
   !dashboard_instance_is_disjoint_from_public_builtins(
     candidate: outside_instance_claiming_live_id_on_live_footprint(),
   )

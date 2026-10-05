@@ -126,7 +126,7 @@ fn ordinary_subject() -> RoadmapPublicationSubject {
 
 fn key_of(s: RoadmapPublicationSubject) -> String { publication_spool_key(subject: s) }
 
-test fn the_spool_key_is_stable_and_names_its_own_entry() -> Bool {
+test fn the_spool_key_is_stable_and_names_its_own_entry() -> Bool  {
   let k = key_of(s: ordinary_subject())
   k == key_of(s: ordinary_subject())
     && publication_spool_entry_name(key: k) == join([k, ".json"], "")
@@ -134,7 +134,7 @@ test fn the_spool_key_is_stable_and_names_its_own_entry() -> Bool {
     && !string_contains(s: k, pattern: ".")
 }
 
-test fn every_field_of_the_subject_moves_the_spool_key() -> Bool {
+test fn every_field_of_the_subject_moves_the_spool_key() -> Bool  {
   let base = ordinary_subject()
   let k = key_of(s: base)
   let node = k != key_of(s: subject_at(node_id: "other-node", attempt_key: "a1", head: "1111111111111111111111111111111111111111"))
@@ -164,14 +164,14 @@ test fn every_field_of_the_subject_moves_the_spool_key() -> Bool {
 // holds an authority the requester does not, and the request names its own repository, so without
 // this check the service principal could direct the credential at any target it liked.
 
-test fn a_request_for_this_repository_is_within_the_capability() -> Bool {
+test fn a_request_for_this_repository_is_within_the_capability() -> Bool  {
   match publication_helper_capability_admits(subject: ordinary_subject()) {
     SubjectWithinCapability => true
     SubjectOutsideCapability { detail: _ } => false
   }
 }
 
-test fn a_request_naming_another_repository_is_refused_before_any_observation() -> Bool {
+test fn a_request_naming_another_repository_is_refused_before_any_observation() -> Bool  {
   let base = ordinary_subject()
   match publication_helper_capability_admits(subject: RoadmapPublicationSubject {
     node_id: base.node_id, attempt_key: base.attempt_key,
@@ -185,7 +185,7 @@ test fn a_request_naming_another_repository_is_refused_before_any_observation() 
   }
 }
 
-test fn a_request_outside_the_capability_stops_the_line() -> Bool {
+test fn a_request_outside_the_capability_stops_the_line() -> Bool  {
   disposition_stops(o: HelperSubjectOutsideCapability {
     entry: "e.json", detail: "another repository",
   })
@@ -193,7 +193,7 @@ test fn a_request_outside_the_capability_stops_the_line() -> Bool {
 
 // ── The request round-trips, and refuses a document that is not one ──────────────────────────────
 
-test fn a_request_decodes_back_to_the_subject_it_was_written_from() -> Bool {
+test fn a_request_decodes_back_to_the_subject_it_was_written_from() -> Bool  {
   match publication_request_decode(request: publication_request_json(subject: ordinary_subject(), worktree: "/tmp/wt")) {
     RequestUndecodable { reason: _ } => false
     RequestDecoded { subject, worktree: _ } =>
@@ -207,7 +207,7 @@ test fn a_request_decodes_back_to_the_subject_it_was_written_from() -> Bool {
   }
 }
 
-test fn a_document_of_another_schema_is_refused_rather_than_read_as_a_request() -> Bool {
+test fn a_document_of_another_schema_is_refused_rather_than_read_as_a_request() -> Bool  {
   match publication_request_decode(
     request: "{\"schema\":\"roadmap-publication-receipt/v2\",\"subject\":{}}",
   ) {
@@ -216,7 +216,7 @@ test fn a_document_of_another_schema_is_refused_rather_than_read_as_a_request() 
   }
 }
 
-test fn a_document_that_is_not_json_is_refused_rather_than_read_as_a_request() -> Bool {
+test fn a_document_that_is_not_json_is_refused_rather_than_read_as_a_request() -> Bool  {
   match publication_request_decode(request: "not a document at all") {
     RequestUndecodable { reason: _ } => true
     RequestDecoded { subject: _, worktree: _ } => false
@@ -231,7 +231,7 @@ test fn a_document_that_is_not_json_is_refused_rather_than_read_as_a_request() -
 // refused before any observation, which is what makes this arm hermetic: the credential is never
 // consulted, and the check runs ahead of the branch that would consult it.
 
-test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_observation() -> Bool {
+test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_observation() -> Bool  {
   match publication_request_admission(
     entry: "some-other-node.a1.2222222222222222222222222222222222222222.json",
     request_text: publication_request_json(subject: ordinary_subject(), worktree: "/tmp/wt"),
@@ -246,7 +246,7 @@ test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_ob
   }
 }
 
-test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped() -> Bool {
+test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped() -> Bool  {
   match publication_request_admission(
     entry: "n.a1.1111111111111111111111111111111111111111.json",
     request_text: "{}",
@@ -274,7 +274,7 @@ test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped()
 // anti-forgery distinction: a document naming another repository and a document whose name lies
 // about its own subject are different findings for whoever reads the stopped line. This is the
 // control that a later collapse reds.
-test fn the_three_terminal_refusals_are_distinguished_rather_than_collapsed() -> Bool {
+test fn the_three_terminal_refusals_are_distinguished_rather_than_collapsed() -> Bool  {
   let base = ordinary_subject()
   let foreign = RoadmapPublicationSubject {
     node_id: base.node_id, attempt_key: base.attempt_key,
@@ -324,7 +324,7 @@ test fn the_three_terminal_refusals_are_distinguished_rather_than_collapsed() ->
 // request is moved out of the pending set. If the two shared one outcome, one of these two arms
 // would have to be wrong, and the one that was wrong is the one that ran in production.
 
-test fn a_terminally_refused_request_is_named_apart_from_a_transiently_unreadable_one() -> Bool {
+test fn a_terminally_refused_request_is_named_apart_from_a_transiently_unreadable_one() -> Bool  {
   publication_helper_outcome_key(o: HelperRequestRefused { entry: "e", detail: "d" })
     != publication_helper_outcome_key(o: HelperRequestUnreadable { entry: "e", detail: "d" })
 }
@@ -332,7 +332,7 @@ test fn a_terminally_refused_request_is_named_apart_from_a_transiently_unreadabl
 // A QUARANTINE THAT FAILS IS NOT A SILENCE. The helper that could not move the document is back in
 // the loop this repair exists to end, and the only thing that makes that visible is its own name --
 // on the precedent HelperRequestNotConsumed sets for the delete that fails after a written answer.
-test fn a_quarantine_that_fails_is_its_own_outcome_and_stops_the_line() -> Bool {
+test fn a_quarantine_that_fails_is_its_own_outcome_and_stops_the_line() -> Bool  {
   publication_helper_outcome_key(o: HelperRequestNotQuarantined { entry: "e", detail: "d" })
     != publication_helper_outcome_key(o: HelperRequestRefused { entry: "e", detail: "d" })
   && disposition_stops(o: HelperRequestNotQuarantined { entry: "e", detail: "d" })
@@ -342,7 +342,7 @@ test fn a_quarantine_that_fails_is_its_own_outcome_and_stops_the_line() -> Bool 
 // no decoded subject, so no answer address exists for it; the bytes go to a third directory the
 // publication principal holds. Asserting the three are pairwise distinct is what keeps a later
 // author from resolving the quarantine into the answer directory, where the belt would read it.
-test fn the_quarantine_is_a_third_directory_and_not_the_answer_directory() -> Bool {
+test fn the_quarantine_is_a_third_directory_and_not_the_answer_directory() -> Bool  {
   let requests = publication_request_dir(instance_root: "/opt/gunbc")
   let answers = publication_answer_dir(instance_root: "/opt/gunbc")
   let refused = publication_refused_dir(instance_root: "/opt/gunbc")
@@ -356,7 +356,7 @@ fn disposition_stops(o: PublicationHelperOutcome) -> Bool {
   }
 }
 
-test fn only_the_helpers_own_failures_stop_the_line() -> Bool {
+test fn only_the_helpers_own_failures_stop_the_line() -> Bool  {
   !disposition_stops(o: HelperAnswered { key: "k", outcome_key: "branch-not-published" })
   && disposition_stops(o: HelperRequestNotConsumed { key: "k", detail: "d" })
   && disposition_stops(o: HelperRequestUnreadable { entry: "e", detail: "d" })
@@ -370,7 +370,7 @@ test fn only_the_helpers_own_failures_stop_the_line() -> Bool {
 // than a Bool: the exit can say which outcome refused instead of handing back one bit and making a
 // reader walk the ledger. The mixed case is the discriminating one -- a run carrying BOTH a good
 // answer and a refusal must stop, and must name the refusal rather than the answer.
-test fn a_run_of_answers_completes_and_counts_them() -> Bool {
+test fn a_run_of_answers_completes_and_counts_them() -> Bool  {
   match publication_helper_run_standing(outcomes: [
     HelperAnswered { key: "a", outcome_key: "branch-not-published" },
     HelperAnswered { key: "b", outcome_key: "publication-bound" },
@@ -380,7 +380,7 @@ test fn a_run_of_answers_completes_and_counts_them() -> Bool {
   }
 }
 
-test fn a_mixed_run_stops_and_names_the_outcome_that_stopped_it() -> Bool {
+test fn a_mixed_run_stops_and_names_the_outcome_that_stopped_it() -> Bool  {
   match publication_helper_run_standing(outcomes: [
     HelperAnswered { key: "a", outcome_key: "branch-not-published" },
     HelperSpoolRefused { detail: "the request directory could not be listed" },
@@ -397,7 +397,7 @@ test fn a_mixed_run_stops_and_names_the_outcome_that_stopped_it() -> Bool {
 // AN EMPTY RUN IS COMPLETED, NOT STOPPED. A helper whose spool holds nothing has done its job; the
 // unlistable spool is a different state and is a HelperSpoolRefused outcome rather than an absence,
 // which is what keeps `nothing to do` from standing in for `I could not find out`.
-test fn an_empty_run_completes_rather_than_stopping() -> Bool {
+test fn an_empty_run_completes_rather_than_stopping() -> Bool  {
   match publication_helper_run_standing(outcomes: []) {
     HelperRunCompleted { answered: n } => n == 0
     HelperRunStopped { first: _, more: _ } => false
@@ -423,7 +423,7 @@ fn serve_unit_text() -> String {
   render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
 }
 
-test fn the_publication_unit_binds_the_credential_and_the_other_two_do_not() -> Bool {
+test fn the_publication_unit_binds_the_credential_and_the_other_two_do_not() -> Bool  {
   string_contains(
     s: publication_unit_text(),
     pattern: join(["EnvironmentFile=-", deployment_credential_env_path(names: live_spec().names) as String], ""),
@@ -432,7 +432,7 @@ test fn the_publication_unit_binds_the_credential_and_the_other_two_do_not() -> 
   && !string_contains(s: serve_unit_text(), pattern: "EnvironmentFile")
 }
 
-test fn the_credential_variable_is_named_in_no_unit_that_spawns_a_worker() -> Bool {
+test fn the_credential_variable_is_named_in_no_unit_that_spawns_a_worker() -> Bool  {
   !string_contains(s: belt_unit_text(), pattern: publication_helper_credential_env_var as String)
   && !string_contains(s: serve_unit_text(), pattern: publication_helper_credential_env_var as String)
 }
@@ -442,7 +442,7 @@ test fn the_credential_variable_is_named_in_no_unit_that_spawns_a_worker() -> Bo
 // account's host-local handle is an allocation (see DeploymentNames' header), and a witness pinning
 // the spelling would fail on any host that allocated a different one while saying nothing about the
 // property that matters.
-test fn the_publication_unit_runs_as_a_principal_the_service_units_do_not() -> Bool {
+test fn the_publication_unit_runs_as_a_principal_the_service_units_do_not() -> Bool  {
   let principal = live_spec().names.publication_principal as String
   let service_user = live_spec().service.service_user as String
   principal != service_user
@@ -454,7 +454,7 @@ test fn the_publication_unit_runs_as_a_principal_the_service_units_do_not() -> B
 // THE HELPER IS HANDED ONE ARGUMENT AND NO SPAWN ROOT. The belt unit carries a spawn workdir
 // because a tick launches provider sessions; a publication unit that carried one would be a
 // credentialed process with a tree to act on, which is the shape the boundary refuses.
-test fn the_publication_unit_carries_no_spawn_environment() -> Bool {
+test fn the_publication_unit_carries_no_spawn_environment() -> Bool  {
   !string_contains(s: publication_unit_text(), pattern: "Environment=")
   && string_contains(s: publication_unit_text(), pattern: "--function publication_helper_run_once_cli")
 }
@@ -464,14 +464,14 @@ test fn the_publication_unit_carries_no_spawn_environment() -> Bool {
 // A single directory could not carry the opposite permissions the boundary needs, so their
 // distinctness is a property the emitter and the reader must agree on rather than a detail.
 
-test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Bool {
+test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Bool  {
   publication_request_dir(instance_root: "/opt/gunbc")
     != publication_answer_dir(instance_root: "/opt/gunbc")
   && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
     != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
 }
 
-test fn two_instances_do_not_share_a_spool() -> Bool {
+test fn two_instances_do_not_share_a_spool() -> Bool  {
   publication_request_dir(instance_root: "/opt/gunbc")
     != publication_request_dir(instance_root: "/opt/gunbc-lab")
 }

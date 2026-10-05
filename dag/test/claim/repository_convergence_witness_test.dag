@@ -220,7 +220,7 @@ fn transition_state_with_refs(refs: GitRefSetObservation, head: String, reflog: 
   )
 }
 
-test fn a_ref_added_during_transition_refuses() -> Bool {
+test fn a_ref_added_during_transition_refuses() -> Bool  {
   let added_name = "refs/dispatch/added-during-transition"
   let after = transition_state_with_refs(
     refs: refs_wire(records: [
@@ -239,7 +239,7 @@ test fn a_ref_added_during_transition_refuses() -> Bool {
   }
 }
 
-test fn a_symref_retargeted_at_the_same_object_refuses() -> Bool {
+test fn a_symref_retargeted_at_the_same_object_refuses() -> Bool  {
   let alias = "refs/alias/release"
   let before = transition_state_with_refs(
     refs: refs_wire(records: [
@@ -274,21 +274,21 @@ test fn a_symref_retargeted_at_the_same_object_refuses() -> Bool {
   }
 }
 
-test fn post_index_tree_must_equal_candidate_tree() -> Bool {
+test fn post_index_tree_must_equal_candidate_tree() -> Bool  {
   match verdict_for(after: clean_after_with_coherence(coherence: RepositoryCoherenceObserved { index_tree: "old-tree", candidate_tree: "new-tree", tracked_paths: "" })) {
     ConvergenceIndexNotAtCandidateTree { candidate_tree: c, observed_tree: o } => c == "new-tree" && o == "old-tree"
     _ => false
   }
 }
 
-test fn post_tracked_content_must_equal_candidate() -> Bool {
+test fn post_tracked_content_must_equal_candidate() -> Bool  {
   match verdict_for(after: clean_after_with_coherence(coherence: RepositoryCoherenceObserved { index_tree: "new-tree", candidate_tree: "new-tree", tracked_paths: "tracked\0" })) {
     ConvergenceTrackedWorktreeNotAtCandidate { first_path: p } => p == "tracked"
     _ => false
   }
 }
 
-test fn unreadable_coherence_never_defaults_clean() -> Bool {
+test fn unreadable_coherence_never_defaults_clean() -> Bool  {
   match verdict_for(after: clean_after_with_coherence(coherence: RepositoryCoherenceUnreadable { detail: "write-tree refused" })) {
     ConvergenceCoherenceUnreadable { detail: d } => d == "write-tree refused"
     _ => false
@@ -298,7 +298,7 @@ test fn unreadable_coherence_never_defaults_clean() -> Bool {
 // THE GREEN CONTROL. Base ref advanced, dispatch ref untouched, linked worktree still bound to its
 // own branch, HEAD at the candidate, reflog grew. Without this every RED below would be satisfied by
 // a function that refuses unconditionally.
-test fn a_clean_transition_converges() -> Bool {
+test fn a_clean_transition_converges() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -312,7 +312,7 @@ test fn a_clean_transition_converges() -> Bool {
 // THE PACKED-REFS DELETION TRAP, which is the defect a wholesale `packed-refs` replacement causes.
 // The dispatch ref is simply gone from the post-state. Note the CARDINALITY IS UNCHANGED -- one ref
 // left and the base ref moved -- so a count-equality check would pass here. Identity is the check.
-test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
+test fn a_dispatch_ref_that_vanished_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -329,7 +329,7 @@ test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
 
 // A LINKED WORKTREE'S REGISTRATION DROPPED. That is somebody's in-flight dispatch attempt, and it
 // has nothing to do with this release.
-test fn a_linked_worktree_that_vanished_refuses() -> Bool {
+test fn a_linked_worktree_that_vanished_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha)]),
@@ -345,7 +345,7 @@ test fn a_linked_worktree_that_vanished_refuses() -> Bool {
 
 // A LINKED WORKTREE SILENTLY DETACHED. Present, same path, still counted -- and no longer on its
 // branch, so the attempt's commits would land nowhere. Presence is not preservation.
-test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
+test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry_detached()]),
@@ -362,7 +362,7 @@ test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
 // THE REVERSE PRESERVATION JOIN. Every pre-existing worktree remains byte-for-byte identical, but
 // a concurrent writer registered another linked worktree during convergence. A one-way join over
 // the before roster calls this preservation; the reverse pass identifies the new registration.
-test fn a_linked_worktree_added_during_transition_refuses() -> Bool {
+test fn a_linked_worktree_added_during_transition_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry(), unexpected_linked_entry()]),
@@ -379,7 +379,7 @@ test fn a_linked_worktree_added_during_transition_refuses() -> Bool {
 // THE SIGNATURE OF THE REALIZATION THIS REPLACES. HEAD reached the candidate and the reflog did not
 // grow, so whatever moved it was not git -- a file written over `refs/**` leaves exactly this trace.
 // Everything else about the post-state looks correct, which is why the check has to exist.
-test fn a_head_that_moved_without_a_reflog_entry_refuses() -> Bool {
+test fn a_head_that_moved_without_a_reflog_entry_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -396,7 +396,7 @@ test fn a_head_that_moved_without_a_reflog_entry_refuses() -> Bool {
 // THE NO-OP IS NOT THE REFLOG DEFECT, and this is the pair that keeps the check above honest. An
 // already-converged repository legitimately adds no reflog entry; refusing it would fire on the
 // healthy case. The two differ only in whether the BEFORE head was already the candidate.
-test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool {
+test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool  {
   let already = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -425,7 +425,7 @@ test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool {
 // HEAD and tracked content were already correct, but the base ref was stale. The wet sequence CASes
 // that ref to the candidate, so calling the result "no transition performed" would deny the only
 // mutation that occurred. The fixture differs from the no-op control only in the pre-state base ref.
-test fn an_already_converged_head_with_a_repaired_base_ref_reports_repair() -> Bool {
+test fn an_already_converged_head_with_a_repaired_base_ref_reports_repair() -> Bool  {
   let before = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: old_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -449,7 +449,7 @@ test fn an_already_converged_head_with_a_repaired_base_ref_reports_repair() -> B
 // THE PRIMARY IS EXEMPT AND THE EXEMPTION IS NARROW. Its head moved from old to new, which is the
 // operation's own effect, and that must not read as a rebinding. If the primary were checked like a
 // linked worktree this returns Rebound and the operation could never succeed.
-test fn the_primary_moving_is_not_a_rebinding() -> Bool {
+test fn the_primary_moving_is_not_a_rebinding() -> Bool  {
   is_completed(o: verdict_for(after: state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -463,7 +463,7 @@ test fn the_primary_moving_is_not_a_rebinding() -> Bool {
 // comparison that treated it as an empty set would find nothing missing and report success -- the
 // empty-observation narrow. This is the arm that makes ordering the observability check first
 // load-bearing rather than tidy.
-test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() -> Bool {
+test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() -> Bool  {
   let after = RepositoryState {
     refs: GitRefSetReadRefused { exit_code: 128, stderr: "not a git repository" },
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -480,7 +480,7 @@ test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() ->
 
 // HEAD SHORT OF THE CANDIDATE IS ITS OWN ARM, not folded into a generic failure: the remedy is to
 // look at why the transition did not land, which is different from every preservation fault.
-test fn a_head_short_of_the_candidate_refuses() -> Bool {
+test fn a_head_short_of_the_candidate_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()]),
@@ -500,7 +500,7 @@ test fn a_head_short_of_the_candidate_refuses() -> Bool {
 // remedies differ, so the arms must. Asserted over the DECISION rather than the wet path, because
 // reading a ref is a host effect that cannot execute in the hermetic fold -- and a distinction added
 // to fix a conflation, left with no executing evidence, would be the same failure one level in.
-test fn a_ref_that_left_the_expected_value_reads_as_a_concurrent_move() -> Bool {
+test fn a_ref_that_left_the_expected_value_reads_as_a_concurrent_move() -> Bool  {
   match base_ref_refusal_from_observation(
     base_ref: base_ref,
     expected_old: old_sha,
@@ -516,7 +516,7 @@ test fn a_ref_that_left_the_expected_value_reads_as_a_concurrent_move() -> Bool 
 // THE DISCRIMINATING PAIR. Same nonzero exit, same stderr, and the ref still holds what we expected
 // -- so whatever refused was not a concurrent writer. Fuse the arms and this returns BaseRefMoved,
 // which is the exact defect the split repairs; without this row the split would be untested.
-test fn a_ref_still_at_the_expected_value_is_not_a_concurrent_move() -> Bool {
+test fn a_ref_still_at_the_expected_value_is_not_a_concurrent_move() -> Bool  {
   match base_ref_refusal_from_observation(
     base_ref: base_ref,
     expected_old: old_sha,
@@ -532,7 +532,7 @@ test fn a_ref_still_at_the_expected_value_is_not_a_concurrent_move() -> Bool {
 
 // AN UNREADABLE REF IS NOT EVIDENCE OF ANYTHING. Reporting a move here would be the
 // empty-observation narrow -- a read that could not answer, rendered as the answer.
-test fn a_ref_that_cannot_be_read_is_not_reported_as_moved() -> Bool {
+test fn a_ref_that_cannot_be_read_is_not_reported_as_moved() -> Bool  {
   match base_ref_refusal_from_observation(
     base_ref: base_ref,
     expected_old: old_sha,
@@ -549,7 +549,7 @@ test fn a_ref_that_cannot_be_read_is_not_reported_as_moved() -> Bool {
 // HEAD at the candidate, every ref preserved, both worktrees bound as before, reflog grew -- and the
 // tree is still not the candidate, because `reset --hard` never touched the files git does not
 // track. This is the one arm where the whole rest of the adjudication says yes.
-test fn a_tree_carrying_untracked_residue_refuses() -> Bool {
+test fn a_tree_carrying_untracked_residue_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -568,7 +568,7 @@ test fn a_tree_carrying_untracked_residue_refuses() -> Bool {
 // reason the observation is a coproduct rather than the bare String that head and reflog get away
 // with. THE PAIR WITH THE WITNESS ABOVE AND THE GREEN CONTROL IS THE POINT: clean admits, residue
 // refuses, unreadable refuses, and no two of those collapse.
-test fn an_unreadable_untracked_listing_refuses_rather_than_reading_clean() -> Bool {
+test fn an_unreadable_untracked_listing_refuses_rather_than_reading_clean() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -589,7 +589,7 @@ test fn an_unreadable_untracked_listing_refuses_rather_than_reading_clean() -> B
 // THIS IS THE REPLACEMENT OBLIGATION for exempting that ref from the loss check. Exempting it and
 // stopping there would admit the branch moving anywhere at all, so the exemption and this witness
 // are one change -- delete this and the exemption becomes a hole.
-test fn a_primary_branch_left_behind_refuses() -> Bool {
+test fn a_primary_branch_left_behind_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: old_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -610,7 +610,7 @@ test fn a_primary_branch_left_behind_refuses() -> Bool {
 // moved the ref produces exactly this, which is why the law reads the newest entry rather than the
 // text. THIS WITNESS IS THE ONE THE OLD CHECK COULD NOT HAVE PASSED OR FAILED MEANINGFULLY: under
 // the previous implementation it went green while the tree had no git-performed arrival at all.
-test fn a_reflog_that_grew_toward_some_other_object_refuses() -> Bool {
+test fn a_reflog_that_grew_toward_some_other_object_refuses() -> Bool  {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
@@ -628,7 +628,7 @@ test fn a_reflog_that_grew_toward_some_other_object_refuses() -> Bool {
 // THE CLONE'S OWN origin/HEAD FOLLOWS THE BASE REF AND IS NOT A REBIND. Its object moves from old
 // to new because the base ref it targets did; its target is unchanged. This is the live srv1 shape
 // that refused a completed transition on 2026-09-04.
-test fn a_symref_targeting_the_base_ref_follows_the_transition() -> Bool {
+test fn a_symref_targeting_the_base_ref_follows_the_transition() -> Bool  {
   let origin_head = "refs/remotes/origin/HEAD"
   let before = transition_state_with_refs(
     refs: refs_wire(records: [
@@ -657,7 +657,7 @@ test fn a_symref_targeting_the_base_ref_follows_the_transition() -> Bool {
 
 // THE CONTROL: a symref whose target is NOT the base ref, whose object nevertheless moved, is still
 // a rebind -- nothing in this transition moved its target, so something else did.
-test fn a_symref_targeting_another_ref_that_moved_still_refuses() -> Bool {
+test fn a_symref_targeting_another_ref_that_moved_still_refuses() -> Bool  {
   let alias = "refs/alias/release"
   let before = transition_state_with_refs(
     refs: refs_wire(records: [

@@ -178,7 +178,7 @@ fn fixture_observations() -> List<CycleTimeObservation> {
 // which is the opposite of going red when a link joins. It now joins the refusals to
 // accepted_node_pull_links in both directions, requires the exclusion population to be EMPTY, and
 // takes its denominator from the live link roster instead of a literal copied out of the tree.
-test fn witness_cited_acceptance_pr_history_refuses_every_link_as_unsized() -> Bool {
+test fn witness_cited_acceptance_pr_history_refuses_every_link_as_unsized() -> Bool  {
   let links = accepted_node_pull_links()
   let builds = roadmap_cycle_time_observation_builds()
   let refusals = cycle_time_history_refusals(builds: builds)
@@ -231,7 +231,7 @@ test fn witness_cited_acceptance_pr_history_refuses_every_link_as_unsized() -> B
 // remains authorable and is the one that matters while the deriver is a stub: the live graph
 // REFUSES, naming its unsized nodes, rather than rendering a schedule it cannot support.
 
-test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bool {
+test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bool  {
   let a = fixture_node(id: "a")
   let b = fixture_node(id: "b")
   let c = fixture_node(id: "c")
@@ -267,7 +267,7 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
   }
 }
 
-test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
+test fn witness_worker_cap_changes_completion_lower_bound() -> Bool  {
   let a = fixture_node(id: "capacity-a")
   let b = fixture_node(id: "capacity-b")
   let c = fixture_node(id: "capacity-c")
@@ -306,7 +306,7 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
   }
 }
 
-test fn witness_invalid_worker_cap_refuses() -> Bool {
+test fn witness_invalid_worker_cap_refuses() -> Bool  {
   let n = fixture_node(id: "invalid-cap")
   match schedule_forecast(
     nodes: [n],
@@ -335,7 +335,7 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
   }
 }
 
-test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
+test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool  {
   let n = fixture_node(id: "zero-cycle")
   match schedule_forecast(
     nodes: [n],
@@ -364,7 +364,7 @@ test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
   }
 }
 
-test fn witness_empty_graph_refuses() -> Bool {
+test fn witness_empty_graph_refuses() -> Bool  {
   match schedule_forecast(
     nodes: [],
     sizings: [],
@@ -384,7 +384,7 @@ test fn witness_empty_graph_refuses() -> Bool {
 // authored form of this fixture carried NodeSizing.Unsized on the node itself; with sizing an input
 // to the fold, a node the deriver could not answer for simply has no assignment, and handing this
 // witness a cell would make the arm it matches on unreachable.
-test fn witness_unsized_node_refuses() -> Bool {
+test fn witness_unsized_node_refuses() -> Bool  {
   let n = fixture_node(id: "unsized")
   match schedule_forecast(
     nodes: [n],
@@ -417,7 +417,7 @@ test fn witness_unsized_node_refuses() -> Bool {
 // cannot exist. fixture_observations are all fixture_cell() (medium/medium), so the node is sized
 // high/small deliberately -- the shared fixture_sizings helper would hand it a calibrated cell and
 // the NoCalibrationSample assertion would become unsatisfiable.
-test fn witness_empty_calibration_cell_refuses() -> Bool {
+test fn witness_empty_calibration_cell_refuses() -> Bool  {
   let n = fixture_node(id: "missing-cell")
   match schedule_forecast(
     nodes: [n],
@@ -446,7 +446,7 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
   }
 }
 
-test fn witness_dependency_cycle_refuses() -> Bool {
+test fn witness_dependency_cycle_refuses() -> Bool  {
   let a = fixture_node(id: "cycle-a")
   let b = fixture_node(id: "cycle-b")
   match schedule_forecast(
@@ -479,7 +479,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
   }
 }
 
-test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
+test fn witness_forecast_cannot_promote_into_observation_position() -> Bool  {
   let a = fixture_node(id: "projection-a")
   match first(fixture_observations()) {
     Absent => false
@@ -609,7 +609,7 @@ fn active_node_ids_for_plan(plan: RoadmapAuthorityProjection) -> List<RoadmapNod
 // old `any` form admitted -- a second NodeUnsized arm naming a node outside the expected population,
 // which the first arm used to hide. Both halves run on fixtures, so this reds on the logic rather
 // than on whatever the live graph happens to contain today.
-test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Bool {
+test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Bool  {
   let a = fixture_node(id: "gather-a").node
   let b = fixture_node(id: "gather-b").node
   let x = fixture_node(id: "gather-x").node
@@ -633,7 +633,7 @@ test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Boo
 // at 211,628 where claim_batch measures 613,121. frontier_sets_from_live_history is not enrolled,
 // so the "cheaper" form would pay a fold the floor was giving this claim for free. The instrument
 // that decides this is the floor's own required_floor_claim_cost receipt, not claim_batch.
-test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
+test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool  {
   let plan = roadmap_authority_projection(history: roadmap_acceptance_event_history_load())
   let expected = active_node_ids_for_plan(plan: plan)
   count(expected) > 0
@@ -648,7 +648,7 @@ test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_
 // the seam that activates when the deriver starts answering: the adapter takes the derivation as a
 // parameter, so a fixture can hand node A a cell that names node B's subject and read what
 // happens. If node_sizing_adaptation ever rebinds positionally, this reds.
-test fn witness_a_cell_answered_for_another_subject_refuses() -> Bool {
+test fn witness_a_cell_answered_for_another_subject_refuses() -> Bool  {
   let a = fixture_node(id: "subject-a")
   let b = fixture_node(id: "subject-b")
   let answered_for_b = SizingDerived {
@@ -665,7 +665,7 @@ test fn witness_a_cell_answered_for_another_subject_refuses() -> Bool {
     })
 }
 
-test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool {
+test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool  {
   let a = fixture_node(id: "subject-a")
   let answered_for_a = SizingDerived {
     subject: node_sizing_subject_id(rn: a),
@@ -682,7 +682,7 @@ test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool {
 // TWO CELLS FOR ONE SUBJECT REFUSE RATHER THAN LETTING LIST ORDER PICK A WINNER. assigned_sizing
 // takes the first match, which is only correct if a subject appears at most once; nothing in a
 // List enforces that, so the fold refuses on the population before reading it.
-test fn witness_two_cells_for_one_subject_refuse_rather_than_being_ordered() -> Bool {
+test fn witness_two_cells_for_one_subject_refuse_rather_than_being_ordered() -> Bool  {
   let n = fixture_node(id: "twice-sized")
   match schedule_forecast(
     nodes: [n],

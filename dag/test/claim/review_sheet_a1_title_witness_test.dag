@@ -59,7 +59,7 @@ fn one_patch_plan(tab: NonEmptyStr) -> TabBoundWritePlan {
 }
 
 // Each writer of a qualified range emits the quoted title exactly.
-test fn each_writer_quotes_a_spaced_title_exactly() -> Bool {
+test fn each_writer_quotes_a_spaced_title_exactly() -> Bool  {
   let tab = "Buyer Review" as NonEmptyStr
   wire(range: SheetA1Range { tab: tab, origin: cell(letter: "A", row: 1), end: A1EndClosed { cell: cell(letter: "C", row: 1) } })
     == "'Buyer Review'!A1:C1"
@@ -81,7 +81,7 @@ test fn each_writer_quotes_a_spaced_title_exactly() -> Bool {
 
 // An apostrophe title reaches no wire: every writer carries the encoder's typed refusal, and the
 // plan lowering carries it as TabTitleUnquotable with the title the encoder refused.
-test fn each_writer_refuses_an_apostrophe_title() -> Bool {
+test fn each_writer_refuses_an_apostrophe_title() -> Bool  {
   let tab = "Bob's" as NonEmptyStr
   match sheet_qualified_cell(tab: tab, cell: cell(letter: "A", row: 1)) {
     A1TitleApostropheUnsupported { title: t } => (t as String) == "Bob's"
@@ -101,13 +101,13 @@ test fn each_writer_refuses_an_apostrophe_title() -> Bool {
 }
 
 // The spellings values.get returns in ValueRange.range, including the guide's Jon's_Data.
-test fn readback_accepts_the_quoted_range_google_returns() -> Bool {
+test fn readback_accepts_the_quoted_range_google_returns() -> Bool  {
   standing_text(s: a1_readback_standing(range: "'Buyer Review'!A1:C1")) == "anchored|Buyer Review|'T'!A1:C1"
     && standing_text(s: a1_readback_standing(range: "'Q3!final'!A1:C1")) == "anchored|Q3!final|'T'!A1:C1"
     && standing_text(s: a1_readback_standing(range: "'Jon's_Data'!A1:D5")) == "anchored|Jon's_Data|'T'!A1:D5"
 }
 
-test fn readback_refuses_malformed_quoting_with_a_typed_reason() -> Bool {
+test fn readback_refuses_malformed_quoting_with_a_typed_reason() -> Bool  {
   standing_text(s: a1_readback_standing(range: "'Buyer Review!A1:C1"))
     == "unreadable|A1 sheet title: unterminated quote: 'Buyer Review!A1:C1"
     && standing_text(s: a1_readback_standing(range: "'Jon''s'!A1:C1"))
@@ -116,7 +116,7 @@ test fn readback_refuses_malformed_quoting_with_a_typed_reason() -> Bool {
       == "unreadable|A1 sheet title: empty title: ''!A1:C1"
 }
 
-test fn column_letter_reader_decodes_a_bang_in_the_title() -> Bool {
+test fn column_letter_reader_decodes_a_bang_in_the_title() -> Bool  {
   value_range_includes_column_letter(range: "'Q3!final'!A2:C2", letter: "B")
     && !value_range_includes_column_letter(range: "'Q3!final'!A2:C2", letter: "D")
 }

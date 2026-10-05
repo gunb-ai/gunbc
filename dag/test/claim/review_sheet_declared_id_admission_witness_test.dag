@@ -97,7 +97,7 @@ fn candidacy(
 // lineage exists, and every defect in this lane is a conclusion assigned to a reading that had not
 // established it. The discharge is a different declaration -- "absent" -- which is a statement
 // about the world and has a kernel arm.
-test fn a_selection_beside_an_unresolved_extent_stays_unresolved() -> Bool {
+test fn a_selection_beside_an_unresolved_extent_stays_unresolved() -> Bool  {
   match candidacy(
     disposition: CurrentMarkerObservedLegacyExtentUnresolved {
       file_id: "current-A" as NonEmptyStr,
@@ -116,7 +116,7 @@ test fn a_selection_beside_an_unresolved_extent_stays_unresolved() -> Bool {
 // -- a current-marked file and a superseded-marked one -- and the operator is choosing between
 // them. Without this claim a module that rejected every selection would pass the red above while
 // making the declaration useless.
-test fn a_selection_between_two_observed_lineages_stands_for_adjudication() -> Bool {
+test fn a_selection_between_two_observed_lineages_stands_for_adjudication() -> Bool  {
   match candidacy(
     disposition: w_conflict(
       current: ["current-A"],
@@ -136,7 +136,7 @@ test fn a_selection_between_two_observed_lineages_stands_for_adjudication() -> B
 // observed lineages is a choice; naming a file nobody saw is an assertion this converge has
 // nothing to check against, and acting on it is how a run comes to write into a file it never
 // looked for.
-test fn a_selection_naming_an_unobserved_file_refuses() -> Bool {
+test fn a_selection_naming_an_unobserved_file_refuses() -> Bool  {
   match candidacy(
     disposition: w_conflict(
       current: ["current-A"],
@@ -156,7 +156,7 @@ test fn a_selection_naming_an_unobserved_file_refuses() -> Bool {
 // AN UNSETTLED LEGACY SIDE CONTRIBUTES NO IDS TO CHOOSE FROM, so a selection naming a file only
 // the unread generation could hold is refused rather than admitted on the strength of the
 // conflict arm being reached at all.
-test fn an_unsettled_legacy_side_offers_no_ids_to_select() -> Bool {
+test fn an_unsettled_legacy_side_offers_no_ids_to_select() -> Bool  {
   match candidacy(
     disposition: w_conflict(
       current: ["current-A", "current-B"],
@@ -178,7 +178,7 @@ test fn an_unsettled_legacy_side_offers_no_ids_to_select() -> Bool {
 // marker field with a different visibility. Without this claim the arm admits the selection
 // through its current-id population while the module's own law refuses the identical situation one
 // standing away.
-test fn a_selection_among_conflicting_current_files_beside_an_unsettled_extent_refuses() -> Bool {
+test fn a_selection_among_conflicting_current_files_beside_an_unsettled_extent_refuses() -> Bool  {
   match candidacy(
     disposition: w_conflict(
       current: ["current-A", "current-C"],
@@ -198,7 +198,7 @@ test fn a_selection_among_conflicting_current_files_beside_an_unsettled_extent_r
 // The same two observed current files, but the superseded extent SETTLED empty by a declaration
 // that is a statement about the world -- so there is no unread generation left to be silent about,
 // and choosing between A and C is the adjudication a declaration is for.
-test fn a_selection_among_conflicting_current_files_beside_a_settled_empty_extent_stands() -> Bool {
+test fn a_selection_among_conflicting_current_files_beside_a_settled_empty_extent_stands() -> Bool  {
   match candidacy(
     disposition: w_conflict(
       current: ["current-A", "current-C"],
@@ -215,7 +215,7 @@ test fn a_selection_among_conflicting_current_files_beside_a_settled_empty_exten
 // ONE OBSERVED LINEAGE AND A SELECTION THAT DISAGREES WITH IT. The declaration contradicts the
 // observation rather than adjudicating between lineages, and preferring the declaration there is
 // how a converge comes to act on a file nobody looked at.
-test fn a_selection_contradicting_the_only_observed_sheet_refuses() -> Bool {
+test fn a_selection_contradicting_the_only_observed_sheet_refuses() -> Bool  {
   match candidacy(
     disposition: ReviewSheetSingleLineage { file_id: "current-A" as NonEmptyStr },
     declaration: w_selection(subject: w_subject(), file_id: "elsewhere-Z"),
@@ -228,7 +228,7 @@ test fn a_selection_contradicting_the_only_observed_sheet_refuses() -> Bool {
 }
 
 // AND A SELECTION THAT AGREES WITH IT IS NOT PUNISHED FOR SAYING SOMETHING TRUE.
-test fn a_selection_agreeing_with_the_only_observed_sheet_stands() -> Bool {
+test fn a_selection_agreeing_with_the_only_observed_sheet_stands() -> Bool  {
   match candidacy(
     disposition: ReviewSheetLegacyOnlyLineage { file_id: "legacy-A" as NonEmptyStr },
     declaration: w_selection(subject: w_subject(), file_id: "legacy-A"),
@@ -255,7 +255,7 @@ fn ensure_over(disposition: ReviewSheetIdentityDisposition) -> UpsertDecision<Sp
   )
 }
 
-test fn a_legacy_only_selection_adjudicates_a_refusal_a_single_lineage_one_does_not() -> Bool {
+test fn a_legacy_only_selection_adjudicates_a_refusal_a_single_lineage_one_does_not() -> Bool  {
   let legacy_only = ReviewSheetLegacyOnlyLineage { file_id: "legacy-A" as NonEmptyStr }
   let single = ReviewSheetSingleLineage { file_id: "current-A" as NonEmptyStr }
   let ensure_refuses_legacy_only = match ensure_over(disposition: legacy_only) {
@@ -292,7 +292,7 @@ test fn a_legacy_only_selection_adjudicates_a_refusal_a_single_lineage_one_does_
 
 // A SETTLED-EMPTY IDENTITY AND A SELECTION CONTRADICT EACH OTHER OUTRIGHT, and a declaration does
 // not overrule a reading that settled.
-test fn a_selection_against_a_settled_absence_refuses() -> Bool {
+test fn a_selection_against_a_settled_absence_refuses() -> Bool  {
   match candidacy(
     disposition: ReviewSheetIdentityAbsent,
     declaration: w_selection(subject: w_subject(), file_id: "invented-A"),
@@ -303,7 +303,7 @@ test fn a_selection_against_a_settled_absence_refuses() -> Bool {
   }
 }
 
-test fn a_selection_against_an_unreadable_identity_refuses() -> Bool {
+test fn a_selection_against_an_unreadable_identity_refuses() -> Bool  {
   match candidacy(
     disposition: ReviewSheetIdentityUnreadable { cause: "files.list refused with status 403" as NonEmptyStr },
     declaration: w_selection(subject: w_subject(), file_id: "current-A"),
@@ -319,7 +319,7 @@ test fn a_selection_against_an_unreadable_identity_refuses() -> Bool {
 // A SELECTION WRITTEN ABOUT ANOTHER DRIVE IS REFUSED BEFORE THE STANDING IS EVEN CONSULTED, and
 // the standing supplied here is the one arm that WOULD admit a selection -- so the claim
 // discriminates the subject check rather than riding on a refusal that would have happened anyway.
-test fn a_selection_for_another_subject_refuses_even_where_one_would_be_admitted() -> Bool {
+test fn a_selection_for_another_subject_refuses_even_where_one_would_be_admitted() -> Bool  {
   match candidacy(
     disposition: w_conflict(
       current: ["current-A"],
@@ -339,7 +339,7 @@ test fn a_selection_for_another_subject_refuses_even_where_one_would_be_admitted
 // AN ABSENCE DECLARATION AND A MISSING FILE BOTH MEAN "NOTHING WAS SELECTED", so the ordinary
 // converge path runs. Folding either into a refusal would make every run that declared no
 // selection fail on the admission it never asked for.
-test fn an_absence_declaration_offers_no_selection() -> Bool {
+test fn an_absence_declaration_offers_no_selection() -> Bool  {
   match candidacy(
     disposition: ReviewSheetIdentityAbsent,
     declaration: OperatorDeclaredLegacyAbsent {
@@ -353,7 +353,7 @@ test fn an_absence_declaration_offers_no_selection() -> Bool {
   }
 }
 
-test fn a_missing_declaration_offers_no_selection() -> Bool {
+test fn a_missing_declaration_offers_no_selection() -> Bool  {
   match candidacy(
     disposition: ReviewSheetIdentityAbsent,
     declaration: OperatorLegacyDeclarationUnavailable {
@@ -376,7 +376,7 @@ fn w_drive_file(id: String, mime: String) -> DriveFile {
 // whose id differs from the requested one is the shape a redirect or a shortcut resolution
 // produces, and binding the readback to the id rather than to the status is the difference
 // between confirming the selection and confirming that Drive answered.
-test fn a_preflight_answering_for_a_different_file_refuses() -> Bool {
+test fn a_preflight_answering_for_a_different_file_refuses() -> Bool  {
   match admit_preflighted_file(
     file_id: "legacy-B" as NonEmptyStr,
     file: w_drive_file(id: "somewhere-else", mime: google_sheet_mime_type as String),
@@ -390,7 +390,7 @@ test fn a_preflight_answering_for_a_different_file_refuses() -> Bool {
 
 // ADOPTING A FOLDER OR A DOC AS THE REVIEW SHEET IS A SILENT WRONG ANSWER, which is why the mime
 // type is checked here for the same reason the search query carries it.
-test fn a_preflight_returning_a_non_spreadsheet_refuses() -> Bool {
+test fn a_preflight_returning_a_non_spreadsheet_refuses() -> Bool  {
   match admit_preflighted_file(
     file_id: "legacy-B" as NonEmptyStr,
     file: w_drive_file(id: "legacy-B", mime: "application/vnd.google-apps.folder"),
@@ -405,7 +405,7 @@ test fn a_preflight_returning_a_non_spreadsheet_refuses() -> Bool {
 // THE POSITIVE CONTROL FOR BOTH. An exact read that came back for the requested id, as a
 // spreadsheet, admits -- without which the two reds above would pass against a readback that
 // refused everything.
-test fn a_preflight_for_the_selected_spreadsheet_admits() -> Bool {
+test fn a_preflight_for_the_selected_spreadsheet_admits() -> Bool  {
   match admit_preflighted_file(
     file_id: "legacy-B" as NonEmptyStr,
     file: w_drive_file(id: "legacy-B", mime: google_sheet_mime_type as String),

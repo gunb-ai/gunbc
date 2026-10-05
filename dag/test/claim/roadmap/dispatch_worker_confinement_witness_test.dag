@@ -11,7 +11,7 @@ fn has_property(props: List<String>, needle: String) -> Bool {
   any(props, p => string_contains(s: p, pattern: needle))
 }
 
-test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
+test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool  {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds)
   has_property(props: props, needle: "ProtectSystem=strict")
@@ -26,7 +26,7 @@ test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
 // prepare list: measured 2026-09-04, zero of twelve srv1 attempt directories and zero of thirty srv2
 // attempt directories had verification/, every verify pass refused with ENOENT, and so verification
 // had never run anywhere. Asserted through the actuator's own projection, not a literal.
-test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_directory() -> Bool {
+test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_directory() -> Bool  {
   let instance = srv2_deploy_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
@@ -48,7 +48,7 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
 // DISCRIMINATING: a successful worker's unit must stay observable after exit, and the observer must
 // read the exit from SubState rather than ActiveState (which stays active under RemainAfterExit).
 // Before 2026-09-05 a unit that exited 0 was collected and read as never having run.
-test fn the_worker_unit_outlives_its_process_and_substate_decides_exit() -> Bool {
+test fn the_worker_unit_outlives_its_process_and_substate_decides_exit() -> Bool  {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds)
   has_property(props: props, needle: "RemainAfterExit=yes")
@@ -60,7 +60,7 @@ test fn the_worker_unit_outlives_its_process_and_substate_decides_exit() -> Bool
 
 // DISCRIMINATING: the reviewer may write only its review directory, and it runs from the repo root
 // (the worktree as cwd made `gunbc run` refuse its own source roots, exit 101).
-test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_repo_root() -> Bool {
+test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_repo_root() -> Bool  {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review")
   has_property(props: props, needle: "ReadWritePaths=/state/a/review")

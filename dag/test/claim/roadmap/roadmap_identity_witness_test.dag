@@ -43,24 +43,24 @@ fn declared_identities() -> List<String> {
   declared_roadmap_nodes() |> map(n => n.identity as String)
 }
 
-test fn every_declared_node_carries_an_identity() -> Bool {
+test fn every_declared_node_carries_an_identity() -> Bool  {
   all(declared_identities(), i => !(i == ""))
     && count(declared_identities()) == count(declared_roadmap_nodes())
 }
 
-test fn identities_are_unique_across_the_registry() -> Bool {
+test fn identities_are_unique_across_the_registry() -> Bool  {
   distinct_identity_count() == identity_count()
 }
 
-test fn active_slugs_are_unique() -> Bool {
+test fn active_slugs_are_unique() -> Bool  {
   distinct_active_slug_count() == active_identity_count()
 }
 
-test fn index_is_total_over_declared_nodes() -> Bool {
+test fn index_is_total_over_declared_nodes() -> Bool  {
   active_identity_count() == count(declared_roadmap_nodes())
 }
 
-test fn resolution_is_exactly_one_not_first_pick() -> Bool {
+test fn resolution_is_exactly_one_not_first_pick() -> Bool  {
   all(roadmap_active_identities(), r =>
     match resolve_slug(slug: record_slug(r: r)) {
       IdentityResolved { identity } => (identity as String) == record_identity(r: r)
@@ -69,7 +69,7 @@ test fn resolution_is_exactly_one_not_first_pick() -> Bool {
     })
 }
 
-test fn an_unknown_slug_is_unknown_not_a_plausible_first_row() -> Bool {
+test fn an_unknown_slug_is_unknown_not_a_plausible_first_row() -> Bool  {
   match resolve_slug(slug: "no-such-roadmap-node") {
     IdentityUnknown { slug } => slug == "no-such-roadmap-node"
     IdentityResolved { identity: _ } => false
@@ -93,7 +93,7 @@ fn renamed(n: RoadmapNode) -> RoadmapNode {
   }
 }
 
-test fn identity_survives_a_slug_rename() -> Bool {
+test fn identity_survives_a_slug_rename() -> Bool  {
   match declared_roadmap_nodes() |> first {
     Present { value: n } =>
       (renamed(n: n).identity as String) == (n.identity as String)
@@ -110,11 +110,11 @@ test fn identity_survives_a_slug_rename() -> Bool {
 // tombstoned record reports itself inactive, load-bearing since the first row. Neither asserts a
 // count, because pinning one would red on the next legitimate retirement.
 
-test fn registry_is_active_plus_tombstoned() -> Bool {
+test fn registry_is_active_plus_tombstoned() -> Bool  {
   identity_count() == active_identity_count() + count(roadmap_tombstoned_identities())
 }
 
-test fn tombstoned_records_are_not_active() -> Bool {
+test fn tombstoned_records_are_not_active() -> Bool  {
   all(roadmap_tombstoned_identities(), r => !record_is_active(r: r))
     && all(roadmap_active_identities(), r => record_is_active(r: r))
 }

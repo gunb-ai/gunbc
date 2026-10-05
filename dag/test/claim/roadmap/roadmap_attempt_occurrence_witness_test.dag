@@ -59,7 +59,7 @@ fn census_rows(population: List<DispatchAttemptOccurrence>) -> List<LaunchCensus
 // matching tmux sessions. The occurrence classifies against the durable record, the census row
 // carries the real process, the launch gate refuses AlreadyLive for the node, and the occupied
 // count is 1 -- the two facts the tmux-only census could not see.
-test fn a_systemd_held_attempt_is_live_and_occupies() -> Bool {
+test fn a_systemd_held_attempt_is_live_and_occupies() -> Bool  {
   let population = occurrence_population(
     containers: [running_unit(unit: "gunbc-attempt-node-a-cd172fe81b806160.service")],
     records: [record(node: "node-a", attempt: "cd172fe81b806160")],
@@ -93,7 +93,7 @@ test fn a_systemd_held_attempt_is_live_and_occupies() -> Bool {
 
 // THE MIXED POPULATION: a tmux-held attempt and a systemd-held attempt each classify and each
 // occupy, and the producer conserves -- every raw container lands in exactly one arm.
-test fn a_mixed_population_classifies_each_and_conserves() -> Bool {
+test fn a_mixed_population_classifies_each_and_conserves() -> Bool  {
   let containers = [
     running_tmux(session: "gunbc-dispatch-node-b"),
     running_unit(unit: "gunbc-attempt-node-a-cd172fe81b806160.service"),
@@ -118,7 +118,7 @@ test fn a_mixed_population_classifies_each_and_conserves() -> Bool {
 // AN UNREAD OCCURRENCE OCCUPIES CONSERVATIVELY AND REFUSES ITS NODE: the process read is
 // unobserved, so the census row counts against capacity and the gate refuses liveness-unobserved
 // rather than admitting a second attempt beside one it cannot read.
-test fn an_unread_occurrence_occupies_and_refuses_its_node() -> Bool {
+test fn an_unread_occurrence_occupies_and_refuses_its_node() -> Bool  {
   let population = occurrence_population(
     containers: [ObservedContainerRow {
       container: AttemptContainerSystemdUnit { unit: "gunbc-attempt-node-a-cd172fe81b806160.service" },
@@ -140,7 +140,7 @@ test fn an_unread_occurrence_occupies_and_refuses_its_node() -> Bool {
 
 // THE ORPHAN: a live unit whose name parses but no durable record establishes -- unclassified,
 // visible, occupying, its node still named so a launch for that node refuses.
-test fn an_orphan_unit_is_unclassified_visible_and_occupying() -> Bool {
+test fn an_orphan_unit_is_unclassified_visible_and_occupying() -> Bool  {
   let population = occurrence_population(
     containers: [running_unit(unit: "gunbc-attempt-node-c-deadbeefdeadbeef.service")],
     records: [],
@@ -161,7 +161,7 @@ test fn an_orphan_unit_is_unclassified_visible_and_occupying() -> Bool {
 // MALFORMED IS OURS-SHAPED BUT UNPARSEABLE, and foreign is not ours: both are arms, neither is
 // dropped, the malformed row still occupies (its process read is real), and the foreign container
 // never reaches the census.
-test fn malformed_and_foreign_containers_are_arms_never_drops() -> Bool {
+test fn malformed_and_foreign_containers_are_arms_never_drops() -> Bool  {
   let population = occurrence_population(
     containers: [
       running_unit(unit: "gunbc-attempt-node-d-not-hex.service"),
@@ -184,7 +184,7 @@ test fn malformed_and_foreign_containers_are_arms_never_drops() -> Bool {
 
 // A HISTORICAL ATTEMPT (durable record, no live container) is population-visible with no census
 // row: it occupies nothing and refuses nothing.
-test fn a_records_only_occurrence_is_visible_but_never_a_census_row() -> Bool {
+test fn a_records_only_occurrence_is_visible_but_never_a_census_row() -> Bool  {
   let population = occurrence_population(
     containers: [],
     records: [record(node: "node-old", attempt: "eeeeeeeeeeeeeeee")],
@@ -202,7 +202,7 @@ test fn a_records_only_occurrence_is_visible_but_never_a_census_row() -> Bool {
 // LAW 3: the occurrence reads its spawn identity from the persisted record, verbatim. There is no
 // selection input to this producer at all -- the control is that the classified occurrence carries
 // the record's identity string unchanged.
-test fn the_spawn_identity_is_the_persisted_record_never_a_current_selection() -> Bool {
+test fn the_spawn_identity_is_the_persisted_record_never_a_current_selection() -> Bool  {
   let population = occurrence_population(
     containers: [running_unit(unit: "gunbc-attempt-node-a-cd172fe81b806160.service")],
     records: [record(node: "node-a", attempt: "cd172fe81b806160")],
@@ -216,7 +216,7 @@ test fn the_spawn_identity_is_the_persisted_record_never_a_current_selection() -
 
 // THE PARSE ITSELF: the unit identity split reads the key from the right over node ids that carry
 // dashes, reads the supervisor turn suffix, and refuses shapes that are neither.
-test fn the_unit_identity_parse_reads_dashed_nodes_and_the_turn_suffix() -> Bool {
+test fn the_unit_identity_parse_reads_dashed_nodes_and_the_turn_suffix() -> Bool  {
   match occurrence_unit_identity(unit: "gunbc-attempt-shell-dag-cron-entry-line-builder-21f8ff0a982557dc.service") {
     OccurrenceIdentityParsed { node, attempt } =>
       node == "shell-dag-cron-entry-line-builder" && attempt == "21f8ff0a982557dc"

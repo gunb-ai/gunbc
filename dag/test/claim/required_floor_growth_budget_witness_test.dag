@@ -18,7 +18,7 @@ import v2.workflow.required_floor {
 // The exact three-arm list is load-bearing: adding roster identities has no default payment,
 // and none of the candidate payments is selected merely by appearing in the carrier. The
 // measured-margin arm is deliberately RED until a dated instrument changes the standing.
-test fn required_floor_growth_is_budget_bound_without_choosing_a_payment() -> Bool {
+test fn required_floor_growth_is_budget_bound_without_choosing_a_payment() -> Bool  {
   match required_floor_growth_budget_standing {
     RequiredFloorGrowthBudgetBound {
       limiter: NoMeasuredMarginAtRunnerLimiter,

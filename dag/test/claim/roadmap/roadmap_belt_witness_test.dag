@@ -75,7 +75,7 @@ fn tears_down_node(r: BeltReconcile, id: String) -> Bool {
   any(belt_member_ids(ms: r.teardowns), x => x == id)
 }
 
-test fn witness_reconcile_spawns_ready_missing_session() -> Bool {
+test fn witness_reconcile_spawns_ready_missing_session() -> Bool  {
   let f = frontier_ready(ids: ["a", "b"])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [], cap: cap(n: 3))
   belt_reconcile_upsert_count(r: r) == 2
@@ -85,7 +85,7 @@ test fn witness_reconcile_spawns_ready_missing_session() -> Bool {
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
-test fn witness_reconcile_noop_when_ready_and_live() -> Bool {
+test fn witness_reconcile_noop_when_ready_and_live() -> Bool  {
   let f = frontier_ready(ids: ["a"])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_upsert_count(r: r) == 0
@@ -93,7 +93,7 @@ test fn witness_reconcile_noop_when_ready_and_live() -> Bool {
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
-test fn witness_reconcile_reaps_owned_done_session() -> Bool {
+test fn witness_reconcile_reaps_owned_done_session() -> Bool  {
   let f = frontier_ready(ids: ["a"])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1
@@ -103,13 +103,13 @@ test fn witness_reconcile_reaps_owned_done_session() -> Bool {
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
-test fn witness_reconcile_reaps_drifted_owned_session() -> Bool {
+test fn witness_reconcile_reaps_drifted_owned_session() -> Bool  {
   let f = frontier_ready(ids: [])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
 }
 
-test fn witness_r5_refuses_foreign_teardown() -> Bool {
+test fn witness_r5_refuses_foreign_teardown() -> Bool  {
   let f = frontier_ready(ids: ["a"])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 0
@@ -118,7 +118,7 @@ test fn witness_r5_refuses_foreign_teardown() -> Bool {
     && belt_reconcile_upsert_count(r: r) == 1
 }
 
-test fn witness_r5_refuses_nameonly_teardown() -> Bool {
+test fn witness_r5_refuses_nameonly_teardown() -> Bool  {
   let f = frontier_ready(ids: [])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 0 && belt_reconcile_refusal_count(r: r) == 1
@@ -128,7 +128,7 @@ test fn witness_r5_refuses_nameonly_teardown() -> Bool {
 // capacity; capacity is the launch admission's gate, so the third row here reaches the admission and
 // receives a typed LaunchNoCapacity there (test.claim.roadmap.roadmap_launch_admission_witness
 // witness_three_candidates_one_slot_all_reach_admission) instead of vanishing into a count.
-test fn witness_reconcile_returns_every_upsert_regardless_of_capacity() -> Bool {
+test fn witness_reconcile_returns_every_upsert_regardless_of_capacity() -> Bool  {
   let f = frontier_ready(ids: ["a", "b", "c"])
   let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [], cap: cap(n: 1))
   belt_reconcile_upsert_count(r: r) == 3 && spawns_node(r: r, id: "c")
@@ -137,7 +137,7 @@ test fn witness_reconcile_returns_every_upsert_regardless_of_capacity() -> Bool 
 // RLM-1 red control (b) at the reconcile layer: ManualReady still PLANS -- the departed member is torn
 // down and the ready-not-observed member is planned as an upsert for the tick's admission to refuse --
 // so the mode is distinguishable from Paused on the reconcile axis and the reap arm continues.
-test fn witness_reconcile_manual_ready_still_reaps_and_plans() -> Bool {
+test fn witness_reconcile_manual_ready_still_reaps_and_plans() -> Bool  {
   let f = frontier_ready(ids: ["a"])
   let r = belt_reconcile(state: ManualReady, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1
@@ -146,7 +146,7 @@ test fn witness_reconcile_manual_ready_still_reaps_and_plans() -> Bool {
     && spawn_mode_label(m: r.mode) == "manual_ready"
 }
 
-test fn witness_reconcile_paused_no_actions() -> Bool {
+test fn witness_reconcile_paused_no_actions() -> Bool  {
   let f = frontier_ready(ids: ["a", "b"])
   let r = belt_reconcile(state: Paused, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_upsert_count(r: r) == 0
@@ -154,7 +154,7 @@ test fn witness_reconcile_paused_no_actions() -> Bool {
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
-test fn witness_reconcile_status_json_shape() -> Bool {
+test fn witness_reconcile_status_json_shape() -> Bool  {
   let f = frontier_ready(ids: ["a"])
   let j = belt_reconcile_status_json(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
   string_contains(s: j, pattern: "roadmap-belt-reconcile/v1")

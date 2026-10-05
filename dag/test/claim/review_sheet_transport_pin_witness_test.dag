@@ -32,11 +32,11 @@ import gunbc.review_sheet_drive_converge {
 // a_pin_claim_compares_two_copies_while_a_third_drifts, and its ceiling is construction -- a config
 // parse that evaluates a declaration reference -- not a better claim over this shape.
 
-test fn sheets_token_env_matches_the_configured_literal() -> Bool {
+test fn sheets_token_env_matches_the_configured_literal() -> Bool  {
   sheets_token_env == "GUNBC_REVIEW_SHEET_TOKEN"
 }
 
-test fn drive_and_sheets_read_one_credential() -> Bool {
+test fn drive_and_sheets_read_one_credential() -> Bool  {
   drive_token_env == sheets_token_env
 }
 
@@ -45,7 +45,7 @@ test fn drive_and_sheets_read_one_credential() -> Bool {
 // body builder emits as syntax, and no claim here can read it: the write side is asserted by a
 // human reading two lines, not by execution. Saying so is the point -- a claim that implied it
 // covered both sides would be worse than this one, because it would be believed.
-test fn search_query_carries_the_declared_property_key() -> Bool {
+test fn search_query_carries_the_declared_property_key() -> Bool  {
   string_contains(
     s: review_sheet_search_query(marker_value: "ci-prospect-sheet"),
     pattern: review_sheet_marker_property_key as String,

@@ -201,7 +201,7 @@ fn observed_spreadsheet(reading: FormulaWholeTabReading) -> String {
 // its fields read. The fixture tab is the tab the fixture range names, the fixture omits values
 // (so the judgement is EMPTY and the carrier is minted), and the observation binds the spreadsheet
 // it was asked about.
-test fn the_mint_observes_the_hermetic_empty_tab_binding_spreadsheet_and_tab() -> Bool {
+test fn the_mint_observes_the_hermetic_empty_tab_binding_spreadsheet_and_tab() -> Bool  {
   let reading = observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: whole_tab(tab: fixture_tab()))
   observed_tab(reading: reading) == fixture_tab()
     && observed_spreadsheet(reading: reading) == (w_spreadsheet as String)
@@ -245,7 +245,7 @@ fn authorized_span(plan: HeaderInitPlan) -> String {
 // the schema from validate_header_schema, the authorisation from plan_header_init. Its range is the
 // codec's quoted spelling of the fixture tab over A1:D1, and its cells are the validated header
 // names in order, identity first.
-test fn an_empty_tab_and_a_valid_schema_authorise_the_header_row_at_a1_to_the_last_header() -> Bool {
+test fn an_empty_tab_and_a_valid_schema_authorise_the_header_row_at_a1_to_the_last_header() -> Bool  {
   plan_over_fixture(s: four_wide_schema(), render: p => authorized_range(plan: p)) == "'hermetic-mock-tab'!A1:D1"
     && plan_over_fixture(s: four_wide_schema(), render: p => authorized_span(plan: p)) == "A1:D1"
     && plan_over_fixture(s: four_wide_schema(), render: p => authorized_cells(plan: p)) == "Listing|Title|Price|Decision"
@@ -261,7 +261,7 @@ fn lowered(plan: HeaderInitPlan) -> String {
   }
 }
 
-test fn the_authorization_lowers_to_one_row_major_value_range_write() -> Bool {
+test fn the_authorization_lowers_to_one_row_major_value_range_write() -> Bool  {
   plan_over_fixture(s: four_wide_schema(), render: p => lowered(plan: p))
     == "'hermetic-mock-tab'!A1:D1 ROWS 1 Listing|Title|Price|Decision"
 }
@@ -275,7 +275,7 @@ fn unaddressable(plan: HeaderInitPlan) -> String {
 }
 
 // The unaddressable arm through the planner over the executed observation: 27 names, 26 letters.
-test fn a_schema_wider_than_the_enrolled_letters_is_unaddressable_not_truncated() -> Bool {
+test fn a_schema_wider_than_the_enrolled_letters_is_unaddressable_not_truncated() -> Bool  {
   plan_over_fixture(s: twenty_seven_wide_schema(), render: p => unaddressable(plan: p)) == "hermetic-mock-tab 27 26"
 }
 
@@ -340,17 +340,17 @@ fn column_bounded_request(tab: String) -> SheetA1Range {
 
 // A bounded request over the fixture tab -- the tab whose read WOULD succeed -- is refused with
 // the bounded cause naming that request: emptiness of A1:E50 says nothing about row 51.
-test fn a_bounded_request_is_refused_with_the_bounded_cause() -> Bool {
+test fn a_bounded_request_is_refused_with_the_bounded_cause() -> Bool  {
   refusal_of(reading: observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: bounded_request(tab: fixture_tab())))
     == "request-rejected bounded hermetic-mock-tab"
 }
 
-test fn a_column_bounded_request_is_refused_with_the_column_bounded_cause() -> Bool {
+test fn a_column_bounded_request_is_refused_with_the_column_bounded_cause() -> Bool  {
   refusal_of(reading: observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: column_bounded_request(tab: fixture_tab())))
     == "request-rejected column-bounded hermetic-mock-tab"
 }
 
-test fn a_tab_the_codec_cannot_encode_is_refused_before_the_read() -> Bool {
+test fn a_tab_the_codec_cannot_encode_is_refused_before_the_read() -> Bool  {
   refusal_of(reading: observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: whole_tab(tab: "Jon's Data")))
     == "request-rejected title-not-encodable Jon's Data"
 }
@@ -358,14 +358,14 @@ test fn a_tab_the_codec_cannot_encode_is_refused_before_the_read() -> Bool {
 // THE RETURNED TAB IS CHECKED AGAINST THE REQUESTED ONE, ON THE EXECUTED ROUTE: the fixture answers
 // with its own tab whatever was asked, so asking for another tab is exactly a Sheets answer about
 // the wrong tab, and the mint refuses naming both.
-test fn the_mint_refuses_a_returned_tab_that_differs_from_the_requested_one() -> Bool {
+test fn the_mint_refuses_a_returned_tab_that_differs_from_the_requested_one() -> Bool  {
   refusal_of(reading: observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: whole_tab(tab: "Buyer Review")))
     == "tab-mismatch requested=Buyer Review returned=hermetic-mock-tab"
 }
 
 // This measures formula_whole_tab_render_option's VALUE and nothing about the call site; see the
 // module note.
-test fn the_render_option_the_mint_passes_is_formula() -> Bool {
+test fn the_render_option_the_mint_passes_is_formula() -> Bool  {
   match formula_whole_tab_render_option() {
     RenderFormula => true
     RenderFormattedValue => false
@@ -388,7 +388,7 @@ fn reading_kind(r: FormulaWholeTabReading) -> String {
 // The first cut's M20 -- the occupied arm minting the carrier -- survived because this boundary
 // was never executed against an occupied admission; now it is, with the spreadsheet, the tab and
 // the located cell all required to come through, and the empty admission still minting.
-test fn an_occupied_admission_never_becomes_the_carrier() -> Bool {
+test fn an_occupied_admission_never_becomes_the_carrier() -> Bool  {
   reading_kind(r: formula_reading_from_admission(
     spreadsheet_id: w_spreadsheet,
     admission: FormulaGridOccupied {
@@ -420,42 +420,42 @@ fn admission_text(a: FormulaGridAdmission) -> String {
   }
 }
 
-test fn a_columns_major_grid_is_refused_naming_columns_major() -> Bool {
+test fn a_columns_major_grid_is_refused_naming_columns_major() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "'Review'!A1:B2", dimension: Present { value: "COLUMNS" }, rows: [["", ""]]),
   )) == "not-row-major columns"
 }
 
-test fn an_unrecognised_major_dimension_is_refused_naming_the_spelling() -> Bool {
+test fn an_unrecognised_major_dimension_is_refused_naming_the_spelling() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "'Review'!A1:B2", dimension: Present { value: "DIAGONAL" }, rows: [["", ""]]),
   )) == "not-row-major unrecognised DIAGONAL"
 }
 
-test fn an_unreadable_read_is_refused_carrying_its_cause() -> Bool {
+test fn an_unreadable_read_is_refused_carrying_its_cause() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: ValuesUnreadable { cause: "values.get refused with status 403: forbidden" as NonEmptyStr },
   )) == "unreadable values.get refused with status 403: forbidden"
 }
 
-test fn an_unqualified_returned_range_is_refused_rather_than_read_as_the_first_tab() -> Bool {
+test fn an_unqualified_returned_range_is_refused_rather_than_read_as_the_first_tab() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "A1:B2", dimension: Absent, rows: [["", ""]]),
   )) == "unqualified A1:B2"
 }
 
-test fn a_malformed_returned_range_is_refused_with_the_codecs_cause() -> Bool {
+test fn a_malformed_returned_range_is_refused_with_the_codecs_cause() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "'Review!A1:B2", dimension: Absent, rows: [["", ""]]),
   )) == "range-refused 'Review!A1:B2 unterminated"
 }
 
-test fn the_admission_checks_the_tab_before_the_grid_shape() -> Bool {
+test fn the_admission_checks_the_tab_before_the_grid_shape() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "'Other'!A1:B2", dimension: Present { value: "COLUMNS" }, rows: [["", ""]]),
@@ -464,7 +464,7 @@ test fn the_admission_checks_the_tab_before_the_grid_shape() -> Bool {
 
 // Both spellings Sheets uses for a tab are the same tab: the qualified A1:Z1000 form and the bare
 // quoted title. ROWS spelled out and ROWS omitted are both row-major.
-test fn a_qualified_or_whole_sheet_returned_range_naming_the_requested_tab_is_admitted() -> Bool {
+test fn a_qualified_or_whole_sheet_returned_range_naming_the_requested_tab_is_admitted() -> Bool  {
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "'Review'!A1:Z1000", dimension: Present { value: "ROWS" }, rows: [["", ""], ["x"]]),
@@ -487,32 +487,32 @@ fn scan_text(rows: List<List<String>>) -> String {
 // THE DISCRIMINATING SPECIMEN FOR gunbc#11613 FINDING 2. Under FORMATTED_VALUE this cell reads back
 // as "" and is indistinguishable from a blank; under FORMULA rendering it is its formula text, so
 // the FORMULA grid is occupied at A1, the located cell carries the formula, and NO carrier is minted.
-test fn a_blank_rendering_formula_is_occupied_at_its_cell_under_formula_rendering() -> Bool {
+test fn a_blank_rendering_formula_is_occupied_at_its_cell_under_formula_rendering() -> Bool  {
   scan_text(rows: [["=IF(TRUE,\"\",\"\")"]]) == "occupied Review r1c0==IF(TRUE,\"\",\"\")"
 }
 
 // The same grid as FORMATTED_VALUE would have returned it, and as the parked planner would have
 // read it: empty. This is the control that the specimen above discriminates on the RENDERING and
 // not on some other property of the cell.
-test fn the_formatted_reading_of_that_cell_would_have_read_as_empty() -> Bool {
+test fn the_formatted_reading_of_that_cell_would_have_read_as_empty() -> Bool  {
   scan_text(rows: [[""]]) == "empty Review"
     && scan_text(rows: []) == "empty Review"
 }
 
-test fn whitespace_is_content() -> Bool {
+test fn whitespace_is_content() -> Bool  {
   scan_text(rows: [[" "]]) == "occupied Review r1c0= "
 }
 
 // A blank row 1 over data: the parked planner's headers == [] test would have called this empty.
-test fn a_blank_row_one_over_data_is_occupied_at_the_data_cell() -> Bool {
+test fn a_blank_row_one_over_data_is_occupied_at_the_data_cell() -> Bool  {
   scan_text(rows: [["", ""], ["", "x"]]) == "occupied Review r2c1=x"
 }
 
-test fn content_past_column_a_is_content() -> Bool {
+test fn content_past_column_a_is_content() -> Bool  {
   scan_text(rows: [["", "", "z"]]) == "occupied Review r1c2=z"
 }
 
-test fn the_first_occupied_cell_is_the_first_in_reading_order() -> Bool {
+test fn the_first_occupied_cell_is_the_first_in_reading_order() -> Bool  {
   scan_text(rows: [["", "b", "c"], ["a"]]) == "occupied Review r1c1=b"
 }
 
@@ -531,7 +531,7 @@ fn plan_text(p: HeaderInitPlan) -> String {
 
 // A refused reading is carried through as the planner's own refusal arm with the cause intact; it
 // is never planned as a write, whatever the schema.
-test fn a_refused_reading_is_carried_through_the_planner_with_its_cause() -> Bool {
+test fn a_refused_reading_is_carried_through_the_planner_with_its_cause() -> Bool  {
   match minted(s: four_wide_schema()) {
     SchemaMintRefused => false
     SchemaMinted { validated: v } =>
@@ -547,7 +547,7 @@ test fn a_refused_reading_is_carried_through_the_planner_with_its_cause() -> Boo
 // THE PLANNER'S OCCUPIED ARM, EXECUTED WITH A SUPPLIED READING -- the arm mutation M14 showed was
 // unmeasured while the observation carried a grid. The reading is the unsealed located arm, so a
 // witness can write it; the planner reports the located cell and mints nothing, whatever the schema.
-test fn an_occupied_reading_is_planned_as_occupied_never_as_a_write() -> Bool {
+test fn an_occupied_reading_is_planned_as_occupied_never_as_a_write() -> Bool  {
   match minted(s: four_wide_schema()) {
     SchemaMintRefused => false
     SchemaMinted { validated: v } =>
@@ -576,7 +576,7 @@ fn span_of(s: ReviewSheetSchema) -> String {
   }
 }
 
-test fn the_header_row_span_runs_from_a1_to_the_last_header_on_row_one() -> Bool {
+test fn the_header_row_span_runs_from_a1_to_the_last_header_on_row_one() -> Bool  {
   span_of(s: four_wide_schema()) == "A1:D1"
     && span_of(s: twenty_seven_wide_schema()) == "unaddressable 27/26"
 }

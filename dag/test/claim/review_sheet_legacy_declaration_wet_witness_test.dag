@@ -158,7 +158,7 @@ fn decision_over_declaration_file(
 // field, with the superseded generation unexamined. The replaced fold answered Apply here. The
 // file is really absent -- the temp path is removed before the read -- so the refusal comes from
 // the production reader failing to find it, not from a supplied value.
-test fn an_absent_declaration_beside_an_empty_current_search_refuses_the_create_by_real_execution() -> Bool {
+test fn an_absent_declaration_beside_an_empty_current_search_refuses_the_create_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: "",
     write_the_file: false,
@@ -176,7 +176,7 @@ test fn an_absent_declaration_beside_an_empty_current_search_refuses_the_create_
 // THE POSITIVE CONTROL FOR IT. The same empty current search with a real, subject-matching
 // declaration on disk DOES authorize the create. Without this claim a converge that refused
 // everything would pass the red above and never create anything again.
-test fn a_matching_declaration_beside_an_empty_current_search_authorizes_the_create_by_real_execution() -> Bool {
+test fn a_matching_declaration_beside_an_empty_current_search_authorizes_the_create_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: matching_declaration_text(),
     write_the_file: true,
@@ -194,7 +194,7 @@ test fn a_matching_declaration_beside_an_empty_current_search_authorizes_the_cre
 // A DECLARATION FOR ANOTHER DRIVE IS NOT EVIDENCE ABOUT THIS ONE, and the refusal comes from the
 // kernel's subject comparison rather than from anything this reader decided. The file is real,
 // well-formed and complete; only its drive_id differs.
-test fn a_declaration_naming_another_drive_refuses_by_real_execution() -> Bool {
+test fn a_declaration_naming_another_drive_refuses_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: declaration_text(
       drive_id: "some-other-drive",
@@ -214,7 +214,7 @@ test fn a_declaration_naming_another_drive_refuses_by_real_execution() -> Bool {
 // A DECLARATION WRITTEN ABOUT AN EARLIER MARKER GENERATION MUST NOT ANSWER FOR THIS ONE. Both
 // marker fields are part of the subject precisely so a second relocation is decidable rather than
 // invisible; this file declares the pre-relocation pair and is refused on that alone.
-test fn a_declaration_about_another_marker_generation_refuses_by_real_execution() -> Bool {
+test fn a_declaration_about_another_marker_generation_refuses_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: declaration_text(
       drive_id: w_drive() as String,
@@ -234,7 +234,7 @@ test fn a_declaration_about_another_marker_generation_refuses_by_real_execution(
 // A CURRENT-MARKED FILE BESIDE AN UNSETTLED EXTENT IS NOT AN ADOPTION. It writes nothing, so it
 // looks harmless; reporting it as converged asserts a single lineage nobody established, which is
 // what let a duplicate be adopted while the original went dark.
-test fn a_current_hit_without_a_declaration_refuses_rather_than_adopting_by_real_execution() -> Bool {
+test fn a_current_hit_without_a_declaration_refuses_rather_than_adopting_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: "",
     write_the_file: false,
@@ -252,7 +252,7 @@ test fn a_current_hit_without_a_declaration_refuses_rather_than_adopting_by_real
 // AND THE STEADY STATE STILL CONVERGES. With the declaration present, the same current hit is the
 // single lineage and the converge adopts it without writing -- the live behaviour the operator
 // exercised, preserved rather than re-litigated.
-test fn a_current_hit_with_a_matching_declaration_adopts_without_writing_by_real_execution() -> Bool {
+test fn a_current_hit_with_a_matching_declaration_adopts_without_writing_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: matching_declaration_text(),
     write_the_file: true,
@@ -267,7 +267,7 @@ test fn a_current_hit_with_a_matching_declaration_adopts_without_writing_by_real
 
 // A MALFORMED DECLARATION IS NOT A MISSING ONE AND IS NOT AN ABSENT EXTENT. It names the member
 // that failed, because an operator repairing the file by hand is the whole audience for the text.
-test fn a_declaration_missing_its_basis_refuses_and_names_the_member_by_real_execution() -> Bool {
+test fn a_declaration_missing_its_basis_refuses_and_names_the_member_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: "{\n  \"drive_id\": \"drive-1\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"absent\"\n}\n",
     write_the_file: true,
@@ -283,7 +283,7 @@ test fn a_declaration_missing_its_basis_refuses_and_names_the_member_by_real_exe
 // AN UNADMITTED EXTENT VALUE REFUSES RATHER THAN BEING READ AS THE NEAREST ADMITTED ONE. "probably
 // absent" is not "absent", and folding it would be exactly the conclusion-from-a-reading-that-did-
 // not-establish-it failure this lane exists to close.
-test fn an_unadmitted_extent_value_refuses_by_real_execution() -> Bool {
+test fn an_unadmitted_extent_value_refuses_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: "{\n  \"drive_id\": \"drive-1\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"probably absent\",\n  \"basis\": \"a hunch\"\n}\n",
     write_the_file: true,
@@ -298,7 +298,7 @@ test fn an_unadmitted_extent_value_refuses_by_real_execution() -> Bool {
 
 // OBSERVE-ONLY STILL REFUSES A CREATE IT WOULD OTHERWISE AUTHORIZE, so the policy arm was not lost
 // when the decision moved onto the standing.
-test fn observe_only_refuses_a_create_the_standing_would_admit_by_real_execution() -> Bool {
+test fn observe_only_refuses_a_create_the_standing_would_admit_by_real_execution() -> Bool  {
   match decision_over_declaration_file(
     text: matching_declaration_text(),
     write_the_file: true,
@@ -344,7 +344,7 @@ fn candidacy_over_declaration_file(
 // between the file bytes and the candidacy is production code: the JSON reader, the subject
 // transcription, the LegacyFileSelection construction and the reconciliation. Nothing here
 // supplies a selection.
-test fn a_selected_declaration_file_adjudicates_an_observed_conflict_by_real_execution() -> Bool {
+test fn a_selected_declaration_file_adjudicates_an_observed_conflict_by_real_execution() -> Bool  {
   match candidacy_over_declaration_file(
     text: selection_declaration_text(drive_id: w_drive() as String, file_id: "legacy-B"),
     disposition: ReviewSheetConflictingLineages {
@@ -360,7 +360,7 @@ test fn a_selected_declaration_file_adjudicates_an_observed_conflict_by_real_exe
 
 // THE SAME REAL FILE BESIDE AN UNRESOLVED EXTENT STAYS UNRESOLVED, which is the refusal this cut
 // installs, reached here through the reader rather than through a supplied selection.
-test fn a_selected_declaration_file_beside_an_unresolved_extent_refuses_by_real_execution() -> Bool {
+test fn a_selected_declaration_file_beside_an_unresolved_extent_refuses_by_real_execution() -> Bool  {
   match candidacy_over_declaration_file(
     text: selection_declaration_text(drive_id: w_drive() as String, file_id: "current-A"),
     disposition: CurrentMarkerObservedLegacyExtentUnresolved {
@@ -377,7 +377,7 @@ test fn a_selected_declaration_file_beside_an_unresolved_extent_refuses_by_real_
 
 // A SELECTION MISSING ITS file_id IS NOT A SELECTION, and it does not degrade into one with an
 // empty id.
-test fn a_selected_declaration_missing_its_file_id_offers_no_selection_by_real_execution() -> Bool {
+test fn a_selected_declaration_missing_its_file_id_offers_no_selection_by_real_execution() -> Bool  {
   match candidacy_over_declaration_file(
     text: "{\n  \"drive_id\": \"drive-1\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"selected\",\n  \"basis\": \"a hunch\"\n}\n",
     disposition: ReviewSheetConflictingLineages {

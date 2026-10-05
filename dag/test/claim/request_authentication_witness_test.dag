@@ -138,7 +138,7 @@ fn proxied_status() -> TailscaleServeStatusProjection {
 // THE TAILNET PATH IS MODELED, NOT ASSUMED: a loopback bind behind a serve-status readback
 // showing this backend proxied, plus the header, yields AccessPathTailnetProxy carrying the
 // observed login AND the versioned readback (ACL revision + serve-route key).
-test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readback() -> Bool {
+test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readback() -> Bool  {
   match request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "operator@github",
@@ -162,7 +162,7 @@ test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readba
 // AccessPathTailnetUnobserved naming the unreadable status, the transport observation is absent, and with no session supplied the
 // context names no principal anywhere. A Tailscale-User-Login header alone, self-asserted by any
 // co-located process, establishes nothing.
-test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool {
+test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool  {
   let path = request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "forged-login@github",
@@ -185,7 +185,7 @@ test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool 
 // attests no peer, and one whose attested peer is an ordinary account, mint no tailnet path --
 // each naming its cause -- while the proxy's connection does. RED if a status and a header alone
 // ever suffice.
-test fn a_forged_header_on_direct_local_ingress_mints_no_tailnet_path() -> Bool {
+test fn a_forged_header_on_direct_local_ingress_mints_no_tailnet_path() -> Bool  {
   let unattested = request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "forged-login@github",
@@ -221,7 +221,7 @@ test fn a_forged_header_on_direct_local_ingress_mints_no_tailnet_path() -> Bool 
 
 // A NON-LOOPBACK BIND is direct reachability regardless of any header: the proxy cannot be the
 // sole route, so the header is unattributable and the path is DirectHttps.
-test fn a_non_loopback_bind_is_direct_https_regardless_of_the_header() -> Bool {
+test fn a_non_loopback_bind_is_direct_https_regardless_of_the_header() -> Bool  {
   match request_access_path_of(
     listen_host: "0.0.0.0" as NonEmptyStr,
     tailscale_header: "operator@github",
@@ -237,7 +237,7 @@ test fn a_non_loopback_bind_is_direct_https_regardless_of_the_header() -> Bool {
 
 // AN EMPTY HEADER behind the modeled proxy is a local (on-host) request: tailscale serve always
 // injects the header, so its absence means the proxy was not in the path.
-test fn an_empty_header_behind_the_proxy_is_local_dev() -> Bool {
+test fn an_empty_header_behind_the_proxy_is_local_dev() -> Bool  {
   match request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "",
@@ -267,7 +267,7 @@ fn open_write_policy() -> ServeWriteAuthorizationPolicy {
 
 // THE GREEN CONTROL: a live Google session + action authorization + the CSRF proof + the
 // deployment path policy = Permit. Every other control changes exactly one term of this.
-test fn the_write_law_admits_only_the_full_conjunction() -> Bool {
+test fn the_write_law_admits_only_the_full_conjunction() -> Bool  {
   match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session: s } =>
@@ -286,7 +286,7 @@ test fn the_write_law_admits_only_the_full_conjunction() -> Bool {
 // ABSENT AUTHENTICATION REFUSES EVEN WITH EVERYTHING ELSE IN PLACE: the access path contributes
 // nothing; the refusal names the missing session evidence, and tailnet success is not a
 // substitute (the law never reads the path at this axis).
-test fn absent_authentication_refuses_the_write() -> Bool {
+test fn absent_authentication_refuses_the_write() -> Bool  {
   match human_write_admission(
     route_path: "/issue/demo/assign" as NonEmptyStr,
     action: ServeActionAssignIssue,
@@ -307,7 +307,7 @@ test fn absent_authentication_refuses_the_write() -> Bool {
 
 // LOGIN STATE != CSRF TOKEN: a live session without the mutation's CSRF proof refuses at the
 // CSRF axis.
-test fn a_valid_session_without_the_csrf_proof_refuses() -> Bool {
+test fn a_valid_session_without_the_csrf_proof_refuses() -> Bool  {
   match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session: s } =>
@@ -331,7 +331,7 @@ test fn a_valid_session_without_the_csrf_proof_refuses() -> Bool {
 }
 
 // AN EXPIRED SESSION REFUSES at the authentication axis even with the right CSRF proof.
-test fn an_expired_session_refuses_the_write() -> Bool {
+test fn an_expired_session_refuses_the_write() -> Bool  {
   match witness_mint_session(expires_at: "2026-09-25T00:06:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session: s } =>
@@ -356,7 +356,7 @@ test fn an_expired_session_refuses_the_write() -> Bool {
 
 // THE EVIDENCE KINDS NEVER SUBSTITUTE: service evidence on a human write refuses at the
 // authentication axis.
-test fn service_evidence_on_a_human_write_refuses() -> Bool {
+test fn service_evidence_on_a_human_write_refuses() -> Bool  {
   let security = RequestSecurityContext {
     access_path: AccessPathLocalDev,
     authentication: FabricServiceEvidence { kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-09-25T00:00:00Z" },
@@ -381,7 +381,7 @@ test fn service_evidence_on_a_human_write_refuses() -> Bool {
 
 // AND THE DUAL: a human Google session is not Fabric service evidence — it refuses at the
 // service-write gate — while Fabric's own service evidence admits it.
-test fn a_human_session_is_not_service_evidence_and_service_evidence_admits() -> Bool {
+test fn a_human_session_is_not_service_evidence_and_service_evidence_admits() -> Bool  {
   let service_security = RequestSecurityContext {
     access_path: AccessPathLocalDev,
     authentication: FabricServiceEvidence { kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-09-25T00:00:00Z" },
@@ -414,7 +414,7 @@ test fn a_human_session_is_not_service_evidence_and_service_evidence_admits() ->
 // principals — hd == gunb.ai alone is org membership, never approval authority — and the exact
 // scoped capability remains the approvals lane's (the principal axis here is the piece this
 // module owns; A7 joins it to the capability proof).
-test fn login_does_not_grant_approval_authority() -> Bool {
+test fn login_does_not_grant_approval_authority() -> Bool  {
   match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session: s } =>
@@ -449,7 +449,7 @@ test fn login_does_not_grant_approval_authority() -> Bool {
 // A TAILNET-REQUIRED DEPLOYMENT refuses a write arriving any other way, and admits the same
 // write over the modeled tailnet path: reachability changes never silently widen what a write
 // requires.
-test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
+test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool  {
   let proxy_path = request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "operator@github",
@@ -493,7 +493,7 @@ test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
 // THE VIEWER LABEL is nobody when authentication is absent — the honest spelling of the
 // pre-login page — and a read never consults it for authorization. (The session arm's spelling
 // is exercised by every write-law control above, which builds sessions through the mint.)
-test fn the_viewer_label_is_nobody_when_authentication_is_absent() -> Bool {
+test fn the_viewer_label_is_nobody_when_authentication_is_absent() -> Bool  {
   authenticated_viewer_label(evidence: AuthAbsent) == ""
 }
 
@@ -503,7 +503,7 @@ test fn the_viewer_label_is_nobody_when_authentication_is_absent() -> Bool {
 // Google session; every non-valid standing is SessionStandingInvalid carrying WHICH arm
 // arrived, so the write law can refuse with the arm's own remedy instead of collapsing all of
 // them into "no session".
-test fn a_valid_standing_seats_a_google_session_and_invalid_standings_carry_their_arm() -> Bool {
+test fn a_valid_standing_seats_a_google_session_and_invalid_standings_carry_their_arm() -> Bool  {
   match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session: s } =>
@@ -533,7 +533,7 @@ test fn a_valid_standing_seats_a_google_session_and_invalid_standings_carry_thei
 // THE WRITE LAW NOW PASSES FOR AN AUTHENTICATED WRITE: a fixture session seated through the
 // cookie standing (a present, unexpired store entry) admits the assign route on the full
 // conjunction — the green control the cookie channel exists to make reachable.
-test fn the_write_law_admits_a_fixture_session_seated_through_the_cookie_standing() -> Bool {
+test fn the_write_law_admits_a_fixture_session_seated_through_the_cookie_standing() -> Bool  {
   match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
     SessionRefused { cause: _ } => false
     SessionMinted { session: s } =>
@@ -567,7 +567,7 @@ fn witness_standing_write(standing: SessionCookieStanding) -> AccessDecision {
 // holds) refuses at the authentication axis, and the refusal is NOT the absent-session
 // spelling — it names the forged-cookie remedy. Expired, malformed, and unread standings each
 // refuse with their own cause, and none of them is ever an anonymous session.
-test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its_own_cause() -> Bool {
+test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its_own_cause() -> Bool  {
   let absent_cause = match human_write_admission(
     route_path: "/issue/demo/assign" as NonEmptyStr,
     action: ServeActionAssignIssue,

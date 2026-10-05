@@ -61,7 +61,7 @@ fn graph_of(n: RoadmapNode) -> LaunchGraphStanding {
   launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []))
 }
 
-test fn a_node_without_centering_refuses_dispatch_naming_centering() -> Bool {
+test fn a_node_without_centering_refuses_dispatch_naming_centering() -> Bool  {
   match launch_admission(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
@@ -79,7 +79,7 @@ test fn a_node_without_centering_refuses_dispatch_naming_centering() -> Bool {
   }
 }
 
-test fn a_node_with_centering_admits() -> Bool {
+test fn a_node_with_centering_admits() -> Bool  {
   match launch_admission(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
@@ -119,7 +119,7 @@ fn brief_for(n: RoadmapNode) -> String {
 
 // ANTI-BYPASS (owner review, 2026-09-19): the plan whose presence admits the node is the same
 // string the worker receives -- the admission reads the row's centering and the brief renders it.
-test fn the_plan_that_admits_is_the_plan_the_brief_carries() -> Bool {
+test fn the_plan_that_admits_is_the_plan_the_brief_carries() -> Bool  {
   match centered_node().centering {
     Absent => false
     Present { value: plan } =>
@@ -128,7 +128,7 @@ test fn the_plan_that_admits_is_the_plan_the_brief_carries() -> Bool {
   }
 }
 
-test fn the_brief_carries_the_shared_preamble_exactly_once_and_the_nodes_plan() -> Bool {
+test fn the_brief_carries_the_shared_preamble_exactly_once_and_the_nodes_plan() -> Bool  {
   let brief = brief_for(n: centered_node())
   occurs_exactly_once(s: brief, x: dispatch_centering_preamble)
     && (match centered_node().centering {
@@ -137,14 +137,14 @@ test fn the_brief_carries_the_shared_preamble_exactly_once_and_the_nodes_plan() 
     })
 }
 
-test fn the_brief_marks_an_uncentered_node_loudly() -> Bool {
+test fn the_brief_marks_an_uncentered_node_loudly() -> Bool  {
   string_contains(s: brief_for(n: uncentered_node()), pattern: "NO CENTERING PLAN IS DECLARED FOR THIS NODE")
 }
 
 // The preamble is one authority for orientation and NOT a second one for testing: the test route is
 // derived in the system prompt (gunbc.harness.harness_guidance IterateNarrowThenAccept). RED on the
 // former text, which spelled the route and cited a DESIGN.md section that does not exist.
-test fn the_preamble_does_not_restate_how_to_test() -> Bool {
+test fn the_preamble_does_not_restate_how_to_test() -> Bool  {
   !string_contains(s: dispatch_centering_preamble, pattern: "Operational essentials")
     && !string_contains(s: dispatch_centering_preamble, pattern: "test_process_command")
     && string_contains(s: dispatch_centering_preamble, pattern: "IterateNarrowThenAccept")
@@ -175,7 +175,7 @@ fn declared_row_centered_and_rendered(id: String) -> Bool {
   }
 }
 
-test fn the_ten_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
+test fn the_ten_shell_dag_migration_nodes_are_centered_and_render() -> Bool  {
   count(shell_dag_migration_node_ids) == 10
     && all(shell_dag_migration_node_ids, id => declared_row_centered_and_rendered(id: id))
 }

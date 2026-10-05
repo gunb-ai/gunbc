@@ -58,6 +58,6 @@ fn all_reviewer_source_witnesses() -> Bool {
     && witness_policy_reviewer_is_policy()
 }
 
-test fn reviewer_source_witnesses() -> Bool {
+test fn reviewer_source_witnesses() -> Bool  {
   all_reviewer_source_witnesses()
 }

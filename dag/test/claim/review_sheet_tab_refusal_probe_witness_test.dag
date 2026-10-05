@@ -56,14 +56,14 @@ fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: Stri
 // the forgeries rather than to naming the module at all, which a total could never have shown.
 data harness_control_source: String = "module probe_review_sheet_tab_harness_control\nimport std.types { String }\nimport gunbc.review_sheet_tab_locator { review_tab_locator_field_mask }\nfn mask() -> String { review_tab_locator_field_mask }\n"
 
-test fn a_source_that_only_names_the_locator_forges_no_located_tab() -> Bool {
+test fn a_source_that_only_names_the_locator_forges_no_located_tab() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: harness_control_source),
     wanted: "SoleConstructorViolation", subject: "LocatedReviewTab",
   ) == 0
 }
 
-test fn a_source_that_only_names_the_locator_is_refused_at_neither_sealed_mint() -> Bool {
+test fn a_source_that_only_names_the_locator_is_refused_at_neither_sealed_mint() -> Bool  {
   (blocking_count_for_class_and_subject(
     c: census_of(source: harness_control_source),
     wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_from_classification",
@@ -77,7 +77,7 @@ test fn a_source_that_only_names_the_locator_is_refused_at_neither_sealed_mint()
 // (a) THE RECORD HAS NO CONSTRUCTOR OUTSIDE THE LOCATOR. A hand-built located tab carrying the
 // constant sheet id is the exact regression this change removes, reintroduced under the name of an
 // observation; it refuses at the record literal rather than being caught downstream.
-test fn a_forged_located_tab_cannot_be_authored_outside_the_locator() -> Bool {
+test fn a_forged_located_tab_cannot_be_authored_outside_the_locator() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "LocatedReviewTab",
@@ -87,7 +87,7 @@ test fn a_forged_located_tab_cannot_be_authored_outside_the_locator() -> Bool {
 // (b) THE MINT REFUSES AN UNADMITTED CALLER. sole_constructor alone would still let any module
 // call the one function that builds the record with a response it authored, so the seal on the
 // mint is what makes the record's seal mean anything.
-test fn an_unadmitted_caller_cannot_mint_a_located_tab_from_a_supplied_classification() -> Bool {
+test fn an_unadmitted_caller_cannot_mint_a_located_tab_from_a_supplied_classification() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_from_classification",
@@ -97,7 +97,7 @@ test fn an_unadmitted_caller_cannot_mint_a_located_tab_from_a_supplied_classific
 // (c) AND SO DOES THE MINT'S CALLER, at its own name. A seal with an unsealed caller is not a
 // weaker seal, it is no seal, and the census keys the row by the CALLEE's declaration name -- so
 // this is an identity join on the second door rather than a second count of the first.
-test fn an_unadmitted_caller_cannot_reach_the_mint_through_the_outcome_classifier() -> Bool {
+test fn an_unadmitted_caller_cannot_reach_the_mint_through_the_outcome_classifier() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_of_outcome",
@@ -110,7 +110,7 @@ test fn an_unadmitted_caller_cannot_reach_the_mint_through_the_outcome_classifie
 // a route by which any module could obtain a located tab from values it chose. An admitted call
 // edge does not confine a value when an exported wrapper returns that value or a carrier
 // containing it, so the wrapper carries its own admission list and this asserts it by name.
-test fn an_unadmitted_caller_cannot_reach_a_located_tab_through_the_witness_wrapper() -> Bool {
+test fn an_unadmitted_caller_cannot_reach_a_located_tab_through_the_witness_wrapper() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "located_tab_for_witness",
@@ -126,28 +126,28 @@ test fn an_unadmitted_caller_cannot_reach_a_located_tab_through_the_witness_wrap
 // four claims name record types rather than callees, and it is the stronger form -- an
 // unconstructible argument cannot reach those functions by any route, named or unnamed, so
 // confinement does not depend on an admission list staying complete as the module grows.
-test fn a_freeze_request_cannot_be_authored_outside_the_located_builders() -> Bool {
+test fn a_freeze_request_cannot_be_authored_outside_the_located_builders() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "FreezeRowsRequest",
   ) >= 1
 }
 
-test fn a_header_band_request_cannot_be_authored_outside_the_located_builders() -> Bool {
+test fn a_header_band_request_cannot_be_authored_outside_the_located_builders() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "HeaderBandRequest",
   ) >= 1
 }
 
-test fn a_standing_rule_request_cannot_be_authored_outside_the_located_builders() -> Bool {
+test fn a_standing_rule_request_cannot_be_authored_outside_the_located_builders() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "StandingRuleRequest",
   ) >= 1
 }
 
-test fn a_whole_format_plan_cannot_be_authored_outside_the_located_builders() -> Bool {
+test fn a_whole_format_plan_cannot_be_authored_outside_the_located_builders() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "FormatRequestPlan",

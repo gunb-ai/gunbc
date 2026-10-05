@@ -73,7 +73,7 @@ data witness_spreadsheet_id: NonEmptyStr = "1ciProspectSheetFileId"
 // not the constant zero, and the title "Prospects 2026" is not the Drive file's display name
 // ("CI prospect sheet", gunbc.review_sheet_converge_cli ci_prospect_sheet_name). A mutation taking
 // either from anywhere but properties fails this claim on the value, not on the arm.
-test fn one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title() -> Bool {
+test fn one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title() -> Bool  {
   match classify_review_tabs(
     read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 1836271154, title: "Prospects 2026", index: 0)]),
   ) {
@@ -90,7 +90,7 @@ test fn one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title() -
 // same facts, and every one of those admissions was a route a foreign module could take. This one
 // asserts what the conversion produces: the observed id, the observed title, and the spreadsheet
 // the read was performed against, which is the only place all three appear together.
-test fn the_conversion_of_exactly_one_carries_the_observed_id_the_observed_title_and_the_read_subject() -> Bool {
+test fn the_conversion_of_exactly_one_carries_the_observed_id_the_observed_title_and_the_read_subject() -> Bool  {
   match review_tab_standing_from_classification(
     spreadsheet_id: witness_spreadsheet_id,
     classified: ClassifiedExactlyOne {
@@ -110,7 +110,7 @@ test fn the_conversion_of_exactly_one_carries_the_observed_id_the_observed_title
 // (2) ZERO TABS IS ABSENT. A spreadsheet the response says has no sheets is a spreadsheet with
 // nothing to format, and the remedy is to look at the request that asked -- not to send an
 // operator hunting for an unreadable workbook.
-test fn no_tabs_is_absent_rather_than_unreadable() -> Bool {
+test fn no_tabs_is_absent_rather_than_unreadable() -> Bool  {
   match classify_review_tabs(read: spreadsheet_read_of(sheets_read: [])) {
     ClassifiedNone => true
     ClassifiedExactlyOne { candidate: _ } => false
@@ -119,7 +119,7 @@ test fn no_tabs_is_absent_rather_than_unreadable() -> Bool {
   }
 }
 
-test fn an_absent_sheets_field_is_absent_rather_than_unreadable() -> Bool {
+test fn an_absent_sheets_field_is_absent_rather_than_unreadable() -> Bool  {
   match classify_review_tabs(read: SpreadsheetRead { spreadsheetId: none, sheets: none }) {
     ClassifiedNone => true
     ClassifiedExactlyOne { candidate: _ } => false
@@ -140,7 +140,7 @@ fn candidate_titles(cs: List<ReviewTabCandidate>) -> List<String> {
 // the failure being removed is "take the first", which would answer TabLocated with sheetId 0 here
 // and is exactly what the constant did. The candidate list is asserted at its payload so that an
 // arm returning an empty TabAmbiguous -- refusing without saying what it saw -- also fails.
-test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles() -> Bool {
+test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles() -> Bool  {
   match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
@@ -163,7 +163,7 @@ test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_ti
 // proto3 default for a string is empty and upstream produces no tab with an empty title, so the
 // field was not read. Substituting the Drive file's name there is mutation M2 in reverse and is
 // what this arm forbids.
-test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module() -> Bool {
+test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module() -> Bool  {
   match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
@@ -184,7 +184,7 @@ test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_mod
 // without properties has an UNKNOWN number of tabs, so answering "exactly one" from the sheet that
 // did parse is a confident answer derived from an incomplete reading -- the absorbing fallback
 // DESIGN section 5 refuses, arriving as a skip rather than as a widen.
-test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped() -> Bool {
+test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped() -> Bool  {
   match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
@@ -206,7 +206,7 @@ test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_
 // id ABSENT. Reading it as zero is the decode extdeps.google.sheets sheets_sheet_id_read owns and
 // the colour channels already ran under -- it is not a substituted default, and the claim is here
 // so that a future tightening of the title arm cannot quietly take this one with it.
-test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> Bool {
+test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> Bool  {
   match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
@@ -228,7 +228,7 @@ test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> B
 // a spreadsheet with no tabs, and answering TabAbsent to one would send an operator looking for a
 // missing tab in a workbook they cannot open. The Absent-versus-refused distinction is the class
 // gunbc.recurring_failure_mode rosters as absent_reads_identically_to_never_looked.
-test fn a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent() -> Bool {
+test fn a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent() -> Bool  {
   match review_tab_standing_of_outcome(
     spreadsheet_id: witness_spreadsheet_id,
     outcome: RestStatusRefused { status: 403, body: "caller lacks Sheets access" },

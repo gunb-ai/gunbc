@@ -389,12 +389,12 @@ fn is_teardown_failed(o: BeltTeardownOutcome) -> Bool {
   }
 }
 
-test fn witness_exec_ok_runs_echo() -> Bool {
+test fn witness_exec_ok_runs_echo() -> Bool  {
   let o = belt_exec(cmd: host_exec_argv(program: "echo", args: ["belt-ok"]), workdir: "/")
   is_exec_ok(o: o) && exec_ok_stdout_contains(o: o, pattern: "belt-ok")
 }
 
-test fn witness_exec_refuses_missing_program() -> Bool {
+test fn witness_exec_refuses_missing_program() -> Bool  {
   let o = belt_exec(
     cmd: host_exec_argv(program: "belt-nonexistent-program-xyz", args: []),
     workdir: "/",
@@ -402,12 +402,12 @@ test fn witness_exec_refuses_missing_program() -> Bool {
   is_exec_refused(o: o)
 }
 
-test fn witness_exec_fails_on_nonzero_exit() -> Bool {
+test fn witness_exec_fails_on_nonzero_exit() -> Bool  {
   let o = belt_exec(cmd: host_exec_argv(program: "false", args: []), workdir: "/")
   is_exec_failed(o: o)
 }
 
-test fn witness_exec_all_runs_every_step_when_ok() -> Bool {
+test fn witness_exec_all_runs_every_step_when_ok() -> Bool  {
   let o = belt_exec_all(
     cmds: [
       host_exec_argv(program: "echo", args: ["first"]),
@@ -418,7 +418,7 @@ test fn witness_exec_all_runs_every_step_when_ok() -> Bool {
   is_exec_ok(o: o) && exec_ok_stdout_contains(o: o, pattern: "second")
 }
 
-test fn witness_exec_all_short_circuits_after_failure() -> Bool {
+test fn witness_exec_all_short_circuits_after_failure() -> Bool  {
   let o = belt_exec_all(
     cmds: [
       host_exec_argv(program: "false", args: []),
@@ -429,7 +429,7 @@ test fn witness_exec_all_short_circuits_after_failure() -> Bool {
   is_exec_failed(o: o) && !exec_ok_stdout_contains(o: o, pattern: "should-not-run")
 }
 
-test fn witness_exec_all_fails_on_later_step() -> Bool {
+test fn witness_exec_all_fails_on_later_step() -> Bool  {
   let o = belt_exec_all(
     cmds: [
       host_exec_argv(program: "echo", args: ["ok"]),
@@ -440,7 +440,7 @@ test fn witness_exec_all_fails_on_later_step() -> Bool {
   is_exec_failed(o: o)
 }
 
-test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
+test fn witness_named_exec_steps_locate_the_first_failure() -> Bool  {
   match belt_exec_steps(
     steps: [
       BeltExecStep {
@@ -465,7 +465,7 @@ test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
   }
 }
 
-test fn witness_spawn_member_refuses_observed_shape() -> Bool {
+test fn witness_spawn_member_refuses_observed_shape() -> Bool  {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
   is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/", launch: launch_identity_exemplar()))
 }
@@ -473,7 +473,7 @@ test fn witness_spawn_member_refuses_observed_shape() -> Bool {
 // review 5059520727 finding 4: the admitted identity SURVIVES an actuation failure -- the failed
 // outcome carries the exact LaunchIdentity the admission produced, so the route JSON, the tick
 // receipt and the attempt state can all name the decision that led to the failed attempt.
-test fn witness_identity_survives_actuation_failure() -> Bool {
+test fn witness_identity_survives_actuation_failure() -> Bool  {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
   let id = launch_identity_exemplar()
   match belt_actuate_spawn_member(m: m, workdir: "/", launch: id) {
@@ -488,7 +488,7 @@ test fn witness_identity_survives_actuation_failure() -> Bool {
   }
 }
 
-test fn witness_teardown_member_refuses_desired_shape() -> Bool {
+test fn witness_teardown_member_refuses_desired_shape() -> Bool  {
   let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
   is_teardown_failed(o: belt_actuate_teardown_member(m: m))
 }
@@ -507,7 +507,7 @@ fn is_observe_refused(o: BeltObserve) -> Bool {
   }
 }
 
-test fn witness_observe_parses_live_on_success() -> Bool {
+test fn witness_observe_parses_live_on_success() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: true,
     stdout: "gunbc-dispatch-a: 1 windows",
@@ -519,7 +519,7 @@ test fn witness_observe_parses_live_on_success() -> Bool {
   }
 }
 
-test fn witness_observe_empty_on_no_server() -> Bool {
+test fn witness_observe_empty_on_no_server() -> Bool  {
   observe_live_count(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -527,7 +527,7 @@ test fn witness_observe_empty_on_no_server() -> Bool {
   )) == 0
 }
 
-test fn witness_observe_empty_on_no_sessions() -> Bool {
+test fn witness_observe_empty_on_no_sessions() -> Bool  {
   observe_live_count(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -535,7 +535,7 @@ test fn witness_observe_empty_on_no_sessions() -> Bool {
   )) == 0
 }
 
-test fn witness_observe_empty_on_no_server_enoent() -> Bool {
+test fn witness_observe_empty_on_no_server_enoent() -> Bool  {
   observe_live_count(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -543,7 +543,7 @@ test fn witness_observe_empty_on_no_server_enoent() -> Bool {
   )) == 0
 }
 
-test fn witness_observe_refuses_connection_refused() -> Bool {
+test fn witness_observe_refuses_connection_refused() -> Bool  {
   let stderr = "error connecting to /tmp/tmux-1000/srv1-green (Connection refused)"
   match belt_observe_from_result(success: false, stdout: "", stderr: stderr) {
     ObserveRefused { reason } => string_contains(s: reason, pattern: stderr)
@@ -551,7 +551,7 @@ test fn witness_observe_refuses_connection_refused() -> Bool {
   }
 }
 
-test fn witness_observe_refuses_permission_error() -> Bool {
+test fn witness_observe_refuses_permission_error() -> Bool  {
   is_observe_refused(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -559,7 +559,7 @@ test fn witness_observe_refuses_permission_error() -> Bool {
   ))
 }
 
-test fn witness_observe_refuses_malformed_stdout() -> Bool {
+test fn witness_observe_refuses_malformed_stdout() -> Bool  {
   match belt_observe_from_result(
     success: true,
     stdout: "gunbc-dispatch-a: malformed\n",
@@ -572,7 +572,7 @@ test fn witness_observe_refuses_malformed_stdout() -> Bool {
   }
 }
 
-test fn witness_observe_refuses_empty_stderr_failure() -> Bool {
+test fn witness_observe_refuses_empty_stderr_failure() -> Bool  {
   is_observe_refused(o: belt_observe_from_result(
     success: false,
     stdout: "",
@@ -584,19 +584,19 @@ fn uuid_char(u: String, i: Int) -> String {
   substring(s: u, start: i, end: i + 1)
 }
 
-test fn witness_uuid_deterministic() -> Bool {
+test fn witness_uuid_deterministic() -> Bool  {
   let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
   let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
   a == b
 }
 
-test fn witness_uuid_distinct_nodes() -> Bool {
+test fn witness_uuid_distinct_nodes() -> Bool  {
   let a = belt_spawn_session_uuid(node_id: "node-a", probed_at: "2026-07-25T20:00:00Z")
   let b = belt_spawn_session_uuid(node_id: "node-b", probed_at: "2026-07-25T20:00:00Z")
   !(a == b)
 }
 
-test fn witness_uuid_rfc4122_shape() -> Bool {
+test fn witness_uuid_rfc4122_shape() -> Bool  {
   let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
   string_length(s: u) == 36
     && uuid_char(u: u, i: 8) == "-"
@@ -615,11 +615,11 @@ fn is_node_found(l: BeltNodeLookup) -> Bool {
   }
 }
 
-test fn witness_find_node_hits() -> Bool {
+test fn witness_find_node_hits() -> Bool  {
   is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "b"))
 }
 
-test fn witness_find_node_misses() -> Bool {
+test fn witness_find_node_misses() -> Bool  {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
 }
 
@@ -646,7 +646,7 @@ fn found_owner(l: BeltNodeLookup) -> String {
   }
 }
 
-test fn witness_find_node_first_wins_on_duplicate() -> Bool {
+test fn witness_find_node_first_wins_on_duplicate() -> Bool  {
   found_owner(l: belt_find_node_in(
     nodes: [owned_node(id: "dup", owner: "first"), owned_node(id: "dup", owner: "second")],
     node_id: "dup",
@@ -664,7 +664,7 @@ fn live_gate(live: List<LaunchCensusRow>, node_id: String) -> LaunchGateVerdict 
   launch_gate_live(sessions: LaunchSessionsObserved { live: live }, node_id: node_id)
 }
 
-test fn witness_node_session_running_is_live() -> Bool {
+test fn witness_node_session_running_is_live() -> Bool  {
   match live_gate(
     live: [live_session_with_process(
       node_id: "a",
@@ -677,7 +677,7 @@ test fn witness_node_session_running_is_live() -> Bool {
   }
 }
 
-test fn witness_node_session_absent_is_not_live() -> Bool {
+test fn witness_node_session_absent_is_not_live() -> Bool  {
   match live_gate(
     live: [live_session_with_process(
       node_id: "a",
@@ -692,7 +692,7 @@ test fn witness_node_session_absent_is_not_live() -> Bool {
 
 // THE DISCRIMINATING RED for the dead-pane defect: a present session whose pane exited is
 // NOT live, so it cannot answer AlreadyLive -- and it cannot pass either.
-test fn witness_retained_dead_pane_is_not_live() -> Bool {
+test fn witness_retained_dead_pane_is_not_live() -> Bool  {
   match live_gate(
     live: [live_session_with_process(
       node_id: "a",
@@ -707,7 +707,7 @@ test fn witness_retained_dead_pane_is_not_live() -> Bool {
 
 // The honest third state refuses in BOTH directions: it is not live (so it never reports a
 // running agent) and it is not the absent path either.
-test fn witness_unobserved_liveness_is_not_live() -> Bool {
+test fn witness_unobserved_liveness_is_not_live() -> Bool  {
   match live_gate(
     live: [live_row_unobserved(node_id: "a")],
     node_id: "a",
@@ -717,7 +717,7 @@ test fn witness_unobserved_liveness_is_not_live() -> Bool {
   }
 }
 
-test fn witness_session_liveness_is_four_valued() -> Bool {
+test fn witness_session_liveness_is_four_valued() -> Bool  {
   let running = live_gate(
     live: [live_session_with_process(
       node_id: "a",
@@ -749,18 +749,18 @@ fn not_admitted(r: LaunchRefusal) -> BeltSpawnOutcome {
 
 // The stale and unobserved arms must never reach the ok band — an accepted no-op is the
 // failure this change exists to remove, and the band is the single ok-authority.
-test fn witness_stale_session_is_never_ok() -> Bool {
+test fn witness_stale_session_is_never_ok() -> Bool  {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchStaleSession { session_name: "s", detail: "d" }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchLivenessUnobserved { session_name: "s", reason: "r" }))
     && belt_dispatch_status_label(r: not_admitted(r: LaunchStaleSession { session_name: "s", detail: "d" })) == "stale_session"
 }
 
-test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
+test fn witness_dispatch_result_ok_spawned_and_live() -> Bool  {
   belt_dispatch_result_ok(r: Spawned { node_id: "a", session_name: "gunbc-dispatch-a", provider: "codex", launch: launch_identity_exemplar() })
     && belt_dispatch_result_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "gunbc-dispatch-a" }))
 }
 
-test fn witness_dispatch_result_refusals_not_ok() -> Bool {
+test fn witness_dispatch_result_refusals_not_ok() -> Bool  {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNodeUnknown))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
@@ -776,7 +776,7 @@ fn status_label_glued_to_ok(r: BeltSpawnOutcome) -> Bool {
   ok == label_in_ok_set
 }
 
-test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
+test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool  {
   status_label_glued_to_ok(r: Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() })
     && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
@@ -787,7 +787,7 @@ test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
     && all(belt_dispatch_result_exemplars(), r => status_label_glued_to_ok(r: r))
 }
 
-test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
+test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool  {
   belt_dispatch_status_label(r: Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == "spawned"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" })) == "already_live"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" })) == "disabled"
@@ -800,7 +800,7 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: not_admitted(r: LaunchCauseNotPermitted { cause: gunbc.roadmap_launch_admission.Timer, mode: ManualReady })) == "cause_not_permitted_by_mode"
 }
 
-test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
+test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool  {
   string_contains(
     s: serialize_json(v: belt_spawn_outcome_json(
       o: Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() })),
@@ -852,7 +852,7 @@ fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
   }
 }
 
-test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
+test fn witness_band_fold_pins_operator_vocabulary() -> Bool  {
   belt_dispatch_label_band_rows().length() == 19
     && band_key_for_label(label: "no_placement_grant") == "loud"
     && band_key_for_label(label: "supervisor_convened") == "ok"
@@ -875,15 +875,15 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "spawn_failed") == "loud"
 }
 
-test fn witness_no_result_maps_to_in_progress() -> Bool {
+test fn witness_no_result_maps_to_in_progress() -> Bool  {
   all(belt_dispatch_label_band_rows(), row => row.band_key != "in-progress")
 }
 
-test fn witness_ok_labels_derive_from_band_fold() -> Bool {
+test fn witness_ok_labels_derive_from_band_fold() -> Bool  {
   belt_dispatch_ok_status_labels() == ["spawned", "supervisor_convened", "already_live"]
 }
 
-test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
+test fn witness_label_band_cover_reds_on_missing_row() -> Bool  {
   let rows = belt_dispatch_label_band_rows()
   let labels = belt_dispatch_all_status_labels()
   let truncated = filter(rows, row => row.wire_label != "spawned")
@@ -959,7 +959,7 @@ fn d4_exemplars_reconcile(exemplars: List<BeltSpawnOutcome>) -> Bool {
 // exemplar roster happens to be authored in, and pinning it would oblige every future variant to be
 // inserted at the roster's position rather than appended -- a maintenance cost buying an ordering
 // guarantee nothing consumes.
-test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
+test fn witness_exemplar_roster_reconciles_variant_set() -> Bool  {
   d4_exemplars_reconcile(exemplars: belt_dispatch_result_exemplars())
 }
 
@@ -974,7 +974,7 @@ fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
   ]
 }
 
-test fn witness_exemplar_roster_missing_variant_reds() -> Bool {
+test fn witness_exemplar_roster_missing_variant_reds() -> Bool  {
   !d4_exemplars_reconcile(exemplars: d4_exemplars_missing_one())
 }
 
@@ -1007,7 +1007,7 @@ fn preflight_with_config(config: String) -> BeltClaudePreflight {
   )
 }
 
-test fn witness_preflight_refuses_missing_claude() -> Bool {
+test fn witness_preflight_refuses_missing_claude() -> Bool  {
   preflight_refused_step(p: belt_claude_preflight_decision(
     claude_on_path: false,
     home: "/home/u",
@@ -1018,7 +1018,7 @@ test fn witness_preflight_refuses_missing_claude() -> Bool {
   )) == "claude-cli"
 }
 
-test fn witness_preflight_refuses_unknown_home() -> Bool {
+test fn witness_preflight_refuses_unknown_home() -> Bool  {
   preflight_refused_step(p: belt_claude_preflight_decision(
     claude_on_path: true,
     home: "",
@@ -1029,7 +1029,7 @@ test fn witness_preflight_refuses_unknown_home() -> Bool {
   )) == "claude-trust-home"
 }
 
-test fn witness_preflight_refuses_unreadable_store() -> Bool {
+test fn witness_preflight_refuses_unreadable_store() -> Bool  {
   preflight_refused_step(p: belt_claude_preflight_decision(
     claude_on_path: true,
     home: "/home/u",
@@ -1040,7 +1040,7 @@ test fn witness_preflight_refuses_unreadable_store() -> Bool {
   )) == "claude-trust-store"
 }
 
-test fn witness_preflight_refuses_unseeded_root() -> Bool {
+test fn witness_preflight_refuses_unseeded_root() -> Bool  {
   preflight_refused_step(p: preflight_with_config(
     config: "\{\"projects\":\{\"/opt/other\":\{\"hasTrustDialogAccepted\":true\}\}\}",
   )) == "claude-trust-seed"
@@ -1049,11 +1049,11 @@ test fn witness_preflight_refuses_unseeded_root() -> Bool {
     )) == "claude-trust-seed"
 }
 
-test fn witness_preflight_ok_when_seeded() -> Bool {
+test fn witness_preflight_ok_when_seeded() -> Bool  {
   preflight_ok(p: preflight_with_config(config: seeded_trust_config()))
 }
 
-test fn witness_preflight_ok_on_enriched_entry() -> Bool {
+test fn witness_preflight_ok_on_enriched_entry() -> Bool  {
   preflight_ok(p: preflight_with_config(
     config: "\{\"projects\":\{\"/opt/x/worktrees\":\{\"mcpServers\":\{\},\"allowedTools\":[\"a\}b\"],\"hasTrustDialogAccepted\":true\}\}\}",
   ))
@@ -1066,7 +1066,7 @@ fn codex_preflight_refused_step(p: BeltCodexPreflight) -> String {
   }
 }
 
-test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool {
+test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool  {
   codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: false,
@@ -1080,7 +1080,7 @@ test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool {
   )) == "codex-cli"
 }
 
-test fn witness_codex_preflight_refuses_missing_env_binding() -> Bool {
+test fn witness_codex_preflight_refuses_missing_env_binding() -> Bool  {
   codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: true,
@@ -1094,7 +1094,7 @@ test fn witness_codex_preflight_refuses_missing_env_binding() -> Bool {
   )) == "codex-env"
 }
 
-test fn witness_codex_preflight_refuses_login_status_nonzero() -> Bool {
+test fn witness_codex_preflight_refuses_login_status_nonzero() -> Bool  {
   codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: true,
@@ -1108,7 +1108,7 @@ test fn witness_codex_preflight_refuses_login_status_nonzero() -> Bool {
   )) == "codex-auth"
 }
 
-test fn witness_codex_preflight_separates_broken_runtime_from_auth() -> Bool {
+test fn witness_codex_preflight_separates_broken_runtime_from_auth() -> Bool  {
   match belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: true,
@@ -1127,7 +1127,7 @@ test fn witness_codex_preflight_separates_broken_runtime_from_auth() -> Bool {
   }
 }
 
-test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool {
+test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool  {
   match belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: true,
@@ -1148,7 +1148,7 @@ test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool {
 
 data codex_preflight_ok_dissolution_note: String = "review 44110. The codex_preflight_ok helper was a Bool fold over the two-variant BeltCodexPreflight — a variant test, the is_hermetic shape the 2026-07-12 predicate dissolution removed, and every sibling witness here already matches the coproduct directly. Matching in place also recovers what the Bool discarded: the accepted arm CARRIES the auth_method it derived, and asserting that it survives unparsed is the actual claim this witness makes about wording-independence."
 
-test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording() -> Bool {
+test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording() -> Bool  {
   match belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: true,
@@ -1176,7 +1176,7 @@ test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording
 // checking a type: a version calling any unregistered primitive fails here at execution, the only
 // place that defect class is observable.
 
-test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
+test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool  {
   let claim_contract = gunbc_claim_execution_contract(
     entry: "dag/test/claim/probe_witness_test.dag" as FilePath,
     function: "probe_holds" as NonEmptyStr,
@@ -1276,7 +1276,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
 // strings are the contract; a client rebuilding any of them from segments has nothing asserted
 // here to rebuild FROM.
 
-test fn attempt_wire_carries_decided_activity() -> Bool {
+test fn attempt_wire_carries_decided_activity() -> Bool  {
   let j = serialize_json(v: belt_workflow_attempt_presentation_json(
     progress: completed_attempt_progress(node_id: "belt-wire-activity-node")))
   string_contains(s: j, pattern: "\"activity\": {")
@@ -1292,7 +1292,7 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
     && string_contains(s: j, pattern: "\"segments\": [")
 }
 
-test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
+test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool  {
   match belt_verify_attempt_for_instance(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
@@ -1308,7 +1308,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
   }
 }
 
-test fn agent_incomplete_attempt_defers_verification() -> Bool {
+test fn agent_incomplete_attempt_defers_verification() -> Bool  {
   match belt_verify_attempt_for_instance(
     instance: srv2_preview_dashboard_instance(),
     progress: workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
@@ -1364,7 +1364,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
   }
 }
 
-test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
+test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool  {
   match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
     DashboardInstanceRootUnknown { repo_root: w } => w == "/typo/gunbc"
     DashboardInstanceResolved { instance: _ } => false
@@ -1382,7 +1382,7 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 // it. Retiring outright would have left only unknown_spawn_workdir_refuses_instance_resolution
 // enrolled, and a lookup refusing EVERY workdir would pass the file — the resolved arm needs its
 // own claim because the refusal arm cannot detect its absence.
-test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
+test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool  {
   let live = srv1_live_dashboard_instance()
   match dashboard_instance_for_repo_root(repo_root: live.repo_root as String) {
     DashboardInstanceResolved { instance: resolved } =>
@@ -1397,7 +1397,7 @@ test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
 // post-fix shape synthetically: spawn_pass Refused while verify_pass is still Recorded when verify
 // outcomes exist.
 
-test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
+test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool  {
   let result = BeltTickResult {
     wholesale: TickPassesRun,
     host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
@@ -1432,7 +1432,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
     }
 }
 
-test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
+test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool  {
   let result = BeltTickResult {
     wholesale: TickPassesRun,
     host_refusal: Present { value: LaunchSessionsUnobservable { reason: "tmux refused" } },
@@ -1469,14 +1469,14 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
 // headline strings ('Verification queued - next belt tick', 'Verification blocked · …',
 // observe-refusal vs verify-recorded at the UI layer) cannot drift without going red.
 
-test fn verification_presentation_absent_receipt_is_queued() -> Bool {
+test fn verification_presentation_absent_receipt_is_queued() -> Bool  {
   belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-absent-node"),
     tick_read: BeltTickReceiptAbsent,
   ) == "Verification queued - next belt tick"
 }
 
-test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
+test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool  {
   let detail = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-unreadable-node"),
     tick_read: BeltTickReceiptUnreadable { reason: "belt tick receipt schema is unknown" },
@@ -1485,7 +1485,7 @@ test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
     && string_contains(s: detail, pattern: "schema is unknown")
 }
 
-test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
+test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool  {
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
       wholesale: TickPassesRun,
@@ -1517,7 +1517,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
     && string_contains(s: detail, pattern: "Verification queued")
 }
 
-test fn verification_presentation_verify_refused_is_blocked() -> Bool {
+test fn verification_presentation_verify_refused_is_blocked() -> Bool  {
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1536,7 +1536,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
   detail == "Verification blocked · validation receipt could not be read"
 }
 
-test fn verification_presentation_verify_failed_is_failed() -> Bool {
+test fn verification_presentation_verify_failed_is_failed() -> Bool  {
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1555,7 +1555,7 @@ test fn verification_presentation_verify_failed_is_failed() -> Bool {
   detail == "Verification failed · validation verdict failed"
 }
 
-test fn verification_presentation_wire_carries_detail() -> Bool {
+test fn verification_presentation_wire_carries_detail() -> Bool  {
   let j = serialize_json(v: belt_workflow_attempt_presentation_json_with_tick_read(
     progress: completed_attempt_progress(node_id: "pres-wire-node"),
     tick_read: BeltTickReceiptAbsent,
@@ -1563,7 +1563,7 @@ test fn verification_presentation_wire_carries_detail() -> Bool {
   string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - next belt tick\"")
 }
 
-test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
+test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool  {
   let raw = join([
     "{\"schema\":\"", belt_tick_receipt_schema, "\",",
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
@@ -1581,7 +1581,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   }
 }
 
-test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool {
+test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool  {
   match belt_tick_receipt_read_from_filesystem(
     success: false,
     content: "",
@@ -1593,7 +1593,7 @@ test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool {
   }
 }
 
-test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
+test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool  {
   match belt_tick_receipt_read_from_filesystem(
     success: false,
     content: "",
@@ -1621,7 +1621,7 @@ test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
 // creation. Only the refusing arm is exercised because it short-circuits; the actuating arm would
 // reach live tmux.
 
-test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
+test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool  {
   let preview = srv2_preview_dashboard_instance()
   let dispatched = belt_dispatch_node_for_instance(
     instance: preview,
@@ -1680,7 +1680,7 @@ fn footprint_refusal_step(admission: BeltFootprintAdmission) -> String {
   }
 }
 
-test fn witness_footprint_all_roots_usable_admits() -> Bool {
+test fn witness_footprint_all_roots_usable_admits() -> Bool  {
   let verdict = belt_footprint_admission_decision(observations: [
     footprint_obs(member: "dispatch-worktrees", present: true, writable: true, searchable: true),
     footprint_obs(member: "attempt-state", present: true, writable: true, searchable: true),
@@ -1688,7 +1688,7 @@ test fn witness_footprint_all_roots_usable_admits() -> Bool {
   footprint_refusal_step(admission: verdict) == "admitted"
 }
 
-test fn witness_footprint_absent_root_refuses() -> Bool {
+test fn witness_footprint_absent_root_refuses() -> Bool  {
   let verdict = belt_footprint_admission_decision(observations: [
     footprint_obs(member: "dispatch-worktrees", present: true, writable: true, searchable: true),
     footprint_obs(member: "attempt-state", present: false, writable: false, searchable: false),
@@ -1696,21 +1696,21 @@ test fn witness_footprint_absent_root_refuses() -> Bool {
   footprint_refusal_step(admission: verdict) == "footprint-root-absent"
 }
 
-test fn witness_footprint_unwritable_root_refuses() -> Bool {
+test fn witness_footprint_unwritable_root_refuses() -> Bool  {
   let verdict = belt_footprint_admission_decision(observations: [
     footprint_obs(member: "attempt-state", present: true, writable: false, searchable: true),
   ])
   footprint_refusal_step(admission: verdict) == "footprint-root-unwritable"
 }
 
-test fn witness_footprint_unsearchable_root_refuses() -> Bool {
+test fn witness_footprint_unsearchable_root_refuses() -> Bool  {
   let verdict = belt_footprint_admission_decision(observations: [
     footprint_obs(member: "attempt-state", present: true, writable: true, searchable: false),
   ])
   footprint_refusal_step(admission: verdict) == "footprint-root-unsearchable"
 }
 
-test fn witness_footprint_refusal_names_the_first_bad_root() -> Bool {
+test fn witness_footprint_refusal_names_the_first_bad_root() -> Bool  {
   let verdict = belt_footprint_admission_decision(observations: [
     footprint_obs(member: "dispatch-worktrees", present: false, writable: false, searchable: false),
     footprint_obs(member: "attempt-state", present: true, writable: false, searchable: true),
@@ -1724,7 +1724,7 @@ test fn witness_footprint_refusal_names_the_first_bad_root() -> Bool {
   step_is_first && names_first
 }
 
-test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool {
+test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool  {
   let roots = belt_dispatch_footprint_roots(instance: srv2_preview_dashboard_instance())
   let paths = join(map(roots, r => r.path), "|")
   let has_worktrees = string_contains(s: paths, pattern: "attempts")
@@ -1822,7 +1822,7 @@ fn belt_pub_gate_key(gate: BeltPublishGate) -> String {
   }
 }
 
-test fn an_absent_receipt_lets_the_publish_producer_proceed() -> Bool {
+test fn an_absent_receipt_lets_the_publish_producer_proceed() -> Bool  {
   belt_pub_gate_key(
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
@@ -1832,7 +1832,7 @@ test fn an_absent_receipt_lets_the_publish_producer_proceed() -> Bool {
   ) == "proceed"
 }
 
-test fn a_receipt_for_this_head_halts_the_publish_producer() -> Bool {
+test fn a_receipt_for_this_head_halts_the_publish_producer() -> Bool  {
   belt_pub_gate_key(
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
@@ -1842,7 +1842,7 @@ test fn a_receipt_for_this_head_halts_the_publish_producer() -> Bool {
   ) == "already-recorded"
 }
 
-test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
+test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool  {
   match belt_publish_gate(
     node_id: "belt-pub-node",
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
@@ -1874,7 +1874,7 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
 // Only the pair discriminates: absent proceeds, unreadable halts. Either alone would pass under the
 // defect - the old code proceeded on both.
 
-test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
+test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool  {
   match belt_publish_gate(
     node_id: "belt-pub-node",
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
@@ -1895,7 +1895,7 @@ test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
   }
 }
 
-test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
+test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool  {
   match belt_publish_gate(
     node_id: "belt-pub-node",
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
@@ -1914,7 +1914,7 @@ test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
   }
 }
 
-test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
+test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool  {
   match belt_publish_gate(
     node_id: "belt-pub-node",
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
@@ -1941,7 +1941,7 @@ test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
 // exists nowhere. The pair below asserts the same receipt produces different producer outcomes
 // purely on whether the write succeeded.
 
-test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Bool {
+test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Bool  {
   let subject = belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node")
   let receipt = publication_receipt_of(
     subject: subject,
@@ -1997,7 +1997,7 @@ fn subject_key(observation: PublicationSubjectObservation) -> String {
   }
 }
 
-test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
+test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool  {
   let missing = belt_publication_subject_for(
     node_id: "belt-pub-node",
     attempt_key: "feedfacefeedface",
@@ -2038,7 +2038,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
 // code would cast an empty string into a CommitSha: a subject matching no commit and equal to every
 // other empty head, so a receipt written for it would be evidence for any attempt in that state.
 
-test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool {
+test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool  {
   match worktree_head_observation_of(outcome: ExecOk { stdout: "\n" }) {
     WorktreeHeadUnobserved { reason } =>
       string_contains(s: reason, pattern: "no revision")
@@ -2072,7 +2072,7 @@ fn belt_pub_unpublished_receipt(head: CommitSha, node_id: String) -> String {
   )
 }
 
-test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Bool {
+test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Bool  {
   let settled = belt_pub_gate_key(
     gate: belt_publish_gate(
       node_id: "belt-pub-node",
@@ -2098,16 +2098,16 @@ test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Boo
 // to assert. Whether the gate fires on a host with an unreadable HEAD is a wet fact owed a wet
 // receipt -- not established here.
 
-test fn witness_revision_refusal_is_never_ok() -> Bool {
+test fn witness_revision_refusal_is_never_ok() -> Bool  {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
 }
 
-test fn witness_revision_refusal_label_pins_wire_contract() -> Bool {
+test fn witness_revision_refusal_label_pins_wire_contract() -> Bool  {
   belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" })) == "deployed_revision_unobserved"
     && status_label_glued_to_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
 }
 
-test fn witness_unobserved_receipt_names_its_cause() -> Bool {
+test fn witness_unobserved_receipt_names_its_cause() -> Bool  {
   string_contains(
     s: serialize_json(v: belt_spawn_outcome_json(
       o: not_admitted(r: LaunchRevisionUnobserved { cause: "HEAD undecodable" }))),
@@ -2133,7 +2133,7 @@ fn multiplicity_count(v: LaunchGateVerdict) -> Int {
   }
 }
 
-test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
+test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool  {
   match live_gate(live: [dup_running(), dup_stale()], node_id: "a") {
     GateRefused { refusal } =>
       match refusal {
@@ -2147,7 +2147,7 @@ test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
 
 // THE DISCRIMINATING ONE: under first() these two orders answered Running and
 // StaleTerminal respectively — same observation, different verdict, no signal.
-test fn witness_multiplicity_verdict_is_order_independent() -> Bool {
+test fn witness_multiplicity_verdict_is_order_independent() -> Bool  {
   let a = multiplicity_count(v: live_gate(live: [dup_running(), dup_stale()], node_id: "a"))
   let b = multiplicity_count(v: live_gate(live: [dup_stale(), dup_running()], node_id: "a"))
   a == 2 && a == b
@@ -2162,7 +2162,7 @@ data witness_desired_hex: String = "1111111111111111111111111111111111111111"
 // constructed-arm witness green, so drive the fold directly. DISCRIMINATING against the deleted
 // drift arm: an observed revision passes whatever the fleet ref says, because the fold never sees
 // the fleet ref at all.
-test fn witness_revision_admission_fold_drives_both_arms() -> Bool {
+test fn witness_revision_admission_fold_drives_both_arms() -> Bool  {
   let unobserved = launch_gate_revision(
     revision: LocalTreeRevisionUnobserved { cause: "HEAD undecodable" })
   match witness_oid_or_refuse(hex: witness_desired_hex) {
@@ -2184,7 +2184,7 @@ test fn witness_revision_admission_fold_drives_both_arms() -> Bool {
 // partition the tick feeds to belt_reconcile: a stale pane is NOT running, so it neither occupies
 // capacity nor reads as Unchanged; an unobserved pane is in neither bucket — a counted refusal,
 // because tearing it down could kill live work and spawning beside it could double-run the node.
-test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
+test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool  {
   let part = belt_tick_classify_sessions(live: [
     live_session_fat_with_process(
       node_id: "run", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
@@ -2205,7 +2205,7 @@ test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
 // unobserved-but-present session left its node looking ABSENT to belt_reconcile and
 // spawnable — beside a pane that might be running. Nothing running means nothing
 // occupies capacity; the point is that nothing is spawned either.
-test fn witness_tick_defers_every_non_running_class() -> Bool {
+test fn witness_tick_defers_every_non_running_class() -> Bool  {
   let part = belt_tick_classify_sessions(live: [
     live_session(node_id: "unknown", verdict: Converged),
   ])
@@ -2218,7 +2218,7 @@ test fn witness_tick_defers_every_non_running_class() -> Bool {
 // Finding 2: multiplicity is a NODE fact. Two rows for one node landed in two buckets
 // because each row's process state was read in isolation, so the tick acted on an
 // ambiguity the click path refuses. Neither row may be classified running.
-test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
+test fn witness_tick_multiplicity_is_a_node_fact() -> Bool  {
   let part = belt_tick_classify_sessions(live: [
     live_session_fat_with_process(
       node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
@@ -2241,7 +2241,7 @@ test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
 //
 // Each conjunct names one of the four facts, so a fold dropping any single field reds here rather
 // than passing on the other three.
-test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
+test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool  {
   match belt_spawn_pass_outcome_from(
     host_refusal: none,
     spawn_outcomes: [
@@ -2269,7 +2269,7 @@ test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
 // to satisfy by concatenating every outcome unconditionally, which would also "name the detail" of
 // a successful spawn and report failure for a tick that had none. So: an all-Spawned list must
 // reach BeltPassRecorded, with no reason at all.
-test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bool {
+test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bool  {
   match belt_spawn_pass_outcome_from(
     host_refusal: none,
     spawn_outcomes: [
@@ -2286,7 +2286,7 @@ test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bo
 
 // Mixed list: the failed one is named and the succeeded one is not dragged into the cause. This is
 // what distinguishes "report the failures" from "report everything that happened".
-test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool {
+test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool  {
   match belt_spawn_pass_outcome_from(
     host_refusal: none,
     spawn_outcomes: [
@@ -2312,7 +2312,7 @@ test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool {
 
 // An observation refusal still wins over the spawn summary — the pre-existing arm, asserted here so
 // the new reason-building cannot quietly displace it.
-test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool {
+test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool  {
   match belt_spawn_pass_outcome_from(
     host_refusal: Present { value: LaunchSessionsUnobservable { reason: "tmux list refused" } },
     spawn_outcomes: [
@@ -2350,7 +2350,7 @@ fn all_four_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
     && pass_refused_with(o: receipt.publish_pass, pattern: pattern)
 }
 
-test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
+test fn transition_halted_tick_refuses_all_four_passes() -> Bool  {
   let refusal = LaunchTransitionInhibited { reason: "deployment transition in force on this host" }
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
@@ -2372,7 +2372,7 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
   all_four_refused_with(receipt: receipt, pattern: "deployment transition in force")
 }
 
-test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
+test fn revision_refusal_keeps_verify_independently_recorded() -> Bool  {
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
       wholesale: TickPassesRun,
@@ -2430,7 +2430,7 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
 // calls with the live projection) over the RLM-0 canary graph and a pending session set. Each
 // refuses at a model-only gate, so tmux is never listed: under claim_batch's hermetic route a tmux
 // effect would be a route refusal, not a verdict.
-test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool {
+test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool  {
   match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: "no-such-node-anywhere") {
     SpawnNotAdmitted { node_id, refusal: LaunchNodeUnknown } => node_id == "no-such-node-anywhere"
     _ => false
@@ -2462,15 +2462,15 @@ fn refused_not_ready_on(o: BeltSpawnOutcome, gap: String) -> Bool {
   }
 }
 
-test fn staged_post_refuses_contractless_node_without_listing_tmux() -> Bool {
+test fn staged_post_refuses_contractless_node_without_listing_tmux() -> Bool  {
   refused_not_ready_on(o: staged_post_over_canary(graph: launch_fixture_canary_graph_child_unbound(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String), gap: "contract")
 }
 
-test fn staged_post_refuses_blocked_child_without_listing_tmux() -> Bool {
+test fn staged_post_refuses_blocked_child_without_listing_tmux() -> Bool  {
   refused_not_ready_on(o: staged_post_over_canary(graph: launch_fixture_canary_graph_child_contracted(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String), gap: "dependencies")
 }
 
-test fn staged_post_transition_halt_refuses_without_listing_tmux() -> Bool {
+test fn staged_post_transition_halt_refuses_without_listing_tmux() -> Bool  {
   match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_halt_transition(), node_id: roadmap_launch_canary_child_node_id() as String) {
     SpawnNotAdmitted { node_id: _, refusal: LaunchTransitionInhibited { reason: _ } } => true
     _ => false
@@ -2492,7 +2492,7 @@ test fn staged_post_transition_halt_refuses_without_listing_tmux() -> Bool {
 // CommitFailed is the not-applicable-rendered-as-malformed conflation -- one symbol over "this
 // commit was refused" and "this attempt cannot be addressed", which have different owners and
 // different repairs.
-test fn a_keyless_attempt_is_unaddressable_and_does_not_fail_the_commit_pass() -> Bool {
+test fn a_keyless_attempt_is_unaddressable_and_does_not_fail_the_commit_pass() -> Bool  {
   let unaddressable = CommitSubjectUnaddressable { node_id: "legacy-node", reason: "no key" }
   !belt_commit_outcome_is_failure(o: unaddressable)
     && !belt_commit_outcome_is_recorded(o: unaddressable)
@@ -2502,7 +2502,7 @@ test fn a_keyless_attempt_is_unaddressable_and_does_not_fail_the_commit_pass() -
 // stopped failing on everything. A real CommitFailed must still fail it, and a pass carrying both an
 // unaddressable legacy row and a genuine failure must report the failure rather than being softened
 // by its neighbour.
-test fn a_real_commit_failure_still_fails_the_pass_beside_an_unaddressable_one() -> Bool {
+test fn a_real_commit_failure_still_fails_the_pass_beside_an_unaddressable_one() -> Bool  {
   let with_both = belt_commit_pass_outcome_from(outcomes: [
     CommitSubjectUnaddressable { node_id: "legacy-node", reason: "no key" },
     CommitFailed { node_id: "real-node", detail: "commit: git exited 1" },
@@ -2518,7 +2518,7 @@ test fn a_real_commit_failure_still_fails_the_pass_beside_an_unaddressable_one()
 // AN UNADDRESSABLE ATTEMPT IS COUNTED, NOT SILENTLY DROPPED. It is a real defect in whatever wrote a
 // keyless attempt, so the tick receipt names it; what changed is only that it stops halting its
 // siblings. A row that vanished from the receipt would zero the deficit's frequency by construction.
-test fn the_unaddressable_outcome_is_named_in_the_tick_receipt() -> Bool {
+test fn the_unaddressable_outcome_is_named_in_the_tick_receipt() -> Bool  {
   let rendered = serialize_json(v: belt_commit_outcome_json_value(o: CommitSubjectUnaddressable {
     node_id: "legacy-node",
     reason: "no key",
@@ -2530,7 +2530,7 @@ test fn the_unaddressable_outcome_is_named_in_the_tick_receipt() -> Bool {
 // The publish edge materializes recovered corpus paths; the parent-dir computation is the one pure
 // decision in it, and losing the first segment or keeping the basename would write outside or beside
 // the integration worktree's structure.
-test fn the_publish_edge_parent_dir_drops_exactly_the_basename() -> Bool {
+test fn the_publish_edge_parent_dir_drops_exactly_the_basename() -> Bool  {
   belt_path_parent_dir(path: "dag/gunbc/ci/ci_spec.dag") == "dag/gunbc/ci"
     && belt_path_parent_dir(path: "dag/a.dag") == "dag"
     && belt_path_parent_dir(path: "README.md") == ""
@@ -2538,7 +2538,7 @@ test fn the_publish_edge_parent_dir_drops_exactly_the_basename() -> Bool {
 
 // The per-attempt commit outcome receipt is the durable record the tick receipt's collapse erases:
 // the failing attempt's arm and detail must survive the pass.
-test fn the_commit_outcome_receipt_carries_the_failing_attempts_arm_and_detail() -> Bool {
+test fn the_commit_outcome_receipt_carries_the_failing_attempts_arm_and_detail() -> Bool  {
   let r = belt_commit_outcome_receipt(
     o: CommitFailed { node_id: "n1", detail: "status: git exited 128: fatal" },
     attempt_key: "abc",
@@ -2553,7 +2553,7 @@ test fn the_commit_outcome_receipt_carries_the_failing_attempts_arm_and_detail()
     && string_contains(s: wire, pattern: "status: git exited 128: fatal")
 }
 
-test fn the_candidate_receipt_names_the_captured_head() -> Bool {
+test fn the_candidate_receipt_names_the_captured_head() -> Bool  {
   let r = belt_commit_outcome_receipt(
     o: CandidateCaptured { node_id: "n1", head_sha: "aaaa", message: "dispatch candidate: n1 aabc" },
     attempt_key: "abc",
@@ -2572,7 +2572,7 @@ test fn the_candidate_receipt_names_the_captured_head() -> Bool {
 // classification is born at the refusal site (BeltScmCapture carries the durability split), so a
 // poisoned attempt is a typed, located, persisted skip -- the same absorbing-arm repair
 // CommitSubjectUnaddressable carries one seam up.
-test fn a_capture_poisoned_attempt_is_a_skip_not_a_failure() -> Bool {
+test fn a_capture_poisoned_attempt_is_a_skip_not_a_failure() -> Bool  {
   let poisoned = CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" }
   !belt_commit_outcome_is_failure(o: poisoned)
     && !belt_commit_outcome_is_recorded(o: poisoned)
@@ -2582,7 +2582,7 @@ test fn a_capture_poisoned_attempt_is_a_skip_not_a_failure() -> Bool {
 // pass had simply stopped failing on everything: a real transient CommitFailed beside any number
 // of poisoned siblings must still fail the pass (an infra arm that may clear by next tick stays
 // loud), while poison alone defers honestly and names the count.
-test fn a_real_commit_failure_still_fails_the_pass_beside_poisoned_ones() -> Bool {
+test fn a_real_commit_failure_still_fails_the_pass_beside_poisoned_ones() -> Bool  {
   let with_both = belt_commit_pass_outcome_from(outcomes: [
     CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
     CommitCapturePoisoned { node_id: "n2", detail: "the seeded base's root is an authored source, which is store damage" },
@@ -2609,7 +2609,7 @@ test fn a_real_commit_failure_still_fails_the_pass_beside_poisoned_ones() -> Boo
 // are held for repair, counted in the tick result beside the siblings' verdicts. A zero here
 // would make the poison frequency vanish by construction, the deficit this witness exists to
 // keep visible.
-test fn the_poisoned_attempt_count_counts_only_capture_poisoned_rows() -> Bool {
+test fn the_poisoned_attempt_count_counts_only_capture_poisoned_rows() -> Bool  {
   let result = BeltTickResult {
     wholesale: TickPassesRun,
     host_refusal: Absent,
@@ -2637,7 +2637,7 @@ test fn the_poisoned_attempt_count_counts_only_capture_poisoned_rows() -> Bool {
 // THE POISON IS NAMED AT BOTH DURABLE RECORDS, the tick result's outcome row and the per-attempt
 // receipt that survives the pass receipt's collapse -- the operator repairs against the attempt's
 // own row, never against the pass sentence it no longer halts.
-test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt() -> Bool {
+test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt() -> Bool  {
   let rendered = serialize_json(v: belt_commit_outcome_json_value(o: CommitCapturePoisoned {
     node_id: "n1",
     detail: "the recorded base names zero files",
@@ -2662,7 +2662,7 @@ test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt
 // THE GATE ADMITS ONCE AND NEVER STACKS: an absent unit is clear to convene, a running unit is
 // already the session over this record (escalation does not stack), an exited unit without a
 // verdict is named and not reconvened, and an unreadable unit refuses rather than guessing.
-test fn the_convene_gate_admits_once_and_never_stacks() -> Bool {
+test fn the_convene_gate_admits_once_and_never_stacks() -> Bool  {
   match belt_supervisor_convene_gate(process: WorkerProcessAbsent) {
     ConveneClear => true
     _ => false
@@ -2684,7 +2684,7 @@ test fn the_convene_gate_admits_once_and_never_stacks() -> Bool {
 // THE CHECKPOINT LINES ARE THE CAPTURE RECORD, PROJECTED: the worker's own explanation and
 // limitations arrive verbatim, the capture state names its readiness, a yield reads as a yield,
 // and an unreadable capture carries its reason -- no line is invented.
-test fn the_checkpoint_lines_project_the_capture_record_verbatim() -> Bool {
+test fn the_checkpoint_lines_project_the_capture_record_verbatim() -> Bool  {
   let blocked = WorkerSubmission {
     readiness: SubmissionBlocked,
     explanation: "the acceptance run was still in flight when the budget died",
@@ -2759,13 +2759,13 @@ fn belt_test_binding_read(identity: String, fingerprint: String) -> BeltAlignmen
 
 // THE BINDING IS MINTED UNDER THE WORKER ATTEMPT IDENTITY the spawn argv carries — one mint for
 // the unit's --arg and the state's binding file, so the two cannot drift apart.
-test fn the_binding_identity_is_the_worker_attempt_identity() -> Bool {
+test fn the_binding_identity_is_the_worker_attempt_identity() -> Bool  {
   dispatch_worker_attempt_identity(node_id: "n1", attempt_key: "deadbeef") == "worker:n1-deadbeef"
 }
 
 // AN UNCHANGED CHAIN BINDS: the parent attempt's fingerprint equals the chain the authority derives
 // now, so the continuation dispatches.
-test fn a_continuation_with_an_unchanged_chain_binds() -> Bool {
+test fn a_continuation_with_an_unchanged_chain_binds() -> Bool  {
   let fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1")
   match belt_alignment_binding_check(
     expected_identity: "worker:n1-deadbeef",
@@ -2779,7 +2779,7 @@ test fn a_continuation_with_an_unchanged_chain_binds() -> Bool {
 
 // A CHANGED CHAIN REFUSES, NAMING BOTH FINGERPRINTS: any moved link — here a retitled project row —
 // moves the fingerprint, and the refusal names what was bound and what the authority now derives.
-test fn a_continuation_with_a_changed_chain_refuses_naming_both_fingerprints() -> Bool {
+test fn a_continuation_with_a_changed_chain_refuses_naming_both_fingerprints() -> Bool  {
   let bound_fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1")
   let now_fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1-retitled")
   match belt_alignment_binding_check(
@@ -2798,7 +2798,7 @@ test fn a_continuation_with_a_changed_chain_refuses_naming_both_fingerprints() -
 // AN UNBOUND PARENT REFUSES: an attempt that predates the binding lane carries no chain to compare
 // against, and weaker evidence cannot improve admission — the continuation does not dispatch on an
 // unbound chain.
-test fn a_continuation_over_an_unbound_parent_refuses() -> Bool {
+test fn a_continuation_over_an_unbound_parent_refuses() -> Bool  {
   match belt_alignment_binding_check(
     expected_identity: "worker:n1-deadbeef",
     bound: BeltAlignmentBindingAbsent,
@@ -2812,7 +2812,7 @@ test fn a_continuation_over_an_unbound_parent_refuses() -> Bool {
 // A BINDING MINTED FOR ANOTHER ATTEMPT REFUSES: the identity beside the payload is checked against
 // the parent the lineage actually continues — a receipt from a different attempt authorizes nothing
 // (conservation law 4: adjacency is not a join).
-test fn a_binding_minted_for_another_attempt_refuses() -> Bool {
+test fn a_binding_minted_for_another_attempt_refuses() -> Bool  {
   let fingerprint = belt_test_ready_fingerprint(node_id: "n1", project_id: "a1")
   match belt_alignment_binding_check(
     expected_identity: "worker:n1-deadbeef",
@@ -2827,7 +2827,7 @@ test fn a_binding_minted_for_another_attempt_refuses() -> Bool {
 }
 
 // AN UNREADABLE OR UNDECODABLE BINDING REFUSES rather than guessing the chain.
-test fn an_unreadable_or_undecodable_binding_refuses() -> Bool {
+test fn an_unreadable_or_undecodable_binding_refuses() -> Bool  {
   (match belt_alignment_binding_check(
     expected_identity: "worker:n1-deadbeef",
     bound: BeltAlignmentBindingUnreadable { reason: "the directory listing refused" },
@@ -2851,7 +2851,7 @@ test fn an_unreadable_or_undecodable_binding_refuses() -> Bool {
 // AN UNRESOLVED CHAIN DEFERS TO THE SPAWN GATE: the binding check passes (its subject is "the
 // chain is unchanged", which presupposes a chain) and the spawn fold's alignment gate refuses with
 // the typed cause and zero commands — one refusal per question, each at its own seam.
-test fn an_unresolved_chain_passes_the_binding_gate_and_the_spawn_gate_names_it() -> Bool {
+test fn an_unresolved_chain_passes_the_binding_gate_and_the_spawn_gate_names_it() -> Bool  {
   let unresolved = AlignmentUnresolved {
     cause: AlignmentWalkUnrooted { at: "a1", walked: [] },
   }
@@ -2868,7 +2868,7 @@ test fn an_unresolved_chain_passes_the_binding_gate_and_the_spawn_gate_names_it(
 // THE FRESH START HAS NOTHING TO CHECK: the gate reads no filesystem on the fresh arm — there is
 // no parent attempt — and answers Ok; this attempt's own chain is bound at its state
 // initialization for the continuation that may one day read it back.
-test fn a_fresh_start_passes_the_binding_gate() -> Bool {
+test fn a_fresh_start_passes_the_binding_gate() -> Bool  {
   match belt_alignment_binding_gate(
     instance: srv1_live_dashboard_instance(),
     node_id: roadmap_belt_actuate_nid(s: "n2"),
@@ -2909,7 +2909,7 @@ fn production_node(id: String) -> RoadmapNode? {
   (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
 }
 
-test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_supervisor() -> Bool {
+test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_supervisor() -> Bool  {
   match production_escalation(node_id: "shell-dag-cron-entry-line-builder") {
     Absent => false
     Present { value: e1 } =>
@@ -2951,7 +2951,7 @@ test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_su
 // THE CONVENED OUTCOME IS ITS OWN OK LABEL: a convened supervisor is the desired state achieved,
 // on the ok side of the band, in the derived ok-label set, and on the wire as
 // supervisor_convened -- never painted as a worker spawn and never as a failure.
-test fn the_convened_outcome_is_an_ok_label_of_its_own() -> Bool {
+test fn the_convened_outcome_is_an_ok_label_of_its_own() -> Bool  {
   let o = SupervisorConvened { node_id: "n", unit: "gunbc-supervisor-n-k-t3.service", provider: "codex", launch: launch_identity_exemplar() }
   belt_dispatch_status_label(r: o) == "supervisor_convened"
     && belt_dispatch_result_ok(r: o)
@@ -2968,7 +2968,7 @@ test fn the_convened_outcome_is_an_ok_label_of_its_own() -> Bool {
 // the same head and oracle can never answer differently -- so a repeat wake-up is a typed no-op
 // that re-runs nothing and rewrites nothing (conditional publish); only an absent receipt runs,
 // and an unreadable one refuses rather than guessing over it.
-test fn the_verify_one_gate_runs_only_when_no_receipt_binds_the_head() -> Bool {
+test fn the_verify_one_gate_runs_only_when_no_receipt_binds_the_head() -> Bool  {
   match belt_verify_one_gate(observation: VerifyOneReceiptAbsent) {
     VerifyOneRun => true
     _ => false
@@ -2986,7 +2986,7 @@ test fn the_verify_one_gate_runs_only_when_no_receipt_binds_the_head() -> Bool {
 // THE NO-OP IS ON THE WIRE AS ITSELF: the CLI receipt of an already-recorded verify says
 // already-recorded with the durable verdict, so a wake-up storm never re-runs the oracle and the
 // receipt says why nothing ran.
-test fn the_verify_one_no_op_receipt_names_the_durable_verdict() -> Bool {
+test fn the_verify_one_no_op_receipt_names_the_durable_verdict() -> Bool  {
   let doc = serialize_json(v: belt_verify_one_result_json(r: VerifyOneAlreadyRecorded { verdict_key: "pass", detail: "4 validations" }))
   doc.contains("\"status\": \"already-recorded\"")
     && doc.contains("\"verdict\": \"pass\"")
@@ -2996,7 +2996,7 @@ test fn the_verify_one_no_op_receipt_names_the_durable_verdict() -> Bool {
 // THE ESCALATE-ONE ROUTE CONVENES ONLY AN ESCALATION RECORD. A consumed verdict (Continue), a
 // terminal typed state (PlanDefect/Stuck), nothing due (Fresh), and a hold are each the typed
 // no-op their decision already is; a refusal stays a refusal.
-test fn the_escalate_one_route_convenes_only_an_escalation_record() -> Bool {
+test fn the_escalate_one_route_convenes_only_an_escalation_record() -> Bool  {
   let escalation = SupervisorEscalation {
     node_id: "n1",
     attempt_key: "a1",
@@ -3037,7 +3037,7 @@ test fn the_escalate_one_route_convenes_only_an_escalation_record() -> Bool {
 
 // THE ESCALATE AND INTEGRATE RECEIPTS RENDER THEIR OWN STATUSES, so a wake-up reader distinguishes
 // convened, gate-no-op, not-due, integrated, blocked, deferred and unreadable without re-deriving.
-test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
+test fn the_per_item_receipts_render_their_own_statuses() -> Bool  {
   serialize_json(v: belt_escalate_one_result_json(r: EscalateOneConvened { unit: "gunbc-supervisor-n1-a1-t3.service" }))
     .contains("\"status\": \"convened\"")
     && serialize_json(v: belt_escalate_one_result_json(r: EscalateOneGateNoOp { step: "supervisor-convening", detail: "already convening" }))
@@ -3064,7 +3064,7 @@ test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
 // THE SPAWN ROUTE OF EVERY NON-SPAWN DECISION IS NONE. Hold (worker running, verification owed),
 // Complete (fully approved), Refused, PlanDefect and Stuck carry no origin and no escalation
 // record, so the spawn fold has no spawn command to reach for; only the two spawn arms carry one.
-test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
+test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool  {
   let hold = belt_spawn_route_for_decision(decision: ContinuationHold { reason: "the prior attempt's worker has not ended" })
   let complete = belt_spawn_route_for_decision(decision: ContinuationComplete { reason: "the lineage is complete" })
   let refused = belt_spawn_route_for_decision(decision: ContinuationRefused { reason: "x" })
@@ -3085,7 +3085,7 @@ test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
 // classifies through the occurrence population, occupies and refuses the node's launch at the
 // census (AlreadyLive), and the same lineage's continuation decision (worker not terminal) is a
 // Hold whose spawn route is None -- no worker spawn command is reachable anywhere in the chain.
-test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool {
+test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool  {
   let population = occurrence_population(
     containers: [ObservedContainerRow {
       container: AttemptContainerSystemdUnit { unit: "gunbc-attempt-node-a-cd172fe81b806160.service" },
@@ -3137,7 +3137,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
 // ledger that never wrote a terminal event leaves the lineage live forever unless the process
 // evidence settles it — the four arms pin the law: a recorded exit is terminal; running, absent,
 // and unobserved are not (fail-closed, never an invented terminal).
-test fn the_worker_process_terminal_read_settles_only_a_recorded_exit() -> Bool {
+test fn the_worker_process_terminal_read_settles_only_a_recorded_exit() -> Bool  {
   belt_worker_process_terminal(evidence: WorkerProcessExited { exit_code: 1, last_command: "x" })
     && !belt_worker_process_terminal(evidence: WorkerProcessRunning { command: "x" as NonEmptyStr })
     && !belt_worker_process_terminal(evidence: WorkerProcessAbsent)
@@ -3151,7 +3151,7 @@ test fn the_worker_process_terminal_read_settles_only_a_recorded_exit() -> Bool 
 // A WORKER WAITING IN LINE FOR A SEAT HOLDS ITS LINEAGE. While its process runs the attempt is not
 // terminal, so the continuation decision holds rather than spawning a second attempt beside it;
 // once the bounded wait ends in an exit, the recorded exit settles it as any exit does.
-test fn a_worker_waiting_for_a_seat_is_not_terminal_until_it_exits() -> Bool {
+test fn a_worker_waiting_for_a_seat_is_not_terminal_until_it_exits() -> Bool  {
   !belt_attempt_worker_terminal(provider: ProviderAwaitingSeat { detail: "group-b busy" }, evidence: WorkerProcessRunning { command: "gunbc" as NonEmptyStr })
     && belt_attempt_worker_terminal(provider: ProviderAwaitingSeat { detail: "group-b busy" }, evidence: WorkerProcessExited { exit_code: 1, last_command: "gunbc" })
 }
@@ -3159,7 +3159,7 @@ test fn a_worker_waiting_for_a_seat_is_not_terminal_until_it_exits() -> Bool {
 // THE ISSUE PAGE'S WORK TAB OBSERVES ONE NODE through the same observation the daily page runs
 // over every node: the one-node scope admits exactly that node's attempt and nothing else, and the
 // all-nodes scope admits every attempt -- so narrowing never changes which attempt a node shows.
-test fn the_one_node_attempt_scope_admits_only_its_node() -> Bool {
+test fn the_one_node_attempt_scope_admits_only_its_node() -> Bool  {
   let mine = DispatchAttemptRef { node_id: "shell-dag-cron-entry-line-builder" as NonEmptyStr, branch: "dispatch/shell-dag-cron-entry-line-builder-a1" as NonEmptyStr, attempt_key: "a1" }
   let other = DispatchAttemptRef { node_id: "shell-dag-ci-fmt-gate-line" as NonEmptyStr, branch: "dispatch/shell-dag-ci-fmt-gate-line-a2" as NonEmptyStr, attempt_key: "a2" }
   let prefix = DispatchAttemptRef { node_id: "shell-dag-cron-entry-line-builder-extra" as NonEmptyStr, branch: "dispatch/shell-dag-cron-entry-line-builder-extra-a3" as NonEmptyStr, attempt_key: "a3" }
@@ -3221,7 +3221,7 @@ fn classifier_admits(readiness: SubmissionReadiness) -> Bool {
 
 // A BLOCKED CAPTURE INTEGRATES AS DEFERRED, NOT UNREADABLE -- and a ready one still advances, so the
 // claim cannot pass by the gate simply stopping everything.
-test fn a_blocked_capture_defers_the_integrate_step_rather_than_reading_as_unreadable() -> Bool {
+test fn a_blocked_capture_defers_the_integrate_step_rather_than_reading_as_unreadable() -> Bool  {
   let blocked_defers = match belt_integration_capture_gate(capture: candidacy_capture(readiness: SubmissionBlocked)) {
     IntegrationCaptureStops { step: IntegrationCoreDeferred { reason } } =>
       string_contains(s: reason, pattern: "declares blocked")
@@ -3245,7 +3245,7 @@ test fn a_blocked_capture_defers_the_integrate_step_rather_than_reading_as_unrea
 
 // THE TWO PASSES CANNOT DISAGREE: for every readiness arm the verify pass's gate and the integrate
 // step's gate give the classifier's verdict, and the classifier admits exactly `ready`.
-test fn the_verify_pass_and_the_integrate_step_agree_on_candidacy_for_every_readiness() -> Bool {
+test fn the_verify_pass_and_the_integrate_step_agree_on_candidacy_for_every_readiness() -> Bool  {
   all([SubmissionReady, SubmissionBlocked, SubmissionNeedsContext], r =>
     integration_gate_advances(capture: candidacy_capture(readiness: r)) == classifier_admits(readiness: r)
       && verify_gate_advances(capture: candidacy_capture(readiness: r)) == classifier_admits(readiness: r))
@@ -3272,7 +3272,7 @@ fn candidate_reading_key(selection: CurrentVerificationSelectionObservation) -> 
 // AN ABSENT SELECTION IS AN ABSENCE; A BROKEN ONE IS A FAULT. The discriminator runs both ways: the
 // absence reads not-passed, while every fault arm -- and a selection naming another head -- stays
 // unreadable, so the fix cannot be a blanket softening of the selection read.
-test fn an_absent_selection_is_not_passed_while_a_broken_selection_stays_unreadable() -> Bool {
+test fn an_absent_selection_is_not_passed_while_a_broken_selection_stays_unreadable() -> Bool  {
   candidate_reading_key(selection: SelectionAbsent) == "not-passed"
     && candidate_reading_key(selection: SelectionUnreadable { cause: "io" }) == "unreadable"
     && candidate_reading_key(selection: SelectionMalformed { cause: "bad json" }) == "unreadable"
@@ -3285,7 +3285,7 @@ test fn an_absent_selection_is_not_passed_while_a_broken_selection_stays_unreada
 
 // A FAILED PUBLISH PASS NAMES THE FAILING ATTEMPT, ITS ARM AND ITS DETAIL, and names no attempt that
 // did not fail.
-test fn the_publish_pass_failure_names_the_failing_attempt_and_its_detail() -> Bool {
+test fn the_publish_pass_failure_names_the_failing_attempt_and_its_detail() -> Bool  {
   match belt_publish_pass_outcome_from(outcomes: [
     PublishDeferred { node_id: "quiet-node", reason: "nothing to publish yet" },
     PublishEvidenceUnreadable { node_id: "shell-dag-live-deploy-install-owned", detail: "the selection file is malformed" },
@@ -3317,7 +3317,7 @@ fn release_note_carried(o: BeltSpawnOutcome) -> Bool {
 // note on -- comes back as a SpawnFailed whose detail contains the release note, so a release whose
 // record failed to write is visible (DISCRIMINATING: the note is a failed-write rendering). The
 // positive control: a Spawned outcome is returned unchanged and carries no note.
-test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -> Bool {
+test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -> Bool  {
   let note = failed_release_note
   let spawned = Spawned { node_id: "a", session_name: "s", provider: "gunbc-harness", launch: launch_identity_exemplar() }
   release_note_carried(o: not_admitted(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }))
@@ -3332,7 +3332,7 @@ test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -
 
 // A REFUSED METERING WRITE FAILS THE TICK'S METERING PASS, named by its cause; an attempt not yet due
 // and a persisted record do not.
-test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
+test fn a_refused_metering_write_fails_the_metering_pass() -> Bool  {
   (match belt_metering_pass_outcome_from(outcomes: [MeteringNotDue, MeteringPersistRefused { cause: "disk full" }]) {
     BeltPassFailed { reason: r } => string_contains(s: r, pattern: "disk full")
     _ => false

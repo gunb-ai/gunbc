@@ -51,17 +51,17 @@ data harness_control_source: String = "module probe_review_sheet_header_init_har
 
 data no_forgery_source: String = "module probe_review_sheet_header_init_no_forgery\nimport std.types { String }\nimport gunbc.review_sheet_formula_observation { formula_whole_tab_refusal_text, FormulaReadRangeUnqualified, occupied_cell_text, OccupiedCell }\nimport gunbc.review_sheet_header_init { header_init_plan_text }\nfn text() -> String { formula_whole_tab_refusal_text(refusal: FormulaReadRangeUnqualified { range: \"A1:B2\" }) }\nfn located() -> String { occupied_cell_text(cell: OccupiedCell { sheet_row: 1, column_index: 0, raw: \"x\" }) }\n"
 
-test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
+test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool  {
   total_blocking_count_for(source: harness_control_source) == 0
 }
 
-test fn a_source_that_forges_nothing_carries_no_sole_constructor_row_at_either_type() -> Bool {
+test fn a_source_that_forges_nothing_carries_no_sole_constructor_row_at_either_type() -> Bool  {
   total_blocking_count_for(source: no_forgery_source) != 0 - 1
     && blocking_subject_count_for(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "FormulaWholeTabObservation") == 0
     && blocking_subject_count_for(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "HeaderRowWriteAuthorization") == 0
 }
 
-test fn a_formula_observation_cannot_be_authored_outside_the_mint() -> Bool {
+test fn a_formula_observation_cannot_be_authored_outside_the_mint() -> Bool  {
   blocking_subject_count_for(
     source: probe_source(name: "review_sheet_formula_observation_forged_probe"),
     wanted_class: "SoleConstructorViolation",
@@ -69,7 +69,7 @@ test fn a_formula_observation_cannot_be_authored_outside_the_mint() -> Bool {
   ) == 1
 }
 
-test fn a_header_row_authorization_cannot_be_authored_outside_the_planner() -> Bool {
+test fn a_header_row_authorization_cannot_be_authored_outside_the_planner() -> Bool  {
   blocking_subject_count_for(
     source: probe_source(name: "review_sheet_header_row_authorization_forged_probe"),
     wanted_class: "SoleConstructorViolation",
@@ -87,7 +87,7 @@ data outside_caller_of_the_minting_boundary_source: String = "module probe_formu
 
 data outside_caller_of_the_observer_source: String = "module probe_formula_observer_outside_caller\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.review_sheet_sheets { SheetA1Range }\nimport gunbc.review_sheet_formula_observation { FormulaWholeTabReading, observe_formula_whole_tab }\nfn probe_observe(spreadsheet_id: NonEmptyStr, requested: SheetA1Range) -> FormulaWholeTabReading uses net: Network {\n  observe_formula_whole_tab(spreadsheet_id: spreadsheet_id, requested: requested)\n}\n"
 
-test fn an_outside_module_calling_the_minting_boundary_is_refused_at_that_callee() -> Bool {
+test fn an_outside_module_calling_the_minting_boundary_is_refused_at_that_callee() -> Bool  {
   blocking_subject_count_for(
     source: outside_caller_of_the_minting_boundary_source,
     wanted_class: "ConstructorCallAdmissionRefused",
@@ -95,7 +95,7 @@ test fn an_outside_module_calling_the_minting_boundary_is_refused_at_that_callee
   ) == 1
 }
 
-test fn an_outside_module_calling_the_observer_is_not_refused() -> Bool {
+test fn an_outside_module_calling_the_observer_is_not_refused() -> Bool  {
   total_blocking_count_for(source: outside_caller_of_the_observer_source) != 0 - 1
     && blocking_subject_count_for(
       source: outside_caller_of_the_observer_source,
