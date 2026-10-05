@@ -633,8 +633,11 @@ fn admit_route_qualification_request(
 // AT THE QUALIFICATION BOUNDARY a privilege-limit request that does not lower anything is admitted
 // only as an IDEMPOTENT RE-ASSERTION OF THE MANAGED ACCOUNT'S OWN CURRENT VALUE: the request's target user
 // IS the readback's managed account, and that account's unique row for the target channel already holds
-// exactly the requested limit. So a managed id that changed after the reflash, or a target that does not
-// already hold the value, issues no request at all, rather than granting a privilege. A lowering request
+// exactly the requested limit. The second half is not a separate check: a non-lowering request IS
+// ADMINISTRATOR, and administrator_retention_refusal (applied first) already requires the managed
+// account's unique row on that channel to be ADMINISTRATOR. So a managed id that changed after the
+// reflash, or a target that does not already hold the value, issues no request at all, rather than
+// granting a privilege. A lowering request
 // at qualification is an effectful act and passes the ordinary retention precondition.
 fn qualification_retention_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
   match administrator_retention_refusal(standing: standing, request: request, readback: readback, approved_attempt: approved_attempt) {
@@ -650,10 +653,8 @@ fn qualification_retention_refusal(standing: BmcRotationRouteStanding, request: 
               Present { value: r } =>
                 if (r.managed_user as Int) != (x.user as Int) {
                   Present { value: QualificationTargetIsNotTheManagedAccount { target: x.user, managed_user: r.managed_user } }
-                } else if any(r.access, a => (a.user as Int) == (x.user as Int) && (a.channel as Int) == (x.channel as Int) && ipmi_privilege_eq(a: a.privilege, b: x.privilege)) {
-                  none
                 } else {
-                  Present { value: QualificationTargetDoesNotAlreadyHoldTheLimit { target: x.user } }
+                  none
                 }
             }
           }
@@ -791,7 +792,6 @@ type AdministratorRetentionRefusal
   | ManagedAccountNotAdministratorOnChannel { managed_user: IpmiUserId }
   | ManagedReadbackDuplicateRow { managed_user: IpmiUserId, count: Int }
   | QualificationTargetIsNotTheManagedAccount { target: IpmiUserId, managed_user: IpmiUserId }
-  | QualificationTargetDoesNotAlreadyHoldTheLimit { target: IpmiUserId }
 
 fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
   match privilege {

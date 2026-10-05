@@ -37,7 +37,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved, RotationApplyApprovalRefused,
   EffectObserved, AcceptedEffectUnobserved, RouteEffectStanding, rotation_route_executed_fixture, RotationApplyApprovalDenied,
   RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest, RotationApplyWouldLeaveNoAdministrator,
-  ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel, ManagedReadbackDuplicateRow, QualificationTargetIsNotTheManagedAccount, QualificationTargetDoesNotAlreadyHoldTheLimit,
+  ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel, ManagedReadbackDuplicateRow, QualificationTargetIsNotTheManagedAccount,
   RouteQualificationRequestAdmitted, RouteQualificationRequestRefused, QualificationRequestForAnotherOperation,
   QualificationRequestRefusedByClassifier, QualificationRequestWouldLeaveNoAdministrator,
   admit_password_route_qualification, admit_privilege_limit_route_qualification,
@@ -551,7 +551,6 @@ fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
           ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
           ManagedReadbackDuplicateRow { managed_user: _, count: _ } => "duplicate-row"
           QualificationTargetIsNotTheManagedAccount { target: _, managed_user: _ } => "target-not-managed"
-          QualificationTargetDoesNotAlreadyHoldTheLimit { target: _ } => "target-not-holding"
         }
       }
     _ => "other-refusal"
@@ -601,6 +600,9 @@ fn prewrite_verdict(a: RouteQualificationRequestAdmission) -> String {
         QualificationRequestWouldLeaveNoAdministrator { cause: k } =>
           match k {
             ManagedReadbackAbsent => "readback-absent"
+            ManagedReadbackFromAnotherController { readback: _, route: _ } => "another-controller"
+            QualificationTargetIsNotTheManagedAccount { target: _, managed_user: _ } => "target-not-managed"
+            ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
             _ => "retention-refused"
           }
       }
@@ -628,7 +630,7 @@ test fn the_prewrite_admission_admits_only_with_the_same_run_receipt() -> Bool {
   let exact = qualification_approval_for(standing: c, request: request)
   let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
   prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "admitted"
-    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "retention-refused"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "another-controller"
     && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: rotation_approval_for(s: c), readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "another-authority"
 }
 
@@ -682,14 +684,15 @@ test fn an_accept_only_grounding_does_not_admit_the_closing_write() -> Bool {
 }
 
 // THE NON-DESTRUCTIVE QUALIFICATION RE-ASSERTS THE MANAGED ACCOUNT'S OWN CURRENT VALUE (side-chat review
-// of 6d277411fd, item 2). For the target (user 3, channel 1, ADMINISTRATOR): a receipt only for managed
-// user 4, though ADMINISTRATOR on channel 1, issues no qualification request; a receipt for user 3 whose
-// channel-1 row is OPERATOR issues none; the exact current ADMINISTRATOR reading for user 3 is admitted.
+// of 6d277411fd, item 2). For the target (user 3, channel 1, ADMINISTRATOR): a receipt for managed user 4
+// -- ADMINISTRATOR on channel 1, and even carrying an ADMINISTRATOR row for user 3 -- issues no request,
+// refused only because the target is not the managed account; a receipt for user 3 whose channel-1 row
+// is OPERATOR issues none; user 3's exact current ADMINISTRATOR reading is admitted.
 test fn the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value() -> Bool {
   let request = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
   let c = lab_candidate(request: request)
   let exact = qualification_approval_for(standing: c, request: request)
-  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 4, access: [ipmi_user_channel_access(channel: 1, user: 4, privilege: IpmiPrivilegeAdministrator)]) })) == "retention-refused"
-    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeOperator)]) })) == "retention-refused"
+  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 4, access: [ipmi_user_channel_access(channel: 1, user: 4, privilege: IpmiPrivilegeAdministrator), ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]) })) == "target-not-managed"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeOperator)]) })) == "not-administrator-on-channel"
     && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]) })) == "admitted"
 }
