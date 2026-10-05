@@ -274,3 +274,12 @@ the automatic reconciliation's first read confirmed the matching filename and
 RUNNING. The workflow exited successfully without republishing. The temporary
 operator-token file was deleted after completion of the start workflow. Physical
 completion, removal and acceptance of individual parts remain pending.
+
+Printer-02 preparation uses M140, G140, CU-1-1/CU-11/CU1-1/CU11 and
+CP-1-1/CP-11/CP1-1/CP11: ten distinct parts, none in printer-01's active plate.
+The four lower shoes remain unprinted; their clip-channel support removal needs a
+better orientation. The rear shoes now carry matching open notches in the upper
+and lower lips so the separate socket's through-bolt hardware can pass. CAD checked
+a 10 mm diameter, 6 mm deep underside hardware envelope against both rear shoes.
+The four residential-joinery witnesses still pass. The new batch prints upper posts
+inverted and pins head-down; build-plate-only supports avoid the enclosed post bores.

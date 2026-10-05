@@ -38,10 +38,10 @@ fn lower_post(sx:Int,sz:Int) -> AssemblyPart {
  block(w:38000,h:4000,d:24000,x:inset,y:12000,z:0),
  block(w:middle_key_um,h:middle_engagement_um,d:middle_key_um,x:0,y:post_split_um+middle_engagement_um/2,z:0),
  ],front_pad),
- cuts:concat(if sz== -1 {[block(w:14500,h:6000,d:10500,x:0-sx*24000,y:13000,z:8000)]} else {[]},[block(w:post_inner_um,h:100000,d:post_inner_um,x:0,y:60000,z:0),
+ cuts:concat(if sz== -1 {map([-17000,13000],y=>block(w:14500,h:6000,d:10500,x:0-sx*24000,y:y,z:8000))} else {[]},[block(w:post_inner_um,h:100000,d:post_inner_um,x:0,y:60000,z:0),
  block(w:stack_key_um+2*key_clearance_um,h:stack_key_depth_um+key_clearance_um+1000,d:stack_key_um+2*key_clearance_um,x:0,y:shoe_bottom_um+(stack_key_depth_um+key_clearance_um-1000)/2,z:0),join_pin_hole(y:post_split_um+middle_engagement_um/2)]),
  x:sx*post_x_um,y:0,z:sz*post_z_um,ex:sx*45000,ey:0,ez:sz*25000,plane:LayOnXZ,
- notes:"Cassette-owned clip shoe. Rear lower lip bears under socket floor; front pad bears under the rail. Hollow 20/12 mm post. 16 mm middle key, 20 mm engagement, 0.25 mm clearance per side. Tray clipping and loaded lifting are not qualified.")
+ notes:"Cassette-owned clip shoe. Rear lower lip bears under socket floor with an open corner notch for its through-bolt hardware; front pad bears under the rail. Hollow 20/12 mm post. 16 mm middle key, 20 mm engagement, 0.25 mm clearance per side. Tray clipping and loaded lifting are not qualified.")
 }
 fn upper_post(sx:Int,sz:Int,pitch_um:Int) -> AssemblyPart {
  let top=pitch_um+shoe_bottom_um
