@@ -1,0 +1,79 @@
+module gunbc.roadmap_view_preferences
+
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import extdeps.google.issue_tracker { IssueResultsSortKey, IssueSortStatus, IssueSortPriority, issue_results_columns, issue_results_sort_key_wire }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_array, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_bool, json_field_string_list, json_field_value }
+
+type ViewSortDirection = ViewAscending | ViewDescending
+type ViewSortTerm { key: IssueResultsSortKey, direction: ViewSortDirection }
+type IssueViewPreferences { sorts: List<ViewSortTerm>, query: String, band: String, project: String, selected: String, expanded: Bool }
+
+fn default_issue_view_preferences() -> IssueViewPreferences {
+  IssueViewPreferences { sorts: [ViewSortTerm { key: IssueSortStatus, direction: ViewDescending }, ViewSortTerm { key: IssueSortPriority, direction: ViewAscending }], query: "", band: "all", project: "", selected: "", expanded: false }
+}
+
+fn view_sort_wire(term: ViewSortTerm) -> String {
+  concat(issue_results_sort_key_wire(key: term.key), match term.direction { ViewAscending => ":asc" ViewDescending => ":desc" })
+}
+fn view_sort_of(raw: String) -> ViewSortTerm? {
+  let admitted = flat_map(issue_results_columns, col => [ViewSortTerm { key: col.sort_key, direction: ViewAscending }, ViewSortTerm { key: col.sort_key, direction: ViewDescending }])
+  filter(admitted, term => view_sort_wire(term: term) == raw).first()
+}
+fn issue_view_preferences_json(prefs: IssueViewPreferences) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "issue-view/v1")),
+    json_kv(key: "sorts", value: json_array(elements: map(prefs.sorts, term => json_string(s: view_sort_wire(term: term))))),
+    json_kv(key: "query", value: json_string(s: prefs.query)),
+    json_kv(key: "band", value: json_string(s: prefs.band)),
+    json_kv(key: "project", value: json_string(s: prefs.project)),
+    json_kv(key: "selected", value: json_string(s: prefs.selected)),
+    json_kv(key: "expanded", value: json_bool(b: prefs.expanded)),
+  ])
+}
+fn issue_view_preferences_of(text: String) -> IssueViewPreferences? {
+  if string_length(s: text) > 8192 { none } else {
+    match parse_json_document(s: text) {
+      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentParsed { value: doc } => issue_view_preferences_of_value(doc: doc)
+    }
+  }
+}
+fn view_sort_terms_of(raw: List<String>) -> List<ViewSortTerm> {
+  fold(raw, init: [] as List<ViewSortTerm>, f: (acc, s) => match view_sort_of(raw: s) { Absent => acc Present { value: term } => concat(acc, [term]) })
+}
+
+fn issue_view_preferences_of_value(doc: JsonValue) -> IssueViewPreferences? {
+  match json_field_value(r: json_field_string(obj: doc, key: "schema")) {
+    Absent => none
+    Present { value: schema } => if schema != "issue-view/v1" { none } else {
+      match json_field_value(r: json_field_string_list(obj: doc, key: "sorts")) {
+        Absent => none
+        Present { value: raw } => {
+          let terms = view_sort_terms_of(raw: raw)
+          if count(raw) != count(terms) || count(terms) > count(issue_results_columns) || any(terms, t => count(filter(terms, other => t.key == other.key)) != 1) { none }
+          else { issue_view_preferences_fields(doc: doc, terms: terms) }
+        }
+      }
+    }
+  }
+}
+fn issue_view_preferences_fields(doc: JsonValue, terms: List<ViewSortTerm>) -> IssueViewPreferences? {
+  match json_field_value(r: json_field_string(obj: doc, key: "query")) {
+    Absent => none
+    Present { value: query } => match json_field_value(r: json_field_string(obj: doc, key: "band")) {
+      Absent => none
+      Present { value: band } => match json_field_value(r: json_field_string(obj: doc, key: "project")) {
+        Absent => none
+        Present { value: project } => match json_field_value(r: json_field_string(obj: doc, key: "selected")) {
+          Absent => none
+          Present { value: selected } => match json_field_value(r: json_field_bool(obj: doc, key: "expanded")) {
+            Absent => none
+            Present { value: expanded } => if string_length(s: query) > 500 || string_length(s: project) > 256 || string_length(s: selected) > 256 || !any(["all", "active", "ready", "not-ready", "done", "superseded"], value => value == band) { none }
+              else { Present { value: IssueViewPreferences { sorts: terms, query: query, band: band, project: project, selected: selected, expanded: expanded } } }
+          }
+        }
+      }
+    }
+  }
+}

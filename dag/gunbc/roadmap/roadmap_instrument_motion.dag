@@ -1,4 +1,6 @@
 module gunbc.roadmap_instrument_motion
+import gunbc.site.document { site_extend_styles, site_styles_css }
+import gunbc.site.document { SiteStyles, site_document }
 
 import std.types { Int, String, Bool, List, Milliseconds }
 import std.markup { Fragment, Element, Attribute, attr }
@@ -8,9 +10,9 @@ import extdeps.languages.css.properties {
 }
 import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
-import gunbc.roadmap_instrument_sandbox { instrument_css, instrument_note }
+import gunbc.roadmap_instrument_sandbox { instrument_styles, instrument_css, instrument_note }
 import gunbc.design.theme { role_var, SurfaceRole, BorderRole, TextRole, FocusRole }
-import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_3, text_12, font_mono }
+import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_surface, text_12, font_mono }
 import gunbc.roadmap_component {
   instrument_motion_asset_path,
   motion_plate_class, motion_tap_btn_class, motion_receipt_class,
@@ -94,7 +96,7 @@ fn motion_rules() -> List<BuildRule> {
         decl(prop: Display, value: "block"),
         decl(prop: Padding, value: scale_var(t: space_6)),
         decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
-        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+        decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
         decl(prop: Background, value: role_var(r: SurfaceRole)),
         decl(prop: FontFamily, value: scale_var(t: font_mono)),
       ],
@@ -104,7 +106,7 @@ fn motion_rules() -> List<BuildRule> {
       decls: [
         decl(prop: Padding, value: scale_var(t: space_2)),
         decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
-        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+        decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
         decl(prop: Background, value: role_var(r: SurfaceRole)),
         decl(prop: Color, value: role_var(r: TextRole)),
         decl(prop: Cursor, value: "pointer"),
@@ -131,9 +133,7 @@ fn motion_rules() -> List<BuildRule> {
 // unstyled while every rule in it was correct — a failure that looks like a styling bug and is
 // actually a missing composition.
 
-fn instrument_motion_css() -> String {
-  join([instrument_css(), serialize_rules(rules: motion_rules())], "\n")
-}
+
 
 fn tap_label(t: SyntheticTapStrength) -> String {
   join([
@@ -303,42 +303,18 @@ fn motion_main() -> Fragment {
 }
 
 fn instrument_motion_page() -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en") ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
-        Element {
-          tag: "meta",
-          attributes: [
-            attr(name: "name", value: "viewport"),
-            attr(name: "content", value: "width=device-width, initial-scale=1"),
-          ],
-          children: [],
-        },
-        el("style", [ txt(instrument_motion_css()) ]),
-        el("title", [ txt(motion_page_title) ]),
-      ]),
-      el("body", [
-        el("header", [
-          el_class("div", "header-inner", [
-            el_class("span", "wordmark", [ txt("gunbc") ]),
-            el("h1", [ txt("instrument motion lab") ]),
-            el_attrs("a", [ attr(name: "href", value: instrument_sandbox_page_path) ], [ txt("← instrument") ]),
-            el_attrs("a", [ attr(name: "href", value: instrument_tuner_page_path) ], [ txt("tuner") ]),
-          ]),
-        ]),
-        motion_main(),
-        Element {
+  site_document(title: motion_page_title, heading: "motion", styles: instrument_motion_styles(), content: [
+motion_main(),
+Element {
           tag: "script",
           attributes: [
             attr(name: "src", value: instrument_motion_asset_path),
             attr(name: "defer", value: ""),
           ],
           children: [],
-        },
-      ]),
-    ],
-  }
+        }
+])
 }
+
+fn instrument_motion_styles() -> SiteStyles { site_extend_styles(base: instrument_styles(), rules: motion_rules()) }
+fn instrument_motion_css() -> String { site_styles_css(styles: instrument_motion_styles()) }

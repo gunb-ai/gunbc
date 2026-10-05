@@ -1,0 +1,149 @@
+module test.claim.workspace_reconcile_once_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Timestamp, Int, List }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, serialize_json }
+import product.placement_supply { HostIdentity }
+import gunbc.principal_projection { principal_ref_eq }
+import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_policy_ref }
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.workspace_allocation_admission { WorkspaceRequestAdmitted, WorkspaceRequestPolicyRefused, WorkspaceRequestAdmissionRefused }
+import gunbc.workspace_operator_request { workspace_operator_request }
+import gunbc.workspace_offer_producer {
+  WorkspaceHostOfferAdmitted, WorkspaceHostOfferUnmet, workspace_host_offer_decode, workspace_host_offer_text,
+  WorkspaceHostOfferDecoded, WorkspaceHostOfferUndecodable, workspace_offer_from_admission, WorkspaceOfferProduced, WorkspaceOfferUnmet,
+}
+import gunbc.workspace_reconcile_once { workspace_candidate_hosts, workspace_host_offer_reading, WorkspaceHostOffersRead, WorkspaceHostOffersRefused, workspace_join_host_readings, WorkspaceHostJoined, WorkspaceHostJoinRefused, WorkspaceHostOfferReading }
+import gunbc.workspace_demo_preparation_policy { workspace_demo_terms }
+
+// The supplied boundary is the coordinator's join: the host's wire line and the request it was
+// taken for. Every input is constructed, never produced by executing a host observer.
+fn request() -> WorkspaceRequest {
+  WorkspaceRequest { owner: workspace_operator_principal(), idempotency_key: "reconcile-test", profile: SmallWorkspace,
+    image: workspace_demo_image_identity(), public_key_ref: "test-key", expires_at: "2026-10-04T13:00:00Z", policy: workspace_policy_ref() }
+}
+
+fn offer_line_with(host: String, slot_index: Int, extra: Bool) -> String {
+  let members = [
+    json_kv(key: "schema", value: json_string(s: "workspace-host-offer/v1")),
+    json_kv(key: "host", value: json_string(s: host)),
+    json_kv(key: "slot_index", value: json_int(n: slot_index)),
+    json_kv(key: "observed_at", value: json_string(s: "2026-10-04T12:00:00Z")),
+    json_kv(key: "commissioning_plan_hash", value: json_string(s: "plan-hash")),
+    json_kv(key: "gateway_receipt", value: json_string(s: "gateway-receipt")),
+    json_kv(key: "image", value: json_string(s: workspace_demo_image_identity() as String)),
+    json_kv(key: "request_key", value: json_string(s: "reconcile-test")),
+  ]
+  serialize_json(v: json_object(members: if extra { members + [json_kv(key: "host_alias", value: json_string(s: "srv9"))] } else { members }))
+}
+
+fn offer_line() -> String { offer_line_with(host: "srv1", slot_index: 13, extra: false) }
+
+fn decodes(line: String, host: HostIdentity) -> Bool {
+  match workspace_host_offer_decode(text: line, expected_host: host) {
+    WorkspaceHostOfferDecoded { read: WorkspaceHostOfferAdmitted { admission: _ } } => true
+    WorkspaceHostOfferDecoded { read: WorkspaceHostOfferUnmet { host: _, reason: _ } } => false
+    WorkspaceHostOfferUndecodable { host: _, reason: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: the canonical line the host encoder emits decodes and re-renders byte-identically.
+test fn canonical_host_offer_round_trips() -> Bool {
+  match workspace_host_offer_decode(text: offer_line(), expected_host: "srv1") {
+    WorkspaceHostOfferDecoded { read: read } => workspace_host_offer_text(read: read) == offer_line()
+    WorkspaceHostOfferUndecodable { host: _, reason: _ } => false
+  }
+}
+
+test fn host_offer_naming_another_host_than_the_transport_target_refuses() -> Bool {
+  decodes(line: offer_line(), host: "srv1") && match workspace_host_offer_decode(text: offer_line(), expected_host: "srv3") {
+    WorkspaceHostOfferUndecodable { host: h, reason: r } => (h as String) == "srv3" && r == "host offer names a host other than the observed transport target"
+    WorkspaceHostOfferDecoded { read: _ } => false
+  }
+}
+
+test fn host_offer_with_an_unknown_field_refuses() -> Bool {
+  decodes(line: offer_line(), host: "srv1") && !decodes(line: offer_line_with(host: "srv1", slot_index: 13, extra: true), host: "srv1")
+}
+
+test fn host_offer_for_a_slot_outside_the_workspace_roster_refuses() -> Bool {
+  decodes(line: offer_line(), host: "srv1") && !decodes(line: offer_line_with(host: "srv1", slot_index: 1, extra: false), host: "srv1")
+}
+
+// An unreadable line is a located refusal for that host; it never shrinks to the readable subset.
+test fn one_undecodable_line_refuses_the_host_rather_than_dropping_it() -> Bool {
+  let clean = match workspace_host_offer_reading(host: "srv1", output: offer_line()) {
+    WorkspaceHostOffersRead { host: _, admissions: a, unmet: _ } => a.count() == 1
+    WorkspaceHostOffersRefused { host: _, reason: _ } => false
+  }
+  let mixed = match workspace_host_offer_reading(host: "srv1", output: concat(offer_line(), concat("\n", offer_line_with(host: "srv1", slot_index: 13, extra: true)))) {
+    WorkspaceHostOffersRead { host: _, admissions: _, unmet: _ } => false
+    WorkspaceHostOffersRefused { host: _, reason: _ } => true
+  }
+  let silent = match workspace_host_offer_reading(host: "srv1", output: "") {
+    WorkspaceHostOffersRead { host: _, admissions: _, unmet: _ } => false
+    WorkspaceHostOffersRefused { host: _, reason: _ } => true
+  }
+  clean && mixed && silent
+}
+
+fn produced_at(now: Timestamp) -> Bool {
+  match workspace_host_offer_decode(text: offer_line(), expected_host: "srv1") {
+    WorkspaceHostOfferDecoded { read: WorkspaceHostOfferAdmitted { admission: a } } =>
+      match workspace_offer_from_admission(admission: a, request: request(), terms: workspace_demo_terms(admission: a, request: request()), now: now) {
+        WorkspaceOfferProduced { request: _ } => true
+        WorkspaceOfferUnmet { reason: _ } => false
+      }
+    WorkspaceHostOfferDecoded { read: WorkspaceHostOfferUnmet { host: _, reason: _ } } => false
+    WorkspaceHostOfferUndecodable { host: _, reason: _ } => false
+  }
+}
+
+// FRESHNESS IS JUDGED AGAIN AT JOIN: an admission fresh on its host that arrives 61s later refuses.
+test fn host_offer_that_arrives_stale_refuses_at_join() -> Bool {
+  produced_at(now: "2026-10-04T12:00:30Z") && !produced_at(now: "2026-10-04T12:01:01Z") && !produced_at(now: "2026-10-04T11:59:59Z")
+}
+
+test fn candidate_hosts_are_the_workspace_roster_hosts() -> Bool {
+  let hosts = workspace_candidate_hosts()
+  hosts.count() == 1 && match hosts.first() { Present { value: h } => (h as String) == "srv1" Absent => false }
+}
+
+fn operator_admits(expires_at: Timestamp, key: String) -> Bool {
+  match workspace_operator_request(observed_at: "2026-10-04T12:00:00Z", key: key, profile_wire: "2cpu-4gib", expires_at: expires_at) {
+    WorkspaceRequestAdmitted { request: r } => principal_ref_eq(a: r.owner, b: workspace_operator_principal()) && r.image == workspace_demo_image_identity()
+    WorkspaceRequestPolicyRefused { reason: _ } => false
+    WorkspaceRequestAdmissionRefused { decision: _ } => false
+  }
+}
+
+// The operator producer passes the same compose policy as the HTTP route: lease bound and key shape.
+test fn operator_request_producer_applies_the_shared_request_policy() -> Bool {
+  operator_admits(expires_at: "2026-10-04T12:30:00Z", key: "first-request")
+    && !operator_admits(expires_at: "2026-10-04T13:00:01Z", key: "first-request")
+    && !operator_admits(expires_at: "2026-10-04T12:30:00Z", key: "bad key")
+}
+
+fn joins(readings: List<WorkspaceHostOfferReading>) -> Bool {
+  match workspace_join_host_readings(readings: readings) {
+    WorkspaceHostJoined { admissions: a } => a.count() == 1
+    WorkspaceHostJoinRefused { reason: _ } => false
+  }
+}
+
+fn unmet_reading() -> WorkspaceHostOfferReading {
+  workspace_host_offer_reading(host: "srv3", output: workspace_host_offer_text(read: WorkspaceHostOfferUnmet { host: "srv3", reason: "slot has no commissioning record" }))
+}
+
+// A REFUSED CANDIDATE REFUSES THE WHOLE JOIN: no selection runs over a partial fleet. A candidate
+// that answered with a valid unmet reading was observed, and may be excluded.
+test fn a_refused_candidate_host_refuses_the_whole_join() -> Bool {
+  let admitted = workspace_host_offer_reading(host: "srv1", output: offer_line())
+  joins(readings: [admitted])
+    && !joins(readings: [admitted, WorkspaceHostOffersRefused { host: "srv3", reason: "cross-host offer transport is not realized; only the coordinator's own host is observed" }])
+}
+
+test fn a_validly_unmet_candidate_host_is_excluded_and_the_join_proceeds() -> Bool {
+  let admitted = workspace_host_offer_reading(host: "srv1", output: offer_line())
+  joins(readings: [admitted, unmet_reading()]) && !joins(readings: [unmet_reading()])
+}
