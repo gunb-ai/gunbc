@@ -4715,7 +4715,7 @@ fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optiona
       match acc {
         Absent => optional_absent()
         Present { value: rest } =>
-          match body_lower_admit_entry_edge(entry: entry) {
+          match body_lower_admit_entry_edge(entry: entry, template: template) {
             Absent => optional_absent()
             Present { value: record_edge } =>
               optional_present(
@@ -4734,30 +4734,31 @@ fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optiona
   )
 }
 
-// ONE ENTRY -> ONE POSITIONAL-IN-SPINE RECORD CONJ, ALWAYS GROUNDABLE. A decl_ref(module_path, decl_name)
+// ONE ENTRY -> ONE RECORD CONJ IN THE SPINE, ALWAYS GROUNDABLE. A decl_ref(module_path, decl_name)
 // call lowers to a record conj whose authored edges carry the operator spelling (^decl_ref) and the two
 // string lexemes as plain atoms keeping the literals' own occurrences (the where-clause lowering's
-// precedent). An entry that READS but is not such a call lowers to a marker conj the reader refuses at
-// the entry (^infer_reason_admit_callers_entry_not_decl_ref) — never dropped, never a raw token subtree.
-// Only a spine the reader cannot walk returns Absent, failing the whole roster into the clause
-// fallback's refusal.
-fn body_lower_admit_entry_edge(entry: Node) -> Optional<Edge> {
+// precedent). An entry that READS but is not such a call lowers to a marker record the reader refuses
+// at the entry (^infer_reason_admit_callers_entry_not_decl_ref) — never dropped, never a raw token
+// subtree. Only a spine the reader cannot walk returns Absent, failing the whole roster into the clause
+// fallback's refusal. The record conj itself is minted with the roster template's id (pending below the
+// spine root), never with the call's: a conj and the atom under it cannot share one minted id.
+fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
   match body_lower_admit_entry_call_optional(item: entry) {
     Absent => optional_absent()
     Present { value: call } =>
       match call.kind {
         ComputationNode { behavior: Transform } =>
           match body_lower_admit_operator_edge(children: call.children) {
-            Absent => optional_present(value: body_lower_admit_entry_marker(node: entry))
+            Absent => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
             Present { value: op_edge } =>
               match op_edge.target.kind {
                 TypeNode { connective: Atom { identity: op } } =>
                   if symbol_eq(a: op, b: ^decl_ref) {
                     match body_lower_admit_string_field_edge(call: call, field: ^module_path) {
-                      Absent => optional_present(value: body_lower_admit_entry_marker(node: entry))
+                      Absent => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
                       Present { value: mp_edge } =>
                         match body_lower_admit_string_field_edge(call: call, field: ^decl_name) {
-                          Absent => optional_present(value: body_lower_admit_entry_marker(node: entry))
+                          Absent => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
                           Present { value: dn_edge } =>
                             optional_present(
                               value: Edge {
@@ -4765,27 +4766,28 @@ fn body_lower_admit_entry_edge(entry: Node) -> Optional<Edge> {
                                 target: sugar_type_node(
                                   connective: Conj,
                                   children: [op_edge, mp_edge, dn_edge],
-                                  n: call
+                                  n: template
                                 )
                               }
                             )
                         }
                     }
                   } else {
-                    optional_present(value: body_lower_admit_entry_marker(node: entry))
+                    optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
                   }
-                _ => optional_present(value: body_lower_admit_entry_marker(node: entry))
+                _ => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
               }
           }
-        _ => optional_present(value: body_lower_admit_entry_marker(node: entry))
+        _ => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
       }
   }
 }
 
 // THE UNINTERPRETABLE-ENTRY MARKER: a record conj whose single edge names the refusal the reader
-// raises at the entry. The record keeps the entry's own occurrence (the entry leaves the tree in the
-// swap) until close_lowered_image marks it pending, so two uninterpretable entries never collide.
-fn body_lower_admit_entry_marker(node: Node) -> Edge {
+// raises at the entry. The conj is minted with the template's id (close_lowered_image marks it
+// pending, allocation gives it a real id); the atom keeps the entry's own occurrence — the entry
+// left the tree in the swap, and no two built nodes share one minted id.
+fn body_lower_admit_entry_marker(node: Node, template: Node) -> Edge {
   Edge {
     label: Authored { name: ^uninterpretable },
     target: sugar_type_node(
@@ -4794,7 +4796,7 @@ fn body_lower_admit_entry_marker(node: Node) -> Edge {
         label: Authored { name: ^infer_reason_admit_callers_entry_not_decl_ref },
         target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref }, children: [], n: node)
       }],
-      n: node
+      n: template
     )
   }
 }

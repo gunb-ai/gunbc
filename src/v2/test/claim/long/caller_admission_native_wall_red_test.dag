@@ -120,8 +120,8 @@ fn dbg_red_reason() -> ProcessExit {
 fn dbg_reasons_list(prefix: Symbol, d: NonEmptyDiagnostics) -> String {
   fold_list(
     xs: d.tail,
-    empty: symbol_lexeme(sym: prefix) + ":" + symbol_lexeme(sym: d.head.reason),
-    cons: fn(acc, diag) { acc + "," + symbol_lexeme(sym: diag.reason) }
+    empty: dbg_one_diag(prefix: prefix, d: d.head),
+    cons: fn(acc, diag) { acc + "," + dbg_one_diag(prefix: prefix, d: diag) }
   )
 }
 
