@@ -46,9 +46,9 @@ import gunbc.github_effect_perform {
 // match a branch that no longer exists, so the stale entry admits nothing.
 //
 // AUTHORIZATION. Pre-approved under the dispatching run's authorization: the operator's 2026-10-03
-// ruling as interpreted by eager-gull-22 on 2026-10-04 to cover this pin as part of registration,
-// limited to the dedicated qualification group (gunbc.auth.privileged_effect_census
-// runner_lifecycle_ruling_scope_interpretation). The token is the gunbai-ci installation token
+// ruling, whose scope the operator confirmed on 2026-10-05 to cover the per-attempt branch create and
+// delete, limited to the dedicated qualification group (gunbc.auth.privileged_effect_census
+// runner_lifecycle_scope_ruling). The token is the gunbai-ci installation token
 // (contents:write for the ref; organization self-hosted-runners write for the group). No workflow
 // fires on creating the branch: see test.claim.runner_qualification_ref_pin_witness.
 
