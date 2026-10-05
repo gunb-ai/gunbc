@@ -141,14 +141,24 @@ fn minted_credential(encoded: String) -> List<EncodedJitConfig> {
 // something that is not a whole credential, handed on as if it were.
 data short_blob: String = "ZmFrZS1qaXQtY29uZmln"
 
-// THE DELIVERY IS MINTED, NOT HAND-BUILT. A successful delivery is a sealed BoundJitCredential that only
-// receive_jit_mint constructs, carrying the authorized dispatch that produced it; this fixture takes the
-// real route for the attempt under test -- an owned cell binding, dispatch_jit_mint (which admits this
-// helper by name), and receive_jit_mint over upstream's own 201 outcome fold with the encoding the
-// claim chooses.
-fn received_for(attempt: MicroVmAttempt, encoded: String) -> JitMintPerformance {
-  match dispatch_jit_mint(
-      binding: MicroVmSlotBinding { binding: bind_owned_attempt(attempt: attempt, owned: true) },
+// THE DELIVERY IS MINTED, NOT HAND-BUILT, AND IT NEVER LEAVES THIS FUNCTION. A successful delivery is
+// a sealed BoundJitCredential that only receive_jit_mint constructs, carrying the authorized dispatch
+// that produced it; this fixture takes the real route for the credential's attempt -- an owned cell
+// binding, dispatch_jit_mint and receive_jit_mint over upstream's own 201 outcome fold, both of which
+// admit this function by name -- and hands back only the PLAN the planner built from it. A fixture
+// that returned the delivery would be a public proxy for the mint (an admitted call edge does not
+// confine a value the caller hands back), so a plan, which carries no delivery, is the only egress.
+// minted_for differs from attempt in the claim about a credential bound to a sibling attempt.
+fn planned_with(
+  pair: IssuedPair,
+  account: MoneyAccount,
+  attempt: MicroVmAttempt,
+  minted_for: MicroVmAttempt,
+  encoded: String,
+  ground: AttemptGround,
+) -> AttemptLaunchPlan {
+  let mint = match dispatch_jit_mint(
+      binding: MicroVmSlotBinding { binding: bind_owned_attempt(attempt: minted_for, owned: true) },
       authority: app_credential,
       control_plane: observed_grant(perms: runner_grant),
       organization: gunbai_org_ref,
@@ -164,10 +174,7 @@ fn received_for(attempt: MicroVmAttempt, encoded: String) -> JitMintPerformance 
       }
     JitMintDispatchRefused { refusal: _ } => JitMintAppJwtUnsigned { detail: "fixture: the attempt's dispatch was refused" }
   }
-}
-
-fn live_grant(attempt: MicroVmAttempt) -> JitMintPerformance {
-  received_for(attempt: attempt, encoded: doubled(s: "A", k: 10))
+  plan_for(pair: pair, account: account, attempt: attempt, mint: mint, ground: ground)
 }
 
 fn plan_for(
@@ -230,7 +237,7 @@ test fn a_below_floor_credential_stages_no_device_and_starts_no_vmm() -> Bool {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 1, id: "cred0") {
         Cons { head: a, tail: _ } => {
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: received_for(attempt: a, encoded: short_blob), ground: GroundClear)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: short_blob, ground: GroundClear)
           no_device_no_vmm(plan: plan)
             && match refusal_of(plan: plan) {
               Cons { head: JitCredentialBelowFloor { bytes: n }, tail: _ } => byte_size_count(b: n) == 20
@@ -254,7 +261,7 @@ test fn a_credential_at_the_ceiling_in_code_points_but_over_it_in_bytes_is_refus
       match accepted_attempt(i: 7, id: "multibyte") {
         Cons { head: a, tail: _ } => {
           let wide = doubled(s: "\u{00e9}", k: 16)
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: received_for(attempt: a, encoded: wide), ground: GroundClear)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: wide, ground: GroundClear)
           string_length(wide) == 65536
             && byte_size_count(b: jit_drive_utf8_size(text: wide)) == 131072
             && no_device_no_vmm(plan: plan)
@@ -274,7 +281,7 @@ test fn an_above_ceiling_credential_stages_no_device_and_starts_no_vmm() -> Bool
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 1, id: "credbig") {
         Cons { head: a, tail: _ } => {
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: received_for(attempt: a, encoded: doubled(s: "A", k: 17)), ground: GroundClear)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 17), ground: GroundClear)
           no_device_no_vmm(plan: plan)
             && match refusal_of(plan: plan) {
               Cons { head: JitCredentialAboveCeiling { bytes: _ }, tail: _ } => true
@@ -296,7 +303,7 @@ test fn a_credential_bound_to_another_attempt_stages_no_device() -> Bool {
         Cons { head: a, tail: _ } =>
           match accepted_attempt(i: 6, id: "theirs") {
             Cons { head: b, tail: _ } => {
-              let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: b), ground: GroundClear)
+              let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: b, encoded: doubled(s: "A", k: 10), ground: GroundClear)
               no_device_no_vmm(plan: plan)
                 && match refusal_of(plan: plan) {
                   Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == MicroVmJitSlot { attempt: b }
@@ -357,9 +364,9 @@ test fn an_unauthorized_grant_yields_zero_jailer_launches() -> Bool {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 2, id: "unauth") {
         Cons { head: a, tail: _ } =>
-          match plan_for(pair: pair, account: exhausted_account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear) {
+          match planned_with(pair: pair, account: exhausted_account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundClear) {
             LaunchRefusedUnauthorized { authorization: _ } =>
-              no_device_no_vmm(plan: plan_for(pair: pair, account: exhausted_account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear))
+              no_device_no_vmm(plan: planned_with(pair: pair, account: exhausted_account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundClear))
             _ => false
           }
         Empty {} => false
@@ -373,9 +380,9 @@ test fn prior_resources_refuse_rather_than_reuse() -> Bool {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 3, id: "prior") {
         Cons { head: a, tail: _ } =>
-          match plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundOccupied) {
+          match planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundOccupied) {
             LaunchRefusedPriorResources =>
-              no_device_no_vmm(plan: plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundOccupied))
+              no_device_no_vmm(plan: planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundOccupied))
             _ => false
           }
         Empty {} => false
@@ -399,7 +406,7 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 4, id: "ok1") {
         Cons { head: a, tail: _ } => {
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundClear)
           planned_jailer_launches(plan: plan) == 1
             && match plan {
               LaunchAuthorized {
@@ -571,7 +578,7 @@ fn staging_with(jit_of: Bool, obs: WorkspaceStagingObservation, ground: AttemptG
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 2, id: "ws1") {
         Cons { head: a, tail: _ } => {
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: ground)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: ground)
           staging_label(v: attempt_staging_verdict(
             plan: plan,
             jail: staged_jail_material(),
@@ -621,7 +628,7 @@ fn jail_label(m: JailMaterialStaging) -> String {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 2, id: "ws1") {
         Cons { head: a, tail: _ } => {
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundClear)
           staging_label(v: attempt_staging_verdict(
             plan: plan,
             jail: m,
@@ -673,7 +680,7 @@ fn admitted_receipt_names_this_attempts_paths() -> Bool {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 2, id: "ws1") {
         Cons { head: a, tail: _ } => {
-          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
+          let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: a, encoded: doubled(s: "A", k: 10), ground: GroundClear)
           match attempt_staging_verdict(plan: plan, jail: staged_jail_material(), jit: staged_device_of(plan: plan), workspace: good_workspace()) {
             StagingAdmitsJailer { receipt: r } =>
               r.bootstrap_device_path == concat(attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker"), jail_jit_path as String)
