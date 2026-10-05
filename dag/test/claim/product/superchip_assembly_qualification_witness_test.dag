@@ -1,0 +1,391 @@
+module test.claim.product.superchip_assembly_qualification_witness
+
+import v2.std.algebra { any }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { gibibyte, gibibyte_to_byte_size }
+import extdeps.memory.types { Hbm }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
+import gunbc.fleet_asset_identity { gh200_dv5_a, gh200_dv5_b, p4261_k1_a }
+import gunbc.spark.serving_promotion { QualityReceipt }
+import test.claim.spark.serving_promotion_witness_test { fx_key, fx_incumbent_key, fx_quality }
+import product.superchip_assembly_qualification {
+  SuperchipAssembly,
+  SuperchipUnitObservation,
+  CarrierUnitObservation,
+  ListedGpuMemoryClaim,
+  ListedCpuMemoryClaim,
+  AsBuiltConfiguration,
+  ReceiptScope,
+  BenchRecord,
+  BenchReading,
+  ReadVerified,
+  ReadContradicted,
+  WorkloadAcceptance,
+  WorkloadRun,
+  MezzanineFacePhotographed,
+  OneAtEachEndOfLongAxis,
+  InventoryMeasured,
+  AssemblyWorkloadQualified,
+  AssemblyBlockedAt,
+  AssemblyRefusedAt,
+  MechanicallyMated,
+  SafeToEnergize,
+  BootQualified,
+  WorkloadQualified,
+  qualification_stage_label,
+  assembly_qualification,
+  unit_catalog_match,
+  UnitGpuTierConsistentWithRow,
+  UnitGpuTierOfOtherConfiguration,
+  UnitClaimOutsideFamily,
+  unit_cpu_memory_match,
+  UnitCpuTierConsistentWithRow,
+  UnitCpuClaimOutsideRow,
+  CpuMemoryClaimed,
+  CpuMemoryNotClaimed,
+  first_assembly,
+  gh200_dv5_unit,
+  gh200_dv5_second_unit,
+  unpaired_modules,
+  GpuMemoryClaimed,
+  p4261_k1_carrier,
+}
+
+fn mentions(lines: List<NonEmptyStr>, fragment: String) -> Bool {
+  any(lines, l => (l as String).contains(fragment))
+}
+
+// THE REAL PATH: the first planned assembly, DV5 asset A on K1 asset A, as bought. Its faces agree at
+// photo grain, so it is not refused; nothing past a photograph has been read, so it stands at the first
+// stage, and the rest of the bench plan is listed after it -- including that the photographs establish
+// no input bound, and that the boot to observe is of THESE assets.
+test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bool {
+  match assembly_qualification(a: first_assembly) {
+    AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
+        && mentions(lines: here, fragment: "consistent at photo grain")
+        && mentions(lines: later, fragment: "rev K1")
+        && mentions(lines: later, fragment: "450-1000 W configurable range")
+        && mentions(lines: later, fragment: "boot storage")
+        && mentions(lines: later, fragment: "expected 120 V")
+        && mentions(lines: later, fragment: "no input bound established")
+        && mentions(lines: later, fragment: "reads as SKU215")
+        && mentions(lines: later, fragment: "shows no RJ45")
+        && mentions(lines: later, fragment: "ARLINGTON-MB takes J7 12 V, J135 12 V, J9 (rail unprinted)")
+        && mentions(lines: later, fragment: "GenZ 4C+ slot J31")
+        && mentions(lines: later, fragment: "observe module gh200-dv5-a (699-2G530-0215-DV5) booting to BMC and OS on carrier p4261-k1-a")
+    _ => false
+  }
+}
+
+// EACH TIER IS MATCHED ON ITS OWN CLAIM. The DV5 listing claims both, and both are consistent with
+// the 480GB row; the inventory obligation still stands, because a consistent claim is not a measured
+// unit. The CPU match DISCRIMINATES: a 240GB claim is named as outside the row, and a listing that
+// claims no LPDDR5X size gets no tier from its GPU claim.
+test fn each_memory_tier_is_matched_on_its_own_claim() -> Bool {
+  let gpu = match unit_catalog_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
+    UnitGpuTierConsistentWithRow { row: _, as_listed: l } => l == "96GB HBM3"
+    _ => false
+  }
+  let cpu = match unit_cpu_memory_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
+    UnitCpuTierConsistentWithRow { as_listed: l } => (l as String).contains("480GB usable")
+    _ => false
+  }
+  let still_owed = match assembly_qualification(a: first_assembly) {
+    AssemblyBlockedAt { stage: _, open_here: _, open_later: later } =>
+      mentions(lines: later, fragment: "measure 699-2G530-0215-DV5's HBM and LPDDR5X")
+        && mentions(lines: later, fragment: "consistent with the row's LPDDR5X tier, as a seller's claim the unit's own inventory settles")
+    _ => false
+  }
+  let lower_named = match unit_cpu_memory_match(unit: unit_with_claims(gpu: gh200_dv5_unit.listed_gpu_memory, cpu: CpuMemoryClaimed { usable: gibibyte_to_byte_size(g: gibibyte(count: 240)), as_listed: "240GB LPDDR5X" }), row: nvidia_gh200_480gb_catalog) {
+    UnitCpuClaimOutsideRow { as_listed: l } => l == "240GB LPDDR5X"
+    _ => false
+  }
+  let silent_unmatched = match unit_cpu_memory_match(unit: unit_with_claims(gpu: gh200_dv5_unit.listed_gpu_memory, cpu: CpuMemoryNotClaimed), row: nvidia_gh200_480gb_catalog) {
+    UnitCpuTierConsistentWithRow { as_listed: _ } => false
+    UnitCpuClaimOutsideRow { as_listed: _ } => false
+    _ => true
+  }
+  gpu && cpu && still_owed && lower_named && silent_unmatched
+}
+
+fn unit_with_claims(gpu: ListedGpuMemoryClaim, cpu: ListedCpuMemoryClaim) -> SuperchipUnitObservation {
+  SuperchipUnitObservation {
+    asset: gh200_dv5_unit.asset,
+    serial: gh200_dv5_unit.serial,
+    board_designation: gh200_dv5_unit.board_designation,
+    board_part_number: gh200_dv5_unit.board_part_number,
+    die_marking: gh200_dv5_unit.die_marking,
+    listed_gpu_memory: gpu,
+    listed_cpu_memory: cpu,
+    mezzanine_face: gh200_dv5_unit.mezzanine_face,
+    measured_inventory: gh200_dv5_unit.measured_inventory,
+    source: "supplied",
+  }
+}
+
+// THE CATALOG FINDINGS KEEP THEIR GRAIN. A 144GB HBM3e claim against the selected 480GB row is a
+// different published configuration -- a valid unit, the wrong row -- and an 80GB HBM3 claim
+// contradicts every published configuration. Neither is reported as the other.
+test fn a_claim_is_placed_against_the_row_and_the_family_separately() -> Bool {
+  let other = match unit_catalog_match(unit: unit_with_claims(gpu: GpuMemoryClaimed { capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)), memory_kind: Hbm, as_listed: "144GB HBM3e" }, cpu: CpuMemoryNotClaimed), row: nvidia_gh200_480gb_catalog) {
+    UnitGpuTierOfOtherConfiguration { as_listed: l, configuration: c } => l == "144GB HBM3e" && (c as String).contains("144GB HBM3e")
+    _ => false
+  }
+  let outside = match unit_catalog_match(unit: unit_with_claims(gpu: GpuMemoryClaimed { capacity: gibibyte_to_byte_size(g: gibibyte(count: 80)), memory_kind: Hbm, as_listed: "80GB HBM2" }, cpu: CpuMemoryNotClaimed), row: nvidia_gh200_480gb_catalog) {
+    UnitClaimOutsideFamily { as_listed: l } => l == "80GB HBM2"
+    _ => false
+  }
+  other && outside
+}
+
+// As bought: one assembly, and the second DV5 -- the same part number, a different asset -- held
+// unpaired rather than invented into an assembly with a carrier that was never bought.
+test fn the_purchase_is_one_assembly_and_one_held_module() -> Bool {
+  count(unpaired_modules) == 1
+    && match unpaired_modules.first() {
+      Present { value: u } => u.board_part_number == gh200_dv5_unit.board_part_number && (u.asset as String) == (gh200_dv5_b as String)
+      Absent => false
+    }
+}
+
+// ── SUPPLIED BENCH VALUES ─────────────────────────────────────────────────────────────────────
+
+data supplied_configuration: AsBuiltConfiguration = AsBuiltConfiguration {
+  firmware: Present { value: "supplied firmware set 1" },
+  power_path: Present { value: "supplied supply and harness 1" },
+  thermal_assembly: Present { value: "supplied cold plate 1" },
+}
+
+data supplied_scope: ReceiptScope = ReceiptScope { module: gh200_dv5_a, carrier: p4261_k1_a, configuration: supplied_configuration }
+
+fn supplied_workload(candidate: QualityReceipt, scope: ReceiptScope) -> WorkloadAcceptance {
+  WorkloadAcceptance {
+    candidate: candidate,
+    incumbent: fx_quality(key: fx_incumbent_key(), accepted: 95, parse_failures: 0),
+    placement: "supplied: weights and KV in HBM",
+    scope: scope,
+  }
+}
+
+fn bench_scoped(scope: ReceiptScope) -> BenchRecord {
+  BenchRecord {
+    connector_identity: ReadVerified { evidence: "supplied: mating pair confirmed in the vendor catalog", scope: scope },
+    mounting_stack: ReadVerified { evidence: "supplied", scope: scope },
+    power_path: ReadVerified { evidence: "supplied", scope: scope },
+    site_ac_supply: ReadVerified { evidence: "supplied", scope: scope },
+    thermal_path: ReadVerified { evidence: "supplied", scope: scope },
+    protective_shutdown: ReadVerified { evidence: "supplied", scope: scope },
+    management_path: ReadVerified { evidence: "supplied", scope: scope },
+    boot_storage: ReadVerified { evidence: "supplied", scope: scope },
+    boot: ReadVerified { evidence: "supplied boot receipt", scope: scope },
+    module_power_limit: ReadVerified { evidence: "supplied", scope: scope },
+    served_workload: WorkloadRun { acceptance: supplied_workload(candidate: fx_quality(key: fx_key(), accepted: 95, parse_failures: 0), scope: scope) },
+  }
+}
+
+fn fully_read_bench() -> BenchRecord {
+  bench_scoped(scope: supplied_scope)
+}
+
+fn measured_unit(gpu_gib: Nat, cpu_gib: Nat) -> SuperchipUnitObservation {
+  SuperchipUnitObservation {
+    asset: gh200_dv5_unit.asset,
+    serial: Present { value: "supplied-serial-a" },
+    board_designation: gh200_dv5_unit.board_designation,
+    board_part_number: gh200_dv5_unit.board_part_number,
+    die_marking: gh200_dv5_unit.die_marking,
+    listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+    listed_cpu_memory: gh200_dv5_unit.listed_cpu_memory,
+    mezzanine_face: gh200_dv5_unit.mezzanine_face,
+    measured_inventory: InventoryMeasured {
+      gpu_memory: gibibyte_to_byte_size(g: gibibyte(count: gpu_gib)),
+      cpu_memory: gibibyte_to_byte_size(g: gibibyte(count: cpu_gib)),
+      evidence: "supplied inventory receipt",
+    },
+    source: "supplied",
+  }
+}
+
+fn assembly_of(unit: SuperchipUnitObservation, configuration: AsBuiltConfiguration, bench: BenchRecord) -> SuperchipAssembly {
+  SuperchipAssembly {
+    unit: unit,
+    carrier: p4261_k1_carrier,
+    row: nvidia_gh200_480gb_catalog,
+    configuration: configuration,
+    bench: bench,
+  }
+}
+
+// THE SUPPLIED QUALIFIED ASSEMBLY, at a measured inventory: every receipt is this module asset, this
+// carrier asset and this configuration's, and the workload met the incumbent's bar.
+fn booted_and_measured_at(gpu_gib: Nat, cpu_gib: Nat) -> SuperchipAssembly {
+  assembly_of(unit: measured_unit(gpu_gib: gpu_gib, cpu_gib: cpu_gib), configuration: supplied_configuration, bench: fully_read_bench())
+}
+
+fn booted_and_measured() -> SuperchipAssembly {
+  booted_and_measured_at(gpu_gib: 96, cpu_gib: 480)
+}
+
+// The ladder's green is AUTHORABLE: every requirement read for this assembly's scope, the inventory
+// measured, and the workload accepted against the incumbent, and the assembly is workload-qualified.
+test fn a_fully_read_assembly_is_workload_qualified() -> Bool {
+  match assembly_qualification(a: booted_and_measured()) {
+    AssemblyWorkloadQualified { evidence: e } =>
+      count(e) == 12 && mentions(lines: e, fragment: "accepted 95/100 on the incumbent's manifest") && mentions(lines: e, fragment: "measured 96 GiB HBM and 480 GiB LPDDR5X")
+    _ => false
+  }
+}
+
+// THE SAME PART NUMBER IS NOT THE SAME UNIT. Every receipt was taken on module asset A; attached to an
+// assembly of module asset B -- same part number, same carrier, same configuration -- not one of them
+// counts, and the assembly stops at the first stage that needs a receipt, naming the two assets. The
+// same receipts on asset A's assembly qualify it (a_fully_read_assembly_is_workload_qualified).
+test fn a_receipt_for_another_unit_of_the_same_part_does_not_transfer() -> Bool {
+  let b_unit = SuperchipUnitObservation {
+    asset: gh200_dv5_second_unit.asset,
+    serial: Present { value: "supplied-serial-b" },
+    board_designation: gh200_dv5_second_unit.board_designation,
+    board_part_number: gh200_dv5_second_unit.board_part_number,
+    die_marking: gh200_dv5_second_unit.die_marking,
+    listed_gpu_memory: gh200_dv5_second_unit.listed_gpu_memory,
+    listed_cpu_memory: gh200_dv5_second_unit.listed_cpu_memory,
+    mezzanine_face: gh200_dv5_second_unit.mezzanine_face,
+    measured_inventory: measured_unit(gpu_gib: 96, cpu_gib: 480).measured_inventory,
+    source: "supplied",
+  }
+  let same_part = b_unit.board_part_number == gh200_dv5_unit.board_part_number
+  match assembly_qualification(a: assembly_of(unit: b_unit, configuration: supplied_configuration, bench: fully_read_bench())) {
+    AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
+      same_part
+        && qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
+        && mentions(lines: here, fragment: "the receipt's module is gh200-dv5-a, this assembly's is gh200-dv5-b")
+        && mentions(lines: later, fragment: "observed boot of this module on this carrier: a receipt is recorded but is not this assembly's")
+        && mentions(lines: later, fragment: "served workload: a receipt is recorded but is not this assembly's")
+    _ => false
+  }
+}
+
+// A CONFIGURATION CHANGE REOPENS WHAT IT AFFECTS, AND ONLY THAT. Swapping the cold plate after every
+// receipt was taken leaves the power-path and firmware-only receipts standing and reopens every
+// requirement that depends on the thermal assembly: the mounting stack first, then the thermal path,
+// the protective shutdown, the boot, the power limit and the workload.
+test fn a_configuration_change_reopens_the_affected_requirements() -> Bool {
+  let swapped = AsBuiltConfiguration {
+    firmware: supplied_configuration.firmware,
+    power_path: supplied_configuration.power_path,
+    thermal_assembly: Present { value: "supplied cold plate 2" },
+  }
+  match assembly_qualification(a: assembly_of(unit: measured_unit(gpu_gib: 96, cpu_gib: 480), configuration: swapped, bench: fully_read_bench())) {
+    AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
+        && count(here) == 1
+        && mentions(lines: here, fragment: "mounting and support stack: a receipt is recorded but is not this assembly's (the receipt was taken with thermal assembly 'supplied cold plate 1', this assembly has 'supplied cold plate 2')")
+        && mentions(lines: later, fragment: "thermal path for every heat region: a receipt is recorded")
+        && mentions(lines: later, fragment: "protective shutdown: a receipt is recorded")
+        && mentions(lines: later, fragment: "observed boot of this module on this carrier: a receipt is recorded")
+        && !mentions(lines: later, fragment: "power path: a receipt")
+        && !mentions(lines: later, fragment: "boot storage: a receipt")
+        && count(later) == 5
+    _ => false
+  }
+}
+
+// A WORKLOAD THAT RAN IS NOT ONE THAT PASSED: a candidate accepting 60/100 against the incumbent's 95/100
+// on the same manifest is a contradiction the fleet's promotion rule names, and the assembly is refused
+// at workload qualification rather than left open.
+fn a_workload_below_the_incumbent_assembly() -> SuperchipAssembly {
+  let full = fully_read_bench()
+  let weak = BenchRecord {
+    connector_identity: full.connector_identity,
+    mounting_stack: full.mounting_stack,
+    power_path: full.power_path,
+    site_ac_supply: full.site_ac_supply,
+    thermal_path: full.thermal_path,
+    protective_shutdown: full.protective_shutdown,
+    management_path: full.management_path,
+    boot_storage: full.boot_storage,
+    boot: full.boot,
+    module_power_limit: full.module_power_limit,
+    served_workload: WorkloadRun { acceptance: supplied_workload(candidate: fx_quality(key: fx_key(), accepted: 60, parse_failures: 0), scope: supplied_scope) },
+  }
+  assembly_of(unit: measured_unit(gpu_gib: 96, cpu_gib: 480), configuration: supplied_configuration, bench: weak)
+}
+
+test fn a_workload_below_the_incumbent_refuses() -> Bool {
+  match assembly_qualification(a: a_workload_below_the_incumbent_assembly()) {
+    AssemblyRefusedAt { stage: s, reasons: rs } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: WorkloadQualified)
+        && mentions(lines: rs, fragment: "served workload: quality: accepted 60/100")
+    _ => false
+  }
+}
+
+// A CONTRADICTION REFUSES AT ITS STAGE even while earlier stages are still open: thermal shown
+// impossible for this assembly refuses at safe-to-energize on the otherwise-unread first assembly once
+// its thermal assembly is recorded.
+test fn a_contradicted_requirement_refuses_at_its_stage() -> Bool {
+  let thermal_only = AsBuiltConfiguration { firmware: Absent, power_path: Absent, thermal_assembly: supplied_configuration.thermal_assembly }
+  let a = SuperchipAssembly {
+    unit: first_assembly.unit,
+    carrier: first_assembly.carrier,
+    row: first_assembly.row,
+    configuration: thermal_only,
+    bench: BenchRecord {
+      connector_identity: first_assembly.bench.connector_identity,
+      mounting_stack: first_assembly.bench.mounting_stack,
+      power_path: first_assembly.bench.power_path,
+      site_ac_supply: first_assembly.bench.site_ac_supply,
+      thermal_path: ReadContradicted {
+        reason: "supplied: no assembly fits the lidless package",
+        scope: ReceiptScope { module: gh200_dv5_a, carrier: p4261_k1_a, configuration: thermal_only },
+      },
+      protective_shutdown: first_assembly.bench.protective_shutdown,
+      management_path: first_assembly.bench.management_path,
+      boot_storage: first_assembly.bench.boot_storage,
+      boot: first_assembly.bench.boot,
+      module_power_limit: first_assembly.bench.module_power_limit,
+      served_workload: first_assembly.bench.served_workload,
+    },
+  }
+  match assembly_qualification(a: a) {
+    AssemblyRefusedAt { stage: s, reasons: rs } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: SafeToEnergize)
+        && mentions(lines: rs, fragment: "no assembly fits the lidless package")
+    _ => false
+  }
+}
+
+// The photographed faces DISCRIMINATE: a carrier face with a different connector count refutes
+// mating outright, at the first stage.
+test fn a_mismatched_connector_face_refuses_mating() -> Bool {
+  let a = SuperchipAssembly {
+    unit: first_assembly.unit,
+    carrier: CarrierUnitObservation {
+      asset: p4261_k1_carrier.asset,
+      serial: p4261_k1_carrier.serial,
+      carrier_designation: p4261_k1_carrier.carrier_designation,
+      carrier_part_number: p4261_k1_carrier.carrier_part_number,
+      revision: p4261_k1_carrier.revision,
+      layout: p4261_k1_carrier.layout,
+      module_face: MezzanineFacePhotographed {
+        connector_count: 3,
+        contact_rows_per_connector: 6,
+        arrangement: OneAtEachEndOfLongAxis,
+        source: "supplied",
+      },
+      provenance: p4261_k1_carrier.provenance,
+      source: "supplied",
+    },
+    row: first_assembly.row,
+    configuration: first_assembly.configuration,
+    bench: first_assembly.bench,
+  }
+  match assembly_qualification(a: a) {
+    AssemblyRefusedAt { stage: s, reasons: rs } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
+        && mentions(lines: rs, fragment: "carrier shows 3")
+    _ => false
+  }
+}

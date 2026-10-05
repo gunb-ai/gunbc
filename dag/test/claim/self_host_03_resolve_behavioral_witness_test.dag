@@ -2,7 +2,7 @@ module test.claim.self_host_03_resolve_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (03_resolve): the driver (the roster's driver_rel) checks the
+// Wet self-host behavioral receipt (03_resolve): the rendered driver (the roster row's contract, also run interpreted) checks the
 // .dag contract on the EMITTED module with no seed oracle -- emitted resolve accepts a well-formed
 // tree and refuses a malformed one (malformed_tree_diagnostic); --inject-fault feeds the refused
 // input where the accepted one is expected, so the fault run is red only if the emitted module

@@ -26,6 +26,17 @@ type SeedRetainedSupportDirRegistration {
   basename: String
 }
 
+// THE PREMISE OF THE NOTE BELOW NO LONGER HOLDS, AND IT IS KEPT AS HISTORY, NOT AS THE REASON
+// (2026-10-04). It argues from the witness drivers opening with `use v1_compiler::v2_compiler_X as
+// seed;`. Those seed oracles were removed in gunbc#12316 and gunbc#12376, and the drivers
+// themselves -- every `self_host_*_shims/witness_main.rs` -- were deleted in gunbc#13098 and
+// gunbc#13185: a row's driver is now rendered from the roster row and calls a .dag contract
+// emitted beside its subject, and it imports nothing from the seed crate. The roster fields the
+// note cites (`shim_lib_rel`, `shim_writes`) are gone too. So the nine rows below are still
+// `has_pub_mod: true`, but the argument that made them so is no longer the reason they need to be;
+// whether any of them can flip back is a question this note does not answer and nobody has
+// measured. The 2026-08-20 text follows unchanged.
+//
 // NINE ROWS FLIPPED TO `has_pub_mod: true` (2026-08-20), AND THIS CORRECTS A CLAIM THE ROW BELOW
 // MAKES. `pre_existing_hand_retained_registration_backfill_note` states that the Gate-A oracles are
 // "never part of the stage0 crate's own mod tree at all" because the CSSL harness compiles them
@@ -71,7 +82,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "declaration_index", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "closure_identity", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },

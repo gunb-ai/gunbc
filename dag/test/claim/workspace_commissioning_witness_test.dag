@@ -10,7 +10,8 @@ import gunbc.workspace_commissioning {
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import product.host_identity { HostIdentity }
-import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max }
+import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_desired_for }
+import gunbc.runner_slot_desired { SlotCpuQuotaUnbounded }
 import gunbc.fleet_host_budget { HostAllocationConserves }
 import product.fabric.sanitation { required_sanitation_facts, SlotScopedNetwork, FactConfirmed }
 import gunbc.runner_microvm_cell_readiness { WriteCommissioned, apply_cell_readiness_write, WriteAccepted }
@@ -61,5 +62,25 @@ test fn initial_readiness_cannot_overwrite_existing_history() -> Bool {
       }
     }
     other => false
+  }
+}
+
+
+test fn a_credential_cannot_overstate_the_installed_cpu_budget() -> Bool {
+  let slot = commissioning_test_slot()
+  match workspace_commissioning_admit(slot: slot, authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: "fixture-plan" as NonEmptyStr },
+    budget: HostAllocationConserves, cpu_budget: hardware_thread_count(count: 8), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    prior_purpose: WorkspacePriorPurposeWithdrawn, obligations: WorkspaceNoPriorObligations { settled_generation: 0 },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactConfirmed { fact: f })) {
+    WorkspaceCommissioningRefused { reason } => reason == "commissioning CPU budget must equal the slot boundary authority"
+    _ => false
+  }
+}
+
+
+test fn workspace_cpu_binding_does_not_cap_another_slot() -> Bool {
+  match gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 12 }).cpu_quota {
+    SlotCpuQuotaUnbounded => true
+    _ => false
   }
 }

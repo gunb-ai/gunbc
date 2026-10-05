@@ -113,6 +113,7 @@ import v2.std.inhabitance {
   application_parameter_order_malformed_reason,
   declared_type_inhabitance,
   inhabitance_node_undecidable_reason,
+  inhabitance_node_mentions_type_variable,
   inhabitance_undecidable_diagnostic,
   position_binder_default,
   position_declared_return,
@@ -874,8 +875,7 @@ fn infer_declaration_wrapper_facts_from_entries(
 // already gives a type-denoting binding (the dag_binding_denotation arm of infer_node_facts):
 // TypeDenotationKind. That grants no member, construction or representation-sensitive coercion, and
 // for a generic declaration (`type MachineWidth<bits>`) it says only that the declaration names a type
-// constructor -- a use's arity and kinds are checked at resolve by the binder authority
-// (v2.std.type_binder type_application_conformance). It is not the empty product: an
+// constructor -- a use's arity stays the binder authority's to check. It is not the empty product: an
 // authored empty record is a member, and forms through product introduction.
 fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -3312,15 +3312,7 @@ fn infer_judge_declared_position(
             reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
-          let obligation = DeclaredTypeObligation {
-            position: position,
-            parameter_identity: formal.parameter_identity,
-            declared: infer_declared_type_denotation(declared: formal.declared),
-            produced: produced,
-            produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
-            application: application,
-            type_variables: type_params
-          }
+          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: produced, application: application, type_variables: type_params, declarations: declarations)
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
@@ -3345,6 +3337,281 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
   Empty
 }
 
+// A FORMAL THAT CONTAINS A TYPE PARAMETER INSIDE A CONSTRUCTOR (`xs: List<T>`) IS MATCHED, THEN JUDGED.
+// Handed to the declared-position judge as written it mentions a type variable, so the judge answered
+// UndecidableGenericFormal and the application was ACCEPTED whatever the argument was: `g<T>(a: List<T>)`
+// called with an Int, or with `List<Int>` and `List<Pair>` at two `List<T>` formals, passed silently --
+// below the floor (values inhabit declared types, DESIGN section 4b; gunbc.recurring_failure_mode
+// generic_formal_containing_a_type_variable_unjudged). The match is first-order over the argument's derived
+// type: an Instantiation formal needs an Instantiation argument with the same constructor and arity and
+// recurses pairwise; a bare type variable binds its first instance (a later occurrence is judged against
+// it, so two different instances refuse); a formal leaf that mentions no variable is left to the judge.
+// After matching, the formal is instantiated and handed to the SAME judge every formal uses -- one judge,
+// no second inhabitance relation. A constructor or arity mismatch refuses there, typed and located, with
+// the judge's own application_argument_does_not_inhabit. An argument whose type is not derived stays the
+// counted frontier and binds nothing; a variable inside a shape this match does not open (an Arrow, an
+// optional) stays the judge's UndecidableGenericFormal, as before.
+type InferFormalMatch
+  = InferFormalMatched { instances: List<TypeVariableInstance> }
+  | InferFormalShapeMismatch
+
+fn infer_type_variable_binder(t: Node, type_params: List<Symbol>) -> Optional<Symbol> {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(t.children) == 0 && fold(type_params, init: false, f: fn(acc, p) { acc || (p == id) }) {
+        optional_present(value: id)
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
+  match infer_type_variable_binder(t: formal, type_params: type_params) {
+    Present { value: binder } =>
+      match type_variable_instance_lookup(instances: instances, binder: binder) {
+        Present { value: _ } => InferFormalMatched { instances: instances }
+        Absent => InferFormalMatched { instances: list_snoc_item(xs: instances, item: TypeVariableInstance { binder: binder, instance: produced }) }
+      }
+    Absent =>
+      match formal.kind {
+        TypeNode { connective: Instantiation } =>
+          match produced.kind {
+            TypeNode { connective: Instantiation } =>
+              let f = infer_type_head_and_args(t: formal)
+              let p = infer_type_head_and_args(t: produced)
+              if length(xs: f.args) != length(xs: p.args) {
+                InferFormalShapeMismatch
+              } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
+                InferFormalMatched { instances: instances }
+              } else if !infer_type_equal_ignoring_provenance(a: f.head, b: p.head) {
+                InferFormalShapeMismatch
+              } else {
+                fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
+                  match acc {
+                    InferFormalShapeMismatch => acc
+                    InferFormalMatched { instances: so_far } => infer_match_generic_formal(formal: pair.formal, produced: pair.produced, type_params: type_params, instances: so_far, declarations: declarations)
+                  }
+                })
+              }
+            TypeNode { connective: _ } => InferFormalShapeMismatch
+            ComputationNode { behavior: _ } => InferFormalShapeMismatch
+          }
+        TypeNode { connective: _ } => InferFormalMatched { instances: instances }
+        ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }
+      }
+  }
+}
+
+// A TRANSPARENT ALIAS IS ITS RIGHT-HAND SIDE. `type List<T> = std.algebra.FreeMonoid<T>` is one type under two
+// spellings. The head that names a transparent alias unfolds one step -- its declaration read from the index the
+// obligation's producer holds (a TypeAlias wrapper, v2.std.type_binder type_decl_view), its binders
+// instantiated at the use's arguments. A refinement or brand does not unfold (infer_alias_is_refined); a
+// generic, opaque or plain declaration is not an alias. Resolution refuses an alias cycle (ExpectedHead), so
+// the unfolding terminates.
+fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Node> {
+  let ha = infer_type_head_and_args(t: t)
+  match declaration_reference_path_optional(node: ha.head) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match symbol_index_lookup(index: declarations, qualified_path: path) {
+        Absent => optional_absent()
+        Present { value: declared } =>
+          match type_decl_view(target: declared) {
+            TypeAlias { binders: _, aliased: aliased } =>
+              if infer_alias_is_refined(declared: declared, aliased: aliased) {
+                optional_absent()
+              } else {
+              let params = type_param_names(n: declared)
+              if length(xs: params) != length(xs: ha.args) {
+                optional_absent()
+              } else {
+                optional_present(value: infer_type_instantiated(t: aliased, instances: zip_map(a: params, b: ha.args, f: fn(p, a) { TypeVariableInstance { binder: p, instance: a } })))
+              }
+              }
+            GenericTypeDecl { binders: _, member: _ } => optional_absent()
+            OpaqueTypeDecl { binders: _ } => optional_absent()
+            PlainTypeDecl { member: _ } => optional_absent()
+          }
+      }
+  }
+}
+
+// A TYPE WITH EVERY TRANSPARENT ALIAS UNFOLDED, at its head and inside every Instantiation argument: the ONE
+// alias rule, applied by the producer of every DeclaredTypeObligation (infer_judge_declared_position) to both the
+// declared and the produced type, so every declared position -- argument, return, record field, let annotation,
+// binder default -- and both the plain and the generic routes see one type per alias family (review 75435;
+// calm-boar-904, option 1). v2.std.inhabitance holds no index, so the reading is supplied by the producer,
+// exactly as produced_declared_carrier is.
+fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
+  match infer_type_alias_unfolded(t: t, declarations: declarations) {
+    Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Instantiation } =>
+          Node {
+            kind: t.kind,
+            children: fold(t.children, init: Empty, f: fn(acc, e) {
+              list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
+            }),
+            occurrence_id: t.occurrence_id
+          }
+        TypeNode { connective: _ } => t
+        ComputationNode { behavior: _ } => t
+      }
+  }
+}
+
+// A REFINED ARGUMENT MATCHES THROUGH ITS DECLARED CARRIER, by the judge's own subsumption fact. The judge
+// widens a produced refinement to the carrier its declaration states (refinement_declared_carrier, one
+// step, never walked) after an exact comparison refuses; the generic match asks the SAME fact on a shape
+// mismatch, so `type Ns = List<Int> where nonempty` at `xs: List<T>` binds T to Int exactly as it would
+// inhabit a declared `List<Int>`. A mismatch is refused only when neither the argument nor its declared
+// carrier matches. Routing a mismatch to the judge with T still unbound would not decide it: a formal that
+// mentions a type variable is UndecidableGenericFormal there, which re-admits `g(1)` at `List<T>`.
+fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
+  match infer_match_generic_formal(formal: formal, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
+    InferFormalMatched { instances: matched } => InferFormalMatched { instances: matched }
+    InferFormalShapeMismatch =>
+      match refinement_declared_carrier(index: declarations, source_type: produced) {
+        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized(t: carrier, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations)
+        Absent => InferFormalShapeMismatch
+      }
+  }
+}
+
+// THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
+// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
+// reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
+// all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
+// refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
+fn infer_declared_type_obligation(
+  position: DeclaredTypePosition,
+  parameter_identity: Symbol,
+  declared: Node,
+  produced: Node,
+  application: Node,
+  type_variables: List<Symbol>,
+  declarations: SymbolIndex
+) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position,
+    parameter_identity: parameter_identity,
+    declared: infer_type_alias_normalized(t: declared, declarations: declarations),
+    produced: infer_type_alias_normalized(t: produced, declarations: declarations),
+    produced_declared_carrier: match refinement_declared_carrier(index: declarations, source_type: produced) {
+      Present { value: c } => Present { value: infer_type_alias_normalized(t: c, declarations: declarations) }
+      Absent => Absent
+    },
+    application: application,
+    type_variables: type_variables
+  }
+}
+
+// A REFINEMENT IS NOT A TRANSPARENT ALIAS. `type Pos = Int where positive` -- and a nominal brand, which is
+// spelled the same way (`where brand(..)`, std.types WherePredicateMarker) -- denotes a type distinct from its
+// carrier, so it never unfolds: normalizing it would admit a raw carrier where the refined or branded type is
+// declared (silent widening). Its carrier is reached only by the judge's one-step subsumption
+// (refinement_declared_carrier), in the widening direction alone.
+fn infer_alias_is_refined(declared: Node, aliased: Node) -> Bool {
+  match refinement_declaration_of_node(decl: declared) {
+    Present { value: _ } => true
+    Absent =>
+      match refinement_declaration_of_node(decl: aliased) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+type InferTypePair {
+  formal: Node
+  produced: Node
+}
+
+// A formal with each bound type variable replaced by its instance; an unbound one stays as written.
+fn infer_type_instantiated(t: Node, instances: List<TypeVariableInstance>) -> Node {
+  fold_node(
+    n: t,
+    algebra: NodeFold {
+      init: fn(self) {
+        match self.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if count(self.children) == 0 {
+              match type_variable_instance_lookup(instances: instances, binder: id) {
+                Present { value: instance } => instance
+                Absent => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+              }
+            } else {
+              Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+            }
+          TypeNode { connective: _ } => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+          ComputationNode { behavior: _ } => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+        }
+      },
+      step: fn(acc, edge, sub) {
+        Node {
+          kind: acc.kind,
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub }),
+          occurrence_id: acc.occurrence_id
+        }
+      }
+    }
+  )
+}
+
+fn infer_judge_generic_formal(
+  position: DeclaredTypePosition,
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
+  formal: InhabitanceFormal,
+  arg: Node,
+  type_params: List<Symbol>,
+  instances: List<TypeVariableInstance>
+) -> Outcome<List<TypeVariableInstance>> {
+  let produced_optional = match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+    Absent => optional_absent()
+    Present { value: facts } =>
+      match inferred_facts_resolved_type(facts: facts) {
+        Violates { diagnostic: _ } => optional_absent()
+        Holds { value: produced } => optional_present(value: produced)
+      }
+  }
+  match produced_optional {
+    Absent =>
+      match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+      }
+    Present { value: produced } =>
+      match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized(t: formal.declared, declarations: declarations), produced: infer_type_alias_normalized(t: produced, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations) {
+        InferFormalShapeMismatch =>
+          outcome_rejected(
+            application_argument_does_not_inhabit_diagnostic(
+              obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations),
+              find_witness_reason: ^find_witness_reason_no_candidate
+            )
+          )
+        InferFormalMatched { instances: matched } =>
+          match infer_judge_declared_position(
+            position: position,
+            application: application,
+            entries: entries,
+            declarations: declarations,
+            formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: infer_type_instantiated(t: formal.declared, instances: matched) },
+            produced_at: arg,
+            type_params: type_params
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: _, diagnostics: d } => Accepted { value: matched, diagnostics: d }
+          }
+      }
+  }
+}
+
 // A FORMAL DECLARED AS ONE OF THE CALLEE'S TYPE PARAMETERS IS INSTANTIATED, NOT COMPARED. Judged as
 // an ordinary declared type, `x: T` would demand the argument's type be structurally the Atom `T`
 // and refuse every real argument application_argument_does_not_inhabit -- a loud refusal for the
@@ -3363,10 +3630,14 @@ fn infer_judge_application_argument_instantiating(
   instances: List<TypeVariableInstance>
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
-    DeclaredType { declared: _ } =>
-      match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+    DeclaredType { declared: declared } =>
+      if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_params) {
+        infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, formal: formal, arg: arg, type_params: type_params, instances: instances)
+      } else {
+        match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+        }
       }
     DeclaredTypeVariable { binder: binder } =>
       match type_variable_instance_lookup(instances: instances, binder: binder) {
@@ -5843,15 +6114,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
 }
 
 fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, member: Node, step: Node, resolved: ResolvedTree) -> InferFrame {
-  let obligation = DeclaredTypeObligation {
-    position: PositionDirectCallArgument,
-    parameter_identity: formal.formal.name,
-    declared: infer_declared_type_denotation(declared: formal.formal.type_node),
-    produced: member,
-    produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: member),
-    application: formal.formal.type_node,
-    type_variables: type_param_names(n: step)
-  }
+  let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, entering: InferFrameEnteredPlain }
     InhabitanceUndecidable { reason: _ } =>
@@ -5976,15 +6239,7 @@ fn infer_fold_bind_check(node: Node, entries: List<InferredFactsEntry>, resolved
 }
 
 fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolved: ResolvedTree) -> Outcome<Bool> {
-  let obligation = DeclaredTypeObligation {
-    position: position_declared_return(),
-    parameter_identity: ^fold_carrier,
-    declared: infer_declared_type_denotation(declared: declared),
-    produced: produced,
-    produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: produced),
-    application: at,
-    type_variables: type_param_names(n: step)
-  }
+  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: declared), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
