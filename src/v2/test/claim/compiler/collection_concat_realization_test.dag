@@ -204,14 +204,14 @@ fn cca_unreadable_row() -> CollectionRosterRow {
   CollectionRosterRow {
     head: symbol_intern_lexeme(lexeme: "cca_unreadable"),
     template: { name: "cca_unreadable", param_types: [], return_type: NamedTemplate { name: "cca_no_such_kernel_type" }, size_effect: none, cost_shape: none, callback_element_position: none },
-    row: DeclarationRef { module_path: "std.algebra", decl_name: "cca_unreadable", field: WholeDeclaration },
+    row: DeclarationRef { module_path: "v2.test.claim.compiler.collection_concat_realization", decl_name: "cca_unreadable_row", field: WholeDeclaration },
     form: RosterFreeMonoidPrimitiveCall
   }
 }
 
 test fn cca_unreadable_roster_row_refuses_at_infer_located() -> Bool {
   let reference = node_synthetic(kind: TypeNode { connective: Atom { identity: ^cca_unreadable_reference } }, children: [])
-  let lookup = collection_roster_primitive_call_signature_in(rows: [cca_unreadable_row()], path: "std.algebra.cca_unreadable")
+  let lookup = collection_roster_primitive_call_signature_in(rows: [cca_unreadable_row()], path: "v2.test.claim.compiler.collection_concat_realization.cca_unreadable_row")
   (match lookup {
     RosterPrimitiveCallSignatureUnreadable => true
     RosterPrimitiveCallSignature { arrow: _ } => false
