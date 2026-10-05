@@ -44990,6 +44990,8 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
     required_regen_host::run_regen_affected_set(source_roots)
 }
 
+pub use required_regen_host::run_regen_one_mirror_emit_probe;
+
 /// One priced regen round — see `required_regen_host::run_regen_round_cost`.
 pub fn run_regen_round_cost(
     candidate_dir_rel: &str,

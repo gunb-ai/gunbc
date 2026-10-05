@@ -279,6 +279,7 @@ pub enum TargetProducer {
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
     GenericIdentityCensus,
+    RegenRoundCost,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -454,6 +455,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
+        ),
+        (
+            instrument_label("regen-round-cost"),
+            TargetProducer::RegenRoundCost,
         ),
     ]
 }
@@ -875,6 +880,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
+        TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
@@ -3508,5 +3514,63 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
+    }
+}
+
+/// `gunbc test //gunbc/instruments:regen-round-cost`: one whole-population regen round, priced
+/// by phase on two clocks (`gunbc.regen_round_cost`), then the one-mirror discriminator over the
+/// same corpus. On-demand only: it is reached through instrument-dispatch and no required job.
+///
+/// The probe's mirror is a fixed fact of the instrument rather than an option, so two runs
+/// measure the same selection. `std_measure.rs` is an ordinary leaf mirror of the population.
+const REGEN_ROUND_COST_PROBE_MIRROR: &str = "std_measure.rs";
+
+fn run_regen_round_cost_instrument() -> InvocationOutcome {
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("regen-round-cost: subject unreached: {detail}"),
+    };
+    let roots = self_host_source_roots();
+    let round = match cli_run::run_regen_round_cost(
+        "target/stage0-regen-candidate",
+        "target/stage0-regen-receipt.json",
+        &roots,
+        false,
+    ) {
+        Ok(round) => round,
+        Err(e) => return unreached(format!("round: {e}")),
+    };
+    print!("{}", round.rendered);
+    let rows = match cli_run::run_regen_one_mirror_emit_probe(REGEN_ROUND_COST_PROBE_MIRROR) {
+        Ok(rows) => rows,
+        Err(e) => return unreached(format!("one-mirror probe: {e}")),
+    };
+    for row in &rows {
+        println!(
+            "regen-round-cost: one-mirror-probe mirror={} phase={} wall_ms={} cpu_ms={}",
+            REGEN_ROUND_COST_PROBE_MIRROR,
+            row.label,
+            row.wall_ms,
+            row.cpu_ms
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "unreadable".to_string())
+        );
+    }
+    if round.round_failures.is_empty() {
+        InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "regen-round-cost: round clean; receipt={}",
+                round.receipt_path.display()
+            ),
+        }
+    } else {
+        InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: format!(
+                "regen-round-cost: round not clean: {}",
+                round.round_failures.join("; ")
+            ),
+        }
     }
 }
