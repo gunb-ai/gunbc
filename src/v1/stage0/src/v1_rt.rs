@@ -1049,12 +1049,6 @@ fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
     Some(v)
 }
 
-pub fn from_code_point(cp: i64) -> String {
-    char::from_u32(cp as u32)
-        .map(|c| c.to_string())
-        .unwrap_or_default()
-}
-
 pub fn is_xid_start(cp: i64) -> bool {
     char::from_u32(cp as u32)
         .map(unicode_ident::is_xid_start)
