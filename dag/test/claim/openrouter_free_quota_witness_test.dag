@@ -1,0 +1,262 @@
+module test.claim.openrouter_free_quota_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import extdeps.api_rate_limit { UpstreamRateLimit, rate_limit_period_seconds, upstream_rate_limit_key }
+import extdeps.openrouter.platform {
+  openrouter_model_id_is_free_variant, openrouter_free_variant_suffix,
+  openrouter_free_model_requests_per_minute,
+  openrouter_free_model_requests_per_day_below_threshold, openrouter_free_model_requests_per_day_at_threshold,
+  openrouter_free_model_daily_limit, openrouter_free_tier_applied_threshold_credits, openrouter_free_tier_table_threshold_credits,
+  OpenRouterLimitSource, OpenRouterInFlightBudgetSource, OpenRouterKeyLimitSource, OpenRouterCreditsSource, OpenRouterLimitSourceOther,
+  openrouter_limit_source_wire, parse_openrouter_limit_source,
+  OpenRouterCreditRefusalReason, OpenRouterInFlightBudgetExhausted, OpenRouterWeightExceedsBudget, OpenRouterCreditRefusalReasonOther,
+  openrouter_credit_refusal_reason_wire, parse_openrouter_credit_refusal_reason,
+  OpenRouterRateLimitOrigin, OpenRouterPlatformRateLimit, OpenRouterUpstreamProviderRateLimit,
+  OpenRouterRetryDisposition, OpenRouterRetryAfterSettlement, OpenRouterRetryWithBackoff, OpenRouterDoNotRetry,
+  OpenRouterLimitRemedy, OpenRouterAddCreditsOrReduceRequest, OpenRouterRaiseKeyLimitOrAwaitReset, OpenRouterAddCredits, OpenRouterRemedyUnclassified,
+  openrouter_credit_refusal_disposition, openrouter_rate_limit_disposition,
+  OpenRouterKeyInfo, OpenRouterFreeModelDailyRequests,
+}
+import extdeps.openrouter.nemotron_3_ultra_free_endpoint {
+  openrouter_nemotron_3_ultra_free_model_id, openrouter_nemotron_3_ultra_free_is_free_variant,
+  openrouter_nemotron_3_ultra_free_limits_for,
+}
+import extdeps.nvidia.nemotron_3_ultra { nemotron_3_ultra_outstanding_read_obligations }
+import product.capacity.pool {
+  Pool, Replenishment, NoReplenishment, LapseAtPeriodEnd,
+  pool_reading_at, PoolReading, PoolRead, PoolReadingRefused,
+  PoolOutcome, PoolAdvanced, PoolRefused, pool_reanchor, observe_upstream_remaining,
+}
+import product.capacity.pool_events { PoolEvent, PoolUpstreamObserved, PoolResetObserved, PoolLapsed }
+import gunbc.openrouter_free_quota {
+  openrouter_free_pools, openrouter_seconds_until_utc_day_end,
+  OpenRouterDailyObservation, OpenRouterDailyObserved, OpenRouterDailyObservationRefused,
+  openrouter_free_daily_observation,
+  OpenRouterResetObservation, OpenRouterResetReanchors, OpenRouterResetIgnored, openrouter_rate_limit_reset_event,
+}
+import v2.std.algebra { list_head, HeadFound, HeadAbsent, list_tail, TailFound, TailAbsent }
+
+// THE PURE HALF OF gunbc.openrouter_free_quota, EXERCISED BY EXECUTION: tier selection on the
+// credit threshold, the pools derived from it, the typed 402 and 429 dispositions, and the two
+// observation folds that reconcile a pool with what OpenRouter reports. The effectful lease needs
+// the fleet event-log store and runs only on the fleet; its consumer is the declared frontier the
+// production module names.
+
+fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
+  match pool_reading_at(pool: p, at: at) {
+    PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } => h.count
+    PoolReadingRefused { at: _, anchor: _ } => -1
+  }
+}
+
+fn w_key(l: UpstreamRateLimit) -> String {
+  upstream_rate_limit_key(l: l) as String
+}
+
+fn w_first<T>(xs: List<T>) -> T? {
+  match list_head(xs: xs) {
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => Absent
+  }
+}
+
+fn w_second<T>(xs: List<T>) -> T? {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => w_first(xs: t)
+    TailAbsent => Absent
+  }
+}
+
+fn w_period_seconds(p: Pool<Count, One>) -> Int {
+  match p.replenishment {
+    LapseAtPeriodEnd { period: per } => per.period_seconds
+    NoReplenishment => -1
+  }
+}
+
+// THE TIER FLIPS AT THE APPLIED THRESHOLD, which is one below the table's: 8 credits is the low
+// tier, 9 and 10 the high one, and the two thresholds the module carries differ by exactly one.
+test fn the_daily_tier_flips_one_credit_below_the_table_threshold() -> Bool {
+  w_key(l: openrouter_free_model_daily_limit(credits_purchased_all_time: 0)) == w_key(l: openrouter_free_model_requests_per_day_below_threshold)
+    && w_key(l: openrouter_free_model_daily_limit(credits_purchased_all_time: 8)) == w_key(l: openrouter_free_model_requests_per_day_below_threshold)
+    && w_key(l: openrouter_free_model_daily_limit(credits_purchased_all_time: 9)) == w_key(l: openrouter_free_model_requests_per_day_at_threshold)
+    && w_key(l: openrouter_free_model_daily_limit(credits_purchased_all_time: 10)) == w_key(l: openrouter_free_model_requests_per_day_at_threshold)
+    && w_key(l: openrouter_free_model_daily_limit(credits_purchased_all_time: 500)) == w_key(l: openrouter_free_model_requests_per_day_at_threshold)
+    && openrouter_free_tier_table_threshold_credits == 10
+    && openrouter_free_tier_applied_threshold_credits == 9
+    && openrouter_free_model_requests_per_day_below_threshold.requests == 50
+    && openrouter_free_model_requests_per_day_at_threshold.requests == 1000
+}
+
+// A FREE VARIANT IS DECIDED BY THE SUFFIX AND NOTHING ELSE: the endpoint's id is one, the same id
+// without the suffix is not, and the suffix is the platform's spelling.
+test fn free_variant_is_decided_by_the_id_suffix() -> Bool {
+  openrouter_nemotron_3_ultra_free_is_free_variant()
+    && openrouter_model_id_is_free_variant(id: openrouter_nemotron_3_ultra_free_model_id as String)
+    && !openrouter_model_id_is_free_variant(id: "nvidia/nemotron-3-ultra-550b-a55b")
+    && !openrouter_model_id_is_free_variant(id: "nvidia/nemotron-3-ultra-550b-a55b:free-tier")
+    && (openrouter_free_variant_suffix as String) == ":free"
+}
+
+// THE ENDPOINT LEASES FROM EXACTLY TWO POOLS -- the shared minute cap and the selected day cap --
+// with the published ceilings and periods, on distinct partitions.
+test fn the_endpoint_derives_a_minute_pool_and_the_selected_day_pool() -> Bool {
+  let low = openrouter_free_pools(credits_purchased_all_time: 0)
+  let high = openrouter_free_pools(credits_purchased_all_time: 10)
+  let limits_low = openrouter_nemotron_3_ultra_free_limits_for(credits_purchased_all_time: 0)
+  length(low) == 2 && length(high) == 2 && length(limits_low) == 2
+    && (match w_first(xs: limits_low) { Present { value: l } => w_key(l: l) == w_key(l: openrouter_free_model_requests_per_minute)  Absent => false })
+    && (match w_second(xs: limits_low) { Present { value: l } => w_key(l: l) == w_key(l: openrouter_free_model_requests_per_day_below_threshold)  Absent => false })
+    && (match w_first(xs: low) {
+      Present { value: minute } =>
+        w_headroom(p: minute, at: 0) == 20 && w_period_seconds(p: minute) == 60
+          && (match w_second(xs: low) {
+            Present { value: day } => w_headroom(p: day, at: 0) == 50 && w_period_seconds(p: day) == 86400 && (minute.identity as String) != (day.identity as String)
+            Absent => false
+          })
+      Absent => false
+    })
+    && (match w_second(xs: high) { Present { value: day } => w_headroom(p: day, at: 0) == 1000  Absent => false })
+}
+
+fn w_disposition_tag(d: OpenRouterRetryDisposition) -> String {
+  match d {
+    OpenRouterRetryAfterSettlement { retry_after_seconds: _ } => "retry-after-settlement"
+    OpenRouterRetryWithBackoff { retry_after_seconds: _ } => "retry-with-backoff"
+    OpenRouterDoNotRetry { remedy: r } =>
+      match r {
+        OpenRouterAddCreditsOrReduceRequest => "do-not-retry:add-credits-or-reduce-request"
+        OpenRouterRaiseKeyLimitOrAwaitReset => "do-not-retry:raise-key-limit-or-await-reset"
+        OpenRouterAddCredits => "do-not-retry:add-credits"
+        OpenRouterRemedyUnclassified { raw: _ } => "do-not-retry:unclassified"
+      }
+  }
+}
+
+fn w_retry_after(d: OpenRouterRetryDisposition) -> Int {
+  match d {
+    OpenRouterRetryAfterSettlement { retry_after_seconds: s } => match s { Present { value: v } => v  Absent => -1 }
+    OpenRouterRetryWithBackoff { retry_after_seconds: s } => match s { Present { value: v } => v  Absent => -1 }
+    OpenRouterDoNotRetry { remedy: _ } => -1
+  }
+}
+
+// THE 402 DISPOSITION BRANCHES ON SOURCE AND REASON, NEVER ON THE HINT: a transient in-flight
+// exhaustion retries after settlement and carries Retry-After through; a single request heavier
+// than the whole budget does not retry; a key limit and a balance each name their own remedy; an
+// unknown source is not retried and preserves its raw spelling.
+test fn the_402_disposition_branches_on_source_and_reason() -> Bool {
+  let transient = openrouter_credit_refusal_disposition(source: OpenRouterInFlightBudgetSource, reason: OpenRouterInFlightBudgetExhausted, retry_after_seconds: Present { value: 7 })
+  w_disposition_tag(d: transient) == "retry-after-settlement" && w_retry_after(d: transient) == 7
+    && w_disposition_tag(d: openrouter_credit_refusal_disposition(source: OpenRouterInFlightBudgetSource, reason: OpenRouterWeightExceedsBudget, retry_after_seconds: Present { value: 7 })) == "do-not-retry:add-credits-or-reduce-request"
+    && w_disposition_tag(d: openrouter_credit_refusal_disposition(source: OpenRouterCreditsSource, reason: OpenRouterWeightExceedsBudget, retry_after_seconds: Absent)) == "do-not-retry:add-credits-or-reduce-request"
+    && w_disposition_tag(d: openrouter_credit_refusal_disposition(source: OpenRouterCreditsSource, reason: OpenRouterCreditRefusalReasonOther { raw: "negative_balance" as NonEmptyStr }, retry_after_seconds: Absent)) == "do-not-retry:add-credits"
+    && w_disposition_tag(d: openrouter_credit_refusal_disposition(source: OpenRouterKeyLimitSource, reason: OpenRouterCreditRefusalReasonOther { raw: "key" as NonEmptyStr }, retry_after_seconds: Absent)) == "do-not-retry:raise-key-limit-or-await-reset"
+    && (match openrouter_credit_refusal_disposition(source: OpenRouterLimitSourceOther { raw: "openrouter_future_source" as NonEmptyStr }, reason: OpenRouterInFlightBudgetExhausted, retry_after_seconds: Absent) {
+      OpenRouterDoNotRetry { remedy: OpenRouterRemedyUnclassified { raw: r } } => (r as String) == "openrouter_future_source"
+      OpenRouterDoNotRetry { remedy: _ } => false
+      OpenRouterRetryAfterSettlement { retry_after_seconds: _ } => false
+      OpenRouterRetryWithBackoff { retry_after_seconds: _ } => false
+    })
+}
+
+// THE WIRE SPELLINGS ROUND-TRIP, and an unknown spelling survives as its raw form rather than
+// collapsing into a known arm.
+test fn limit_source_and_reason_wires_round_trip() -> Bool {
+  (openrouter_limit_source_wire(s: parse_openrouter_limit_source(raw: "openrouter_in_flight_budget")) as String) == "openrouter_in_flight_budget"
+    && (openrouter_limit_source_wire(s: parse_openrouter_limit_source(raw: "openrouter_key_limit")) as String) == "openrouter_key_limit"
+    && (openrouter_limit_source_wire(s: parse_openrouter_limit_source(raw: "openrouter_credits")) as String) == "openrouter_credits"
+    && (openrouter_limit_source_wire(s: parse_openrouter_limit_source(raw: "something_new")) as String) == "something_new"
+    && (match parse_openrouter_limit_source(raw: "openrouter_key_limit") { OpenRouterKeyLimitSource => true  OpenRouterInFlightBudgetSource => false  OpenRouterCreditsSource => false  OpenRouterLimitSourceOther { raw: _ } => false })
+    && (openrouter_credit_refusal_reason_wire(r: parse_openrouter_credit_refusal_reason(raw: "in_flight_budget_exhausted")) as String) == "in_flight_budget_exhausted"
+    && (openrouter_credit_refusal_reason_wire(r: parse_openrouter_credit_refusal_reason(raw: "weight_exceeds_budget")) as String) == "weight_exceeds_budget"
+    && (match parse_openrouter_credit_refusal_reason(raw: "weight_exceeds_budget") { OpenRouterWeightExceedsBudget => true  OpenRouterInFlightBudgetExhausted => false  OpenRouterCreditRefusalReasonOther { raw: _ } => false })
+}
+
+// A 429 RETRIES WITH BACKOFF FROM EITHER ORIGIN, honouring Retry-After when present -- but only a
+// PLATFORM 429 yields a reset event for the fleet's pool; a provider-side one yields none.
+test fn a_429_retries_with_backoff_and_only_a_platform_one_reanchors() -> Bool {
+  let platform = openrouter_rate_limit_disposition(origin: OpenRouterPlatformRateLimit, retry_after_seconds: Present { value: 30 })
+  let provider = openrouter_rate_limit_disposition(origin: OpenRouterUpstreamProviderRateLimit { provider_code: Present { value: "429" as NonEmptyStr } }, retry_after_seconds: Absent)
+  w_disposition_tag(d: platform) == "retry-with-backoff" && w_retry_after(d: platform) == 30
+    && w_disposition_tag(d: provider) == "retry-with-backoff" && w_retry_after(d: provider) == -1
+    && (match openrouter_rate_limit_reset_event(origin: OpenRouterPlatformRateLimit, reset_at: 5400) {
+      OpenRouterResetReanchors { event: PoolResetObserved { reset_at: r } } => r == 5400
+      OpenRouterResetReanchors { event: _ } => false
+      OpenRouterResetIgnored { origin: _ } => false
+    })
+    && (match openrouter_rate_limit_reset_event(origin: OpenRouterUpstreamProviderRateLimit { provider_code: Absent }, reset_at: 5400) {
+      OpenRouterResetIgnored { origin: _ } => true
+      OpenRouterResetReanchors { event: _ } => false
+    })
+}
+
+// THE RESET INSTANT RE-ANCHORS THE MINUTE POOL SO ITS WINDOW ENDS THERE: after re-anchoring to a
+// reset at 5400 the anchor is 0 modulo 60 (5400 is on a minute boundary), and at 5400 the full
+// ceiling of 20 is available again -- which is the same mechanism the GitHub pool is driven by in
+// test.claim.capacity_quota_witness, reached here through the OpenRouter event.
+test fn a_platform_reset_reanchors_the_minute_pool() -> Bool {
+  match w_first(xs: openrouter_free_pools(credits_purchased_all_time: 0)) {
+    Absent => false
+    Present { value: minute } =>
+      match openrouter_rate_limit_reset_event(origin: OpenRouterPlatformRateLimit, reset_at: 5417) {
+        OpenRouterResetReanchors { event: PoolResetObserved { reset_at: r } } => {
+          let p = pool_reanchor(pool: minute, reset_at: r)
+          (match p.replenishment { LapseAtPeriodEnd { period: per } => per.anchor == 17  NoReplenishment => false })
+            && w_headroom(p: p, at: 5417) == 20
+        }
+        OpenRouterResetReanchors { event: _ } => false
+        OpenRouterResetIgnored { origin: _ } => false
+      }
+  }
+}
+
+fn w_key_info(remaining: Nat) -> OpenRouterKeyInfo {
+  OpenRouterKeyInfo {
+    label: "witness-key",
+    is_free_tier: true,
+    free_model_daily_requests: OpenRouterFreeModelDailyRequests { used: 50 - remaining, limit: 50, remaining: remaining },
+  }
+}
+
+// THE KEY ENDPOINT'S DAILY COUNTER RECONCILES THE DAY POOL: a reading that says 3 remain, applied to
+// a fresh pool of 50, leaves headroom 3 for the rest of the UTC day, and the term carried on the
+// event is exactly the seconds left in that day. A reading that says more remain than the ledger
+// predicts changes nothing, because the ledger's outstanding leases are what the upstream cannot see.
+test fn the_daily_counter_reconciles_the_day_pool_for_the_rest_of_the_utc_day() -> Bool {
+  let at = 86400 + 3600
+  match w_second(xs: openrouter_free_pools(credits_purchased_all_time: 0)) {
+    Absent => false
+    Present { value: day } =>
+      (match openrouter_seconds_until_utc_day_end(at: at) { Present { value: t } => t == 82800  Absent => false })
+        && (match openrouter_free_daily_observation(info: w_key_info(remaining: 3), at: at) {
+          OpenRouterDailyObserved { event: PoolUpstreamObserved { remaining: r, term_seconds: t } } =>
+            r == 3 && t == 82800
+              && (match observe_upstream_remaining(pool: day, remaining: Measure { count: r }, at: at, term_seconds: t) {
+                PoolAdvanced { pool: p } => w_headroom(p: p, at: at) == 3 && w_headroom(p: p, at: at + 82800) == 50
+                PoolRefused { refusal: _ } => false
+              })
+          OpenRouterDailyObserved { event: _ } => false
+          OpenRouterDailyObservationRefused { detail: _ } => false
+        })
+        && (match openrouter_free_daily_observation(info: w_key_info(remaining: 50), at: at) {
+          OpenRouterDailyObserved { event: PoolUpstreamObserved { remaining: r, term_seconds: t } } =>
+            (match observe_upstream_remaining(pool: day, remaining: Measure { count: r }, at: at, term_seconds: t) {
+              PoolAdvanced { pool: p } => w_headroom(p: p, at: at) == 50
+              PoolRefused { refusal: _ } => false
+            })
+          OpenRouterDailyObserved { event: _ } => false
+          OpenRouterDailyObservationRefused { detail: _ } => false
+        })
+  }
+}
+
+// EVERY UNCITED MODEL FIGURE NAMES WHAT WOULD GROUND IT, and the fold that lists them is derived
+// from the standings: four figures share one page's obligation, plus the two things no excerpt
+// stated at all. Nothing in that list is empty, because the standing type refuses an empty one.
+test fn every_uncited_nemotron_figure_names_its_read_obligation() -> Bool {
+  let obligations = nemotron_3_ultra_outstanding_read_obligations()
+  length(obligations) == 6 && all(obligations, o => length(o as String) > 0)
+}

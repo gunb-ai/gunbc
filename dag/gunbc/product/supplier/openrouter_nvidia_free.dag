@@ -1,0 +1,250 @@
+module product.supplier.openrouter_nvidia_free
+
+import std.types { List, NonEmptyStr, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.provider_route {
+  ProviderRoute, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathUnread,
+  DownstreamProviderPopulation, DownstreamProvidersUnread,
+  ProviderRegionObservation, ProviderRegionUnread,
+  ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import extdeps.nvidia.api_trial_terms {
+  NvidiaApiTrialUse, NvidiaApiTrialContentClass,
+  nvidia_api_trial_use_admitted, nvidia_api_trial_content_admitted,
+}
+
+// THE OPENROUTER FREE ROUTE TO NVIDIA'S NEMOTRON 3 ULTRA ENDPOINT, AS THE FABRIC SEES IT. This module
+// answers the questions product.fabric.provider_admission asks before any price is compared: where
+// does material on this route go, who is downstream, what contract governs it, and what use the
+// contract admits. It is the rented-route shape product.supplier.hetzner established, with one
+// difference the first paragraph of that module predicted: here the vendor publishes NOTHING that
+// locates any path, so every path is unread and the route itself cannot be minted.
+//
+// WHAT PRODUCTION EXECUTES. openrouter_nvidia_free_route_standing is ProviderRouteRegionUnobserved
+// carrying openrouter_nvidia_free_region_unread_obligation, exactly as product.supplier.cloudflare_r2
+// stands for its durable origin: a ProviderRoute is minted ONLY from a read region, and neither
+// OpenRouter's page nor NVIDIA's terms name one. openrouter_nvidia_free_route_facts_population is
+// therefore empty. The nine-path closure and the downstream population are still answered, every
+// path Unread with its obligation, so that the moment a region IS read the facts row exists and
+// refuses on the paths that remain -- which is the property worth having and the one the witness
+// drives over a route minted in the read arm of the same coproduct.
+//
+// WHAT THIS MODULE DOES OWN AND DOES ANSWER TODAY: the use admission. The trial terms say which
+// use and which content classes they admit, and a caller holding a turn can ask this module
+// whether that turn is one the terms allow before it leases a seat. That fold executes now,
+// independent of the region, because it is a question about the contract and not about a machine.
+//
+// AUTHORITY DIRECTION, unchanged from the siblings: every fact about OpenRouter or NVIDIA is CITED
+// into extdeps.openrouter.platform, extdeps.openrouter.nemotron_3_ultra_free_endpoint and
+// extdeps.nvidia.api_trial_terms. What is declared here is ours: the obligations that say what we
+// still have to read, and the joins that hand the vendors' facts to our admission gate.
+
+// ── THE ROUTE COMPONENTS ──────────────────────────────────────────────────────────────────────
+//
+// THE PROVIDER IS THE PLATFORM, AND ITS LEGAL ENTITY IS UNREAD. product.supplier.hetzner cites a
+// company with a register entry because Hetzner's documents name one; OpenRouter's Limits page and
+// the model page name no legal entity, and OpenRouter's own terms of service were not read in this
+// session. So the provider slot cites the platform subject declaration, which is the party the
+// fabric actually talks to, and the entity behind it is an obligation rather than a guess.
+data openrouter_nvidia_free_provider_entity_unread_obligation: NonEmptyStr = "The legal entity that operates OpenRouter -- the party a permit on this route is about -- is UNREAD: neither extdeps.openrouter.platform openrouter_limits_reading nor the endpoint notice names one, and OpenRouter's terms of service were not read on 2026-10-05. RESOLVED BY a reading of OpenRouter's terms of service or privacy policy naming the contracting entity and its seat, recorded as a row in extdeps.openrouter.platform, at which point the provider reference moves to that row."
+
+fn openrouter_nvidia_free_provider_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.openrouter.platform", decl_name: "openrouter_api")
+}
+
+fn openrouter_nvidia_free_service_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.openrouter.nemotron_3_ultra_free_endpoint", decl_name: "openrouter_nemotron_3_ultra_free_model_id")
+}
+
+// THE REGION IS UNREAD, AND NOTHING READ SO FAR COULD RESOLVE IT. OpenRouter routes the request to
+// NVIDIA; NVIDIA's trial terms name Delaware law for disputes and no place where the service runs;
+// the model page notice names NVIDIA as the party logging and no location. A route whose region
+// slot held 'wherever NVIDIA serves it' would be the fabricated placement the fabric refuses.
+data openrouter_nvidia_free_region_unread_obligation: NonEmptyStr = "Where a request to nvidia/nemotron-3-ultra-550b-a55b:free actually executes is UNREAD. OpenRouter forwards it to NVIDIA (extdeps.openrouter.nemotron_3_ultra_free_endpoint openrouter_nemotron_3_ultra_free_endpoint_notice); the NVIDIA API Trial Terms (extdeps.nvidia.api_trial_terms nvidia_api_trial_terms_reading) name no hosting region, which that module records as nvidia_api_trial_service_location_unread_obligation; the OpenRouter Limits page names none. RESOLVED BY an OpenRouter provider-routing document or per-response provider field that names the region the request was served from, or by an NVIDIA document naming where the API Catalog's hosted inference for this model runs -- recorded as a declaration this standing can cite. It is NOT resolved by the jurisdiction of either company's seat, which is where disputes are heard and not where the work runs."
+
+fn openrouter_nvidia_free_region() -> ProviderRegionObservation {
+  ProviderRegionUnread {
+    obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_region_unread_obligation"),
+  }
+}
+
+fn openrouter_nvidia_free_route_standing() -> ProviderRouteStanding {
+  provider_route_from_region(
+    provider: openrouter_nvidia_free_provider_ref(),
+    service: openrouter_nvidia_free_service_ref(),
+    region: openrouter_nvidia_free_region(),
+  )
+}
+
+// ── THE OBLIGATIONS, ONE PER UNREAD PATH ──────────────────────────────────────────────────────
+//
+// THE DOCUMENTS CONSULTED ARE THREE AND THE SAME THREE FOR EVERY PATH, because the three readings
+// this repository holds for this route are the whole read set: the trial terms, the endpoint
+// notice, and the Limits page. Each obligation says what those three establish for its path --
+// which is more than nothing for logs and durable storage, where the terms describe the collection
+// without locating it -- and what reading would resolve it.
+
+data openrouter_nvidia_free_execution_location_obligation: NonEmptyStr = "Where the model executes for this route is UNREAD. The endpoint notice establishes WHO executes it -- NVIDIA, the party that collects and logs -- and the trial terms establish nothing about where (nvidia_api_trial_service_location_unread_obligation). ProviderPathLocated needs operator, jurisdiction and evidence; the operator is known and the jurisdiction is not, so the path is unread rather than located with a slot invented. RESOLVED BY the same reading that resolves the route's region."
+
+data openrouter_nvidia_free_durable_storage_obligation: NonEmptyStr = "Whether and where route material is DURABLY STORED is partly read and wholly unlocated. Section 2.3 of the trial terms says NVIDIA will not store or use User Content or Generated Content at the end of each session EXCEPT as section 2.4 and 3.3 state, and 3.3 says User Content and Generated Content are collected to improve NVIDIA products and services including AI models. So improvement-purpose copies persist beyond the session, and nothing read says where. THE ABSENT ARM IS DELIBERATELY NOT TAKEN: 2.3's default does not say no copy persists, because 3.3 says one does. RESOLVED BY an NVIDIA statement of where improvement-purpose content is held and by which entity (nvidia_api_trial_log_location_unread_obligation)."
+
+data openrouter_nvidia_free_backups_obligation: NonEmptyStr = "Whether the improvement-purpose and security logs on this route are backed up, and where, is UNREAD: none of the three readings describes a backup path. The absent arm is not taken, because nobody has stated that no backup exists. RESOLVED BY an NVIDIA statement about backup of the data section 3.3 collects, in either direction."
+
+data openrouter_nvidia_free_logs_obligation: NonEmptyStr = "The LOG PATH IS READ AND NOT LOCATED. Section 3.3 of the trial terms states that use is logged for security, fraud or abuse monitoring and shared with third-party service providers for that purpose, and that User Content and Generated Content are collected to improve NVIDIA products and services; the endpoint notice repeats both. So the operator is NVIDIA plus unnamed service providers, and the jurisdiction is unstated for all of them. ProviderPathLocated carries one operator and one jurisdiction; this path has at least two operators and no jurisdiction, so it is unread with the terms as the thing already consulted. RESOLVED BY NVIDIA's named recipients and locations for API Catalog logs (nvidia_api_trial_log_location_unread_obligation), or by a ProviderPathStanding able to carry a multi-party path."
+
+data openrouter_nvidia_free_telemetry_obligation: NonEmptyStr = "What telemetry OpenRouter itself retains about a request on this route -- as distinct from NVIDIA's logging, which the logs path carries -- and where it is held, is UNREAD: the Limits page describes credit and request metering by account and says nothing about retention or location, and OpenRouter's privacy policy was not read. RESOLVED BY a reading of OpenRouter's privacy policy or data-handling documentation for request metadata, in either direction."
+
+data openrouter_nvidia_free_control_plane_obligation: NonEmptyStr = "Where OpenRouter's control plane -- the API gateway that authenticates the key, meters the account and selects the provider -- runs, and under whose jurisdiction, is UNREAD. It reaches every request's content in transit, which is why product.fabric.provider_route carries it as a path of its own. RESOLVED BY an OpenRouter document naming the operating region or entity of its API gateway."
+
+data openrouter_nvidia_free_support_access_obligation: NonEmptyStr = "Whether support staff at OpenRouter or at NVIDIA can reach route material, and from where, is UNREAD: none of the three readings describes support access. RESOLVED BY a statement from each party partitioning which support functions touch request content and from which jurisdiction, in either direction."
+
+data openrouter_nvidia_free_administrative_access_obligation: NonEmptyStr = "From which jurisdiction administrative access to the serving infrastructure or to the collected logs is exercised, and by whom, is UNREAD at both parties. RESOLVED BY a statement from NVIDIA about administrative access to the API Catalog's hosted inference and its logs, and from OpenRouter about its gateway, naming the operator and jurisdiction of each."
+
+data openrouter_nvidia_free_spill_obligation: NonEmptyStr = "Where route material may SPILL -- crash dumps, engine scratch, diagnostic captures, error logs that quote request content -- is UNREAD. Section 3.3(ii) of the trial terms says error logs and execution logs relating to the session are collected, which establishes that a spill surface EXISTS without locating it or bounding what it quotes. RESOLVED BY an NVIDIA statement of what the execution and error logs carry and where they are held."
+
+data openrouter_nvidia_free_downstream_obligation: NonEmptyStr = "The DOWNSTREAM POPULATION IS PARTLY READ AND NOT CLOSED. One downstream party is established: NVIDIA, which the endpoint notice names as the party that serves, collects and logs on this route, so OpenRouter's forwarding to NVIDIA is a downstream processing of our material. Beyond it, section 3.3 of the trial terms says use logs are shared with third-party service providers for security, fraud or abuse monitoring, and names none. DownstreamProvidersEnumerated requires coverage evidence that the enumeration is complete, and a sentence that says 'third parties' without naming them is evidence that it is NOT. RESOLVED BY NVIDIA's named list of the service providers that receive API Catalog logs, with a statement that it is exhaustive -- at which point the population enumerates NVIDIA first and those providers after it, with that list as coverage."
+
+// ── THE PATHS ─────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY CITATION BELOW IS WRITTEN OUT WITH BOTH ARGUMENTS AS LITERALS, for the reason
+// product.supplier.hetzner records: the corpus citation gate ingests a citation only when both
+// arguments are string literals, and a parameterised helper would take these rows out of its
+// universe while looking tidier.
+
+fn openrouter_nvidia_free_consulted() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "extdeps.nvidia.api_trial_terms", decl_name: "nvidia_api_trial_terms_reading"),
+    decl_ref(module_path: "extdeps.openrouter.nemotron_3_ultra_free_endpoint", decl_name: "openrouter_nemotron_3_ultra_free_endpoint_notice"),
+    decl_ref(module_path: "extdeps.openrouter.platform", decl_name: "openrouter_limits_reading"),
+  ]
+}
+
+fn openrouter_nvidia_free_data_paths() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_execution_location_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    durable_storage: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_durable_storage_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    backups: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_backups_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    logs: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_logs_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    telemetry: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_telemetry_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    control_plane: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_control_plane_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    support_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_support_access_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    administrative_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_administrative_access_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+    spill: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_spill_obligation"),
+      consulted: openrouter_nvidia_free_consulted(),
+    },
+  }
+}
+
+fn openrouter_nvidia_free_downstream() -> DownstreamProviderPopulation {
+  DownstreamProvidersUnread {
+    obligation: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_downstream_obligation"),
+  }
+}
+
+// ── THE FACTS ROW, FOR A ROUTE SOMEONE HAS MINTED ─────────────────────────────────────────────
+//
+// contract_terms CITES THE TRIAL TERMS READING, which is the document that actually governs the
+// relationship on this route -- trial use only, no production, no confidential or personal content,
+// Delaware law, a ten-dollar liability cap, and terms that change when published. That last clause
+// is why the reading rather than the document row is cited: the facts_revision below is dated, and
+// a later reading of the terms at a later version date is a new facts row, never an edit to this.
+//
+// observed_at IS AT DATE GRAIN AND THE MIDNIGHT IS A CONVENTION, as the siblings state: these facts
+// are a day's reading of supplied documents, not a sample.
+fn openrouter_nvidia_free_facts(route: ProviderRoute) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: decl_ref(module_path: "extdeps.nvidia.api_trial_terms", decl_name: "nvidia_api_trial_terms_reading"),
+    data_paths: openrouter_nvidia_free_data_paths(),
+    downstream: openrouter_nvidia_free_downstream(),
+    observed_at: "2026-10-05T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "product.supplier.openrouter_nvidia_free.route-facts.2026-10-05" as NonEmptyStr)),
+  }
+}
+
+// EMPTY WHILE THE REGION IS UNREAD, by the same match product.supplier.cloudflare_r2 performs: the
+// facts row exists only for a route that exists, and no route exists until a region is read.
+fn openrouter_nvidia_free_route_facts_population() -> List<ProviderRouteFacts> {
+  match openrouter_nvidia_free_route_standing() {
+    ProviderRouteRegionUnobserved { obligation: _ } => [] as List<ProviderRouteFacts>
+    ProviderRouteObserved { route: r } => [openrouter_nvidia_free_facts(route: r)]
+  }
+}
+
+// ── THE USE ADMISSION THE CONTRACT DECIDES TODAY ──────────────────────────────────────────────
+//
+// THIS IS THE PART OF THE ROUTE THAT ANSWERS NOW. Whether a turn may be placed on this endpoint at
+// all is decided by two facts the trial terms carry as typed rows: the use must be internal testing
+// and evaluation, never production (sections 1.2, 1.4), and the content must be of no class the
+// terms forbid (sections 2.6(a), 4.3). Both are delegated to extdeps.nvidia.api_trial_terms, which
+// owns them; this fold only orders the two refusals and names them in the fabric's vocabulary.
+//
+// THE ORDER IS USE FIRST, BECAUSE A PRODUCTION TURN IS REFUSED WHATEVER IT CARRIES. A content
+// refusal names the class so the caller knows what to strip; a use refusal names nothing, because
+// there is nothing to strip -- the caller needs a Subscription and a different route.
+type OpenRouterNvidiaFreeUseAdmission
+  = OpenRouterNvidiaFreeUseAdmitted
+  | OpenRouterNvidiaFreeProductionUseRefused
+  | OpenRouterNvidiaFreeContentClassRefused { class: NvidiaApiTrialContentClass }
+
+fn openrouter_nvidia_free_use_admission(use: NvidiaApiTrialUse, class: NvidiaApiTrialContentClass) -> OpenRouterNvidiaFreeUseAdmission {
+  if !nvidia_api_trial_use_admitted(use: use) {
+    OpenRouterNvidiaFreeProductionUseRefused
+  } else if !nvidia_api_trial_content_admitted(class: class) {
+    OpenRouterNvidiaFreeContentClassRefused { class: class }
+  } else {
+    OpenRouterNvidiaFreeUseAdmitted
+  }
+}
+
+// ── THE DATA-HANDLING PROFILE A SANCTION ON THIS ROUTE WOULD NAME ─────────────────────────────
+//
+// Declared here because its content is DERIVED from the contract rather than chosen: the only
+// material the terms admit is non-confidential, non-personal evaluation content, and that material
+// is logged by NVIDIA and used to improve NVIDIA's products and models. A roster row for this route
+// names this profile; a scope that names a different one refuses as DataHandlingUnsupported.
+//
+// THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION, for the reason
+// product.supplier.hetzner gives: no posture producer mints a revision for a third-party route in
+// this tree, and a row written here to make the module look complete would be a fabricated
+// authority that is OURS. The operator's request to onboard this endpoint is the statement of
+// intent; the roster row that enacts it waits on the posture producer, and until then the
+// executing consumer is test.claim.supplier.openrouter_nvidia_free_route_witness, which drives both
+// the refusing and the admitting arms.
+type OpenRouterNvidiaFreeUseProfile {
+  label: NonEmptyStr
+  basis: NonEmptyStr
+}
+
+data openrouter_nvidia_free_data_handling_profile: OpenRouterNvidiaFreeUseProfile = OpenRouterNvidiaFreeUseProfile {
+  label: "openrouter-nvidia-free-evaluation-content",
+  basis: "Non-confidential, non-personal evaluation material only, sent for internal testing and evaluation and never for production, under the NVIDIA API Trial Terms of Service v. September 19, 2025. Every prompt and completion on this route is logged by NVIDIA for security monitoring, shared with NVIDIA's unnamed third-party service providers for that purpose, and collected to improve NVIDIA products and services including AI models, without identification of specific users. Material that is confidential, personal, health, payment, governmental, financial, controlled or unlawfully collected has no admitted arm on this route (extdeps.nvidia.api_trial_terms nvidia_api_trial_content_admitted).",
+}

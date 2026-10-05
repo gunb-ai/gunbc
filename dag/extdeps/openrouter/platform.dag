@@ -1,0 +1,300 @@
+module extdeps.openrouter.platform
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute, PerDay }
+
+// THE OPENROUTER API PLATFORM, as its own extdeps authority because it is an independently governed
+// upstream: it meters credit and request limits across every model it routes, it emits its own
+// error shapes, and it publishes its own rate-limit tiers. It is NOT a model and it enumerates no
+// model here (DESIGN section 3, external upstream decomposition): each endpoint it routes is its
+// own module citing this one, exactly as a vendor module cites a hub.
+//
+// THE ANCHOR IS THE LIMITS PAGE because every row below is read from it. The read was SUPPLIED BY
+// THE OPERATOR on 2026-10-05 as the page text pasted into the session; this session's egress
+// policy denied openrouter.ai, so the locator was not fetched here. A reader re-deriving these rows
+// re-reads that page, and a row that no longer appears there is a NEW reading with a later date.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/docs/api-reference/limits",
+  }
+}
+
+type OpenRouterApiPlatform {
+  base_locator: NonEmptyStr
+  chat_completions_path: NonEmptyStr
+  key_info_path: NonEmptyStr
+}
+
+// THE PLATFORM ROW IS THE SUBJECT. Base and paths are the ones the Limits page itself names: the
+// key endpoint by its full URL, and the chat completions path as the OpenAI-shaped completion
+// surface every model page documents.
+data openrouter_api: OpenRouterApiPlatform = OpenRouterApiPlatform {
+  base_locator: "openrouter.ai/api/v1",
+  chat_completions_path: "/chat/completions",
+  key_info_path: "/key",
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.openrouter.platform",
+      decl_name: "openrouter_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+type OpenRouterLimitsReadingProvenance
+  = OperatorSuppliedTranscript { supplied_on: NonEmptyStr }
+  | ReadAtLocator { read_on: NonEmptyStr }
+
+type OpenRouterPublishedReading {
+  authority: ExternalAuthority
+  provenance: OpenRouterLimitsReadingProvenance
+  statement: NonEmptyStr
+}
+
+// THE LIMITS PAGE, TRANSCRIBED IN ITS OWN WORDS FOR THE SENTENCES THE ROWS BELOW DEPEND ON.
+data openrouter_limits_reading: OpenRouterPublishedReading = OpenRouterPublishedReading {
+  authority: extdeps_external_authority_anchor,
+  provenance: OperatorSuppliedTranscript { supplied_on: "2026-10-05" },
+  statement: "OpenRouter enforces two kinds of limits: credit limits (how much you can spend: account balance, per-key credit caps, and the in-flight spending budget; error on exceeding 402; checked at GET /api/v1/key limit_remaining and error.metadata.limit_source) and rate limits (how many requests you can make: free-model request caps and DDoS protection; error on exceeding 429; checked in the X-RateLimit-* headers on the error response). Making additional accounts or API keys will not affect your rate limits, as we govern capacity globally. Free usage limits: if you are using a free model variant (with an ID ending in :free), the following limits apply. Credits purchased (all time) less than 10: 20 requests per minute, 50 requests per day. At least 10: 20 requests per minute, 1000 requests per day. The free_model_daily_requests field in the GET /api/v1/key response reports the daily counter and ceiling that gate your free-model requests when these limits apply to your account. The per-minute limit is not reported there. The limit tier is selected by all-time credits purchased, independently of is_free_tier. To absorb rounding and top-up fees, the higher daily ceiling is granted starting one credit below the table's threshold (currently 9 credits). The in-flight spending budget does not apply to requests to free models. DDoS protection: Cloudflare's DDoS protection will block requests that dramatically exceed reasonable usage. Successful inference responses do not include X-RateLimit-* headers. When OpenRouter itself returns a 429 error for a platform limit, the error response carries X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers describing the limit that was hit. When every attempted provider returned a retry hint, the error response also carries a Retry-After header. If a rate limit is hit after streaming has started, the error arrives as an SSE event with finish_reason error instead of an HTTP 429.",
+}
+
+// A FREE VARIANT IS DECIDED BY THE ID, and the page says exactly how: an ID ending in :free. This is
+// the one place that suffix is spelled; an endpoint module asks this function rather than
+// restating the rule.
+data openrouter_free_variant_suffix: NonEmptyStr = ":free"
+
+fn openrouter_model_id_is_free_variant(id: String) -> Bool {
+  ends_with(s: id, suffix: openrouter_free_variant_suffix as String)
+}
+
+// THE FREE-MODEL REQUEST CAPS, ONE ROW PER PUBLISHED LIMIT. Three rows and not two, because the
+// per-minute cap is the same in both tiers while the per-day cap differs, and a pool is derived per
+// row (product.capacity.quota): the minute pool is shared by every account, the day pool is the one
+// the tier selects. The scope strings are the partition keys fleet-wide, so a credit-tier change
+// moves a caller to a different partition rather than editing a ceiling in place.
+data openrouter_free_model_requests_per_minute: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "openrouter" as NonEmptyStr,
+  scope: "free_models_per_minute" as NonEmptyStr,
+  requests: 20,
+  period: PerMinute,
+}
+
+data openrouter_free_model_requests_per_day_below_threshold: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "openrouter" as NonEmptyStr,
+  scope: "free_models_per_day_below_credit_threshold" as NonEmptyStr,
+  requests: 50,
+  period: PerDay,
+}
+
+data openrouter_free_model_requests_per_day_at_threshold: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "openrouter" as NonEmptyStr,
+  scope: "free_models_per_day_at_credit_threshold" as NonEmptyStr,
+  requests: 1000,
+  period: PerDay,
+}
+
+data openrouter_rate_limits: List<UpstreamRateLimit> = [
+  openrouter_free_model_requests_per_minute,
+  openrouter_free_model_requests_per_day_below_threshold,
+  openrouter_free_model_requests_per_day_at_threshold,
+]
+
+// THE TIER THRESHOLD, AND THE FIGURE ACTUALLY APPLIED IS ONE CREDIT BELOW IT. The table says 10; the
+// page then says the higher ceiling is granted from 9 to absorb rounding and top-up fees, and that
+// the tier is selected by all-time credits purchased independently of is_free_tier. Both numbers are
+// carried so that a reader of the table and a reader of the sentence under it find the same fact.
+data openrouter_free_tier_table_threshold_credits: Nat = 10
+data openrouter_free_tier_applied_threshold_credits: Nat = 9
+
+// WHICH DAILY CAP GOVERNS AN ACCOUNT is a function of one input, and it is credits PURCHASED all
+// time -- not balance, not is_free_tier. A caller that passed its balance here would be asking the
+// wrong question in the right vocabulary.
+fn openrouter_free_model_daily_limit(credits_purchased_all_time: Nat) -> UpstreamRateLimit {
+  if credits_purchased_all_time >= openrouter_free_tier_applied_threshold_credits {
+    openrouter_free_model_requests_per_day_at_threshold
+  } else {
+    openrouter_free_model_requests_per_day_below_threshold
+  }
+}
+
+// THE IN-FLIGHT SPENDING BUDGET DOES NOT APPLY TO FREE MODELS, nor to BYOK requests with no paid
+// plugins, nor to enterprise, paid-subscription or invoice-billed accounts. Carried because a 402
+// on a free model can therefore come only from a NEGATIVE BALANCE, which the page states separately,
+// and a consumer reading in_flight_budget_exhausted on a free request has misread the response.
+data openrouter_in_flight_budget_exempts_free_models: Bool = true
+data openrouter_negative_balance_refuses_free_models: Bool = true
+
+// THE KEY-INFO RESPONSE, carried at the grain the fabric consumes. The daily free-model counter is
+// the one upstream reading a quota pool can be reconciled against (product.capacity.pool_events
+// PoolUpstreamObserved); the per-minute limit is NOT reported here, which is a published fact and
+// why no such field exists on this type. The credit-usage fields of the same response (limit,
+// limit_remaining, usage and their daily/weekly/monthly and BYOK variants) are documented as
+// numbers denominated in credits and are not carried: no consumer in this repository reads them,
+// and a column nothing folds is the section 3c dangling row.
+type OpenRouterFreeModelDailyRequests {
+  used: Nat
+  limit: Nat
+  remaining: Nat
+}
+
+type OpenRouterKeyInfo {
+  label: String
+  is_free_tier: Bool
+  free_model_daily_requests: OpenRouterFreeModelDailyRequests
+}
+
+// THE DAILY COUNTER RESETS ON THE UTC DAY, which is what the page says of every daily figure in that
+// response ("current UTC day"). A pool derived from the per-day row lapses on the same boundary.
+data openrouter_daily_counters_reset_on_utc_day: Bool = true
+
+// ── 402: CREDIT LIMITS ────────────────────────────────────────────────────────────────────────
+//
+// THE SOURCE IS THE DISCRIMINATOR AND THE HINT IS NOT, in the page's own words: every 402 whose
+// metadata carries limit_source also carries remedy_hint, meant for people reading logs; branch
+// on limit_source, not on the hint text. The coproduct below is that instruction made a type.
+type OpenRouterLimitSource
+  = OpenRouterInFlightBudgetSource
+  | OpenRouterKeyLimitSource
+  | OpenRouterCreditsSource
+  | OpenRouterLimitSourceOther { raw: NonEmptyStr }
+
+data openrouter_limit_source_in_flight_budget_wire: NonEmptyStr = "openrouter_in_flight_budget"
+data openrouter_limit_source_key_limit_wire: NonEmptyStr = "openrouter_key_limit"
+data openrouter_limit_source_credits_wire: NonEmptyStr = "openrouter_credits"
+
+fn openrouter_limit_source_wire(s: OpenRouterLimitSource) -> NonEmptyStr {
+  match s {
+    OpenRouterInFlightBudgetSource => openrouter_limit_source_in_flight_budget_wire
+    OpenRouterKeyLimitSource => openrouter_limit_source_key_limit_wire
+    OpenRouterCreditsSource => openrouter_limit_source_credits_wire
+    OpenRouterLimitSourceOther { raw: r } => r
+  }
+}
+
+fn parse_openrouter_limit_source(raw: String) -> OpenRouterLimitSource {
+  if raw == (openrouter_limit_source_in_flight_budget_wire as String) { OpenRouterInFlightBudgetSource }
+  else if raw == (openrouter_limit_source_key_limit_wire as String) { OpenRouterKeyLimitSource }
+  else if raw == (openrouter_limit_source_credits_wire as String) { OpenRouterCreditsSource }
+  else { OpenRouterLimitSourceOther { raw: raw as NonEmptyStr } }
+}
+
+// THE TWO IN-FLIGHT-BUDGET REASONS SEND A CALLER IN OPPOSITE DIRECTIONS, which is why the reason is
+// typed beside the source rather than folded into it: in_flight_budget_exhausted is transient and
+// carries Retry-After; weight_exceeds_budget means this single request is larger than the whole
+// budget, so retrying will not help.
+type OpenRouterCreditRefusalReason
+  = OpenRouterInFlightBudgetExhausted
+  | OpenRouterWeightExceedsBudget
+  | OpenRouterCreditRefusalReasonOther { raw: NonEmptyStr }
+
+data openrouter_reason_in_flight_budget_exhausted_wire: NonEmptyStr = "in_flight_budget_exhausted"
+data openrouter_reason_weight_exceeds_budget_wire: NonEmptyStr = "weight_exceeds_budget"
+
+fn openrouter_credit_refusal_reason_wire(r: OpenRouterCreditRefusalReason) -> NonEmptyStr {
+  match r {
+    OpenRouterInFlightBudgetExhausted => openrouter_reason_in_flight_budget_exhausted_wire
+    OpenRouterWeightExceedsBudget => openrouter_reason_weight_exceeds_budget_wire
+    OpenRouterCreditRefusalReasonOther { raw: r } => r
+  }
+}
+
+fn parse_openrouter_credit_refusal_reason(raw: String) -> OpenRouterCreditRefusalReason {
+  if raw == (openrouter_reason_in_flight_budget_exhausted_wire as String) { OpenRouterInFlightBudgetExhausted }
+  else if raw == (openrouter_reason_weight_exceeds_budget_wire as String) { OpenRouterWeightExceedsBudget }
+  else { OpenRouterCreditRefusalReasonOther { raw: raw as NonEmptyStr } }
+}
+
+// ── 429: RATE LIMITS ──────────────────────────────────────────────────────────────────────────
+//
+// A 429 COMES FROM ONE OF TWO PLACES and the page keeps them apart: OpenRouter itself, for a platform
+// limit (free-model requests per minute or per day, or DDoS protection), or the upstream provider,
+// in which case error.metadata.provider_code carries the provider's original error code when
+// available and fallback routing has already retried other providers before the error reached the
+// caller. The origin is what decides whether the fleet's own pool for that scope was the thing hit.
+type OpenRouterRateLimitOrigin
+  = OpenRouterPlatformRateLimit
+  | OpenRouterUpstreamProviderRateLimit { provider_code: NonEmptyStr? }
+
+data openrouter_rate_limit_error_type_wire: NonEmptyStr = "rate_limit_exceeded"
+data openrouter_rate_limit_limit_header: NonEmptyStr = "X-RateLimit-Limit"
+data openrouter_rate_limit_remaining_header: NonEmptyStr = "X-RateLimit-Remaining"
+data openrouter_rate_limit_reset_header: NonEmptyStr = "X-RateLimit-Reset"
+data openrouter_retry_after_header: NonEmptyStr = "Retry-After"
+data openrouter_mid_stream_error_finish_reason_wire: NonEmptyStr = "error"
+data openrouter_credit_limit_status: Nat = 402
+data openrouter_rate_limit_status: Nat = 429
+
+// THE UNIT OF X-RateLimit-Reset IS UNREAD. The Limits page names the header and says it describes the
+// limit that was hit; it does not state whether the value is an epoch instant, in seconds or in
+// milliseconds, or a duration. A consumer that re-anchors a pool on it (product.capacity.pool_events
+// PoolResetObserved takes epoch seconds) must decode it under a reading that names the unit, and
+// until one exists the decoding is the caller's declared obligation rather than a row here.
+data openrouter_rate_limit_reset_header_unit_read_obligation: NonEmptyStr = "The unit and reference of the X-RateLimit-Reset header value are UNREAD: the Limits page (openrouter_limits_reading) names the header without stating whether it carries an epoch instant in seconds, in milliseconds, or a duration until reset. RESOLVED BY a reading of OpenRouter's API reference for the header, or by one observed 429 response whose header value is recorded beside the response's Date header so the unit is decidable from the pair. It is NOT resolved by assuming the Retry-After convention, which is a different header with a documented unit."
+
+// ── WHAT A CALLER DOES NEXT, DERIVED FROM THE TYPED CAUSE ─────────────────────────────────────
+//
+// The page's resolution lists are folded into one disposition per cause so that a caller holds a
+// decision rather than a sentence. A transient cause honours Retry-After; a platform rate limit
+// retries with backoff and honours Retry-After when present; every other credit cause is a thing a
+// person must change -- credits, a key limit, the request size -- and is NOT retried, because
+// retrying a request whose single cost exceeds the budget is the page's own named mistake.
+type OpenRouterLimitRemedy
+  = OpenRouterAddCreditsOrReduceRequest
+  | OpenRouterRaiseKeyLimitOrAwaitReset
+  | OpenRouterAddCredits
+  | OpenRouterRemedyUnclassified { raw: NonEmptyStr }
+
+type OpenRouterRetryDisposition
+  = OpenRouterRetryAfterSettlement { retry_after_seconds: Nat? }
+  | OpenRouterRetryWithBackoff { retry_after_seconds: Nat? }
+  | OpenRouterDoNotRetry { remedy: OpenRouterLimitRemedy }
+
+fn openrouter_credit_refusal_disposition(
+  source: OpenRouterLimitSource,
+  reason: OpenRouterCreditRefusalReason,
+  retry_after_seconds: Nat?,
+) -> OpenRouterRetryDisposition {
+  match source {
+    OpenRouterInFlightBudgetSource =>
+      match reason {
+        OpenRouterInFlightBudgetExhausted => OpenRouterRetryAfterSettlement { retry_after_seconds: retry_after_seconds }
+        OpenRouterWeightExceedsBudget => OpenRouterDoNotRetry { remedy: OpenRouterAddCreditsOrReduceRequest }
+        OpenRouterCreditRefusalReasonOther { raw: r } => OpenRouterDoNotRetry { remedy: OpenRouterRemedyUnclassified { raw: r } }
+      }
+    OpenRouterKeyLimitSource => OpenRouterDoNotRetry { remedy: OpenRouterRaiseKeyLimitOrAwaitReset }
+    OpenRouterCreditsSource =>
+      match reason {
+        OpenRouterWeightExceedsBudget => OpenRouterDoNotRetry { remedy: OpenRouterAddCreditsOrReduceRequest }
+        OpenRouterInFlightBudgetExhausted => OpenRouterDoNotRetry { remedy: OpenRouterAddCredits }
+        OpenRouterCreditRefusalReasonOther { raw: _ } => OpenRouterDoNotRetry { remedy: OpenRouterAddCredits }
+      }
+    OpenRouterLimitSourceOther { raw: r } => OpenRouterDoNotRetry { remedy: OpenRouterRemedyUnclassified { raw: r } }
+  }
+}
+
+fn openrouter_rate_limit_disposition(origin: OpenRouterRateLimitOrigin, retry_after_seconds: Nat?) -> OpenRouterRetryDisposition {
+  match origin {
+    OpenRouterPlatformRateLimit => OpenRouterRetryWithBackoff { retry_after_seconds: retry_after_seconds }
+    OpenRouterUpstreamProviderRateLimit { provider_code: _ } => OpenRouterRetryWithBackoff { retry_after_seconds: retry_after_seconds }
+  }
+}
+
+// WHETHER A 429 COUNTS AGAINST THE FLEET'S OWN POOL FOR THAT SCOPE. Only a platform limit does: a
+// provider-side 429 says nothing about the free-model caps, and reconciling a pool against it would
+// shrink headroom on a limit that was never hit.
+fn openrouter_rate_limit_is_platform_limit(origin: OpenRouterRateLimitOrigin) -> Bool {
+  match origin {
+    OpenRouterPlatformRateLimit => true
+    OpenRouterUpstreamProviderRateLimit { provider_code: _ } => false
+  }
+}

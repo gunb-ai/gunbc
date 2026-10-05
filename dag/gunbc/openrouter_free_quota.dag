@@ -1,0 +1,147 @@
+module gunbc.openrouter_free_quota
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerDay, rate_limit_period_seconds, upstream_rate_limit_key }
+import extdeps.openrouter.platform {
+  OpenRouterKeyInfo, openrouter_free_model_requests_per_minute, openrouter_free_model_daily_limit,
+  OpenRouterRateLimitOrigin, openrouter_rate_limit_is_platform_limit,
+}
+import extdeps.openrouter.nemotron_3_ultra_free_endpoint { openrouter_nemotron_3_ultra_free_limits_for }
+import product.capacity.pool { Pool }
+import product.capacity.quota { quota_root_pool }
+import product.capacity.pool_events { PoolEvent, PoolUpstreamObserved, PoolResetObserved }
+import gunbc.fabric_quota {
+  QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease,
+  QuotaSettle, QuotaSettled, QuotaSettleRefused, fabric_quota_settle,
+}
+
+// ── THE FREE-MODEL CAPS AS FABRIC POOLS, AND THE ONE PLACE A CALLER LEASES FROM BOTH ──────────
+//
+// A request to the OpenRouter free endpoint is governed by TWO upstream caps at once -- the shared
+// per-minute cap and the per-day cap the account's purchased credits select -- and
+// product.capacity.quota derives one lapsing pool per cap. This module is the consumer that joins
+// them: it leases ONE request from both pools before the call goes out, settles both after, and
+// re-anchors or reconciles each pool from what the upstream reports. The pools are the platform's
+// rows reached through the endpoint's own derivation (extdeps.openrouter.nemotron_3_ultra_free_endpoint
+// openrouter_nemotron_3_ultra_free_limits_for), so an endpoint that stopped being a free variant
+// would lease from nothing rather than from a cap that no longer applies.
+//
+// THE LEASE IS TAKEN BEFORE THE CALL, OR THE CALL IS NOT MADE (operator ruling 2026-09-06, carried
+// by gunbc.fabric_quota): a caller that cannot lease does not call, and the refusal is typed and
+// happens before OpenRouter would have answered 429. Two pools means two leases, and the order is
+// day first, minute second, because the day pool is the scarcer one on the free tier and a minute
+// lease held while the day lease refuses would be a request-slot spent on nothing. A minute refusal
+// after a day grant SETTLES THE DAY LEASE AT ZERO so the day slot returns -- a request that was
+// never sent must not count against the day.
+//
+// DECLARED FRONTIER (DESIGN section 3c). The production caller of the effectful lease below is a
+// harness serving unit for this endpoint -- a gunbc.harness.harness_reasoning_wire
+// HarnessServingUnit arm bound to a hosted bearer-authenticated transport -- and no such arm exists
+// in this tree: the harness talks to fleet vLLM routes over gunbc.serving.serving_enrollment
+// ServingRouteEndpoint, and this endpoint's reasoning controls are unread
+// (extdeps.nvidia.nemotron_3_ultra nemotron_3_ultra_reasoning_controls_read_obligation). TRIGGER: that
+// arm, SUFFICIENT FOR gunbc.harness.harness_turn to place a turn on this endpoint, at which point the
+// arm calls openrouter_free_quota_lease before every request and openrouter_free_quota_settle after,
+// and feeds every platform 429 and every key-info read through the two observation folds below.
+// Until then the executing consumers are test.claim.openrouter_free_quota_witness over the pure
+// folds and test.claim.capacity_quota_witness over the pool derivation.
+
+// THE POOLS, derived and never authored: one per cap the endpoint is governed by for this account.
+fn openrouter_free_pools(credits_purchased_all_time: Nat) -> List<Pool<Count, One>> {
+  map(openrouter_nemotron_3_ultra_free_limits_for(credits_purchased_all_time: credits_purchased_all_time), l => quota_root_pool(limit: l))
+}
+
+// ── OBSERVATIONS THE UPSTREAM HANDS BACK, AS POOL EVENTS ──────────────────────────────────────
+//
+// THE KEY ENDPOINT REPORTS THE DAILY COUNTER AND THE POOL EVENT FOR THAT IS ALREADY MODELED:
+// product.capacity.pool_events PoolUpstreamObserved shrinks a pool whose upstream says less remains
+// than the ledger predicts, for a term. The term is the rest of the UTC day, because that is when
+// the counter resets (extdeps.openrouter.platform openrouter_daily_counters_reset_on_utc_day), and
+// it is computed from the instant rather than passed in so a caller cannot hold the shortfall past
+// the reset. The per-minute cap is NOT reported by that endpoint, which is why there is no minute
+// observation here: an observation fabricated from a field the upstream does not send would be the
+// fail-open the typed absence refuses.
+type OpenRouterDailyObservation
+  = OpenRouterDailyObserved { event: PoolEvent }
+  | OpenRouterDailyObservationRefused { detail: String }
+
+fn openrouter_seconds_until_utc_day_end(at: EpochSecs) -> Nat? {
+  let day = rate_limit_period_seconds(p: PerDay)
+  checked_int_to_nat(n: day - (at % day))
+}
+
+fn openrouter_free_daily_observation(info: OpenRouterKeyInfo, at: EpochSecs) -> OpenRouterDailyObservation {
+  match openrouter_seconds_until_utc_day_end(at: at) {
+    Absent => OpenRouterDailyObservationRefused { detail: join(["the instant ", to_string(at), " yields no remaining term in its UTC day"], "") }
+    Present { value: term } =>
+      OpenRouterDailyObserved { event: PoolUpstreamObserved { remaining: info.free_model_daily_requests.remaining, term_seconds: term } }
+  }
+}
+
+// A PLATFORM 429 CARRYING X-RateLimit-Reset RE-ANCHORS THE POOL IT NAMES, so the next window ends
+// exactly where the upstream says. The reset instant arrives here already decoded to epoch seconds:
+// the header's unit is unread (extdeps.openrouter.platform
+// openrouter_rate_limit_reset_header_unit_read_obligation), and decoding it is the caller's declared
+// obligation rather than a guess this fold would bake in. A PROVIDER-SIDE 429 YIELDS NO EVENT: it
+// says nothing about the platform caps, and re-anchoring on it would move a window that was not hit.
+// The ignored arm carries the origin so a reader of the receipt sees which provider refused.
+type OpenRouterResetObservation
+  = OpenRouterResetReanchors { event: PoolEvent }
+  | OpenRouterResetIgnored { origin: OpenRouterRateLimitOrigin }
+
+fn openrouter_rate_limit_reset_event(origin: OpenRouterRateLimitOrigin, reset_at: EpochSecs) -> OpenRouterResetObservation {
+  if openrouter_rate_limit_is_platform_limit(origin: origin) {
+    OpenRouterResetReanchors { event: PoolResetObserved { reset_at: reset_at } }
+  } else {
+    OpenRouterResetIgnored { origin: origin }
+  }
+}
+
+// ── THE EFFECTFUL LEASE AND SETTLEMENT ────────────────────────────────────────────────────────
+
+type OpenRouterFreeLease
+  = OpenRouterFreeLeased { day: QuotaLease, minute: QuotaLease }
+  | OpenRouterFreeQuotaFull { wire: String }
+  | OpenRouterFreeLeaseRefused { detail: String }
+
+fn openrouter_free_quota_lease(short_hostname: String, credits_purchased_all_time: Nat, actor: NonEmptyStr, term_seconds: Nat) -> OpenRouterFreeLease {
+  let day_limit = openrouter_free_model_daily_limit(credits_purchased_all_time: credits_purchased_all_time)
+  match fabric_quota_lease(short_hostname: short_hostname, limit: day_limit, amount: 1, actor: actor, term_seconds: term_seconds) {
+    QuotaFull { wire: w } => OpenRouterFreeQuotaFull { wire: w }
+    QuotaLeaseRefused { detail: d } => OpenRouterFreeLeaseRefused { detail: d }
+    QuotaLeased { grant: g, partition: p, store: s } => {
+      let day = QuotaLeased { grant: g, partition: p, store: s }
+      match fabric_quota_lease(short_hostname: short_hostname, limit: openrouter_free_model_requests_per_minute, amount: 1, actor: actor, term_seconds: term_seconds) {
+        QuotaLeased { grant: mg, partition: mp, store: ms } => OpenRouterFreeLeased { day: day, minute: QuotaLeased { grant: mg, partition: mp, store: ms } }
+        QuotaFull { wire: w } =>
+          match fabric_quota_settle(lease: day, actual: 0) {
+            QuotaSettled { partition: _, actual: _ } => OpenRouterFreeQuotaFull { wire: w }
+            QuotaSettleRefused { detail: d } => OpenRouterFreeLeaseRefused { detail: join(["minute cap full (", w, ") and the day lease could not be returned: ", d], "") }
+          }
+        QuotaLeaseRefused { detail: d } =>
+          match fabric_quota_settle(lease: day, actual: 0) {
+            QuotaSettled { partition: _, actual: _ } => OpenRouterFreeLeaseRefused { detail: d }
+            QuotaSettleRefused { detail: d2 } => OpenRouterFreeLeaseRefused { detail: join([d, "; and the day lease could not be returned: ", d2], "") }
+          }
+      }
+    }
+  }
+}
+
+type OpenRouterFreeSettle
+  = OpenRouterFreeSettled { day: QuotaSettle, minute: QuotaSettle }
+  | OpenRouterFreeSettleRefused { detail: String }
+
+// BOTH POOLS SETTLE TO THE SAME ACTUAL: a request either went out or it did not, and it cannot have
+// counted against one cap and not the other.
+fn openrouter_free_quota_settle(lease: OpenRouterFreeLease, actual: Nat) -> OpenRouterFreeSettle {
+  match lease {
+    OpenRouterFreeQuotaFull { wire: w } => OpenRouterFreeSettleRefused { detail: join(["nothing to settle: ", w], "") }
+    OpenRouterFreeLeaseRefused { detail: d } => OpenRouterFreeSettleRefused { detail: join(["nothing to settle: ", d], "") }
+    OpenRouterFreeLeased { day: d, minute: m } =>
+      OpenRouterFreeSettled { day: fabric_quota_settle(lease: d, actual: actual), minute: fabric_quota_settle(lease: m, actual: actual) }
+  }
+}

@@ -1,0 +1,197 @@
+module extdeps.nvidia.api_trial_terms
+
+import std.types { NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.measure { MoneyAmountMicro, money_amount_micro }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithoutStatedTerms }
+import extdeps.uri { Uri, Https }
+import extdeps.currency.currency { CurrencyCode, Usd }
+
+// THE NVIDIA API TRIAL TERMS OF SERVICE, version September 19, 2025, as its own extdeps authority:
+// an independently versioned legal document governing every API Service in the NVIDIA API Catalog,
+// and the contract behind the free endpoint OpenRouter routes to NVIDIA. It is cited here; nothing
+// in this module accepts it, and no row commits any party to a term. What the rows carry is what
+// the document SAYS, at the grain a provider-use admission and a data-handling profile consume.
+//
+// PROVENANCE, STATED BECAUSE IT IS WEAKER THAN A FETCH. The full text was SUPPLIED BY THE OPERATOR
+// on 2026-10-05, pasted into the session from the document OpenRouter's model page links as the
+// NVIDIA API Trial Terms of Service. This session's egress policy denied nvidia.com, so the locator
+// below was not fetched: it is the catalog's published location for the document as the operator
+// relayed it, and the first fetch that reads the same version date at it is the reading that
+// grounds it. Every section number below is the document's own.
+//
+// THE TEXT AT THE LOCATOR IS NOT A PINNED VERSION, and that is the single most consequential fact
+// about this upstream for a route citing it. Section 15.7: NVIDIA may update the Agreement, the new
+// terms are effective when published, and continued use after publication is acceptance. Contrast
+// extdeps.common_paper.cloud_service_agreement, whose posted version declares itself fixed. A route
+// facts row that cites this document therefore cites the VERSION DATE, and a later read showing a
+// different date is a new reading that makes every sanction evaluated under this one stale.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf",
+  }
+}
+
+// THE DOCUMENTS THE TERMS INCORPORATE BY REFERENCE, cited as further citations because the terms
+// bind the user to them: the Trustworthy AI terms (section 5), the Privacy Policy (section 3.1) and
+// the trademark policy (section 2.6(k)).
+data nvidia_trustworthy_ai_terms_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.nvidia.com/en-us/agreements/trustworthy-ai/terms/" }
+}
+
+data nvidia_privacy_policy_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.nvidia.com/en-us/about-nvidia/privacy-policy" }
+}
+
+data nvidia_legal_info_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.nvidia.com/en-us/about-nvidia/legal-info/" }
+}
+
+type NvidiaApiTrialTermsProvenance
+  = TermsTextSuppliedByOperator { supplied_on: NonEmptyStr }
+  | TermsReadAtLocator { read_on: NonEmptyStr }
+
+type NvidiaApiTrialTermsReading {
+  authority: ExternalAuthority
+  provenance: NvidiaApiTrialTermsProvenance
+  statement: NonEmptyStr
+}
+
+type NvidiaApiTrialTerms {
+  title: NonEmptyStr
+  version_label: NonEmptyStr
+  publication_status: DocumentPublicationStatus
+  reading: NvidiaApiTrialTermsReading
+}
+
+// THE READING, in the document's own words for every sentence a row below depends on.
+data nvidia_api_trial_terms_reading: NvidiaApiTrialTermsReading = NvidiaApiTrialTermsReading {
+  authority: extdeps_external_authority_anchor,
+  provenance: TermsTextSuppliedByOperator { supplied_on: "2026-10-05" },
+  statement: "NVIDIA API TRIAL TERMS OF SERVICE, v. September 19, 2025. This Agreement creates a contract between you and NVIDIA Corporation. 1.2 Trial Access Rights: NVIDIA will provide you access to the API Service for limited trial purposes only and without use of the API Service or Generated Content in production. 1.3 Pre-Release: an API Service may be in pre-release form and may not be fully functional, may contain errors or design flaws, and may have reduced or different security, privacy, availability, and reliability standards; NVIDIA may abandon development and terminate the availability of a pre-release service at any time without liability. 1.4: Unless you purchase a Subscription from NVIDIA or a Service Provider, you may only use the API Service for internal testing and evaluation purposes, not in production. 2.3: Except as stated in Section 2.4 or unless expressly disclosed to you for an API Service, NVIDIA will not store or use User Content or Generated Content at the end of each API Service session. 2.4: NVIDIA may log and store User Content and Generated Content to monitor for security or to prevent fraud or abuse as stated in Section 3.3. 2.5: NVIDIA is not responsible for Generated Content; by testing this model, you assume the risk of any harm caused by any response or output of the model. 2.6(a): you will not include any confidential information, controlled or sensitive data, including protected health information, personal data (unless expressly permitted by an API Service), payment card industry information or sensitive human subject research, or data that was processed or collected in violation of law. 3.3: NVIDIA will collect the following data, without identifying specific users, to operate and improve the API Services and other products and services: (i) session metrics; (ii) error logs and execution logs relating to your session; (iii) your feedback and ranking; and (iv) User Content and Generated Content to improve NVIDIA products and services, including AI models. Your use of the API Services will be logged for security, fraud or abuse monitoring and shared with third party service providers for this purpose. 4.3: Unless expressly permitted by an API Service, you will not upload any personal information relating to an identifiable individual, financial, health or governmental information, or any other information which may be subject to data privacy or data security laws. 4.10: You will not perform security testing of the API Service except if expressly authorized in writing by NVIDIA. 4.12: You will not use the API Service including Generated Content to develop or improve products or services that compete with the API Service. 6.2: As between you and NVIDIA, you own your User Content. 6.3: Unless otherwise stated in an accompanying license, as between you and NVIDIA or the relevant Service Provider, you own all Generated Content that may result from your use of an API Service. 8: NVIDIA may at any time change, discontinue, or deprecate any part, or all, of the API Service. 12: the API Services, including any Generated Content, are provided AS IS. 13.2: in no event will NVIDIA's total cumulative liability under or arising out of this Agreement exceed ten dollars (US$10.00). 14.2: binding arbitration before JAMS; 14.3: class action, representative action and jury trial waiver; 14.4: you may opt out of the arbitration and waiver provisions by notifying NVIDIA in writing within 30 days of commencement of use of the API Service. 14.5: all Disputes governed by the Federal Arbitration Act and the internal substantive laws of the State of Delaware and the United States. 15.7: NVIDIA may update this Agreement from time to time; the updated terms will be effective when published; your use of the API Service after the date of publication will constitute your agreement to the updated Agreement.",
+}
+
+// NO LICENCE OVER THE DOCUMENT'S OWN TEXT IS STATED, and the basis is the reading: the document
+// carries a version date, a copyright-notice procedure for USER content, and no terms under which
+// its own text is published. That is a public document stating nothing about itself, which is the
+// arm extdeps.publication keeps for exactly this case rather than a marking invented to fill the slot.
+data nvidia_api_trial_terms_publication_status: DocumentPublicationStatus = PubliclyPublishedWithoutStatedTerms {
+  absence_basis: "The NVIDIA API Trial Terms of Service are presented to every user of the NVIDIA API Catalog before use and are linked publicly from third-party model pages; the text as read (nvidia_api_trial_terms_reading) carries a version date and no licence or marking over its own publication.",
+}
+
+data nvidia_api_trial_terms_2025_09_19: NvidiaApiTrialTerms = NvidiaApiTrialTerms {
+  title: "NVIDIA API Trial Terms of Service",
+  version_label: "September 19, 2025",
+  publication_status: nvidia_api_trial_terms_publication_status,
+  reading: nvidia_api_trial_terms_reading,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.api_trial_terms",
+      decl_name: "nvidia_api_trial_terms_2025_09_19",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [nvidia_trustworthy_ai_terms_authority, nvidia_privacy_policy_authority, nvidia_legal_info_authority],
+}
+
+// ── WHAT USE THE TERMS ADMIT (sections 1.2, 1.4) ──────────────────────────────────────────────
+//
+// TWO ARMS AND THE SECOND REFUSES. Production use requires a Subscription the trial terms do not
+// provide, so under THESE terms a production turn has no admitted arm; a consumer wanting one
+// cites a Subscription's terms, which are a different document and a different module.
+type NvidiaApiTrialUse
+  = NvidiaApiTrialInternalTestingAndEvaluation
+  | NvidiaApiTrialProductionUse
+
+fn nvidia_api_trial_use_admitted(use: NvidiaApiTrialUse) -> Bool {
+  match use {
+    NvidiaApiTrialInternalTestingAndEvaluation => true
+    NvidiaApiTrialProductionUse => false
+  }
+}
+
+// ── WHAT CONTENT THE TERMS ADMIT (sections 2.6(a), 4.3) ───────────────────────────────────────
+//
+// THE CLASSES ARE THE DOCUMENT'S OWN ENUMERATION, each named as the terms name it, plus the one
+// arm the terms do not forbid. Personal data carries the terms' own exception -- "unless expressly
+// permitted by an API Service" -- and this endpoint's notice (extdeps.openrouter
+// nemotron_3_ultra_free_endpoint) expressly asks that none be uploaded, so the exception is not
+// taken and the arm refuses. A caller holding material it cannot classify holds material it may
+// not send: there is deliberately no unclassified arm that admits.
+type NvidiaApiTrialContentClass
+  = NvidiaApiTrialNonConfidentialNonPersonalContent
+  | NvidiaApiTrialConfidentialInformation
+  | NvidiaApiTrialControlledOrSensitiveData
+  | NvidiaApiTrialProtectedHealthInformation
+  | NvidiaApiTrialPersonalData
+  | NvidiaApiTrialPaymentCardIndustryInformation
+  | NvidiaApiTrialSensitiveHumanSubjectResearch
+  | NvidiaApiTrialFinancialOrGovernmentalInformation
+  | NvidiaApiTrialUnlawfullyCollectedData
+
+fn nvidia_api_trial_content_admitted(class: NvidiaApiTrialContentClass) -> Bool {
+  match class {
+    NvidiaApiTrialNonConfidentialNonPersonalContent => true
+    NvidiaApiTrialConfidentialInformation => false
+    NvidiaApiTrialControlledOrSensitiveData => false
+    NvidiaApiTrialProtectedHealthInformation => false
+    NvidiaApiTrialPersonalData => false
+    NvidiaApiTrialPaymentCardIndustryInformation => false
+    NvidiaApiTrialSensitiveHumanSubjectResearch => false
+    NvidiaApiTrialFinancialOrGovernmentalInformation => false
+    NvidiaApiTrialUnlawfullyCollectedData => false
+  }
+}
+
+// ── WHAT HAPPENS TO WHAT IS SENT (sections 2.3, 2.4, 3.3) ─────────────────────────────────────
+//
+// THREE SEPARATE FACTS, carried separately so none is cited for another. Content is not stored at
+// session end as a rule (2.3); it IS logged for security monitoring and shared with third-party
+// service providers for that purpose (3.3, via 2.4); and User Content and Generated Content ARE
+// collected to improve NVIDIA products and services including AI models (3.3(iv)), without
+// identifying specific users. The third is why a route on this endpoint carries its prompts and
+// completions to the provider's model-improvement pipeline, which a data-handling profile must say.
+data nvidia_api_trial_content_retained_after_session_by_default: Bool = false
+data nvidia_api_trial_use_logged_for_security_and_shared_with_service_providers: Bool = true
+data nvidia_api_trial_content_collected_to_improve_products_and_models: Bool = true
+data nvidia_api_trial_collection_without_identifying_specific_users: Bool = true
+
+// ── THE REMAINING TERMS A CONSUMER MAY NEED TO READ OFF A TYPE ────────────────────────────────
+data nvidia_api_trial_service_may_be_pre_release: Bool = true
+data nvidia_api_trial_service_may_be_discontinued_at_any_time: Bool = true
+data nvidia_api_trial_competing_product_development_prohibited: Bool = true
+data nvidia_api_trial_security_testing_requires_written_authorization: Bool = true
+data nvidia_api_trial_user_owns_user_content: Bool = true
+data nvidia_api_trial_user_owns_generated_content_unless_model_license_says_otherwise: Bool = true
+data nvidia_api_trial_generated_content_provided_as_is: Bool = true
+
+// US$10.00, in the fleet's money unit: ten dollars is ten million micro-dollars.
+data nvidia_api_trial_liability_cap: MoneyAmountMicro = money_amount_micro(count: 10000000)
+data nvidia_api_trial_liability_cap_currency: CurrencyCode = Usd
+
+data nvidia_api_trial_arbitration_opt_out_window_days: Nat = 30
+data nvidia_api_trial_governing_law: NonEmptyStr = "the Federal Arbitration Act and the internal substantive laws of the State of Delaware and the United States (section 14.5)"
+data nvidia_api_trial_terms_updates_effective_when_published: Bool = true
+
+// WHO THE CONTRACTING PARTY IS, cited to the vendor row that already carries the legal name rather
+// than re-spelling it: the terms open by naming NVIDIA Corporation.
+data nvidia_api_trial_contracting_party: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.vendor.nvidia",
+  decl_name: "nvidia",
+  field: WholeDeclaration,
+}
+
+// WHAT THE TERMS DO NOT SAY, as obligations rather than guesses. They name no jurisdiction in which
+// an API Service runs, no location for the logs section 3.3 describes, and no list of the third-party
+// service providers those logs are shared with. Each is a path a provider route must answer for
+// (product.fabric.provider_route), and each is answered here as UNREAD with what would resolve it.
+data nvidia_api_trial_service_location_unread_obligation: NonEmptyStr = "Where an NVIDIA API Service executes, and under whose jurisdiction, is UNREAD: the Trial Terms (nvidia_api_trial_terms_reading) govern the relationship and name Delaware law for disputes, but state nothing about where the service runs. RESOLVED BY an NVIDIA document naming the hosting region or operating entity for the API Catalog's hosted inference, or by a per-request observation the service exposes of the region that answered."
+
+data nvidia_api_trial_log_location_unread_obligation: NonEmptyStr = "Where the logs section 3.3 describes -- session metrics, error and execution logs, and the User Content and Generated Content collected for improvement -- are stored, and which third-party service providers they are shared with, is UNREAD: section 3.3 states that the collection happens and that sharing with third-party service providers happens for security, fraud and abuse monitoring, and names neither a location nor a provider. RESOLVED BY the NVIDIA Privacy Policy section or sub-processor list that names the recipients and their locations for the API Catalog, read at the cited policy locator."

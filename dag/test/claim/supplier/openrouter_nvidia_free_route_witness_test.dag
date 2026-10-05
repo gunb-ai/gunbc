@@ -1,0 +1,391 @@
+module test.claim.supplier.openrouter_nvidia_free_route_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathUnread,
+  DownstreamProviderPopulation, DownstreamProvidersEnumerated,
+  PermittedJurisdictionsEnumerated,
+  ProviderRegionObservation, ProviderRegionRead,
+  ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission, admit_provider_use,
+  ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  PostureJurisdictionsUnread, TransferOrLocationUnresolved, ProviderAccessPathUnsupported,
+  DispositionStanding, DispositionCleared,
+}
+import product.supplier.openrouter_nvidia_free {
+  openrouter_nvidia_free_provider_ref, openrouter_nvidia_free_service_ref,
+  openrouter_nvidia_free_route_standing, openrouter_nvidia_free_route_facts_population,
+  openrouter_nvidia_free_facts, openrouter_nvidia_free_data_paths, openrouter_nvidia_free_downstream,
+  OpenRouterNvidiaFreeUseAdmission, OpenRouterNvidiaFreeUseAdmitted,
+  OpenRouterNvidiaFreeProductionUseRefused, OpenRouterNvidiaFreeContentClassRefused,
+  openrouter_nvidia_free_use_admission,
+}
+import extdeps.nvidia.api_trial_terms {
+  NvidiaApiTrialUse, NvidiaApiTrialInternalTestingAndEvaluation, NvidiaApiTrialProductionUse,
+  NvidiaApiTrialContentClass, NvidiaApiTrialNonConfidentialNonPersonalContent,
+  NvidiaApiTrialConfidentialInformation, NvidiaApiTrialPersonalData,
+  NvidiaApiTrialProtectedHealthInformation, NvidiaApiTrialPaymentCardIndustryInformation,
+  nvidia_api_trial_content_admitted,
+}
+import extdeps.openrouter.nemotron_3_ultra_free_endpoint {
+  openrouter_nemotron_3_ultra_free_is_free_variant,
+}
+
+// WHAT THESE ROWS ARE FOR. product.supplier.openrouter_nvidia_free answers the nine-path closure for
+// a route whose region nobody has read, so production mints no route and no facts row. A gate whose
+// refusal nobody executes is decoration (DESIGN section 4b), so these rows drive the production
+// facts builder through admit_provider_use over a route minted in the READ arm of the same
+// coproduct, require the exact obligation each refusal hands back, and build the discriminating
+// pair that separates "this route refuses" from "this producer refuses everything". The use
+// admission the contract decides today is exercised directly, on both of its refusing arms.
+//
+// THE ROSTER, THE POSTURE AND THE SYNTHETIC REGION ARE OURS AND LIVE HERE. The production module
+// declares none of them, because nobody has minted a posture revision for a third-party route.
+// Every synthetic declaration cites this witness, never a vendor, so no reader can mistake it for
+// a finding about OpenRouter or NVIDIA.
+
+data openrouter_witness_region: NonEmptyStr = "openrouter-witness-synthetic-region"
+data openrouter_witness_customer_profile: NonEmptyStr = "openrouter-witness-customer-profile"
+data openrouter_witness_agreement: NonEmptyStr = "openrouter-witness-agreement"
+data openrouter_witness_posture_authority: NonEmptyStr = "openrouter-witness-posture-authority"
+data openrouter_witness_decision_receipt: NonEmptyStr = "openrouter-witness-decision-receipt"
+data openrouter_witness_prohibited_use_cleared: NonEmptyStr = "openrouter-witness-prohibited-use-cleared"
+data openrouter_witness_sanctions_cleared: NonEmptyStr = "openrouter-witness-sanctions-cleared"
+data openrouter_witness_export_cleared: NonEmptyStr = "openrouter-witness-export-cleared"
+data openrouter_witness_resolved_operator: NonEmptyStr = "openrouter-witness-resolved-operator"
+data openrouter_witness_resolved_evidence: NonEmptyStr = "openrouter-witness-resolved-evidence"
+data openrouter_witness_downstream_first: NonEmptyStr = "openrouter-witness-downstream-first"
+data openrouter_witness_downstream_coverage: NonEmptyStr = "openrouter-witness-downstream-coverage"
+
+fn t_region_ref() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_region")
+}
+
+// THE ROUTE THE WITNESS DRIVES IS MINTED BY THE PRODUCTION MINTING LAW IN ITS READ ARM, with this
+// witness's region: the same provider and service references production uses, so the only thing
+// synthetic about it is the one slot production cannot fill.
+fn t_route() -> ProviderRoute {
+  match provider_route_from_region(
+    provider: openrouter_nvidia_free_provider_ref(),
+    service: openrouter_nvidia_free_service_ref(),
+    region: ProviderRegionRead { region: t_region_ref() },
+  ) {
+    ProviderRouteObserved { route: r } => r
+    ProviderRouteRegionUnobserved { obligation: _ } =>
+      ProviderRoute { provider: openrouter_nvidia_free_provider_ref(), service: openrouter_nvidia_free_service_ref(), region: t_region_ref() }
+  }
+}
+
+fn t_resolved() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_resolved_operator"),
+    jurisdiction: t_region_ref(),
+    evidence: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_resolved_evidence"),
+  }
+}
+
+fn t_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_posture_authority"),
+    revision: as_content_hash_structural(structural: content_hash_atom(value: "openrouter-witness-posture-r1" as NonEmptyStr)),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated { first: t_region_ref(), further: [] },
+    jurisdiction_drop_enrollments: [],
+  }
+}
+
+fn t_customer_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_customer_profile")
+}
+
+// THE DATA-HANDLING PROFILE IS THE PRODUCTION ONE, cited rather than invented: a sanction on this
+// route names the profile the contract derives, and the scope below names the same one, so the
+// admitting member of the pair admits under the profile production would actually use.
+fn t_data_handling_profile() -> DeclarationRef {
+  decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_data_handling_profile")
+}
+
+fn t_agreement() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_agreement")
+}
+
+fn t_roster() -> List<RouteScopeSanction> {
+  [
+    RouteScopeSanction {
+      route: t_route(),
+      posture: t_posture(),
+      customer_profile: t_customer_profile(),
+      data_handling_profile: t_data_handling_profile(),
+      requires_agreement: t_agreement(),
+    },
+  ]
+}
+
+fn t_scope() -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "openrouter-witness-demand-1" as DemandKey },
+    work: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "openrouter-witness-work-1" as WorkKey },
+    customer_profile: t_customer_profile(),
+    data_handling_profile: t_data_handling_profile(),
+    agreement: t_agreement(),
+    prohibited_use_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_prohibited_use_cleared"),
+    },
+    sanctions_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_sanctions_cleared"),
+    },
+    export_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_export_cleared"),
+    },
+  }
+}
+
+fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "openrouter-witness-offer-1" as OfferKey }
+}
+
+fn t_decide(facts: ProviderRouteFacts) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: t_roster(),
+    facts: facts,
+    active: t_posture(),
+    scope: t_scope(),
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_decision_receipt"),
+  )
+}
+
+// The refusal surface is read once, exhaustively, as the sibling witnesses read it: a new refusal
+// arm forces this match to be extended rather than falling into a catch-all.
+fn t_refusal_tag(c: ProviderUseRefusal) -> String {
+  match c {
+    ProviderRouteUnclassified { route } => "route-unclassified",
+    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureRevisionStale { evaluated, active } => "posture-stale",
+    CustomerScopeUnsupported { cause } => "customer-unsupported",
+    DataHandlingUnsupported { cause } => "data-handling-unsupported",
+    RequiredAgreementAuthorityAbsent { accepted } => "agreement-absent",
+    ProhibitedUseNotCleared { obligation } => "prohibited-use-not-cleared",
+    SanctionsNotCleared { obligation } => "sanctions-not-cleared",
+    ExportNotCleared { obligation } => "export-not-cleared",
+    PostureJurisdictionsUnread { obligation } => "posture-jurisdictions-unread",
+    TransferOrLocationUnresolved { route, jurisdiction } => "transfer-or-location-unresolved",
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => "provider-access-path-unsupported",
+  }
+}
+
+fn t_refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [cause],
+    DataHandlingUnsupported { cause } => [cause],
+    RequiredAgreementAuthorityAbsent { accepted } => accepted,
+    ProhibitedUseNotCleared { obligation } => [obligation],
+    SanctionsNotCleared { obligation } => [obligation],
+    ExportNotCleared { obligation } => [obligation],
+    PostureJurisdictionsUnread { obligation } => [obligation],
+    TransferOrLocationUnresolved { route, jurisdiction } => [jurisdiction],
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => [operator, jurisdiction],
+  }
+}
+
+fn t_denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: DeclarationRef) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } =>
+      t_refusal_tag(c: cause) == tag
+        && count(filter(t_refusal_located(c: cause), r => declaration_ref_eq(a: r, b: located))) == 1,
+  }
+}
+
+fn t_resolved_paths() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: t_resolved(),
+    durable_storage: t_resolved(),
+    backups: t_resolved(),
+    logs: t_resolved(),
+    telemetry: t_resolved(),
+    control_plane: t_resolved(),
+    support_access: t_resolved(),
+    administrative_access: t_resolved(),
+    spill: t_resolved(),
+  }
+}
+
+fn t_resolved_downstream() -> DownstreamProviderPopulation {
+  DownstreamProvidersEnumerated {
+    first: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_downstream_first"),
+    further: [],
+    coverage: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_downstream_coverage"),
+  }
+}
+
+fn t_facts_with(paths: ProviderDataPathClosure, downstream: DownstreamProviderPopulation) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: t_route(),
+    contract_terms: decl_ref(module_path: "extdeps.nvidia.api_trial_terms", decl_name: "nvidia_api_trial_terms_reading"),
+    data_paths: paths,
+    downstream: downstream,
+    observed_at: "2026-10-05T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "openrouter-witness-discriminator" as NonEmptyStr)),
+  }
+}
+
+// RED -- PRODUCTION MINTS NO ROUTE, AND THE STANDING NAMES THE REGION OBLIGATION. The facts
+// population is therefore empty: there is no row for admit_provider_use to read, which is the
+// whole of the production answer today, stated by execution rather than by the module's prose.
+test fn production_mints_no_route_while_the_region_is_unread() -> Bool {
+  let expected = decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_region_unread_obligation")
+  (match openrouter_nvidia_free_route_standing() {
+    ProviderRouteRegionUnobserved { obligation: o } => declaration_ref_eq(a: o, b: expected)
+    ProviderRouteObserved { route: _ } => false
+  })
+    && count(openrouter_nvidia_free_route_facts_population()) == 0
+}
+
+// RED -- OVER A ROUTE MINTED IN THE READ ARM, THE PRODUCTION FACTS REFUSE AS DOWNSTREAM UNASSESSED
+// FIRST, because admit_provider_use orders the downstream assessment ahead of the path closure and
+// the population here is unread: NVIDIA is known, its service providers are not.
+test fn the_production_facts_refuse_as_downstream_unassessed() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: openrouter_nvidia_free_facts(route: t_route())),
+    tag: "downstream-unassessed",
+    located: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_downstream_obligation"),
+  )
+}
+
+// RED -- WITH THE DOWNSTREAM POPULATION RESOLVED, THE PRODUCTION PATHS REFUSE ON EXECUTION, which
+// is the first path in the closure's fixed order and is unread with its own obligation. A refusal
+// naming any other path's obligation would send a reader to the wrong document.
+test fn the_production_paths_refuse_on_execution_first() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: t_facts_with(paths: openrouter_nvidia_free_data_paths(), downstream: t_resolved_downstream())),
+    tag: "facts-incomplete",
+    located: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_execution_location_obligation"),
+  )
+}
+
+// RED -- ONE UNREAD LOGS PATH AMONG EIGHT RESOLVED ONES REFUSES WITH THE LOGS OBLIGATION, the path
+// the trial terms describe without locating. This is the member of the pair that isolates the
+// refusal to one field.
+test fn one_unread_logs_path_refuses_with_the_logs_obligation() -> Bool {
+  let paths = ProviderDataPathClosure {
+    execution: t_resolved(),
+    durable_storage: t_resolved(),
+    backups: t_resolved(),
+    logs: openrouter_nvidia_free_data_paths().logs,
+    telemetry: t_resolved(),
+    control_plane: t_resolved(),
+    support_access: t_resolved(),
+    administrative_access: t_resolved(),
+    spill: t_resolved(),
+  }
+  t_denied_with(
+    a: t_decide(facts: t_facts_with(paths: paths, downstream: t_resolved_downstream())),
+    tag: "facts-incomplete",
+    located: decl_ref(module_path: "product.supplier.openrouter_nvidia_free", decl_name: "openrouter_nvidia_free_logs_obligation"),
+  )
+}
+
+// GREEN -- THE SAME ROUTE, SAME ROSTER, SAME SCOPE ADMITS ONCE EVERY PATH AND THE DOWNSTREAM ARE
+// RESOLVED. Without this member the reds above would also pass for a producer that refuses
+// everything; with it they establish that the refusals come from the unread arms and nothing else.
+test fn the_same_route_admits_once_its_facts_are_resolved() -> Bool {
+  match t_decide(facts: t_facts_with(paths: t_resolved_paths(), downstream: t_resolved_downstream())) {
+    ProviderUseAdmitted { permit: p } => declaration_ref_eq(a: p.evidence.agreement, b: t_agreement())
+    ProviderUseDenied { decision: _, cause: _ } => false
+  }
+}
+
+// RED -- A SCOPE NAMING A DIFFERENT DATA-HANDLING PROFILE REFUSES, which is how the contract-derived
+// profile is enforced by execution: a caller that classifies its material under any other profile
+// has no sanction on this route.
+test fn a_scope_under_another_data_handling_profile_refuses() -> Bool {
+  let other = decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_customer_profile")
+  let scope = ProviderUseScope {
+    demand: t_scope().demand,
+    work: t_scope().work,
+    customer_profile: t_customer_profile(),
+    data_handling_profile: other,
+    agreement: t_agreement(),
+    prohibited_use_disposition: t_scope().prohibited_use_disposition,
+    sanctions_disposition: t_scope().sanctions_disposition,
+    export_disposition: t_scope().export_disposition,
+  }
+  match admit_provider_use(
+    roster: t_roster(),
+    facts: t_facts_with(paths: t_resolved_paths(), downstream: t_resolved_downstream()),
+    active: t_posture(),
+    scope: scope,
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "test.claim.supplier.openrouter_nvidia_free_route_witness", decl_name: "openrouter_witness_decision_receipt"),
+  ) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => t_refusal_tag(c: c) == "data-handling-unsupported"
+  }
+}
+
+// ── THE USE ADMISSION THE CONTRACT DECIDES TODAY ──────────────────────────────────────────────
+
+fn t_admitted(a: OpenRouterNvidiaFreeUseAdmission) -> Bool {
+  match a {
+    OpenRouterNvidiaFreeUseAdmitted => true
+    OpenRouterNvidiaFreeProductionUseRefused => false
+    OpenRouterNvidiaFreeContentClassRefused { class: _ } => false
+  }
+}
+
+fn t_refused_class(a: OpenRouterNvidiaFreeUseAdmission, want: NvidiaApiTrialContentClass) -> Bool {
+  match a {
+    OpenRouterNvidiaFreeContentClassRefused { class: c } => !nvidia_api_trial_content_admitted(class: c) && !nvidia_api_trial_content_admitted(class: want)
+    OpenRouterNvidiaFreeUseAdmitted => false
+    OpenRouterNvidiaFreeProductionUseRefused => false
+  }
+}
+
+// GREEN -- non-confidential evaluation content is the one admitted combination.
+test fn evaluation_use_with_non_confidential_content_is_admitted() -> Bool {
+  t_admitted(a: openrouter_nvidia_free_use_admission(use: NvidiaApiTrialInternalTestingAndEvaluation, class: NvidiaApiTrialNonConfidentialNonPersonalContent))
+}
+
+// RED -- production use refuses whatever the content, and refuses BEFORE the content is examined:
+// a production turn carrying forbidden content reports the production refusal, not the class.
+test fn production_use_refuses_before_content_is_examined() -> Bool {
+  (match openrouter_nvidia_free_use_admission(use: NvidiaApiTrialProductionUse, class: NvidiaApiTrialNonConfidentialNonPersonalContent) {
+    OpenRouterNvidiaFreeProductionUseRefused => true
+    OpenRouterNvidiaFreeUseAdmitted => false
+    OpenRouterNvidiaFreeContentClassRefused { class: _ } => false
+  })
+    && (match openrouter_nvidia_free_use_admission(use: NvidiaApiTrialProductionUse, class: NvidiaApiTrialConfidentialInformation) {
+      OpenRouterNvidiaFreeProductionUseRefused => true
+      OpenRouterNvidiaFreeUseAdmitted => false
+      OpenRouterNvidiaFreeContentClassRefused { class: _ } => false
+    })
+}
+
+// RED -- each forbidden class refuses under evaluation use and the refusal names the class.
+test fn forbidden_content_classes_refuse_and_name_the_class() -> Bool {
+  t_refused_class(a: openrouter_nvidia_free_use_admission(use: NvidiaApiTrialInternalTestingAndEvaluation, class: NvidiaApiTrialConfidentialInformation), want: NvidiaApiTrialConfidentialInformation)
+    && t_refused_class(a: openrouter_nvidia_free_use_admission(use: NvidiaApiTrialInternalTestingAndEvaluation, class: NvidiaApiTrialPersonalData), want: NvidiaApiTrialPersonalData)
+    && t_refused_class(a: openrouter_nvidia_free_use_admission(use: NvidiaApiTrialInternalTestingAndEvaluation, class: NvidiaApiTrialProtectedHealthInformation), want: NvidiaApiTrialProtectedHealthInformation)
+    && t_refused_class(a: openrouter_nvidia_free_use_admission(use: NvidiaApiTrialInternalTestingAndEvaluation, class: NvidiaApiTrialPaymentCardIndustryInformation), want: NvidiaApiTrialPaymentCardIndustryInformation)
+}
+
+// The endpoint this route is for is a free variant by the platform's own rule, which is what
+// makes the free-model caps the limits a caller on this route leases from.
+test fn the_endpoint_is_a_free_variant_by_the_platform_rule() -> Bool {
+  openrouter_nemotron_3_ultra_free_is_free_variant()
+}

@@ -1,0 +1,144 @@
+module extdeps.openrouter.nemotron_3_ultra_free_endpoint
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.measure { TokenCount, token_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  CitedFigureStanding, CitedToAuthority, TranscribedUncited,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit }
+import extdeps.openrouter.platform {
+  openrouter_model_id_is_free_variant, openrouter_rate_limits,
+  openrouter_free_model_requests_per_minute, openrouter_free_model_daily_limit,
+}
+import std.nat { Nat }
+
+// THE OPENROUTER FREE ENDPOINT FOR NEMOTRON 3 ULTRA, as its own extdeps authority: it is a distinct
+// independently governed thing from the platform that routes it (extdeps.openrouter.platform), from
+// the model it serves (extdeps.nvidia.nemotron_3_ultra) and from the terms it is served under
+// (extdeps.nvidia.api_trial_terms). What is a fact ABOUT THIS ENDPOINT -- its id, that it is a free
+// variant, who serves it, the notice its page shows, and the window it serves -- lives here and
+// nowhere else.
+//
+// THE ANCHOR IS THE MODEL PAGE. Its locator is the id, and the notice below was SUPPLIED BY THE
+// OPERATOR on 2026-10-05 as text copied from that page; this session's egress policy denied
+// openrouter.ai, so the page itself was not fetched here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b:free",
+  }
+}
+
+data openrouter_nemotron_3_ultra_free_model_id: NonEmptyStr = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.openrouter.nemotron_3_ultra_free_endpoint",
+      decl_name: "openrouter_nemotron_3_ultra_free_model_id",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// FREE IS DERIVED FROM THE ID BY THE PLATFORM'S OWN RULE, not asserted beside it. The platform
+// defines a free variant as an id ending in :free; this endpoint's id does, so the free-model caps
+// govern it -- and if the id ever changed, this answer would change with it.
+fn openrouter_nemotron_3_ultra_free_is_free_variant() -> Bool {
+  openrouter_model_id_is_free_variant(id: openrouter_nemotron_3_ultra_free_model_id as String)
+}
+
+type OpenRouterEndpointNoticeProvenance
+  = NoticeTextSuppliedByOperator { supplied_on: NonEmptyStr }
+  | NoticeReadAtLocator { read_on: NonEmptyStr }
+
+type OpenRouterEndpointNoticeReading {
+  authority: ExternalAuthority
+  provenance: OpenRouterEndpointNoticeProvenance
+  statement: NonEmptyStr
+}
+
+// THE NOTICE THE PAGE SHOWS FOR THIS ENDPOINT, VERBATIM. It is the sentence that names NVIDIA as the
+// party collecting and logging on this route, asks that no confidential information or personal
+// data be uploaded, and binds use to the NVIDIA API Trial Terms of Service -- so it is the reading
+// that grounds the served-by and governing-terms rows below.
+data openrouter_nemotron_3_ultra_free_endpoint_notice: OpenRouterEndpointNoticeReading = OpenRouterEndpointNoticeReading {
+  authority: extdeps_external_authority_anchor,
+  provenance: NoticeTextSuppliedByOperator { supplied_on: "2026-10-05" },
+  statement: "For the free endpoint, please do not upload any confidential information or personal data (such as voices or faces of people). Your use is logged for security purposes and to improve NVIDIA products and services. The logged session data for improvement purposes is not linked to your identity or any persistent identifier. For more information about NVIDIA's data processing practices, see Privacy Policy. By using this free endpoint, you consent to NVIDIA's collection, recording, and use of such information and the NVIDIA API Trial Terms of Service.",
+}
+
+// WHO SERVES IT AND UNDER WHAT TERMS, each a citation into the module that owns the fact. The
+// vendor row is extdeps.vendor.nvidia's, the terms are extdeps.nvidia.api_trial_terms', and the
+// model is extdeps.nvidia.nemotron_3_ultra's; this module joins them for one endpoint.
+data openrouter_nemotron_3_ultra_free_served_by: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.vendor.nvidia",
+  decl_name: "nvidia",
+  field: WholeDeclaration,
+}
+
+data openrouter_nemotron_3_ultra_free_governing_terms: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.nvidia.api_trial_terms",
+  decl_name: "nvidia_api_trial_terms_2025_09_19",
+  field: WholeDeclaration,
+}
+
+data openrouter_nemotron_3_ultra_free_model: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.nvidia.nemotron_3_ultra",
+  decl_name: "nemotron_3_ultra_hub_repo",
+  field: WholeDeclaration,
+}
+
+// WHAT THE NOTICE ESTABLISHES ABOUT THE DATA PATH, as three typed facts read off the sentence: the
+// route's prompts and completions are logged, they are used to improve NVIDIA products and services,
+// and the improvement-purpose logs are stated to be unlinked from identity. The first two are the
+// same facts the trial terms carry at section 3.3; the third is the notice's own addition.
+data openrouter_nemotron_3_ultra_free_use_is_logged: Bool = true
+data openrouter_nemotron_3_ultra_free_logs_used_to_improve_nvidia_products: Bool = true
+data openrouter_nemotron_3_ultra_free_improvement_logs_unlinked_from_identity: Bool = true
+
+type OpenRouterEndpointTokenFigure {
+  tokens: TokenCount
+  standing: CitedFigureStanding
+}
+
+// THE SERVED WINDOW AND OUTPUT CEILING ARE UNCITED, because the model page was not fetched. A
+// search-engine excerpt of it, read 2026-10-05, states a 1,000,000-token context and a 65,536-token
+// maximum output; both are properties of THIS ENDPOINT'S DEPLOYMENT and not of the model, whose
+// native window extdeps.nvidia.nemotron_3_ultra carries separately as 262,144. Both are typed
+// TranscribedUncited with the obligation that grounds them, and a consumer sizing a working window
+// against them must refuse until they are cited.
+data openrouter_nemotron_3_ultra_free_window_read_obligation: NonEmptyStr = "Transcribed on 2026-10-05 from a search-engine excerpt of the OpenRouter model page for nvidia/nemotron-3-ultra-550b-a55b:free, which was not fetched because the session's egress policy denied openrouter.ai. GROUNDED BY reading the model page, or the models API entry for this id (context_length and top_provider.max_completion_tokens), and recording each figure beside the field it was read from."
+
+data openrouter_nemotron_3_ultra_free_context_length: OpenRouterEndpointTokenFigure = OpenRouterEndpointTokenFigure {
+  tokens: token_count(count: 1000000),
+  standing: TranscribedUncited { read_obligation: openrouter_nemotron_3_ultra_free_window_read_obligation },
+}
+
+data openrouter_nemotron_3_ultra_free_max_completion_tokens: OpenRouterEndpointTokenFigure = OpenRouterEndpointTokenFigure {
+  tokens: token_count(count: 65536),
+  standing: TranscribedUncited { read_obligation: openrouter_nemotron_3_ultra_free_window_read_obligation },
+}
+
+// THE LIMITS THAT GOVERN THIS ENDPOINT, DERIVED: a free variant is governed by the platform's
+// free-model caps, so the rows are the platform's rows reached through the free-variant test, and
+// an endpoint that is not a free variant has NO platform request cap at all (the Limits page: the
+// paid variant has no platform-level request cap). The empty list is that absence, typed.
+fn openrouter_nemotron_3_ultra_free_rate_limits() -> List<UpstreamRateLimit> {
+  if openrouter_nemotron_3_ultra_free_is_free_variant() { openrouter_rate_limits } else { [] as List<UpstreamRateLimit> }
+}
+
+// THE TWO POOLS A CALLER ON THIS ENDPOINT LEASES FROM, for one account: the shared per-minute cap
+// and the daily cap its purchased credits select. Both reached through the platform's own fold.
+fn openrouter_nemotron_3_ultra_free_limits_for(credits_purchased_all_time: Nat) -> List<UpstreamRateLimit> {
+  if openrouter_nemotron_3_ultra_free_is_free_variant() {
+    [openrouter_free_model_requests_per_minute, openrouter_free_model_daily_limit(credits_purchased_all_time: credits_purchased_all_time)]
+  } else {
+    [] as List<UpstreamRateLimit>
+  }
+}

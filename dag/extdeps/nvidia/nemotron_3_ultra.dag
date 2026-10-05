@@ -1,0 +1,122 @@
+module extdeps.nvidia.nemotron_3_ultra
+
+import std.types { NonEmptyStr, List }
+import std.measure { TokenCount, token_count, ParameterCount, parameter_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation,
+}
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
+
+// NVIDIA NEMOTRON 3 ULTRA 550B-A55B, as its own extdeps authority because it is an independently
+// versioned upstream model, not a property of whichever endpoint serves it. The OpenRouter free
+// endpoint that routes to it is extdeps.openrouter.nemotron_3_ultra_free_endpoint and cites this
+// module; the trial terms that govern that endpoint are extdeps.nvidia.api_trial_terms. Neither of
+// those is a model fact and none of their rows are restated here.
+//
+// EVERY FIGURE IN THIS MODULE IS TYPED AS UNCITED, AND THAT IS THE MODULE'S HONEST STATE RATHER THAN
+// A GAP IT HIDES. This session's egress policy denied huggingface.co, docs.nvidia.com and
+// build.nvidia.com, so no primary page was read. What exists is a search-engine excerpt of the
+// NVIDIA NIM day-0 page and of the Hub listing, read 2026-10-05, which is enough to name the
+// repository and to transcribe three numbers but not enough to cite them: an excerpt is not the
+// page. So each figure carries CitedFigureStanding TranscribedUncited with the read obligation that
+// would ground it (DESIGN section 4d: a typed bet, never promoted and never deleted), and a
+// consumer that needs a cited window must refuse rather than read the number through.
+data nemotron_3_ultra_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: nemotron_3_ultra_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.nemotron_3_ultra",
+      decl_name: "nemotron_3_ultra_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE ONE READ OBLIGATION, SHARED BY EVERY FIGURE BECAUSE ONE PAGE WOULD DISCHARGE THEM ALL: the
+// NIM day-0 page for this model, whose excerpt is where the numbers were transcribed from, or the
+// Hub model card at the pinned repository.
+data nemotron_3_ultra_figures_read_obligation: NonEmptyStr = "Transcribed on 2026-10-05 from a search-engine excerpt of the NVIDIA NIM page 'Get Started with Nemotron 3 Ultra 550B-A55B' (docs.nvidia.com/nim/large-models/... day-0/get-started-nemotron-3-ultra.html) and of the Hub listing nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16; neither page was fetched because the session's egress policy denied both hosts. GROUNDED BY reading either page and recording the figure beside its sentence, at which point the standing becomes CitedToAuthority with that page as authority."
+
+type Nemotron3UltraParameterFigure {
+  parameters: ParameterCount
+  standing: CitedFigureStanding
+}
+
+type Nemotron3UltraTokenFigure {
+  tokens: TokenCount
+  standing: CitedFigureStanding
+}
+
+type Nemotron3UltraStatement {
+  statement: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+// 550 billion total parameters, 55 billion active per token -- the two numbers the model's own
+// name carries (550B-A55B), transcribed from the excerpt rather than inferred from the name.
+data nemotron_3_ultra_total_parameters: Nemotron3UltraParameterFigure = Nemotron3UltraParameterFigure {
+  parameters: parameter_count(millions: 550000),
+  standing: TranscribedUncited { read_obligation: nemotron_3_ultra_figures_read_obligation },
+}
+
+data nemotron_3_ultra_active_parameters: Nemotron3UltraParameterFigure = Nemotron3UltraParameterFigure {
+  parameters: parameter_count(millions: 55000),
+  standing: TranscribedUncited { read_obligation: nemotron_3_ultra_figures_read_obligation },
+}
+
+// THE NATIVE WINDOW IS 262,144 TOKENS BY THE EXCERPT, AND A LONGER SERVED WINDOW IS A SERVING FACT.
+// The excerpt states that the model natively supports 262,144 tokens and that a longer window, up
+// to 1M, is served by setting an engine flag and a larger max-model-len. That makes any 1M figure a
+// property of a DEPLOYMENT, exactly as extdeps.deepseek.deepseek_v4 keeps its scaled ceiling apart
+// from its native window; the endpoint module carries what the endpoint serves and this module
+// carries only what the model natively supports.
+data nemotron_3_ultra_native_context_length: Nemotron3UltraTokenFigure = Nemotron3UltraTokenFigure {
+  tokens: token_count(count: 262144),
+  standing: TranscribedUncited { read_obligation: nemotron_3_ultra_figures_read_obligation },
+}
+
+data nemotron_3_ultra_architecture: Nemotron3UltraStatement = Nemotron3UltraStatement {
+  statement: "A hybrid Mamba-2 / attention / mixture-of-experts architecture in the Nemotron-H lineage, with multi-token prediction, as the NIM excerpt describes it.",
+  standing: TranscribedUncited { read_obligation: nemotron_3_ultra_figures_read_obligation },
+}
+
+// WHAT IS NOT CARRIED AT ALL, as obligations rather than rows, because no excerpt stated it: the
+// reasoning controls (whether thinking is on by default, which request key or template kwarg turns
+// it on or off, whether an effort level exists), the tool-calling format, the licence, and the
+// chat template. A harness serving unit for this model (gunbc.harness.harness_reasoning_wire) cannot
+// be written until these are read, and that is the trigger named on the endpoint module's frontier.
+data nemotron_3_ultra_reasoning_controls_read_obligation: NonEmptyStr = "The reasoning controls of Nemotron 3 Ultra -- default thinking state, the request key or chat-template kwarg that enables or disables it, any effort vocabulary, and the end-of-thinking token -- are UNREAD. RESOLVED BY reading the model card's usage section or the NIM day-0 page's reasoning section at the pinned repository and recording each control as its own row, as extdeps.zhipu.glm_5_3_flash does for GLM. It is NOT resolved by assuming DeepSeek's or GLM's kwargs."
+
+data nemotron_3_ultra_license_read_obligation: NonEmptyStr = "The licence of the Nemotron 3 Ultra weights is UNREAD. RESOLVED BY reading the LICENSE file or the model card's licence field at the pinned repository and recording the SPDX or named licence beside its path."
+
+// THE OUTSTANDING OBLIGATIONS, DERIVED FROM THE STANDINGS RATHER THAN LISTED BESIDE THEM. A consumer
+// that wants to know what remains to be read asks this fold; an uncited figure that is later cited
+// drops out of it by its standing changing, with no second list to edit.
+fn nemotron_3_ultra_outstanding_read_obligations() -> List<NonEmptyStr> {
+  let standings = [
+    nemotron_3_ultra_total_parameters.standing,
+    nemotron_3_ultra_active_parameters.standing,
+    nemotron_3_ultra_native_context_length.standing,
+    nemotron_3_ultra_architecture.standing,
+  ]
+  concat(
+    fold(standings, init: [] as List<NonEmptyStr>, f: (acc, s) =>
+      match cited_figure_read_obligation(standing: s) {
+        Absent => acc
+        Present { value: o } => concat(acc, [o])
+      }),
+    [nemotron_3_ultra_reasoning_controls_read_obligation, nemotron_3_ultra_license_read_obligation],
+  )
+}
