@@ -500,15 +500,16 @@ fn emit_data_fields_json(value: Node, source_indices: Map<String, NewlineIndex>,
 // to be NAMED Optional keeps its own wire policy (review on gunbc#13202: a leaf-name test here was a
 // second, unrostered authority that would have serialized such a coproduct as null or a bare payload).
 // Within an optional row, a variant literal whose parent IS the declared inner type is a bare T under
-// T?: an implicit lift no declared coercion admits (the same class the T?==T and declared-return walls
-// refuse), so it REFUSES rather than being spelled -- the typed-expression path for the same row emits
-// it bare against Option<..> and rustc refuses it (E0308), so spelling it here would make two
-// realizations of one row disagree. Any other one-field variant literal is the option's present arm
-// and is unwrapped to its payload. Control: gunbc.instruments.native_emission_controls optional_data_row_cases
+// T?: an implicit lift no declared coercion admits. That arm REFUSES, and it is the refusal exhaustive
+// matching requires -- NOT coverage. It is unreachable: v1.compiler.infer refuses a bare T data
+// initializer under a declared T? (the C5 wall, optional_at_required_obligation_diags at
+// PositionDataInitializer), and an accepted row of that shape takes the typed-expression path, never
+// this serializer (measured on gunbc#13202). Any other one-field variant literal is the option's
+// present arm and is unwrapped to its payload. Control: gunbc.instruments.native_emission_controls optional_data_row_cases
 // -- the present and absent rows. A coproduct merely NAMED Optional
 // cannot be emitted at all today (type rendering decides host-option by leaf name); that case is
-// lane 2K's RED, not covered here. The two refusal arms (a bare inner-type literal, a present literal
-// with more than one field) emit a compile_error! and have no run-time case.
+// lane 2K's RED, not covered here. Neither refusal arm (a bare inner-type literal, a present literal
+// with more than one field) is coverage of anything; both exist only so the match is exhaustive.
 fn emit_declared_optional_row_json(value: Node, inner_type_name: String, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> EmitterOutcome {
   match value.expr_data {
     ExprLiteral { value: LitNull } => Emitted { json: "null" }
