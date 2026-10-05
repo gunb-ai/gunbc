@@ -14621,6 +14621,7 @@ mod changed_witness_projection_tests {
             known_red_passed_over_budget: 0,
             known_red_host_tool_unresolved_held: 0,
             known_red_host_effect_refused: 0,
+            reach_differential_blocking: Vec::new(),
             stale_quarantine: Vec::new(),
             interrupted_before_verdict: Vec::new(),
             completed_over_cost_requirement: Vec::new(),
