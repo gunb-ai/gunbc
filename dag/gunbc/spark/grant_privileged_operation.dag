@@ -1,6 +1,7 @@
 module gunbc.spark.grant_privileged_operation
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import v2.std.algebra { any, length }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_secret_resource, secret_ref_version_resource, secret_ref_access_url }
 import gunbc.spark.bootstrap_credential {
@@ -32,7 +33,7 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRefused,
 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.spark.managed_grant_reconcile { spark_retired_shared_inspect_dropin_name, spark_retired_shared_inspect_dropin_path }
+import gunbc.spark.managed_grant_reconcile { spark_retired_shared_inspect_dropin_name, spark_retired_shared_inspect_dropin_path, spark_modeled_inspect_grants, spark_managed_grant_dropin_path }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
@@ -170,18 +171,77 @@ fn spark_retired_dropin_removal_lease(
   }
 }
 
-fn run_retired_dropin_removal(
+// ── The no-lapse proof, sealed ─────────────────────────────────────────────────────────────────
+//
+// A RECEIPT THAT A STAGED, VALIDATED SUDOERS FILE WAS INSTALLED at a drop-in path on a host, minted
+// only by run_privileged_install below when that install actually succeeded -- the one authority
+// for "this grant stands on its own file". sole_constructor: no other module can fabricate one.
+type InstalledSudoersDropin sole_constructor {
+  host: HostIdentity
+  dropin_path: NonEmptyStr
+}
+
+type PrivilegedInstallResult {
+  outcome: PrivilegedStepOutcome
+  installed: InstalledSudoersDropin?
+}
+
+fn run_privileged_install(
   context: FleetSshExecutionContext,
   host: HostIdentity,
+  lease: AuthorizationRequest<SparkBootstrapSubject>,
+  install: GrantSudoersInstallation,
+) -> PrivilegedInstallResult
+{
+  let outcome = run_privileged_step(context: context, host: host, lease: lease, command: grant_sudoers_installation_argv(command: install))
+  PrivilegedInstallResult {
+    outcome: outcome,
+    installed: if privileged_step_succeeded(outcome: outcome) {
+      Present { value: InstalledSudoersDropin { host: host, dropin_path: install.dropin_path } }
+    } else {
+      none
+    },
+  }
+}
+
+// THE ADMISSION, minted only here and only when THIS HOST holds an install receipt for EVERY modeled
+// inspect grant's own drop-in (gunbc.spark.managed_grant_reconcile spark_modeled_inspect_grants -- the
+// required set is derived here, never supplied by the caller). A grant that was not held, unread, or
+// withheld by the admission wall is never installed, so it has no receipt and the removal is not
+// admitted: it stays withheld.
+type RetiredDropinRemovalAdmission sole_constructor {
+  host: HostIdentity
+}
+
+fn retired_dropin_removal_receipts_missing(host: HostIdentity, installed: List<InstalledSudoersDropin>) -> List<NonEmptyStr> {
+  flat_map(spark_modeled_inspect_grants(), g => {
+    let want = spark_managed_grant_dropin_path(grant: g)
+    if any(installed, r => (r.host as String) == (host as String) && (r.dropin_path as String) == (want as String)) { [] } else { [want] }
+  })
+}
+
+fn admit_retired_dropin_removal(host: HostIdentity, installed: List<InstalledSudoersDropin>) -> RetiredDropinRemovalAdmission? {
+  if length(retired_dropin_removal_receipts_missing(host: host, installed: installed)) == 0 {
+    Present { value: RetiredDropinRemovalAdmission { host: host } }
+  } else {
+    none
+  }
+}
+
+// THE REMOVAL EFFECT CONSUMES THE ADMISSION: its host and its lease both derive from it, so no caller
+// can run the removal without the no-lapse proof, on another host, or under an install lease.
+fn run_retired_dropin_removal(
+  context: FleetSshExecutionContext,
+  admission: RetiredDropinRemovalAdmission,
   administrator: SparkCredentialStanding,
   attempt_identity: NonEmptyStr,
 ) -> PrivilegedStepOutcome
 {
   run_privileged_step(
     context: context,
-    host: host,
-    lease: spark_retired_dropin_removal_lease(host: host, administrator: administrator, attempt_identity: attempt_identity),
-    command: RemoveRetiredSharedInspectDropin,
+    host: admission.host,
+    lease: spark_retired_dropin_removal_lease(host: admission.host, administrator: administrator, attempt_identity: attempt_identity),
+    command: RemoveRetiredSharedInspectDropin { admission: admission },
   )
 }
 
@@ -199,14 +259,15 @@ fn lease_secret_resource(lease: AuthorizationRequest<SparkBootstrapSubject>) -> 
 // RemoteArgv into a generic { argv, stdin } carrier -- would reopen arbitrary script bodies through
 // stdin under root, which is a far larger hole than the one being closed. So only the two commands
 // this bootstrap needs have constructors, and a third cannot be passed through.
-// RemoveRetiredSharedInspectDropin is the only removal this algebra admits, and it has NO FIELDS: the
-// path it removes is gunbc.spark.managed_grant_reconcile spark_retired_shared_inspect_dropin_path,
-// the same single source the removal lease's scope and intent derive from. No caller has a spelling
-// for removing any other path (review of gunbc#13373).
+// RemoveRetiredSharedInspectDropin is the only removal this algebra admits. Its path is fixed
+// (gunbc.spark.managed_grant_reconcile spark_retired_shared_inspect_dropin_path, the single source the
+// removal lease derives from too), and it carries a SEALED admission: no caller can name the removal
+// without a RetiredDropinRemovalAdmission, and only admit_retired_dropin_removal below mints one
+// (review of gunbc#13373).
 type AdmittedRootArgv
   = ValidateStagedSudoers { staged_path: NonEmptyStr }
   | InstallStagedSudoers { staged_path: NonEmptyStr, dropin_path: NonEmptyStr }
-  | RemoveRetiredSharedInspectDropin
+  | RemoveRetiredSharedInspectDropin { admission: RetiredDropinRemovalAdmission }
 
 // THE PROMPT IS A SENTINEL, NOT EMPTY, and the empty one was a real defect rather than a style
 // choice. This carried `-p ""` to suppress the prompt entirely; measured on srv6 (2026-08-20), the
@@ -233,7 +294,7 @@ fn admitted_root_argv_words(command: AdmittedRootArgv) -> List<String> {
       ValidateStagedSudoers { staged_path: p } => ["visudo", "-c", "-f", p as String]
       InstallStagedSudoers { staged_path: p, dropin_path: d } =>
         ["install", "-m", "0440", "-o", "root", "-g", "root", p as String, d as String]
-      RemoveRetiredSharedInspectDropin => ["rm", "-f", "--", spark_retired_shared_inspect_dropin_path() as String]
+      RemoveRetiredSharedInspectDropin { admission: _ } => ["rm", "-f", "--", spark_retired_shared_inspect_dropin_path() as String]
     },
   )
 }
@@ -259,7 +320,7 @@ fn admitted_root_argv_label(command: AdmittedRootArgv) -> String {
   match command {
     ValidateStagedSudoers { staged_path: _ } => "validate-staged-sudoers"
     InstallStagedSudoers { staged_path: _, dropin_path: _ } => "install-staged-sudoers"
-    RemoveRetiredSharedInspectDropin => "remove-retired-shared-inspect-dropin"
+    RemoveRetiredSharedInspectDropin { admission: _ } => "remove-retired-shared-inspect-dropin"
   }
 }
 
@@ -478,6 +539,28 @@ fn read_bootstrap_credential() -> BootstrapCredentialMaterialization {
 // condition CredentialNotMaterialized already names -- so it lands there with the
 // session's own located cause rather than minting an exit code for an ssh that never
 // ran.
+// For the removal arm the host and lease are those of its admission, whatever the caller passed: the
+// removal cannot be paired with an install lease or aimed at another host.
+fn privileged_step_host(host: HostIdentity, command: AdmittedRootArgv) -> HostIdentity {
+  match command {
+    RemoveRetiredSharedInspectDropin { admission: a } => a.host
+    ValidateStagedSudoers { staged_path: _ } => host
+    InstallStagedSudoers { staged_path: _, dropin_path: _ } => host
+  }
+}
+
+fn privileged_step_lease(
+  lease: AuthorizationRequest<SparkBootstrapSubject>,
+  command: AdmittedRootArgv,
+) -> AuthorizationRequest<SparkBootstrapSubject> {
+  match command {
+    RemoveRetiredSharedInspectDropin { admission: a } =>
+      spark_retired_dropin_removal_lease(host: a.host, administrator: lease.subject.administrator, attempt_identity: lease.attempt as NonEmptyStr)
+    ValidateStagedSudoers { staged_path: _ } => lease
+    InstallStagedSudoers { staged_path: _, dropin_path: _ } => lease
+  }
+}
+
 fn run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -485,12 +568,14 @@ fn run_privileged_step(
   command: AdmittedRootArgv,
 ) -> PrivilegedStepOutcome
 {
-  match lease.subject.administrator {
-    CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
+  let effective_host = privileged_step_host(host: host, command: command)
+  let effective_lease = privileged_step_lease(lease: lease, command: command)
+  match effective_lease.subject.administrator {
+    CredentialMaterializationPending => CredentialNotEnrolled { lease: effective_lease }
     CredentialMaterialized { ref: _ } =>
       match read_bootstrap_credential() {
         BootstrapCredentialNotMaterialized { cause: why } =>
-          CredentialNotMaterialized { lease: lease, cause: why }
+          CredentialNotMaterialized { lease: effective_lease, cause: why }
         BootstrapCredentialReady { secret: secret } =>
           match portable_remote_words(raws: admitted_root_argv_words(command: command)) {
             Absent =>
@@ -503,20 +588,20 @@ fn run_privileged_step(
               match exec_as_fleet_principal_with_stdin(
                 context: context,
                 target: SshTarget {
-                  endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-                  principal: lease.subject.bootstrap_principal,
+                  endpoint: fleet_probe_endpoint_for(host: effective_host as String) as NonEmptyStr,
+                  principal: effective_lease.subject.bootstrap_principal,
                 },
                 words: words,
                 stdin_payload: join([secret, "\n"], ""),
                 credential: BootstrapCredentialInRunEnvironment,
               ) {
                 FleetPrincipalLegRefused { cause: why } =>
-                  CredentialNotMaterialized { lease: lease, cause: why as String }
+                  CredentialNotMaterialized { lease: effective_lease, cause: why as String }
                 FleetPrincipalLegRan { session: _, result: result } =>
                   if result.success {
                     PrivilegedCommandSucceeded { command: command }
                   } else if sudo_rejected_the_credential(stderr: result.stderr) {
-                    CredentialRejected { lease: lease }
+                    CredentialRejected { lease: effective_lease }
                   } else {
                     PrivilegedCommandFailed {
                       command: command,

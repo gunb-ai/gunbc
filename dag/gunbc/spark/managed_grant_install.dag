@@ -65,7 +65,8 @@ import gunbc.spark.grant_privileged_operation {
   GrantSudoersInstallation,
   grant_sudoers_validation_argv,
   grant_sudoers_installation_argv,
-  run_retired_dropin_removal,
+  run_retired_dropin_removal, run_privileged_install, InstalledSudoersDropin,
+  admit_retired_dropin_removal, retired_dropin_removal_receipts_missing,
 }
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install,
@@ -83,9 +84,8 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_sudoers_content,
   SparkInspectDropinShape, InspectDropinShapeUnobserved,
   spark_sudoers_dropin_listing_argv, spark_inspect_dropin_shape_of_listing,
-  spark_inspect_grants_to_reinstall, spark_grant_named_in,
-  SparkRetiredDropinRemovalDecision, RetiredDropinNothingToRemove, RetiredDropinRemovalAdmitted, RetiredDropinRemovalWithheld,
-  spark_retired_dropin_removal_decision, spark_retired_dropin_removal_confirmed,
+  spark_inspect_grants_to_relocate, spark_grant_named_in, spark_retired_dropin_removal_confirmed,
+  SharedInspectDropinShape, PerContainerInspectDropinShape,
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -406,25 +406,34 @@ type SparkGrantInstallOutcome
 // staged, so nothing can be stranded. An earlier cut staged first and then discarded the cleanup
 // standing when it built that arm, while the cleanup predicate answered `true` for it
 // unconditionally -- a receipt that could not show a cleanup failure it had already caused.
+// ONE INSTALL'S OUTCOME AND, when the install succeeded and the grantee's own listing confirmed it,
+// the sealed receipt gunbc.spark.grant_privileged_operation run_privileged_install minted for it --
+// the only input the shared drop-in's removal admission accepts.
+type SparkGrantInstallStep {
+  outcome: SparkGrantInstallOutcome
+  installed: InstalledSudoersDropin?
+}
+
 fn spark_grant_install_execute(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
   administrator: SparkCredentialStanding,
   grant: SparkManagedGrant,
-) -> SparkGrantInstallOutcome
+) -> SparkGrantInstallStep
 {
   let plan = spark_grant_install_plan(grant: grant, principal: principal)
   match plan {
     SparkGrantInstallRefused { grant: g, cause: c } =>
-      SparkGrantInstallNotAttempted { host: host, grant: g, cause: c }
+      SparkGrantInstallStep { outcome: SparkGrantInstallNotAttempted { host: host, grant: g, cause: c }, installed: none }
     SparkGrantInstallSteps {
       grant: g, stage: staged_step, validate: validate_cmd, install: install_cmd, cleanup: cleanup_step,
     } =>
       match administrator {
         CredentialMaterializationPending =>
-          SparkGrantInstallAwaitingOperatorCredential {
-            host: host, grant: g, principal: principal,
+          SparkGrantInstallStep {
+            outcome: SparkGrantInstallAwaitingOperatorCredential { host: host, grant: g, principal: principal },
+            installed: none,
           }
         CredentialMaterialized { ref: _ } => {
           let lease = spark_bootstrap_credential_lease(
@@ -440,13 +449,16 @@ fn spark_grant_install_execute(
             transport: transport,
           )
           if remote_step_sequence_failed(standings: staged) {
-            SparkGrantInstallExecuted {
-              host: host, grant: g, standings: staged, privileged: [],
-              readback: GrantReadbackNotAttempted,
-              cleanup: spark_grant_cleanup_standing(
-                identity: cleanup_planned.identity,
-                standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
-              ),
+            SparkGrantInstallStep {
+              outcome: SparkGrantInstallExecuted {
+                host: host, grant: g, standings: staged, privileged: [],
+                readback: GrantReadbackNotAttempted,
+                cleanup: spark_grant_cleanup_standing(
+                  identity: cleanup_planned.identity,
+                  standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
+                ),
+              },
+              installed: none,
             }
           } else {
             {
@@ -455,33 +467,43 @@ fn spark_grant_install_execute(
                 command: grant_sudoers_validation_argv(command: validate_cmd),
               )
               if privileged_step_succeeded(outcome: validated) == false {
-                spark_grant_install_from_privileged(
-                  host: host, grant: g, principal: principal, staged: staged,
-                  outcomes: [validated], readback: GrantReadbackNotAttempted,
-                  cleanup: spark_grant_cleanup_standing(
-                    identity: cleanup_planned.identity,
-                    standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
+                SparkGrantInstallStep {
+                  outcome: spark_grant_install_from_privileged(
+                    host: host, grant: g, principal: principal, staged: staged,
+                    outcomes: [validated], readback: GrantReadbackNotAttempted,
+                    cleanup: spark_grant_cleanup_standing(
+                      identity: cleanup_planned.identity,
+                      standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
+                    ),
                   ),
-                )
+                  installed: none,
+                }
               } else {
                 {
-                  let installed = run_privileged_step(
-                    context: context, host: host, lease: lease,
-                    command: grant_sudoers_installation_argv(command: install_cmd),
+                  let install_result = run_privileged_install(
+                    context: context, host: host, lease: lease, install: install_cmd,
                   )
+                  let installed = install_result.outcome
                   let readback = if privileged_step_succeeded(outcome: installed) {
                     spark_grant_read_back(context: context, host: host, grant: g)
                   } else {
                     GrantReadbackNotAttempted
                   }
-                  spark_grant_install_from_privileged(
-                    host: host, grant: g, principal: principal, staged: staged,
-                    outcomes: [validated, installed], readback: readback,
-                    cleanup: spark_grant_cleanup_standing(
-                      identity: cleanup_planned.identity,
-                      standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
+                  SparkGrantInstallStep {
+                    outcome: spark_grant_install_from_privileged(
+                      host: host, grant: g, principal: principal, staged: staged,
+                      outcomes: [validated, installed], readback: readback,
+                      cleanup: spark_grant_cleanup_standing(
+                        identity: cleanup_planned.identity,
+                        standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
+                      ),
                     ),
-                  )
+                    installed: match readback {
+                      GrantReadbackConfirmed => install_result.installed
+                      GrantReadbackDisagreed { standing: _ } => none
+                      GrantReadbackNotAttempted => none
+                    },
+                  }
                 }
               }
             }
@@ -691,60 +713,53 @@ fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: Host
   }
 }
 
-// THE INSTALL RECEIPTS THE REMOVAL CONSUMES: grants this run installed under their own file whose
-// readback the grantee's own sudo listing confirmed. The install is the one authority for "this grant
-// stands on its own file"; nothing else (not the listing, not the file names) can admit the removal.
-fn spark_grants_installed_and_confirmed(outcomes: List<SparkGrantInstallOutcome>) -> List<SparkManagedGrant> {
-  flat_map(outcomes, o => match o {
-    SparkGrantInstallExecuted { host: _, grant: g, standings: _, privileged: _, readback: rb, cleanup: _ } =>
-      match rb {
-        GrantReadbackConfirmed => [g]
-        GrantReadbackDisagreed { standing: _ } => []
-        GrantReadbackNotAttempted => []
-      }
-    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => []
-    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => []
-  })
-}
-
-// THE REMOVAL, decided on a fresh drop-in reading and this run's confirmed install receipts, and its
-// readback a fresh third reading: the shared file gone and every inspect grant still held under its
-// own file, or the run says it did not converge.
+// THE REMOVAL, on a fresh drop-in reading. The admission is minted only from this run's sealed install
+// receipts covering every modeled inspect grant (gunbc.spark.grant_privileged_operation
+// admit_retired_dropin_removal), and the removal effect consumes it; the readback is a fresh third
+// reading -- the shared file gone and every inspect grant held under its own file.
 fn spark_retired_dropin_converge(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   administrator: SparkCredentialStanding,
-  confirmed: List<SparkManagedGrant>,
+  installed: List<InstalledSudoersDropin>,
 ) -> SparkRetiredDropinStanding
 {
-  match spark_retired_dropin_removal_decision(
-    shape: spark_inspect_dropin_shape_read(context: context, host: host),
-    confirmed: confirmed,
-  ) {
-    RetiredDropinNothingToRemove => RetiredDropinAbsent
-    RetiredDropinRemovalWithheld { cause: c } => RetiredDropinRemovalWithheldOnRun { cause: c }
-    RetiredDropinRemovalAdmitted => {
-      let removed = run_retired_dropin_removal(
-        context: context, host: host, administrator: administrator,
-        attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
-      )
-      if !privileged_step_succeeded(outcome: removed) {
-        RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
-      } else if spark_retired_dropin_removal_confirmed(
-        outcome: spark_grant_probe_outcome(context: context, host: host),
-        shape: spark_inspect_dropin_shape_read(context: context, host: host),
-      ) {
-        RetiredDropinRemoved
-      } else {
-        RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+  match spark_inspect_dropin_shape_read(context: context, host: host) {
+    PerContainerInspectDropinShape { per_container: _ } => RetiredDropinAbsent
+    InspectDropinShapeUnobserved { cause: c } =>
+      RetiredDropinRemovalWithheldOnRun { cause: join(["the drop-in directory was not read: ", c as String], "") as NonEmptyStr }
+    SharedInspectDropinShape { per_container: _ } =>
+      match admit_retired_dropin_removal(host: host, installed: installed) {
+        Absent =>
+          RetiredDropinRemovalWithheldOnRun {
+            cause: join([
+              "removing the shared drop-in would lapse inspect grants this run holds no install receipt for: ",
+              join(map(retired_dropin_removal_receipts_missing(host: host, installed: installed), p => p as String), ","),
+            ], "") as NonEmptyStr,
+          }
+        Present { value: admission } => {
+          let removed = run_retired_dropin_removal(
+            context: context, admission: admission, administrator: administrator,
+            attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
+          )
+          if !privileged_step_succeeded(outcome: removed) {
+            RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+          } else if spark_retired_dropin_removal_confirmed(
+            outcome: spark_grant_probe_outcome(context: context, host: host),
+            shape: spark_inspect_dropin_shape_read(context: context, host: host),
+          ) {
+            RetiredDropinRemoved
+          } else {
+            RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+          }
+        }
       }
-    }
   }
 }
 
-// The install set is the reconcile's NOT-HELD grants plus, while the retired shared file is present,
-// EVERY modeled inspect grant (spark_inspect_grants_to_reinstall): each is re-validated and re-installed
-// under its own file so the removal can rest on this run's install receipts.
+// The install set is the reconcile's admitted NOT-HELD grants plus the inspect grants observed HELD
+// while the shared file is present (spark_inspect_grants_to_relocate: relocation of an already-held
+// capability, never a route around the admission wall for a not-held or unread grant).
 fn spark_grant_install_host(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -754,21 +769,22 @@ fn spark_grant_install_host(
 {
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   let missing = spark_managed_grants_to_install(outcome: outcome)
-  let reinstall = filter(
-    spark_inspect_grants_to_reinstall(shape: spark_inspect_dropin_shape_read(context: context, host: host)),
+  let relocate = filter(
+    spark_inspect_grants_to_relocate(outcome: outcome, shape: spark_inspect_dropin_shape_read(context: context, host: host)),
     g => !spark_grant_named_in(grants: missing, g: g),
   )
-  let outcomes = map(concat(missing, reinstall), g =>
+  let steps = map(concat(missing, relocate), g =>
     spark_grant_install_execute(
       context: context, host: host, principal: principal,
       administrator: administrator, grant: g,
     ))
+  let outcomes = map(steps, st => st.outcome)
   SparkGrantInstallRun {
     standing_report: spark_managed_grant_report(host: host, outcome: outcome),
     retired_dropin: if fold(outcomes, init: true, f: fn(acc, o) { acc && spark_grant_install_succeeded(outcome: o) }) {
       spark_retired_dropin_converge(
         context: context, host: host, administrator: administrator,
-        confirmed: spark_grants_installed_and_confirmed(outcomes: outcomes),
+        installed: flat_map(steps, st => match st.installed { Present { value: r } => [r] Absent => [] }),
       )
     } else {
       RetiredDropinRemovalWithheldOnRun { cause: "a grant install on this run did not succeed, so the shared drop-in is left in place" as NonEmptyStr }

@@ -454,10 +454,9 @@ fn spark_inspect_dropin_shape_wire(host: String, shape: SparkInspectDropinShape)
 // neither the listing nor the file names can establish that removing the shared file lapses nothing.
 // Measured: on Group B the glm-native-tp4 inspect grant read held only through the shared file
 // (fleet-converge run 37263427207). The ONE authority for "this grant stands on its own file" is
-// therefore the install itself (review of gunbc#13373): whenever the shared file is present, EVERY
-// modeled inspect grant is re-validated and re-installed under its own file on this run, and the
-// removal is admitted only on this run's own confirmed install receipts -- never on a second parser
-// of file contents.
+// therefore the install itself (review of gunbc#13373): the removal is admitted only on install
+// receipts this run minted for EVERY modeled inspect grant's own file (sealed in
+// gunbc.spark.grant_privileged_operation) -- never on a second parser of file contents.
 
 fn spark_grant_is_inspect(grant: SparkManagedGrant) -> Bool {
   match grant {
@@ -476,44 +475,23 @@ fn spark_grant_named_in(grants: List<SparkManagedGrant>, g: SparkManagedGrant) -
   any(grants, x => (spark_managed_grant_dropin_name(grant: x) as String) == (spark_managed_grant_dropin_name(grant: g) as String))
 }
 
-// The inspect grants a run must (re)install before the shared file may go: all of them while the
-// shared file is present, none otherwise. An unread directory names none, and the removal decision
-// below then withholds.
-fn spark_inspect_grants_to_reinstall(shape: SparkInspectDropinShape) -> List<SparkManagedGrant> {
+// RELOCATION, NOT ADMISSION (review of gunbc#13373). While the shared file is present, the inspect
+// grants OBSERVED HELD are re-installed under their own file: that moves a capability the host already
+// grants, so it needs no new admission. A grant NOT held, a grant whose standing is UNREAD, or an
+// unread directory contributes nothing here -- such a grant can only be installed through the normal
+// admission wall (spark_managed_grants_to_install), and if that wall withholds it, it gets no install
+// receipt and the removal is not admitted (gunbc.spark.grant_privileged_operation
+// admit_retired_dropin_removal).
+fn spark_inspect_grants_to_relocate(outcome: SparkGrantOutcome, shape: SparkInspectDropinShape) -> List<SparkManagedGrant> {
   match shape {
-    SharedInspectDropinShape { per_container: _ } => spark_modeled_inspect_grants()
+    SharedInspectDropinShape { per_container: _ } =>
+      flat_map(spark_managed_grant_standings(outcome: outcome), s => match s {
+        GrantHeld { grant: g } => if spark_grant_is_inspect(grant: g) { [g] } else { [] }
+        GrantNotHeld { grant: _ } => []
+        GrantStandingUnobserved { grant: _, cause: _ } => []
+      })
     PerContainerInspectDropinShape { per_container: _ } => []
     InspectDropinShapeUnobserved { cause: _ } => []
-  }
-}
-
-type SparkRetiredDropinRemovalDecision
-  = RetiredDropinNothingToRemove
-  | RetiredDropinRemovalAdmitted
-  | RetiredDropinRemovalWithheld { cause: NonEmptyStr }
-
-// THE REMOVAL DECISION. `confirmed` is the set of grants THIS RUN installed under their own file and
-// read back held (the install's own receipts). Admitted only when the shared file is present and every
-// modeled inspect grant is in that set; otherwise withheld, naming what is not yet re-installed.
-fn spark_retired_dropin_removal_decision(shape: SparkInspectDropinShape, confirmed: List<SparkManagedGrant>) -> SparkRetiredDropinRemovalDecision {
-  match shape {
-    PerContainerInspectDropinShape { per_container: _ } => RetiredDropinNothingToRemove
-    InspectDropinShapeUnobserved { cause: c } =>
-      RetiredDropinRemovalWithheld { cause: join(["the drop-in directory was not read: ", c as String], "") as NonEmptyStr }
-    SharedInspectDropinShape { per_container: _ } => {
-      let pending = filter(spark_modeled_inspect_grants(), g => !spark_grant_named_in(grants: confirmed, g: g))
-      if length(pending) == 0 {
-        RetiredDropinRemovalAdmitted
-      } else {
-        RetiredDropinRemovalWithheld {
-          cause: join([
-            "removing ", spark_retired_shared_inspect_dropin_path() as String,
-            " would lapse inspect grants this run did not re-install and confirm under their own file: ",
-            join(map(pending, g => spark_managed_grant_dropin_name(grant: g) as String), ","),
-          ], "") as NonEmptyStr,
-        }
-      }
-    }
   }
 }
 
