@@ -3,6 +3,7 @@ module gunbc.oracle_oci.network_ensure
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import v2.std.algebra { any }
+import extdeps.network.ipv4 { Ipv4Prefix, ipv4_prefix, render_ipv4_prefix }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString, json_object, json_kv, json_string, json_bool, json_array, serialize_json }
 import extdeps.languages.json.parse { json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
@@ -167,11 +168,14 @@ fn oci_unwired(r: OciNamedResource) -> String {
 // ── THE FOUR RESOURCES ────────────────────────────────────────────────────────────────────────
 
 data oci_free_vcn_name: String = "gunbc-always-free"
-data oci_free_vcn_cidr: String = "10.0.0.0/16"
+// The address plan, as extdeps.network.ipv4 prefixes rather than CIDR strings, so a malformed octet or
+// prefix length is unwritable and the subnet's containment in the VCN is checkable (review 76379). The
+// CIDR text is rendered at the JSON boundary.
+data oci_free_vcn_cidr: Ipv4Prefix = ipv4_prefix(o1: 10, o2: 0, o3: 0, o4: 0, length: 16)
 data oci_free_igw_name: String = "gunbc-always-free-igw"
 data oci_free_route_table_name: String = "gunbc-always-free-public"
 data oci_free_subnet_name: String = "gunbc-always-free-public"
-data oci_free_subnet_cidr: String = "10.0.0.0/24"
+data oci_free_subnet_cidr: Ipv4Prefix = ipv4_prefix(o1: 10, o2: 0, o3: 0, o4: 0, length: 24)
 
 fn oci_scoped_list_path(collection: String, compartment: NonEmptyStr, vcn: String) -> String {
   if vcn == "" {
@@ -184,7 +188,7 @@ fn oci_scoped_list_path(collection: String, compartment: NonEmptyStr, vcn: Strin
 fn oci_vcn_create_body(compartment: NonEmptyStr) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
-    json_kv(key: "cidrBlocks", value: json_array(elements: [json_string(s: oci_free_vcn_cidr)])),
+    json_kv(key: "cidrBlocks", value: json_array(elements: [json_string(s: render_ipv4_prefix(p: oci_free_vcn_cidr) as String)])),
     json_kv(key: "displayName", value: json_string(s: oci_free_vcn_name)),
     json_kv(key: "dnsLabel", value: json_string(s: "gunbcfree")),
   ]))
@@ -216,7 +220,7 @@ fn oci_subnet_create_body(compartment: NonEmptyStr, vcn: NonEmptyStr, route_tabl
   serialize_json(v: json_object(members: [
     json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
     json_kv(key: "vcnId", value: json_string(s: vcn as String)),
-    json_kv(key: "cidrBlock", value: json_string(s: oci_free_subnet_cidr)),
+    json_kv(key: "cidrBlock", value: json_string(s: render_ipv4_prefix(p: oci_free_subnet_cidr) as String)),
     json_kv(key: "displayName", value: json_string(s: oci_free_subnet_name)),
     json_kv(key: "dnsLabel", value: json_string(s: "public")),
     json_kv(key: "routeTableId", value: json_string(s: route_table as String)),

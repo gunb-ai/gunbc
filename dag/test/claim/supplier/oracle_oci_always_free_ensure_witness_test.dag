@@ -4,7 +4,10 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list }
+import extdeps.network.ipv4 { ipv4_same_network, render_ipv4_prefix }
+import v2.std.optional { Absent, Present }
 import gunbc.oracle_oci.network_ensure {
+  oci_free_vcn_cidr, oci_free_subnet_cidr,
   OciNamedDecision, NamedReady, NamedCreate, NamedStop,
   oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
 }
@@ -177,4 +180,17 @@ test fn a_refused_shape_read_refuses_the_selection_rather_than_reading_as_lackin
     CandidateDomainsRefused { line } => false
   }
   refused && selected
+}
+
+// The subnet is inside the VCN: its network shares the VCN's network at the VCN's prefix, and its
+// prefix is at least as long. The rendered CIDR text is what the create bodies send.
+test fn the_subnet_sits_inside_the_vcn() -> Bool {
+  let contained = match ipv4_same_network(a: oci_free_subnet_cidr.network, b: oci_free_vcn_cidr.network, prefix: oci_free_vcn_cidr.length) {
+    Present { value } => value
+    Absent => false
+  }
+  contained
+    && oci_free_subnet_cidr.length >= oci_free_vcn_cidr.length
+    && render_ipv4_prefix(p: oci_free_vcn_cidr) == "10.0.0.0/16"
+    && render_ipv4_prefix(p: oci_free_subnet_cidr) == "10.0.0.0/24"
 }
