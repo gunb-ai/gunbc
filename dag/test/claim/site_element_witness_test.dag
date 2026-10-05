@@ -1,0 +1,299 @@
+module test.claim.site_element_witness_test
+
+import std.types { Bool, Int, List, String }
+import std.list { distinct_by_key }
+import std.markup { Fragment, Element }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.languages.html { EmitOk, EmitRejected, serialize_html_source, try_serialize_html_source }
+import extdeps.ietf.http_semantics { GET }
+import extdeps.http.server {
+  ServedRouteTable, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  serve_select_route, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+}
+import extdeps.google.issue_tracker {
+  IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
+  IssueActionEnabled, IssueActionDisabled,
+}
+import gunbc.roadmap_serve { RoadmapServeHandler, SpecimenPageHandler, roadmap_serve_route_table_build }
+import gunbc.roadmap_issue_status {
+  DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
+  DisplayDone, DisplaySuperseded, DisplayUnknown,
+}
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, serialize_rules, serialize_decls, decl }
+import gunbc.design.palette { Swatch, grade_pairing, grade_rank, TextAa }
+import gunbc.design.theme_transition { rule_selector, unthemed_color_decls, untokened_length_decls }
+import gunbc.site.markup { txt }
+import gunbc.site.element.palette { palette_decls, palette_day, SlotGround, SlotSurface, SlotAction, SlotLink }
+import gunbc.site.element.tokens { element_token_decls }
+import gunbc.site.element.text {
+  element_text_decls, element_control_small_size_decls,
+  ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl, ElementTitle,
+  ElementProseHeading, ElementIdentifier, ElementCode,
+}
+import gunbc.site.element.styles { ElementStyle, element_styles, element_rules }
+import gunbc.site.element.card { Card, CardLabelRow, CardEdgePlain, CardEdgeBar, card, card_rules }
+import gunbc.site.element.section_heading {
+  SectionHeading, SectionUncounted, SectionCounted, SectionCountedOfTotal, section_heading, section_heading_rules,
+}
+import gunbc.site.element.status_chip { status_chip, status_chip_rules }
+import gunbc.site.element.button { Button, ButtonSmall, ButtonRegular, button, button_rules }
+import gunbc.site.specimen { specimen_route_path, specimen_content, specimen_layout_rules }
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { Color, Padding }
+
+// GUARDS FOR THE FRONTEND ELEMENTS. Each claim below reads one interface with a supplied fixture:
+// an element's markup function, an element's rules, the token block, the palette, a text role.
+// None renders a page. The ownership claims are guards over the registered element rules and the
+// specimen's layout rules; they do not make a second declaration of an element class unwritable,
+// they report one that reaches the registry.
+
+fn html(node: Fragment) -> String {
+  serialize_html_source(node: node)
+}
+
+fn has(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
+// Card.
+test fn card_renders_its_edge_label_row_and_trailing_controls() -> Bool {
+  let full = html(node: card(input: Card {
+    edge: CardEdgeBar,
+    label_row: Present { value: CardLabelRow { label: "Description", trailing: [txt("trailing")] } },
+    body: [txt("body")],
+  }))
+  has(s: full, pattern: "<section class=\"el-card\" data-card-edge=\"bar\">")
+    && has(s: full, pattern: "<div class=\"el-card-label-row\"><h2 class=\"el-card-label\">Description</h2><div class=\"el-card-trailing\">trailing</div></div>body</section>")
+}
+
+test fn card_without_a_label_row_renders_none() -> Bool {
+  let plain = html(node: card(input: Card { edge: CardEdgePlain, label_row: Absent, body: [txt("body")] }))
+  let labelled = html(node: card(input: Card { edge: CardEdgePlain, label_row: Present { value: CardLabelRow { label: "Comments", trailing: [] } }, body: [] }))
+  plain == "<section class=\"el-card\" data-card-edge=\"plain\">body</section>"
+    && has(s: labelled, pattern: "<h2 class=\"el-card-label\">Comments</h2></div>")
+    && !has(s: labelled, pattern: "el-card-trailing")
+}
+
+test fn card_rules_draw_the_measured_card() -> Bool {
+  let css = serialize_rules(rules: card_rules())
+  has(s: css, pattern: ".el-card { --issue-action-ink: var(--issue-action); min-width: var(--space-0); background: var(--issue-surface); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-4); padding: var(--space-16); font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 400; color: var(--issue-text);")
+    && has(s: css, pattern: ".el-card[data-card-edge=\"bar\"] { border-left: var(--border-4) solid var(--issue-leading-bar) }")
+    && has(s: css, pattern: ".el-card-label-row { display: flex; align-items: center; gap: var(--space-8); min-height: var(--h-card-label-row) }")
+    && has(s: css, pattern: ".el-card-label { margin: var(--space-0); font-family: var(--font-sans); font-size: var(--text-11); line-height: var(--leading-15); font-weight: 500; color: var(--issue-text); text-transform: uppercase; letter-spacing: var(--tracking-80) }")
+}
+
+// SectionHeading.
+test fn section_heading_formats_the_counts_it_is_given() -> Bool {
+  html(node: section_heading(input: SectionHeading { text: "Acceptance criteria", count: SectionUncounted })) == "<h3 class=\"el-section-heading\">Acceptance criteria</h3>"
+    && html(node: section_heading(input: SectionHeading { text: "Parent", count: SectionCounted { n: 1 } })) == "<h3 class=\"el-section-heading\">Parent (1)</h3>"
+    && html(node: section_heading(input: SectionHeading { text: "Sub-issues", count: SectionCountedOfTotal { n: 1, total: 3 } })) == "<h3 class=\"el-section-heading\">Sub-issues (1/3)</h3>"
+}
+
+test fn section_heading_rule_is_the_section_heading_role() -> Bool {
+  serialize_rules(rules: section_heading_rules()) == ".el-section-heading { margin: var(--space-8) var(--space-0); font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 700; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal }"
+}
+
+// StatusChip.
+fn chip_is(status_html: String, form: String, label: String) -> Bool {
+  status_html == join(["<span class=\"el-status-chip\" data-status-form=\"", form, "\">", label, "</span>"], "")
+}
+
+test fn status_chip_renders_every_status_in_its_form() -> Bool {
+  chip_is(status_html: html(node: status_chip(status: DisplayReady)), form: "ready", label: "Ready")
+    && chip_is(status_html: html(node: status_chip(status: DisplayAssigned)), form: "assigned", label: "Assigned")
+    && chip_is(status_html: html(node: status_chip(status: DisplayActive)), form: "assigned", label: "Active")
+    && chip_is(status_html: html(node: status_chip(status: DisplayReview)), form: "assigned", label: "Review")
+    && chip_is(status_html: html(node: status_chip(status: DisplayBlocked)), form: "blocked", label: "Blocked")
+    && chip_is(status_html: html(node: status_chip(status: DisplayReturned)), form: "blocked", label: "Returned")
+    && chip_is(status_html: html(node: status_chip(status: DisplayDone)), form: "filled", label: "Done")
+    && chip_is(status_html: html(node: status_chip(status: DisplaySuperseded)), form: "quiet", label: "Superseded")
+    && chip_is(status_html: html(node: status_chip(status: DisplayUnknown)), form: "quiet", label: "Unknown")
+}
+
+test fn status_chip_rules_draw_the_measured_chip_and_its_three_forms() -> Bool {
+  let css = serialize_rules(rules: status_chip_rules())
+  has(s: css, pattern: ".el-status-chip { --el-status-chip-ring: var(--issue-text-dim); --el-status-chip-fill: var(--issue-bg-subtle); display: inline-flex; align-items: center; height: var(--h-chip); padding: var(--space-0) var(--space-4); border-radius: var(--radius-4); background: var(--el-status-chip-fill); box-shadow: inset 0 0 0 var(--border-1) var(--el-status-chip-ring); white-space: nowrap; font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22); font-weight: 400;")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"filled\"] { --el-status-chip-fill: var(--issue-text-dim); color: var(--issue-surface) }")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"ready\"] { --el-status-chip-ring: var(--status-ready-ink); --el-status-chip-fill: color-mix(in srgb, var(--status-ready-ink) 12%, var(--issue-surface)) }")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"assigned\"] { --el-status-chip-ring: var(--status-assigned-ink);")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"blocked\"] { --el-status-chip-ring: var(--status-blocked-ink);")
+}
+
+// Button.
+test fn button_renders_its_idiom_size_and_availability() -> Bool {
+  html(node: button(input: Button { label: "Add", idiom: IssueButtonContainedPrimary, size: ButtonSmall, availability: IssueActionEnabled }))
+      == "<button class=\"el-button\" type=\"button\" data-button-idiom=\"contained-primary\" data-button-size=\"small\">Add</button>"
+    && has(s: html(node: button(input: Button { label: "Comment", idiom: IssueButtonOutlined, size: ButtonRegular, availability: IssueActionDisabled })),
+      pattern: "<button class=\"el-button\" type=\"button\" data-button-idiom=\"outlined\" data-button-size=\"regular\" disabled")
+    && has(s: html(node: button(input: Button { label: "More", idiom: IssueButtonText, size: ButtonRegular, availability: IssueActionEnabled })), pattern: "data-button-idiom=\"text\"")
+}
+
+test fn button_rules_draw_the_two_sizes_and_three_idioms() -> Bool {
+  let css = serialize_rules(rules: button_rules())
+  has(s: css, pattern: ".el-button { display: inline-flex; align-items: center; justify-content: center; height: var(--h-button); min-height: var(--h-button); padding: var(--space-0) var(--space-12); border: var(--border-1) solid transparent; border-radius: var(--radius-4); background: transparent; cursor: pointer; white-space: nowrap; font-family: var(--font-heading); font-size: var(--text-14); line-height: var(--leading-20); font-weight: 500; color: var(--issue-action-ink);")
+    && has(s: css, pattern: ".el-button[data-button-size=\"small\"] { height: var(--h-button-small); min-height: var(--h-button-small); padding: var(--space-0) var(--space-10); font-size: var(--text-13) }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"contained-primary\"] { background: var(--issue-action); color: var(--issue-on-action) }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"outlined\"] { background: var(--issue-surface); border-color: var(--issue-border) }")
+    && has(s: css, pattern: ".el-button:disabled { color: color-mix(in srgb, var(--issue-text) 38%, transparent); cursor: default }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"contained-primary\"]:disabled { background: color-mix(in srgb, var(--issue-text) 12%, transparent) }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"contained-primary\"]:enabled:hover { background: var(--issue-action-hover) }")
+    && has(s: css, pattern: ".el-button:focus-visible { outline: var(--border-2) solid var(--issue-action); outline-offset: var(--space-2) }")
+}
+
+// Tokens. The adopted values are the rulings of the element spec (R3 and section 1).
+test fn element_tokens_carry_the_adopted_radius_and_heights() -> Bool {
+  let css = serialize_decls(decls: element_token_decls())
+  has(s: css, pattern: "--radius-4: 4px")
+    && has(s: css, pattern: "--radius-2: 2px")
+    && has(s: css, pattern: "--h-chip: 22px")
+    && has(s: css, pattern: "--h-button-small: 24px")
+    && has(s: css, pattern: "--h-button: 32px")
+    && has(s: css, pattern: "--h-tab: 34px")
+    && has(s: css, pattern: "--h-relation-row: 32px")
+    && has(s: css, pattern: "--h-grid-row: 36px")
+    && has(s: css, pattern: "--h-bar: 48px")
+    && has(s: css, pattern: "--h-card-label-row: 36px")
+}
+
+test fn element_tokens_add_only_what_the_shared_scale_lacks() -> Bool {
+  let css = serialize_decls(decls: element_token_decls())
+  has(s: css, pattern: "--space-10: 10px")
+    && has(s: css, pattern: "--border-4: 4px")
+    && has(s: css, pattern: "--leading-15: 15px")
+    && has(s: css, pattern: "--leading-24: 24px")
+    && has(s: css, pattern: "--font-code: monospace")
+    && has(s: css, pattern: "--font-heading: Google Sans, Roboto, Arial, sans-serif")
+    && has(s: css, pattern: "--tracking-80: 0.80px")
+    && !has(s: css, pattern: "--space-16:")
+    && !has(s: css, pattern: "--text-13:")
+    && !has(s: css, pattern: "--border-1:")
+    && count(split(s: css, delimiter: "--leading-18:")) == 2
+}
+
+// Text roles.
+fn role_css(decls: List<CssDecl>) -> String {
+  serialize_decls(decls: decls)
+}
+
+test fn text_roles_body_label_and_headings() -> Bool {
+  role_css(decls: element_text_decls(role: ElementBody)) == "font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 400; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementLabel)) == "font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-16); font-weight: 500; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementCardLabel)) == "font-family: var(--font-sans); font-size: var(--text-11); line-height: var(--leading-15); font-weight: 500; color: var(--issue-text); text-transform: uppercase; letter-spacing: var(--tracking-80)"
+    && role_css(decls: element_text_decls(role: ElementSectionHeading)) == "font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 700; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementProseHeading)) == "font-family: var(--font-sans); font-size: var(--text-18); line-height: var(--leading-24); font-weight: 500; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+}
+
+test fn text_roles_control_title_identifier_and_code() -> Bool {
+  role_css(decls: element_text_decls(role: ElementControl)) == "font-family: var(--font-heading); font-size: var(--text-14); line-height: var(--leading-20); font-weight: 500; color: var(--issue-action-ink); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_control_small_size_decls()) == "font-size: var(--text-13)"
+    && role_css(decls: element_text_decls(role: ElementTitle)) == "font-family: var(--font-heading); font-size: var(--text-18); line-height: var(--leading-24); font-weight: 400; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementIdentifier)) == "font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22); font-weight: 400; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementCode)) == "font-family: var(--font-code); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 400; color: var(--issue-code-ink); text-transform: none; letter-spacing: normal"
+}
+
+// Palette.
+test fn palette_day_is_the_measured_light_palette_with_the_link_adoption() -> Bool {
+  let css = serialize_decls(decls: palette_decls(night: false))
+  has(s: css, pattern: "--issue-text: #202124")
+    && has(s: css, pattern: "--issue-text-dim: #5f6368")
+    && has(s: css, pattern: "--issue-border: #dadce0")
+    && has(s: css, pattern: "--issue-action: #1a73e8")
+    && has(s: css, pattern: "--issue-ground: #f8f9fa")
+    && has(s: css, pattern: "--issue-surface: #ffffff")
+    && has(s: css, pattern: "--issue-link: #1967d2")
+    && has(s: css, pattern: "--issue-action-ink: var(--issue-link)")
+}
+
+test fn palette_night_is_the_measured_dark_palette() -> Bool {
+  let css = serialize_decls(decls: palette_decls(night: true))
+  has(s: css, pattern: "--issue-text: #ffffff")
+    && has(s: css, pattern: "--issue-text-dim: #9aa0a6")
+    && has(s: css, pattern: "--issue-border: #3c4043")
+    && has(s: css, pattern: "--issue-action: #8ab4f8")
+    && has(s: css, pattern: "--issue-ground: #18191b")
+    && has(s: css, pattern: "--issue-surface: #18191b")
+    && has(s: css, pattern: "--issue-bg-subtle: #242528")
+    && has(s: css, pattern: "--issue-leading-bar: #1a73e8")
+}
+
+// Colours are approved as pairings: the action colour clears AA for body-size text on a card and
+// not on the ground, which is why link-coloured text on the ground takes the link slot.
+fn pairing_clears_text_aa(figure: Srgb8, ground: Srgb8) -> Bool {
+  match grade_pairing(figure: Swatch { name: "figure", color: figure }, ground: Swatch { name: "ground", color: ground }) {
+    Present { value: p } => grade_rank(g: p.grade) >= grade_rank(g: TextAa)
+    Absent => false
+  }
+}
+
+test fn link_pairing_on_the_ground_clears_aa_where_the_action_colour_does_not() -> Bool {
+  pairing_clears_text_aa(figure: palette_day(slot: SlotLink), ground: palette_day(slot: SlotGround))
+    && pairing_clears_text_aa(figure: palette_day(slot: SlotAction), ground: palette_day(slot: SlotSurface))
+    && !pairing_clears_text_aa(figure: palette_day(slot: SlotAction), ground: palette_day(slot: SlotGround))
+}
+
+// The specimen route.
+fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
+  match roadmap_serve_route_table_build() {
+    ServedRouteTableBuilt { table: t } => t
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+  }
+}
+
+test fn specimen_route_selects_the_specimen_handler() -> Bool {
+  match serve_select_route(table: live_table_or_empty(), method: GET, path: specimen_route_path) {
+    SelectedDynamic { handler: h, params: _ } => h == SpecimenPageHandler
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// The specimen is built from the production elements: every registered element's class reaches
+// the served content. Removing an element from the page turns this red.
+test fn specimen_content_is_built_from_every_registered_element() -> Bool {
+  match try_serialize_html_source(node: Element { tag: "div", attributes: [], children: specimen_content() }) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => all(element_styles(), s => has(s: h, pattern: join(["class=\"", s.class_name, "\""], "")))
+  }
+}
+
+// Ownership guards.
+fn style_selectors(style: ElementStyle) -> List<String> {
+  map(style.rules, r => rule_selector(rule: r))
+}
+
+fn selector_names_class(selector: String, class_name: String) -> Bool {
+  has(s: selector, pattern: join([".", class_name], ""))
+}
+
+fn style_owns_its_selectors(style: ElementStyle, all_styles: List<ElementStyle>) -> Bool {
+  all(style_selectors(style: style), sel =>
+    selector_names_class(selector: sel, class_name: style.class_name)
+      && all(all_styles, other => other.class_name == style.class_name || !selector_names_class(selector: sel, class_name: other.class_name)))
+}
+
+fn styles_have_one_owner_each(styles: List<ElementStyle>) -> Bool {
+  count(distinct_by_key(xs: styles, key: s => s.class_name)) == count(styles)
+    && all(styles, s => style_owns_its_selectors(style: s, all_styles: styles))
+}
+
+test fn each_element_class_is_declared_by_one_element_module() -> Bool {
+  styles_have_one_owner_each(styles: element_styles())
+}
+
+test fn a_rule_reaching_into_another_element_is_reported() -> Bool {
+  let rogue = StaticRule { selector: RawSelector { text: ".el-card .el-button" }, decls: [decl(prop: Padding, value: "0")] }
+  let stolen = StaticRule { selector: RawSelector { text: ".el-button" }, decls: [decl(prop: Color, value: "inherit")] }
+  !styles_have_one_owner_each(styles: concat(element_styles(), [ElementStyle { class_name: "el-card", rules: [] }]))
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-card", rules: [rogue] }, ElementStyle { class_name: "el-button", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-card", rules: [stolen] }, ElementStyle { class_name: "el-button", rules: [] }])
+}
+
+test fn the_specimen_page_styles_no_element_internals() -> Bool {
+  all(specimen_layout_rules(), r => all(element_styles(), s => !selector_names_class(selector: rule_selector(rule: r), class_name: s.class_name)))
+}
+
+test fn element_rules_carry_no_literal_colour_or_raw_length() -> Bool {
+  count(unthemed_color_decls(rules: element_rules())) == 0
+    && count(untokened_length_decls(rules: element_rules())) == 0
+}

@@ -1,0 +1,300 @@
+module gunbc.site.specimen
+
+import std.types { Int, List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.site.document { SiteStyles, site_document, site_styles, site_extend_styles }
+import extdeps.google.issue_tracker {
+  IssueTrackerVisualCapture, issue_tracker_visual_capture, issue_tracker_interface_version,
+  IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
+  IssueActionAvailability, IssueActionEnabled, IssueActionDisabled,
+}
+import gunbc.roadmap_issue_status { issue_display_statuses }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_value_wire, space_0, space_2, space_8 }
+import gunbc.site.element.tokens { ElementHeightRow, element_height_rows, card_outer_margin, card_border, radius_code }
+import gunbc.site.element.palette { palette_var, SlotGround, SlotSubtle, SlotBorder }
+import gunbc.site.element.text {
+  ElementText, element_text_roles, element_text_name, element_text_decls,
+  ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl, ElementTitle,
+  ElementProseHeading, ElementIdentifier, ElementCode,
+}
+import gunbc.site.element.styles { element_rules, element_themes }
+import gunbc.site.element.card { Card, CardLabelRow, CardEdgePlain, CardEdgeBar, card }
+import gunbc.site.element.section_heading {
+  SectionHeading, SectionUncounted, SectionCounted, SectionCountedOfTotal, section_heading,
+}
+import gunbc.site.element.status_chip { status_chip }
+import gunbc.site.element.button { Button, ButtonSize, ButtonSmall, ButtonRegular, button }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, BorderRadius, BoxShadow, Display, FlexDirection, FlexWrap, Gap, GridTemplateColumns,
+  Height, Margin, MinHeight, Padding, RawProperty,
+}
+
+// The specimen: every element of the internal tools frontend in every variant, built only from
+// the production element functions, on one page. It is where an element is looked at before a
+// page adopts it, and it is the first consumer of the foundations (the measured upstream facts,
+// the palette, the tokens, the text roles). The classes declared here place and caption the
+// specimens; none of them reaches inside an element.
+data specimen_route_path: String = "/specimen"
+
+data specimen_page_class: String = "specimen-page"
+data specimen_row_class: String = "specimen-row"
+data specimen_note_class: String = "specimen-note"
+data specimen_role_class: String = "specimen-role"
+data specimen_text_class: String = "specimen-text"
+data specimen_text_role_attribute: String = "data-text-role"
+data specimen_height_class: String = "specimen-height"
+data specimen_height_attribute: String = "data-height"
+
+fn specimen_row(children: List<Fragment>) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: specimen_row_class)], children)
+}
+
+fn specimen_note(text: String) -> Fragment {
+  el_attrs("p", [attr(name: "class", value: specimen_note_class)], [txt(text)])
+}
+
+fn specimen_section(label: String, body: List<Fragment>) -> Fragment {
+  card(input: Card {
+    edge: CardEdgePlain,
+    label_row: Present { value: CardLabelRow { label: label, trailing: [] } },
+    body: body,
+  })
+}
+
+fn specimen_source_text(c: IssueTrackerVisualCapture) -> String {
+  join([
+    "Measured on ", c.origin.uri.locator as String, ", ", c.session as String, ", at ",
+    to_string(c.viewport_width_px), " by ", to_string(c.viewport_height_px),
+    " CSS px, captured ", c.captured_on as String, ". Captures: ", c.local_copy.uri.locator as String,
+    "; shared copy: https://", c.shared_copy.uri.locator as String, ". Upstream model version ",
+    issue_tracker_interface_version as String, ".",
+  ], "")
+}
+
+fn specimen_source_section() -> Fragment {
+  specimen_section(label: "Source", body: [
+    el_attrs("p", [], [txt(specimen_source_text(c: issue_tracker_visual_capture))]),
+  ])
+}
+
+fn specimen_text_row(role: ElementText) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: specimen_role_class)], [
+    specimen_note(text: element_text_name(role: role)),
+    el_attrs("span", [
+      attr(name: "class", value: specimen_text_class),
+      attr(name: specimen_text_role_attribute, value: element_text_name(role: role)),
+    ], [txt("Issue tracker specimen text 0123456789")]),
+  ])
+}
+
+fn specimen_text_section() -> Fragment {
+  specimen_section(label: "Text roles", body: map(element_text_roles, r => specimen_text_row(role: r)))
+}
+
+fn specimen_status_section() -> Fragment {
+  specimen_section(label: "Status chip", body: [
+    specimen_row(children: map(issue_display_statuses, s => status_chip(status: s))),
+  ])
+}
+
+data specimen_button_idioms: List<IssueActionButtonIdiom> = [IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText]
+
+fn specimen_button_label(idiom: IssueActionButtonIdiom) -> String {
+  match idiom {
+    IssueButtonContainedPrimary => "Filled"
+    IssueButtonOutlined => "Outlined"
+    IssueButtonText => "Text"
+  }
+}
+
+fn specimen_button_row(size: ButtonSize, availability: IssueActionAvailability) -> Fragment {
+  specimen_row(children: map(specimen_button_idioms, i => button(input: Button {
+    label: specimen_button_label(idiom: i),
+    idiom: i,
+    size: size,
+    availability: availability,
+  })))
+}
+
+fn specimen_button_section() -> Fragment {
+  specimen_section(label: "Button", body: [
+    specimen_note(text: "Regular"),
+    specimen_button_row(size: ButtonRegular, availability: IssueActionEnabled),
+    specimen_note(text: "Regular, unavailable"),
+    specimen_button_row(size: ButtonRegular, availability: IssueActionDisabled),
+    specimen_note(text: "Small"),
+    specimen_button_row(size: ButtonSmall, availability: IssueActionEnabled),
+    specimen_note(text: "Small, unavailable"),
+    specimen_button_row(size: ButtonSmall, availability: IssueActionDisabled),
+  ])
+}
+
+fn specimen_heading_section() -> Fragment {
+  specimen_section(label: "Section heading", body: [
+    section_heading(input: SectionHeading { text: "Acceptance criteria", count: SectionUncounted }),
+    section_heading(input: SectionHeading { text: "Parent", count: SectionCounted { n: 1 } }),
+    section_heading(input: SectionHeading { text: "Sub-issues", count: SectionCountedOfTotal { n: 1, total: 3 } }),
+  ])
+}
+
+fn specimen_card_body(text: String) -> List<Fragment> {
+  [el_attrs("p", [], [txt(text)])]
+}
+
+fn specimen_card_section() -> Fragment {
+  specimen_section(label: "Card", body: [
+    specimen_row(children: [
+      card(input: Card { edge: CardEdgePlain, label_row: Absent, body: specimen_card_body(text: "A plain card.") }),
+      card(input: Card { edge: CardEdgeBar, label_row: Absent, body: specimen_card_body(text: "A card with a leading bar.") }),
+      card(input: Card {
+        edge: CardEdgePlain,
+        label_row: Present { value: CardLabelRow { label: "Description", trailing: [] } },
+        body: specimen_card_body(text: "A card with a label row."),
+      }),
+      card(input: Card {
+        edge: CardEdgeBar,
+        label_row: Present { value: CardLabelRow { label: "Status update", trailing: [
+          button(input: Button { label: "More details", idiom: IssueButtonText, size: ButtonSmall, availability: IssueActionEnabled }),
+        ] } },
+        body: specimen_card_body(text: "A card with a leading bar, a label row and a trailing control."),
+      }),
+    ]),
+  ])
+}
+
+fn specimen_measured_text(measured_px: Int?) -> String {
+  match measured_px {
+    Present { value: px } => join([to_string(px), "px measured"], "")
+    Absent => "no upstream measurement"
+  }
+}
+
+fn specimen_height_text(row: ElementHeightRow) -> String {
+  join([row.label, ": ", scale_value_wire(v: row.token.value), " adopted, ", specimen_measured_text(measured_px: row.measured_px)], "")
+}
+
+fn specimen_height_row(row: ElementHeightRow) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: specimen_height_class),
+    attr(name: specimen_height_attribute, value: row.token.name),
+  ], [txt(specimen_height_text(row: row))])
+}
+
+fn specimen_height_section() -> Fragment {
+  specimen_section(label: "Heights", body: map(element_height_rows(), r => specimen_height_row(row: r)))
+}
+
+// The composite: one card with a leading bar and a label row carrying a trailing control, holding
+// a section heading, a chip for every status and a row of buttons.
+fn specimen_composite() -> Fragment {
+  card(input: Card {
+    edge: CardEdgeBar,
+    label_row: Present { value: CardLabelRow { label: "Composite", trailing: [
+      button(input: Button { label: "More details", idiom: IssueButtonText, size: ButtonSmall, availability: IssueActionEnabled }),
+    ] } },
+    body: [
+      section_heading(input: SectionHeading { text: "Sub-issues", count: SectionCountedOfTotal { n: 1, total: 3 } }),
+      specimen_row(children: map(issue_display_statuses, s => status_chip(status: s))),
+      specimen_row(children: [
+        button(input: Button { label: "Add", idiom: IssueButtonContainedPrimary, size: ButtonSmall, availability: IssueActionEnabled }),
+        button(input: Button { label: "Add parent", idiom: IssueButtonOutlined, size: ButtonSmall, availability: IssueActionEnabled }),
+        button(input: Button { label: "Display 3 more", idiom: IssueButtonText, size: ButtonSmall, availability: IssueActionEnabled }),
+      ]),
+    ],
+  })
+}
+
+fn specimen_content() -> List<Fragment> {
+  [
+    el_attrs("main", [attr(name: "class", value: specimen_page_class)], [
+      specimen_source_section(),
+      specimen_composite(),
+      specimen_text_section(),
+      specimen_status_section(),
+      specimen_button_section(),
+      specimen_heading_section(),
+      specimen_card_section(),
+      specimen_height_section(),
+    ]),
+  ]
+}
+
+// What the specimen adds around a role's sample. Code is shown as the product shows inline code:
+// on the subtle ground, with the code radius and a hair of side padding.
+fn specimen_text_setting_decls(role: ElementText) -> List<CssDecl> {
+  match role {
+    ElementCode => [
+      decl(prop: Background, value: palette_var(slot: SlotSubtle)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_code)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_2)),
+    ]
+    ElementBody => []
+    ElementLabel => []
+    ElementCardLabel => []
+    ElementSectionHeading => []
+    ElementControl => []
+    ElementTitle => []
+    ElementProseHeading => []
+    ElementIdentifier => []
+  }
+}
+
+fn specimen_text_rule(role: ElementText) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([".", specimen_text_class, "[", specimen_text_role_attribute, "=\"", element_text_name(role: role), "\"]"], "") }, decls: concat(element_text_decls(role: role), specimen_text_setting_decls(role: role)) }
+}
+
+fn specimen_height_rule(row: ElementHeightRow) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([".", specimen_height_class, "[", specimen_height_attribute, "=\"", row.token.name, "\"]"], "") }, decls: [
+    decl(prop: Height, value: scale_var(t: row.token)),
+  ] }
+}
+
+fn specimen_layout_rules() -> List<BuildRule> {
+  concat([
+    StaticRule { selector: ClassSelector { name: specimen_page_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: card_outer_margin)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+      decl(prop: MinHeight, value: "100vh"),
+      decl(prop: Background, value: palette_var(slot: SlotGround)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_row_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_note_class }, decls: element_text_decls(role: ElementLabel) },
+    StaticRule { selector: ClassSelector { name: specimen_role_class }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "16ch minmax(0, 1fr)"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: RawProperty { name: "justify-items" }, value: "start"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_height_class }, decls: concat([
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+      decl(prop: Background, value: palette_var(slot: SlotSubtle)),
+      decl(prop: BoxShadow, value: join(["inset 0 0 0 ", scale_var(t: card_border), " ", palette_var(slot: SlotBorder)], "")),
+    ], element_text_decls(role: ElementBody)) },
+  ], concat(
+    map(element_text_roles, r => specimen_text_rule(role: r)),
+    map(element_height_rows(), r => specimen_height_rule(row: r))))
+}
+
+fn specimen_styles() -> SiteStyles {
+  site_extend_styles(base: site_styles(rules: element_rules()), rules: specimen_layout_rules(), themes: element_themes())
+}
+
+fn specimen_page() -> Fragment {
+  site_document(title: "gunbc — specimen", heading: "specimen", styles: specimen_styles(), content: specimen_content())
+}

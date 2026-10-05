@@ -9,6 +9,7 @@ import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web
 import extdeps.languages.json.emit { JsonNull }
 
 import gunbc.site.document { site_document }
+import gunbc.site.specimen { specimen_route_path, specimen_page }
 import gunbc.site.markup { el, txt }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
 import gunbc.site.controls { site_client_path, site_client_source }
@@ -285,6 +286,7 @@ type RoadmapServeHandler
   | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
+  | SpecimenPageHandler
   | DispatchJsonHandler
   | HealthzHandler
   | DashboardInstanceHandler
@@ -364,6 +366,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: web_font_stylesheet_path(), handler: WebFontStylesheetHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
+    ServedRouteSpec { method: GET, raw: specimen_route_path, handler: SpecimenPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     ServedRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
@@ -1260,6 +1263,7 @@ fn roadmap_serve_invoke_over(
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
+    SpecimenPageHandler => serve_page_response(page: specimen_page())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
