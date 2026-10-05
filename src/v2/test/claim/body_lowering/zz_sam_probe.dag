@@ -3,7 +3,7 @@ module v2.test.claim.body_lowering.zz_sam_probe
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.reference_conservation { reference_conservation_of_subject, dag_declared_token_classes }
 import v2.std.node { symbol_lexeme }
-import std.algebra { fold_list }
+import v2.std.algebra { fold_list }
 
 data p3: String = "module m.t\ntype T = A | B | C\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    B => 2\n    _ => 3\n  }\n}\n"
 data p2: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    _ => 2\n  }\n}\n"
