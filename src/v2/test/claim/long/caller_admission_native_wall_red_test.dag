@@ -19,19 +19,25 @@ module v2.test.claim.long.caller_admission_native_wall_red
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import std.content_hash { Fnv1a64Structural }
+import std.occurrence_identity { OccurrenceIdAllocator }
 import std.process { ProcessExit, exit_failure }
+import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional }
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar, program_assembly_normalized_outcome, program_assembly_phase_normalize_seeded }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, dag_lex }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.text { String, concat }
+import v2.std.text { String }
 
 // THE CROSS-MODULE PEER: the sealed fn in module aca, naming its one permitted caller by the
 // caller's OWN module path and declaration name.
@@ -102,11 +108,138 @@ test fn the_native_route_refuses_an_outside_cross_module_call_holds() -> Bool {
 // claim's assertion against the real pipeline verdict.
 fn dbg_red_reason() -> ProcessExit {
   match wall_red_assembled(subject_src: wall_red_subject_text(), peer_src: wall_red_peer_text()) {
-    Rejected { diagnostics: d } => exit_failure(reason: concat("ASSEMBLE:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))))
+    Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_list(prefix: "ASSEMBLE-BOTH", d: d))
     Accepted { value: rt, diagnostics: _ } =>
       match infer(tree: rt) {
-        Rejected { diagnostics: d } => exit_failure(reason: concat("INFER:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))))
+        Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_list(prefix: "INFER-BOTH", d: d))
         Accepted { value: _, diagnostics: _ } => exit_failure(reason: "ACCEPTED-NO-DIAGS")
       }
+  }
+}
+
+fn dbg_reasons_list(prefix: Symbol, d: NonEmptyDiagnostics) -> String {
+  fold_list(
+    xs: d.tail,
+    empty: symbol_lexeme(sym: prefix) + ":" + symbol_lexeme(sym: d.head.reason),
+    cons: fn(acc, diag) { acc + "," + symbol_lexeme(sym: diag.reason) }
+  )
+}
+
+// DBG-PROBE (temporary): the peer module alone through normalize, then the clause shell's anatomy —
+// pins whether the authored spine changed shape on main (#12050 parser-owned projection roster).
+fn dbg_peer_clause_anat() -> ProcessExit {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "GRAMMAR", d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: wall_red_peer_text(), file: ^wall_red_peer_fixture, rules: dag_lex()) {
+        Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "PEER-TOKENIZE", d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match program_assembly_normalized_outcome(
+            phase: program_assembly_phase_normalize_seeded(
+              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
+              seed: OccurrenceIdAllocator { next_id: 10 },
+              scope: Fnv1a64Structural { digest: "00000000000000ad" }
+            )
+          ) {
+            Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "PEER-NORMALIZE", d: d))
+            Accepted { value: t, diagnostics: _ } =>
+              match body_lower_find_production_shell_optional(root: t.root, emitted: ^dag_surface_admit_callers_clause) {
+                Absent => exit_failure(reason: "PEER-NO-CLAUSE-SHELL")
+                Present { value: clause } => exit_failure(reason: concat("PEER-CLAUSE ", dbg_anat_deep(n: clause, depth: 26)))
+              }
+          }
+      }
+  }
+}
+
+// DBG-PROBE (temporary): a trivial fn (no admit clause) through the same normalize — isolates whether
+// the fixture text or the clause itself is refused.
+fn dbg_trivial_normalize() -> ProcessExit {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "GRAMMAR", d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: "module aca\n\nfn sealed_mint(n: Int) -> Int = n + 1\n", file: ^dbg_trivial_fixture, rules: dag_lex()) {
+        Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "TRIVIAL-TOKENIZE", d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match program_assembly_normalized_outcome(
+            phase: program_assembly_phase_normalize_seeded(
+              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
+              seed: OccurrenceIdAllocator { next_id: 10 },
+              scope: Fnv1a64Structural { digest: "00000000000000ad" }
+            )
+          ) {
+            Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "TRIVIAL-NORMALIZE", d: d))
+            Accepted { value: _, diagnostics: _ } => exit_failure(reason: "TRIVIAL-PASSED")
+          }
+      }
+  }
+}
+
+fn dbg_reasons_full(prefix: Symbol, d: NonEmptyDiagnostics) -> String {
+  fold_list(
+    xs: d.tail,
+    empty: dbg_one_diag(prefix: prefix, d: d.head),
+    cons: fn(acc, diag) { acc + " | " + dbg_one_diag(prefix: prefix, d: diag) }
+  )
+}
+
+fn dbg_one_diag(prefix: Symbol, d: Diagnostic) -> String {
+  symbol_lexeme(sym: prefix) + ":" + symbol_lexeme(sym: d.reason) + "@" + dbg_locus_tag(l: d.at)
+}
+
+fn dbg_locus_tag(l: Locus) -> String {
+  match l {
+    Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
+    NodeLocus { anchor: a } => dbg_anchor_tag(a: a)
+    SourcePortLocus { anchor: a, file: f, extent: _ } => symbol_lexeme(sym: f) + "#" + dbg_anchor_tag(a: a)
+    InvariantPortLocus { anchor: a, invariant: i } => symbol_lexeme(sym: i) + "#" + dbg_anchor_tag(a: a)
+    DeclarationLocus { declaration: d } => dbg_decl_tag(d: d)
+  }
+}
+
+fn dbg_anchor_tag(a: LocusAnchor<Node>) -> String {
+  dbg_anat_label(n: a.at)
+}
+
+fn dbg_decl_tag(d: FreeMonoid<Symbol>) -> String {
+  fold(xs: d, init: "", f: fn(acc, s) { acc + "." + symbol_lexeme(sym: s) })
+}
+
+fn dbg_anat_deep(n: Node, depth: Int) -> String {
+  if depth == 0 {
+    dbg_anat_label(n: n)
+  } else {
+    concat(
+      dbg_anat_label(n: n),
+      "[",
+      fold(xs: n.children, init: "", f: fn(acc, e) { concat(acc, " ", dbg_anat_edge_label(e: e), "=", dbg_anat_deep(n: e.target, depth: depth - 1)) }),
+      "]"
+    )
+  }
+}
+
+fn dbg_anat_label(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => concat("atom:", symbol_lexeme(sym: id))
+    TypeNode { connective: Conj } => "conj"
+    TypeNode { connective: Disj } => "disj"
+    TypeNode { connective: Arrow } => "arrow"
+    TypeNode { connective: Cardinality } => "card"
+    TypeNode { connective: Instantiation } => "inst"
+    ComputationNode { behavior: Value } => "comp:value"
+    ComputationNode { behavior: Transform } => "comp:transform"
+    ComputationNode { behavior: Branch } => "comp:branch"
+    ComputationNode { behavior: Loop } => "comp:loop"
+    ComputationNode { behavior: Bind } => "comp:bind"
+    ComputationNode { behavior: Match } => "comp:match"
+  }
+}
+
+fn dbg_anat_edge_label(e: Edge) -> String {
+  match e.label {
+    Authored { name: sym } => concat("@", symbol_lexeme(sym: sym))
+    StructuralLabel { label: CoreMarker { marker: _ } } => "core"
+    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => "prod"
+    Positional => "*"
   }
 }

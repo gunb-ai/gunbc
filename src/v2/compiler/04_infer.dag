@@ -76,7 +76,7 @@ import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construc
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
-import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, Found, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
+import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, Found, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -712,7 +712,7 @@ fn infer_product_child_evidence_edges(
   infer_formation_child_evidence_edges(
     children: node.children,
     entries: entries,
-    is_metadata: fn(edge) { arrow_signature_order_edge(parent: node, edge: edge) || arrow_named_edge_is_contract(e: edge) }
+    is_metadata: fn(edge) { arrow_signature_order_edge(parent: node, edge: edge) || arrow_named_edge_is_metadata(e: edge) }
   )
 }
 
@@ -5302,7 +5302,7 @@ fn infer_gather_fold_step(
   if acc.failed {
     acc
   } else if arrow_signature_order_edge(parent: acc.node, edge: edge)
-    || arrow_named_edge_is_contract(e: edge)
+    || arrow_named_edge_is_metadata(e: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
     || match_arm_pattern_edge(parent: acc.node, edge: edge)
     || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
@@ -6557,9 +6557,10 @@ type InferAdmitEntry
   = AdmitEntryCoords { coords: InferAdmitCallerCoords }
   | AdmitEntryUninterpretable
 
-// THE RECORD SHAPE DEMAND: [ *decl_ref, module_path -> atom, decl_name -> atom ] — the POSITIONAL
-// operator edge demands the authored spelling (^decl_ref, v1's gate: only a decl_ref call states
-// coordinates), and both atom identities must be present. Absent = the child is not such a record.
+// THE RECORD SHAPE DEMAND: [ decl_ref -> atom(^decl_ref), module_path -> atom, decl_name -> atom ] —
+// the AUTHORED operator edge demands the authored spelling (^decl_ref, v1's gate: only a decl_ref
+// call states coordinates), and both atom identities must be present. Absent = the child is not such
+// a record.
 fn infer_admit_record_check(record: Node) -> Optional<InferAdmitCallerCoords> {
   match infer_admit_record_operator_spelling(record: record) {
     Absent => optional_absent()
@@ -6576,25 +6577,29 @@ fn infer_admit_record_check(record: Node) -> Optional<InferAdmitCallerCoords> {
   }
 }
 
-// THE RECORD'S OPERATOR SPELLING: the POSITIONAL child the lowering carried from the authored call
-// must be the ^decl_ref atom. A record without it is not a decl_ref call's image.
+// THE RECORD'S OPERATOR SPELLING: the AUTHORED `decl_ref` edge the lowering carried from the authored
+// call must name the ^decl_ref atom. A record without it is not a decl_ref call's image.
 fn infer_admit_record_operator_spelling(record: Node) -> Optional<Symbol> {
   fold(record.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
       Absent =>
         match e.label {
-          Positional =>
-            match infer_admit_atom_identity(node: e.target) {
-              Absent => optional_absent()
-              Present { value: op } =>
-                if symbol_eq(a: op, b: ^decl_ref) {
-                  optional_present(value: op)
-                } else {
-                  optional_absent()
-                }
+          Authored { name: name } =>
+            if symbol_eq(a: name, b: ^decl_ref) {
+              match infer_admit_atom_identity(node: e.target) {
+                Absent => optional_absent()
+                Present { value: op } =>
+                  if symbol_eq(a: op, b: ^decl_ref) {
+                    optional_present(value: op)
+                  } else {
+                    optional_absent()
+                  }
+              }
+            } else {
+              optional_absent()
             }
-          Authored { name: _ } => optional_absent()
+          Positional => optional_absent()
           StructuralLabel { label: _ } => optional_absent()
         }
     }
@@ -6647,40 +6652,48 @@ fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
 }
 
 // THE ROSTER'S RECORDS, read from the core edge target the carrier hung on the Arrow. The carrier
-// re-hung each authored entry as a POSITIONAL child inside a roster conj — a decl_ref call's image
-// is a record conj, an entry that reads but is not such a call is a marker atom the record demand
-// refuses at the entry (DESIGN §5: a failure arm must refuse, never widen). A target that is NOT a
-// conj is the carrier's fail-closed fallback marker — the authored spine did not read — and REFUSES
-// with ^infer_reason_admit_callers_entries_unreadable at the clause: a malformed clause is never a
-// shorter roster, and the refusal names the cause instead of the downstream refused-call verdict.
+// re-hung each authored entry as a record conj in a left-named spine — @left carries the record, @right
+// the rest, the empty conj root ends the spine (a conforming conj: every edge authored and distinct
+// within its node). A decl_ref call's image is a record conj; an entry that reads but is not such a
+// call is a marker record the record demand refuses at the entry (DESIGN §5: a failure arm must
+// refuse, never widen). A target that is NOT a walkable spine is the carrier's fail-closed fallback —
+// the authored spine did not read — and REFUSES with ^infer_reason_admit_callers_entries_unreadable
+// at the clause: a malformed clause is never a shorter roster, and the refusal names the cause instead
+// of the downstream refused-call verdict.
 fn infer_admit_clause_entries(roster: Node) -> Outcome<List<Node>> {
-  match roster.kind {
+  infer_admit_spine_entries(spine: roster)
+}
+
+fn infer_admit_spine_entries(spine: Node) -> Outcome<List<Node>> {
+  match spine.kind {
     TypeNode { connective: Conj } =>
-      fold(roster.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
-        match acc {
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
-          Accepted { value: records, diagnostics: _ } =>
-            match e.label {
-              Positional =>
-                match infer_admit_record_check(record: e.target) {
-                  Absent =>
-                    outcome_rejected(Diagnostic {
-                      reason: ^infer_reason_admit_callers_entry_not_decl_ref,
-                      at: node_locus(node: e.target),
-                      correction: Unavailable { reason: UserInputBoundary }
-                    })
-                  Present { value: _ } =>
-                    outcome_accepted(value: Cons { head: e.target, tail: records })
-                }
-              _ =>
-                outcome_rejected(Diagnostic {
-                  reason: ^infer_reason_admit_callers_entries_unreadable,
-                  at: node_locus(node: e.target),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                })
-            }
-        }
-      })
+      match spine.children {
+        Empty => outcome_accepted(value: Empty)
+        Cons { head: _, tail: _ } =>
+          match infer_admit_spine_pair(edges: spine.children) {
+            Absent =>
+              outcome_rejected(Diagnostic {
+                reason: ^infer_reason_admit_callers_entries_unreadable,
+                at: node_locus(node: spine),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            Present { value: pair } =>
+              match infer_admit_record_check(record: pair.left) {
+                Absent =>
+                  outcome_rejected(Diagnostic {
+                    reason: ^infer_reason_admit_callers_entry_not_decl_ref,
+                    at: node_locus(node: pair.left),
+                    correction: Unavailable { reason: UserInputBoundary }
+                  })
+                Present { value: _ } =>
+                  match infer_admit_spine_entries(spine: pair.right) {
+                    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                    Accepted { value: rest, diagnostics: _ } =>
+                      outcome_accepted(value: Cons { head: pair.left, tail: rest })
+                  }
+              }
+          }
+      }
     _ =>
       outcome_rejected(Diagnostic {
         reason: ^infer_reason_admit_callers_entries_unreadable,
@@ -6688,6 +6701,43 @@ fn infer_admit_clause_entries(roster: Node) -> Outcome<List<Node>> {
         correction: Unavailable { reason: ExternalContractUnknown }
       })
   }
+}
+
+type InferAdmitSpinePair {
+  left: Node
+  right: Node
+}
+
+// ONE SPINE NODE'S TWO EDGES: exactly one @left record edge and one @right rest edge. Anything else
+// (a missing side) is not the carrier's spine.
+fn infer_admit_spine_pair(edges: List<Edge>) -> Optional<InferAdmitSpinePair> {
+  match infer_admit_spine_side(edges: edges, name: ^left) {
+    Absent => optional_absent()
+    Present { value: left } =>
+      match infer_admit_spine_side(edges: edges, name: ^right) {
+        Absent => optional_absent()
+        Present { value: right } =>
+          optional_present(value: InferAdmitSpinePair { left: left, right: right })
+      }
+  }
+}
+
+fn infer_admit_spine_side(edges: List<Edge>, name: Symbol) -> Optional<Node> {
+  fold(edges, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match e.label {
+          Authored { name: n } =>
+            if symbol_eq(a: n, b: name) {
+              optional_present(value: e.target)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+    }
+  })
 }
 
 // EVERY DIAGNOSTIC THE LIST CARRIES, folded into the stage's Diagnostics carrier.

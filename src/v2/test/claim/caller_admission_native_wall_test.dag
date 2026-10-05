@@ -9,13 +9,14 @@
 // (src/v2/test/claim/long/caller_admission_native_wall_red_test.dag), where an over-budget claim is
 // admitted (required_floor long_home_prefixes).
 //
-// THE RECORD SHAPE these claims build is the image the lowering's carrier hangs: a roster conj of
-// POSITIONAL record conj children, each record carrying the authored operator atom
-// (identity ^decl_ref) as its POSITIONAL child and the two string lexemes as authored edges
-// (module_path, decl_name). An entry that reads but is not such a call lowers to a MARKER atom
-// (^infer_reason_admit_callers_entry_not_decl_ref); a clause whose spine does not read lowers to
-// the clause-fallback marker (^infer_reason_admit_callers_entries_unreadable). The claims pin both
-// failure arms and the positive direction, so:
+// THE RECORD SHAPE these claims build is the image the lowering's carrier hangs: a left-named
+// roster spine (each node a conj with one @left record edge and one @right rest edge, the empty
+// conj root ending it), each record carrying the authored operator edge (name ^decl_ref, target the
+// ^decl_ref atom) and the two string lexemes as authored edges (module_path, decl_name). An entry
+// that reads but is not such a call lowers to a MARKER record whose single edge names the entry
+// refusal (^infer_reason_admit_callers_entry_not_decl_ref); a clause whose spine does not read
+// lowers to the clause-fallback marker (^infer_reason_admit_callers_entries_unreadable). The claims
+// pin both failure arms and the positive direction, so:
 //   - deleting the judge or its refusal arm turns (1) red, and (2) red if it refuses everything;
 //   - dropping an uninterpretable entry turns (3) red;
 //   - accepting a non-conj roster (silently narrowing the roster) turns (4) red;
@@ -28,7 +29,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check }
 import v2.std.diagnostic { None, Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Positional, Authored }
+import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored }
 import v2.std.optional { Absent, Present }
 
 // ---------------------------------------------------------------------------
@@ -50,13 +51,13 @@ data wall_application: Node = Node {
 }
 
 // ONE RECORD: the image of `decl_ref(module_path: "<mp>", decl_name: "<dn>")` -- the authored
-// operator atom as the POSITIONAL child, the lexemes as authored edges.
+// operator edge naming the ^decl_ref atom, the lexemes as authored edges.
 fn wall_record(mp: Symbol, dn: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Positional,
+        label: Authored { name: ^decl_ref },
         target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
       },
       Edge {
@@ -73,10 +74,15 @@ fn wall_record(mp: Symbol, dn: Symbol) -> Node {
 }
 
 // THE UNINTERPRETABLE-ENTRY MARKER: what the carrier hangs for an entry that reads but is not a
-// decl_ref(module_path, decl_name) call.
+// decl_ref(module_path, decl_name) call -- a record conj whose single edge names the refusal.
 data wall_marker_entry: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref } },
-  children: [],
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^infer_reason_admit_callers_entry_not_decl_ref },
+      target: Node { kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+    }
+  ],
   occurrence_id: wall_marker_locus
 }
 
@@ -88,30 +94,17 @@ data wall_clause_fallback: Node = Node {
   occurrence_id: wall_clause_fallback_locus
 }
 
-// A ROSTER CONJ with one well-formed record.
+// A ROSTER SPINE with one well-formed record: @left the record, @right the empty conj root.
 data wall_roster_single: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Positional,
-      target: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          Edge {
-            label: Positional,
-            target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
-          },
-          Edge {
-            label: Authored { name: ^module_path },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^bcb } }, children: [], occurrence_id: OccurrenceSynthetic }
-          },
-          Edge {
-            label: Authored { name: ^decl_name },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^listed_caller } }, children: [], occurrence_id: OccurrenceSynthetic }
-          }
-        ],
-        occurrence_id: wall_record_locus
-      }
+      label: Authored { name: ^left },
+      target: wall_record(mp: ^bcb, dn: ^listed_caller)
+    },
+    Edge {
+      label: Authored { name: ^right },
+      target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
     }
   ],
   occurrence_id: wall_roster_locus

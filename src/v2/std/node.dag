@@ -833,24 +833,33 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 
 // THE DECLARED PERMITTED-CALLERS EDGE, restored with its consumer for gunbc.rung_drop
 // admit_callers_discarded_on_the_native_route. A fn Arrow built from a signature that declared an
-// admit_callers clause carries the clause's PRESERVED SHELL under the core marker AdmitCallersEdge
-// (v2.compiler body_lowering_fold body_lower_fn_admit_clause_edges), and the consumer reads the
+// admit_callers clause carries the clause's STRUCTURED ROSTER under the core marker AdmitCallersEdge
+// (v2.compiler body_lowering_fold body_lower_fn_admit_clause_edges: the carrier consumes the authored
+// spine at lowering and re-hangs each entry as a positional record conj), and the consumer reads the
 // declared permitted callers off it (v2.compiler.infer infer_caller_admission_diags). It is NOT a
 // contract edge: a contract edge's target is a claim the Arrow makes in a ruled vocabulary
 // (std.effects EffectClaim, std.execution_mode ExecutionMode), while this edge's target is the
-// preserved surface clause -- a parse-side node, deliberately not lowered, because the declared
-// list is evidence about the SOURCE and lowering it would erase the caller spellings the consumer
-// judges. Like a contract edge it is optional, appears at most once, and is never a binder, so
-// every count of an Arrow's binders skips it (arrow_named_edge_is_non_binder here and
-// v2.std.type_binder arrow_named_labels_conform, which reads this predicate).
+// roster the consumer judges. Like a contract edge it is optional, appears at most once, and is
+// never a binder.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
   edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
     || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
     || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
 }
 
-// The Arrow named edges that are not binders: its body, its declared order, its contract edges and
-// its declared permitted-callers clause edge. The one predicate every count of an Arrow's binders
+// THE ONE METADATA FACT FOR ARROW NAMED EDGES: this edge's target is metadata to every value
+// reader -- never a value the Arrow is built from, never a binder. The single predicate every value
+// reader that walks an Arrow consumes (v2.compiler.infer's gather fold and product evidence,
+// v2.compiler.translate's grounding gate, v2.std.type_binder node_inferred_subtree_nodes) and every
+// count of an Arrow's binders reads (arrow_named_edge_is_non_binder here and v2.std.type_binder
+// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. DESIGN section 3:
+// each fact lives in exactly one place.
+fn arrow_named_edge_is_metadata(e: Edge) -> Bool {
+  arrow_named_edge_is_contract(e: e) || edge_is_core(e: e, marker: AdmitCallersEdge)
+}
+
+// The Arrow named edges that are not binders: its body, its declared order, and the metadata edges.
+// The one predicate every count of an Arrow's binders
 // reads (here and v2.std.type_binder arrow_named_labels_conform), so they agree on what a binder is.
 fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   match e.label {
@@ -859,8 +868,7 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
     StructuralLabel { label: _ } =>
       edge_is_core(e: e, marker: ArrowBodyEdge)
         || edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
-        || arrow_named_edge_is_contract(e: e)
-        || edge_is_core(e: e, marker: AdmitCallersEdge)
+        || arrow_named_edge_is_metadata(e: e)
   }
 }
 

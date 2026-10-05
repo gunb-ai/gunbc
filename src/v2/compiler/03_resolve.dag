@@ -161,7 +161,7 @@ import v2.std.node {
   symbol_lexeme,
   arrow_domain_binds_a_name,
   arrow_first_positional_target,
-  arrow_named_edge_is_contract,
+  arrow_named_edge_is_metadata,
   ArrowResourceRequirementsEdge,
   AdmitCallersEdge,
   FirstPositionalAbsent,
@@ -4147,9 +4147,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
         } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
           child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
-        } else if edge_is_core(e: e, marker: AdmitCallersEdge) {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
-        } else if arrow_named_edge_is_contract(e: e) {
+        } else if arrow_named_edge_is_metadata(e: e) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
         } else {
           child_walk_step(
