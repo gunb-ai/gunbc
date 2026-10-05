@@ -2099,7 +2099,7 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.running_elected_actor_retains_quota", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.concurrent_actor_replacement_admits_exactly_one", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } } 
+    tail: Empty {} } } } } } } } } } } } } }  }
 }
 
 // THE PROCESS-LIFECYCLE WET EVIDENCE (the emit-host node serve smoke), the third member of its
