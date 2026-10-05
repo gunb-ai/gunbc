@@ -469,6 +469,9 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
             Present { value: _ } => true
             Absent => false
           }
+        // Named, not wildcarded: only a bare atom answers to a minted authority. These five
+        // connectives are structures that need no authority at this node, and each says so here --
+        // a connective added later must state its grounding at this gate instead of inheriting it.
         Conj => true
         Disj => true
         Arrow => true

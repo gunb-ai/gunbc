@@ -20,6 +20,38 @@ fn anchor_conj_node() -> Node {
 }
 }
 
+fn anchor_disj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn anchor_arrow_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn anchor_cardinality_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Cardinality },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn anchor_instantiation_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
 fn anchor_computation_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
@@ -62,3 +94,15 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
 }
 
 data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())
+
+// EVERY CONNECTIVE SAYS WHETHER IT NEEDS A MINTED AUTHORITY, by name. The five structure
+// connectives need none at their own node (a bare Atom alone answers to a mint); each is pinned
+// here so the grounding gate's enumeration cannot drift silently, and a connective added later
+// has to state its grounding at the gate instead of inheriting one.
+test fn anchor_structural_connectives_are_grounded_by_name() -> Bool {
+  algebra_ref_is_grounded(algebra: anchor_conj_node())
+    && algebra_ref_is_grounded(algebra: anchor_disj_node())
+    && algebra_ref_is_grounded(algebra: anchor_arrow_node())
+    && algebra_ref_is_grounded(algebra: anchor_cardinality_node())
+    && algebra_ref_is_grounded(algebra: anchor_instantiation_node())
+}
