@@ -349,10 +349,6 @@ fn admitted_configuration() -> AttemptConfigurationReceipt {
   }
 }
 
-fn observed_for(attempt: NonEmptyStr) -> PrePowerFirmware {
-  pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: attempt, table: hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32), source: "ipmitool hpm check")
-}
-
 fn firmware_attempt(f: FirmwareReadbacks) -> String {
   match f {
     FirmwareReadBeforeActuation { attempt: a, source: _, rows: rs } => if count(rs) == 5 && any(rs, r => (r.component as String) == "APP" && (r.version as String) == "0.32 01112100") { a as String } else { "wrong rows" }
@@ -364,8 +360,9 @@ fn firmware_attempt(f: FirmwareReadbacks) -> String {
 // UNREAD TABLE STAYS NOT RECORDED.
 test fn a_firmware_reading_joins_only_the_attempt_it_was_taken_for() -> Bool {
   let b = admitted_configuration()
-  let same = attempt_configuration_with_pre_power(c: b, firmware: observed_for(attempt: "n42"))
-  let other = attempt_configuration_with_pre_power(c: b, firmware: observed_for(attempt: "n41"))
+  let table = hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32)
+  let same = attempt_configuration_with_pre_power(c: b, firmware: pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: "n42", table: table, source: "ipmitool hpm check"))
+  let other = attempt_configuration_with_pre_power(c: b, firmware: pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: "n41", table: table, source: "ipmitool hpm check"))
   let unread = attempt_configuration_with_pre_power(c: b, firmware: PrePowerFirmwareUnread { reason: "hpm check was not read: timeout" })
   let other_refused = match other.firmware {
     FirmwareReadbacksNotRecorded { reason: r } => string_contains(s: r as String, pattern: "taken for attempt n41") && string_contains(s: r as String, pattern: "refused, not relabelled")
