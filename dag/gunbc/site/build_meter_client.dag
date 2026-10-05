@@ -1,0 +1,91 @@
+module gunbc.site.build_meter_client
+
+import std.types { Int, List, String }
+import extdeps.languages.typescript.program {
+  TsExpr, TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_arrow, ts_block, ts_const, ts_let,
+  ts_return, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_binop,
+}
+import gunbc.site.element.build_meter {
+  build_meter_class, build_meter_worker_class, build_meter_look_attribute, build_meter_look_left, build_meter_look_right,
+  build_meter_drowsy_class, build_meter_asleep_class, build_meter_waking_class,
+}
+
+// The build meter's pointer decoration. It sets a look attribute and three state classes on the
+// element and nothing else: the element's own rules (gunbc.site.element.build_meter) decide what
+// they look like, and no fact about the attempt is read or written here. While the pointer moves
+// over the meter the worker looks toward the pointer's side. A pointer that rests there makes it
+// drowsy and then asleep; leaving wakes it slowly. Under prefers-reduced-motion nothing is set.
+data build_meter_reduced_motion_query: String = "(prefers-reduced-motion: reduce)"
+data build_meter_drowse_after_ms: Int = 4200
+data build_meter_sleep_after_ms: Int = 2600
+data build_meter_wake_ms: Int = 1000
+
+fn build_meter_reduced_motion_expr() -> TsExpr {
+  ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "window"), property: "matchMedia"), args: [ts_lit_str(value: build_meter_reduced_motion_query)]), property: "matches")
+}
+
+fn meter_class_call(method: String, class_name: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "meter"), property: "classList"), property: method), args: [ts_lit_str(value: class_name)])
+}
+
+fn meter_later(body: List<TsStmt>, after_ms: Int) -> TsExpr {
+  ts_call(callee: ts_ident(name: "setTimeout"), args: [ts_arrow(params: [], body: ts_block(stmts: body)), ts_lit_num(text: to_string(after_ms))])
+}
+
+fn meter_listen(event: String, params: List<String>, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "addEventListener"), args: [ts_lit_str(value: event), ts_arrow(params: params, body: ts_block(stmts: body))]))
+}
+
+fn meter_assign(name: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_binop(left: ts_ident(name: name), op: "=", right: value))
+}
+
+fn build_meter_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "siteBindBuildMeter", value: ts_arrow(params: ["meter"], body: ts_block(stmts: [
+      ts_let(name: "drowse", value: ts_lit_num(text: "0")),
+      ts_let(name: "sleep", value: ts_lit_num(text: "0")),
+      ts_const(name: "rouse", value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "drowse")])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "sleep")])),
+        ts_const(name: "slept", value: ts_binop(left: meter_class_call(method: "contains", class_name: build_meter_drowsy_class), op: "||", right: meter_class_call(method: "contains", class_name: build_meter_asleep_class))),
+        ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_drowsy_class)),
+        ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_asleep_class)),
+        ts_return(expr: Present { value: ts_ident(name: "slept") }),
+      ]))),
+      meter_listen(event: "pointermove", params: ["event"], body: [
+        ts_if(cond: build_meter_reduced_motion_expr(), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_const(name: "worker", value: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "querySelector"), args: [ts_lit_str(value: join([".", build_meter_worker_class], ""))])),
+        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "worker")), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_const(name: "box", value: ts_call(callee: ts_member(object: ts_ident(name: "worker"), property: "getBoundingClientRect"), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "setAttribute"), args: [
+          ts_lit_str(value: build_meter_look_attribute),
+          ts_cond(
+            test: ts_binop(
+              left: ts_member(object: ts_ident(name: "event"), property: "clientX"),
+              op: "<",
+              right: ts_binop(left: ts_member(object: ts_ident(name: "box"), property: "left"), op: "+", right: ts_binop(left: ts_member(object: ts_ident(name: "box"), property: "width"), op: "/", right: ts_lit_num(text: "2")))),
+            consequent: ts_lit_str(value: build_meter_look_left),
+            alternate: ts_lit_str(value: build_meter_look_right)),
+        ])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "rouse"), args: [])),
+        meter_assign(name: "drowse", value: meter_later(body: [
+          ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_drowsy_class)),
+          meter_assign(name: "sleep", value: meter_later(body: [
+            ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_asleep_class)),
+          ], after_ms: build_meter_sleep_after_ms)),
+        ], after_ms: build_meter_drowse_after_ms)),
+      ]),
+      meter_listen(event: "pointerleave", params: [], body: [
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "removeAttribute"), args: [ts_lit_str(value: build_meter_look_attribute)])),
+        ts_if(cond: ts_call(callee: ts_ident(name: "rouse"), args: []), then: ts_block(stmts: [
+          ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_waking_class)),
+          ts_expr_stmt(expr: meter_later(body: [
+            ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_waking_class)),
+          ], after_ms: build_meter_wake_ms)),
+        ]), else_stmt: none),
+      ]),
+    ]))),
+    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: join([".", build_meter_class], ""))])]), property: "forEach"), args: [ts_ident(name: "siteBindBuildMeter")])),
+  ]
+}

@@ -38,11 +38,25 @@ type PaletteSlot
   | SlotStatusReady
   | SlotStatusAssigned
   | SlotStatusBlocked
+  | SlotMeterReason
+  | SlotMeterRead
+  | SlotMeterWrite
+  | SlotMeterEdit
+  | SlotMeterRun
+  | SlotMeterSearch
+  | SlotMeterReport
+  | SlotMeterWorker
+  | SlotMeterWorkerLight
+  | SlotMeterWorkerShade
+  | SlotMeterWorkerFeature
+  | SlotMeterFinish
 
 data palette_slots: List<PaletteSlot> = [
   SlotText, SlotTextDim, SlotBorder, SlotHover, SlotSubtle, SlotHighlight, SlotAction,
   SlotActionHover, SlotError, SlotGround, SlotSurface, SlotLink, SlotOnAction, SlotCodeInk,
   SlotLeadingBar, SlotClosedRow, SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
+  SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
+  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish,
 ]
 
 fn palette_slot_name(slot: PaletteSlot) -> String {
@@ -66,6 +80,18 @@ fn palette_slot_name(slot: PaletteSlot) -> String {
     SlotStatusReady => "status-ready-ink"
     SlotStatusAssigned => "status-assigned-ink"
     SlotStatusBlocked => "status-blocked-ink"
+    SlotMeterReason => "meter-reason"
+    SlotMeterRead => "meter-read"
+    SlotMeterWrite => "meter-write"
+    SlotMeterEdit => "meter-edit"
+    SlotMeterRun => "meter-run"
+    SlotMeterSearch => "meter-search"
+    SlotMeterReport => "meter-report"
+    SlotMeterWorker => "meter-worker"
+    SlotMeterWorkerLight => "meter-worker-light"
+    SlotMeterWorkerShade => "meter-worker-shade"
+    SlotMeterWorkerFeature => "meter-worker-feature"
+    SlotMeterFinish => "meter-finish"
   }
 }
 
@@ -81,6 +107,12 @@ fn palette_var(slot: PaletteSlot) -> String {
 // relation row, read from the relation table's own measurement. The three status inks are house colours
 // (green ready, blue assigned, amber blocked) with no upstream counterpart; they moved here
 // from gunbc.site.status so the frontend has one palette.
+// The meter slots are the build meter's (gunbc.site.element.build_meter). The seven kind colours
+// are the ones the worker scene's prototype settled, one per operation kind. The worker paints are
+// the brand's stark colourway of the gunbai mark: ink on cream by day, stone on void by night
+// (gunb-ai/frontend legacy/moodboard.html, the same source gunbc.site.robot_mark cites); the light
+// and shade paints are that body colour's two neighbours, used for a one-pixel highlight and
+// shadow. The finish colour marks a published attempt's strip.
 fn palette_day(slot: PaletteSlot) -> Srgb8 {
   match slot {
     SlotText => issue_tracker_measured_palette_light.text
@@ -102,6 +134,18 @@ fn palette_day(slot: PaletteSlot) -> Srgb8 {
     SlotStatusReady => Srgb8 { r: 38, g: 105, b: 68 }
     SlotStatusAssigned => Srgb8 { r: 54, g: 90, b: 155 }
     SlotStatusBlocked => Srgb8 { r: 142, g: 83, b: 21 }
+    SlotMeterReason => Srgb8 { r: 79, g: 75, b: 176 }
+    SlotMeterRead => Srgb8 { r: 59, g: 143, b: 208 }
+    SlotMeterWrite => Srgb8 { r: 226, g: 87, b: 58 }
+    SlotMeterEdit => Srgb8 { r: 238, g: 162, b: 44 }
+    SlotMeterRun => Srgb8 { r: 67, g: 160, b: 101 }
+    SlotMeterSearch => Srgb8 { r: 23, g: 160, b: 151 }
+    SlotMeterReport => Srgb8 { r: 180, g: 86, b: 159 }
+    SlotMeterWorker => Srgb8 { r: 15, g: 15, b: 15 }
+    SlotMeterWorkerLight => Srgb8 { r: 61, g: 60, b: 57 }
+    SlotMeterWorkerShade => Srgb8 { r: 0, g: 0, b: 0 }
+    SlotMeterWorkerFeature => Srgb8 { r: 244, g: 241, b: 236 }
+    SlotMeterFinish => Srgb8 { r: 184, g: 134, b: 46 }
   }
 }
 
@@ -133,6 +177,18 @@ fn palette_night(slot: PaletteSlot) -> Srgb8 {
     SlotStatusReady => Srgb8 { r: 146, g: 201, b: 166 }
     SlotStatusAssigned => Srgb8 { r: 146, g: 181, b: 238 }
     SlotStatusBlocked => Srgb8 { r: 226, g: 181, b: 109 }
+    SlotMeterReason => Srgb8 { r: 141, g: 138, b: 242 }
+    SlotMeterRead => Srgb8 { r: 92, g: 176, b: 242 }
+    SlotMeterWrite => Srgb8 { r: 243, g: 118, b: 88 }
+    SlotMeterEdit => Srgb8 { r: 246, g: 186, b: 78 }
+    SlotMeterRun => Srgb8 { r: 95, g: 197, b: 134 }
+    SlotMeterSearch => Srgb8 { r: 57, g: 198, b: 186 }
+    SlotMeterReport => Srgb8 { r: 216, g: 130, b: 198 }
+    SlotMeterWorker => Srgb8 { r: 206, g: 197, b: 182 }
+    SlotMeterWorkerLight => Srgb8 { r: 232, g: 225, b: 214 }
+    SlotMeterWorkerShade => Srgb8 { r: 156, g: 146, b: 130 }
+    SlotMeterWorkerFeature => Srgb8 { r: 21, g: 21, b: 20 }
+    SlotMeterFinish => Srgb8 { r: 217, g: 178, b: 95 }
   }
 }
 

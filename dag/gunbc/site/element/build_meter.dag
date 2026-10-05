@@ -1,0 +1,793 @@
+module gunbc.site.element.build_meter
+
+import std.types { Bool, Int, List, String }
+import std.markup { Fragment, Element, Attribute, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.design.material {
+  BuildRule, StaticRule, ResponseRule, AmbientRule, SelfResponse, WithinSubject,
+  OnHover, OnFocusVisible, OnStateClass, MotionCycle, Keyframe, TimingToken, RunOnce, RunForever,
+  respond_fast, restore_gentle, decl,
+}
+import gunbc.design.scale { scale_var, scale_border, space_0, space_1, space_2, space_4, border_2 }
+import gunbc.site.element.tokens { radius_element }
+import gunbc.site.element.palette {
+  PaletteSlot, palette_var, SlotAction, SlotBorder, SlotError, SlotHover, SlotSurface, SlotTextDim,
+  SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
+  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish,
+}
+import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AnimationDelay, AnimationDuration, Background, BorderRadius, Display, Fill, FlexDirection,
+  Gap, Margin, Opacity, Outline, Overflow, Padding, TextDecoration, Transform, WhiteSpace, RawProperty,
+}
+
+// BuildMeter: one attempt's recorded progress as a short strip of marks with one worker standing
+// at its working edge, and the same facts in text beside it. It takes a BuildMeterView, the typed
+// view a producer derives from one attempt (gunbc.roadmap.roadmap_build_meter build_meter_view),
+// and draws only that: it holds no polling, no workflow rule and no notion of success.
+//
+// Three facts stay separate in the view and in the drawing. Recorded rounds decide which marks
+// exist. Observed activity decides the worker's pose. The last round's recorded time is stated in
+// text and is a record time, not a liveness signal. There is no percentage and no implied total:
+// the strip has no target width, and a long run draws its most recent rounds and states how many
+// earlier ones it does not draw.
+//
+// The drawing is a still that is complete with scripting off and with reduced motion. Motion is
+// decoration over it: a slow blink, a glance, a nap, one beat when a round lands. None of it
+// carries a fact, and all of it is removed under prefers-reduced-motion by the shared rule that
+// stills every ambient cycle and transition.
+
+// The operation kinds a mark can have. The set is closed; a producer supplies only the kinds its
+// records distinguish, and this element draws whichever arrive.
+type BuildMeterKind
+  = BuildMeterReason
+  | BuildMeterRead
+  | BuildMeterWrite
+  | BuildMeterEdit
+  | BuildMeterRun
+  | BuildMeterSearch
+  | BuildMeterReport
+
+fn build_meter_kind_key(kind: BuildMeterKind) -> String {
+  match kind {
+    BuildMeterReason => "reason"
+    BuildMeterRead => "read"
+    BuildMeterWrite => "write"
+    BuildMeterEdit => "edit"
+    BuildMeterRun => "run"
+    BuildMeterSearch => "search"
+    BuildMeterReport => "report"
+  }
+}
+
+fn build_meter_kind_slot(kind: BuildMeterKind) -> PaletteSlot {
+  match kind {
+    BuildMeterReason => SlotMeterReason
+    BuildMeterRead => SlotMeterRead
+    BuildMeterWrite => SlotMeterWrite
+    BuildMeterEdit => SlotMeterEdit
+    BuildMeterRun => SlotMeterRun
+    BuildMeterSearch => SlotMeterSearch
+    BuildMeterReport => SlotMeterReport
+  }
+}
+
+// A kind's lane, counted up from the lane nearest the base. Each kind keeps one lane, so a
+// mark's height in the strip says its kind as well as its colour does.
+fn build_meter_kind_lane(kind: BuildMeterKind) -> Int {
+  match kind {
+    BuildMeterRun => 0
+    BuildMeterWrite => 1
+    BuildMeterEdit => 2
+    BuildMeterRead => 3
+    BuildMeterSearch => 4
+    BuildMeterReason => 5
+    BuildMeterReport => 6
+  }
+}
+
+// A write changes the work itself, so its mark is drawn full at any count and lit along its top.
+fn build_meter_kind_is_lit(kind: BuildMeterKind) -> Bool {
+  match kind {
+    BuildMeterWrite => true
+    BuildMeterReason => false
+    BuildMeterRead => false
+    BuildMeterEdit => false
+    BuildMeterRun => false
+    BuildMeterSearch => false
+    BuildMeterReport => false
+  }
+}
+
+data build_meter_kinds: List<BuildMeterKind> = [
+  BuildMeterRun, BuildMeterWrite, BuildMeterEdit, BuildMeterRead, BuildMeterSearch, BuildMeterReason, BuildMeterReport,
+]
+
+type BuildMeterMark {
+  kind: BuildMeterKind
+  count: Int
+}
+
+type BuildMeterRound {
+  step: Int
+  marks: List<BuildMeterMark>
+  input_tokens: Int
+  output_tokens: Int
+}
+
+// The rounds as the record has them: a list (possibly empty) with the last round's recorded time,
+// or the reason the record could not be read. An unread record is never an empty list.
+type BuildMeterRounds
+  = BuildMeterRoundsRecorded { rounds: List<BuildMeterRound>, last_recorded_at: String? }
+  | BuildMeterRoundsUnobserved { reason: String }
+
+// What the worker is doing, decided by observed activity and never by the marks.
+type BuildMeterPose
+  = BuildMeterWorking
+  | BuildMeterWaitingForSeat
+  | BuildMeterStopped
+  | BuildMeterDone
+  | BuildMeterIdle
+
+fn build_meter_pose_key(pose: BuildMeterPose) -> String {
+  match pose {
+    BuildMeterWorking => "working"
+    BuildMeterWaitingForSeat => "waiting"
+    BuildMeterStopped => "stopped"
+    BuildMeterDone => "done"
+    BuildMeterIdle => "idle"
+  }
+}
+
+// A stage that ended without completing, named as the page names it, with its recorded reason.
+type BuildMeterHalt {
+  subject: String
+  reason: String
+}
+
+type BuildMeterView {
+  attempt_key: String
+  stage_label: String
+  stage_state: String
+  seat_wait: String?
+  rounds: BuildMeterRounds
+  pose: BuildMeterPose
+  halts: List<BuildMeterHalt>
+  outcome: String?
+}
+
+type BuildMeter {
+  view: BuildMeterView
+  subject: String
+  href: String
+  link_attributes: List<Attribute>
+}
+
+data build_meter_class: String = "el-build-meter"
+data build_meter_body_class: String = "el-build-meter-body"
+data build_meter_art_class: String = "el-build-meter-art"
+data build_meter_worker_class: String = "el-build-meter-worker"
+data build_meter_face_class: String = "el-build-meter-face"
+data build_meter_arm_class: String = "el-build-meter-arm"
+data build_meter_droop_class: String = "el-build-meter-droop"
+data build_meter_sleep_class: String = "el-build-meter-sleep"
+data build_meter_blink_class: String = "el-build-meter-blink"
+data build_meter_text_class: String = "el-build-meter-text"
+data build_meter_stage_class: String = "el-build-meter-stage"
+data build_meter_line_class: String = "el-build-meter-line"
+data build_meter_halt_class: String = "el-build-meter-halt"
+data build_meter_outcome_class: String = "el-build-meter-outcome"
+
+// State classes a client may set on the element. They change decoration only.
+data build_meter_drowsy_class: String = "el-build-meter-drowsy"
+data build_meter_asleep_class: String = "el-build-meter-asleep"
+data build_meter_waking_class: String = "el-build-meter-waking"
+data build_meter_beat_class: String = "el-build-meter-beat"
+
+data build_meter_subject_attribute: String = "data-build-meter"
+data build_meter_key_attribute: String = "data-meter-key"
+data build_meter_rounds_attribute: String = "data-meter-rounds"
+data build_meter_pose_attribute: String = "data-meter-pose"
+data build_meter_look_attribute: String = "data-meter-look"
+data build_meter_kind_attribute: String = "data-kind"
+data build_meter_paint_attribute: String = "data-paint"
+data build_meter_lid_attribute: String = "data-lid"
+data build_meter_look_left: String = "left"
+data build_meter_look_right: String = "right"
+
+// The member under which a producer tells a page that already shows the meter what the current
+// view's key is. The producer and the page's client both read the name here. The key is all that
+// travels with every observation; a page whose drawn key differs asks for the rendering itself.
+data build_meter_wire_key_member: String = "meter_key"
+
+// Geometry, in the drawing's own units; one unit is one CSS pixel.
+data build_meter_visible_rounds: Int = 24
+data build_meter_round_pitch: Int = 4
+data build_meter_mark_width: Int = 3
+data build_meter_mark_height: Int = 2
+data build_meter_lanes_top: Int = 3
+data build_meter_lane_count: Int = 7
+data build_meter_floor: Int = 21
+data build_meter_art_height: Int = 22
+data build_meter_worker_width: Int = 20
+data build_meter_worker_top: Int = 3
+
+fn build_meter_all_rounds(rounds: BuildMeterRounds) -> List<BuildMeterRound> {
+  match rounds {
+    BuildMeterRoundsRecorded { rounds: rs, last_recorded_at: _ } => rs
+    BuildMeterRoundsUnobserved { reason: _ } => []
+  }
+}
+
+fn build_meter_round_count(view: BuildMeterView) -> Int {
+  count(build_meter_all_rounds(rounds: view.rounds))
+}
+
+// A long run draws its most recent rounds; the earlier ones are counted in text, never squeezed.
+fn build_meter_hidden_count(view: BuildMeterView) -> Int {
+  let n = build_meter_round_count(view: view)
+  if n > build_meter_visible_rounds { n - build_meter_visible_rounds } else { 0 }
+}
+
+fn build_meter_drawn_rounds(view: BuildMeterView) -> List<BuildMeterRound> {
+  build_meter_all_rounds(rounds: view.rounds).skip(n: build_meter_hidden_count(view: view))
+}
+
+// The size of a round's base, from its recorded output tokens. It is a coarse step, not a scale
+// with a top: the last step has no upper bound.
+fn build_meter_token_step(output_tokens: Int) -> Int {
+  if output_tokens < 256 { 1 } else if output_tokens < 1024 { 2 } else if output_tokens < 4096 { 3 } else { 4 }
+}
+
+// A seed in 0..6 from the attempt key, so that two attempts do not blink together.
+fn build_meter_seed(attempt_key: String) -> Int {
+  let total = fold(chars(s: attempt_key), init: 0, f: (acc, c) => acc + c)
+  total - (total / 7) * 7
+}
+
+// Everything the element shows, as one string. Two views with the same key draw the same still,
+// so a client that holds a drawn meter can tell whether a newer view differs without reading it.
+fn build_meter_view_key(view: BuildMeterView) -> String {
+  join([
+    view.attempt_key,
+    build_meter_pose_key(pose: view.pose),
+    view.stage_label,
+    view.stage_state,
+    match view.seat_wait { Present { value: w } => w  Absent => "" },
+    match view.rounds {
+      BuildMeterRoundsRecorded { rounds: rs, last_recorded_at: at } => join([to_string(count(rs)), match at { Present { value: t } => t  Absent => "" }], "@")
+      BuildMeterRoundsUnobserved { reason } => reason
+    },
+    join(map(view.halts, h => join([h.subject, h.reason], ":")), ";"),
+    match view.outcome { Present { value: o } => o  Absent => "" },
+  ], "|")
+}
+
+fn build_meter_svg(tag: String, attributes: List<Attribute>, children: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attributes, children: children }
+}
+
+fn build_meter_rect(x: Int, y: Int, w: Int, h: Int, attributes: List<Attribute>) -> Fragment {
+  build_meter_svg(tag: "rect", attributes: concat(attributes, [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "width", value: to_string(w)),
+    attr(name: "height", value: to_string(h)),
+  ]), children: [])
+}
+
+fn build_meter_painted(paint: String, children: List<Fragment>) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [attr(name: build_meter_paint_attribute, value: paint)], children: children)
+}
+
+fn build_meter_translate(x: Int, y: Int) -> Attribute {
+  attr(name: "transform", value: join(["translate(", to_string(x), " ", to_string(y), ")"], ""))
+}
+
+// One recorded operation kind in one round: a mark in the kind's lane. A count of one is drawn
+// lighter than a larger count. A write is always drawn full, with a lit top edge.
+fn build_meter_mark_nodes(mark: BuildMeterMark) -> List<Fragment> {
+  let y = build_meter_lanes_top + (build_meter_lane_count - 1 - build_meter_kind_lane(kind: mark.kind)) * build_meter_mark_height
+  let kind = attr(name: build_meter_kind_attribute, value: build_meter_kind_key(kind: mark.kind))
+  let lit = build_meter_kind_is_lit(kind: mark.kind)
+  concat(
+    [build_meter_rect(x: 0, y: y, w: build_meter_mark_width, h: build_meter_mark_height,
+      attributes: if mark.count > 1 || lit { [kind] } else { [kind, attr(name: "opacity", value: ".6")] })],
+    if lit { [build_meter_rect(x: 0, y: y, w: build_meter_mark_width, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "lit"), attr(name: "opacity", value: ".3")])] } else { [] })
+}
+
+fn build_meter_mark_text(mark: BuildMeterMark) -> String {
+  join([build_meter_kind_key(kind: mark.kind), " ", to_string(mark.count)], "")
+}
+
+fn build_meter_round_title(round: BuildMeterRound) -> String {
+  join([
+    "Round ", to_string(round.step), ": ",
+    if count(round.marks) == 0 { "no operations recorded" } else { join(map(round.marks, m => build_meter_mark_text(mark: m)), ", ") },
+    "; tokens ", to_string(round.input_tokens), " in, ", to_string(round.output_tokens), " out",
+  ], "")
+}
+
+fn build_meter_round_node(index: Int, round: BuildMeterRound) -> Fragment {
+  let step = build_meter_token_step(output_tokens: round.output_tokens)
+  build_meter_svg(tag: "g", attributes: [
+    attr(name: "data-round", value: to_string(round.step)),
+    build_meter_translate(x: index * build_meter_round_pitch, y: 0),
+  ], children: concat([
+    build_meter_svg(tag: "title", attributes: [], children: [txt(build_meter_round_title(round: round))]),
+    build_meter_rect(x: 0, y: build_meter_floor - step, w: build_meter_mark_width, h: step, attributes: [attr(name: build_meter_paint_attribute, value: "base")]),
+  ], flat_map(round.marks, m => build_meter_mark_nodes(mark: m))))
+}
+
+// The worker is the gunbai mark at strip size: a wide flat-topped slab, two round eyes set far
+// apart, a short flat mouth. The body is drawn as pixel rows; the eyes are circles, because a
+// three-pixel square would read as the robot variant's square eye.
+type BuildMeterBox {
+  x: Int
+  y: Int
+  w: Int
+  h: Int
+}
+
+fn build_meter_box(x: Int, y: Int, w: Int, h: Int) -> BuildMeterBox {
+  BuildMeterBox { x: x, y: y, w: w, h: h }
+}
+
+data build_meter_body_rows: List<BuildMeterBox> = [
+  build_meter_box(x: 4, y: 0, w: 12, h: 1), build_meter_box(x: 2, y: 1, w: 16, h: 1), build_meter_box(x: 1, y: 2, w: 18, h: 1),
+  build_meter_box(x: 0, y: 3, w: 20, h: 10),
+  build_meter_box(x: 1, y: 13, w: 18, h: 1), build_meter_box(x: 2, y: 14, w: 16, h: 1), build_meter_box(x: 4, y: 15, w: 12, h: 1),
+]
+data build_meter_light_rows: List<BuildMeterBox> = [build_meter_box(x: 5, y: 1, w: 5, h: 1), build_meter_box(x: 3, y: 2, w: 2, h: 1), build_meter_box(x: 2, y: 3, w: 1, h: 2)]
+data build_meter_shade_rows: List<BuildMeterBox> = [build_meter_box(x: 2, y: 14, w: 16, h: 1), build_meter_box(x: 4, y: 15, w: 12, h: 1), build_meter_box(x: 19, y: 6, w: 1, h: 6)]
+data build_meter_feet_rows: List<BuildMeterBox> = [build_meter_box(x: 3, y: 16, w: 4, h: 2), build_meter_box(x: 13, y: 16, w: 4, h: 2)]
+data build_meter_eye_lefts: List<Int> = [4, 13]
+data build_meter_upper_lid_rows: List<Int> = [4, 5]
+data build_meter_lower_lid_rows: List<Int> = [7, 8]
+
+fn build_meter_rows(rows: List<BuildMeterBox>) -> List<Fragment> {
+  map(rows, r => build_meter_rect(x: r.x, y: r.y, w: r.w, h: r.h, attributes: []))
+}
+
+fn build_meter_lid_rects(rows: List<Int>) -> List<Fragment> {
+  flat_map(build_meter_eye_lefts, x => map(rows, y => build_meter_rect(x: x, y: y, w: 4, h: 1, attributes: [])))
+}
+
+// A lid group is drawn over the eyes in the body colour. `on` is the pose's own still; a group
+// that is off is there for decoration to raise.
+fn build_meter_lid_group(class_name: String, rows: List<Int>, on: Bool) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [
+    attr(name: "class", value: class_name),
+    attr(name: build_meter_paint_attribute, value: "body"),
+    attr(name: build_meter_lid_attribute, value: if on { "on" } else { "off" }),
+  ], children: build_meter_lid_rects(rows: rows))
+}
+
+fn build_meter_pose_droops(pose: BuildMeterPose) -> Bool {
+  match pose {
+    BuildMeterWorking => false
+    BuildMeterWaitingForSeat => true
+    BuildMeterStopped => true
+    BuildMeterDone => true
+    BuildMeterIdle => true
+  }
+}
+
+fn build_meter_pose_sits(pose: BuildMeterPose) -> Bool {
+  match pose {
+    BuildMeterWorking => false
+    BuildMeterWaitingForSeat => false
+    BuildMeterStopped => false
+    BuildMeterDone => true
+    BuildMeterIdle => false
+  }
+}
+
+fn build_meter_pose_reaches(pose: BuildMeterPose) -> Bool {
+  match pose {
+    BuildMeterWorking => true
+    BuildMeterWaitingForSeat => false
+    BuildMeterStopped => false
+    BuildMeterDone => false
+    BuildMeterIdle => false
+  }
+}
+
+fn build_meter_eye_node(x: Int) -> Fragment {
+  build_meter_svg(tag: "circle", attributes: [
+    attr(name: "cx", value: join([to_string(x + 1), ".5"], "")),
+    attr(name: "cy", value: "6.5"),
+    attr(name: "r", value: "1.6"),
+    attr(name: "shape-rendering", value: "geometricPrecision"),
+  ], children: [])
+}
+
+// Standing: feet under the body. Sitting (a published attempt): no feet, the body two units
+// lower and on the floor, eyes shut.
+fn build_meter_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
+  let sits = build_meter_pose_sits(pose: pose)
+  build_meter_svg(tag: "g", attributes: [
+    build_meter_translate(x: x, y: if sits { build_meter_worker_top + 2 } else { build_meter_worker_top }),
+  ], children: [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_worker_class)], children: concat(
+    concat(
+      if sits { [] } else { [build_meter_painted(paint: "shade", children: build_meter_rows(rows: build_meter_feet_rows))] },
+      if build_meter_pose_reaches(pose: pose) {
+        [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_arm_class), attr(name: build_meter_paint_attribute, value: "body")], children: [build_meter_rect(x: 0 - 2, y: 8, w: 3, h: 3, attributes: [])])]
+      } else { [] }),
+    [
+      build_meter_painted(paint: "body", children: build_meter_rows(rows: build_meter_body_rows)),
+      build_meter_painted(paint: "light", children: build_meter_rows(rows: build_meter_light_rows)),
+      build_meter_painted(paint: "shade", children: build_meter_rows(rows: build_meter_shade_rows)),
+      build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_face_class)], children: [
+        build_meter_painted(paint: "feature", children: concat(
+          map(build_meter_eye_lefts, x => build_meter_eye_node(x: x)),
+          [build_meter_rect(x: 8, y: 9, w: 4, h: 1, attributes: [])])),
+        build_meter_lid_group(class_name: build_meter_droop_class, rows: build_meter_upper_lid_rows, on: build_meter_pose_droops(pose: pose)),
+        build_meter_lid_group(class_name: build_meter_sleep_class, rows: build_meter_lower_lid_rows, on: sits),
+        build_meter_lid_group(class_name: build_meter_blink_class, rows: concat(build_meter_upper_lid_rows, build_meter_lower_lid_rows), on: false),
+      ]),
+    ]))])
+}
+
+// A small hourglass beside a worker waiting for a seat.
+fn build_meter_hourglass_node(x: Int) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [build_meter_translate(x: x, y: build_meter_floor - 10)], children: [
+    build_meter_painted(paint: "prop", children: [
+      build_meter_rect(x: 0, y: 0, w: 6, h: 1, attributes: []),
+      build_meter_rect(x: 0, y: 9, w: 6, h: 1, attributes: []),
+    ]),
+    build_meter_painted(paint: "base", children: [
+      build_meter_rect(x: 1, y: 1, w: 4, h: 2, attributes: []),
+      build_meter_rect(x: 2, y: 3, w: 2, h: 3, attributes: []),
+      build_meter_rect(x: 1, y: 6, w: 4, h: 3, attributes: []),
+    ]),
+  ])
+}
+
+type BuildMeterArtLayout {
+  strip_width: Int
+  stop_x: Int
+  worker_x: Int
+  width: Int
+}
+
+fn build_meter_art_layout(drawn: Int, pose: BuildMeterPose) -> BuildMeterArtLayout {
+  let strip = drawn * build_meter_round_pitch
+  let after_strip = if drawn == 0 { 0 } else { strip + 3 }
+  let stopped = match pose {
+    BuildMeterStopped => true
+    BuildMeterWorking => false
+    BuildMeterWaitingForSeat => false
+    BuildMeterDone => false
+    BuildMeterIdle => false
+  }
+  let waiting = match pose {
+    BuildMeterWaitingForSeat => true
+    BuildMeterWorking => false
+    BuildMeterStopped => false
+    BuildMeterDone => false
+    BuildMeterIdle => false
+  }
+  let worker_x = after_strip + (if stopped { 5 } else { 0 }) + (if build_meter_pose_reaches(pose: pose) { 2 } else { 0 })
+  BuildMeterArtLayout {
+    strip_width: strip,
+    stop_x: after_strip,
+    worker_x: worker_x,
+    width: worker_x + build_meter_worker_width + (if waiting { 11 } else { 1 }),
+  }
+}
+
+fn build_meter_art(view: BuildMeterView) -> Fragment {
+  let drawn = build_meter_drawn_rounds(view: view)
+  let layout = build_meter_art_layout(drawn: count(drawn), pose: view.pose)
+  let finish = match view.pose {
+    BuildMeterDone => if count(drawn) == 0 { [] } else { [build_meter_rect(x: 0, y: build_meter_floor, w: layout.strip_width - 1, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "finish")])] }
+    BuildMeterWorking => []
+    BuildMeterWaitingForSeat => []
+    BuildMeterStopped => []
+    BuildMeterIdle => []
+  }
+  let stop = match view.pose {
+    BuildMeterStopped => [build_meter_rect(x: layout.stop_x, y: 1, w: 2, h: build_meter_floor - 1, attributes: [attr(name: build_meter_paint_attribute, value: "stop")])]
+    BuildMeterWorking => []
+    BuildMeterWaitingForSeat => []
+    BuildMeterDone => []
+    BuildMeterIdle => []
+  }
+  let prop = match view.pose {
+    BuildMeterWaitingForSeat => [build_meter_hourglass_node(x: layout.worker_x + build_meter_worker_width + 4)]
+    BuildMeterWorking => []
+    BuildMeterStopped => []
+    BuildMeterDone => []
+    BuildMeterIdle => []
+  }
+  build_meter_svg(tag: "svg", attributes: [
+    attr(name: "class", value: build_meter_art_class),
+    attr(name: "aria-hidden", value: "true"),
+    attr(name: "focusable", value: "false"),
+    attr(name: "width", value: to_string(layout.width)),
+    attr(name: "height", value: to_string(build_meter_art_height)),
+    attr(name: "viewBox", value: join(["0 0 ", to_string(layout.width), " ", to_string(build_meter_art_height)], "")),
+    attr(name: "shape-rendering", value: "crispEdges"),
+  ], children: concat(
+    map(enumerate(drawn), pair => build_meter_round_node(index: pair.first, round: pair.second)),
+    concat(finish, concat(stop, concat([build_meter_worker_node(pose: view.pose, x: layout.worker_x)], prop)))))
+}
+
+fn build_meter_rounds_noun(n: Int) -> String {
+  if n == 1 { "1 round recorded" } else { join([to_string(n), " rounds recorded"], "") }
+}
+
+fn build_meter_earlier_text(hidden: Int) -> String {
+  join(["+", to_string(hidden), " earlier"], "")
+}
+
+fn build_meter_line(class_name: String, children: List<Fragment>) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: class_name)], children)
+}
+
+fn build_meter_rounds_line(view: BuildMeterView) -> Fragment {
+  match view.rounds {
+    BuildMeterRoundsUnobserved { reason } =>
+      build_meter_line(class_name: build_meter_line_class, children: [txt(join(["Rounds unobserved: ", reason], ""))])
+    BuildMeterRoundsRecorded { rounds: rs, last_recorded_at: at } => {
+      let hidden = build_meter_hidden_count(view: view)
+      let counted = join([
+        build_meter_rounds_noun(n: count(rs)),
+        if hidden == 0 { "" } else { join([" · ", build_meter_earlier_text(hidden: hidden)], "") },
+      ], "")
+      build_meter_line(class_name: build_meter_line_class, children: match at {
+        Absent => [txt(counted)]
+        Present { value: t } => [
+          txt(join([counted, " · last round "], "")),
+          el_attrs("time", [attr(name: "datetime", value: t)], [txt(t)]),
+        ]
+      })
+    }
+  }
+}
+
+fn build_meter_stage_text(view: BuildMeterView) -> String {
+  join([view.stage_label, " ", view.stage_state], "")
+}
+
+// A stop is stated as its subject and its reason. When the subject is the stage line just above
+// it, the reason stands alone under that line; a stop with no recorded reason is its subject.
+fn build_meter_halt_text(halt: BuildMeterHalt, stage: String) -> String {
+  if halt.reason == "" { halt.subject } else if halt.subject == stage { halt.reason } else { join([halt.subject, ": ", halt.reason], "") }
+}
+
+// The first stage that stopped is stated with its reason; any further ones are counted.
+fn build_meter_halt_lines(halts: List<BuildMeterHalt>, stage: String) -> List<Fragment> {
+  match halts.first() {
+    Absent => []
+    Present { value: first } => concat(
+      [build_meter_line(class_name: build_meter_halt_class, children: [txt(build_meter_halt_text(halt: first, stage: stage))])],
+      if count(halts) == 1 { [] } else {
+        [build_meter_line(class_name: build_meter_line_class, children: [txt(join(["+", to_string(count(halts) - 1), " more stopped"], ""))])]
+      })
+  }
+}
+
+fn build_meter_text(view: BuildMeterView) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: build_meter_text_class)], concat(
+    [build_meter_line(class_name: build_meter_stage_class, children: [txt(build_meter_stage_text(view: view))])],
+    concat(
+      match view.seat_wait {
+        Present { value: w } => [build_meter_line(class_name: build_meter_line_class, children: [txt(w)])]
+        Absent => []
+      },
+      concat(
+        [build_meter_rounds_line(view: view)],
+        concat(
+          build_meter_halt_lines(halts: view.halts, stage: build_meter_stage_text(view: view)),
+          match view.outcome {
+            Present { value: o } => [build_meter_line(class_name: build_meter_outcome_class, children: [txt(o)])]
+            Absent => []
+          })))))
+}
+
+data build_meter_blink_period_property: String = "meter-blink-period"
+data build_meter_blink_delay_property: String = "meter-blink-delay"
+
+fn build_meter_seed_style(attempt_key: String) -> String {
+  let seed = build_meter_seed(attempt_key: attempt_key)
+  join([
+    "--", build_meter_blink_period_property, ": ", to_string(6100 + seed * 470), "ms; ",
+    "--", build_meter_blink_delay_property, ": -", to_string(seed * 830), "ms",
+  ], "")
+}
+
+// The body is everything that changes with the view. A client that receives a newer body swaps
+// it whole; the link around it, with its destination, stays as the page rendered it.
+fn build_meter_body(view: BuildMeterView) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: build_meter_body_class),
+    attr(name: build_meter_key_attribute, value: build_meter_view_key(view: view)),
+    attr(name: build_meter_rounds_attribute, value: to_string(build_meter_round_count(view: view))),
+    attr(name: build_meter_pose_attribute, value: build_meter_pose_key(pose: view.pose)),
+    attr(name: "style", value: build_meter_seed_style(attempt_key: view.attempt_key)),
+  ], [build_meter_art(view: view), build_meter_text(view: view)])
+}
+
+fn build_meter(input: BuildMeter) -> Fragment {
+  el_attrs("a", concat([
+    attr(name: "class", value: build_meter_class),
+    attr(name: "href", value: input.href),
+    attr(name: build_meter_subject_attribute, value: input.subject),
+  ], input.link_attributes), [build_meter_body(view: input.view)])
+}
+
+// Timing of the decoration. These are the element's own: they are long idle periods and one
+// acted beat, not interface responses, so they are not rows of the shared response scale.
+data build_meter_blink_timing: TimingToken = TimingToken { name: "meter-blink", duration_ms: 6100, easing: "step-end" }
+data build_meter_tap_timing: TimingToken = TimingToken { name: "meter-tap", duration_ms: 2200, easing: "step-end" }
+data build_meter_beat_timing: TimingToken = TimingToken { name: "meter-beat", duration_ms: 1400, easing: "step-end" }
+data build_meter_doze_timing: TimingToken = TimingToken { name: "meter-doze", duration_ms: 900, easing: "ease" }
+
+fn build_meter_opacity_frame(offset_percent: Int, value: String) -> Keyframe {
+  Keyframe { offset_percent: offset_percent, decls: [decl(prop: Opacity, value: value)] }
+}
+
+fn build_meter_shift(x: String, y: String) -> String {
+  join(["translate(", x, ", ", y, ")"], "")
+}
+
+fn build_meter_negative(length: String) -> String {
+  join(["calc(", length, " * -1)"], "")
+}
+
+data build_meter_blink_cycle: MotionCycle = MotionCycle { name: "meter-blink", frames: [
+  build_meter_opacity_frame(offset_percent: 0, value: "0"),
+  build_meter_opacity_frame(offset_percent: 96, value: "1"),
+  build_meter_opacity_frame(offset_percent: 100, value: "0"),
+] }
+
+data build_meter_tap_cycle: MotionCycle = MotionCycle { name: "meter-tap", frames: [
+  Keyframe { offset_percent: 0, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+  Keyframe { offset_percent: 50, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: build_meter_negative(length: scale_var(t: space_2))))] },
+  Keyframe { offset_percent: 100, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+] }
+
+// One beat when a round lands: a nudge toward the strip, then a long blink. Nothing else.
+data build_meter_nudge_cycle: MotionCycle = MotionCycle { name: "meter-nudge", frames: [
+  Keyframe { offset_percent: 0, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+  Keyframe { offset_percent: 8, decls: [decl(prop: Transform, value: build_meter_shift(x: build_meter_negative(length: scale_var(t: space_1)), y: "0"))] },
+  Keyframe { offset_percent: 24, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+  Keyframe { offset_percent: 100, decls: [decl(prop: Transform, value: build_meter_shift(x: "0", y: "0"))] },
+] }
+
+data build_meter_long_blink_cycle: MotionCycle = MotionCycle { name: "meter-long-blink", frames: [
+  build_meter_opacity_frame(offset_percent: 0, value: "0"),
+  build_meter_opacity_frame(offset_percent: 36, value: "1"),
+  build_meter_opacity_frame(offset_percent: 84, value: "0"),
+  build_meter_opacity_frame(offset_percent: 100, value: "0"),
+] }
+
+fn build_meter_within(target: String) -> String {
+  join([".", build_meter_class, " .", target], "")
+}
+
+fn build_meter_in_state(state_class: String, target: String) -> String {
+  join([".", build_meter_class, ".", state_class, " .", target], "")
+}
+
+fn build_meter_attribute_selector(target: String, attribute: String, value: String) -> String {
+  join([target, "[", attribute, "=\"", value, "\"]"], "")
+}
+
+fn build_meter_paint_rule(paint: String, value: String) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([".", build_meter_class, " ", build_meter_attribute_selector(target: "", attribute: build_meter_paint_attribute, value: paint)], "") }, decls: [
+    decl(prop: Fill, value: value),
+  ] }
+}
+
+fn build_meter_kind_rule(kind: BuildMeterKind) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([".", build_meter_class, " ", build_meter_attribute_selector(target: "", attribute: build_meter_kind_attribute, value: build_meter_kind_key(kind: kind))], "") }, decls: [
+    decl(prop: Fill, value: palette_var(slot: build_meter_kind_slot(kind: kind))),
+  ] }
+}
+
+fn build_meter_lid_rest_rule(class_name: String) -> BuildRule {
+  StaticRule { selector: RawSelector { text: build_meter_attribute_selector(target: build_meter_within(target: class_name), attribute: build_meter_lid_attribute, value: "off") }, decls: [
+    decl(prop: Opacity, value: "0"),
+  ] }
+}
+
+// A glance: the face shifts one unit. With no script the worker glances at the strip on hover or
+// focus; a client that knows the pointer's side sets the look attribute, which wins by order.
+fn build_meter_glance_rule(trigger_hover: Bool) -> BuildRule {
+  ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: WithinSubject { target: join([".", build_meter_face_class], "") }, trigger: if trigger_hover { OnHover } else { OnFocusVisible }, transition_props: "transform", timing: restore_gentle, base_decls: [], response_decls: [
+    decl(prop: Transform, value: build_meter_shift(x: build_meter_negative(length: scale_var(t: space_1)), y: "0")),
+  ] }
+}
+
+fn build_meter_look_rule(side: String, x: String) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([build_meter_attribute_selector(target: join([".", build_meter_class], ""), attribute: build_meter_look_attribute, value: side), " .", build_meter_face_class], "") }, decls: [
+    decl(prop: Transform, value: build_meter_shift(x: x, y: "0")),
+  ] }
+}
+
+// A lid a client raises or lowers. Only a lid the pose left off is touched, so decoration never
+// opens eyes the still has shut.
+fn build_meter_lid_state_rule(state_class: String, lid_class: String, opacity: String) -> BuildRule {
+  ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: WithinSubject { target: build_meter_attribute_selector(target: join([".", lid_class], ""), attribute: build_meter_lid_attribute, value: "off") }, trigger: OnStateClass { class_name: state_class }, transition_props: "opacity", timing: build_meter_doze_timing, base_decls: [], response_decls: [
+    decl(prop: Opacity, value: opacity),
+  ] }
+}
+
+fn build_meter_rules() -> List<BuildRule> {
+  concat([
+    StaticRule { selector: ClassSelector { name: build_meter_class }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Padding, value: scale_var(t: space_4)),
+      decl(prop: Margin, value: build_meter_negative(length: scale_var(t: space_4))),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: TextDecoration, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: build_meter_body_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: build_meter_art_class }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Overflow, value: "visible"),
+    ] },
+    StaticRule { selector: ClassSelector { name: build_meter_text_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ] },
+    StaticRule { selector: ClassSelector { name: build_meter_stage_class }, decls: element_text_decls(role: ElementBody) },
+    StaticRule { selector: ClassSelector { name: build_meter_line_class }, decls: element_text_decls(role: ElementLabel) },
+    StaticRule { selector: ClassSelector { name: build_meter_outcome_class }, decls: element_text_decls(role: ElementBody) },
+    StaticRule { selector: RawSelector { text: join([".", build_meter_line_class, " time"], "") }, decls: [
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
+    StaticRule { selector: ClassSelector { name: build_meter_halt_class }, decls: concat(element_text_decls(role: ElementLabel), [
+      decl(prop: RawProperty { name: "border-inline-start" }, value: scale_border(w: border_2, color_var: palette_var(slot: SlotError))),
+      decl(prop: RawProperty { name: "padding-inline-start" }, value: scale_var(t: space_4)),
+    ]) },
+    build_meter_paint_rule(paint: "body", value: palette_var(slot: SlotMeterWorker)),
+    build_meter_paint_rule(paint: "light", value: palette_var(slot: SlotMeterWorkerLight)),
+    build_meter_paint_rule(paint: "shade", value: palette_var(slot: SlotMeterWorkerShade)),
+    build_meter_paint_rule(paint: "feature", value: palette_var(slot: SlotMeterWorkerFeature)),
+    build_meter_paint_rule(paint: "base", value: palette_var(slot: SlotBorder)),
+    build_meter_paint_rule(paint: "prop", value: palette_var(slot: SlotTextDim)),
+    build_meter_paint_rule(paint: "stop", value: palette_var(slot: SlotError)),
+    build_meter_paint_rule(paint: "finish", value: palette_var(slot: SlotMeterFinish)),
+    build_meter_paint_rule(paint: "lit", value: palette_var(slot: SlotSurface)),
+  ], concat(
+    map(build_meter_kinds, k => build_meter_kind_rule(kind: k)),
+    [
+      build_meter_lid_rest_rule(class_name: build_meter_droop_class),
+      build_meter_lid_rest_rule(class_name: build_meter_sleep_class),
+      build_meter_lid_rest_rule(class_name: build_meter_blink_class),
+      ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: Background, value: palette_var(slot: SlotHover)),
+      ] },
+      ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+        decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_0)),
+      ] },
+      build_meter_glance_rule(trigger_hover: true),
+      build_meter_glance_rule(trigger_hover: false),
+      build_meter_look_rule(side: build_meter_look_left, x: build_meter_negative(length: scale_var(t: space_1))),
+      build_meter_look_rule(side: build_meter_look_right, x: scale_var(t: space_1)),
+      AmbientRule { selector: RawSelector { text: build_meter_within(target: build_meter_blink_class) }, cycle: build_meter_blink_cycle, timing: build_meter_blink_timing, repeat: RunForever },
+      StaticRule { selector: RawSelector { text: build_meter_within(target: build_meter_blink_class) }, decls: [
+        decl(prop: AnimationDuration, value: join(["var(--", build_meter_blink_period_property, ", 6100ms)"], "")),
+        decl(prop: AnimationDelay, value: join(["var(--", build_meter_blink_delay_property, ", 0ms)"], "")),
+      ] },
+      AmbientRule { selector: RawSelector { text: build_meter_within(target: build_meter_arm_class) }, cycle: build_meter_tap_cycle, timing: build_meter_tap_timing, repeat: RunForever },
+      build_meter_lid_state_rule(state_class: build_meter_drowsy_class, lid_class: build_meter_droop_class, opacity: "1"),
+      build_meter_lid_state_rule(state_class: build_meter_asleep_class, lid_class: build_meter_droop_class, opacity: "1"),
+      build_meter_lid_state_rule(state_class: build_meter_asleep_class, lid_class: build_meter_sleep_class, opacity: "1"),
+      build_meter_lid_state_rule(state_class: build_meter_waking_class, lid_class: build_meter_droop_class, opacity: "0"),
+      build_meter_lid_state_rule(state_class: build_meter_waking_class, lid_class: build_meter_sleep_class, opacity: "0"),
+      AmbientRule { selector: RawSelector { text: build_meter_in_state(state_class: build_meter_beat_class, target: build_meter_worker_class) }, cycle: build_meter_nudge_cycle, timing: build_meter_beat_timing, repeat: RunOnce },
+      AmbientRule { selector: RawSelector { text: build_meter_in_state(state_class: build_meter_beat_class, target: build_meter_blink_class) }, cycle: build_meter_long_blink_cycle, timing: build_meter_beat_timing, repeat: RunOnce },
+    ]))
+}

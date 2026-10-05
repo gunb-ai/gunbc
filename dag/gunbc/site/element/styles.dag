@@ -14,6 +14,7 @@ import gunbc.site.element.priority_mark { priority_mark_class, priority_mark_rul
 import gunbc.site.element.node_row { node_row_class, node_row_rules }
 import gunbc.site.element.relation_table { relation_table_class, relation_table_rules }
 import gunbc.site.element.node_chain { node_chain_class, node_chain_rules }
+import gunbc.site.element.build_meter { build_meter_class, build_meter_rules }
 
 // What a page needs to use the elements: every element's rules, and the :root blocks they read
 // (the palette per scheme, and this frontend's tokens, which do not vary by scheme). Each element
@@ -34,6 +35,7 @@ fn element_styles() -> List<ElementStyle> {
     ElementStyle { class_name: node_row_class, rules: node_row_rules() },
     ElementStyle { class_name: relation_table_class, rules: relation_table_rules() },
     ElementStyle { class_name: node_chain_class, rules: node_chain_rules() },
+    ElementStyle { class_name: build_meter_class, rules: build_meter_rules() },
   ]
 }
 
