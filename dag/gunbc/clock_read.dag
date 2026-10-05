@@ -76,7 +76,18 @@ fn observer_clock_read() -> ObserverClockRead {
 fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_bmc_account_instant"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "observer_at"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "reflash_restored_factory_access_takes_the_same_apply_and_readback_path"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_year_2000_readback_cannot_satisfy_ordering_and_an_observer_instant_can"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_ungrounded_route_with_approval_refuses_the_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_secret_order_is_carried_by_the_plan"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_published_replacement_must_be_the_goal_bound_break_glass_generation"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_refuses_naming_the_missing_channel_access_write"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_apply_whose_post_read_fails_the_goal_generation_mints_no_receipt"),
   ]
 {
   ObserverClockInstant { millis: millis, source: ObserverClockModeled { realization: realization } }
