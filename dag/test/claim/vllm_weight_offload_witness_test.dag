@@ -1,0 +1,109 @@
+module test.claim.vllm_weight_offload_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.weight_offload {
+  VllmFp8MoeBackend, Fp8MoeTriton, Fp8MoeDeepGemm, Fp8MoeMarlin,
+  VllmUvaOffloadReading, VllmUvaOffload, VllmPrefetchOffload,
+  VllmPrefetchStepAdmitted, VllmPrefetchStepRefused, vllm_prefetch_step,
+  VllmWeightOffloadSplitStanding, WeightOffloadSplitEstablished, WeightOffloadSplitUnestablished, WeightOffloadSplitRefused,
+  UvaZeroCopyView, UvaFunctionalCallFallback, PrefetchStaticBuffers,
+  vllm_weight_offload_split_standing,
+}
+
+fn uva(available: Bool?, disabled: Bool?, backend: VllmFp8MoeBackend?) -> VllmWeightOffloadSplitStanding {
+  vllm_weight_offload_split_standing(backend: VllmUvaOffload { reading: VllmUvaOffloadReading {
+    uva_available: available, disable_uva_env_set: disabled, realized_moe_backend: backend,
+  } })
+}
+
+fn is_zero_copy(s: VllmWeightOffloadSplitStanding) -> Bool {
+  match s {
+    WeightOffloadSplitEstablished { law: l } =>
+      l.device_copies_per_offloaded_parameter == 0 && match l.realization {
+        UvaZeroCopyView => true
+        UvaFunctionalCallFallback => false
+        PrefetchStaticBuffers { step: _ } => false
+      }
+    WeightOffloadSplitUnestablished { obligations: _ } => false
+    WeightOffloadSplitRefused { cause: _ } => false
+  }
+}
+
+fn is_fallback(s: VllmWeightOffloadSplitStanding) -> Bool {
+  match s {
+    WeightOffloadSplitEstablished { law: l } =>
+      l.device_copies_per_offloaded_parameter == 1 && match l.realization {
+        UvaZeroCopyView => false
+        UvaFunctionalCallFallback => true
+        PrefetchStaticBuffers { step: _ } => false
+      }
+    WeightOffloadSplitUnestablished { obligations: _ } => false
+    WeightOffloadSplitRefused { cause: _ } => false
+  }
+}
+
+fn is_refused(s: VllmWeightOffloadSplitStanding) -> Bool {
+  match s {
+    WeightOffloadSplitRefused { cause: _ } => true
+    WeightOffloadSplitEstablished { law: _ } => false
+    WeightOffloadSplitUnestablished { obligations: _ } => false
+  }
+}
+
+fn unestablished_count(s: VllmWeightOffloadSplitStanding) -> Nat {
+  match s {
+    WeightOffloadSplitUnestablished { obligations: os } => count(os)
+    WeightOffloadSplitEstablished { law: _ } => 0
+    WeightOffloadSplitRefused { cause: _ } => 0
+  }
+}
+
+// Positive control: every fact read, UVA live, an in-place backend. This is the only zero-copy route.
+test fn w_read_uva_with_an_in_place_backend_is_the_zero_copy_law() -> Bool {
+  is_zero_copy(s: uva(available: Present { value: true }, disabled: Present { value: false }, backend: Present { value: Fp8MoeTriton }))
+}
+
+// RED: UVA unavailable on the host. The engine falls back to functional_call and materialises one
+// module's offloaded parameters on the device. That is not zero-copy.
+test fn w_uva_unavailable_is_the_device_materialising_fallback() -> Bool {
+  let s = uva(available: Present { value: false }, disabled: Present { value: false }, backend: Present { value: Fp8MoeTriton })
+  is_fallback(s: s) && !is_zero_copy(s: s)
+}
+
+// RED: VLLM_WEIGHT_OFFLOADING_DISABLE_UVA set. Same fallback.
+test fn w_uva_disabled_by_env_is_the_device_materialising_fallback() -> Bool {
+  let s = uva(available: Present { value: true }, disabled: Present { value: true }, backend: Present { value: Fp8MoeTriton })
+  is_fallback(s: s) && !is_zero_copy(s: s)
+}
+
+// RED: a relayout backend allocates device tensors after loading, so no split exists.
+test fn w_a_relayout_moe_backend_refuses_the_split() -> Bool {
+  is_refused(s: uva(available: Present { value: true }, disabled: Present { value: false }, backend: Present { value: Fp8MoeDeepGemm }))
+    && is_refused(s: uva(available: Present { value: true }, disabled: Present { value: false }, backend: Present { value: Fp8MoeMarlin }))
+}
+
+// RED: an unread fact is unestablished, and each unread fact is named once.
+test fn w_unread_facts_leave_the_split_unestablished() -> Bool {
+  unestablished_count(s: uva(available: Absent, disabled: Absent, backend: Absent)) == 3
+    && unestablished_count(s: uva(available: Present { value: true }, disabled: Present { value: false }, backend: Absent)) == 1
+    && !is_zero_copy(s: uva(available: Present { value: true }, disabled: Absent, backend: Present { value: Fp8MoeTriton }))
+}
+
+// RED: an enabled prefetch with step zero has no constructor. Step two keeps two device copies.
+test fn w_prefetch_step_is_positive_and_prices_its_device_copies() -> Bool {
+  (match vllm_prefetch_step(count: 0) {
+    VllmPrefetchStepRefused { cause: _ } => true
+    VllmPrefetchStepAdmitted { step: _ } => false
+  })
+    && (match vllm_prefetch_step(count: 2) {
+      VllmPrefetchStepAdmitted { step: st } =>
+        match vllm_weight_offload_split_standing(backend: VllmPrefetchOffload { step: st }) {
+          WeightOffloadSplitEstablished { law: l } => l.device_copies_per_offloaded_parameter == 2
+          WeightOffloadSplitUnestablished { obligations: _ } => false
+          WeightOffloadSplitRefused { cause: _ } => false
+        }
+      VllmPrefetchStepRefused { cause: _ } => false
+    })
+}

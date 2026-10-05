@@ -3,11 +3,12 @@ module test.claim.runner_jit_deregistration_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { Noop, Apply, Refuse }
-import extdeps.transports.rest { RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestExchangeStatusRefused, RestExchangeUnreached }
 import extdeps.github.actions_jit_runner { JitRunnerName }
-import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire, OrganizationRunnerDeletedBody }
 import gunbc.runner.runner_jit_deregistration {
   JitRunnerListing, JitRunnerListed, JitRunnerNotListed, JitRunnerListingUnreadable,
+  JitListingPageIncomplete, JitListingExchangeRefused,
   JitRunnerDeleteAttempt, ReadbackShowsAbsent, ReadbackRefused,
   DeregistrationRunnerStillListed, DeregistrationListingUnreadable,
   jit_runner_listing_of, plan_jit_deregistration, classify_jit_deregistration,
@@ -18,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data runner_name: JitRunnerName = JitRunnerName { value: "gunbc-qualification-mtcollins1-q-1.service" }
 
 fn listing(runners: List<OrganizationRunnerWire>, total: Int) -> JitRunnerListing {
-  jit_runner_listing_of(name: runner_name, performance: RestExchangeSucceeded, body: OrganizationRunnerListWire { total_count: total, runners: runners })
+  jit_runner_listing_of(name: runner_name, listing: RestAnswered { answer: OrganizationRunnerListWire { total_count: total, runners: runners } })
 }
 
 // THE LISTING IS AN IDENTITY JOIN ON THE MINTED NAME: a different runner in the page is not this
@@ -29,10 +30,12 @@ test fn the_listing_finds_the_registration_by_name_and_refuses_a_short_page() ->
   let mine = OrganizationRunnerWire { id: 42, name: runner_name.value as String }
   (match listing(runners: [other], total: 1) { JitRunnerNotListed => true _ => false })
     && (match listing(runners: [other, mine], total: 2) { JitRunnerListed { ids: ids } => ids == [42] _ => false })
-    && (match listing(runners: [other], total: 2) { JitRunnerListingUnreadable { performance: _, cause: _ } => true _ => false })
-    && (match jit_runner_listing_of(name: runner_name, performance: RestExchangeUnreached { cause: "fixture: connection refused" },
-      body: OrganizationRunnerListWire { total_count: 0, runners: [] }) {
-      JitRunnerListingUnreadable { performance: _, cause: _ } => true
+    && (match listing(runners: [other], total: 2) {
+      JitRunnerListingUnreadable { reason: JitListingPageIncomplete { listed: l, total: t }, cause: _ } => l == 1 && t == 2
+      _ => false
+    })
+    && (match jit_runner_listing_of(name: runner_name, listing: RestRefused { refusal: RestTransportRefused { cause: "fixture: connection refused" } }) {
+      JitRunnerListingUnreadable { reason: JitListingExchangeRefused { refusal: RestExchangeUnreached { cause: _ } }, cause: _ } => true
       _ => false
     })
 }
@@ -40,7 +43,7 @@ test fn the_listing_finds_the_registration_by_name_and_refuses_a_short_page() ->
 test fn the_plan_is_an_ensure_over_the_listing() -> Bool {
   (match plan_jit_deregistration(listing: JitRunnerNotListed) { Noop => true _ => false })
     && (match plan_jit_deregistration(listing: JitRunnerListed { ids: [42] }) { Apply { plan: ids } => ids == [42] _ => false })
-    && (match plan_jit_deregistration(listing: JitRunnerListingUnreadable { performance: RestExchangeSucceeded, cause: "fixture" }) {
+    && (match plan_jit_deregistration(listing: JitRunnerListingUnreadable { reason: JitListingPageIncomplete { listed: 1, total: 2 }, cause: "fixture" }) {
       Refuse { reason: _ } => true
       _ => false
     })
@@ -51,18 +54,18 @@ test fn the_plan_is_an_ensure_over_the_listing() -> Bool {
 // readback refuses. The verdict carries no success payload -- the sealed receipt is minted only by
 // the effectful ensure from a listing GitHub returned.
 test fn the_verdict_reads_absent_only_from_an_absent_readback() -> Bool {
-  let deleted_ok = [JitRunnerDeleteAttempt { runner_id: 42, performance: RestExchangeSucceeded }]
-  let deleted_ambiguous = [JitRunnerDeleteAttempt { runner_id: 42, performance: RestExchangeCommitAmbiguous { detail: "fixture: 502 after the write" } }]
+  let deleted_ok = [JitRunnerDeleteAttempt { runner_id: 42, result: RestAnswered { answer: OrganizationRunnerDeletedBody {} } }]
+  let deleted_ambiguous = [JitRunnerDeleteAttempt { runner_id: 42, result: RestRefused { refusal: RestStatusRefused { status: 502, body: "fixture: 502 after the write" } } }]
   (match classify_jit_deregistration(readback: JitRunnerNotListed, deletes: deleted_ambiguous) { ReadbackShowsAbsent => true _ => false })
     && (match classify_jit_deregistration(readback: JitRunnerListed { ids: [42] }, deletes: deleted_ok) {
       ReadbackRefused { refusal: DeregistrationRunnerStillListed { ids: ids, deletes: _ } } => ids == [42]
       _ => false
     })
     && (match classify_jit_deregistration(
-      readback: JitRunnerListingUnreadable { performance: RestExchangeStatusRefused { status: 403, body: "fixture" }, cause: "fixture" },
+      readback: JitRunnerListingUnreadable { reason: JitListingExchangeRefused { refusal: RestExchangeStatusRefused { status: 403, body: "fixture" } }, cause: "fixture" },
       deletes: deleted_ok,
     ) {
-      ReadbackRefused { refusal: DeregistrationListingUnreadable { performance: _, cause: _ } } => true
+      ReadbackRefused { refusal: DeregistrationListingUnreadable { reason: _, cause: _ } } => true
       _ => false
     })
 }

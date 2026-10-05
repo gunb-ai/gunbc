@@ -148,6 +148,7 @@ fn footprint_receipt_is_complete(outcomes: List<FootprintSampleOutcome>) -> Bool
   count(outcomes) == count(runner_microvm_footprint_sample_sizes)
     && fold(outcomes, init: true, f: (ok, o) => ok && match o {
          FootprintSampled { sample: _ } => true
-         _ => false
+         FootprintBootRefused { guest_memory: _, detail: _ } => false
+         FootprintMeasurementUnreadable { guest_memory: _, instrument: _, cause: _ } => false
        })
 }

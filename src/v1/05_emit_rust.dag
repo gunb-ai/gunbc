@@ -170,7 +170,7 @@ import v1.compiler.trait_derive_emit {
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_map_key_head_names_in_type_expr,
   v1_clone_impl_required_type_params,
-  v1_trait_derive_refuse,
+  v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
@@ -232,7 +232,9 @@ import v1.compiler.infer {
 }
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
+  lookup_emit_type_summary, empty_emit_graph_info,
+  TypeDeclIndex, type_decl_identity,
+  TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
@@ -447,7 +449,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           emit_rust_compile_error_expr(message: "Set element type unresolved")
         } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) {
           let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+          emit_rust_compile_error_expr(message: concat("Set element type ", elem_name, rust_set_element_ineligibility_reason(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)))
         } else {
           render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
         }
@@ -2227,14 +2229,28 @@ fn rust_nominal_ord_type_decl_ord_eligible(decl: Node, source_indices: Map<Strin
 }
 
 fn rust_nominal_ord_type_ref_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  let type_name = authored_name_at(source_indices: source_indices, node: elem_node)
   (elem_node.children |> count) == 0
     && (elem_node.params |> count) == 0
     && elem_node.connective == NoConnective
-    && match lookup_emit_type_decl(emit_info: emit_info, type_name: type_name) {
-      Present { value: decl } => rust_nominal_ord_type_decl_ord_eligible(decl: decl, source_indices: source_indices)
-      Absent => false
+    && match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: elem_node, source_indices: source_indices) {
+      TypeDeclResolved { identity: _, decl: decl } => rust_nominal_ord_type_decl_ord_eligible(decl: decl, source_indices: source_indices)
+      TypeDeclLeafAmbiguous { leaf: _ } => false
+      TypeDeclKernelSpellingUndecided { leaf: _ } => false
+      TypeDeclNotDeclared => false
     }
+}
+
+// WHY A SET ELEMENT WAS REFUSED, WHEN THE REASON IS THE REFERENCE AND NOT THE TYPE. Every caller of
+// rust_btree_set_element_ord_eligible that renders text turns `false` into compile_error!; an
+// element whose leaf two modules declare is refused there like any other, and this names the
+// actual cause so the diagnostic does not blame a declaration that was never chosen.
+fn rust_set_element_ineligibility_reason(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: elem_node, source_indices: source_indices) {
+    TypeDeclLeafAmbiguous { leaf: leaf } => concat(" names a type more than one module of this closure declares ('", leaf, "') and carries no declaration identity, so its Ord eligibility is not decided")
+    TypeDeclResolved { identity: _, decl: _ } => " is not Ord-eligible for BTreeSet"
+    TypeDeclKernelSpellingUndecided { leaf: _ } => " is not Ord-eligible for BTreeSet"
+    TypeDeclNotDeclared => " is not Ord-eligible for BTreeSet"
+  }
 }
 
 fn rust_nominal_ord_type_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
@@ -3309,9 +3325,9 @@ fn v1_item_signature_type_exprs(item: Node) -> List<Node> {
   )
 }
 
-fn v1_map_key_seed_type_exprs(modules: List<TypedModule>, type_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> List<Node> {
-  let declaration_field_exprs = map_keys(type_decl_items) |> flat_map(type_name =>
-    match map_get(type_decl_items, type_name) {
+fn v1_map_key_seed_type_exprs(modules: List<TypedModule>, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  let declaration_field_exprs = map_keys(type_decl_items.by_identity) |> flat_map(type_name =>
+    match map_get(type_decl_items.by_identity, type_name) {
       Present { value: item } => v1_item_field_type_exprs(item: item, source_indices: source_indices)
       Absent => []
     }
@@ -7429,7 +7445,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
@@ -7505,7 +7521,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                   ";"
                 )
               } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
-                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
               } else {
                 ""
               }
@@ -7678,7 +7694,7 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
 // is the out-of-step state this note describes, reached through a second door.
 fn emit_item_header_clone_param_names(
   item: Node,
-  item_name: String,
+  item_identity: String,
   has_fn_fields: Bool,
   generic_param_names: List<String>,
   emit_info: EmitGraphInfo,
@@ -7686,7 +7702,7 @@ fn emit_item_header_clone_param_names(
 ) -> List<String> {
   if has_fn_fields {
     v1_item_wf_propagated_clone_bounded_param_names(
-      item_name: item_name,
+      item_identity: item_identity,
       item: item,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params,
@@ -7695,7 +7711,7 @@ fn emit_item_header_clone_param_names(
     )
   } else {
     v1_item_clone_bounded_param_names(
-      item_name: item_name,
+      item_identity: item_identity,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params
     )
@@ -7726,7 +7742,14 @@ fn emit_type_params_from_clone_param_names(
 // (`emit_type_params_from_clone_param_names`) while the GroupCompletion impl header is rendered in
 // extdeps, so the tree answers "where does a Rust bound get spelled" two different ways.
 fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  if (item.params |> count) == 0 {
+  let ambiguous_head = v1_type_exprs_ambiguous_declared_head(
+    type_exprs: v1_item_field_type_exprs(item: item, source_indices: source_indices),
+    type_decl_items: emit_info.type_decl_items,
+    source_indices: source_indices
+  )
+  if ambiguous_head != "" {
+    v1_ambiguous_declared_head_refusal(subject: concat("item '", item_name, "'"), leaf: ambiguous_head)
+  } else if (item.params |> count) == 0 {
     ""
   } else {
     let head = v1_item_clone_undecided_head(
@@ -7813,7 +7836,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
     let header_clone_param_names = emit_item_header_clone_param_names(
       item: item,
-      item_name: item_text,
+      item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
       has_fn_fields: has_fn_fields,
       generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
       emit_info: emit_info,
@@ -7858,7 +7881,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let header_clone_param_names = emit_item_header_clone_param_names(
       item: item,
-      item_name: item_text,
+      item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
       has_fn_fields: false,
       generic_param_names: generic_param_names,
       emit_info: emit_info,
@@ -7951,10 +7974,20 @@ fn item_seals_construction(item: Node) -> Bool {
 // resolves through the emitter's own declaration index (`type_decl_items`) and then
 // asks the declaration -- so the answer still comes from the declaration node, with
 // the index acting as the lookup rather than as the authority.
-fn type_name_seals_construction(type_name: String, emit_info: EmitGraphInfo) -> Bool {
-  match lookup_emit_type_decl(emit_info: emit_info, type_name: type_name) {
-    Present { value: decl } => item_seals_construction(item: decl)
-    Absent => false
+// THREE ANSWERS, because the reader is an EXPRESSION's type and no item-level refusal stands in front
+// of it: a base expression's type is not one of the declared positions an item refuses on. A leaf two
+// modules declare is neither sealed nor unsealed here, and the field-access seam refuses on it.
+type SealReading
+  = ReferenceSealsConstruction
+  | ReferenceDoesNotSealConstruction
+  | SealUndecidedForAmbiguousLeaf { leaf: String }
+
+fn type_reference_seal_reading(type_expr: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> SealReading {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclResolved { identity: _, decl: decl } => if item_seals_construction(item: decl) { ReferenceSealsConstruction } else { ReferenceDoesNotSealConstruction }
+    TypeDeclLeafAmbiguous { leaf: leaf } => SealUndecidedForAmbiguousLeaf { leaf: leaf }
+    TypeDeclKernelSpellingUndecided { leaf: _ } => ReferenceDoesNotSealConstruction
+    TypeDeclNotDeclared => ReferenceDoesNotSealConstruction
   }
 }
 
@@ -7986,7 +8019,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     children: children,
     shared_types: shared_types,
     has_fn_fields: has_fn_fields,
-    map_key_required: set_contains(emit_info.map_key_required_type_names, name),
+    map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
     source_indices: env.source_indices,
     header_clone_param_names: header_clone_param_names,
@@ -8164,11 +8197,11 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
-fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deserialize_forbidden: Bool, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn enum_derives(module_path: String, name: String, children: List<Node>, has_fn_fields: Bool, deserialize_forbidden: Bool, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   v1_emit_enum_derives(
     children: children,
     has_fn_fields: has_fn_fields,
-    map_key_required: set_contains(emit_info.map_key_required_type_names, name),
+    map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: module_path, decl_name: name)),
     deserialize_forbidden: deserialize_forbidden,
     generic_param_names: generic_param_names,
     source_indices: source_indices
@@ -8183,8 +8216,8 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
 // same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let deserialize_forbidden = members_forbid_deserialize(name: name, members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
-  let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let deserialize_forbidden = members_forbid_deserialize(owner_identity: type_decl_identity(owner_module: env.module_path, decl_name: name), members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
+  let derives = enum_derives(module_path: env.module_path, name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let effective_serde_policy = if has_fn_fields {
     rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
   } else { serde_policy }
@@ -9004,9 +9037,11 @@ fn v1_fn_result_fn_value_clone_forwarded_param_names(
     return []
   }
   let ret_head = qualified_last_segment(name: authored_name_at(source_indices: si, node: ret))
-  match map_get(emit_info.type_decl_items, ret_head) {
-    Absent => []
-    Present { value: decl } =>
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: ret, source_indices: si) {
+    TypeDeclNotDeclared => []
+    TypeDeclKernelSpellingUndecided { leaf: _ } => []
+    TypeDeclLeafAmbiguous { leaf: _ } => []
+    TypeDeclResolved { identity: _, decl: decl } =>
       let forwarded = v1_fn_result_record_lits(body: body)
         |> filter(record => qualified_last_segment(name: authored_name_at(source_indices: si, node: record)) == ret_head)
         |> flat_map(record =>
@@ -9449,6 +9484,14 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+  let ambiguous_signature_head = v1_type_exprs_ambiguous_declared_head(
+    type_exprs: concat(value_params |> map(p => param_node_type_expr(n: p)), [inferred]),
+    type_decl_items: emit_info.type_decl_items,
+    source_indices: si
+  )
+  if ambiguous_signature_head != "" {
+    return concat(v1_ambiguous_declared_head_refusal(subject: concat("fn '", name, "'"), leaf: ambiguous_signature_head), "\n")
+  }
   let body_emit_info = emit_info_with_fn_return(
     emit_info: emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env),
     fn_return_type: Present { value: inferred }
@@ -10067,6 +10110,28 @@ fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String
   }
 }
 
+// The string guards a pattern's OWN rendering can test: every string literal except those under a
+// field in `rc_fields`. Such a field renders as a bare `ref` binding, so the string bindings inside
+// it are not in scope at this pattern's guard (E0425); they belong to that field's selection test,
+// rc_field_selection_test, which renders the field's pattern and binds them there.
+fn collect_pattern_string_guards_outside(pattern: MatchPattern, path_prefix: List<String>, rc_fields: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if rc_fields |> count == 0 {
+    collect_pattern_string_guards(pattern: pattern, path_prefix: path_prefix, source_indices: source_indices)
+  } else {
+    match pattern {
+      VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: _ } =>
+        if parent == Present { value: "Optional" } { collect_pattern_string_guards(pattern: pattern, path_prefix: path_prefix, source_indices: source_indices) }
+        else {
+        let kept = fbs |> filter(fb =>
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          fb_name == "0" || !(rc_fields |> any(f => f == fb_name)))
+        collect_field_binding_string_guards(field_bindings: kept, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
+        }
+      _ => collect_pattern_string_guards(pattern: pattern, path_prefix: path_prefix, source_indices: source_indices)
+    }
+  }
+}
+
 fn all_arms_are_string_lit(arms: List<Node>) -> Bool {
   arms |> all(arm =>
     match arm_pattern(n: arm) {
@@ -10391,7 +10456,7 @@ fn emit_resolved_variant_pattern(name: String, parent_enum: String?, parent_iden
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
             let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
-            concat(qualified, " { ref ", bind_name, ", .. }")
+            concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", bind_name, ", .. }")
           } else {
             let pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, bare_name), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
             concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
@@ -10418,7 +10483,7 @@ fn emit_resolved_variant_pattern(name: String, parent_enum: String?, parent_iden
             list_push(list_push(path_prefix, bare_name), fb_name)
           }
           let bind_name = pattern_string_binding_name(path: field_path)
-          concat("ref ", bind_name)
+          if fb_name == "0" { concat("ref ", bind_name) } else { concat(emit_ident(name: fb_name, target: Rust), ": ref ", bind_name) }
         } else {
             let is_shorthand = match fb_pat { Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
@@ -10661,7 +10726,7 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
             let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
-            concat(qualified, " { ref ", bind_name, ", .. }")
+            concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", bind_name, ", .. }")
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
           } else {
@@ -10691,7 +10756,7 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
             list_push(list_push(path_prefix, bare_name), fb_name)
           }
           let bind_name = pattern_string_binding_name(path: field_path)
-          concat("ref ", bind_name)
+          if fb_name == "0" { concat("ref ", bind_name) } else { concat(emit_ident(name: fb_name, target: Rust), ": ref ", bind_name) }
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
@@ -10767,16 +10832,8 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
             if match_pattern_is_irrefutable(pattern: fb_pat) { [] }
             else {
               match fb_pat {
-                VariantPattern { name: inner_n, parent_enum: inner_parent, field_bindings: _, parent_identity: _ } =>
-                  let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-                  let inner_guard = collect_pattern_rc_variant_guards(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-                  if inner_guard == "" {
-                    let shape = variant_pattern_shape_for(name: inner_n, parent_enum: inner_parent, scrut_type: "", emit_info: emit_info)
-                    [concat("matches!(", emit_ident(name: fb_name, target: Rust), ".as_ref(), ", shape, ")")]
-                  } else {
-                    let aware = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: [], rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-                    [concat("matches!(", emit_ident(name: fb_name, target: Rust), ".as_ref(), ", aware, " if ", inner_guard, ")")]
-                  }
+                VariantPattern { name: _, parent_enum: _, field_bindings: _, parent_identity: _ } =>
+                  [rc_field_selection_test(field_name: fb_name, authored_pattern: fb_pat, owner_variant: bare_n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)]
                 _ => []
               }
             }
@@ -10786,6 +10843,69 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
       }
     _ => ""
   }
+}
+
+// THE PATTERN AN Rc-BOUND FIELD IS DESTRUCTURED WITH, and the one its guard tests. The guard and the
+// prelude used to be two renderings of one source pattern: the prelude destructured the field with
+// its full pattern under `let ... else { unreachable!() }`, while the guard tested only the field's
+// outermost variant shape whenever no deeper Rc level needed a guard of its own. A constant nested
+// below that variant -- `O { mid: M { inner: A } }` -- was therefore tested by the prelude and not by
+// the guard, so a value `O { mid: M { inner: B } }` selected the arm and hit unreachable!() where the
+// interpreter moved on to the next arm (gunbc.recurring_failure_mode
+// nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust). Both now read this one
+// rendering, so the guard tests every refutable level the let-else destructures and the let-else is
+// unreachable by construction rather than by assumption.
+fn rc_field_pattern_str(field_name: String, field_pattern: MatchPattern, owner_variant: String, inner_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let prefix = list_push(list_push([], owner_variant), field_name)
+  if inner_analysis.needs_rc_pattern {
+    emit_pattern_rc_aware(pattern: field_pattern, path_prefix: prefix, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+  } else {
+    emit_pattern(pattern: field_pattern, path_prefix: prefix, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+  }
+}
+
+// A pattern's SELECTION without its bindings: every `Bind` becomes `Wildcard`, at every level, so a
+// guard can test the full pattern without naming identifiers it never reads (`unused_variables`
+// under -D warnings). Both are irrefutable, so what the pattern selects is unchanged; the field
+// binding keeps its authored name and position, which is what the renderers read.
+fn match_pattern_binds_erased(pattern: MatchPattern) -> MatchPattern {
+  match pattern {
+    Bind { declaration: _ } => Wildcard
+    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: identity } =>
+      VariantPattern { name: n, parent_enum: parent, parent_identity: identity, field_bindings: fbs |> map(fb => field_binding_with_pattern(field_binding: fb, pattern: match_pattern_binds_erased(pattern: field_binding_pattern(n: fb)))) }
+    LitPattern { value: v } => LitPattern { value: v }
+    Wildcard => Wildcard
+  }
+}
+
+fn field_binding_with_pattern(field_binding: Node, pattern: MatchPattern) -> Node {
+  Node {
+    occurrence_identity: field_binding.occurrence_identity, name: field_binding.name, ident: field_binding.ident,
+    span: field_binding.span, ident_span: field_binding.ident_span, children: field_binding.children,
+    connective: field_binding.connective, params: field_binding.params, inferred: field_binding.inferred,
+    return_cardinality: field_binding.return_cardinality, uses: field_binding.uses, body: field_binding.body,
+    transport: field_binding.transport, properties: field_binding.properties, type_annotation: field_binding.type_annotation,
+    is_self_recursive: field_binding.is_self_recursive, has_non_tail_self_call: field_binding.has_non_tail_self_call,
+    match_pattern: Present { value: pattern }, module_item_kind: field_binding.module_item_kind,
+    declaration_marker: field_binding.declaration_marker, declaration: field_binding.declaration, expr_data: field_binding.expr_data
+  }
+}
+
+// The whole selection test for one refutable Rc-bound field: its pattern (every constructor and
+// constant it names), the string literals inside it, and -- recursively -- the same test for each
+// deeper Rc-bound field, which the pattern can only bind by `ref`.
+fn rc_field_selection_test(field_name: String, authored_pattern: MatchPattern, owner_variant: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let field_pattern = match_pattern_binds_erased(pattern: authored_pattern)
+  let inner_analysis = analyze_rc_pattern(pattern: field_pattern, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+  let pat = rc_field_pattern_str(field_name: field_name, field_pattern: field_pattern, owner_variant: owner_variant, inner_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  let deeper_rc_fields = if inner_analysis.needs_rc_pattern { inner_analysis.ref_bound_fields } else { [] }
+  let string_guards = collect_pattern_string_guards_outside(pattern: field_pattern, path_prefix: list_push(list_push([], owner_variant), field_name), rc_fields: deeper_rc_fields, source_indices: source_indices)
+  let deeper = if inner_analysis.needs_rc_pattern {
+    collect_pattern_rc_variant_guards(pattern: field_pattern, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  } else { "" }
+  let conds = [string_guards, deeper] |> filter(g => g != "")
+  let guard = if conds |> count == 0 { "" } else { concat(" if ", conds |> join(separator: " && ")) }
+  concat("matches!(", emit_ident(name: field_name, target: Rust), ".as_ref(), ", pat, guard, ")")
 }
 
 // A let-else over `.as_ref()` is irrefutable when the pattern is structurally irrefutable
@@ -10840,25 +10960,17 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             let fb_pat_here = field_binding_pattern(n: fb)
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat_here, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-            if inner_analysis.needs_rc_pattern {
-              let aware = emit_pattern_rc_aware(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
-                ";"
-              } else {
-                " else { unreachable!() };"
-              }
-              let head = concat("let ", aware, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
-              let inner_preludes = rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-              if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
+            let bound_str = rc_field_pattern_str(field_name: fb_name, field_pattern: fb_pat_here, owner_variant: bare_n, inner_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+            let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
+              ";"
             } else {
-              let bound_str = emit_pattern(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
-                ";"
-              } else {
-                " else { unreachable!() };"
-              }
-              [concat("let ", bound_str, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)]
+              " else { unreachable!() };"
             }
+            let head = concat("let ", bound_str, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
+            let inner_preludes = if inner_analysis.needs_rc_pattern {
+              rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+            } else { "" }
+            if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -11246,6 +11358,13 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
 // the type graph is finite and a repeat visit adds nothing, so exhaustion is reached rather
 // than assumed, and a recursive carrier terminates on its second visit instead of at a
 // depth limit that would have to answer "unknown" and pick an arm.
+// THE SEEN-SET IS KEYED ON THE DECLARATION, like the index it walks: keyed on the leaf, a visit to
+// one declaration ended the walk at a different declaration of the same spelling, and a seal behind
+// the second was never reached.
+// THE TypeDeclLeafAmbiguous ARM ANSWERS false AND NOTHING IS EMITTED FROM THAT ANSWER. This walk is
+// handed an item's member types and a data row's annotation, and both positions are refused whole
+// before it is consulted (emit_item_clone_bound_refusal, emit_data_def), so the arm is reached only
+// under an item whose text is already compile_error!.
 fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, seen: Map<String, Bool>) -> Bool {
   let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
   let child_reaches = n.children |> any(child =>
@@ -11253,20 +11372,24 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
   )
   if child_reaches {
     true
-  } else if name == "" || emit_map_has(m: seen, key: name) {
+  } else if name == "" {
     false
   } else {
-    match lookup_emit_type_decl(emit_info: emit_info, type_name: name) {
-      Present { value: decl } =>
-        if item_seals_construction(item: decl) {
+    match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: n, source_indices: source_indices) {
+      TypeDeclResolved { identity: identity, decl: decl } =>
+        if emit_map_has(m: seen, key: identity) {
+          false
+        } else if item_seals_construction(item: decl) {
           true
         } else {
-          let next_seen = map_insert(seen, name, true)
+          let next_seen = map_insert(seen, identity, true)
           decl_member_type_nodes(decl: decl) |> any(member =>
             type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: next_seen)
           )
         }
-      Absent => false
+      TypeDeclLeafAmbiguous { leaf: _ } => false
+      TypeDeclKernelSpellingUndecided { leaf: _ } => false
+      TypeDeclNotDeclared => false
     }
   }
 }
@@ -11300,8 +11423,19 @@ fn decl_member_type_nodes(decl: Node) -> List<Node> {
   }
 }
 
-fn members_forbid_deserialize(name: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
+// A declaration item names itself by its declaring span, so its identity is read through the same
+// resolution every reference takes; the empty answer seeds nothing and costs the walk one visit.
+fn declaration_item_identity(item: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: item, source_indices: source_indices) {
+    TypeDeclResolved { identity: identity, decl: _ } => identity
+    TypeDeclLeafAmbiguous { leaf: _ } => ""
+    TypeDeclKernelSpellingUndecided { leaf: _ } => ""
+    TypeDeclNotDeclared => ""
+  }
+}
+
+fn members_forbid_deserialize(owner_identity: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let seen = map_insert(empty_map(), owner_identity, true)
   members |> any(member =>
     type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: seen)
   )
@@ -11311,7 +11445,7 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
   if item_seals_construction(item: item) {
     true
   } else {
-    members_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), members: decl_member_type_nodes(decl: item), emit_info: emit_info, source_indices: source_indices)
+    members_forbid_deserialize(owner_identity: declaration_item_identity(item: item, emit_info: emit_info, source_indices: source_indices), members: decl_member_type_nodes(decl: item), emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -11359,7 +11493,12 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               _ => false
             }
             let field_is_boxed = field_access_field_is_boxed(base: base, field: field, scope: scope, shared_types: shared_types, emit_info: emit_info)
-            if type_name_seals_construction(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: base)), emit_info: emit_info) {
+            let seal = type_reference_seal_reading(type_expr: resolved_type(n: base), emit_info: emit_info, source_indices: scope.type_env.source_indices)
+            let seal_undecided_leaf = match seal { SealUndecidedForAmbiguousLeaf { leaf: leaf } => leaf  ReferenceSealsConstruction => ""  ReferenceDoesNotSealConstruction => "" }
+            let sealed = match seal { ReferenceSealsConstruction => true  ReferenceDoesNotSealConstruction => false  SealUndecidedForAmbiguousLeaf { leaf: _ } => false }
+            if seal_undecided_leaf != "" {
+              emit_rust_compile_error_expr(message: concat("field access '.", field, "': the base expression's type names '", seal_undecided_leaf, "', which more than one module of this closure declares, and carries no declaration identity -- whether the field is read directly or through a sealed accessor is not decided"))
+            } else if sealed {
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
             } else if field_is_boxed {
               apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
@@ -11529,7 +11668,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
         "v1_rt::rc_empty_set::<_>()"
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info) {
         let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
+        emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, rust_set_element_ineligibility_reason(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)))
       } else {
         let elem_str = rust_empty_set_element_type_str(set_type: set_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         if elem_str != "" {
@@ -12515,7 +12654,8 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let to_string_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
+        if is_map_typed_expr(texpr: arg_value(n: value_arg), source_indices: scope.type_env.source_indices) { emitted_map_rendering_refusal(site: "to_string") } else {
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()")) }
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -13262,7 +13402,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   } else {
     concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
   }
-  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }"))
 }
 
 // The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
@@ -14033,7 +14173,8 @@ fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: M
 //
 // RESIDUE, DECLARED: an arm carrying a string guard, an authored guard, more than one Rc-bound
 // field, or a deeper Rc level inside the nested pattern is NOT grouped and keeps the #8570 guard —
-// so it keeps the E0004 too. A match containing an irrefutable arm is left alone entirely: the
+// so it keeps the E0004 too. That guard SELECTS correctly at every level (rc_field_selection_test):
+// grouping is how exhaustiveness becomes visible to rustc, not what makes an arm's selection right. A match containing an irrefutable arm is left alone entirely: the
 // wildcard already covers the outer variant, there is no E0004 to remove, and rewriting it would
 // only risk making the inner match non-exhaustive. The tail-call lowering
 // shares this grouping through rc_grouped_match_arm_strs. Next-rung trigger: a general decision-tree
@@ -14378,7 +14519,8 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
+  let arm_rc_fields = if rc_analysis.needs_rc_pattern { rc_analysis.ref_bound_fields } else { [] }
+  let field_guards = collect_pattern_string_guards_outside(pattern: arm_pat, path_prefix: [], rc_fields: arm_rc_fields, source_indices: si)
   let rc_variant_guards = if rc_analysis.needs_rc_pattern {
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
@@ -14929,6 +15071,11 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
   } else { none }
 }
 
+// A ONE-FIELD ANONYMOUS RECORD LITERAL MATCHING TWO OR MORE STRUCTS REFUSES. The literal names no
+// type, so any struct chosen -- or the bare field value, which the single-field arm used to emit --
+// is a guess. It refuses exactly as the multi-field arm does; the remedy is a nominal type on the
+// literal. Found when std.algebra TotalOrder gained the same single `compare` field as
+// extdeps.version VersionScheme and `{ compare: f }` silently emitted `f`.
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -14970,7 +15117,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
-                Absent => fval0
+                Absent =>
+                  if struct_candidates_by_field_names(field_names: single_field_names, type_summaries: emit_info.type_summaries) |> count > 1 {
+                    "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+                  } else { fval0 }
               }
             Absent => "compile_error!(\"empty anonymous record literal\")"
           }
@@ -15619,8 +15769,25 @@ fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, s
       let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
       InterpPart { format_segment: escaped, arg_expr: "" }
     Interpolation { expr: e } =>
-      InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
+      if is_map_typed_expr(texpr: e, source_indices: scope.type_env.source_indices) {
+        InterpPart { format_segment: "{}", arg_expr: emitted_map_rendering_refusal(site: "string interpolation") }
+      } else {
+        InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
+      }
   }
+}
+
+// RENDERING A MAP IN EMITTED RUST IS REFUSED, TYPED AND LOCATED, NOT LEFT TO rustc. The
+// interpreter renders a map in the canonical content order (std.algebra TotalOrder; the seed's
+// canonical_content_cmp). The emitted realization has no map rendering at all -- im::HashMap has
+// no Display -- so before this refusal the program died in rustc as an untyped E0277 and, had a
+// Display been added naively, it would have rendered in per-process RandomState order. Building
+// an emitted canonical rendering is a declared frontier, not done here: no v2 source renders a
+// map (none could compile), so it fails the v1 admission test (gunbc.v1_maintenance_standing).
+// Trigger: a v2 source renders a compound value. Ruling: deep-ferret-305, node
+// adhoc-77383faf-d07.
+fn emitted_map_rendering_refusal(site: String) -> String {
+  emit_rust_compile_error_expr(message: concat("EMIT REFUSED: ", site, " renders a Map; the emitted realization has no canonical map rendering (declared frontier: emitted compound rendering, trigger: a v2 source renders a compound value)"))
 }
 
 fn emit_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -15853,7 +16020,8 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
+  let arm_rc_fields = if rc_analysis.needs_rc_pattern { rc_analysis.ref_bound_fields } else { [] }
+  let field_guards = collect_pattern_string_guards_outside(pattern: arm_pat, path_prefix: [], rc_fields: arm_rc_fields, source_indices: si)
   let rc_variant_guards = if rc_analysis.needs_rc_pattern {
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
@@ -16037,12 +16205,18 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
+  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: env.source_indices)
+  let is_rest = match bound {
+    RestBound { transport: _ } => true
+    _ => false
+  }
+  let ret_type = if is_rest { concat("std::rc::Rc<", rust_rest_result_path(), "<", output_type, ">>") } else { output_type }
   let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
+  let mock_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
+  let dry_run_body = if is_rest { emit_rust_rest_answered_mock(mock_body: mock_body, output_type: output_type) } else { mock_body }
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -16171,10 +16345,10 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     let val_str = emit_simple_expr(expr: hval, target: Rust, source_indices: source_indices)
     concat("let request = request.header(\"", field_init_node_name_at(n: h, source_indices: source_indices), "\", ", val_str, ");")
   )
-  let send_line = "let response = request.send().await?;"
-  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
+  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+  let result_lowering = emit_rust_rest_result_lowering(op_node: op_node, transport: transport, output_type: output_type, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line, basic_auth_line],
-    header_lines, [query_line, body_line, send_line, response_handling])
+    header_lines, [query_line, body_line, result_lowering])
     |> filter(l => l != "")
   all_lines |> join(separator: "\n")
   }
@@ -16369,11 +16543,6 @@ fn emit_rest_body_line(transport: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
-fn has_response_prefix(name: String) -> Bool {
-  if string_length(s: name) < 9 { false }
-  else { substring(s: name, start: 0, end: 9) == "response_" }
-}
-
 fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let rt = resolved_type(n: op_node)
   let is_conj = rt.connective == Conj
@@ -16522,15 +16691,15 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   let prelude = match wire_opt {
     Present { value: tn } =>
       if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
-        "let json_body: serde_json::Value = response.json().await?;\n"
+        "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
       } else {
         let wire_ty = match tn.inferred {
           Present { value: Resolved { node: rt } } => rt
           _ => tn
         }
-        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = response.json().await?;\n")
+        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = serde_json::from_str(&__rest_text)?;\n")
       }
-    Absent => "let json_body: serde_json::Value = response.json().await?;\n"
+    Absent => "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
   }
   let extract_lines = children |> map(ch =>
     let ch_name = authored_name_at(source_indices: source_indices, node: ch)
@@ -16555,7 +16724,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   )
   let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
   let tuple_body = if field_names |> count == 1 {
-    concat("(", field_names |> first.value, ",)")
+    field_names |> first.value
   } else {
     concat("(", field_names |> join(separator: ", "), ")")
   }
@@ -16569,9 +16738,9 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
     Absent => false
   }
   if is_text {
-    "let result = response.text().await?;\nOk(result)"
+    "Ok(__rest_text.clone())"
   } else {
-    "let result = response.json().await?;\nOk(result)"
+    "let result = serde_json::from_str(&__rest_text)?;\nOk(result)"
   }
 }
 
@@ -16596,50 +16765,71 @@ fn emit_rust_boxed_error_return(message_expr: String) -> String {
   concat("Err(", message_expr, ".into())")
 }
 
-fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
-  let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
-  let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
-  if response_props |> count == 0 {
-    if use_from_key {
-      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
-    } else {
-      emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
-    }
-  } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env))
-    concat(
-      "let status = response.status().as_u16();\n",
-      "match status {\n",
-      arms |> join(separator: "\n"),
-      "\n    _ => ",
-      emit_rust_boxed_error_return(message_expr: "format!(\"unexpected status code: {}\", status)"),
-      "\n",
-      "}")
-  }
+// THE RUST SPELLING OF extdeps.transports.rest RestResult AND RestRefusal. The emitted operation
+// method names the declared coproduct by its module path, so the arms a caller eliminates are the
+// model's own and this emitter restates none of them as a second type.
+fn rust_rest_result_path() -> String {
+  concat("crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestResult")
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
-  let name = field_init_node_name_at(n: prop, source_indices: source_indices)
-  let code_str = substring(s: name, start: 9, end: string_length(s: name))
-  let is_success = if string_length(s: code_str) >= 1 {
-    substring(s: code_str, start: 0, end: 1) == "2"
-  } else { false }
-  let pattern = if code_str == "nonzero" { "_" }
-    else if string_length(s: code_str) == 3 && substring(s: code_str, start: 1, end: 3) == "xx" {
-      let prefix = substring(s: code_str, start: 0, end: 1)
-      concat(prefix, "00..=", prefix, "99")
-    }
-    else { code_str }
-  if is_success {
-    if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env), " },")
-    } else {
-      concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
-    }
+// Both coproducts are spelled the way emitted code holds a nominal coproduct value: reference
+// counted, as a field and as a result. A caller's match derefs the operation's result exactly as
+// it derefs any other coproduct, so the method returns the same holding. This spelling is checked
+// by rustc against the emitted declaration and the emitted callers, so a change in how either is
+// held refuses the emitted crate rather than drifting.
+fn rust_rest_refused(refusal_arm: String) -> String {
+  concat("std::rc::Rc::new(", rust_rest_result_path(), "::RestRefused { refusal: std::rc::Rc::new(crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestRefusal::", refusal_arm, ") })")
+}
+
+fn rust_rest_answered(answer_expr: String) -> String {
+  concat("std::rc::Rc::new(", rust_rest_result_path(), "::RestAnswered { answer: ", answer_expr, " })")
+}
+
+// A REST operation's mock is its decoded-2xx body, so the dry-run branch yields it in the answered
+// arm. The mock decode keeps its own `?` exits; they are evaluated inside a closure of the output
+// type so a mock that does not decode stays a host error and never reads as a remote refusal.
+fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> String {
+  concat(
+    "let __rest_answer = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
+    mock_body, "\n",
+    "})();\n",
+    "Ok(", rust_rest_answered(answer_expr: "__rest_answer?"), ")")
+}
+
+// EVERY OBSERVATION OF THE EXCHANGE LANDS IN ONE ARM OF RestResult, AND NONE LEAVES THROUGH Err.
+// No response at all is RestTransportRefused, and it carries no status because none arrived. A
+// status with an unreadable body is RestBodyUndecodable under that status. A status outside 2xx is
+// RestStatusRefused with the body the remote sent. A 2xx whose body does not inhabit the declared
+// output is RestBodyUndecodable -- the decode runs inside a closure of the output type so each of
+// its `?` exits becomes that arm rather than escaping as an untyped error. Only a decoded body
+// reaches RestAnswered, so the output's fields are constructed in the one arm that has them. This
+// is the same decision the interpreter's decide_rest_exchange makes, arm for arm.
+fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: String, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
+  let decode = if has_from_key_fields(op_node: op_node, source_indices: source_indices) {
+    emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
   } else {
-    concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); ",
-      emit_rust_boxed_error_return(message_expr: "format!(\"HTTP {}: {}\", status, err_body)"), " },")
+    emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
   }
+  concat(
+    "let response = match request.send().await {\n",
+    "    Ok(response) => response,\n",
+    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestTransportRefused { cause: error.to_string() }"), "),\n",
+    "};\n",
+    "let status = response.status().as_u16();\n",
+    "let __rest_text = match response.text().await {\n",
+    "    Ok(text) => text,\n",
+    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: error.to_string() }"), "),\n",
+    "};\n",
+    "if !(200..300).contains(&status) {\n",
+    "    return Ok(", rust_rest_refused(refusal_arm: "RestStatusRefused { status: status as i64, body: __rest_text }"), ");\n",
+    "}\n",
+    "let __rest_decoded = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
+    decode, "\n",
+    "})();\n",
+    "match __rest_decoded {\n",
+    "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
+    "    Err(error) => Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }"), "),\n",
+    "}")
 }
 
 fn has_exit_prefix(name: String) -> Bool {
@@ -17225,6 +17415,10 @@ fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map
 // threaded into emit_data_def_body, so the value took the same answer as the signature. Routed to
 // the carrier authority; the spelling key is deleted rather than kept beside it.
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let ambiguous_annotation_head = v1_type_exprs_ambiguous_declared_head(type_exprs: [type_node], type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices)
+  if ambiguous_annotation_head != "" {
+    return concat(v1_ambiguous_declared_head_refusal(subject: concat("data '", name, "'"), leaf: ambiguous_annotation_head), "\n")
+  }
   let annotation_type_node = type_node
   let ann_name = authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node)
   let preserves_declared_brand = ann_name != "" && annotation_type_node.children |> count == 0 && !is_container_type(name: ann_name) && !is_kernel_type(name: ann_name)

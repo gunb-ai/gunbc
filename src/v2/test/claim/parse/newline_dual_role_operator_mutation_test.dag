@@ -32,6 +32,7 @@ import v2.std.parse_refusal_reason {
   DataValueMissingAfterEq,
   FnExpressionBodyMissingAfterEq,
   KeywordAsPathSegment,
+  KeywordAsValueName,
   LayoutUnknownWithoutSource,
   NewlineBeforeDualRoleOperator,
   ParseRefusalReason
@@ -96,6 +97,7 @@ fn is_newline_refusal(reason: ParseRefusalReason) -> Bool {
     KeywordAsPathSegment => false
     LetInExpressionDropped => false
     DeclarationMarkerNotTest => false
+    KeywordAsValueName => false
     TokenStartsNotIncreasing => false
   }
 }

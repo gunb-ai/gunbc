@@ -21,6 +21,7 @@ import extdeps.ebay.inventory {
   ForPartsOrNotWorking, PreOwnedExcellent, PreOwnedFair,
   FormatTypeEnum, format_type_wire_label, condition_wire_label
 }
+import extdeps.transports.rest { RestResult }
 
 // THE BUY-SIDE SCOPE OF THE SAME UPSTREAM. The eBay module family already models the Sell
 // Inventory scope; Browse is an additional scope of that one subject, so it lands here beside
@@ -506,7 +507,8 @@ fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
               }
               Absent => BrowseFilterConditionHasNoId { condition: c }
             }
-            _ => acc
+            BrowseFilterEmptyValueSet { field: _ } => acc
+            BrowseFilterConditionHasNoId { condition: _ } => acc
           }
         }
       ))
@@ -537,7 +539,8 @@ fn browse_render_filters(filters: List<BrowseSearchFilter>) -> BrowseFilterRende
           }
           refused => refused
         }
-        _ => acc
+        BrowseFilterEmptyValueSet { field: _ } => acc
+        BrowseFilterConditionHasNoId { condition: _ } => acc
       }
     }
   )

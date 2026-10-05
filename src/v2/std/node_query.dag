@@ -76,14 +76,24 @@ fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
 fn node_is_coproduct(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Disj } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: v2.std.node.Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
 fn edge_field_type_name(target: Node) -> Symbol {
   match target.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
-    _ => ^coproduct_unresolved_payload
+    TypeNode { connective: Conj } => ^coproduct_unresolved_payload
+    TypeNode { connective: Disj } => ^coproduct_unresolved_payload
+    TypeNode { connective: Arrow } => ^coproduct_unresolved_payload
+    TypeNode { connective: v2.std.node.Cardinality } => ^coproduct_unresolved_payload
+    TypeNode { connective: Instantiation } => ^coproduct_unresolved_payload
+    ComputationNode { behavior: _ } => ^coproduct_unresolved_payload
   }
 }
 
@@ -115,7 +125,11 @@ fn arm_payload_from_target(target: Node) -> ArmPayload {
       }
     TypeNode { connective: Atom { identity: sym } } =>
       Typed { target_ref: sym }
-    _ => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Disj } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Arrow } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: v2.std.node.Cardinality } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Instantiation } => Typed { target_ref: ^coproduct_unresolved_payload }
+    ComputationNode { behavior: _ } => Typed { target_ref: ^coproduct_unresolved_payload }
   }
 }
 
@@ -257,7 +271,12 @@ fn is_wildcard_pattern(pattern: Node) -> Bool {
 fn declared_field_cardinality_of_target(target: Node) -> std.constructors.Cardinality {
   match target.kind {
     TypeNode { connective: v2.std.node.Cardinality } => std.constructors.Optional
-    _ => Required
+    TypeNode { connective: Atom { identity: _ } } => Required
+    TypeNode { connective: Conj } => Required
+    TypeNode { connective: Disj } => Required
+    TypeNode { connective: Arrow } => Required
+    TypeNode { connective: Instantiation } => Required
+    ComputationNode { behavior: _ } => Required
   }
 }
 
@@ -431,7 +450,12 @@ fn declared_field_list(payload: Node) -> List<DeclaredField> {
           Absent => acc
         }
       })
-    _ => Empty
+    TypeNode { connective: Atom { identity: _ } } => Empty
+    TypeNode { connective: Disj } => Empty
+    TypeNode { connective: Arrow } => Empty
+    TypeNode { connective: v2.std.node.Cardinality } => Empty
+    TypeNode { connective: Instantiation } => Empty
+    ComputationNode { behavior: _ } => Empty
   }
 }
 
@@ -524,7 +548,12 @@ fn construct_tag_reading(n: Node) -> ConstructTagReading {
           if edge_is_core(e: e, marker: ConstructTagEdge) { construct_tag_reading_of_target(target: e.target) } else { NotAConstruct }
         Absent => NotAConstruct
       }
-    _ => NotAConstruct
+    TypeNode { connective: Atom { identity: _ } } => NotAConstruct
+    TypeNode { connective: Disj } => NotAConstruct
+    TypeNode { connective: Arrow } => NotAConstruct
+    TypeNode { connective: v2.std.node.Cardinality } => NotAConstruct
+    TypeNode { connective: Instantiation } => NotAConstruct
+    ComputationNode { behavior: _ } => NotAConstruct
   }
 }
 
@@ -538,7 +567,12 @@ fn construct_tag_reading_of_target(target: Node) -> ConstructTagReading {
           if edge_is_core(e: e, marker: ConstructTagElidedEdge) { ConstructTagElided } else { ConstructTagAuthored { reference: target } }
         Absent => ConstructTagAuthored { reference: target }
       }
-    _ => ConstructTagAuthored { reference: target }
+    TypeNode { connective: Atom { identity: _ } } => ConstructTagAuthored { reference: target }
+    TypeNode { connective: Disj } => ConstructTagAuthored { reference: target }
+    TypeNode { connective: Arrow } => ConstructTagAuthored { reference: target }
+    TypeNode { connective: v2.std.node.Cardinality } => ConstructTagAuthored { reference: target }
+    TypeNode { connective: Instantiation } => ConstructTagAuthored { reference: target }
+    ComputationNode { behavior: _ } => ConstructTagAuthored { reference: target }
   }
 }
 
@@ -678,7 +712,12 @@ fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
               }
           }
       }
-    _ => optional_absent()
+    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: v2.std.node.Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -707,7 +746,12 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
                 Authored { name: _ } =>
                   match e.target.kind {
                     TypeNode { connective: Conj } => optional_present(value: e)
-                    _ => optional_absent()
+                    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+                    TypeNode { connective: Disj } => optional_absent()
+                    TypeNode { connective: Arrow } => optional_absent()
+                    TypeNode { connective: v2.std.node.Cardinality } => optional_absent()
+                    TypeNode { connective: Instantiation } => optional_absent()
+                    ComputationNode { behavior: _ } => optional_absent()
                   }
                 StructuralLabel { label: _ } => optional_absent()
                 Positional => optional_absent()
@@ -715,7 +759,12 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
             Absent => optional_absent()
           }
       }
-    _ => optional_absent()
+    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: v2.std.node.Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -913,7 +962,12 @@ fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
           Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
         }
       })
-    _ => NamedChildMissing
+    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
+    TypeNode { connective: Disj } => NamedChildMissing
+    TypeNode { connective: Arrow } => NamedChildMissing
+    TypeNode { connective: v2.std.node.Cardinality } => NamedChildMissing
+    TypeNode { connective: Instantiation } => NamedChildMissing
+    ComputationNode { behavior: _ } => NamedChildMissing
   }
 }
 
@@ -1006,20 +1060,28 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
-        _ =>
+        Absent =>
           outcome_rejected(d: Diagnostic {
             reason: ^arrow_body_child_missing,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
-    _ =>
-      outcome_rejected(d: Diagnostic {
-        reason: ^arrow_body_child_not_arrow,
-        at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
+    TypeNode { connective: Atom { identity: _ } } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Conj } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Disj } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: v2.std.node.Cardinality } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Instantiation } => find_arrow_body_child_otherwise(root: root)
+    ComputationNode { behavior: _ } => find_arrow_body_child_otherwise(root: root)
   }
+}
+
+fn find_arrow_body_child_otherwise(root: Node) -> Outcome<Node> {
+  outcome_rejected(d: Diagnostic {
+    reason: ^arrow_body_child_not_arrow,
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
 
 fn node_query_domain_malformed_diagnostic(domain: Node) -> Diagnostic {
@@ -1064,11 +1126,19 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
-    _ =>
-      outcome_rejected(
-        d: node_query_domain_malformed_diagnostic(domain: domain)
-      )
+    TypeNode { connective: Atom { identity: _ } } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Disj } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Arrow } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: v2.std.node.Cardinality } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Instantiation } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    ComputationNode { behavior: _ } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
   }
+}
+
+fn conj_ordered_named_param_binding_ids_otherwise(domain: Node) -> Outcome<List<Symbol>> {
+  outcome_rejected(
+    d: node_query_domain_malformed_diagnostic(domain: domain)
+  )
 }
 
 fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
@@ -1084,13 +1154,21 @@ fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
-    _ =>
-      outcome_rejected(d: Diagnostic {
-        reason: ^arrow_domain_named_param_bindings_not_arrow,
-        at: node_locus(node: arrow),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
+    TypeNode { connective: Atom { identity: _ } } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Conj } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Disj } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: v2.std.node.Cardinality } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Instantiation } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    ComputationNode { behavior: _ } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
   }
+}
+
+fn arrow_domain_named_param_bindings_otherwise(arrow: Node) -> Outcome<List<Symbol>> {
+  outcome_rejected(d: Diagnostic {
+    reason: ^arrow_domain_named_param_bindings_not_arrow,
+    at: node_locus(node: arrow),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
 
 // THE EDGES v2.std.node all_names_distinct REFUSES, IN ORDER: each Named edge whose name an earlier
