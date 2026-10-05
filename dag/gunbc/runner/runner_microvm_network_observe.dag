@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.algebra { trim }
 import std.resources { Filesystem }
 import std.content_hash { sha256_hex_digest }
-import extdeps.linux.tun_fdinfo { tun_descriptor_census, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable }
+import extdeps.linux.tun_fdinfo { tun_descriptor_census_observe, TunDescriptorCensus, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest }
@@ -22,15 +22,14 @@ import gunbc.runner_microvm_network {
 }
 
 fn observe_tap_holders(tap: NonEmptyStr) -> TapHolderObservation {
-  let read = tun.LinuxTun.ObserveHolders(tap: tap)
-  tap_holders_reading(success: read.success, value: read.value)
+  tap_holders_reading(census: tun_descriptor_census_observe(name: tap as String))
 }
 
-fn tap_holders_reading(success: Bool, value: String) -> TapHolderObservation {
-  match tun_descriptor_census(success: success, value: value) {
-    TunDescriptorCount { count: n } => if n == 0 { TapPresentUnheld } else { TapHeld { holders: n } }
+fn tap_holders_reading(census: TunDescriptorCensus) -> TapHolderObservation {
+  match census {
+    TunDescriptorCount { count: n, exited: _ } => if n == 0 { TapPresentUnheld } else { TapHeld { holders: n } }
     TunInterfaceMissing => TapMissing
-    TunDescriptorUnreadable => TapHoldersUnreadable { reason: "root TUN descriptor census unavailable or malformed" as NonEmptyStr }
+    TunDescriptorUnreadable { cause: _ } => TapHoldersUnreadable { reason: "root TUN descriptor census unavailable or malformed" as NonEmptyStr }
   }
 }
 

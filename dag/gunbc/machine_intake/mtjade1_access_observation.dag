@@ -10,6 +10,7 @@ import gunbc.machine_intake_mtjade1_factory_network {
   BmcNetworkObservedStatic,
   BmcNetworkObservedDhcpLease,
   mtjade1_bmc_observed_network,
+  mtjade1_bmc_reconfigured_network,
 }
 import extdeps.network.mac { Eui48Address }
 import extdeps.numeric.base16 { hex_digit_char_upper }
@@ -41,11 +42,13 @@ import gunbc.machine_intake_bmc_firmware_family_discriminator {
   family_standing_from_discrimination,
 }
 import gunbc.machine_intake_subject {
+  BoardSerialObservation,
   BoardSerialAbsent,
   UnitKeyRefused,
   UnitKeyStanding,
 }
 import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 
@@ -163,7 +166,7 @@ fn board_extra_spelling(link: Eui48Address) -> String {
   ], ":")
 }
 
-fn bind_board_extra(root: JsonValue, oem: JsonValue, network: ObservedBmcNetwork) -> RecordedManagerDecode {
+fn bind_board_extra(root: JsonValue, oem: JsonValue, link: Eui48Address?) -> RecordedManagerDecode {
   let amp = json_field(obj: oem, key: "Amp")
   match json_field_value(r: amp) {
     Absent => field_unread(field: "Oem.Amp", cause: read_cause(r: amp))
@@ -176,10 +179,10 @@ fn bind_board_extra(root: JsonValue, oem: JsonValue, network: ObservedBmcNetwork
           match json_field_value(r: extra) {
             Absent => field_unread(field: "Oem.Amp.FruInformation.BoardExtra", cause: read_cause(r: extra))
             Present { value: text } =>
-              match observed_bmc_link(network: network) {
+              match link {
                 Absent => RecordedManagerRefused { gap: CaptureSubjectLinkUnobserved }
-                Present { value: link } =>
-                  if text == board_extra_spelling(link: link) {
+                Present { value: l } =>
+                  if text == board_extra_spelling(link: l) {
                     decode_manager_fields(root: root, oem: oem)
                   } else {
                     RecordedManagerRefused { gap: CaptureBoundToAnotherLink { board_extra: text } }
@@ -229,6 +232,18 @@ fn decode_recorded_manager_capture(
   expected_sha256: NonEmptyStr,
   network: ObservedBmcNetwork,
 ) -> RecordedManagerDecode {
+  decode_recorded_manager_capture_for_link(content: content, expected_sha256: expected_sha256, link: observed_bmc_link(network: network))
+}
+
+// THE SAME DECODE, BOUND TO A LINK RATHER THAN TO THE NETWORK OBSERVATION THAT CARRIED IT. A DHCP
+// lease observation names an address and no link, so a read at a leased address is bound to the unit
+// through the link observed for that controller on its own wire (the factory-static observation's
+// tcpdump), never through the address it was read at.
+fn decode_recorded_manager_capture_for_link(
+  content: String,
+  expected_sha256: NonEmptyStr,
+  link: Eui48Address?,
+) -> RecordedManagerDecode {
   let observed = sha256_hex_of_text(text: content)
   let expected: String = expected_sha256
   if observed != expected {
@@ -240,7 +255,7 @@ fn decode_recorded_manager_capture(
         let oem = json_field(obj: root, key: "Oem")
         match json_field_value(r: oem) {
           Absent => field_unread(field: "Oem", cause: read_cause(r: oem))
-          Present { value: oem_v } => bind_board_extra(root: root, oem: oem_v, network: network)
+          Present { value: oem_v } => bind_board_extra(root: root, oem: oem_v, link: link)
         }
       }
     }
@@ -278,6 +293,104 @@ fn recorded_manager_family_standing(decoded: RecordedManagerDecode) -> BmcFirmwa
 fn mtjade1_firmware_family_standing() -> BmcFirmwareFamilyStanding uses fs: std.resources.Filesystem {
   recorded_manager_family_standing(decoded: read_mtjade1_recorded_manager_identity().decoded)
 }
+
+// THE CURRENT READ (cut O1c-1). GET /redfish/v1/Managers/Self at the controller's DHCP lease
+// 192.168.1.246, read-only with the factory account, committed verbatim on 2026-10-04 (PR #13220).
+// It is the read AccessDiscover consumes for mtjade1: the endpoint is the lease, the binding to this
+// unit is Oem.Amp.FruInformation.BoardExtra against the link observed on the controller's own wire,
+// and the controller's own DateTime is kept as an OBSERVATION. The capture proves a Redfish Manager
+// surface at that address and build; it proves no account write.
+data mtjade1_current_manager_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-redfish-manager-self-192.168.1.246-2026-10-04T043605Z.json"
+
+data mtjade1_current_manager_capture_sha256: NonEmptyStr = "807189948689d6cf046fc53736108cd27dce60ab3f15ddc06f77de79681a1ef3"
+
+// THE CONTROLLER'S OWN CLOCK, AS IT ANSWERED. A reading, never an instant anything is ordered by:
+// mtjade1's controller reports a date in the year 2000, and no field typed this way is an ordering
+// clock (cut O1b's observer clock is that authority).
+type ControllerClockReading
+  = ControllerClockRendered { rendering: NonEmptyStr }
+  | ControllerClockUnread { cause: String }
+
+// SEALED: minted only in this module, downstream of the fail-closed file read and its digest check,
+// so a caller cannot author a decoded Manager response and hand it to AccessDiscover.
+type CurrentManagerRead sole_constructor {
+  identity: RecordedManagerIdentityObservation
+  controller_clock: ControllerClockReading
+}
+
+fn controller_clock_of_capture(content: String) -> ControllerClockReading {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: g } => ControllerClockUnread { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: root } => {
+      let at = json_field_string(obj: root, key: "DateTime")
+      match json_field_value(r: at) {
+        Absent => ControllerClockUnread { cause: read_cause(r: at) }
+        Present { value: t } =>
+          if t == "" {
+            ControllerClockUnread { cause: "empty" }
+          } else {
+            ControllerClockRendered { rendering: t as NonEmptyStr }
+          }
+      }
+    }
+  }
+}
+
+// The clock is read only from bytes whose digest and unit binding already held: a reading from a
+// capture that did not decode as this unit is not this controller's clock.
+fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, endpoint: ObservedBmcNetwork, link: Eui48Address?, capture_path: NonEmptyStr) -> CurrentManagerRead
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
+  ]
+{
+  let decoded = decode_recorded_manager_capture_for_link(content: content, expected_sha256: expected_sha256, link: link)
+  let clock = match decoded {
+    RecordedManagerDecoded { observation: _ } => controller_clock_of_capture(content: content)
+    RecordedManagerRefused { gap: g } => ControllerClockUnread { cause: capture_gap_text(gap: g) as String }
+  }
+  CurrentManagerRead {
+    identity: RecordedManagerIdentityObservation {
+      subject: "mtjade1",
+      endpoint: endpoint,
+      resource: "/redfish/v1/Managers/Self",
+      capture_path: capture_path,
+      capture_sha256: expected_sha256,
+      decoded: decoded,
+    },
+    controller_clock: clock,
+  }
+}
+
+fn read_mtjade1_current_manager_read() -> CurrentManagerRead uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: mtjade1_current_manager_capture_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      CurrentManagerRead {
+        identity: RecordedManagerIdentityObservation {
+          subject: "mtjade1",
+          endpoint: mtjade1_bmc_reconfigured_network,
+          resource: "/redfish/v1/Managers/Self",
+          capture_path: mtjade1_current_manager_capture_path,
+          capture_sha256: mtjade1_current_manager_capture_sha256,
+          decoded: RecordedManagerRefused { gap: CaptureUnreadable { error: e } },
+        },
+        controller_clock: ControllerClockUnread { cause: e },
+      }
+    FilesystemReadSucceeded { content: text } =>
+      current_manager_read_of(
+        content: text,
+        expected_sha256: mtjade1_current_manager_capture_sha256,
+        endpoint: mtjade1_bmc_reconfigured_network,
+        link: observed_bmc_link(network: mtjade1_bmc_observed_network),
+        capture_path: mtjade1_current_manager_capture_path,
+      )
+  }
+}
+
+// THE COMMITTED BOARD-SERIAL OBSERVATIONS FOR mtjade1: none. No FRU board-serial read and no host
+// SMBIOS read of this unit is committed, so IdentityBindProvisional binds no unit key and refuses
+// with BoardSerialAbsent. A serial is added here only beside the committed capture it was read from.
+data mtjade1_board_serial_observations: List<BoardSerialObservation> = []
 
 data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
   cause: BoardSerialAbsent,
