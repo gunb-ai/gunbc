@@ -15,6 +15,7 @@ import gunbc.host_compile_pool_provision {
   provision_compile_pool_effect_for_host,
   provision_compile_pool_routes_through_host_effect_apply,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -139,6 +139,8 @@ import v2.std.symbol_index {
 import v2.std.node {
   node_subtree_nodes,
   ArrowEffectClaimsEdge,
+  BinderTypeEdge,
+  ArrowSignatureOrderEdge,
   ArrowExecutionModeClaimEdge,
   ArrowResourceRequirementsEdge,
   MapLiteralEntryEdge,
@@ -184,7 +186,7 @@ import v2.std.node {
   core_edge_label,
   edge_is_core,
 }
-import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
+import v2.std.type_binder { type_binder_set_children, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
@@ -3055,25 +3057,61 @@ fn body_lower_decl_generic_params_slot_optional(captured: Node) -> Optional<Node
 // so it keeps its minted occurrence) and the name. The type-parameter Edge is its projection
 // (body_lower_generic_param_edge_of), and so is the binder list v2.compiler.occurrence_role reads
 // (body_lower_generic_params_binder_atoms).
+//
+// `kind` is the lowered kind of a kinded parameter (`bits: WidthResolution`, v2.extdeps.languages.dag
+// dag_grammar_generic_param_expr), Absent for a bare one. A kind that is written and does not lower
+// makes the whole binder unreadable, so the list refuses (TypeParamsUnreadable) rather than dropping it.
 type BodyLowerGenericBinder {
   item: Node,
   binder: Node,
   name: Symbol,
+  kind: Optional<Node>,
 }
 
+// generic_param is seq(name, optional(seq(`:`, kind))); an absent kind captures as the empty Conj.
 fn body_lower_generic_param_binder_optional(item: Node) -> Optional<BodyLowerGenericBinder> {
-  match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
     Absent => optional_absent()
-    Present { value: binder } =>
-      match node_atom_identity_optional(node: binder) {
-        Absent => optional_absent()
-        Present { value: name } => optional_present(value: BodyLowerGenericBinder { item: item, binder: binder, name: name })
+    Present { value: name_then_kind } =>
+      let suffix = body_lower_deep_unwrap_optional(node: name_then_kind.right)
+      if is_empty_conj_root(n: suffix) {
+        body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_absent())
+      } else {
+        match sugar_sequence_pair_optional(node: suffix) {
+          Absent => optional_absent()
+          Present { value: colon_then_kind } =>
+            match body_lower_type_expr_lowered_optional(node: colon_then_kind.right) {
+              Absent => optional_absent()
+              Present { value: kind } => body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_present(value: kind))
+            }
+        }
       }
   }
 }
 
+fn body_lower_generic_param_named_optional(item: Node, name_node: Node, kind: Optional<Node>) -> Optional<BodyLowerGenericBinder> {
+  match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: name_node)) {
+    Absent => optional_absent()
+    Present { value: binder } =>
+      match node_atom_identity_optional(node: binder) {
+        Absent => optional_absent()
+        Present { value: name } => optional_present(value: BodyLowerGenericBinder { item: item, binder: binder, name: name, kind: kind })
+      }
+  }
+}
+
+// The binder Atom, carrying the kind as its one BinderTypeEdge when the parameter declares one
+// (v2.std.node type_binder_conforms).
 fn body_lower_generic_param_edge_of(b: BodyLowerGenericBinder) -> Edge {
-  Edge { label: Authored { name: b.name }, target: body_lower_param_ref_atom(source: b.item, identity: b.name) }
+  let atom = body_lower_param_ref_atom(source: b.item, identity: b.name)
+  match b.kind {
+    Absent => Edge { label: Authored { name: b.name }, target: atom }
+    Present { value: k } =>
+      Edge {
+        label: Authored { name: b.name },
+        target: node_with_occurrence_id(kind: atom.kind, children: [core_edge(marker: BinderTypeEdge, target: k)], occurrence_id: atom.occurrence_id)
+      }
+  }
 }
 
 // The repeat tail of comma_list(item): each element is seq(opt(comma), item).
@@ -3185,11 +3223,11 @@ fn body_lower_decl_type_params(captured: Node) -> DeclTypeParams {
                 Absent => TypeParamsUnreadable
                 Present { value: edges } =>
                   TypeParams {
-                    conj: node_lowered_from(
+                    conj: close_lowered_image(root: node_lowered_from(
                       kind: TypeNode { connective: Conj },
-                      children: edges,
+                      children: type_binder_set_children(binders: edges, source: generic_params),
                       source: generic_params
-                    )
+                    ))
                   }
               }
           }
@@ -5270,6 +5308,14 @@ fn body_lower_fresh_type_variable_domain_renames(edges: List<Edge>, path: List<I
 
 // Renames fresh variables in the Arrow's own signature: an atom, a record's edge targets, and the
 // type-parameter list's labels and targets. The body edge is left to the outer walk.
+//
+// A TYPE-PARAMETER BINDER SET IS RE-MINTED, NOT EDITED. Its declared order (one
+// ^arrow_signature_order_edge, v2.std.node type_binder_conj_conforms) is a projection of its binder
+// labels; renaming the labels in place while leaving that projection alone produced a set whose order
+// named the unpositioned variables and whose binders named the positioned ones, so every function
+// value and fold step failed post-normalize well-formedness (the #13038 regression, reverted by
+// #13293). The renamed binders go back through type_binder_set_children, the one mint of a set and
+// its order, so the two are one fact again.
 fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbol>, arrow_body: Bool) -> Node {
   if arrow_body {
     node
@@ -5281,9 +5327,10 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
           Absent => node
         }
       TypeNode { connective: Conj } =>
-        node_with_occurrence_id(
-          kind: node.kind,
-          children: fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
+        let renamed_edges = fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
+          if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+            acc
+          } else {
             let label = match e.label {
               StructuralLabel { label: _ } => e.label
               Authored { name: n } =>
@@ -5294,12 +5341,20 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
               Positional => e.label
             }
             list_snoc_item(xs: acc, item: Edge { label: label, target: body_lower_rename_fresh_type_variables(node: e.target, renames: renames, arrow_body: false) })
-          }),
+          }
+        })
+        node_with_occurrence_id(
+          kind: node.kind,
+          children: if body_lower_conj_carries_declared_order(node: node) { type_binder_set_children(binders: renamed_edges, source: node) } else { renamed_edges },
           occurrence_id: node.occurrence_id
         )
       _ => node
     }
   }
+}
+
+fn body_lower_conj_carries_declared_order(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: ArrowSignatureOrderEdge) })
 }
 
 fn body_lower_function_value_arrow(
@@ -5329,7 +5384,7 @@ fn body_lower_function_value_arrow(
       let type_param_edges: List<Edge> = match type_params {
         Empty => no_edges
         Cons { head: _, tail: _ } =>
-          [type_params_edge(conj: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_params, source: shell))]
+          [type_params_edge(conj: close_lowered_image(root: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: type_params, source: shell), source: shell)))]
       }
       outcome_with_diagnostics(
         value: body_lower_callable_arrow(

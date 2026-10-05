@@ -11,7 +11,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // (gunbc.recurring_failure_mode absence_classifier_default_bucket). On main the
 // UPDATED 2026-10-02: v2 now carries the slot as a closed-vocabulary declaration property
 // (v2.compiler.body_lowering_fold TypeDeclModifier, on NormalizedTree type_declaration_modifiers;
-// controls v2.test.parse.type_decl_modifier_carrier). That is the MINTING half only; nothing on the
+// controls test.claim.parse_test_type_decl_modifier_carrier). That is the MINTING half only; nothing on the
 // native route enforced sole_constructor yet. RETIRED 2026-10-03: v2.compiler.construction_confinement.
 // native route refused the modifier with parse_g0_tokens_remain; after the grammar
 // row a sole_constructor type parses and the construction wall is not recorded on
