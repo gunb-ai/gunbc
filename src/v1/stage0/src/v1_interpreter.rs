@@ -1079,25 +1079,87 @@ fn value_eq_calls() -> u64 {
 /// onto a heap worklist and dropped from there with its own children already detached. Shared
 /// children (`Rc` strong count above one) are left in place; their last owner detaches them.
 /// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+///
+/// A PERSISTENT CARRIER IS DETACHED ONLY ONCE DROP NESTING IS DEEP. A List or Map is an RRB / HAMT
+/// tree whose nodes may be shared with other values -- a `skip` or `map_insert` result shares
+/// all but a logarithmic boundary with its source -- and consuming one into the worklist clones
+/// every member out of the shared nodes, so dropping a slice cost its source's length and a walk
+/// that slices by offset was quadratic in the drop alone. Detaching exists for host-stack depth,
+/// and depth only accrues where one carrier's drop nests another's: below
+/// `VALUE_DROP_INLINE_DEPTH` nested drops the carrier is released by its own drop, which frees
+/// shared nodes by reference count and runs each member's `Value::drop` (itself iterative over
+/// Variant / Record depth); at or beyond it the carrier is detached as before, so a list nested
+/// to any depth still drops in bounded host stack (`deep_value_walker_tests::a_deep_list_drops`).
 impl Drop for Value {
     fn drop(&mut self) {
+        let depth = VALUE_DROP_DEPTH
+            .try_with(|d| {
+                let depth = d.get();
+                d.set(depth + 1);
+                depth
+            })
+            .unwrap_or(VALUE_DROP_INLINE_DEPTH);
+        let detach_carriers = depth >= VALUE_DROP_INLINE_DEPTH;
         let mut pending: Vec<Value> = Vec::new();
-        detach_owned_children(self, &mut pending);
+        detach_owned_children(self, &mut pending, detach_carriers);
         while let Some(mut child) = pending.pop() {
-            detach_owned_children(&mut child, &mut pending);
+            detach_owned_children(&mut child, &mut pending, detach_carriers);
         }
+        // A carrier left attached is released HERE, while the depth is raised: drop glue would
+        // release it only after this function returns and the depth is restored, and a nested
+        // carrier's members would then never see the depth they are at.
+        match self {
+            Value::List(items) => drop(std::mem::replace(items, empty_list_carrier())),
+            Value::Map(entries) => drop(std::mem::replace(entries, empty_map_carrier())),
+            _ => {}
+        }
+        let _ = VALUE_DROP_DEPTH.try_with(|d| d.set(depth));
     }
 }
 
-fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>) {
+thread_local! {
+    static EMPTY_LIST_CARRIER: Rc<RrbVector<Value>> = Rc::new(RrbVector::new());
+    static EMPTY_MAP_CARRIER: Rc<HamtMap<CanonKey, Value>> = Rc::new(HamtMap::new());
+}
+
+fn empty_list_carrier() -> Rc<RrbVector<Value>> {
+    EMPTY_LIST_CARRIER
+        .try_with(Rc::clone)
+        .unwrap_or_else(|_| Rc::new(RrbVector::new()))
+}
+
+fn empty_map_carrier() -> Rc<HamtMap<CanonKey, Value>> {
+    EMPTY_MAP_CARRIER
+        .try_with(Rc::clone)
+        .unwrap_or_else(|_| Rc::new(HamtMap::new()))
+}
+
+const VALUE_DROP_INLINE_DEPTH: u32 = 64;
+
+thread_local! {
+    static VALUE_DROP_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+// TEST-ONLY WORK OBSERVATION: members moved out of a persistent carrier by drop, so the drop's
+// cost contract is observed as work rather than time.
+#[cfg(test)]
+thread_local! {
+    static DROP_DETACHED_CARRIER_MEMBERS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
-        Value::List(items) => {
+        Value::List(items) if detach_carriers => {
             if let Some(items) = Rc::get_mut(items) {
+                #[cfg(test)]
+                DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
             }
         }
-        Value::Map(entries) => {
+        Value::Map(entries) if detach_carriers => {
             if let Some(entries) = Rc::get_mut(entries) {
+                #[cfg(test)]
+                DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
             }
         }
@@ -25293,6 +25355,41 @@ mod linear_slice_tests {
             assert_eq!(rrb_skip(&cps, n), copying_skip(n), "skip {n}");
             assert_eq!(rrb_take(&cps, n), copying_take(n), "take {n}");
         }
+    }
+
+    fn detached() -> u64 {
+        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.get())
+    }
+
+    // The slice's drop is part of the slice's cost: a walk drops one slice per step. Below the
+    // nesting threshold the RRB tree releases its nodes by reference count, so dropping a slice
+    // of a shared list moves no member; the copying drop moved the whole suffix.
+    #[test]
+    fn dropping_a_slice_of_a_shared_list_moves_no_member() {
+        let base = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
+        let Value::List(items) = &base else {
+            unreachable!("list_value builds a list")
+        };
+        let slice = Value::List(Rc::new(rrb_skip(items, (N / 2) as i64)));
+        let before = detached();
+        drop(slice);
+        assert_eq!(detached() - before, 0, "dropping a shared slice walked it");
+        assert_eq!(items.len(), N, "the source survives its slice's drop");
+    }
+
+    // THE RED CONTROL: the same drop once nesting is past the threshold, which is the detaching
+    // path every list drop used to take. It moves the slice's members, so the counter discriminates.
+    #[test]
+    fn the_detaching_drop_moves_the_slice_members() {
+        let base = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
+        let Value::List(items) = &base else {
+            unreachable!("list_value builds a list")
+        };
+        let mut slice = Value::List(Rc::new(rrb_skip(items, (N / 2) as i64)));
+        let before = detached();
+        let mut pending = Vec::new();
+        detach_owned_children(&mut slice, &mut pending, true);
+        assert_eq!(detached() - before, (N - N / 2) as u64);
     }
 
     #[test]
