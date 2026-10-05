@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_census_image
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import extdeps.kmod.libkmod { libkmod_log_priority_env_name, libkmod_log_priority_info }
 import extdeps.systemd.udevd { udevd_log_level_cmdline_key, systemd_log_level_debug, systemd_log_target_env_name, systemd_log_target_kmsg }
@@ -10,11 +10,13 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
   UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
+  ubuntu_seeded_install_media_image_name,
 }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_diskless_image_name }
+import v2.std.optional { Present }
+import gunbc.boot_medium { BootImageExport, BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, bmc_boot_image_export, boot_image_export_eq, stock_installer_boot_medium }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
@@ -211,10 +213,75 @@ data mtcollins1_census_pinned_image: Mtcollins1CensusImage = mtcollins1_census_i
   grub_kernel_cmdline: mtcollins1_census_pinned_grub_cmdline,
 )
 
-// THE STOCK MEDIUM THE CENSUS IMAGE IS BUILT FROM, as it is served in srv2's export. The effectful
+// THE STOCK MEDIUM THE CENSUS IMAGE IS BUILT FROM, as it is served in its export. The effectful
 // half -- the srv2-side regression, the build, the create-only publication and its receipt -- lives in
-// gunbc.machine_intake_mtcollins1_census_image_publish, which also reads the boot medium row this
-// module cannot import without a cycle.
+// gunbc.machine_intake_mtcollins1_census_image_publish.
 fn mtcollins1_census_image_stock_path() -> NonEmptyStr {
-  boot_image_published_path(export_dir: mtcollins1_boot_export_dir, image_name: mtcollins1_diskless_image_name)
+  boot_image_published_path(export_dir: stock_installer_boot_medium.export.dir, image_name: stock_installer_boot_medium.image_name)
 }
+
+// THE CENSUS MEDIUM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image
+// name derives from that digest through the same stem row the census build input is built from, and
+// the terminal is the same volume-id row, so a census medium naming a stock installer, or any
+// artifact but the census image, has no spelling: the medium cannot disagree with the label the
+// verdict binds to (review 5261662425). The published file's name is its digest, so the digest is
+// also the sha256 the admitted boot subject and the attach carry. It is a gunbc.managed_host_boot
+// BootMedium like any other: the boot subject takes it as a value and does not import this module.
+fn mtcollins1_census_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
+  BootMedium {
+    image_name: ubuntu_seeded_install_media_image_name(image_stem: mtcollins1_census_image_stem, output_digest: output_digest),
+    digest: output_digest,
+    export: bmc_boot_image_export,
+    terminal: BootMediumVolumeLabel { label: mtcollins1_census_volume_id },
+  }
+}
+
+// WHETHER A MEDIUM IS THE CENSUS MEDIUM THESE READERS CAN READ: exactly when it is the census medium
+// for its own digest AND names the one export the census is published to and read back from
+// (gunbc.boot_medium bmc_boot_image_export), SSH target included. The census readbacks read only a
+// qualified medium, from the export the qualification returns; a stock installer (or any other row) is
+// refused as not the census, and a census medium naming another exporter -- another endpoint, or
+// another principal at the same endpoint -- is refused as an unsupported exporter rather than read
+// back from the supported one, whose bytes it never named. DECLARED FRONTIER: honoring an arbitrary
+// exporter throughout the readers (and binding the controller share to it) is the generalization; until
+// then the limitation is held here, at admission, and never by substituting the supported export.
+type CensusMediumQualification
+  = CensusMediumQualified { digest: NonEmptyStr, export: BootImageExport }
+  | CensusMediumNotCensus
+  | CensusMediumExporterUnsupported { supported: BootImageExport, named: BootImageExport }
+
+fn mtcollins1_census_medium_qualification(medium: BootMedium) -> CensusMediumQualification {
+  let census = mtcollins1_census_boot_medium(output_digest: medium.digest)
+  let labelled = match medium.terminal {
+    BootMediumVolumeLabel { label: l } => (l as String) == (mtcollins1_census_volume_id as String)
+    BootMediumNoTerminal { reason: _ } => false
+  }
+  if !(labelled && (medium.image_name as String) == (census.image_name as String)) {
+    CensusMediumNotCensus
+  } else if boot_image_export_eq(a: medium.export, b: census.export) {
+    CensusMediumQualified { digest: medium.digest, export: medium.export }
+  } else {
+    CensusMediumExporterUnsupported { supported: census.export, named: medium.export }
+  }
+}
+
+fn boot_image_export_text(export: BootImageExport) -> String {
+  concat(export.target.principal as String, "@", export.target.endpoint as String, ":", export.dir as String)
+}
+
+// CENSUS STAGE 0D: THE MEDIUM MT. COLLINS UNIT 1 BOOTS. The digest is the publish receipt of the gated
+// create-only publication run 36651495873 (main, fleet SSH to srv2 as gunbc-fleet; receipt artifact
+// sha256 ca40bf02982bb1dd71d9adf4663aa74e97b99b03109d9c8626dc9ff53f9ddbcf): gate (a) the srv2 rebuild
+// of the pinned-input derivation equalled the hermetic receipt eb23f174..., gate (b) the rebuilt
+// vmlinuz and initrd equalled stock; image_name
+// gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso, build_key c001ac127d718e72,
+// published_path /srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso. Repinned
+// because #12594 bumped builder_revision, so the previous image (30ca88d4..., build_key
+// 8d357a525f078cb4) no longer describes the current derivation and the boot refuses it (run
+// 36660907341). This row is publication-time evidence only:
+// gunbc.machine_intake_mtcollins1_census_medium_readback re-measures the served path on srv2 before
+// the boot subject is admitted, every run. Switching it to stock_installer_boot_medium makes every
+// census verdict refuse at the gate, before any controller write.
+data mtcollins1_boot_medium: BootMedium = mtcollins1_census_boot_medium(
+  output_digest: "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513",
+)

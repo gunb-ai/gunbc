@@ -25,6 +25,7 @@ import gunbc.host_effect_nbd_proxy_serve {
   NbdProxyServeApplyRefused,
 }
 import gunbc.session_lease { PortObserved, PortObservedStaleExpected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -2719,6 +2719,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test", function: "fleet_authorized_key_enroll_route_twice_by_real_execution" },
+      entry: "dag/test/claim/fleet/fleet_authorized_key_enroll_real_path_witness_test.dag",
+      function: "fleet_authorized_key_enroll_route_twice_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test", function: "fleet_host_key_enroll_config_pin_route_by_real_execution" },
+      entry: "dag/test/claim/fleet/fleet_authorized_key_enroll_real_path_witness_test.dag",
+      function: "fleet_host_key_enroll_config_pin_route_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test", function: "fleet_probe_identity_observe_receipt_by_real_execution" },
+      entry: "dag/test/claim/fleet/fleet_authorized_key_enroll_real_path_witness_test.dag",
+      function: "fleet_probe_identity_observe_receipt_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_json_reject_keeps_intent" },
       entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
       function: "client_json_reject_keeps_intent",
