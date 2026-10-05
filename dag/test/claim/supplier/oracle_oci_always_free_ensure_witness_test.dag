@@ -12,6 +12,8 @@ import gunbc.oracle_oci.instance_ensure {
   OciInstanceDecision, InstanceHeld, InstanceLaunch, InstanceStop,
   oci_instance_decision, oci_observed_instance_of, oci_free_plan, oci_launch_body,
   oci_percent_encode, oci_out_of_host_capacity, oci_free_authorized_keys,
+  oci_select_offering, oci_domain_answer, DomainOffers, DomainLacks, DomainReadRefused,
+  CandidateDomains, CandidateDomainsRefused,
 }
 import product.supplier.oracle_oci { FitsAlwaysFree, ExceedsAlwaysFree, oci_always_free_fit }
 
@@ -156,4 +158,19 @@ test fn launch_bodies_carry_shape_config_only_for_the_flex_shape() -> Bool {
     && string_contains(s: a1, pattern: "\"bootVolumeSizeInGBs\": 50")
     && string_contains(s: oci_free_authorized_keys(), pattern: "fleet-automation@gunbc")
     && string_contains(s: oci_free_authorized_keys(), pattern: "macbook-m4")
+}
+
+// A refused ListShapes read is not "this domain lacks the shape" (review 76366). One refused domain
+// refuses the selection with its cause, even beside a domain that answered and offers the shape.
+// With every read answered, the offering domain is selected.
+test fn a_refused_shape_read_refuses_the_selection_rather_than_reading_as_lacking() -> Bool {
+  let refused = match oci_select_offering(answers: [oci_domain_answer(domain: "AD-1", offer: DomainReadRefused { line: "ListShapes for AD-1 refused: 500" }), oci_domain_answer(domain: "AD-2", offer: DomainOffers)]) {
+    CandidateDomainsRefused { line } => string_contains(s: line, pattern: "AD-1")
+    CandidateDomains { domains } => false
+  }
+  let selected = match oci_select_offering(answers: [oci_domain_answer(domain: "AD-1", offer: DomainLacks), oci_domain_answer(domain: "AD-2", offer: DomainOffers)]) {
+    CandidateDomains { domains } => domains == ["AD-2"]
+    CandidateDomainsRefused { line } => false
+  }
+  refused && selected
 }

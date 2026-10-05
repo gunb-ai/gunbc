@@ -2,7 +2,7 @@ module gunbc.oracle_oci.instance_ensure
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
-import std.measure { gigabyte, gigabyte_count }
+import std.measure { Gigabyte, gigabyte, gigabyte_count }
 import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
@@ -38,13 +38,13 @@ import gunbc.oracle_oci.api {
 // The instances authorize two keys: the fleet automation key, so the fleet can reach them, and the
 // operator's macbook key, so the operator can. Both come from gunbc.fleet_ssh_access, not re-spelled.
 
-data oci_free_boot_volume_gb: Int = 50
+data oci_free_boot_volume: Gigabyte = gigabyte(count: 50)
 
 fn oci_free_plan_instance(name: NonEmptyStr, size: OciInstanceSize) -> OciPlannedInstance {
   OciPlannedInstance {
     name: name,
     size: size,
-    boot_volume: gigabyte(count: oci_free_boot_volume_gb),
+    boot_volume: oci_free_boot_volume,
     capacity: OnDemandCapacity,
     region: InHomeRegion,
     micro_domain: InMicroEligibleDomain,
@@ -218,14 +218,22 @@ fn oci_availability_domains() -> OciNamesRead uses net: Network {
   )
 }
 
-fn oci_domain_offers(compartment: NonEmptyStr, domain: String, shape: String) -> Bool uses net: Network {
+// THREE ANSWERS, NOT TWO (review 76366). A refused ListShapes read is not "this domain lacks the
+// shape": collapsing it would report a confident fact about Oracle's catalog when the real cause was a
+// failed read, and lose that cause.
+type OciDomainOffer
+  = DomainOffers
+  | DomainLacks
+  | DomainReadRefused { line: String }
+
+fn oci_domain_offers(compartment: NonEmptyStr, domain: String, shape: String) -> OciDomainOffer uses net: Network {
   match oci_names_of(
     read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", oci_percent_encode(s: domain)], "") as NonEmptyStr),
     operation: "ListShapes",
     key: "shape",
   ) {
-    OciNamesListed { names } => any(names, n => n == shape)
-    OciNamesRefused { line } => false
+    OciNamesListed { names } => if any(names, n => n == shape) { DomainOffers } else { DomainLacks }
+    OciNamesRefused { line } => DomainReadRefused { line: join(["ListShapes for ", domain, " refused: ", line], "") }
   }
 }
 
@@ -307,13 +315,57 @@ fn oci_launch_in(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: 
   }
 }
 
-// The domains a planned instance may be launched into. A micro has exactly one, read from ListShapes.
-// An A1 may use any of them, tried in Oracle's listed order.
-fn oci_candidate_domains(planned: OciPlannedInstance, compartment: NonEmptyStr, domains: List<String>) -> List<String> uses net: Network {
+// The domains a planned instance may be launched into. A micro has exactly the domains ListShapes
+// says offer it. Every domain's read must answer, and one refused read refuses the whole selection with
+// its cause, because a domain whose answer was lost may be the one that offers the shape. An A1 may use
+// any domain, tried in Oracle's listed order.
+type OciCandidateDomains
+  = CandidateDomains { domains: List<String> }
+  | CandidateDomainsRefused { line: String }
+
+fn oci_candidate_domains(planned: OciPlannedInstance, compartment: NonEmptyStr, domains: List<String>) -> OciCandidateDomains uses net: Network {
   let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
   match planned.size {
-    A1FlexSize { ocpus, memory } => domains
-    E2MicroSize => filter(domains, d => oci_domain_offers(compartment: compartment, domain: d, shape: shape))
+    A1FlexSize { ocpus, memory } => CandidateDomains { domains: domains }
+    E2MicroSize => {
+      let answers = map(domains, d => oci_domain_answer(domain: d, offer: oci_domain_offers(compartment: compartment, domain: d, shape: shape)))
+      oci_select_offering(answers: answers)
+    }
+  }
+}
+
+type OciDomainAnswer {
+  domain: String
+  offer: OciDomainOffer
+}
+
+fn oci_domain_answer(domain: String, offer: OciDomainOffer) -> OciDomainAnswer {
+  OciDomainAnswer { domain: domain, offer: offer }
+}
+
+fn oci_domain_refusal(a: OciDomainAnswer) -> String {
+  match a.offer {
+    DomainReadRefused { line } => line
+    DomainOffers => ""
+    DomainLacks => ""
+  }
+}
+
+fn oci_domain_offering(a: OciDomainAnswer) -> Bool {
+  match a.offer {
+    DomainOffers => true
+    DomainLacks => false
+    DomainReadRefused { line } => false
+  }
+}
+
+// PURE: the selection over every domain's answer.
+fn oci_select_offering(answers: List<OciDomainAnswer>) -> OciCandidateDomains {
+  let refusals = filter(map(answers, a => oci_domain_refusal(a: a)), l => l != "")
+  if refusals.length() > 0 {
+    CandidateDomainsRefused { line: join(refusals, "; ") }
+  } else {
+    CandidateDomains { domains: map(filter(answers, a => oci_domain_offering(a: a)), a => a.domain) }
   }
 }
 
@@ -328,9 +380,11 @@ fn oci_ensure_instance(planned: OciPlannedInstance, compartment: NonEmptyStr, su
     InstanceStop { line } => OciInstanceOutcome { line: line, held: false }
     InstanceLaunch => {
       let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
-      let candidates = oci_candidate_domains(planned: planned, compartment: compartment, domains: domains)
+      match oci_candidate_domains(planned: planned, compartment: compartment, domains: domains) {
+      CandidateDomainsRefused { line } => OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: ", line], ""), held: false }
+      CandidateDomains { domains: candidates } =>
       if candidates.length() == 0 {
-        OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: no availability domain lists shape ", shape], ""), held: false }
+        OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: every availability domain answered, and none lists shape ", shape], ""), held: false }
       } else {
         match oci_newest_image(compartment: compartment, shape: shape) {
           OciImageRefused { line } => OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: ", line], ""), held: false }
@@ -340,6 +394,7 @@ fn oci_ensure_instance(planned: OciPlannedInstance, compartment: NonEmptyStr, su
               OciLaunchStopped { line } => OciInstanceOutcome { line: line, held: false }
             }
         }
+      }
       }
     }
   }
