@@ -86,13 +86,18 @@ pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
+    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+};
 use crate::std_literal_elaboration::KernelMintOwnership::{
     DeclarationDoesNotOwnTheMint, DeclarationOwnsTheMint, KernelMintOwnershipAmbiguous,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership};
 pub use crate::std_literal_elaboration::{
-    KernelGroundingLookup, KernelMintOwnership, LiteralSourceKind,
+    kernel_grounding_for, kernel_mint_declaration_for, kernel_mint_ownership,
+};
+pub use crate::std_literal_elaboration::{
+    KernelGroundingLookup, KernelMintDeclarationLookup, KernelMintOwnership, LiteralSourceKind,
 };
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -251,11 +256,11 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
 };
 pub use crate::v1_compiler_infer_env::{
     authored_name, binding_declares_span, empty_symbol_index, lookup_binding_by_name,
-    lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type,
+    lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type, symbol_index_lookup,
     type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
+    GlobalBareLookupState, SymbolIndex, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
 };
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
@@ -410,7 +415,11 @@ pub fn render_rust_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
-        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+        if is_host_optional_carrier_type(
+            n.clone(),
+            source_indices.clone(),
+            emit_info.type_decl_items.clone().qualified_names.clone(),
+        ) {
             return render_rust_optional_carrier_applied(
                 n.clone(),
                 emit_info.fn_generic_param_names.clone(),
@@ -594,7 +603,11 @@ pub fn render_rust_type_without_applied_binding(
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
-        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+        if is_host_optional_carrier_type(
+            n.clone(),
+            source_indices.clone(),
+            emit_info.type_decl_items.clone().qualified_names.clone(),
+        ) {
             return render_rust_optional_carrier_applied(
                 n.clone(),
                 emit_info.fn_generic_param_names.clone(),
@@ -1039,6 +1052,7 @@ pub fn declaration_owns_host_option(module_path: String, decl_name: String) -> b
 pub fn is_host_optional_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    symbols: Rc<SymbolIndex>,
 ) -> bool {
     match n.declaration.clone() {
         Some(d) => match (*d.field.clone()).clone() {
@@ -1048,10 +1062,60 @@ pub fn is_host_optional_carrier_type(
             _ => false,
         },
         std::option::Option::None => {
-            ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-                == kernel_optional_mint_name())
-                && ((n.children.clone().len() as i64) > 0))
+            let is_declaration_node =
+                (n.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration);
+            if is_declaration_node.clone() {
+                match kernel_optional_mint_declaration_node(symbols.clone()) {
+                    Some(mint) => same_declaring_span(n.clone(), mint.clone()),
+                    std::option::Option::None => {
+                        ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+                            == kernel_optional_mint_name())
+                            && ((n.children.clone().len() as i64) > 0))
+                    }
+                }
+            } else {
+                ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+                    == kernel_optional_mint_name())
+                    && ((n.children.clone().len() as i64) > 0))
+            }
         }
+    }
+}
+
+pub fn kernel_optional_mint_declaration_node(symbols: Rc<SymbolIndex>) -> Option<Rc<Node>> {
+    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+        kernel_mint_declaration_rows(),
+        kernel_optional_mint_name(),
+    ))
+    .clone()
+    {
+        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+            let module_path = d.module_path.clone();
+            let decl_name = d.decl_name.clone();
+            crate::v1_compiler_infer_env::symbol_index_lookup(
+                symbols.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(module_path.clone(), ".".to_string()),
+                    decl_name.clone(),
+                ),
+            )
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => std::option::Option::None,
+        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn same_declaring_span(a: Rc<Node>, b: Rc<Node>) -> bool {
+    match a.ident_span.clone() {
+        Some(sa) => match b.ident_span.clone() {
+            Some(sb) => {
+                ((sa.file.clone() == sb.file.clone()) && (sa.start.clone() == sb.start.clone()))
+            }
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
     }
 }
 
@@ -2462,7 +2526,11 @@ pub fn render_rust_applied_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
-        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+        if is_host_optional_carrier_type(
+            n.clone(),
+            source_indices.clone(),
+            env.symbol_index.clone(),
+        ) {
             return render_rust_optional_carrier_applied(
                 n.clone(),
                 generic_param_names.clone(),
@@ -2729,7 +2797,11 @@ pub fn render_rust_decl_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
-        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+        if is_host_optional_carrier_type(
+            n.clone(),
+            source_indices.clone(),
+            env.symbol_index.clone(),
+        ) {
             return render_rust_optional_carrier_applied(
                 n.clone(),
                 generic_param_names.clone(),
@@ -3092,7 +3164,11 @@ pub fn render_rust_fn_sig_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
-        if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
+        if is_host_optional_carrier_type(
+            n.clone(),
+            source_indices.clone(),
+            env.symbol_index.clone(),
+        ) {
             return render_rust_optional_carrier_applied(
                 n.clone(),
                 generic_param_names.clone(),
@@ -26335,7 +26411,11 @@ pub fn rust_call_arg_fail_closed_unwrap(
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
                 let param_required = (((param_type.return_cardinality.clone()
                     != Cardinality::CardOptional)
-                    && !is_host_optional_carrier_type(param_type.clone(), source_indices.clone()))
+                    && !is_host_optional_carrier_type(
+                        param_type.clone(),
+                        source_indices.clone(),
+                        crate::v1_compiler_infer_env::empty_symbol_index(),
+                    ))
                     && !rust_param_type_is_type_variable(
                         param_type.clone(),
                         source_indices.clone(),
