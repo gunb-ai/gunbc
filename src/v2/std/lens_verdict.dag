@@ -149,7 +149,10 @@ fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> S
           match locus {
             Textual { file: f, extent: e } =>
               concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
-            _ => lens_verdict_node_occurrence_text(node: node)
+            NodeLocus { anchor: _ } => lens_verdict_node_occurrence_text(node: node)
+            SourcePortLocus { anchor: _, file: _, extent: _ } => lens_verdict_node_occurrence_text(node: node)
+            InvariantPortLocus { anchor: _, invariant: _ } => lens_verdict_node_occurrence_text(node: node)
+            DeclarationLocus { declaration: _ } => lens_verdict_node_occurrence_text(node: node)
           }
       }
   }
