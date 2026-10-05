@@ -1,5 +1,6 @@
 module test.claim.git_plumbing_ref_mutation_witness_test
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, String, Int, NonEmptyStr }
 import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_from_untagged_hex }
 import extdeps.git.plumbing {

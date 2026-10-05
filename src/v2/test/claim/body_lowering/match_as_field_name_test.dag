@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.match_as_field_name
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.compiler.body_lowering_fold {
   body_lowering_match_field_name_spine_does_not_sniff_holds
 }

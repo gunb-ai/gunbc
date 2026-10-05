@@ -201,7 +201,7 @@ fn enrolled_fingerprint_for(host: String) -> String? {
   fold(fleet_host_key_enrollments, init: none, f: fn(acc, k) {
     match acc {
       Present { value: _ } => acc
-      _ => if (k.host as String) == host { Present { value: k.sha256_fingerprint } } else { none }
+      Absent => if (k.host as String) == host { Present { value: k.sha256_fingerprint } } else { none }
     }
   })
 }
