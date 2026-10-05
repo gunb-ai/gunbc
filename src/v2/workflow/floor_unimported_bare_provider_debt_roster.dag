@@ -622,7 +622,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "ends_with", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "get", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_bmc_sensor_observation.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_bmc_sensor_observation.dag", name: "filter", standing: Retired { cause: FileDeleted } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_census_medium_readback.dag", name: "get", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_physical_orientation.dag", name: "filter", standing: Retired { cause: BindsWithoutDeclaration } },

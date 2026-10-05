@@ -1,7 +1,7 @@
 module v2.compiler.self_host.frontier_probe
 
 import std.types { List }
-import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme, Symbol }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest

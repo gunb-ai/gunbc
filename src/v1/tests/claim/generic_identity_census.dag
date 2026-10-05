@@ -3,7 +3,7 @@ module v1.tests.claim.generic_identity_census
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFormals, DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext }
-import v1.compiler.infer { param_is_generic_decl, type_node_label }
+import v1.compiler.infer { param_is_generic_decl, type_node_label, unify_generics, substitute_generics_apply }
 import v1.compiler.infer_env { node_with_children }
 import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, Resolved, TypeVariable, Arrow }
 import std.decl_ref { DeclarationRef, TypeParameter, WholeDeclaration, NamedField, declaration_ref_display_key }
@@ -480,6 +480,105 @@ fn gi_rows_from_sources(sources: List<SourceFile>) -> List<GenericIdentityRow>? 
   }
 }
 
+// THE TWO UNOBSERVED OPERATIONS, EXECUTED OVER SUPPLIED NODES (DESIGN section 3, a witness
+// discriminates at one interface). The census cannot see inside unify_generics or
+// substitute_generics_apply, so these call them directly. Every operand is a node the REAL producer
+// emitted for the fixture -- a signature's formal, a declared return -- never a hand-built one, so
+// the readings are about the shapes infer actually hands those functions.
+fn gi_formal_named(sig: ResolvedFuncSig, parameter: String) -> ResolvedFormal? {
+  match sig.resolved_formals {
+    DeclarationBoundFormals { formals: fs } => fs |> filter(f => f.parameter_identity == parameter) |> first
+    KernelGroundedFormals { formals: fs } => fs |> filter(f => f.parameter_identity == parameter) |> first
+    LocalFormalsAwaitingModuleContext {} => none
+  }
+}
+
+fn gi_first_child(n: Node) -> Node? {
+  n.children |> first
+}
+
+fn gi_reading_line(name: String, value: String) -> String {
+  concat(concat(concat("reading ", name), ": "), value)
+}
+
+fn gi_supplied_node_readings(sigs: Map<String, ResolvedFuncSig>, si: Map<String, NewlineIndex>) -> List<String> {
+  match map_get(sigs, "gic.a::head_of") {
+    Absent => ["reading supplied_nodes: UNREACHED (no signature gic.a::head_of)"]
+    Present { value: head_of } =>
+      match map_get(sigs, "gic.a::ints") {
+        Absent => ["reading supplied_nodes: UNREACHED (no signature gic.a::ints)"]
+        Present { value: ints } =>
+          match map_get(sigs, "gic.a::rename_of") {
+            Absent => ["reading supplied_nodes: UNREACHED (no signature gic.a::rename_of)"]
+            Present { value: rename_of } =>
+              match gi_formal_named(sig: head_of, parameter: "xs") {
+                Absent => ["reading supplied_nodes: UNREACHED (head_of has no bound formal xs)"]
+                Present { value: xs } =>
+                  match gi_formal_named(sig: rename_of, parameter: "xs") {
+                    Absent => ["reading supplied_nodes: UNREACHED (rename_of has no bound formal xs)"]
+                    Present { value: renamed_xs } =>
+                      gi_supplied_node_reading_lines(xs: xs, renamed_xs: renamed_xs, list_of_int: ints.inferred, si: si)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// WHAT EACH READING EXECUTES.
+//   substitute_*: bet 2. List<T> under { T := Int } (the substituting arm), and the same node under
+//     a substitution naming no parameter of it (the copy arm, law L1).
+//   unify_binds_from_substitution_basis: bet 1's plan half -- what unify_generics binds from the
+//     field infer_call_arguments_generic_pass hands it.
+//   unify_binds_a_name_with_no_owner_check: the spelling decision, isolated. rename_of's formal is
+//     List<M>, whose child carries the mark of rename_of's own M; asked to bind a parameter NAMED M
+//     with no owner supplied, unify_generics has only the name to go on.
+fn gi_supplied_node_reading_lines(xs: ResolvedFormal, renamed_xs: ResolvedFormal, list_of_int: Node, si: Map<String, NewlineIndex>) -> List<String> {
+  let int_node = match gi_first_child(n: list_of_int) {
+    Present { value: c } => c
+    Absent => list_of_int
+  }
+  let formal_child_key = match gi_first_child(n: xs.declared_type) {
+    Present { value: c } => gi_declaration_label(d: c.declaration)
+    Absent => "no child"
+  }
+  let substituted = substitute_generics_apply(n: xs.declared_type, subst: map_insert(empty_map(), "T", int_node), source_indices: si)
+  let substituted_child = gi_first_child(n: substituted)
+  let substituted_child_label = match substituted_child {
+    Present { value: c } => type_node_label(n: c, source_indices: si)
+    Absent => "no child"
+  }
+  let substituted_child_declaration = match substituted_child {
+    Present { value: c } => gi_declaration_label(d: c.declaration)
+    Absent => "no child"
+  }
+  let copied = substitute_generics_apply(n: xs.declared_type, subst: map_insert(empty_map(), "gic_no_such_parameter", int_node), source_indices: si)
+  let copied_child_key = match gi_first_child(n: copied) {
+    Present { value: c } => gi_declaration_label(d: c.declaration)
+    Absent => "no child"
+  }
+  let bound_from_basis = unify_generics(formal: xs.substitution_basis, actual: list_of_int, generic_names: ["T"], source_indices: si, acc: empty_map())
+  let bound_by_name_alone = unify_generics(formal: renamed_xs.substitution_basis, actual: list_of_int, generic_names: ["M"], source_indices: si, acc: empty_map())
+  let renamed_child_key = match gi_first_child(n: renamed_xs.substitution_basis) {
+    Present { value: c } => gi_declaration_label(d: c.declaration)
+    Absent => "no child"
+  }
+  [
+    gi_reading_line(name: "substitute_keeps_outer_declaration", value: concat(concat(if gi_declaration_label(d: substituted.declaration) == gi_declaration_label(d: xs.declared_type.declaration) { "kept " } else { "CHANGED from " }, gi_declaration_label(d: xs.declared_type.declaration)), if gi_declaration_label(d: xs.declared_type.declaration) == "none" { " (vacuous: the input carried no declaration to lose)" } else { "" })),
+    gi_reading_line(name: "substitute_child_becomes", value: concat(concat(substituted_child_label, " carrying "), substituted_child_declaration)),
+    gi_reading_line(name: "substitute_copy_keeps_child_declaration", value: if copied_child_key == formal_child_key { concat("kept ", copied_child_key) } else { concat(concat(concat("CHANGED ", formal_child_key), " -> "), copied_child_key) }),
+    gi_reading_line(name: "unify_binds_from_substitution_basis", value: match map_get(bound_from_basis, "T") {
+      Present { value: b } => concat("T := ", type_node_label(n: b, source_indices: si))
+      Absent => "T unbound"
+    }),
+    gi_reading_line(name: "unify_formal_child_mark", value: renamed_child_key),
+    gi_reading_line(name: "unify_binds_a_name_with_no_owner_check", value: match map_get(bound_by_name_alone, "M") {
+      Present { value: b } => concat("M := ", type_node_label(n: b, source_indices: si))
+      Absent => "M unbound"
+    })
+  ]
+}
+
 fn gi_tally(keys: List<String>) -> Map<String, Int> {
   fold(keys, init: empty_map(), f: (acc, k) =>
     match map_get(acc, k) {
@@ -592,6 +691,12 @@ type GenericIdentityContextItem {
 // argument does bind the parameter, OBSERVED typed Int and carrying no foreign parameter. None
 // depends on a defect staying unrepaired. The call the spelling collision leaves unsubstituted is a
 // three-valued READING beside them and never gates, because repairing it is the point of step 2.
+//
+// conformance_keeps_the_parameter_mark is the copy law (L1) at one stored carrier. The fixture's
+// same_spelling_as_a_record_parameter<Q> declares a parameter spelled like the record Box<Q>'s, and
+// its formal q: Q must carry ITS OWN mark in declaration_bound_conformance. Before
+// v1.compiler.infer_resolve peel_nominal_alias_identity read the mark, the name lookup replaced that
+// leaf with whatever the module bound to the spelling Q, and this control was UNMET.
 fn gi_control_line(name: String, held: Bool) -> String {
   concat(concat(concat("control ", name), ": "), if held { "held" } else { "UNMET" })
 }
@@ -711,9 +816,12 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
       let bound_call_observed_clean = gi_bound_call_observed_clean(o: bound_call)
       let unobserved_declared = (generic_identity_unobserved() |> count) == 4
       let owner_argument_arms = gi_owner_argument_arms_discriminate(g: g, si: si, sigs: sigs)
+      let conformance_keeps_mark = rows |> any(r =>
+        r.enclosing == "same_spelling_as_a_record_parameter" && r.carrier == "formal_declaration_bound_conformance" && r.path == "q"
+          && gi_declaration_label(d: r.declaration) == "gic.a::same_spelling_as_a_record_parameter::<Q>")
       let missing_carriers = gi_missing_carriers_are_unobserved(g: g, si: si, sigs: sigs)
-      let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared && owner_argument_arms && missing_carriers
-      [
+      let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared && owner_argument_arms && missing_carriers && conformance_keeps_mark
+      concat([
         concat("STANDING ", if held { "held" } else { "unmet" }),
         gi_control_line(name: "marked_signature_leaf", held: marked_signature_leaf),
         gi_control_line(name: "minted_container_child", held: minted_container_child),
@@ -721,9 +829,10 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
         gi_control_line(name: "unobserved_populations_declared", held: unobserved_declared),
         gi_control_line(name: "owner_argument_arms_discriminate", held: owner_argument_arms),
         gi_control_line(name: "missing_carriers_are_unobserved", held: missing_carriers),
+        gi_control_line(name: "conformance_keeps_the_parameter_mark", held: conformance_keeps_mark),
         concat("reading bound_call: ", gi_collision_reading(o: bound_call)),
         concat("reading spelling_collision_call: ", gi_collision_reading(o: gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_literal")))
-      ] |> join(separator: "\n")
+      ], gi_supplied_node_readings(sigs: sigs, si: si)) |> join(separator: "\n")
   }
 }
 

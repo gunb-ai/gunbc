@@ -1,4 +1,4 @@
-module test.claim.machine_intake.mtcollins1_kvm_still_witness_test
+module test.claim.machine_intake.megarac_kvm_still_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -8,14 +8,12 @@ import v2.std.optional { Present, Absent }
 import v2.std.algebra { any }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
-import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.megarac {
   megarac_screen_capture_standing_at_0_32, KvmClientCanvasJpeg, LastBsodJpeg, TriggeredFramebufferRecording, ServerSideOnDemandStill,
   ScreenCaptureClientSideOnly, ScreenCaptureEventRetainedOnly, ScreenCaptureAbsent,
 }
 import gunbc.runner_browser_toolchain { BrowserToolchainUnresolved }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_megarac_kvm_still {
   KvmJournalEvent, KvmJournalStill, KvmJournalAcquisitionFailed, KvmJournalConnectionLost, KvmJournalUnparsed,
   KvmNotConnected, KvmCanvasUnreadable, KvmConnectionChangedDuringAcquisition, KvmSeatBusy,
   KvmObserverStanding, KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverPending,
@@ -29,10 +27,13 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
   KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated, KvmJournalPageConsole, KvmJournalPageError,
   KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
-  mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
-  KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, mtcollins1_kvm_observer_script,
+  megarac_kvm_observer_start, kvm_observer_trigger,
+  KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, megarac_kvm_observer_script,
 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
+import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach }
 import gunbc.owned_process {
   OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedUnreadable, OwnedUnparseable, OwnedForeign, owned_process_standing_of,
 }
@@ -213,17 +214,42 @@ test fn a_still_is_retained_only_when_hash_bound() -> Bool {
   ok && refused
 }
 
-// THE REAL START, EXECUTED, WITH NOTHING TO DRIVE: an uncatalogued firmware, an unbound credential and
-// an unresolved toolchain each refuse before any process starts, and a trigger on an observer that
-// never started is refused.
+// THE REAL START, EXECUTED, WITH NOTHING TO DRIVE, over the real MegaRAC admission of the managed host
+// mtcollins1: an unbound credential, an unbound directory and an unresolved toolchain each refuse before
+// any process starts, a carrier admitted for another MegaRAC operation (virtual media) refuses, and a
+// trigger on an observer that never started is refused. A controller the viewer was never read on is
+// refused earlier, at the admission (test.claim.megarac_managed_host_witness).
+fn admitted(operation: MegaRacOperation) -> AdmittedMegaRacHost? {
+  match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: operation) {
+    MegaRacHostAdmitted { host: h } => Present { value: h }
+    MegaRacHostRefused { cause: _ } => none
+  }
+}
+
 test fn the_start_refuses_without_driving_when_a_precondition_is_missing() -> Bool {
-  let other = mtcollins1_kvm_observer_start(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.99"), bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
-  let nocred = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
-  let notool = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "host not in the floor pool" }, attempt: "1")
-  let a = match other { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "not catalogued")  _ => false }
-  let b = match nocred { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no BMC credential")  _ => false }
-  let c = match notool { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "unresolved: host not in the floor pool")  _ => false }
-  a && b && c && !kvm_observer_trigger(start: nocred, order: 1, reason: "power-on-verified")
+  match admitted(operation: MegaRacKvmCanvasStill) {
+    Absent => false
+    Present { value: h } => {
+      let nocred = megarac_kvm_observer_start(host: h, dir: "artifacts/mtcollins1-boot-kvm-1", password_file: "", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
+      let nodir = megarac_kvm_observer_start(host: h, dir: "", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
+      let notool = megarac_kvm_observer_start(host: h, dir: "artifacts/mtcollins1-boot-kvm-1", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "host not in the floor pool" }, attempt: "1")
+      let b = match nocred { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no BMC credential")  _ => false }
+      let d = match nodir { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no observer directory")  _ => false }
+      let c = match notool { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "unresolved: host not in the floor pool")  _ => false }
+      b && d && c && !kvm_observer_trigger(start: nocred, order: 1, reason: "power-on-verified")
+    }
+  }
+}
+
+test fn a_carrier_admitted_for_virtual_media_does_not_start_the_viewer() -> Bool {
+  match admitted(operation: MegaRacVirtualMediaAttach) {
+    Absent => false
+    Present { value: h } =>
+      match megarac_kvm_observer_start(host: h, dir: "artifacts/mtcollins1-boot-kvm-1", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1") {
+        KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "admitted for another operation")
+        _ => false
+      }
+  }
 }
 
 // RETAINED WITH THE BUNDLE: the observer's directory sits under the boot's upload prefix.
@@ -239,7 +265,7 @@ test fn the_observer_directory_is_retained_with_the_boot_artifacts() -> Bool {
 fn kvm_word_line(w: String) -> String { concat("1790000000000 2026-09-30T00:00:00.000Z ", concat(w, " detail=x")) }
 
 test fn the_journal_vocabulary_is_declared_once_and_read_back_by_the_parser() -> Bool {
-  let script = mtcollins1_kvm_observer_script
+  let script = megarac_kvm_observer_script
   let events_rendered = !any(kvm_journal_event_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
   let causes_rendered = !any(kvm_journal_cause_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
   let parsed = !any(kvm_journal_event_words, w => !(match kvm_journal_event(line: kvm_word_line(w: w.word)) { KvmJournalUnparsed { line: _ } => false  _ => true }))
