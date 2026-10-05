@@ -53,22 +53,22 @@ fn w_cross_kind_fn_data_b_first() -> Bool {
   )
 }
 
-test fn cross_module_same_leaf_emits_qualifier_module_not_registry_winner() -> Bool {
+test fn cross_module_same_leaf_emits_qualifier_module_not_registry_winner() -> Bool  {
   w_cross_module_same_leaf_binds_qualifier_module()
 }
 
-test fn cross_kind_data_fn_emits_data_call_suffix_a_first() -> Bool {
+test fn cross_kind_data_fn_emits_data_call_suffix_a_first() -> Bool  {
   w_cross_kind_data_fn_a_first()
 }
 
-test fn cross_kind_data_fn_emits_data_call_suffix_b_first() -> Bool {
+test fn cross_kind_data_fn_emits_data_call_suffix_b_first() -> Bool  {
   w_cross_kind_data_fn_b_first()
 }
 
-test fn cross_kind_fn_data_emits_fn_item_a_first() -> Bool {
+test fn cross_kind_fn_data_emits_fn_item_a_first() -> Bool  {
   w_cross_kind_fn_data_a_first()
 }
 
-test fn cross_kind_fn_data_emits_fn_item_b_first() -> Bool {
+test fn cross_kind_fn_data_emits_fn_item_b_first() -> Bool  {
   w_cross_kind_fn_data_b_first()
 }

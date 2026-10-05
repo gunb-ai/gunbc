@@ -34,14 +34,14 @@ fn registry_contains(a: GeneratedArtifact) -> Bool {
   fold(generated_artifact_registry, init: false, f: fn(acc, r) { acc || artifact_eq(a: r, b: a) })
 }
 
-test fn w_the_coupon_program_artifact_is_registered() -> Bool {
+test fn w_the_coupon_program_artifact_is_registered() -> Bool  {
   registry_contains(a: CouponCadQueryProgramArtifact)
 }
 
 // NotCommitted read from the policy function, and the same fact confirmed from the derived
 // population: a policy row that said NotCommitted while the artifact still appeared among the
 // committed artifacts would be a disagreement between the authority and what is derived from it.
-test fn w_the_coupon_program_artifact_is_not_committed() -> Bool {
+test fn w_the_coupon_program_artifact_is_not_committed() -> Bool  {
   let policy_says = match artifact_commit_policy(a: CouponCadQueryProgramArtifact) {
     NotCommitted => true
     CommitRequired { consumer: _ } => false
@@ -53,7 +53,7 @@ test fn w_the_coupon_program_artifact_is_not_committed() -> Bool {
 }
 
 // THE JOIN: the central dispatch and the handler answer with the SAME bytes.
-test fn w_the_central_dispatch_produces_the_judged_handler_content() -> Bool {
+test fn w_the_central_dispatch_produces_the_judged_handler_content() -> Bool  {
   match artifact_generate(a: CouponCadQueryProgramArtifact) {
     ArtifactGenerationRefused { reason: _ } => false
     ArtifactGenerated { content: dispatched } =>
@@ -67,7 +67,7 @@ test fn w_the_central_dispatch_produces_the_judged_handler_content() -> Bool {
 // A NON-VACUITY CONTROL on the join above. If the generated content were empty, or were the
 // preamble alone, the equality would still hold and would establish nothing -- an equality between
 // two absent things. The emitted program must carry the plate line and at least one cut.
-test fn w_the_generated_content_is_a_real_program() -> Bool {
+test fn w_the_generated_content_is_a_real_program() -> Bool  {
   match artifact_generate(a: CouponCadQueryProgramArtifact) {
     ArtifactGenerationRefused { reason: _ } => false
     ArtifactGenerated { content: c } =>
@@ -81,6 +81,6 @@ test fn w_the_generated_content_is_a_real_program() -> Bool {
 // THE LOCATION IS DECLARED AND IS NOT THE FILENAME THE EMITTER USED TO CHOOSE. The export line this
 // handler no longer emits named its own output file, which would have made the Python literal a
 // second path authority beside artifact_location. This asserts the repository's answer exists.
-test fn w_the_artifact_has_one_declared_location() -> Bool {
+test fn w_the_artifact_has_one_declared_location() -> Bool  {
   artifact_path(a: CouponCadQueryProgramArtifact) == "manufacturing/hole_diameter_ladder_r1.py"
 }

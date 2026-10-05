@@ -174,7 +174,7 @@ fn bump_first_diameter(rows: List<RawOperationRow>, delta: Int) -> List<RawOpera
 // WITNESS 1 — THE DECODE IS LOSSLESS. A faithful envelope round-trips to a conforming verdict. This
 // is the positive control: without it every refusal witness below is satisfied by a wall that
 // refuses everything, which is the failure mode a negative-only suite cannot see.
-test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
+test fn w_a_faithful_envelope_is_judged_conforming() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -197,7 +197,7 @@ test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
 // The wall compared hole diameters only, so a handler that cut every hole correctly into a plate of
 // the wrong thickness CONFORMED. For a hole-diameter coupon that is not cosmetic: plate thickness is
 // the hole DEPTH, and hole depth is the aspect ratio the whole measurement is about.
-test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
+test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -228,7 +228,7 @@ test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
 // Correct diameters at wrong centres is the single most plausible handler bug -- an off-by-one in a
 // pitch loop -- and it produced a conforming verdict under the diameter-only comparison. Overlapping
 // or edge-breaking holes would have printed with the wall green.
-test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
+test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -258,7 +258,7 @@ test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
 // WITNESS 4 — A WRONG DIAMETER IS STILL CAUGHT, AND IS REPORTED AS A DIAMETER RATHER THAN A
 // POSITION. The field ordering is a diagnostic decision: diameter is a process fault and centre is a
 // layout fault, and an operator acts on the first differently from the second.
-test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
+test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -288,7 +288,7 @@ test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
 // WITNESS 5 — A DROPPED OPERATION IS CAUGHT ON THE COUNT, and the refusal carries both populations.
 // Realizing ten holes where the model declared eleven produces a coupon that measures perfectly well
 // and calibrates against a ladder that never existed.
-test fn w_a_dropped_operation_diverges_on_count() -> Bool {
+test fn w_a_dropped_operation_diverges_on_count() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -313,7 +313,7 @@ test fn w_a_dropped_operation_diverges_on_count() -> Bool {
 // WITNESS 6 — THE PLATE IS JUDGED BEFORE THE OPERATIONS. A plate of the wrong thickness makes every
 // hole depth wrong at once, so reporting the first hole as divergent would name a symptom and bury
 // the cause. This witness perturbs BOTH and requires the plate answer.
-test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
+test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -345,7 +345,7 @@ test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
 // WITNESS 7 — AN UNSUPPORTED SCHEMA VERSION REFUSES AT THE WIRE AND NAMES BOTH SIDES. A handler
 // debugging a rejected payload needs the offending spelling; "unsupported schema" alone sends them
 // to read our source instead of their own output.
-test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
+test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -374,7 +374,7 @@ test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
 }
 
 // WITNESS 8 — AN UNKNOWN OPERATION KIND REFUSES AND NAMES IT.
-test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
+test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -405,7 +405,7 @@ test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
 // WITNESS 9 — AN EMPTY OPERATION LIST REFUSES. A coupon with no holes measures nothing, and an empty
 // list is what a handler sends when its own derivation silently produced nothing -- the failure that
 // looks most like success, because every comparison over an empty list agrees.
-test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
+test fn w_an_envelope_carrying_no_operations_refuses() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -442,7 +442,7 @@ test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
 // operation the model had no constructor for. This is the executed agreement between the wire
 // spelling and the coproduct arms, and nothing in the type system provides it. It retires when the
 // spelling is PROJECTED from the arms, and not before.
-test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
+test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -473,7 +473,7 @@ test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
 // WITNESS 11 — THE SPECIMEN'S HOLES ARE THE LADDER RUNGS. The contract derives its own specimen from
 // the declaration, so this is the check that the derivation the wall compares against is the same
 // derivation the coupon authority publishes.
-test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool {
+test fn w_the_specimens_actual_holes_are_the_ladder_rungs() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -504,7 +504,7 @@ fn reversed_rows(rows: List<RawOperationRow>) -> List<RawOperationRow> {
 // without it the property is an inference from how zip_map happens to work rather than an executed
 // fact -- and a reader could later "optimise" the comparison into a set or multiset comparison, which
 // would still pass every other witness in this file while silently admitting every permutation.
-test fn w_an_unauthorised_operation_order_refuses() -> Bool {
+test fn w_an_unauthorised_operation_order_refuses() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -543,7 +543,7 @@ test fn w_an_unauthorised_operation_order_refuses() -> Bool {
 // positive control here: the envelope is projected from the specimen, so it agrees by construction.
 // It earns its place by proving the datum survives the wire round trip at all -- without it, a datum
 // the decoder silently dropped would make all three refusals below pass for the wrong reason.
-test fn w_the_canonical_datum_conforms() -> Bool {
+test fn w_the_canonical_datum_conforms() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -567,7 +567,7 @@ test fn w_the_canonical_datum_conforms() -> Bool {
 // the datum under the LAST rung instead of the first, and every measurement would then be attributed
 // to the reversed ordinal. The refusal names FieldCenterX, and it must -- the diameter and the y are
 // unchanged by a mirror, so x is the only field that can carry the fault.
-test fn w_a_datum_at_the_far_end_is_refused_as_a_reversed_reading() -> Bool {
+test fn w_a_datum_at_the_far_end_is_refused_as_a_reversed_reading() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -605,7 +605,7 @@ test fn w_a_datum_at_the_far_end_is_refused_as_a_reversed_reading() -> Bool {
 // reads as a twelfth hole in the row rather than as an asymmetry, and the coupon is once again
 // symmetric to a measurer. The x is right, so this control passes only if the wall compares the y --
 // which is exactly the field an implementation that "put a hole near the 3 mm end" would get wrong.
-test fn w_a_datum_on_the_ladder_centreline_is_refused_as_ambiguous() -> Bool {
+test fn w_a_datum_on_the_ladder_centreline_is_refused_as_ambiguous() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -640,7 +640,7 @@ test fn w_a_datum_on_the_ladder_centreline_is_refused_as_ambiguous() -> Bool {
 // count would read twelve, and every rung ordinal after the first would be off by one. None of that
 // is visible to any other witness here, because a twelve-row envelope compared against a twelve-row
 // specimen agrees perfectly. This is the check that the two populations stayed two.
-test fn w_the_datum_stays_out_of_the_measured_ladder() -> Bool {
+test fn w_the_datum_stays_out_of_the_measured_ladder() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -663,7 +663,7 @@ test fn w_the_datum_stays_out_of_the_measured_ladder() -> Bool {
 // y = 9.00 mm, so the ladder band is [7000, 11000]; the datum must sit clear of it and clear of
 // y = 0. A datum that overlapped either would print as a merged slot or break out of the edge, and
 // in both cases the coupon is scrap rather than ambiguous.
-test fn w_the_datum_clears_the_ladder_band_and_the_plate_edge() -> Bool {
+test fn w_the_datum_clears_the_ladder_band_and_the_plate_edge() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let s = hole_ladder_specimen(l: l)
@@ -687,7 +687,7 @@ test fn w_the_datum_clears_the_ladder_band_and_the_plate_edge() -> Bool {
 // It also pins the FAR end, because last_rung_center_x_um above computes that end from the plate
 // width rather than reading the list, and an unchecked derivation used by a refusal control is
 // exactly how a control comes to pass for the wrong reason.
-test fn w_the_datum_is_at_rung_zero() -> Bool {
+test fn w_the_datum_is_at_rung_zero() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let s = hole_ladder_specimen(l: l)
@@ -724,7 +724,7 @@ test fn w_the_datum_is_at_rung_zero() -> Bool {
 // flipped coupon reverses the sense of any subsequent handed feature the design gains.
 //
 // The refusal must name FieldCenterY, because the flip leaves the diameter and the x untouched.
-test fn w_a_datum_mirrored_across_the_centreline_is_refused() -> Bool {
+test fn w_a_datum_mirrored_across_the_centreline_is_refused() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -778,7 +778,7 @@ test fn w_a_datum_mirrored_across_the_centreline_is_refused() -> Bool {
 // is carried and single-armed today, so it is the one field where a decoded-geometry mint would
 // have nothing to copy from: the wire carries no identity, so an admitted carrier built from the
 // envelope could not name one without inventing it.
-test fn w_the_admitted_carrier_is_the_canonical_specimen() -> Bool {
+test fn w_the_admitted_carrier_is_the_canonical_specimen() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
@@ -808,7 +808,7 @@ test fn w_the_admitted_carrier_is_the_canonical_specimen() -> Bool {
 // rejecting path there is no admitted value in existence to hand an actuator, so "judge A, actuate
 // B" has nothing to actuate. Before the discharge, decode_envelope would have produced usable
 // geometry on exactly this input.
-test fn w_a_rejected_realization_mints_no_admitted_carrier() -> Bool {
+test fn w_a_rejected_realization_mints_no_admitted_carrier() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)

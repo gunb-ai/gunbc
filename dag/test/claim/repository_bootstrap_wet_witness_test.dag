@@ -109,7 +109,7 @@ fn remove_scratch(s: BootstrapScratch) -> Bool {
 // three facts are what the stall names, checked from outside the transition: HEAD at the candidate,
 // an index that reports no difference against it, and the tracked file holding the candidate's own
 // bytes rather than an empty checkout.
-test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_revision() -> Bool {
+test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_revision() -> Bool  {
   match bootstrap_scratch(populated: false) {
     Absent => false
     Present { value: s } => {
@@ -130,7 +130,7 @@ test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_re
 // simply replaced the pre-state refusal. A directory holding a stray file is not empty, so it is
 // not a bootstrap subject, and the transition must still refuse -- leaving the stray file untouched,
 // which is what proves nothing was initialized over somebody else's bytes.
-test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_initialized() -> Bool {
+test fn a_root_holding_content_without_a_repository_still_refuses_and_is_not_initialized() -> Bool  {
   match bootstrap_scratch(populated: true) {
     Absent => false
     Present { value: s } => {

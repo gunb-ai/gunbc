@@ -61,7 +61,7 @@ import std.types { Bool, List, String }
 // counted by primitive_d0_open_denominator_receipt_holds and
 // primitive_d0_derived_rows_missing_identity_count.
 
-test fn w_open_denominator_counted_receipt() -> Bool {
+test fn w_open_denominator_counted_receipt() -> Bool  {
   primitive_d0_open_denominator_receipt_holds()
     && primitive_d0_derived_surface_authority_count == 5
     && primitive_d0_parallel_roster_surface_authority_count == 2
@@ -69,44 +69,44 @@ test fn w_open_denominator_counted_receipt() -> Bool {
     && primitive_d0_derived_rows_missing_identity_count() > 0
 }
 
-test fn w_interpreter_census_consumes_roster_authority() -> Bool {
+test fn w_interpreter_census_consumes_roster_authority() -> Bool  {
   primitive_d0_interpreter_census_matches_roster()
     && primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
     && distinct_arm_identity_count() < v1_interpreter_row_count()
     && authored_spelling_count() < distinct_arm_identity_count()
 }
 
-test fn w_derived_surface_census_population() -> Bool {
+test fn w_derived_surface_census_population() -> Bool  {
   let registry_rows = count(builtin_registry_surface_names())
   let derived_rows = primitive_d0_surface_census_derived_row_count()
   derived_rows > registry_rows && derived_rows > 100
 }
 
-test fn w_interpreter_surface_rows_marked_derived_from_authority() -> Bool {
+test fn w_interpreter_surface_rows_marked_derived_from_authority() -> Bool  {
   primitive_d0_interpreter_rows_are_from_authority()
 }
 
-test fn w_derived_rows_marked_derived_from_authority() -> Bool {
+test fn w_derived_rows_marked_derived_from_authority() -> Bool  {
   primitive_d0_derived_rows_are_from_authority()
 }
 
-test fn w_map_keys_joins_all_five_surfaces() -> Bool {
+test fn w_map_keys_joins_all_five_surfaces() -> Bool  {
   primitive_d0_map_keys_five_surface_join_holds()
 }
 
-test fn w_fold_list_spelling_fork_named_finding() -> Bool {
+test fn w_fold_list_spelling_fork_named_finding() -> Bool  {
   primitive_d0_fold_list_spelling_fork_holds()
 }
 
-test fn w_fold_list_registry_gap_proves_open_denominator() -> Bool {
+test fn w_fold_list_registry_gap_proves_open_denominator() -> Bool  {
   primitive_d0_fold_list_registry_gap_holds()
 }
 
-test fn w_index_by_registry_algebra_gap_named_finding() -> Bool {
+test fn w_index_by_registry_algebra_gap_named_finding() -> Bool  {
   primitive_d0_index_by_registry_algebra_gap_holds()
 }
 
-test fn w_unknown_realization_refuses() -> Bool {
+test fn w_unknown_realization_refuses() -> Bool  {
   match primitive_realization_unknown_primitive_violation(
     realization: PrimitiveRealization {
       primitive: primitive_map_keys,
@@ -124,7 +124,7 @@ test fn w_unknown_realization_refuses() -> Bool {
   }
 }
 
-test fn w_duplicate_semantic_definition_refuses() -> Bool {
+test fn w_duplicate_semantic_definition_refuses() -> Bool  {
   match primitive_duplicate_semantic_definition_violation(
     definitions: primitive_d0_definitions,
     target: primitive_map_keys,
@@ -146,7 +146,7 @@ test fn w_duplicate_semantic_definition_refuses() -> Bool {
     }
 }
 
-test fn w_host_unspecified_traversal_classified_for_map_projections() -> Bool {
+test fn w_host_unspecified_traversal_classified_for_map_projections() -> Bool  {
   primitive_d0_host_unspecified_traversal_classified()
     && primitive_d0_traversal_facts |> any(fact =>
       primitive_identity_eq(left: fact.primitive, right: primitive_sorted_map_keys)
@@ -155,7 +155,7 @@ test fn w_host_unspecified_traversal_classified_for_map_projections() -> Bool {
     && count(primitive_d0_traversal_facts) == 5
 }
 
-test fn w_red_missing_identity_on_joined_surface() -> Bool {
+test fn w_red_missing_identity_on_joined_surface() -> Bool  {
   let planted = surface_row(
     authority: InterpreterDispatch,
     authored_symbol: "map_keys",
@@ -174,7 +174,7 @@ test fn w_red_missing_identity_on_joined_surface() -> Bool {
   }
 }
 
-test fn w_red_surface_joins_two_identities() -> Bool {
+test fn w_red_surface_joins_two_identities() -> Bool  {
   let left = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
@@ -203,7 +203,7 @@ test fn w_red_surface_joins_two_identities() -> Bool {
   }
 }
 
-test fn w_red_cross_authority_identity_fork() -> Bool {
+test fn w_red_cross_authority_identity_fork() -> Bool  {
   let registry_row = surface_row(
     authority: BuiltinRegistry,
     authored_symbol: "map_keys",
@@ -231,7 +231,7 @@ test fn w_red_cross_authority_identity_fork() -> Bool {
   }
 }
 
-test fn w_red_incompatible_invocation_assignment() -> Bool {
+test fn w_red_incompatible_invocation_assignment() -> Bool  {
   match primitive_incompatible_invocation_assignment_violation(
     authored_symbol: "keys",
     first: primitive_map_keys,

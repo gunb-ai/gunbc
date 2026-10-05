@@ -89,19 +89,19 @@ fn seal_violation_count(source: String) -> Int {
 // AdmittedPrinterAsset as a value only a join against the authority can mint; if a foreign module
 // can write the record literal, admit_printer_asset is a validator every consumer may bypass and the
 // claimed rung is inflated. Review 59176 flagged exactly that the claim had no evidence naming it.
-test fn w_a_foreign_record_literal_of_the_admitted_printer_refuses() -> Bool {
+test fn w_a_foreign_record_literal_of_the_admitted_printer_refuses() -> Bool  {
   seal_violation_count(source: forged_source) >= 1
 }
 
 // The positive control. Same imports, same closure, no record literal: it proves the type resolves
 // and is legally nameable from a foreign module, so the red above is the literal being refused
 // rather than the import failing.
-test fn w_lawful_foreign_use_of_the_admitted_printer_is_unsealed() -> Bool {
+test fn w_lawful_foreign_use_of_the_admitted_printer_is_unsealed() -> Bool  {
   seal_violation_count(source: lawful_source) == 0
 }
 
 // The differential. The two counts above could both be satisfied by a census dominated by the shared
 // closure; the subtraction states that the forged literal is the whole difference.
-test fn w_the_printer_seal_is_the_only_difference_between_the_sources() -> Bool {
+test fn w_the_printer_seal_is_the_only_difference_between_the_sources() -> Bool  {
   seal_violation_count(source: forged_source) - seal_violation_count(source: lawful_source) >= 1
 }

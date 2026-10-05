@@ -132,7 +132,7 @@ fn witness_codex_bridge_successful_probe_observation() -> CodexProviderDashboard
   }
 }
 
-test fn witness_bridge_codex_successful_probes_map_authenticated_not_entitled() -> Bool {
+test fn witness_bridge_codex_successful_probes_map_authenticated_not_entitled() -> Bool  {
   let bundle = provider_standing_bundle_from_codex_dashboard_probes(
     observation: witness_codex_bridge_successful_probe_observation(),
   )
@@ -152,7 +152,7 @@ test fn witness_bridge_codex_successful_probes_map_authenticated_not_entitled() 
     }
 }
 
-test fn witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated() -> Bool {
+test fn witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated() -> Bool  {
   let bundle = provider_standing_bundle_from_codex_dashboard_probes(
     observation: CodexProviderDashboardProbeObservation {
       state_root: CodexStateRootPresent,
@@ -175,7 +175,7 @@ test fn witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticate
   }
 }
 
-test fn witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated() -> Bool {
+test fn witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated() -> Bool  {
   !provider_standing_is_selection_eligible(
     standing: provider_standing_from_observed_bundle(
       fact_id: selection_fixture_standing_fact_id,
@@ -188,7 +188,7 @@ test fn witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated() 
   )
 }
 
-test fn witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved() -> Bool {
+test fn witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved() -> Bool  {
   let bundle = provider_standing_bundle_from_claude_credential_control_probe(
     observation: ClaudeCredentialControlProbeObservation {
       token_source: "oauth" as NonEmptyStr,
@@ -213,7 +213,7 @@ test fn witness_bridge_claude_control_probe_honest_installation_and_tool_unobser
     }
 }
 
-test fn witness_bridge_profile_present_token_absent_refuses_through_mapper() -> Bool {
+test fn witness_bridge_profile_present_token_absent_refuses_through_mapper() -> Bool  {
   let bundle = provider_standing_bundle_from_claude_credential_control_probe(
     observation: ClaudeCredentialControlProbeObservation {
       token_source: "none" as NonEmptyStr,
@@ -238,7 +238,7 @@ test fn witness_bridge_profile_present_token_absent_refuses_through_mapper() -> 
     )
 }
 
-test fn witness_bridge_profile_present_token_absent_not_authenticated_arm() -> Bool {
+test fn witness_bridge_profile_present_token_absent_not_authenticated_arm() -> Bool  {
   match provider_standing_bundle_from_claude_credential_control_probe(
     observation: ClaudeCredentialControlProbeObservation {
       token_source: "none" as NonEmptyStr,
@@ -251,7 +251,7 @@ test fn witness_bridge_profile_present_token_absent_not_authenticated_arm() -> B
   }
 }
 
-test fn witness_bridge_standing_is_from_fact_not_inventory_unobserved() -> Bool {
+test fn witness_bridge_standing_is_from_fact_not_inventory_unobserved() -> Bool  {
   match provider_standing_from_observed_bundle(
     fact_id: selection_fixture_standing_fact_id,
     provider: fixture_codex_provider_instance(),
@@ -293,7 +293,7 @@ fn available_bengalfox_bucket() -> CodexRateLimitBucketVerdict {
   CodexBucketCapacityAvailable { limit_id: "codex_bengalfox" as NonEmptyStr }
 }
 
-test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> Bool {
+test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> Bool  {
   let available = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(), verdict: available_bengalfox_bucket())
   let exhausted = provider_limit_observation_from_codex_bucket(
@@ -318,7 +318,7 @@ test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> 
     })
 }
 
-test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool {
+test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool  {
   let observations = provider_limit_observations_from_codex_buckets(
     credential: press_bucket_credential(),
     buckets: [exhausted_codex_bucket(), available_bengalfox_bucket()],
@@ -329,7 +329,7 @@ test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool {
       observations: observations, draw: draw_on(native_key: "codex_bengalfox" as NonEmptyStr))
 }
 
-test fn witness_capacity_unknown_is_not_capacity() -> Bool {
+test fn witness_capacity_unknown_is_not_capacity() -> Bool  {
   let unknown = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(),
     verdict: CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr })
@@ -346,7 +346,7 @@ test fn witness_capacity_unknown_is_not_capacity() -> Bool {
       observations: [unknown], draw: draw_on(native_key: "codex" as NonEmptyStr))
 }
 
-test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
+test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool  {
   let observations = provider_limit_observations_from_codex_buckets(
     credential: press_bucket_credential(), buckets: [])
   observations.length() == 1
@@ -368,13 +368,13 @@ fn mixed_decode_observations() -> List<ProviderLimitObservation> {
   )
 }
 
-test fn witness_undecoded_bucket_does_not_refuse_a_measured_sibling() -> Bool {
+test fn witness_undecoded_bucket_does_not_refuse_a_measured_sibling() -> Bool  {
   limit_observations_are_selection_eligible(
     observations: mixed_decode_observations(),
     draw: draw_on(native_key: "codex_bengalfox" as NonEmptyStr))
 }
 
-test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() -> Bool {
+test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() -> Bool  {
   let observations = mixed_decode_observations()
   let unknown = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(), verdict: undecoded_codex_bucket())
@@ -395,7 +395,7 @@ test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() 
     })
 }
 
-test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
+test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool  {
   let a = codex_press_credential_identity(
     credential: AmbientCodexCredentialContext { codex_home: "/srv/codex-a" as FilePath })
   let b = codex_press_credential_identity(
@@ -423,7 +423,7 @@ fn chatgpt_realm_on(plan_wire: String) -> CodexAccountRealm {
   }
 }
 
-test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool {
+test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool  {
   let entitled = provider_entitlement_from_codex_realm(
     realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
   let api_key = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
@@ -433,7 +433,7 @@ test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool {
     && (match bedrock { EntitlementRejected { reason: _ } => true _ => false })
 }
 
-test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
+test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool  {
   let unknown = provider_entitlement_from_codex_realm(
     realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanUnknown } })
   !codex_plan_is_entitling(plan: CodexPlanUnknown)
@@ -442,7 +442,7 @@ test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
     && !codex_plan_is_entitling(plan: CodexPlanFree)
 }
 
-test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
+test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool  {
   codex_first_deployment_subscription_policy.admitted_plans.length() == 1
     && codex_plan_is_entitling(plan: CodexPlanPro)
     && !codex_plan_is_entitling(plan: CodexPlanEnterprise)
@@ -452,7 +452,7 @@ test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
     && !codex_plan_is_entitling(plan: CodexPlanUnknown)
 }
 
-test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> Bool {
+test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> Bool  {
   let unadmitted = provider_entitlement_from_codex_realm(
     realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanEnterprise } })
   let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
@@ -460,7 +460,7 @@ test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> B
     && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
 }
 
-test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool {
+test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool  {
   let stale_plan = provider_entitlement_from_codex_plan_reading(
     reading: CodexPlanTypeUnrecognized { native: "quantum_max" as NonEmptyStr })
   let stale_realm = provider_entitlement_from_codex_realm(
@@ -471,7 +471,7 @@ test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool 
     && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
 }
 
-test fn witness_absent_and_malformed_accounts_never_entitle() -> Bool {
+test fn witness_absent_and_malformed_accounts_never_entitle() -> Bool  {
   let absent = provider_entitlement_from_codex_realm(realm: CodexAccountRealmAbsent)
   let malformed = provider_entitlement_from_codex_plan_reading(
     reading: CodexPlanTypeMalformed { cause: "no planType" as NonEmptyStr })
@@ -479,7 +479,7 @@ test fn witness_absent_and_malformed_accounts_never_entitle() -> Bool {
     && (match malformed { EntitlementObservationUnobserved { reason: _ } => true _ => false })
 }
 
-test fn witness_realm_decodes_from_the_captured_account_read_shape() -> Bool {
+test fn witness_realm_decodes_from_the_captured_account_read_shape() -> Bool  {
   let chatgpt = chatgpt_realm_on(
     plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"pro\",\"email\":\"REDACTED@example.invalid\"},\"requiresOpenaiAuth\":true}")
   let api_key = chatgpt_realm_on(plan_wire: "{\"account\":{\"type\":\"apiKey\"}}")
@@ -493,7 +493,7 @@ test fn witness_realm_decodes_from_the_captured_account_read_shape() -> Bool {
     && (match null_account { CodexAccountRealmAbsent => true _ => false })
 }
 
-test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> Bool {
+test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> Bool  {
   let no_plan = chatgpt_realm_on(plan_wire: "{\"account\":{\"type\":\"chatgpt\"}}")
   match no_plan {
     CodexChatgptRealm { plan: CodexPlanTypeMalformed { cause: _ } } => true
@@ -519,7 +519,7 @@ fn exhausted_codex_bucket_with_reported_cause() -> CodexRateLimitBucketVerdict {
   }
 }
 
-test fn witness_reported_cause_and_reset_survive_the_projection() -> Bool {
+test fn witness_reported_cause_and_reset_survive_the_projection() -> Bool  {
   let reported = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(),
     verdict: exhausted_codex_bucket_with_reported_cause())
@@ -537,7 +537,7 @@ test fn witness_reported_cause_and_reset_survive_the_projection() -> Bool {
   }
 }
 
-test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool {
+test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool  {
   let silent = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(), verdict: exhausted_codex_bucket())
   let reported = provider_limit_observation_from_codex_bucket(
@@ -554,7 +554,7 @@ test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool {
     })
 }
 
-test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool {
+test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool  {
   let later = chatgpt_realm_on(
     plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"self_serve_business_prolite\"}}")
   let also_later = chatgpt_realm_on(
@@ -576,7 +576,7 @@ test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool
     })
 }
 
-test fn witness_credential_liveness_splits_from_realm() -> Bool {
+test fn witness_credential_liveness_splits_from_realm() -> Bool  {
   let live_auth = provider_authentication_from_codex_credential_liveness(
     liveness: CodexCredentialLive { bucket_count: 2 })
   let dead_auth = provider_authentication_from_codex_credential_liveness(

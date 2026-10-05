@@ -74,21 +74,21 @@ fn seal_violation_count(source: String) -> Int {
   seal_violation_count_of(source: source, subject: "DecodedRealizationV0")
 }
 
-test fn w_foreign_record_literal_of_admitted_realization_refuses() -> Bool {
+test fn w_foreign_record_literal_of_admitted_realization_refuses() -> Bool  {
   seal_violation_count(source: forged_source) >= 1
 }
 
 // The positive control. Same imports, same closure, no record literal: it proves the type is
 // resolvable and legally nameable from a foreign module, so the red above is the literal being
 // refused and not the import failing to resolve.
-test fn w_lawful_foreign_use_of_admitted_realization_is_unsealed() -> Bool {
+test fn w_lawful_foreign_use_of_admitted_realization_is_unsealed() -> Bool  {
   seal_violation_count(source: lawful_source) == 0
 }
 
 // The differential. Written as its own witness rather than left implicit in the pair, because the
 // two counts above could both be satisfied by a census whose rows were dominated by the shared
 // closure; the subtraction is what states that the forged literal is the whole difference.
-test fn w_the_seal_is_the_only_difference_between_the_two_sources() -> Bool {
+test fn w_the_seal_is_the_only_difference_between_the_two_sources() -> Bool  {
   seal_violation_count(source: forged_source) - seal_violation_count(source: lawful_source) >= 1
 }
 
@@ -113,15 +113,15 @@ fn admitted_carrier_violation_count(source: String) -> Int {
   seal_violation_count_of(source: source, subject: "AdmittedRealizationV0")
 }
 
-test fn w_foreign_record_literal_of_the_admitted_carrier_refuses() -> Bool {
+test fn w_foreign_record_literal_of_the_admitted_carrier_refuses() -> Bool  {
   admitted_carrier_violation_count(source: forged_admitted_carrier_source) >= 1
 }
 
-test fn w_lawful_foreign_use_of_the_admitted_carrier_is_unsealed() -> Bool {
+test fn w_lawful_foreign_use_of_the_admitted_carrier_is_unsealed() -> Bool  {
   admitted_carrier_violation_count(source: lawful_admitted_carrier_source) == 0
 }
 
-test fn w_the_admitted_carrier_seal_is_the_only_difference() -> Bool {
+test fn w_the_admitted_carrier_seal_is_the_only_difference() -> Bool  {
   admitted_carrier_violation_count(source: forged_admitted_carrier_source) -
     admitted_carrier_violation_count(source: lawful_admitted_carrier_source) >= 1
 }
@@ -161,15 +161,15 @@ data forged_instruction_source: String = "module probe_chassis_forged_instructio
 
 data lawful_instruction_source: String = "module probe_chassis_lawful_instruction\nimport product.printed_chassis.cadquery_realization { CadQueryInstructionV0, InstructionSubjectV0 }\nfn lawful(value: CadQueryInstructionV0) -> CadQueryInstructionV0 {\n  value\n}\n"
 
-test fn w_foreign_construction_of_a_sealed_instruction_refuses() -> Bool {
+test fn w_foreign_construction_of_a_sealed_instruction_refuses() -> Bool  {
   class_violation_count(source: forged_instruction_source) >= 1
 }
 
-test fn w_lawful_foreign_use_of_a_sealed_instruction_is_unsealed() -> Bool {
+test fn w_lawful_foreign_use_of_a_sealed_instruction_is_unsealed() -> Bool  {
   class_violation_count(source: lawful_instruction_source) == 0
 }
 
-test fn w_the_instruction_seal_is_the_only_difference() -> Bool {
+test fn w_the_instruction_seal_is_the_only_difference() -> Bool  {
   class_violation_count(source: forged_instruction_source) -
     class_violation_count(source: lawful_instruction_source) >= 1
 }
@@ -189,15 +189,15 @@ data forged_plan_source: String = "module probe_chassis_forged_plan\nimport prod
 
 data lawful_plan_source: String = "module probe_chassis_lawful_plan\nimport product.printed_chassis.cadquery_realization { CadQueryEmissionPlanV0 }\nfn lawful(value: CadQueryEmissionPlanV0) -> CadQueryEmissionPlanV0 {\n  value\n}\n"
 
-test fn w_foreign_construction_of_an_empty_emission_plan_refuses() -> Bool {
+test fn w_foreign_construction_of_an_empty_emission_plan_refuses() -> Bool  {
   class_violation_count(source: forged_plan_source) >= 1
 }
 
-test fn w_lawful_foreign_use_of_an_emission_plan_is_unsealed() -> Bool {
+test fn w_lawful_foreign_use_of_an_emission_plan_is_unsealed() -> Bool  {
   class_violation_count(source: lawful_plan_source) == 0
 }
 
-test fn w_the_plan_seal_is_the_only_difference() -> Bool {
+test fn w_the_plan_seal_is_the_only_difference() -> Bool  {
   class_violation_count(source: forged_plan_source) -
     class_violation_count(source: lawful_plan_source) >= 1
 }

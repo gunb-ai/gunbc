@@ -23,7 +23,7 @@ fn w_distinct_phantom_markers_remain_distinct() -> Bool {
   )
 }
 
-test fn distinct_phantom_markers_do_not_render_identically() -> Bool {
+test fn distinct_phantom_markers_do_not_render_identically() -> Bool  {
   w_distinct_phantom_markers_remain_distinct()
 }
 
@@ -40,7 +40,7 @@ fn w_outer_positions_share_marker_identity() -> Bool {
   )
 }
 
-test fn every_outer_renderer_preserves_the_same_marker_argument() -> Bool {
+test fn every_outer_renderer_preserves_the_same_marker_argument() -> Bool  {
   w_outer_positions_share_marker_identity()
 }
 
@@ -57,7 +57,7 @@ fn w_non_applied_variant_keeps_value_import() -> Bool {
   )
 }
 
-test fn non_applied_unit_variant_does_not_become_marker_import() -> Bool {
+test fn non_applied_unit_variant_does_not_become_marker_import() -> Bool  {
   w_non_applied_variant_keeps_value_import()
 }
 
@@ -85,7 +85,7 @@ fn w_plain_module_uses_its_own_type_environment() -> Bool {
   )
 }
 
-test fn module_context_not_global_context_decides_marker_identity() -> Bool {
+test fn module_context_not_global_context_decides_marker_identity() -> Bool  {
   w_marker_module_uses_its_own_type_environment()
     && w_plain_module_uses_its_own_type_environment()
 }
@@ -94,7 +94,7 @@ test fn module_context_not_global_context_decides_marker_identity() -> Bool {
 // marker provider in the same closure.  Its resolved declaration identity,
 // not last-segment equality, determines that it is an ordinary type argument.
 
-test fn declaration_identity_wins_over_same_leaf_spelling() -> Bool {
+test fn declaration_identity_wins_over_same_leaf_spelling() -> Bool  {
   compile_dag_rust_emit_check(
     "module phantom_marker_identity_over_spelling\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_provider { PlainBox, Time }\n\ntype Subject { marker: MarkerConsumer, plain: PlainBox<Time> }\n",
     "src/phantom_marker_identity_over_spelling.rs",
@@ -107,7 +107,7 @@ test fn declaration_identity_wins_over_same_leaf_spelling() -> Bool {
 // Outer<Inner<Time>>, Time qualifies from the Inner edge, not transitively from
 // Outer, while the applied head Inner is never mistaken for its own argument.
 
-test fn nested_applied_argument_keeps_inner_marker_identity() -> Bool {
+test fn nested_applied_argument_keeps_inner_marker_identity() -> Bool  {
   compile_dag_rust_emit_check(
     "module phantom_marker_nested\n\ntype Quantity = Time | Memory\n\ntype Inner<Q> { value: Int }\n\ntype Outer<T> { value: Int }\n\ntype Nested { value: Outer<Inner<Time>> }\n",
     "src/phantom_marker_nested.rs",
@@ -120,7 +120,7 @@ test fn nested_applied_argument_keeps_inner_marker_identity() -> Bool {
 // in this one module: the valid applied use deliberately makes the Time marker
 // declaration available and prevents the bare alias from passing merely because
 // its wrong marker spelling happened to be unbound.
-test fn alias_root_does_not_borrow_applied_child_marker_identity() -> Bool {
+test fn alias_root_does_not_borrow_applied_child_marker_identity() -> Bool  {
   compile_dag_rust_emit_check(
     "module phantom_marker_alias_position\n\ntype Quantity = Time | Memory\n\ntype Box<Q> { value: Int }\n\ntype AppliedAlias = Box<Time>\ntype BareAlias = Time\n\nfn bare_alias_as_parent(value: BareAlias) -> Quantity { value }\n",
     "src/phantom_marker_alias_position.rs",
@@ -136,7 +136,7 @@ test fn alias_root_does_not_borrow_applied_child_marker_identity() -> Bool {
 // stops at emitted text; it does not invoke rustc. Consequently this row proves
 // the modeled parent relation reaches emission and proves the spelling decision,
 // but it MUST NOT be cited as evidence that the emitted crate compiles.
-test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> Bool {
+test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> Bool  {
   compile_dag_rust_emit_check(
     "module phantom_marker_non_applied_parent_honesty\n\nimport test.fixture.phantom_marker_identity.non_applied_consumer { NonAppliedMarkerField, non_applied_field_as_parent }\n\ntype Subject { value: NonAppliedMarkerField }\n",
     "src/test_fixture_phantom_marker_identity_non_applied_consumer.rs",

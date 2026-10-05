@@ -668,7 +668,7 @@ fn catalog_is_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
   }
 }
 
-test fn witness_x64_catalog_label_is_never_arm_evidence() -> Bool {
+test fn witness_x64_catalog_label_is_never_arm_evidence() -> Bool  {
   catalog_not_arm(label: "ubicloud-standard-8", observed_at: "2026-09-01T10:02:15Z")
     && catalog_not_arm(label: "ubicloud-standard-16", observed_at: "2026-09-01T10:02:15Z")
     && catalog_not_arm(label: "depot-ubuntu-24.04-16", observed_at: "2026-09-04T16:03:32Z")
@@ -678,7 +678,7 @@ test fn witness_x64_catalog_label_is_never_arm_evidence() -> Bool {
     && catalog_is_arm(label: "ubuntu-24.04-arm", observed_at: "2026-09-04T09:57:28Z")
 }
 
-test fn witness_an_unresolved_label_is_not_reported_as_x64() -> Bool {
+test fn witness_an_unresolved_label_is_not_reported_as_x64() -> Bool  {
   match arm_standing(r: resolve_runner_label(label: "ubuntu-latest", observed_at: "2026-09-01T10:29:11Z")) {
     ArmUndetermined { label, cause } => true
     ArmConfirmed { label, snapshot } => false
@@ -686,7 +686,7 @@ test fn witness_an_unresolved_label_is_not_reported_as_x64() -> Bool {
   }
 }
 
-test fn witness_selected_population_is_three_complementary_jobs() -> Bool {
+test fn witness_selected_population_is_three_complementary_jobs() -> Bool  {
   let selected = selected_workloads()
   count(selected) == 3
     && census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_pdns_dnsdist_arm)
@@ -698,7 +698,7 @@ test fn witness_selected_population_is_three_complementary_jobs() -> Bool {
     && candidate_biome_test.repository != candidate_pdns_dnsdist_arm.repository
 }
 
-test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
+test fn witness_rejected_and_unresolved_remain_visible() -> Bool  {
   census_contains_subject(rows: rejected_candidates(), needle: candidate_openobserve_amd64)
     && census_contains_subject(rows: rejected_candidates(), needle: candidate_openobserve_manifest)
     && census_contains_subject(rows: unresolved_candidates(), needle: candidate_biome_test_windows)
@@ -721,7 +721,7 @@ test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
     }
 }
 
-test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
+test fn witness_every_row_is_job_scoped_and_versioned() -> Bool  {
   all(workload_census, c => match candidate_run_identity(c: c) {
     ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
       revision == c.inspected_commit
@@ -737,7 +737,7 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
   })
 }
 
-test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
+test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool  {
   let biome = match candidate_run_identity(c: candidate_biome_test) {
     WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
       match baseline_admission(c: candidate_biome_test) {
@@ -759,7 +759,7 @@ test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
   biome && pdns && openobserve
 }
 
-test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm() -> Bool {
+test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm() -> Bool  {
   let declared = candidate_declared_architecture(c: candidate_pdns_dnsdist_arm)
   let declared_unresolved = match declared {
     DeclaredArchitectureUnresolved { via, cause } => true
@@ -774,7 +774,7 @@ test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_ar
   declared_unresolved && observed_arm
 }
 
-test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool {
+test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool  {
   let biome_declared = match candidate_declared_provider(c: candidate_biome_test) {
     DeclaredProviderKnown { via, provider_module } =>
       provider_module as String == "extdeps.ci_runner.depot"
@@ -792,7 +792,7 @@ test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool 
   biome_declared && pdns_declared_open && pdns_observed_github
 }
 
-test fn witness_openobserve_amd64_is_catalog_x64_and_rejected() -> Bool {
+test fn witness_openobserve_amd64_is_catalog_x64_and_rejected() -> Bool  {
   let declared = candidate_declared_architecture(c: candidate_openobserve_amd64)
   let not_arm = match declared {
     DeclaredNotArm { via, architecture } => architecture == X86_64
@@ -807,7 +807,7 @@ test fn witness_openobserve_amd64_is_catalog_x64_and_rejected() -> Bool {
   not_arm && rejected
 }
 
-test fn witness_observed_labels_and_attempt_are_read_from_the_job_resource() -> Bool {
+test fn witness_observed_labels_and_attempt_are_read_from_the_job_resource() -> Bool  {
   match candidate_biome_test.observed {
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
       observed_job_labels(job: job) == ["depot-ubuntu-24.04-arm-16"]
@@ -816,11 +816,11 @@ test fn witness_observed_labels_and_attempt_are_read_from_the_job_resource() -> 
   }
 }
 
-test fn witness_unobserved_cache_is_never_warm() -> Bool {
+test fn witness_unobserved_cache_is_never_warm() -> Bool  {
   count(filter(workload_census, c => candidate_warm_cache_count(c: c) > 0)) == 0
 }
 
-test fn witness_effect_disposition_is_derived_from_kind() -> Bool {
+test fn witness_effect_disposition_is_derived_from_kind() -> Bool  {
   match effect_disposition(kind: CoverageUpload { service: "Coveralls" }) {
     RemovedFromBothRealizations { cause } => match effect_disposition(kind: WorkflowArtifactUpload { artifact: "dnsdist binaries" }) {
       RetainedAndTimed { cause } => true
@@ -830,7 +830,7 @@ test fn witness_effect_disposition_is_derived_from_kind() -> Bool {
   }
 }
 
-test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
+test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool  {
   let pdns_same = match candidate_run_identity(c: candidate_pdns_dnsdist_arm) {
     ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
       revision == candidate_pdns_dnsdist_arm.inspected_commit
@@ -893,7 +893,7 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
     }
 }
 
-test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
+test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool  {
   match candidate_run_identity(c: candidate_biome_blob_mismatch_control) {
     RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_blob_mismatch_control) {
       BaselineRefused { cause } => true
@@ -905,7 +905,7 @@ test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
   }
 }
 
-test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match() -> Bool {
+test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match() -> Bool  {
   let same_matrix_different_key =
     candidate_biome_job_key_mismatch_control.matrix_selector
       == candidate_biome_test.matrix_selector
@@ -935,7 +935,7 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
     }
 }
 
-test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool {
+test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool  {
   (candidate_biome_job_key_titlecase_uninspected_control.job_key as String) == "Test"
     && candidate_biome_job_key_titlecase_uninspected_control.matrix_selector
       == candidate_biome_test.matrix_selector
@@ -950,7 +950,7 @@ test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool 
     }
 }
 
-test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool {
+test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool  {
   match observed_label_standing(o: candidate_biome_multi_label_control.observed) {
     JobResourceCarriedMultipleLabels { labels } =>
       count(labels) > 1
@@ -967,7 +967,7 @@ test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool {
   }
 }
 
-test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool {
+test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool  {
   let same_key_different_matrix =
     (candidate_biome_matrix_selector_mismatch_control.job_key as String)
       == (candidate_biome_test.job_key as String)
@@ -997,7 +997,7 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
     }
 }
 
-test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match() -> Bool {
+test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match() -> Bool  {
   let same_values_wrong_axis =
     (candidate_pdns_axis_name_mismatch_control.job_key as String)
       == (candidate_pdns_dnsdist_arm.job_key as String)
@@ -1027,7 +1027,7 @@ test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match
     }
 }
 
-test fn witness_swapped_axis_names_are_refused_when_value_order_matches_the_observed_name() -> Bool {
+test fn witness_swapped_axis_names_are_refused_when_value_order_matches_the_observed_name() -> Bool  {
   let swapped_names_values_in_place =
     (candidate_pdns_axis_name_swap_control.job_key as String)
       == (candidate_pdns_dnsdist_arm.job_key as String)
@@ -1057,7 +1057,7 @@ test fn witness_swapped_axis_names_are_refused_when_value_order_matches_the_obse
     }
 }
 
-test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
+test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool  {
   match candidate_openobserve_arm_build.observed {
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } => match correctness {
       NoTestsExecuted { note } => match baseline_admission(c: candidate_openobserve_arm_build) {
@@ -1070,7 +1070,7 @@ test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
   }
 }
 
-test fn witness_empty_labels_are_not_an_architecture_reading() -> Bool {
+test fn witness_empty_labels_are_not_an_architecture_reading() -> Bool  {
   match observed_label_standing(o: candidate_empty_labels_control.observed) {
     JobResourceCarriedNoLabels { job_id } => match baseline_admission(c: candidate_empty_labels_control) {
       BaselineRefused { cause } => true
@@ -1082,14 +1082,14 @@ test fn witness_empty_labels_are_not_an_architecture_reading() -> Bool {
   }
 }
 
-test fn witness_absent_conclusion_is_not_a_baseline() -> Bool {
+test fn witness_absent_conclusion_is_not_a_baseline() -> Bool  {
   match baseline_admission(c: candidate_absent_conclusion_control) {
     BaselineRefused { cause } => true
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
   }
 }
 
-test fn witness_run_attempt_zero_is_not_attempt_one() -> Bool {
+test fn witness_run_attempt_zero_is_not_attempt_one() -> Bool  {
   match candidate_run_attempt_zero_control.observed {
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
       job.run_attempt == 0
@@ -1101,7 +1101,7 @@ test fn witness_run_attempt_zero_is_not_attempt_one() -> Bool {
   }
 }
 
-test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool {
+test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool  {
   match inspected_leg_binding(
     job_name: "Test ()",
     job_key: candidate_empty_matrix_axes_control.job_key,
@@ -1119,7 +1119,7 @@ test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool {
   }
 }
 
-test fn witness_plural_yaml_job_name_rows_are_uninspected() -> Bool {
+test fn witness_plural_yaml_job_name_rows_are_uninspected() -> Bool  {
   let fixture_plural = match inspected_yaml_job_name_join(
     rows: yaml_dup_name_fixture,
     repository: "biomejs/biome",
@@ -1143,7 +1143,7 @@ test fn witness_plural_yaml_job_name_rows_are_uninspected() -> Bool {
   fixture_plural && production_has_no_phantom
 }
 
-test fn witness_unread_job_run_is_unresolved_identity() -> Bool {
+test fn witness_unread_job_run_is_unresolved_identity() -> Bool  {
   match candidate_no_run_control.observed {
     NoRunObserved { obligation } => match candidate_run_identity(c: candidate_no_run_control) {
       RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_no_run_control) {
@@ -1158,7 +1158,7 @@ test fn witness_unread_job_run_is_unresolved_identity() -> Bool {
   }
 }
 
-test fn witness_empty_declared_alternatives_are_unresolved() -> Bool {
+test fn witness_empty_declared_alternatives_are_unresolved() -> Bool  {
   match declared_architecture_standing(
     spec: DeclaredExpression { expression: "${{ matrix.os }}", alternatives: [] },
     observed_at: "2026-09-04T16:03:32Z",
@@ -1169,7 +1169,7 @@ test fn witness_empty_declared_alternatives_are_unresolved() -> Bool {
   }
 }
 
-test fn witness_empty_declared_label_is_unresolved() -> Bool {
+test fn witness_empty_declared_label_is_unresolved() -> Bool  {
   match declared_architecture_standing(
     spec: DeclaredLabel { label: "" },
     observed_at: "2026-09-04T16:03:32Z",
@@ -1180,7 +1180,7 @@ test fn witness_empty_declared_label_is_unresolved() -> Bool {
   }
 }
 
-test fn witness_mixed_catalog_arm_and_not_arm_alternatives_are_unresolved() -> Bool {
+test fn witness_mixed_catalog_arm_and_not_arm_alternatives_are_unresolved() -> Bool  {
   match declared_architecture_standing(
     spec: DeclaredExpression {
       expression: "mix",

@@ -40,7 +40,7 @@ fn point_named(points: List<RedfishTelemetryPoint>, name: NonEmptyStr) -> Redfis
 
 // The 2.07 image: a stopped fan is a reading of zero with the service's own Critical verdict, and a
 // hot DIMM is a temperature whose verdict is still OK -- the verdict and the reading stay apart.
-test fn a_sensor_keeps_its_reading_and_the_services_verdict_apart() -> Bool {
+test fn a_sensor_keeps_its_reading_and_the_services_verdict_apart() -> Bool  {
   let fan = match redfish_sensor_point(body: srv1_fan4_sensor) {
     ObservationEstablished { observed: p } =>
       p.name == "FAN4"
@@ -61,7 +61,7 @@ test fn a_sensor_keeps_its_reading_and_the_services_verdict_apart() -> Bool {
 
 // The 3.22 image: Thermal carries temperatures and fans in one resource, and an empty fan header is a
 // null reading rather than zero.
-test fn thermal_decodes_both_arrays_and_keeps_a_null_reading_null() -> Bool {
+test fn thermal_decodes_both_arrays_and_keeps_a_null_reading_null() -> Bool  {
   match redfish_thermal_points(body: srv3_thermal) {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: points } =>
@@ -72,7 +72,7 @@ test fn thermal_decodes_both_arrays_and_keeps_a_null_reading_null() -> Bool {
   }
 }
 
-test fn the_log_decodes_in_service_order_with_its_ids() -> Bool {
+test fn the_log_decodes_in_service_order_with_its_ids() -> Bool  {
   match redfish_log_entries(body: srv3_log_tail) {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: entries } =>
@@ -81,7 +81,7 @@ test fn the_log_decodes_in_service_order_with_its_ids() -> Bool {
   }
 }
 
-test fn a_collection_lists_its_members_in_order() -> Bool {
+test fn a_collection_lists_its_members_in_order() -> Bool  {
   match redfish_member_ids(body: srv1_sensors_head) {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: ids } => count(ids) == 3 && match ids.first() { Present { value: first } => ends_with(s: first as String, suffix: "fantach_FAN1") none => false }
@@ -90,7 +90,7 @@ test fn a_collection_lists_its_members_in_order() -> Bool {
 
 // A page is not the collection, a string reading is not a number, and a member that does not name
 // itself does not shorten the collection: each refuses.
-test fn a_paginated_malformed_or_unnamed_response_refuses() -> Bool {
+test fn a_paginated_malformed_or_unnamed_response_refuses() -> Bool  {
   let paged = match redfish_log_entries(body: "{\"Members\":[],\"Members@odata.nextLink\":\"/next\"}") { ObservationRefused { cause: _ } => true _ => false }
   let string_reading = match redfish_sensor_point(body: "{\"Name\":\"FAN1\",\"ReadingType\":\"Rotational\",\"Reading\":\"fast\",\"Status\":{\"Health\":\"OK\"}}") { ObservationRefused { cause: _ } => true _ => false }
   let unnamed = match redfish_member_ids(body: "{\"Members\":[{\"@odata.id\":\"/a\"},{\"Name\":\"b\"}]}") { ObservationRefused { cause: _ } => true _ => false }

@@ -47,7 +47,7 @@ fn a_fixed_point_receipt(ran_at: String, referenced_at: String) -> RegenReceipt 
 // POSITIVE CONTROL. Without this, the RED below is satisfied by a predicate returning false
 // unconditionally — the failure mode that cost a broken instrument earlier today, one that
 // printed the right answer while being incapable of printing any other.
-test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> Bool {
+test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> Bool  {
   prior_reference_is_same_tree(
     receipt: a_fixed_point_receipt(ran_at: same_tree_sha, referenced_at: same_tree_sha)
   )
@@ -57,7 +57,7 @@ test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> Bool {
 // stamped with the tree the second pass ran against, carrying evidence measured on another. It is
 // internally consistent and schema-valid, and the ONLY thing that distinguishes it is that the
 // reference names its subject.
-test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() -> Bool {
+test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() -> Bool  {
   !prior_reference_is_same_tree(
     receipt: a_fixed_point_receipt(ran_at: same_tree_sha, referenced_at: other_tree_sha)
   )
@@ -66,7 +66,7 @@ test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() 
 // A FirstGeneration receipt has no prior reference to be wrong about, so the predicate is
 // vacuously true there. Asserted rather than assumed: a predicate that answered false for the
 // variant carrying no reference would refuse every first pass.
-test fn a_first_generation_receipt_has_no_cross_tree_reference() -> Bool {
+test fn a_first_generation_receipt_has_no_cross_tree_reference() -> Bool  {
   prior_reference_is_same_tree(
     receipt: FirstGeneration {
       commit_sha: same_tree_sha,
@@ -104,13 +104,13 @@ fn a_refused_receipt() -> RegenReceipt {
 // A refusal carries the one fact it actually measured. Asserted against a DISTINCT literal rather
 // than a Bool, so the witness cannot be satisfied by a constructor that drops the payload and
 // still reports something plausible.
-test fn a_refused_receipt_carries_its_cause() -> Bool {
+test fn a_refused_receipt_carries_its_cause() -> Bool  {
   refusal_reason(receipt: a_refused_receipt()) == "refusal: committed mirror is no longer emitted"
 }
 
 // A refusal has no prior reference to be wrong about, so the predicate is vacuously true — the
 // same argument as the FirstGeneration case above, and asserted for the same reason: a predicate
 // that answered false for a variant carrying no reference would refuse every refused pass.
-test fn a_refused_receipt_has_no_cross_tree_reference() -> Bool {
+test fn a_refused_receipt_has_no_cross_tree_reference() -> Bool  {
   prior_reference_is_same_tree(receipt: a_refused_receipt())
 }

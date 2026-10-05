@@ -108,12 +108,12 @@ fn policy_tag(module_path: String, decl_name: String, dag_name: String, target_t
   )
 }
 
-test fn w_opaque_provider_preserves_the_provider_declaration() -> Bool {
+test fn w_opaque_provider_preserves_the_provider_declaration() -> Bool  {
   policy_tag(module_path: "v2.std.node", decl_name: "Symbol", dag_name: "Symbol", target_type: "String")
     == "preserve-by-policy"
 }
 
-test fn w_refining_provider_preserves_the_provider_declaration() -> Bool {
+test fn w_refining_provider_preserves_the_provider_declaration() -> Bool  {
   policy_tag(module_path: "std.types", decl_name: "NonEmptyStr", dag_name: "NonEmptyStr", target_type: "String")
     == "preserve-by-policy"
 }
@@ -121,7 +121,7 @@ test fn w_refining_provider_preserves_the_provider_declaration() -> Bool {
 // The spelling in the expected value is the FIXTURE's, not i64 read back from a target table: this
 // row asserts that an inline rendering carries the checkpoint it was handed, which is the whole
 // content of "the representation is written at the use site".
-test fn w_target_primitive_provider_inlines_the_checkpoints_own_spelling() -> Bool {
+test fn w_target_primitive_provider_inlines_the_checkpoints_own_spelling() -> Bool  {
   policy_tag(module_path: "std.integer", decl_name: "Int", dag_name: "Int", target_type: "i64")
     == "inline:i64"
     && policy_tag(module_path: "std.nat", decl_name: "Nat", dag_name: "Nat", target_type: "i64")
@@ -131,7 +131,7 @@ test fn w_target_primitive_provider_inlines_the_checkpoints_own_spelling() -> Bo
 // THE CONTROL FOR WHAT THE EMITTER DOES TODAY. A provider with no authored row is handed a good
 // Realized decision, and the answer is a refusal naming the provider rather than the checkpoint
 // spelling. If this row ever reads inline:..., the model has adopted the artifact's silent policy.
-test fn w_undeclared_provider_refuses_instead_of_inlining() -> Bool {
+test fn w_undeclared_provider_refuses_instead_of_inlining() -> Bool  {
   policy_tag(module_path: "v2.std.diagnostic", decl_name: "Diagnostics", dag_name: "Diagnostics", target_type: "String")
     == "refused-undeclared:v2.std.diagnostic::Diagnostics"
 }
@@ -142,7 +142,7 @@ test fn w_undeclared_provider_refuses_instead_of_inlining() -> Bool {
 // spelling, opposite answers, and the roster reaches only the declaration it names. The second
 // declaration is supplied as an identity rather than read from the corpus: since the Nat de-fork
 // (operator ruling A, 2026-09-30) no corpus module declares a second Nat.
-test fn w_a_second_declaration_of_the_same_spelling_does_not_inherit_the_row() -> Bool {
+test fn w_a_second_declaration_of_the_same_spelling_does_not_inherit_the_row() -> Bool  {
   policy_tag(module_path: "test.claim.user_declared_peano", decl_name: "Nat", dag_name: "Nat", target_type: "i64")
     == "refused-undeclared:test.claim.user_declared_peano::Nat"
 }
@@ -151,7 +151,7 @@ test fn w_a_second_declaration_of_the_same_spelling_does_not_inherit_the_row() -
 // found to hold neither deciding ground. The refusal is its own arm, distinct from the undeclared
 // refusal above -- somebody looked and neither held is not the same fact as nobody having looked,
 // and the two have different remedies.
-test fn w_examined_ground_that_decides_neither_mode_refuses_as_its_own_state() -> Bool {
+test fn w_examined_ground_that_decides_neither_mode_refuses_as_its_own_state() -> Bool  {
   rendering_tag(
     rendering: reference_position_rendering(
       decision: fixture_realized(dag_name: "SemVer", target_type: "String"),
@@ -166,7 +166,7 @@ test fn w_examined_ground_that_decides_neither_mode_refuses_as_its_own_state() -
 
 // An unrealized decision puts the provider's name at the reference because nothing exists to inline,
 // which is a different fact from a declared preservation even though both name the provider.
-test fn w_unrealized_decision_names_the_provider_without_claiming_a_policy() -> Bool {
+test fn w_unrealized_decision_names_the_provider_without_claiming_a_policy() -> Bool  {
   rendering_tag(
     rendering: reference_position_rendering(
       decision: Unrealized,
@@ -177,7 +177,7 @@ test fn w_unrealized_decision_names_the_provider_without_claiming_a_policy() -> 
 
 // A caller that could not say which declaration it meant is refused with the decision's own cause,
 // never folded into the undeclared arm: the remedy is at the caller, not in this roster.
-test fn w_unknown_provider_identity_refuses_with_the_decisions_own_cause() -> Bool {
+test fn w_unknown_provider_identity_refuses_with_the_decisions_own_cause() -> Bool  {
   rendering_tag(
     rendering: reference_position_rendering(
       decision: RealizationRefused { cause: DeclarationIdentityUnavailable },
@@ -211,7 +211,7 @@ fn ground_derives_inline(ground: ReferenceRealizationGround) -> Bool {
 // The derivation is total over the ground and deliberately partial onto the mode. Both deciding
 // grounds for preservation are exercised, and the primitive ground is checked to take the other arm,
 // so a derivation that answered one mode for everything cannot pass.
-test fn w_mode_is_derived_from_the_ground_and_never_authored_beside_it() -> Bool {
+test fn w_mode_is_derived_from_the_ground_and_never_authored_beside_it() -> Bool  {
   ground_derives_preserve(ground: ProviderIsOpaque { note: "fixture opaque provider" as NonEmptyStr })
     && ground_derives_preserve(ground: ProviderRefinesItsRepresentation { refinement: "fixture refinement" as NonEmptyStr })
     && ground_derives_inline(ground: ProviderIsTheTargetPrimitive { grounding: "fixture host primitive" as NonEmptyStr })

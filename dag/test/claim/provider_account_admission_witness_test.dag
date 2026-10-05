@@ -62,7 +62,7 @@ data witness_purpose_note: String = "THE ADMISSION USED TO HAVE NO CONSUMER, so 
 // because the admission no longer accepts an Int. Keeping the Int plus a check would still admit a
 // hand-passed zero; making the count a shape leaves nowhere to put one.
 
-test fn zero_and_negative_session_counts_refuse() -> Bool {
+test fn zero_and_negative_session_counts_refuse() -> Bool  {
   let zero = match session_concurrency_of_count(raw: 0) {
     ConcurrencyDecoded { value: _ } => false
     ConcurrencyRefused { raw, reason: _ } => raw == 0
@@ -74,7 +74,7 @@ test fn zero_and_negative_session_counts_refuse() -> Bool {
   zero && negative
 }
 
-test fn one_decodes_to_the_single_session_constructor() -> Bool {
+test fn one_decodes_to_the_single_session_constructor() -> Bool  {
   match session_concurrency_of_count(raw: 1) {
     ConcurrencyRefused { raw: _, reason: _ } => false
     ConcurrencyDecoded { value } =>
@@ -85,7 +85,7 @@ test fn one_decodes_to_the_single_session_constructor() -> Bool {
   }
 }
 
-test fn many_decodes_and_keeps_its_total() -> Bool {
+test fn many_decodes_and_keeps_its_total() -> Bool  {
   match session_concurrency_of_count(raw: 17) {
     ConcurrencyRefused { raw: _, reason: _ } => false
     ConcurrencyDecoded { value } =>
@@ -124,7 +124,7 @@ fn admission_for(count: Int) -> AccountBindingAdmission {
   }
 }
 
-test fn binding_within_observed_ceiling_is_admitted() -> Bool {
+test fn binding_within_observed_ceiling_is_admitted() -> Bool  {
   match admission_for(count: codex_observed_concurrent_sessions_per_root) {
     BindingAdmitted { admitted } =>
       session_concurrency_total(concurrency: admitted.concurrency) == codex_observed_concurrent_sessions_per_root
@@ -132,7 +132,7 @@ test fn binding_within_observed_ceiling_is_admitted() -> Bool {
   }
 }
 
-test fn binding_beyond_observed_ceiling_refuses() -> Bool {
+test fn binding_beyond_observed_ceiling_refuses() -> Bool  {
   match admission_for(count: codex_observed_concurrent_sessions_per_root + 1) {
     BindingRefusedBeyondObservedEvidence { selection: _, concurrency, ceiling } =>
       session_concurrency_total(concurrency: concurrency) == codex_observed_concurrent_sessions_per_root + 1
@@ -141,7 +141,7 @@ test fn binding_beyond_observed_ceiling_refuses() -> Bool {
   }
 }
 
-test fn observed_login_only_does_not_reach_the_unbounded_arm() -> Bool {
+test fn observed_login_only_does_not_reach_the_unbounded_arm() -> Bool  {
   match codex_sharing_discipline(persistence: CodexPersistenceObservedLoginOnly) {
     ConcurrentBindingSafe => false
     ConcurrentBindingObservedUpTo { ceiling } =>
@@ -150,7 +150,7 @@ test fn observed_login_only_does_not_reach_the_unbounded_arm() -> Bool {
   }
 }
 
-test fn unobserved_credential_admits_nothing_not_even_one() -> Bool {
+test fn unobserved_credential_admits_nothing_not_even_one() -> Bool  {
   match admit_account_binding(
     selection: CodexDefaultAccount,
     concurrency: SingleSession,
@@ -161,7 +161,7 @@ test fn unobserved_credential_admits_nothing_not_even_one() -> Bool {
   }
 }
 
-test fn exclusive_credential_admits_one_and_refuses_two() -> Bool {
+test fn exclusive_credential_admits_one_and_refuses_two() -> Bool  {
   let exclusive = codex_sharing_discipline(persistence: CodexPersistsOnRefresh)
   let one = match admit_account_binding(
     selection: CodexDefaultAccount,
@@ -187,7 +187,7 @@ test fn exclusive_credential_admits_one_and_refuses_two() -> Bool {
 // updating the observation but not the evidence row reds here rather than binding the fleet
 // against a number nobody measured.
 
-test fn fleet_evidence_row_matches_the_observation() -> Bool {
+test fn fleet_evidence_row_matches_the_observation() -> Bool  {
   match codex_roadmap_account_evidence {
     EvidencedObservedUpTo { ceiling } =>
       session_concurrency_total(concurrency: ceiling) == codex_observed_concurrent_sessions_per_root
@@ -220,7 +220,7 @@ fn instance_binding_names_the_roadmap_account(instance: HostDashboardInstance) -
   }
 }
 
-test fn every_instance_carries_an_admitted_binding() -> Bool {
+test fn every_instance_carries_an_admitted_binding() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let srv2 = srv2_lab_dashboard_instance()
   let live = srv1_live_dashboard_instance()
@@ -232,7 +232,7 @@ test fn every_instance_carries_an_admitted_binding() -> Bool {
     && instance_binding_names_the_roadmap_account(instance: live)
 }
 
-test fn single_session_path_is_total_over_evidenced_disciplines() -> Bool {
+test fn single_session_path_is_total_over_evidenced_disciplines() -> Bool  {
   let exclusive = admitted_single_session_binding(
     selection: CodexDefaultAccount,
     evidence: EvidencedExclusive,

@@ -84,7 +84,7 @@ fn observed_clean(roster: BypassActorRosterObservation) -> RulesetObservation {
 // was told the roster could not be read and never told the enforcement had also changed. A model
 // that answers GoalDiverged here has lost the first distinction; one that answers
 // GoalIndeterminate with an empty known_deviations has reproduced the original defect exactly.
-test fn an_unreadable_roster_is_indeterminate_and_still_carries_the_proved_drift() -> Bool {
+test fn an_unreadable_roster_is_indeterminate_and_still_carries_the_proved_drift() -> Bool  {
   match ruleset_assess(
     goal: desired_repo_ruleset_goal(),
     observed: fixture_observed(
@@ -109,7 +109,7 @@ test fn an_unreadable_roster_is_indeterminate_and_still_carries_the_proved_drift
 // THE OTHER SIDE OF THAT DISCRIMINATION: an actually observed grant is a PROVED mismatch, not an
 // unknown. Ignorance and observation must not reach the same arm -- which is the whole reason the
 // unknown left the divergence coproduct rather than staying in it as one more variant.
-test fn an_observed_live_bypass_actor_is_a_deviation_and_not_an_unknown() -> Bool {
+test fn an_observed_live_bypass_actor_is_a_deviation_and_not_an_unknown() -> Bool  {
   match ruleset_assess(
     goal: desired_repo_ruleset_goal(),
     observed: observed_clean(roster: BypassRosterObserved {
@@ -127,7 +127,7 @@ test fn an_observed_live_bypass_actor_is_a_deviation_and_not_an_unknown() -> Boo
 // the shape this replaces the same fact was represented twice -- once as the reported divergence
 // RulesetRuleUnexpected and once as an actuation cause -- and only the second was reachable when a
 // write was held. With no writer there is one representation.
-test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
+test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool  {
   match ruleset_assess(
     goal: desired_repo_ruleset_goal(),
     observed: fixture_observed(
@@ -149,7 +149,7 @@ test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
 // it could WRITE rather than whether the world was as declared, so agreement and no-writer were
 // the same value. Without this claim every claim above is satisfied by an assessor that refuses
 // everything identically.
-test fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool {
+test fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool  {
   match ruleset_assess(
     goal: desired_repo_ruleset_goal(),
     observed: observed_clean(roster: BypassRosterObserved { actors: desired_bypass_actors() }),
@@ -163,7 +163,7 @@ test fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool {
 // nothing to assess -- it must not arrive as an assessment about a fabricated one, and it must not
 // arrive as the same unknown an unreadable ROSTER produces. The second half is asserted here
 // because collapsing the layers is what licenses reading an unobservable subject as an absent one.
-test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unknown() -> Bool {
+test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unknown() -> Bool  {
   let unreadable = RulesetUnreadable {
     cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
   }
@@ -183,7 +183,7 @@ test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unkn
 // is empty and the assessment reaches a comparison. If someone signs a policy without wiring the
 // projection, this witness holds only if that gap became an unknown -- the RED below proves the
 // rest of the comparison survives an unknown.
-test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
+test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool  {
   length(merge_queue_desire_unknowns(
     policy: desired_merge_queue_policy(),
     rules: desired_ruleset_rules(),
@@ -203,7 +203,7 @@ test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
 // This restores the seam the deleted repo_ruleset_observed_actuation_admission carried for the same
 // reason -- it was unreachability that let an inversion sit in that arm undetected -- so the
 // replacement preserves the required refusal rather than erasing the distinction.
-test fn RED_a_signed_policy_the_projection_does_not_carry_is_an_unknown_on_that_dimension() -> Bool {
+test fn RED_a_signed_policy_the_projection_does_not_carry_is_an_unknown_on_that_dimension() -> Bool  {
   let us = merge_queue_desire_unknowns(
     policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),

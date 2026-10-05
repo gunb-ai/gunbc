@@ -41,7 +41,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn claude_lifecycle_consumes_cli_authority() -> Bool {
+test fn claude_lifecycle_consumes_cli_authority() -> Bool  {
   claude_cli_lifecycle_external_authority.uri.locator == claude_cli_external_authority_anchor.uri.locator
 }
 
@@ -57,7 +57,7 @@ fn fixture_instance() -> ProviderInstance {
   }
 }
 
-test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
+test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool  {
   let recorded = provider_readiness_label(readiness: ProviderCredentialsRecordedUnverified)
   let failed = provider_readiness_label(readiness: ProviderRefreshFailed {
     reason: "invalid_refresh_token" as NonEmptyStr,
@@ -67,7 +67,7 @@ test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
     && recorded != failed
 }
 
-test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
+test fn model_access_and_sandbox_readiness_are_independent() -> Bool  {
   let observation = WorkerObservation {
     configured_provider: fixture_instance(),
     process: WorkerProcessExited {
@@ -91,7 +91,7 @@ test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
     && worker_phase_label(phase: observation.phase) == "phase unobserved"
 }
 
-test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
+test fn session_presence_cannot_promote_setup_to_execution() -> Bool  {
   let observation = WorkerObservation {
     configured_provider: fixture_instance(),
     process: WorkerProcessUnobserved {
@@ -113,7 +113,7 @@ test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
     && tool_execution_readiness_label(readiness: observation.tool_readiness) == "tool readiness unobserved"
 }
 
-test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
+test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool  {
   let completed_phase = WorkerTerminal { outcome: WorkerTerminalCompleted }
   let failed_outcome = WorkerTerminalFailed {
     reason: "provider exited nonzero" as NonEmptyStr,

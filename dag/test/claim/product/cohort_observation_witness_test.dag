@@ -71,7 +71,7 @@ fn refused_on(s: CohortSeal<String>, expect: String) -> Bool {
 
 // POSITIVE CONTROL: three seats ready before the barrier, started after it, all active over [30, 40],
 // one of them settled as a failure -- a failed seat is settled, and its failure is data, not a refusal.
-test fn a_cohort_all_active_at_once_seals_with_its_overlap_window() -> Bool {
+test fn a_cohort_all_active_at_once_seals_with_its_overlap_window() -> Bool  {
   let r = cohort(roster: ["a", "b", "c"], seats: [
     ok(name: "a", start: 20, end: 40),
     ok(name: "b", start: 30, end: 60),
@@ -89,19 +89,19 @@ test fn a_cohort_all_active_at_once_seals_with_its_overlap_window() -> Bool {
 // OVERLAP IS ALL N AT ONCE, NOT PAIRWISE: [20,40] [30,60] [50,70] -- a and b overlap, b and c overlap,
 // the peak is two, and a pairwise or peak>=2 test would admit it. a ended at 40 before c started at 50,
 // so the three were never active together, and the refusal names both seats.
-test fn seats_that_overlap_pairwise_but_never_all_at_once_are_refused() -> Bool {
+test fn seats_that_overlap_pairwise_but_never_all_at_once_are_refused() -> Bool  {
   refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b", "c"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 30, end: 60), ok(name: "c", start: 50, end: 70)]), seat_key: seat_key), expect: "never all active c a")
 }
 
 // THE BARRIER: a seat ready only after the barrier released, and a seat that started before it.
-test fn a_seat_not_ready_at_the_barrier_or_started_before_it_is_refused() -> Bool {
+test fn a_seat_not_ready_at_the_barrier_or_started_before_it_is_refused() -> Bool  {
   refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), seat(name: "b", ready: t(n: 15), start: t(n: 20), end: t(n: 40), settlement: SeatSettledAs { settled: SeatSucceeded })]), seat_key: seat_key), expect: "not ready b")
     && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 8, end: 40)]), seat_key: seat_key), expect: "started early b")
 }
 
 // THE ROSTER: every roster seat read exactly once, nothing read off the roster, and the roster itself
 // names each seat once and is not empty.
-test fn the_roster_join_refuses_a_missing_extra_or_repeated_seat() -> Bool {
+test fn the_roster_join_refuses_a_missing_extra_or_repeated_seat() -> Bool  {
   refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40)]), seat_key: seat_key), expect: "reading missing b")
     && refused_on(s: seal_cohort(reading: cohort(roster: ["a"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "z", start: 20, end: 40)]), seat_key: seat_key), expect: "off roster z")
     && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "a", start: 20, end: 40)]), seat_key: seat_key), expect: "reading duplicated a")
@@ -110,13 +110,13 @@ test fn the_roster_join_refuses_a_missing_extra_or_repeated_seat() -> Bool {
 }
 
 // SETTLEMENT: a seat whose outcome was never read refuses, where the failed seat above sealed.
-test fn a_seat_whose_outcome_was_never_read_refuses() -> Bool {
+test fn a_seat_whose_outcome_was_never_read_refuses() -> Bool  {
   refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), seat(name: "b", ready: t(n: 5), start: t(n: 20), end: t(n: 40), settlement: SeatUnsettled)]), seat_key: seat_key), expect: "unsettled b")
 }
 
 // CLOCKS AND WINDOWS: a seat timed on another host's clock is incomparable, not ordered by its numbers;
 // a reversed seat window and a seat running past the host's window each refuse.
-test fn an_incomparable_reversed_or_uncovered_seat_window_refuses() -> Bool {
+test fn an_incomparable_reversed_or_uncovered_seat_window_refuses() -> Bool  {
   refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), seat(name: "b", ready: t(n: 5), start: t_other(n: 20), end: t_other(n: 40), settlement: SeatSettledAs { settled: SeatSucceeded })]), seat_key: seat_key), expect: "seat incomparable b")
     && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 40, end: 20)]), seat_key: seat_key), expect: "window reversed b")
     && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 30, end: 140)]), seat_key: seat_key), expect: "outside host b")

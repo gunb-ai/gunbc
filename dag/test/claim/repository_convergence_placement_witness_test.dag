@@ -107,7 +107,7 @@ fn is_principal_admitted(a: ConvergencePrincipalAdmission) -> Bool {
 // user is admitted; the CI runner -- the account the deploy actually runs as, which is the mistake
 // being prevented -- is refused, and the refusal NAMES BOTH SIDES rather than answering a bare
 // false. Asserting only the refusal would pass against a wall that refuses everything.
-test fn the_service_principal_is_admitted_and_the_ci_runner_is_refused() -> Bool {
+test fn the_service_principal_is_admitted_and_the_ci_runner_is_refused() -> Bool  {
   is_principal_admitted(a: admission_for(observed_name: srv1_service_user()))
     && !is_principal_admitted(a: admission_for(observed_name: "ghrunner"))
     && match admission_for(observed_name: "ghrunner") {
@@ -122,7 +122,7 @@ test fn the_service_principal_is_admitted_and_the_ci_runner_is_refused() -> Bool
 // spelling of mismatch: the remedy for "whoami failed" is not the remedy for "the wrong account is
 // running this". A trailing newline on a successful read must NOT be one of these -- the decoder
 // trims -- so the same witness pins that the ordinary shell output shape still admits.
-test fn an_unobservable_principal_refuses_as_its_own_state() -> Bool {
+test fn an_unobservable_principal_refuses_as_its_own_state() -> Bool  {
   let failed = EffectivePosixPrincipalReadOutcome {
     read: EffectivePosixPrincipalRead {},
     exit_code: 1,
@@ -169,7 +169,7 @@ fn operands_refused(candidate: String, object_source: String) -> Bool {
 // string. The object source is the only path that comes from outside, and it is the runner
 // checkout -- never the target. The primary worktree path is no longer among them: #9555 moved
 // that derivation into repository_converge_wet, which reads it from git's own roster.
-test fn the_operands_derive_from_the_deployment_spec() -> Bool {
+test fn the_operands_derive_from_the_deployment_spec() -> Bool  {
   match admitted_operands(candidate: fixture_candidate, object_source: fixture_object_source) {
     Absent => false
     Present { value: o } =>
@@ -185,7 +185,7 @@ test fn the_operands_derive_from_the_deployment_spec() -> Bool {
 // resolve it -- against the TARGET's object store, which is a different population from the one that
 // admitted the revision -- so a shape check that only refused the empty string would let the deploy
 // converge to whatever that abbreviation happens to name on the host today.
-test fn a_candidate_that_is_not_a_full_object_id_refuses() -> Bool {
+test fn a_candidate_that_is_not_a_full_object_id_refuses() -> Bool  {
   operands_refused(candidate: "", object_source: fixture_object_source)
     && operands_refused(candidate: "0123456", object_source: fixture_object_source)
     && operands_refused(
@@ -201,7 +201,7 @@ test fn a_candidate_that_is_not_a_full_object_id_refuses() -> Bool {
 
 // AN ABSENT OR RELATIVE OBJECT SOURCE IS THE ENVIRONMENT FILE NOT HAVING REACHED THE UNIT. Admitting
 // it would send `git fetch` at a path nobody chose, from a process whose working directory is `/`.
-test fn an_object_source_that_is_not_an_absolute_path_refuses() -> Bool {
+test fn an_object_source_that_is_not_an_absolute_path_refuses() -> Bool  {
   operands_refused(candidate: fixture_candidate, object_source: "")
     && operands_refused(candidate: fixture_candidate, object_source: "   ")
     && operands_refused(candidate: fixture_candidate, object_source: "gunbc")
@@ -220,7 +220,7 @@ fn srv1_unit_text() -> String {
 // THE UNIT IS THE PLACEMENT, so the two directives that MAKE it the placement are pinned exactly.
 // `User=` is what causes the repository's owner to perform the transition; without it the unit runs
 // as root and the whole construction is pointless.
-test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool {
+test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool  {
   let unit = srv1_unit_text()
   string_contains(s: unit, pattern: concat("User=", srv1_service_user()))
     && string_contains(s: unit, pattern: concat("Group=", srv1_service_user()))
@@ -236,7 +236,7 @@ test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool {
 // installed and before the service was restarted. The working directory is therefore the object
 // source the ExecStart's roots live under -- the same path the env file names -- and it is a
 // parameter because only the deploying shell knows it.
-test fn the_unit_runs_inside_the_runner_checkout_it_reads() -> Bool {
+test fn the_unit_runs_inside_the_runner_checkout_it_reads() -> Bool  {
   string_contains(s: srv1_unit_text(), pattern: concat("WorkingDirectory=", fixture_object_source))
 }
 
@@ -245,7 +245,7 @@ test fn the_unit_runs_inside_the_runner_checkout_it_reads() -> Bool {
 // finishes, so fleet-converge run 36032847731 sat silent until the workflow step's ceiling killed
 // it with no receipt. The discriminating half is the relation: a bound at or above the step
 // ceiling renders a TimeoutStartSec= line and still loses the diagnosis to the step kill.
-test fn the_unit_start_is_bounded_inside_the_deploy_step() -> Bool {
+test fn the_unit_start_is_bounded_inside_the_deploy_step() -> Bool  {
   let bound = second_count(s: convergence_unit_start_timeout)
   string_contains(s: srv1_unit_text(), pattern: concat("TimeoutStartSec=", to_string(value: bound)))
     && bound > 0
@@ -257,7 +257,7 @@ test fn the_unit_start_is_bounded_inside_the_deploy_step() -> Bool {
 // unit under system.slice), so the unit must name a bounded slice; it used to name gunbc-roadmap.slice
 // and was reclaim-throttled there by the serving members' growth (fleet-converge run 36204703858). The
 // discriminating half is the absence: a unit naming both would pass the presence check alone.
-test fn the_unit_joins_the_repository_convergence_slice() -> Bool {
+test fn the_unit_joins_the_repository_convergence_slice() -> Bool  {
   let unit = srv1_unit_text()
   string_contains(s: unit, pattern: concat("Slice=", gunbc_repository_convergence_slice_unit_name as String))
     && !string_contains(s: unit, pattern: "Slice=gunbc-roadmap.slice")
@@ -283,7 +283,7 @@ fn rendering_refused(slice: String) -> Bool {
 // against the roadmap bound and an equality-only admission would pass it. The positive control is the
 // declared convergence slice, and a sibling name under the gunbc prefix that is inside no serving
 // slice, so a wall that refused every slice fails this claim too.
-test fn a_serving_slice_placement_refuses_and_the_convergence_slice_is_admitted() -> Bool {
+test fn a_serving_slice_placement_refuses_and_the_convergence_slice_is_admitted() -> Bool  {
   rendering_refused(slice: deployment_slice_unit_name(names: deployment_spec_srv1().names) as String)
     && rendering_refused(slice: gunbc_approval_broker_slice_unit_name as String)
     && rendering_refused(slice: "gunbc-roadmap-convergence.slice")
@@ -298,7 +298,7 @@ test fn a_serving_slice_placement_refuses_and_the_convergence_slice_is_admitted(
 // entry therefore sit under the expanded GUNBC_TREE_SRC, and the deployed repo root appears NOWHERE
 // in the command -- which is the discriminating half: asserting only the presence of the runner
 // paths would pass a command that named both.
-test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> Bool {
+test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> Bool  {
   let spec = deployment_spec_srv1()
   let cmd = convergence_exec_start(
     spec: spec,
@@ -321,7 +321,7 @@ test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> B
 // THE RECEIPT IS NOT WRITTEN INSIDE THE REPOSITORY THE TRANSITION RESETS. A path under the worktree
 // is either destroyed by `reset --hard` or reported by the adjudication as untracked residue that
 // refuses the very transition that produced it.
-test fn the_receipt_is_written_outside_the_converged_worktree() -> Bool {
+test fn the_receipt_is_written_outside_the_converged_worktree() -> Bool  {
   let path = convergence_receipt_path(instance_root: "/opt/gunbc")
   path == "/opt/gunbc/receipts/repository-convergence.json"
     && !starts_with(s: path, prefix: concat(srv1_repo_root(), "/"))
@@ -345,7 +345,7 @@ fn round_trips(receipt: ConvergencePlacementReceipt) -> Bool {
 // about carrying a typed result rather than an exit code. Every arm round-trips, including the two
 // that never touch git -- if a refused placement decoded as anything else, the deploy would be told
 // a story about git that git was never asked.
-test fn every_receipt_arm_round_trips_through_the_json_codec() -> Bool {
+test fn every_receipt_arm_round_trips_through_the_json_codec() -> Bool  {
   round_trips(receipt: PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() })
     && round_trips(receipt: PlacementConvergenceRefused {
       candidate: fixture_candidate,
@@ -363,7 +363,7 @@ test fn every_receipt_arm_round_trips_through_the_json_codec() -> Bool {
 // A DETAIL FIELD CARRYING THE CHARACTERS JSON RESERVES MUST SURVIVE, because the payload it carries
 // is another module's diagnostic prose and that prose contains quotes, backslashes and newlines.
 // A codec that corrupted them would hand the operator a mangled cause for a real failure.
-test fn a_detail_carrying_json_metacharacters_survives_the_round_trip() -> Bool {
+test fn a_detail_carrying_json_metacharacters_survives_the_round_trip() -> Bool  {
   round_trips(receipt: PlacementConvergenceRefused {
     candidate: fixture_candidate,
     repo: srv1_repo_root(),
@@ -381,7 +381,7 @@ fn receipt_text_is_unreadable(text: String) -> Bool {
   }
 }
 
-test fn a_malformed_or_ambiguous_receipt_refuses_instead_of_decoding() -> Bool {
+test fn a_malformed_or_ambiguous_receipt_refuses_instead_of_decoding() -> Bool  {
   receipt_text_is_unreadable(text: "not json at all")
     && receipt_text_is_unreadable(text: "{\"schema\": \"gunbc.repository-convergence-placement.v1\"}")
     && receipt_text_is_unreadable(text: "{\"schema\": \"someone.elses.schema\", \"verdict\": \"converged\"}")
@@ -392,7 +392,7 @@ test fn a_malformed_or_ambiguous_receipt_refuses_instead_of_decoding() -> Bool {
 // AN UNREPORTED TRANSITION IS NOT A CONVERGED ONE. The unit failing before its write, the file being
 // absent, and the document being unreadable all reach the deploy as NOT converged -- the alternative
 // is a transaction that proceeds over a repository nobody moved.
-test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool {
+test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool  {
   let converged = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
   convergence_readback_holds(
     readback: convergence_readback_of_text(text: placement_receipt_text(receipt: converged)),
@@ -417,7 +417,7 @@ test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool 
 // THE CONVERGENCE'S OWN EXIT MAPS TO THE RECEIPT WITHOUT INVENTING A CAUSE. A failure carries the
 // adjudication's located prose through verbatim; a success carries the operands it converged. The
 // RED is that a failure must NOT decode as converged, which is what a truthy-exit reader would do.
-test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool {
+test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool  {
   match admitted_operands(candidate: fixture_candidate, object_source: fixture_object_source) {
     Absent => false
     Present { value: o } => {
@@ -452,7 +452,7 @@ test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool
 // not creatable in a session container -- one uid, no sudo, no user namespaces, and release git
 // ignores GIT_TEST_ASSUME_DIFFERENT_OWNER. Its trigger is the next srv1 dashboard_deploy, whose
 // ConvergenceObjectImportRefused arm reds on this exact cause.
-test fn the_fetch_source_is_trusted_at_its_git_dir_not_its_worktree() -> Bool {
+test fn the_fetch_source_is_trusted_at_its_git_dir_not_its_worktree() -> Bool  {
   convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c 'safe.directory=/home/ghrunner/work/gunbc/gunbc' upload-pack"
     && convergence_fetch_upload_pack(remote: "/srv/another-checkout") == "git -c 'safe.directory=/srv/another-checkout/.git' upload-pack"
     && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c 'safe.directory=*' upload-pack"
@@ -463,7 +463,7 @@ test fn the_fetch_source_is_trusted_at_its_git_dir_not_its_worktree() -> Bool {
 // `--upload-pack="git -c safe.directory=<S>/.git upload-pack"` fetched. Expected strings are
 // written out. RED: the bare `git-upload-pack` default (no carriage) and an unquoted splice both
 // differ; a path carrying an apostrophe and a space stays ONE shell word.
-test fn the_fetch_source_trust_rides_inside_upload_pack_quoted() -> Bool {
+test fn the_fetch_source_trust_rides_inside_upload_pack_quoted() -> Bool  {
   convergence_fetch_upload_pack(remote: fixture_object_source) == "git -c 'safe.directory=/home/ghrunner/work/gunbc/gunbc/.git' upload-pack"
     && convergence_fetch_upload_pack(remote: fixture_object_source) != "git-upload-pack"
     && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c safe.directory=/home/ghrunner/work/gunbc/gunbc/.git upload-pack"

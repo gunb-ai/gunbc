@@ -106,7 +106,7 @@ fn witness_observe_verified_oidc_profile(verdict: OidcIdTokenVerdict) -> Verifie
 
 // THE POSITIVE CONTROL. A verified Google token mints principal:google-oidc/accounts/<sub>, the
 // ruling's spelling, with the issuer bound to https://accounts.google.com.
-test fn a_verified_google_token_mints_the_sub_principal() -> Bool {
+test fn a_verified_google_token_mints_the_sub_principal() -> Bool  {
   match witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")) {
     HumanPrincipalRefused { cause: _ } => false
     HumanPrincipalMinted { principal: p } =>
@@ -120,7 +120,7 @@ test fn a_verified_google_token_mints_the_sub_principal() -> Bool {
 
 // A REFUSED VERDICT MINTS NO PRINCIPAL: the mint's only other arm carries the refusal cause, so
 // a token that failed any check has no projection route at all.
-test fn a_refused_verdict_mints_no_principal() -> Bool {
+test fn a_refused_verdict_mints_no_principal() -> Bool  {
   match witness_mint_human_principal(verdict: witness_refused_verdict()) {
     HumanPrincipalMinted { principal: _ } => false
     HumanPrincipalRefused { cause: _ } => true
@@ -128,7 +128,7 @@ test fn a_refused_verdict_mints_no_principal() -> Bool {
 }
 
 // THE EMAIL-CHANGE LAW. Same sub + changed email = same principal: the mint reads only sub.
-test fn same_sub_with_changed_email_is_the_same_principal() -> Bool {
+test fn same_sub_with_changed_email_is_the_same_principal() -> Bool  {
   let before = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "old@gunb.ai"))
   let after = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "new@gunb.ai"))
   match before {
@@ -143,7 +143,7 @@ test fn same_sub_with_changed_email_is_the_same_principal() -> Bool {
 
 // THE EMAIL-REUSE LAW. Same email + different sub != same principal: nothing in the mint reads
 // email, so two accounts sharing an address (reissued, delegated, recycled) never collapse.
-test fn same_email_with_different_sub_is_not_the_same_principal() -> Bool {
+test fn same_email_with_different_sub_is_not_the_same_principal() -> Bool  {
   let first = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "shared@gunb.ai"))
   let second = witness_mint_human_principal(verdict: witness_verdict(sub: "sub-456" as NonEmptyStr, email: "shared@gunb.ai"))
   match first {
@@ -157,7 +157,7 @@ test fn same_email_with_different_sub_is_not_the_same_principal() -> Bool {
 }
 
 // THE ONE WORKFLOW PRINCIPAL, with the display alias kept as rendering vocabulary only.
-test fn fabric_is_the_one_workflow_principal_with_a_display_alias() -> Bool {
+test fn fabric_is_the_one_workflow_principal_with_a_display_alias() -> Bool  {
   principal_ref_label(p: fabric_workflow_principal) == "principal:gunbc/workflows/fabric"
     && (fabric_workflow_principal.authority as String) == "gunbc"
     && (fabric_workflow_principal.namespace as String) == "workflows"
@@ -166,7 +166,7 @@ test fn fabric_is_the_one_workflow_principal_with_a_display_alias() -> Bool {
 
 // Re-observation may change profile facts without changing stable identity. It is
 // not a second mutable profile store or a directory write.
-test fn verified_profile_snapshots_change_facts_without_reidentifying() -> Bool {
+test fn verified_profile_snapshots_change_facts_without_reidentifying() -> Bool  {
   match witness_observe_verified_oidc_profile(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")) {
     VerifiedOidcProfileSnapshotRefused { cause: _ } => false
     VerifiedOidcProfileSnapshotProjected { profile: first } =>
@@ -183,7 +183,7 @@ test fn verified_profile_snapshots_change_facts_without_reidentifying() -> Bool 
 // THE CLASSIFIED INGEST now sits behind the same verdict wall: the standard claims enter
 // classified only through verified_oidc_projection, and the minted projection principal is the
 // human principal, never the workflow one.
-test fn the_standard_claims_enter_classified_only_behind_the_verdict() -> Bool {
+test fn the_standard_claims_enter_classified_only_behind_the_verdict() -> Bool  {
   match verified_oidc_projection(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")) {
     VerifiedOidcProjectionRefused { cause: _ } => false
     VerifiedOidcProjectionProjected { projection: proj } =>
@@ -217,14 +217,14 @@ fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
   }
 }
 
-test fn the_human_principal_mint_refuses_callers_outside_the_roster() -> Bool {
+test fn the_human_principal_mint_refuses_callers_outside_the_roster() -> Bool  {
   blocking_count_for_class(c: census_of(source: probe_source(name: "principal_mint_unadmitted_probe")), wanted: "ConstructorCallAdmissionRefused") >= 1
 }
 
 // THE LABEL PARSE, the v3 codec's decode arm: the ruling's spelling round-trips label -> ref ->
 // label; malformed spellings — wrong segment count, empty segments, whitespace, no marker —
 // refuse with none rather than guessing, so a corrupt event is unreadable, never mis-attributed.
-test fn the_principal_label_parse_round_trips_and_refuses_malformed_spellings() -> Bool {
+test fn the_principal_label_parse_round_trips_and_refuses_malformed_spellings() -> Bool  {
   let fabricated = PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-9" as NonEmptyStr }
   let round_trip = match principal_ref_parse_label(s: principal_ref_label(p: fabricated)) {
     Present { value: parsed } => principal_ref_eq(a: parsed, b: fabricated)

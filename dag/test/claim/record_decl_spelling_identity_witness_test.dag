@@ -55,17 +55,17 @@ fn record_decl_spelling_has_named_field(qn: String, field: Symbol) -> Bool {
   }
 }
 
-test fn brace_spelling_carries_its_named_fields() -> Bool {
+test fn brace_spelling_carries_its_named_fields() -> Bool  {
   record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^first)
     && record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^second)
 }
 
-test fn equals_spelling_carries_the_same_named_fields() -> Bool {
+test fn equals_spelling_carries_the_same_named_fields() -> Bool  {
   record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^first)
     && record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^second)
 }
 
-test fn leaf_alias_is_not_read_as_a_record() -> Bool {
+test fn leaf_alias_is_not_read_as_a_record() -> Bool  {
   !record_decl_spelling_has_named_field(qn: qn_leaf_alias, field: ^first)
 }
 
@@ -102,11 +102,11 @@ fn record_decl_spelling_probe_refuses(source: String) -> Bool {
   }
 }
 
-test fn brace_spelling_seals_construction() -> Bool {
+test fn brace_spelling_seals_construction() -> Bool  {
   record_decl_spelling_probe_refuses(source: qn_sealed_brace_probe_source)
 }
 
-test fn equals_spelling_seals_construction_the_same_way() -> Bool {
+test fn equals_spelling_seals_construction_the_same_way() -> Bool  {
   record_decl_spelling_probe_refuses(source: qn_sealed_equals_probe_source)
 }
 
@@ -114,10 +114,10 @@ data qn_sealed_empty_brace_probe_source: String = "module record_decl_sealed_emp
 
 data qn_sealed_empty_equals_probe_source: String = "module record_decl_sealed_empty_equals_probe\n\nimport test.fixture.record_decl_spelling.sealed \{ SealedEmptyEqualsSpelling \}\n\nfn forge() -> SealedEmptyEqualsSpelling \{\n  SealedEmptyEqualsSpelling \{ \}\n\}\n"
 
-test fn empty_brace_spelling_seals_construction() -> Bool {
+test fn empty_brace_spelling_seals_construction() -> Bool  {
   record_decl_spelling_probe_refuses(source: qn_sealed_empty_brace_probe_source)
 }
 
-test fn empty_equals_spelling_seals_construction_the_same_way() -> Bool {
+test fn empty_equals_spelling_seals_construction_the_same_way() -> Bool  {
   record_decl_spelling_probe_refuses(source: qn_sealed_empty_equals_probe_source)
 }

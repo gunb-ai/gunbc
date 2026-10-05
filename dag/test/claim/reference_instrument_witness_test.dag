@@ -57,31 +57,31 @@ fn glitch_mode_present(wanted: String) -> Bool {
     acc || pip_boy_3000_glitch_mode_label(m: m) == wanted)
 }
 
-test fn witness_two_products_are_distinct_subjects() -> Bool {
+test fn witness_two_products_are_distinct_subjects() -> Bool  {
   return pip_boy_3000_licensing_statement != pip_boy_mk_v_licensing_statement
     && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
 }
 
-test fn witness_both_products_share_one_manufacturer_and_stay_distinct_subjects() -> Bool {
+test fn witness_both_products_share_one_manufacturer_and_stay_distinct_subjects() -> Bool  {
   return pip_boy_3000_manufacturer.legal_name == pip_boy_mk_v_manufacturer.legal_name
     && pip_boy_3000_manufacturer.legal_name == "The Wand Company Limited"
     && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
 }
 
-test fn witness_impulse_settings_belong_to_the_named_referent() -> Bool {
+test fn witness_impulse_settings_belong_to_the_named_referent() -> Bool  {
   return setting_present(wanted: "Glitch on tap")
     && setting_present(wanted: "Tap threshold")
     && setting_present(wanted: "CRT jitter")
     && setting_present(wanted: "Vertical shift")
 }
 
-test fn witness_glitch_modes_are_grounded() -> Bool {
+test fn witness_glitch_modes_are_grounded() -> Bool  {
   return glitch_mode_present(wanted: "Off")
     && glitch_mode_present(wanted: "Short")
     && glitch_mode_present(wanted: "Persistent")
 }
 
-test fn witness_mk_v_carries_only_its_own_manuals_capabilities() -> Bool {
+test fn witness_mk_v_carries_only_its_own_manuals_capabilities() -> Bool  {
   return capability_present(wanted: "Changing the display colour")
     && capability_present(wanted: "Demo mode")
     && capability_present(wanted: "FM radio function")
@@ -89,29 +89,29 @@ test fn witness_mk_v_carries_only_its_own_manuals_capabilities() -> Bool {
     && !capability_present(wanted: "CRT jitter")
 }
 
-test fn witness_named_referent_covers_the_directive() -> Bool {
+test fn witness_named_referent_covers_the_directive() -> Bool  {
   return named_referent_covers_directive()
     && external_subject_ref_eq(a: named_referent, b: pip_boy_3000_subject)
 }
 
-test fn witness_mk_v_does_not_cover_the_directive() -> Bool {
+test fn witness_mk_v_does_not_cover_the_directive() -> Bool  {
   return !mk_v_covers_directive()
     && !axis_is_cited_on(axis: ImpulseGlitch, subject: pip_boy_mk_v_subject)
     && !axis_is_cited_on(axis: OpticalInstability, subject: pip_boy_mk_v_subject)
 }
 
-test fn witness_impulse_axes_resolve_to_the_named_referent() -> Bool {
+test fn witness_impulse_axes_resolve_to_the_named_referent() -> Bool  {
   return axis_is_cited_on(axis: ImpulseGlitch, subject: pip_boy_3000_subject)
     && axis_is_cited_on(axis: ImpulseThreshold, subject: pip_boy_3000_subject)
     && axis_is_cited_on(axis: TiltDerivedReadout, subject: pip_boy_3000_subject)
     && axis_is_cited_on(axis: RestingOffsetCalibration, subject: pip_boy_3000_subject)
 }
 
-test fn witness_every_evidence_row_lands_in_its_own_subject_module() -> Bool {
+test fn witness_every_evidence_row_lands_in_its_own_subject_module() -> Bool  {
   return all_evidence_is_contained()
 }
 
-test fn witness_a_cross_attached_citation_is_refused() -> Bool {
+test fn witness_a_cross_attached_citation_is_refused() -> Bool  {
   let cross_attached = InstrumentCitation {
     subject: pip_boy_mk_v_subject,
     fact: decl_ref(
@@ -129,7 +129,7 @@ fn provenance_is_cited(a: InstrumentBehaviourAxis) -> Bool {
   }
 }
 
-test fn witness_buoyant_drift_is_originated_not_cited() -> Bool {
+test fn witness_buoyant_drift_is_originated_not_cited() -> Bool  {
   return axis_is_originated(axis: BuoyantDrift)
     && !axis_has_any_evidence(axis: BuoyantDrift)
     && !axis_is_cited_on(axis: BuoyantDrift, subject: pip_boy_3000_subject)
@@ -143,7 +143,7 @@ test fn witness_buoyant_drift_is_originated_not_cited() -> Bool {
 // specification-without-execution one rung up. What it asserts now is the READ: which arm each axis
 // actually lands on.
 
-test fn witness_each_axis_lands_on_its_expected_provenance_arm() -> Bool {
+test fn witness_each_axis_lands_on_its_expected_provenance_arm() -> Bool  {
   return provenance_is_cited(a: OpticalInstability)
     && provenance_is_cited(a: RestingOffsetCalibration)
     && provenance_is_cited(a: ImpulseGlitch)
@@ -152,11 +152,11 @@ test fn witness_each_axis_lands_on_its_expected_provenance_arm() -> Bool {
     && !provenance_is_cited(a: BuoyantDrift)
 }
 
-test fn witness_a_cited_axis_carries_at_least_one_citation() -> Bool {
+test fn witness_a_cited_axis_carries_at_least_one_citation() -> Bool  {
   return fold(axis_citations(a: ImpulseGlitch), init: false, f: (acc, c) => true)
     && fold(axis_citations(a: BuoyantDrift), init: true, f: (acc, c) => false)
 }
 
-test fn witness_both_manuals_were_read_directly() -> Bool {
+test fn witness_both_manuals_were_read_directly() -> Bool  {
   return all_sources_read_directly()
 }

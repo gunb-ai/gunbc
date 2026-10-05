@@ -121,7 +121,7 @@ fn refusal_kind(report: RealizationCostFidelityReport) -> String {
   }
 }
 
-test fn concat_model_over_prices_the_left_operand() -> Bool {
+test fn concat_model_over_prices_the_left_operand() -> Bool  {
   match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_realized_cost()) {
     RealizationFasterThanModeled => true
     ModeledCostPreserved => false
@@ -138,7 +138,7 @@ test fn concat_model_over_prices_the_left_operand() -> Bool {
 // THE DISCRIMINATOR, kept in the corpus rather than in a PR description: read as a single rank the
 // two bounds are indistinguishable on the operand they share, and the modeled bound has no CostShape
 // at all because it spans two parameters. That is the reading a rank-only join would have produced.
-test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
+test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool  {
   match cost_bound_to_shape(b: concat_modeled_cost()) {
     Present { value: _ } => false
     Absent =>
@@ -158,7 +158,7 @@ test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
   }
 }
 
-test fn slower_realization_is_reported() -> Bool {
+test fn slower_realization_is_reported() -> Bool  {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_nlogn(param: "n")) {
     RealizationSlowerThanModeled => true
     ModeledCostPreserved => false
@@ -172,7 +172,7 @@ test fn slower_realization_is_reported() -> Bool {
   }
 }
 
-test fn identical_costs_are_preserved() -> Bool {
+test fn identical_costs_are_preserved() -> Bool  {
   match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_modeled_cost()) {
     ModeledCostPreserved => true
     RealizationSlowerThanModeled => false
@@ -189,7 +189,7 @@ test fn identical_costs_are_preserved() -> Bool {
 // A PROVEN TRADE-OFF IS A FINDING, NOT AN ABSENCE: cheaper in one parameter and dearer in another is
 // its own verdict, and collapsing it into Unknown would report "nothing to see" about two facts that
 // are both established.
-test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
+test fn per_operand_tradeoff_is_its_own_verdict() -> Bool  {
   match cost_fidelity_of(
     modeled: SumOfProductsBound { terms: [
       [PolyCost { param: "left", exponent: poly_exp_degree_one() }, LogCost { param: "left" }],
@@ -214,7 +214,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
 
 // THE COLLISION CONTROL. log-squared and linear are both "rank 2" under any single-ordinal encoding,
 // and they are not the same growth: n beats (log n)^k for every k.
-test fn log_squared_and_linear_do_not_collide() -> Bool {
+test fn log_squared_and_linear_do_not_collide() -> Bool  {
   match cost_fidelity_of(modeled: log_squared(param: "n"), realized: cost_linear(param: "n")) {
     RealizationSlowerThanModeled => true
     ModeledCostPreserved => false
@@ -228,14 +228,14 @@ test fn log_squared_and_linear_do_not_collide() -> Bool {
   }
 }
 
-test fn log_squared_has_no_shape() -> Bool {
+test fn log_squared_has_no_shape() -> Bool  {
   match cost_bound_to_shape(b: log_squared(param: "n")) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn quadratic_in_one_operand_has_no_shape() -> Bool {
+test fn quadratic_in_one_operand_has_no_shape() -> Bool  {
   match cost_bound_to_shape(b: quadratic(param: "n")) {
     Absent => true
     Present { value: _ } => false
@@ -244,14 +244,14 @@ test fn quadratic_in_one_operand_has_no_shape() -> Bool {
 
 // A LOGARITHMIC COST HAS NO CostShape SPELLING, so the projection answers absent rather than
 // reporting a cost that grows as one that does not.
-test fn logarithmic_cost_has_no_shape_and_does_not_round_to_constant() -> Bool {
+test fn logarithmic_cost_has_no_shape_and_does_not_round_to_constant() -> Bool  {
   match cost_bound_to_shape(b: cost_log(param: "n")) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn linear_and_sorting_single_operand_costs_still_project() -> Bool {
+test fn linear_and_sorting_single_operand_costs_still_project() -> Bool  {
   match cost_bound_to_shape(b: cost_linear(param: "n")) {
     Absent => false
     Present { value: linear } =>
@@ -265,7 +265,7 @@ test fn linear_and_sorting_single_operand_costs_still_project() -> Bool {
 // ShapeIterateBody HAS A PREIMAGE, and it is why CallerBodyCost was added to AtomicCost: fold_list
 // and index_by carry ShapeIterateBody today, and without a body atom the only spelling for them was
 // a plain linear bound, which projects back as ShapeLinearScan — a different arm, silently.
-test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool {
+test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool  {
   match cost_bound_to_shape(b: cost_iterate_body(param: "n")) {
     Absent => false
     Present { value: with_body } =>
@@ -279,7 +279,7 @@ test fn iterate_body_and_linear_scan_project_to_different_arms() -> Bool {
 
 // A PER-ELEMENT BODY IS NOT KNOWN TO BE WORSE THAN NO BODY: the body may be O(1). Two costs agreeing
 // on growth in every parameter and differing only in the body are UNDECIDED on evidence.
-test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
+test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool  {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_iterate_body(param: "n")) {
     RealizationCostBodyDependent => true
     CostGrowthNotOrderable => false
@@ -300,7 +300,7 @@ test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
 // the growth delta can outweigh it by any amount. With a body of O(n^2) the modeled side is n^3 and
 // the realization is dramatically FASTER, and the module was answering "slower" with confidence --
 // the same fabrication class as sqrt-ordered-as-constant, one arm over.
-test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool {
+test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool  {
   match cost_fidelity_of(modeled: cost_iterate_body(param: "n"), realized: cost_nlogn(param: "n")) {
     RealizationCostBodyDependent => true
     RealizationSlowerThanModeled => false
@@ -317,7 +317,7 @@ test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool {
 // THE MIRROR, and it is the more dangerous direction because the answer flatters the realization:
 // a realization that runs an unbounded caller body per element, against a modeled quadratic, used
 // to report FASTER on the strength of a degree it wins while the body it runs is unbounded.
-test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool {
+test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool  {
   match cost_fidelity_of(modeled: quadratic(param: "n"), realized: cost_iterate_body(param: "n")) {
     RealizationCostBodyDependent => true
     RealizationFasterThanModeled => false
@@ -334,7 +334,7 @@ test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool {
 // THE OTHER SIDE OF THE RULE, so the repair is not a blanket retreat into undecided: when the body
 // delta AGREES with the growth delta, or is zero, nothing opposes and the axis stays decided. A
 // realization that is worse on growth AND runs a body the model does not is worse, full stop.
-test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool {
+test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool  {
   let worse = ProductBound { factors: [
     PolyCost { param: "n", exponent: poly_exp_degree_one() },
     LogCost { param: "n" },
@@ -356,7 +356,7 @@ test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool {
 
 // THE BODY SURVIVES A LOSING TERM. Growth comes from the largest term; a body is a fact about the
 // COST, not about the winning term, and taking the winner whole dropped it.
-test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
+test fn a_body_in_a_losing_term_is_not_dropped() -> Bool  {
   match cost_fidelity_of(
     modeled: quadratic(param: "n"),
     realized: SumOfProductsBound { terms: [
@@ -380,7 +380,7 @@ test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
 data probe_primitive_a: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_a" }
 data probe_primitive_b: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fidelity_probe_b" }
 
-test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
+test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: concat_modeled_cost() } }, probe_coarse(p: probe_primitive_b)],
     target: EmitRust,
@@ -391,7 +391,7 @@ test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
     && count_cost_fidelity_findings(rows: rows) == 0
 }
 
-test fn realization_fact_does_not_cross_targets() -> Bool {
+test fn realization_fact_does_not_cross_targets() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: concat_modeled_cost() } }],
     target: EmitRust,
@@ -406,7 +406,7 @@ test fn realization_fact_does_not_cross_targets() -> Bool {
   count_cost_fidelity_unmeasured(rows: rows) == 1 && count_cost_fidelity_findings(rows: rows) == 0
 }
 
-test fn measured_target_reports_the_finding() -> Bool {
+test fn measured_target_reports_the_finding() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: concat_modeled_cost() } }],
     target: InterpreterHost,
@@ -423,7 +423,7 @@ test fn measured_target_reports_the_finding() -> Bool {
 
 // AN ARM THAT NO REPORTED POPULATION COUNTS IS AN ANSWER NOBODY READS: all four counts asserted on
 // one ledger, so the type cannot gain an arm without the accounting being revisited.
-test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
+test fn the_undecided_arm_appears_in_a_reported_population() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
@@ -444,7 +444,7 @@ test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
 // A FRACTIONAL EXPONENT IS A REAL BOUND THIS READING CANNOT ORDER, and std.induction already carries
 // it (cost_sqrt). It answers unrepresentable rather than rounding to constant or to linear, and the
 // projection refuses with it.
-test fn a_fractional_exponent_is_not_rounded_to_a_shape() -> Bool {
+test fn a_fractional_exponent_is_not_rounded_to_a_shape() -> Bool  {
   match cost_bound_to_shape(b: cost_sqrt(param: "n")) {
     Absent => true
     Present { value: _ } => false
@@ -457,7 +457,7 @@ test fn a_fractional_exponent_is_not_rounded_to_a_shape() -> Bool {
 // param_growth_order never consulted the flag, and sqrt(n) therefore compared CHEAPER than n. The
 // module's own annotation said a reader reporting constant or linear for such a bound "would be
 // fabricating"; the join did it three lines of indirection away.
-test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
+test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool  {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_sqrt(param: "n")) {
     CostGrowthNotOrderable => true
     RealizationFasterThanModeled => false
@@ -474,7 +474,7 @@ test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
 // AN UNBOUNDED COST WAS ORDERED AS EQUAL TO A CONSTANT: ForeverBound names no parameters, so the
 // axis list was empty, and an empty axis list is Equivalent in std.pareto. "No axes" and "no
 // difference" are not the same fact.
-test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool {
+test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool  {
   match cost_fidelity_of(modeled: ForeverBound, realized: ConstantBound) {
     CostGrowthNotOrderable => true
     ModeledCostPreserved => false
@@ -488,7 +488,7 @@ test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool {
   }
 }
 
-test fn a_malformed_bound_is_not_orderable() -> Bool {
+test fn a_malformed_bound_is_not_orderable() -> Bool  {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: ErrorBound) {
     CostGrowthNotOrderable => true
     _ => false
@@ -497,7 +497,7 @@ test fn a_malformed_bound_is_not_orderable() -> Bool {
 
 // TWO GENUINE CONSTANTS STILL COMPARE, so the gate is about orderability rather than about having
 // no parameters: the empty-axis case is only wrong when a side was unorderable.
-test fn two_constants_still_compare_as_preserved() -> Bool {
+test fn two_constants_still_compare_as_preserved() -> Bool  {
   match cost_fidelity_of(modeled: ConstantBound, realized: ConstantBound) {
     ModeledCostPreserved => true
     _ => false
@@ -506,7 +506,7 @@ test fn two_constants_still_compare_as_preserved() -> Bool {
 
 // AND THE ARM IS COUNTED: an answer no population reports is an answer nobody reads, which is the
 // defect this module shipped one round earlier.
-test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
+test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
@@ -531,21 +531,21 @@ test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
 // sqrt(n) read as cheaper than n, an unbounded cost read as equal to a constant -- and they are kept
 // here as permanent regression controls even though the ordering that produced them is now
 // unwritable (DESIGN section 4b(4): a climb dissolves the production handling, never the evidence).
-test fn a_fractional_exponent_growth_has_no_rank() -> Bool {
+test fn a_fractional_exponent_growth_has_no_rank() -> Bool  {
   match cost_bound_growth_in_param(b: cost_sqrt(param: "n"), param: "n") {
     GrowthNotOrderable => true
     OrderableGrowth { rank: _ } => false
   }
 }
 
-test fn an_unbounded_growth_has_no_rank() -> Bool {
+test fn an_unbounded_growth_has_no_rank() -> Bool  {
   match cost_bound_growth_in_param(b: ForeverBound, param: "n") {
     GrowthNotOrderable => true
     OrderableGrowth { rank: _ } => false
   }
 }
 
-test fn a_linear_growth_has_a_rank() -> Bool {
+test fn a_linear_growth_has_a_rank() -> Bool  {
   match cost_bound_growth_in_param(b: cost_linear(param: "n"), param: "n") {
     OrderableGrowth { rank: r } => r.degree == 1 && r.logs == 0 && r.bodies == 0
     GrowthNotOrderable => false
@@ -555,7 +555,7 @@ test fn a_linear_growth_has_a_rank() -> Bool {
 // AN UNORDERABLE FACTOR ABSORBS ITS PRODUCT AND ITS SUM, which is the property the old `&&` on the
 // flag had and the arm must keep: a term nobody can place does not become placeable by sitting
 // beside one that can.
-test fn an_unorderable_factor_absorbs_the_whole_bound() -> Bool {
+test fn an_unorderable_factor_absorbs_the_whole_bound() -> Bool  {
   let mixed = SumBound { terms: [cost_linear(param: "n"), cost_sqrt(param: "n")] }
   match cost_bound_growth_in_param(b: mixed, param: "n") {
     GrowthNotOrderable => true
@@ -563,7 +563,7 @@ test fn an_unorderable_factor_absorbs_the_whole_bound() -> Bool {
   }
 }
 
-test fn an_unorderable_growth_projects_to_no_shape() -> Bool {
+test fn an_unorderable_growth_projects_to_no_shape() -> Bool  {
   match shape_for_param_growth(growth: cost_bound_growth_in_param(b: cost_sqrt(param: "n"), param: "n")) {
     Absent => true
     Present { value: _ } => false
@@ -589,7 +589,7 @@ fn contradicted_report(first: CostBound, second: CostBound) -> RealizationCostFi
   )
 }
 
-test fn two_facts_for_one_key_contradict_in_either_order() -> Bool {
+test fn two_facts_for_one_key_contradict_in_either_order() -> Bool  {
   let forward = rows_of(report: contradicted_report(first: cost_linear(param: "n"), second: quadratic(param: "n")))
   let reversed = rows_of(report: contradicted_report(first: quadratic(param: "n"), second: cost_linear(param: "n")))
   count_cost_facts_contradicted(rows: forward) == 1
@@ -602,13 +602,13 @@ test fn two_facts_for_one_key_contradict_in_either_order() -> Bool {
 // A CONTRADICTED KEY IS NOT AN UNMEASURED ONE. Both are "no usable realized cost", and collapsing
 // them would file a repair against the wrong lane: unmeasured means nobody looked, contradicted
 // means two people looked and disagreed.
-test fn a_contradicted_key_is_not_counted_as_unmeasured() -> Bool {
+test fn a_contradicted_key_is_not_counted_as_unmeasured() -> Bool  {
   let rows = rows_of(report: contradicted_report(first: cost_linear(param: "n"), second: quadratic(param: "n")))
   count_cost_facts_contradicted(rows: rows) == 1 && count_cost_fidelity_unmeasured(rows: rows) == 0
 }
 
 // ONE FACT PER KEY STILL ANSWERS NORMALLY, so the repair did not turn every lookup into a refusal.
-test fn a_single_fact_for_one_key_still_compares() -> Bool {
+test fn a_single_fact_for_one_key_still_compares() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
@@ -627,7 +627,7 @@ test fn a_single_fact_for_one_key_still_compares() -> Bool {
 // of a broader writable one, and this witness keeps exercising it under the arm that survives. That
 // is what DESIGN section 4b(4) asks for -- the evidence stays enrolled when the production
 // machinery it justified dissolves.
-test fn one_primitive_carrying_both_a_structured_and_a_coarse_row_refuses() -> Bool {
+test fn one_primitive_carrying_both_a_structured_and_a_coarse_row_refuses() -> Bool  {
   refusal_kind(
     report: realization_cost_fidelity_rows(
       modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }, probe_coarse(p: probe_primitive_a)],
@@ -637,7 +637,7 @@ test fn one_primitive_carrying_both_a_structured_and_a_coarse_row_refuses() -> B
   ) == "primitive-duplicated"
 }
 
-test fn a_primitive_duplicated_across_two_structured_rows_refuses() -> Bool {
+test fn a_primitive_duplicated_across_two_structured_rows_refuses() -> Bool  {
   refusal_kind(
     report: realization_cost_fidelity_rows(
       modeled: [
@@ -650,7 +650,7 @@ test fn a_primitive_duplicated_across_two_structured_rows_refuses() -> Bool {
   ) == "primitive-duplicated"
 }
 
-test fn a_primitive_duplicated_across_two_coarse_rows_refuses() -> Bool {
+test fn a_primitive_duplicated_across_two_coarse_rows_refuses() -> Bool  {
   refusal_kind(
     report: realization_cost_fidelity_rows(
       modeled: [probe_coarse(p: probe_primitive_b), probe_coarse(p: probe_primitive_b)],
@@ -664,7 +664,7 @@ test fn a_primitive_duplicated_across_two_coarse_rows_refuses() -> Bool {
 // refusals above are arms keyed on the duplicate, not a report that refuses whenever a coarse row
 // is present. Without this control the three specimens above would be satisfied by a join that
 // refused everything.
-test fn distinct_primitives_across_both_arms_still_report_rows() -> Bool {
+test fn distinct_primitives_across_both_arms_still_report_rows() -> Bool  {
   refusal_kind(
     report: realization_cost_fidelity_rows(
       modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }, probe_coarse(p: probe_primitive_b)],
@@ -679,7 +679,7 @@ test fn distinct_primitives_across_both_arms_still_report_rows() -> Bool {
 // each checked its own count in isolation and none checked that they exhaust the rows. One
 // classifier makes the partition total by construction; this asserts it by execution, over a row
 // set built to land in several populations at once.
-test fn the_reported_populations_exhaust_the_rows() -> Bool {
+test fn the_reported_populations_exhaust_the_rows() -> Bool  {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [
       PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }, probe_coarse(p: probe_primitive_b)],

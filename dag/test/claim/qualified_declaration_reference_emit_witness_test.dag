@@ -23,6 +23,6 @@ fn w_same_module_qualified_reference_emits_call() -> Bool {
   )
 }
 
-test fn same_module_qualified_reference_emits_call_not_fn_item() -> Bool {
+test fn same_module_qualified_reference_emits_call_not_fn_item() -> Bool  {
   w_same_module_qualified_reference_emits_call()
 }

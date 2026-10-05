@@ -80,7 +80,7 @@ fn fully_sound_matrix() -> List<ProvenanceCell> {
 // THE DISCRIMINATOR. The real report, over the real measured matrix, written to a real path, must
 // return a refusal. This is the control that reds if the post-write refusal is ever replaced by
 // ExitSuccess -- the exact substitution nothing detected before this file existed.
-test fn the_real_report_refuses_on_the_measured_matrix_by_real_execution() -> Bool {
+test fn the_real_report_refuses_on_the_measured_matrix_by_real_execution() -> Bool  {
   with_temp_dir(scenario: dir => {
     match provenance_calibration_report_over(cells: calibration_cells(), out: report_path(dir: dir)) {
       ExitSuccess => false
@@ -91,7 +91,7 @@ test fn the_real_report_refuses_on_the_measured_matrix_by_real_execution() -> Bo
 
 // THE NON-WIDEN CONTROL, without which the discriminator is satisfied by a report that refuses
 // unconditionally -- a wall that cannot report health, which is the same defect inverted.
-test fn the_real_report_succeeds_on_a_sound_matrix_by_real_execution() -> Bool {
+test fn the_real_report_succeeds_on_a_sound_matrix_by_real_execution() -> Bool  {
   with_temp_dir(scenario: dir => {
     list_length(items: fully_sound_matrix()) == declared_cell_population()
       && match provenance_calibration_report_over(cells: fully_sound_matrix(), out: report_path(dir: dir)) {
@@ -112,7 +112,7 @@ test fn the_real_report_succeeds_on_a_sound_matrix_by_real_execution() -> Bool {
 // precisely the outcome the arm exists to forbid. Existence is not content. The comparison is
 // against calibration_body_of, the very function the report writes, so this asserts the actual
 // matrix rather than a file handle.
-test fn the_refusing_report_still_wrote_the_matrix_by_real_execution() -> Bool {
+test fn the_refusing_report_still_wrote_the_matrix_by_real_execution() -> Bool  {
   with_temp_dir(scenario: dir => {
     let path = report_path(dir: dir)
     let cells = calibration_cells()
@@ -134,7 +134,7 @@ test fn the_refusing_report_still_wrote_the_matrix_by_real_execution() -> Bool {
 // substitution class the previous two do not reach: a payload that is the right SHAPE but the wrong
 // POPULATION -- the sound matrix rendered where the measured one belongs -- which is what a stub
 // that "writes a matrix" would produce.
-test fn the_written_payload_is_the_measured_matrix_and_not_another_one() -> Bool {
+test fn the_written_payload_is_the_measured_matrix_and_not_another_one() -> Bool  {
   with_temp_dir(scenario: dir => {
     let path = report_path(dir: dir)
     let measured = calibration_cells()

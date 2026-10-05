@@ -7,7 +7,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // been dead for six hours. The criterion must turn that exact input into UnknownRefused, and it
 // must do so because of what the PROBE can do, not because of anything about the value it returned.
 
-test fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
+test fn witness_self_establishing_probe_cannot_report_converged() -> Bool  {
   observation_verdict_eq(
     a: readback_evidence_verdict(
       p: sccache_show_stats_probe,
@@ -24,7 +24,7 @@ test fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
 // fold that returned UnknownRefused for every verdict from a non-independent probe would pass the
 // conjunct above and destroy real evidence here.
 
-test fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
+test fn witness_negative_results_from_a_tainted_probe_survive() -> Bool  {
   observation_verdict_eq(
     a: readback_evidence_verdict(p: sccache_show_stats_probe, observed: std.upsert_decision.Absent),
     b: std.upsert_decision.Absent,
@@ -46,7 +46,7 @@ test fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
 }
 
 // The non-vacuity control in the other direction. `systemctl show` and `systemctl --user is-active` read the manager's recorded state and start nothing, so their Converged results must survive untouched. Without this, a criterion that refused every probe would satisfy every other conjunct in this file while making read-back worthless — the absorbing fallback wearing a safety badge, which is precisely the failure this lane keeps catching.
-test fn witness_inert_probes_keep_their_evidence() -> Bool {
+test fn witness_inert_probes_keep_their_evidence() -> Bool  {
   observation_verdict_eq(
     a: readback_evidence_verdict(
       p: systemd_is_active_probe,
@@ -65,7 +65,7 @@ test fn witness_inert_probes_keep_their_evidence() -> Bool {
 }
 
 // An unaudited transport must be treated as tainted, not as clean. This is the fail-closed default and it is where the criterion earns most of its value, because the classified probes are a handful and the unclassified ones are everything else.
-test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
+test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool  {
   let unaudited = ReadBackProbe {
     label: "hypothetical unaudited transport",
     subject: "some subject",
@@ -80,7 +80,7 @@ test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
 
 data witness_red_control_note: String = "The discriminating RED control. The perturbation is trusting the probe's own answer regardless of transport — the corpus's behaviour everywhere the criterion has not been applied — and the gate rejects it on the srv3 inputs while accepting the authority on the same inputs. Both directions are asserted so neither an always-reject nor an always-accept gate could pass."
 
-test fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
+test fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool  {
   let p = sccache_show_stats_probe
   let widened = readback_evidence_trusting_widen_sketch(
     p: p,
@@ -100,7 +100,7 @@ test fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
 // classification load-bearing rather than decorative — swapping the transport for an ensure-shaped
 // one changes the answer.
 
-test fn witness_swap_axis_consumes_the_criterion() -> Bool {
+test fn witness_swap_axis_consumes_the_criterion() -> Bool  {
   let inert_route = readback_evidence_verdict(
     p: proc_swaps_read_probe,
     observed: std.upsert_decision.Converged,
@@ -126,7 +126,7 @@ test fn witness_swap_axis_consumes_the_criterion() -> Bool {
 // exists for — and it is the conjunct that would red if a newly added probe were quietly classified
 // to make a consumer green.
 
-test fn witness_roster_names_the_cited_incident() -> Bool {
+test fn witness_roster_names_the_cited_incident() -> Bool  {
   readback_non_independent_probe_count() == 1
     && readback_probe_roster.length() == 5
 }
@@ -144,7 +144,7 @@ test fn witness_roster_names_the_cited_incident() -> Bool {
 // verdict (so the safety property did not regress with the reclassification), and that the arms
 // remain DISTINGUISHABLE (so a future edit cannot quietly collapse them back).
 
-test fn witness_answers_without_subject_still_corrects_a_positive() -> Bool {
+test fn witness_answers_without_subject_still_corrects_a_positive() -> Bool  {
   let probe = ReadBackProbe {
     label: "answers-without-subject probe",
     subject: "subject that the probe cannot establish",
@@ -168,7 +168,7 @@ fn probe_effect_arm_tag(effect: ProbeEffectOnSubject) -> String {
   )
 }
 
-test fn witness_the_two_non_independent_arms_stay_distinguishable() -> Bool {
+test fn witness_the_two_non_independent_arms_stay_distinguishable() -> Bool  {
   let creates = probe_effect_arm_tag(
     effect: ProbeMayEstablish { mechanism: "starts the daemon it reports on" as NonEmptyStr },
   )
@@ -178,7 +178,7 @@ test fn witness_the_two_non_independent_arms_stay_distinguishable() -> Bool {
   creates == "creates" && answers == "answers" && (creates == answers) == false
 }
 
-test fn witness_cited_probe_is_the_answers_without_subject_exemplar() -> Bool {
+test fn witness_cited_probe_is_the_answers_without_subject_exemplar() -> Bool  {
   match sccache_show_stats_probe.effect_on_subject {
     ProbeAnswersWithoutSubject { mechanism: _ } => true
     ProbeMayEstablish { mechanism: _ } => false

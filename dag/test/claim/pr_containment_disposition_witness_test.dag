@@ -99,7 +99,7 @@ fn head_of(base_tree: String, merged_tree: String, t: ContainmentTally) -> Strin
   }
 }
 
-test fn every_observing_disposition_names_the_head_it_measured() -> Bool {
+test fn every_observing_disposition_names_the_head_it_measured() -> Bool  {
   head_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 1, present: 0))
       == probe_head_commit
     && head_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 92, present: 92))
@@ -113,7 +113,7 @@ test fn every_observing_disposition_names_the_head_it_measured() -> Bool {
 // THE CERTAIN MEASURE. A merged tree equal to the base's is containment, and it is containment even
 // though the branch added lines the base does not carry -- which cannot happen in git and is asserted
 // here anyway, because the arm's whole point is that the TREE decides and the ratio is not consulted.
-test fn a_merged_tree_equal_to_the_base_is_contained() -> Bool {
+test fn a_merged_tree_equal_to_the_base_is_contained() -> Bool  {
   name_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 92, present: 0))
     == "content-contained"
 }
@@ -122,21 +122,21 @@ test fn a_merged_tree_equal_to_the_base_is_contained() -> Bool {
 // the tree, because the same declaration was authored at a different position. This must be its own
 // state: reporting it as contained would assert a merge is a no-op when it would add a duplicate
 // declaration, and reporting it as new content would hide the one case that motivated this module.
-test fn every_added_line_on_the_base_with_a_differing_tree_is_position_only() -> Bool {
+test fn every_added_line_on_the_base_with_a_differing_tree_is_position_only() -> Bool  {
   name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 92, present: 92))
     == "position-only-divergence"
 }
 
 // THE CANDIDATE BAND, AND ITS LOWER EDGE. 0.94 is the measured score of gunbc#9528, a partially
 // landed stack carrying real new work: it must be raised as a CANDIDATE and never as a verdict.
-test fn a_high_but_partial_ratio_is_only_a_candidate() -> Bool {
+test fn a_high_but_partial_ratio_is_only_a_candidate() -> Bool  {
   name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 94))
     == "residue-candidate"
 }
 
 // THE NEGATIVE CONTROL FOR THE BAND. One per-mille below the threshold is ordinary new content.
 // Without this the threshold could be zero and every test above would still pass.
-test fn just_below_the_threshold_is_ordinary_new_content() -> Bool {
+test fn just_below_the_threshold_is_ordinary_new_content() -> Bool  {
   name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 1000, present: 849))
     == "contributes-new-content"
     && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 1000, present: 850))
@@ -148,7 +148,7 @@ test fn just_below_the_threshold_is_ordinary_new_content() -> Bool {
 // zero and the disposition is ordinary -- the tree arm above is the only thing that can call a
 // deletion contained, which is correct, because a deletion the base already has does merge to the
 // base's tree.
-test fn a_branch_with_no_added_lines_is_not_a_ratio() -> Bool {
+test fn a_branch_with_no_added_lines_is_not_a_ratio() -> Bool  {
   containment_per_mille(tally: tally(added: 0, present: 0)) == 0
     && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 0, present: 0))
       == "contributes-new-content"
@@ -169,7 +169,7 @@ data added_line_diff: String = concat(
 // of the same one: the blank added line is not content, the removed line is not an addition, and the
 // surviving lines are TRIMMED, because the comparison against the base is on trimmed text and an
 // untrimmed key would report a re-indented line as absent.
-test fn the_diff_fold_counts_content_lines_only_and_trims_them() -> Bool {
+test fn the_diff_fold_counts_content_lines_only_and_trims_them() -> Bool  {
   let lines = added_lines_of_diff(diff_text: added_line_diff)
   count(lines) == 2
     && all(lines, l => l.path == "dag/std/logic.dag")
@@ -182,7 +182,7 @@ test fn the_diff_fold_counts_content_lines_only_and_trims_them() -> Bool {
 // contribute nothing rather than being attributed to an empty path.
 data headerless_diff: String = "+data orphan: String = \"no file\"\n"
 
-test fn an_added_line_outside_any_file_is_not_counted() -> Bool {
+test fn an_added_line_outside_any_file_is_not_counted() -> Bool  {
   count(added_lines_of_diff(diff_text: headerless_diff)) == 0
 }
 
@@ -208,7 +208,7 @@ fn outcome_tree(exit_code: Int, stdout: String) -> String {
 // A CONFLICTED MERGE STILL REPORTS A TREE, and the containment rule depends on that: exit 1 writes
 // the tree it built and then the conflict report beneath it. A fold that took the whole stdout, or
 // that treated exit 1 as having no tree, would make every conflicted branch unmeasurable.
-test fn a_conflicted_merge_carries_its_tree_on_the_first_line() -> Bool {
+test fn a_conflicted_merge_carries_its_tree_on_the_first_line() -> Bool  {
   outcome_tree(exit_code: 1, stdout: concat(other_tree_oid, "\n100644 abc 1\tsrc/a.rs\n"))
     == other_tree_oid
     && !outcome_is_clean(exit_code: 1, stdout: concat(other_tree_oid, "\n100644 abc 1\tsrc/a.rs\n"))
@@ -218,7 +218,7 @@ test fn a_conflicted_merge_carries_its_tree_on_the_first_line() -> Bool {
 // AN ANSWERING EXIT THAT PRODUCED NO TREE IS A REFUSAL, not a clean merge of nothing. Without this
 // arm an empty stdout would decode as a tree of "", which compares unequal to the base and would be
 // reported as a branch contributing content nobody can see.
-test fn an_answering_exit_with_no_tree_refuses() -> Bool {
+test fn an_answering_exit_with_no_tree_refuses() -> Bool  {
   match merge_tree_outcome(exit_code: 0, stdout: "", stderr: "") {
     MergeTreeRefused { exit_code: _, stderr: _ } => true
     MergeTreeClean { tree_hex: _ } => false
@@ -256,7 +256,7 @@ fn name_of_incomplete_merge(t: ContainmentTally) -> String {
 // note asserts "yet merging changes the tree", a claim only a COMPLETED merge establishes. Measured
 // on the live run, all three candidates conflicted, so every candidate row came from a merge that
 // did not complete and the report could not say so.
-test fn a_merge_that_did_not_complete_never_reports_the_certain_arm() -> Bool {
+test fn a_merge_that_did_not_complete_never_reports_the_certain_arm() -> Bool  {
   name_of_incomplete_merge(t: tally(added: 0, present: 0)) == "merge-did-not-complete"
     && name_of_incomplete_merge(t: tally(added: 92, present: 92)) == "merge-did-not-complete"
     && name_of_incomplete_merge(t: tally(added: 100, present: 94)) == "merge-did-not-complete"
@@ -266,7 +266,7 @@ test fn a_merge_that_did_not_complete_never_reports_the_certain_arm() -> Bool {
 // THE PAIR THAT MAKES THE ARM MEAN SOMETHING. The identical tallies under a COMPLETED merge still
 // reach the three distinct completed-path arms, so the test above is not satisfied by a rule that
 // collapses everything into one answer.
-test fn the_same_tallies_under_a_completed_merge_still_discriminate() -> Bool {
+test fn the_same_tallies_under_a_completed_merge_still_discriminate() -> Bool  {
   name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 92, present: 92))
       == "position-only-divergence"
     && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 94))
@@ -289,7 +289,7 @@ fn incomplete_residue_count(t: ContainmentTally) -> Int {
   }
 }
 
-test fn the_conflicted_arm_carries_residue_only_within_the_payload_bound() -> Bool {
+test fn the_conflicted_arm_carries_residue_only_within_the_payload_bound() -> Bool  {
   incomplete_residue_count(t: tally_with_residue(added: 100, present: 94)) == 3
     && incomplete_residue_count(t: tally_with_residue(added: 100, present: 1)) == 0
 }
@@ -297,7 +297,7 @@ test fn the_conflicted_arm_carries_residue_only_within_the_payload_bound() -> Bo
 // THE POSITIVE CONTROL FOR THE PAIR. The identical tally under a COMPLETED merge to the base's own
 // tree does report the certain arm. Without this, the test above is satisfied by a rule that never
 // reports containment at all.
-test fn the_same_tally_under_a_completed_merge_does_report_containment() -> Bool {
+test fn the_same_tally_under_a_completed_merge_does_report_containment() -> Bool  {
   name_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 0, present: 0))
     == "content-contained"
 }
@@ -345,7 +345,7 @@ fn added_of_reading(r: TallyReading) -> Int {
 
 // A path the base does not list is absent BY CONSTRUCTION -- no read is attempted, which is why
 // this runs under a hermetic disposition at all. Its added lines are counted and none are present.
-test fn a_path_outside_the_base_tree_is_absent_without_a_read() -> Bool {
+test fn a_path_outside_the_base_tree_is_absent_without_a_read() -> Bool  {
   let r = tally_added_lines(
     subject: absent_subject(),
     lines: [
@@ -359,7 +359,7 @@ test fn a_path_outside_the_base_tree_is_absent_without_a_read() -> Bool {
 // THE PROPAGATION ARM. Once a file could not be observed, no later file may quietly restore a
 // measurement: the fold carries the refusal to the end, so the branch is reported unobserved rather
 // than measured against a denominator nobody read.
-test fn an_unreadable_file_refuses_every_later_file() -> Bool {
+test fn an_unreadable_file_refuses_every_later_file() -> Bool  {
   match tally_file(
     acc: TallyUnreadable { path: "a.dag", cause: "unreadable" },
     subject: absent_subject(),
@@ -374,7 +374,7 @@ test fn an_unreadable_file_refuses_every_later_file() -> Bool {
 // THE BASE PATH SET IS NUL-DELIMITED AND CARRIES NO EMPTY MEMBER. An empty member would make the
 // empty path a member of every base tree, which is the one key `map_contains_key` must never
 // answer true for by accident.
-test fn the_base_path_set_drops_the_trailing_empty_member() -> Bool {
+test fn the_base_path_set_drops_the_trailing_empty_member() -> Bool  {
   let s = base_path_set(paths_nul: concat("a.dag", concat(from_code_point(0), concat("b.dag", from_code_point(0)))))
   map_contains_key(s, "a.dag") && map_contains_key(s, "b.dag") && !map_contains_key(s, "")
 }

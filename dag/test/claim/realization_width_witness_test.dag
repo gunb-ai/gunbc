@@ -90,7 +90,7 @@ fn witness_memory_non_binding_at_7() -> Bool {
   )
 }
 
-test fn realization_width_witnesses() -> Bool {
+test fn realization_width_witnesses() -> Bool  {
   witness_under_cap_uses_shard_count()
     && witness_over_cap_uses_hardware_threads()
     && witness_brief_green_8_shards_4_threads()

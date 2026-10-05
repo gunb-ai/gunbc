@@ -96,21 +96,21 @@ fn stdin_plan() -> Optional<JqAdmittedProcessPlan> {
 // success/stdout/stderr; the migrated path reads JqOutcome. Each arm restates one old behavior
 // against the typed outcome (DESIGN 3: evidence for a surviving claim survives the representation
 // that used to hold it) -- and "no success: Bool survives on the new path" is the point.
-test fn stepwise_count_present_integer_is_observed() -> Bool {
+test fn stepwise_count_present_integer_is_observed() -> Bool  {
   match openbmc_fan_config_stepwise_count_result(outcome: JqOutputPresent { text: "2" }) {
     OpenBmcIntegerObserved { value: count } => count == 2
     _ => false
   }
 }
 
-test fn stepwise_count_absent_is_a_refusal() -> Bool {
+test fn stepwise_count_absent_is_a_refusal() -> Bool  {
   match openbmc_fan_config_stepwise_count_result(outcome: JqOutputAbsent) {
     OpenBmcIntegerRefused { reason: reason } => reason == "OpenBMC fan stepwise count is absent"
     _ => false
   }
 }
 
-test fn stepwise_count_refusal_carries_stderr() -> Bool {
+test fn stepwise_count_refusal_carries_stderr() -> Bool  {
   match openbmc_fan_config_stepwise_count_result(
     outcome: JqExecutionRefused { exit_code: 2, stderr: "jq: error: Could not open file" },
   ) {
@@ -119,7 +119,7 @@ test fn stepwise_count_refusal_carries_stderr() -> Bool {
   }
 }
 
-test fn stepwise_count_non_integer_is_a_refusal() -> Bool {
+test fn stepwise_count_non_integer_is_a_refusal() -> Bool  {
   match openbmc_fan_config_stepwise_count_result(outcome: JqOutputPresent { text: "many" }) {
     OpenBmcIntegerRefused { reason: reason } => reason == "OpenBMC fan stepwise count is not an integer"
     _ => false
@@ -130,7 +130,7 @@ test fn stepwise_count_non_integer_is_a_refusal() -> Bool {
 // axes (--raw-output for raw, --exit-status for last-result), the program is exactly ONE word, and
 // the file path is exactly one word AFTER the program -- the file operand. The caller spelled none
 // of them.
-test fn stepwise_count_remote_words_are_jq_plus_emitted_surface() -> Bool {
+test fn stepwise_count_remote_words_are_jq_plus_emitted_surface() -> Bool  {
   match stepwise_count_plan() {
     Absent => false
     Present { value: plan } => {
@@ -150,7 +150,7 @@ test fn stepwise_count_remote_words_are_jq_plus_emitted_surface() -> Bool {
 // is passed explicitly here as the repo's documented best understanding). It is NOT the production
 // gate: openbmc_remote_jq_execute refuses with Unknown until a live target confirms the
 // interpretation (review 38602) -- the tests below assert that gate.
-test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool {
+test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool  {
   match stepwise_count_plan() {
     Absent => false
     Present { value: plan } =>
@@ -170,7 +170,7 @@ test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool {
 // reality is observed, refused, or mitigated at a declared boundary, never fabricated) and 5
 // (refuse rather than emit a plausible guess). The refusal happens before the transport, so it is
 // witnessable hermetically.
-test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool {
+test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool  {
   match stepwise_count_plan() {
     Absent => false
     Present { value: plan } =>
@@ -194,7 +194,7 @@ test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool {
 // command IS BUILT. The fixture does not claim the far side agreed; it claims that IF the
 // row were Observed, the path opens — exactly what bar 6 requires, and what the existing
 // Unexecuted gate test cannot demonstrate.
-test fn remote_jq_execute_opens_under_observed_confirmation() -> Bool {
+test fn remote_jq_execute_opens_under_observed_confirmation() -> Bool  {
   let observed: RemoteExecCommandLiveConfirmation = RemoteExecCommandLiveConfirmationObserved {
     target: "hermetic-test-bmc",
     interpretation: openbmc_dropbear_interpretation,
@@ -218,7 +218,7 @@ test fn remote_jq_execute_opens_under_observed_confirmation() -> Bool {
 // STDIN-FED REMOTE JQ IS A TYPED REFUSAL, not an accidental limitation: sshpass -d 0 occupies
 // fd 0 with the password, so a remote stdin payload would collide with it (design §10, q2). The
 // refusal happens BEFORE the transport, so it is witnessable hermetically.
-test fn remote_jq_stdin_plan_refuses_with_the_collision_cause() -> Bool {
+test fn remote_jq_stdin_plan_refuses_with_the_collision_cause() -> Bool  {
   match stdin_plan() {
     Absent => false
     Present { value: plan } =>
@@ -240,7 +240,7 @@ data witness_session: PasswordSshSession = PasswordSshSession {
   known_hosts_path: "/tmp/known_hosts",
 }
 
-test fn remote_jq_execute_refuses_stdin_without_touching_the_transport() -> Bool {
+test fn remote_jq_execute_refuses_stdin_without_touching_the_transport() -> Bool  {
   match stdin_plan() {
     Absent => false
     Present { value: plan } =>
@@ -258,7 +258,7 @@ test fn remote_jq_execute_refuses_stdin_without_touching_the_transport() -> Bool
 // THE INTERPRETATION IS LOAD-BEARING: an Unknown target refuses rather than guessing a shell. This
 // is the perturbation that proves the interpretation row decides the emitted command string, not
 // decoration.
-test fn remote_jq_command_refuses_unknown_interpretation() -> Bool {
+test fn remote_jq_command_refuses_unknown_interpretation() -> Bool  {
   match stepwise_count_plan() {
     Absent => false
     Present { value: plan } =>
@@ -278,6 +278,6 @@ test fn remote_jq_command_refuses_unknown_interpretation() -> Bool {
 // value (exit 1, stdout "null"), which would decode as a service named "null". `null // empty`
 // turns the out-of-range arm into no output -> absence (exit 4) -> the missing-index refusal. This
 // row is domain-authored jq source (S12, mitigatable), so the pin is the program's exact text.
-test fn object_mapper_service_at_program_emits_empty_for_out_of_range() -> Bool {
+test fn object_mapper_service_at_program_emits_empty_for_out_of_range() -> Bool  {
   openbmc_object_mapper_service_at_program == ".data[0] | keys | .[$index] // empty"
 }

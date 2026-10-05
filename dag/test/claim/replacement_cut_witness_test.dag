@@ -180,7 +180,7 @@ fn causes_include(causes: List<CutRefusalCause>, tag: String, subject: String) -
   fold(causes, init: false, f: fn(acc, c) { acc || cause_matches(c: c, tag: tag, subject: subject) })
 }
 
-test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool {
+test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool  {
   let admission = admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer(), replaced_consumer(), evidence_consumer(), retired_consumer()],
     region: two_region(),
@@ -194,7 +194,7 @@ test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool {
   }
 }
 
-test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> Bool {
+test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> Bool  {
   let plan = cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -212,7 +212,7 @@ test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> Bool {
   }
 }
 
-test fn undecided_consumer_blocks_the_cut() -> Bool {
+test fn undecided_consumer_blocks_the_cut() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer(), undecided_consumer()],
     region: two_region(),
@@ -222,7 +222,7 @@ test fn undecided_consumer_blocks_the_cut() -> Bool {
     && causes_include(causes: causes, tag: "undispositioned-consumer", subject: "undispositioned caller")
 }
 
-test fn surviving_consumer_without_coverage_refuses() -> Bool {
+test fn surviving_consumer_without_coverage_refuses() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [open_consumer()],
     region: two_region(),
@@ -232,7 +232,7 @@ test fn surviving_consumer_without_coverage_refuses() -> Bool {
     && causes_include(causes: causes, tag: "uncovered-surviving", subject: "surviving invariant consumer")
 }
 
-test fn undecided_evidence_blocks_the_cut() -> Bool {
+test fn undecided_evidence_blocks_the_cut() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -242,7 +242,7 @@ test fn undecided_evidence_blocks_the_cut() -> Bool {
     && causes_include(causes: causes, tag: "undispositioned-evidence", subject: "parked witness")
 }
 
-test fn retired_consumer_needs_no_coverage() -> Bool {
+test fn retired_consumer_needs_no_coverage() -> Bool  {
   let admission = admit_replacement_cut_plan(cut: cut_with(
     consumers: [retired_consumer()],
     region: two_region(),
@@ -255,7 +255,7 @@ test fn retired_consumer_needs_no_coverage() -> Bool {
   }
 }
 
-test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
+test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: [],
@@ -265,7 +265,7 @@ test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
     && causes_include(causes: causes, tag: "empty-covered-region", subject: "")
 }
 
-test fn every_cause_is_counted_not_first_wins() -> Bool {
+test fn every_cause_is_counted_not_first_wins() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [undecided_consumer(), open_consumer()],
     region: [],
@@ -278,7 +278,7 @@ test fn every_cause_is_counted_not_first_wins() -> Bool {
     && causes_include(causes: causes, tag: "empty-covered-region", subject: "")
 }
 
-test fn new_root_equal_to_old_root_refuses() -> Bool {
+test fn new_root_equal_to_old_root_refuses() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_full(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -289,7 +289,7 @@ test fn new_root_equal_to_old_root_refuses() -> Bool {
   causes_include(causes: causes, tag: "new-root-equals-old-root", subject: "")
 }
 
-test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
+test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool  {
   let fallback_consumer = BoundaryConsumer {
     consumer: fixture_ref(name: "consumer leaning on x"), consumed_old_authority: fixture_authority(),
     disposition: RetainSameContract {
@@ -306,7 +306,7 @@ test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
     && causes_include(causes: causes, tag: "covered-by-old-root", subject: "consumer leaning on x")
 }
 
-test fn replacement_naming_the_old_root_refuses() -> Bool {
+test fn replacement_naming_the_old_root_refuses() -> Bool  {
   let circular = BoundaryConsumer {
     consumer: fixture_ref(name: "circular client"), consumed_old_authority: fixture_authority(),
     disposition: ReplacedByY { new_authority: nes(s: "old floor step") },
@@ -320,7 +320,7 @@ test fn replacement_naming_the_old_root_refuses() -> Bool {
     && causes_include(causes: causes, tag: "replacement-names-old-root", subject: "circular client")
 }
 
-test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool {
+test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [retired_consumer(), retired_consumer()],
     region: two_region(),
@@ -330,7 +330,7 @@ test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool {
     && causes_include(causes: causes, tag: "consumer-duplicated", subject: "workaround built to compensate for x")
 }
 
-test fn duplicate_evidence_subject_refuses() -> Bool {
+test fn duplicate_evidence_subject_refuses() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -347,7 +347,7 @@ test fn duplicate_evidence_subject_refuses() -> Bool {
     && causes_include(causes: causes, tag: "evidence-duplicated", subject: "one witness")
 }
 
-test fn duplicate_region_member_refuses() -> Bool {
+test fn duplicate_region_member_refuses() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: [fixture_ref(name: "x_root_module"), fixture_ref(name: "x_root_module")],
@@ -357,7 +357,7 @@ test fn duplicate_region_member_refuses() -> Bool {
     && causes_include(causes: causes, tag: "region-member-duplicated", subject: "x_root_module")
 }
 
-test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
+test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool  {
   let ambiguous = admit_replacement_cut_plan(cut: cut_with(
     consumers: [],
     region: two_region(),
@@ -382,7 +382,7 @@ test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
     })
 }
 
-test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Bool {
+test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Bool  {
   let ambiguous = admit_replacement_cut_plan(cut: cut_full(
     consumers: [covered_consumer()],
     region: two_region(),
@@ -405,7 +405,7 @@ test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Boo
     })
 }
 
-test fn self_referential_descent_refuses() -> Bool {
+test fn self_referential_descent_refuses() -> Bool  {
   let cut = ReplacementCut {
     identity: "cut-self" as ReplacementCutId,
     old_root_consumer: nes(s: "b0 boundary"),
@@ -424,7 +424,7 @@ test fn self_referential_descent_refuses() -> Bool {
   causes_include(causes: causes_of(admission: admit_replacement_cut_plan(cut: cut)), tag: "self-referential-descent", subject: "")
 }
 
-test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
+test fn descended_cut_names_its_parent_by_typed_identity() -> Bool  {
   let cut = ReplacementCut {
     identity: "cut-b0" as ReplacementCutId,
     old_root_consumer: nes(s: "b0 boundary"),
@@ -473,7 +473,7 @@ fn cut_answering(identity: String, answer: HigherBoundaryAnswer) -> ReplacementC
 // The honest state a real first subject lands in: not outermost, and no cut has
 // been authored at the boundary above. It admits, and it carries no identifier
 // that could be mistaken for a resolvable join.
-test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool {
+test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool  {
   let cut = cut_answering(
     identity: "cut-interpreter",
     answer: DescentParentUnauthored {
@@ -492,7 +492,7 @@ test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool {
 
 // The new arm's self-reference: naming your own old root as the boundary above
 // you is the same incoherence SelfReferentialDescent already names.
-test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
+test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-self-boundary",
     answer: DescentParentUnauthored {
@@ -506,7 +506,7 @@ test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
 
 // POSITIVE CONTROL for the two declared-gap probes below: admission is not
 // vacuous. Without this, "it admits" carries no information.
-test fn probe_control_refuses_undecided() -> Bool {
+test fn probe_control_refuses_undecided() -> Bool  {
   !is_admitted(a: admit_replacement_cut_plan(cut: cut_with(
     consumers: [undecided_consumer()],
     region: two_region(),
@@ -518,7 +518,7 @@ test fn probe_control_refuses_undecided() -> Bool {
 // is an unjoined reference and a parent that exists nowhere is admitted. This
 // test asserts the gap. It goes RED when a cut registry makes the reference
 // joinable -- which is the next-rung trigger firing, not a regression.
-test fn probe_admits_nonexistent_parent() -> Bool {
+test fn probe_admits_nonexistent_parent() -> Bool  {
   is_admitted(a: admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-b0",
     answer: DescendedFromRefusedCut {
@@ -531,7 +531,7 @@ test fn probe_admits_nonexistent_parent() -> Bool {
 // SCOPE, not a gap: plan admission judges the authored plan's internal
 // coherence, never the world, so a well-formed OutermostBoundary claim admits
 // whether or not a higher boundary exists in fact.
-test fn probe_admits_outermost_claim() -> Bool {
+test fn probe_admits_outermost_claim() -> Bool  {
   is_admitted(a: admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-outermost",
     answer: OutermostBoundary,
@@ -572,7 +572,7 @@ fn same_consumer_two_authorities() -> List<BoundaryConsumer> {
   ]
 }
 
-test fn one_consumer_twice_under_one_authority_is_a_duplicate() -> Bool {
+test fn one_consumer_twice_under_one_authority_is_a_duplicate() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: same_consumer_one_authority(),
     region: two_region(),
@@ -581,7 +581,7 @@ test fn one_consumer_twice_under_one_authority_is_a_duplicate() -> Bool {
   causes_include(causes: causes, tag: "consumer-duplicated", subject: "shared caller")
 }
 
-test fn one_consumer_under_two_authorities_is_two_relations_not_a_duplicate() -> Bool {
+test fn one_consumer_under_two_authorities_is_two_relations_not_a_duplicate() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: same_consumer_two_authorities(),
     region: two_region(),
@@ -671,7 +671,7 @@ fn registry_includes(causes: List<CutRegistryRefusalCause>, tag: String, subject
   fold(causes, init: false, f: fn(acc, c) { acc || registry_cause_matches(c: c, tag: tag, subject: subject) })
 }
 
-test fn a_registry_of_distinct_cuts_is_admitted_and_counts_both_arms() -> Bool {
+test fn a_registry_of_distinct_cuts_is_admitted_and_counts_both_arms() -> Bool  {
   match admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-a", parent: OutermostBoundary),
     remeasure_registration(identity: "cut-b"),
@@ -683,7 +683,7 @@ test fn a_registry_of_distinct_cuts_is_admitted_and_counts_both_arms() -> Bool {
 
 // THE RUNG THIS FIRES: before the registry, a branded string named any parent at all and the plan
 // was admitted, sealed and digest-bound. This is the discriminating RED.
-test fn a_parent_naming_no_registered_cut_refuses() -> Bool {
+test fn a_parent_naming_no_registered_cut_refuses() -> Bool  {
   let causes = registry_causes(standing: admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-a", parent: descends_from(parent: "cut-that-exists-nowhere")),
   ]))
@@ -693,7 +693,7 @@ test fn a_parent_naming_no_registered_cut_refuses() -> Bool {
 // AND THE STATE BETWEEN present AND absent: descent claims the parent REFUSED, which a coarse
 // survey cannot establish. Reporting this as ParentAbsent would say the boundary is unknown when it
 // is merely unmeasured, and those have different remedies.
-test fn a_parent_resolving_only_to_a_remeasurement_obligation_refuses_distinctly() -> Bool {
+test fn a_parent_resolving_only_to_a_remeasurement_obligation_refuses_distinctly() -> Bool  {
   let causes = registry_causes(standing: admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-a", parent: descends_from(parent: "cut-legacy")),
     remeasure_registration(identity: "cut-legacy"),
@@ -702,7 +702,7 @@ test fn a_parent_resolving_only_to_a_remeasurement_obligation_refuses_distinctly
     && !registry_includes(causes: causes, tag: "parent-absent", subject: "cut-legacy")
 }
 
-test fn a_parent_resolving_to_an_exact_cut_is_admitted() -> Bool {
+test fn a_parent_resolving_to_an_exact_cut_is_admitted() -> Bool  {
   match admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-a", parent: descends_from(parent: "cut-parent")),
     registration_admitting_cut(identity: "cut-parent", parent: OutermostBoundary),
@@ -712,7 +712,7 @@ test fn a_parent_resolving_to_an_exact_cut_is_admitted() -> Bool {
   }
 }
 
-test fn an_exact_and_a_remeasurement_registration_sharing_an_id_refuse() -> Bool {
+test fn an_exact_and_a_remeasurement_registration_sharing_an_id_refuse() -> Bool  {
   let causes = registry_causes(standing: admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-same", parent: OutermostBoundary),
     remeasure_registration(identity: "cut-same"),
@@ -726,7 +726,7 @@ test fn an_exact_and_a_remeasurement_registration_sharing_an_id_refuse() -> Bool
 // one identity produced three causes for one defect. `registry_includes` passed either way, which is
 // exactly why a membership-only witness could not see it. One duplicated identity is one defect no
 // matter how many rows carry it, so N rows yield N-1 causes and never N.
-test fn a_duplicated_identity_yields_one_cause_per_extra_row_not_one_per_row() -> Bool {
+test fn a_duplicated_identity_yields_one_cause_per_extra_row_not_one_per_row() -> Bool  {
   let two = registry_causes(standing: admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-dup", parent: OutermostBoundary),
     remeasure_registration(identity: "cut-dup"),
@@ -741,7 +741,7 @@ test fn a_duplicated_identity_yields_one_cause_per_extra_row_not_one_per_row() -
 
 // DescentParentUnauthored stays truthful while no exact parent exists: it names a boundary and
 // carries no id, so there is nothing for the registry to resolve and nothing to refuse.
-test fn descent_parent_unauthored_needs_no_registered_parent() -> Bool {
+test fn descent_parent_unauthored_needs_no_registered_parent() -> Bool  {
   match admit_cut_registry(rs: [
     registration_admitting_cut(identity: "cut-a", parent: DescentParentUnauthored {
       intended_parent_boundary: nes(s: "an outer boundary nobody has authored"),
@@ -795,7 +795,7 @@ fn cause_names_key(causes: List<CutRefusalCause>, tag: String, consumer_name: St
   })
 }
 
-test fn a_refusal_names_the_defective_relation_not_merely_the_consumer() -> Bool {
+test fn a_refusal_names_the_defective_relation_not_merely_the_consumer() -> Bool  {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: one_caller_two_authorities_only_second_defective(),
     region: two_region(),

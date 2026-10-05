@@ -84,7 +84,7 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
     )
 }
 
-test fn bash_assign_from_source_refuses_missing_shell_holds() -> Bool {
+test fn bash_assign_from_source_refuses_missing_shell_holds() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let body = bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
@@ -105,7 +105,7 @@ test fn bash_assign_from_source_refuses_missing_shell_holds() -> Bool {
   dir.success && seeded && refused && cleaned.success
 }
 
-test fn bash_assign_from_source_refuses_ambiguous_shell_holds() -> Bool {
+test fn bash_assign_from_source_refuses_ambiguous_shell_holds() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let body = bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
@@ -126,7 +126,7 @@ test fn bash_assign_from_source_refuses_ambiguous_shell_holds() -> Bool {
   dir.success && seeded && refused && cleaned.success
 }
 
-test fn bash_assign_from_source_refuses_malformed_shell_holds() -> Bool {
+test fn bash_assign_from_source_refuses_malformed_shell_holds() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let body = bash_membership_assign_from_source(
     cgroup_source: cgroup_fixture_path(dir: dir.path as String, name: "cgroup"),
@@ -147,7 +147,7 @@ test fn bash_assign_from_source_refuses_malformed_shell_holds() -> Bool {
   dir.success && seeded && refused && cleaned.success
 }
 
-test fn bash_assign_from_source_observed_shell_holds() -> Bool {
+test fn bash_assign_from_source_observed_shell_holds() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let observed = run_membership_assign_observed(
     dir: dir.path as String,

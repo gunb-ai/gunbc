@@ -80,7 +80,7 @@ data coupon_requirement: ChordRequirement = DistinctionDeclared {
 // The measured 1243 nm diameter undersize clears a 100 um rung at safety factor 20. Flip the observation past
 // 5000 nm and this must stop reading "within" -- see the paired witness below, which does exactly
 // that and is the reason this one is not satisfiable by a constructor that always answers within.
-test fn w_the_measured_coupon_deviation_clears_its_authored_rung() -> Bool {
+test fn w_the_measured_coupon_deviation_clears_its_authored_rung() -> Bool  {
   standing_name(s: adjudicate_chord(
     o: probe_observation(subject: coupon_top_rung_subject, undersize: 993),
     r: coupon_requirement,
@@ -89,7 +89,7 @@ test fn w_the_measured_coupon_deviation_clears_its_authored_rung() -> Bool {
 
 // THE DISCRIMINATOR FOR THE ONE ABOVE. 5000 nm * 20 == 100000 nm, exactly the rung, so it still
 // clears; 5001 must not. A criterion that answered "within" here would be a decoration.
-test fn w_a_deviation_one_nanometre_over_the_budget_is_refused() -> Bool {
+test fn w_a_deviation_one_nanometre_over_the_budget_is_refused() -> Bool  {
   standing_name(s: adjudicate_chord(
     o: probe_observation(subject: coupon_top_rung_subject, undersize: 5000),
     r: coupon_requirement,
@@ -104,7 +104,7 @@ test fn w_a_deviation_one_nanometre_over_the_budget_is_refused() -> Bool {
 // measured clearance obligation, so borrowing the coupon's rung -- which was this module's first
 // shape -- would have refused a profile that is fine, and defaulting to something generous would
 // have admitted one nobody had judged.
-test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool {
+test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool  {
   standing_name(s: adjudicate_chord(
     o: probe_observation(subject: fan_bore_subject, undersize: 993),
     r: DistinctionUndeclared { subject: fan_bore_subject, because: "fixture" },
@@ -114,7 +114,7 @@ test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool {
 // A MIS-JOIN IS NOT A GEOMETRY FINDING. Judging one feature's deviation against another feature's
 // requirement can produce either verdict by luck, and reporting that as "exceeds" would attribute a
 // bookkeeping error to the mesh.
-test fn w_judging_one_subject_against_anothers_requirement_refuses_as_a_mismatch() -> Bool {
+test fn w_judging_one_subject_against_anothers_requirement_refuses_as_a_mismatch() -> Bool  {
   standing_name(s: adjudicate_chord(
     o: probe_observation(subject: fan_bore_subject, undersize: 993),
     r: coupon_requirement,
@@ -127,7 +127,7 @@ test fn w_judging_one_subject_against_anothers_requirement_refuses_as_a_mismatch
 // call flip to admitted, which exhibited the writable state rather than closing it. Dropping a
 // rostered subject must now refuse as MISSING, and it must be distinguishable from a subject that
 // was measured and failed -- those have different remedies.
-test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bool {
+test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bool  {
   admission_name(a: admit_export_profile(observations: [coupon_observation()])) == "incomplete"
 }
 
@@ -156,7 +156,7 @@ test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bo
 // Equal cardinality is the substitution most likely to happen and least likely to be seen, so this
 // supplies THREE observations for a three-subject roster with one subject measured twice and another
 // not at all. The count matches and admission still refuses.
-test fn w_a_foreign_subject_of_equal_count_does_not_cover_the_roster() -> Bool {
+test fn w_a_foreign_subject_of_equal_count_does_not_cover_the_roster() -> Bool  {
   admission_name(a: admit_export_profile(observations: [
     probe_observation(subject: coupon_top_rung_subject, undersize: 993),
     probe_observation(subject: coupon_top_rung_subject, undersize: 993),
@@ -167,7 +167,7 @@ test fn w_a_foreign_subject_of_equal_count_does_not_cover_the_roster() -> Bool {
 // THE FULL DECLARED ROSTER REFUSES TODAY, and that is the honest state rather than a failure: two of
 // its three subjects have no measured requirement. If this ever reads "admitted" without those
 // requirements being authored, the roster or the adjudication has been weakened.
-test fn w_the_declared_roster_refuses_while_two_subjects_have_no_requirement() -> Bool {
+test fn w_the_declared_roster_refuses_while_two_subjects_have_no_requirement() -> Bool  {
   admission_name(a: admit_export_profile(observations: [
     coupon_observation(),
     probe_observation(subject: fan_mounting_hole_subject, undersize: 1368),
@@ -181,7 +181,7 @@ test fn w_the_declared_roster_refuses_while_two_subjects_have_no_requirement() -
 // has no answer to derive and refuses. This is the measure-under-P1 then admit-P2 hole, and the OCC
 // cache incident is why it is not hypothetical: a number here can be about a different export than
 // the one being authorized with nothing looking wrong.
-test fn w_observations_measured_under_different_profiles_refuse() -> Bool {
+test fn w_observations_measured_under_different_profiles_refuse() -> Bool  {
   admission_name(a: admit_export_profile(observations: [
     probe_observation(subject: coupon_top_rung_subject, undersize: 993),
     probe_observation(subject: fan_mounting_hole_subject, undersize: 993),
@@ -208,6 +208,6 @@ fn coupon_observation() -> ChordObservation {
 // against the real rows instead of probe fixtures -- so if the measurements are edited to disagree
 // with the profile they were taken under, or a subject is dropped, this goes red where the fixture
 // version would not.
-test fn w_the_recorded_measurements_are_adjudicated_by_the_module() -> Bool {
+test fn w_the_recorded_measurements_are_adjudicated_by_the_module() -> Bool  {
   admission_name(a: exercised_export_profile_admission) == "unsettled"
 }

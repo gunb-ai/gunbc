@@ -44,23 +44,23 @@ data nat_identity_source: String = "module probe_refinement_cast_identity\nimpor
 
 data non_refinement_cast_source: String = "module probe_refinement_cast_float\nimport std.types { Int, Float }\nfn widen(n: Int) -> Float { n as Float }\n"
 
-test fn w_unguarded_int_as_nat_is_refused() -> Bool {
+test fn w_unguarded_int_as_nat_is_refused() -> Bool  {
   blocking_count(source: unguarded_int_as_nat_source) >= 1
 }
 
-test fn w_checked_crossing_is_accepted() -> Bool {
+test fn w_checked_crossing_is_accepted() -> Bool  {
   blocking_count(source: checked_crossing_source) == 0
 }
 
-test fn w_nonnegative_literal_needs_no_cast() -> Bool {
+test fn w_nonnegative_literal_needs_no_cast() -> Bool  {
   blocking_count(source: literal_source) == 0
 }
 
-test fn w_nat_typed_value_casts_by_identity() -> Bool {
+test fn w_nat_typed_value_casts_by_identity() -> Bool  {
   blocking_count(source: nat_identity_source) == 0
 }
 
-test fn w_non_refinement_int_cast_is_still_accepted() -> Bool {
+test fn w_non_refinement_int_cast_is_still_accepted() -> Bool  {
   blocking_count(source: non_refinement_cast_source) == 0
 }
 
@@ -90,11 +90,11 @@ data bool_as_int_source: String = "module probe_refinement_bool_as_int\nimport s
 // wrong Int through the implicit grounded Int -> Nat identity, which matches by spelling.
 data peano_nat_difference_source: String = "module probe_refinement_peano_difference\ntype Nat = ProbeZero | ProbeSucc { prev: Nat }\nfn gap(a: Nat, b: Nat) -> Nat { (a - b) as Nat }\n"
 
-test fn w_peano_nat_difference_is_not_the_refinement() -> Bool {
+test fn w_peano_nat_difference_is_not_the_refinement() -> Bool  {
   blocking_count(source: peano_nat_difference_source) == 0
 }
 
-test fn w_nat_difference_leaves_the_refinement() -> Bool {
+test fn w_nat_difference_leaves_the_refinement() -> Bool  {
   blocking_count(source: nat_difference_source) >= 1
 }
 
@@ -105,15 +105,15 @@ test fn w_nat_difference_leaves_the_refinement() -> Bool {
 // implementation would stay green.
 data nat_difference_as_int_source: String = "module probe_refinement_nat_difference_int\nimport std.types { Int }\nimport std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Int { a - b }\n"
 
-test fn w_nat_difference_is_an_int() -> Bool {
+test fn w_nat_difference_is_an_int() -> Bool  {
   blocking_count(source: nat_difference_as_int_source) == 0
 }
 
-test fn w_nat_sum_stays_in_the_refinement() -> Bool {
+test fn w_nat_sum_stays_in_the_refinement() -> Bool  {
   blocking_count(source: nat_sum_source) == 0
 }
 
-test fn w_count_is_a_nat() -> Bool {
+test fn w_count_is_a_nat() -> Bool  {
   blocking_count(source: count_is_nat_source) == 0
 }
 
@@ -135,32 +135,32 @@ data registry_count_is_nat_source: String = "module probe_refinement_registry_co
 
 data registry_length_is_nat_source: String = "module probe_refinement_registry_length\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { length(xs) as Nat }\n"
 
-test fn w_registry_count_is_a_nat() -> Bool {
+test fn w_registry_count_is_a_nat() -> Bool  {
   blocking_count(source: registry_count_is_nat_source) == 0
 }
 
-test fn w_registry_length_is_a_nat() -> Bool {
+test fn w_registry_length_is_a_nat() -> Bool  {
   blocking_count(source: registry_length_is_nat_source) == 0
 }
 
-test fn w_length_is_a_nat() -> Bool {
+test fn w_length_is_a_nat() -> Bool  {
   blocking_count(source: length_is_nat_source) == 0
 }
 
-test fn w_method_count_is_a_nat() -> Bool {
+test fn w_method_count_is_a_nat() -> Bool  {
   blocking_count(source: method_count_is_nat_source) == 0
 }
 
-test fn w_method_length_is_a_nat() -> Bool {
+test fn w_method_length_is_a_nat() -> Bool  {
   blocking_count(source: method_length_is_nat_source) == 0
 }
 
-test fn w_bool_as_int_is_refused_by_the_checker() -> Bool {
+test fn w_bool_as_int_is_refused_by_the_checker() -> Bool  {
   blocking_count(source: bool_as_int_source) >= 1
 }
 
 // The sanctioned crossing's own semantics, executed: a negative is absent, never clamped.
-test fn w_checked_int_to_nat_refuses_a_negative_and_keeps_a_nonnegative() -> Bool {
+test fn w_checked_int_to_nat_refuses_a_negative_and_keeps_a_nonnegative() -> Bool  {
   let neg = match checked_int_to_nat(n: 0 - 3) { Absent => true  Present { value: _ } => false }
   let pos = match checked_int_to_nat(n: 7) { Absent => false  Present { value: v } => v == 7 }
   neg && pos

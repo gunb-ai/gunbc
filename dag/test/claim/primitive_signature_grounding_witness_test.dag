@@ -42,7 +42,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 // (a) TOTALITY. Every derived contract resolves to exactly one signature.
 // ---------------------------------------------------------------------------
 
-test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
+test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool  {
   algebra_grounded_signatures_all_resolve()
 }
 
@@ -54,7 +54,7 @@ test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
 // measure() == measure(). This states the SELF-DENOMINATING identity instead -- the derived
 // population is exactly the template population, both sides read from the one authority, so a
 // new template row moves both and a derivation that dropped a profile reds it.
-test fn w_derived_population_is_exactly_the_algebra_template_population() -> Bool {
+test fn w_derived_population_is_exactly_the_algebra_template_population() -> Bool  {
   algebra_grounded_semantic_contract_count() == (all_algebra_field_templates() |> count)
 }
 
@@ -79,7 +79,7 @@ fn fixture_arity_label(name: String) -> String {
   }
 }
 
-test fn w_every_row_of_a_controlled_fixture_resolves_to_its_authored_arity() -> Bool {
+test fn w_every_row_of_a_controlled_fixture_resolves_to_its_authored_arity() -> Bool  {
   fixture_arity_label(name: "fixture_nullary") == "arity:0"
     && fixture_arity_label(name: "fixture_unary") == "arity:1"
     && fixture_arity_label(name: "fixture_binary") == "arity:2"
@@ -92,7 +92,7 @@ test fn w_every_row_of_a_controlled_fixture_resolves_to_its_authored_arity() -> 
 // profiles are typed by a human rather than derived. Its RED is authorable and has already
 // occurred in the wild: map_keys and map_values moved from PartialFunction to
 // FinitelySupportedFunction upstream, which turns any stale grounding into a silent Absent.
-test fn w_every_declared_grounding_still_resolves_or_says_ungrounded() -> Bool {
+test fn w_every_declared_grounding_still_resolves_or_says_ungrounded() -> Bool  {
   declared_definition_groundings_all_dispose()
 }
 
@@ -128,7 +128,7 @@ fn second_param_label(profile: AlgebraProfile) -> String {
   }
 }
 
-test fn w_get_takes_an_index_on_a_list_and_a_key_on_a_map() -> Bool {
+test fn w_get_takes_an_index_on_a_list_and_a_key_on_a_map() -> Bool  {
   second_param_label(profile: FreeMonoidCollectionProfile) == "named:Int"
     && second_param_label(profile: PartialFunctionProfile) == "receiver_key"
 }
@@ -145,7 +145,7 @@ fn arity_label(contract: PrimitiveSemanticContract) -> String {
 
 // `member` disagrees in ARITY across profiles, not merely in parameter type -- the sharpest
 // form of the same finding, and the one a name-keyed projection could not represent at all.
-test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
+test fn w_member_has_a_different_arity_on_each_profile() -> Bool  {
   let boolean_member = PrimitiveSemanticContract {
     canonical_name: "member" as NonEmptyStr,
     signature: GroundedInAlgebraTemplate { profile: FinitePowerSetProfile }
@@ -164,7 +164,7 @@ test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
 
 // A grounding whose (canonical_name, profile) pair carries no template refuses rather than
 // resolving to something. This is the RED behind the totality claim above.
-test fn w_a_name_absent_from_its_profile_refuses() -> Bool {
+test fn w_a_name_absent_from_its_profile_refuses() -> Bool  {
   let bogus = PrimitiveSemanticContract {
     canonical_name: "no_such_primitive" as NonEmptyStr,
     signature: GroundedInAlgebraTemplate { profile: PartialFunctionProfile }
@@ -182,7 +182,7 @@ test fn w_a_name_absent_from_its_profile_refuses() -> Bool {
 // today, so nothing in the live corpus lands here -- but the template lists are hand-authored
 // and a repeated row is writable, so the arm is a quiet guard rather than a dead one. Planting
 // the duplicate is the RED that keeps it from being a decoration.
-test fn w_two_templates_of_one_name_on_one_profile_refuse() -> Bool {
+test fn w_two_templates_of_one_name_on_one_profile_refuse() -> Bool  {
   let planted: List<AlgebraFieldTemplate> = [
     { name: "dup", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "dup", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
@@ -197,7 +197,7 @@ test fn w_two_templates_of_one_name_on_one_profile_refuse() -> Bool {
 
 // The positive control for the arm above: one row of that name on that list resolves. Without
 // this, a resolver that refused EVERYTHING would satisfy the refusal test.
-test fn w_one_template_of_one_name_resolves() -> Bool {
+test fn w_one_template_of_one_name_resolves() -> Bool  {
   let planted: List<AlgebraFieldTemplate> = [
     { name: "dup", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
@@ -218,7 +218,7 @@ test fn w_one_template_of_one_name_resolves() -> Bool {
 // spelling that keeps them apart.
 // ---------------------------------------------------------------------------
 
-test fn w_an_ungrounded_contract_has_no_arity_not_zero() -> Bool {
+test fn w_an_ungrounded_contract_has_no_arity_not_zero() -> Bool  {
   let ungrounded = PrimitiveSemanticContract {
     canonical_name: "fold_list" as NonEmptyStr,
     signature: SignatureUngrounded { reason: "spelling fork" as NonEmptyStr }
@@ -234,7 +234,7 @@ test fn w_an_ungrounded_contract_has_no_arity_not_zero() -> Bool {
 
 // The other side of the same pair: a genuinely nullary primitive DOES report zero, so `none`
 // above is a real absence rather than the resolver being unable to count.
-test fn w_a_nullary_primitive_reports_arity_zero() -> Bool {
+test fn w_a_nullary_primitive_reports_arity_zero() -> Bool  {
   let ordered_zero = PrimitiveSemanticContract {
     canonical_name: "bottom" as NonEmptyStr,
     signature: GroundedInAlgebraTemplate { profile: BooleanAlgebraProfile }

@@ -65,7 +65,7 @@ fn verdict_refuses(diff_text: String) -> Bool {
 // produce is a row attributed to the wrong path.
 data introduction_diff: String = concat(diff_header(path: probe_path), added_line(name: "probe_note"))
 
-test fn prose_row_introduced_is_refused() -> Bool {
+test fn prose_row_introduced_is_refused() -> Bool  {
   prose_rows_render(rows: refused_of(diff_text: introduction_diff)) == "dag/extdeps/auth/probe.dag probe_note"
     && verdict_refuses(diff_text: introduction_diff)
 }
@@ -78,7 +78,7 @@ data edit_diff: String = concat(
   concat(removed_line(name: "probe_note"), added_line(name: "probe_note"))
 )
 
-test fn prose_row_edited_in_place_is_not_an_introduction() -> Bool {
+test fn prose_row_edited_in_place_is_not_an_introduction() -> Bool  {
   (refused_of(diff_text: edit_diff) |> count) == 0
     && !verdict_refuses(diff_text: edit_diff)
 }
@@ -91,7 +91,7 @@ data move_diff: String = concat(
   concat(diff_header(path: other_probe_path), added_line(name: "probe_note"))
 )
 
-test fn prose_row_moved_between_files_is_not_an_introduction() -> Bool {
+test fn prose_row_moved_between_files_is_not_an_introduction() -> Bool  {
   (refused_of(diff_text: move_diff) |> count) == 0
     && !verdict_refuses(diff_text: move_diff)
 }
@@ -100,7 +100,7 @@ test fn prose_row_moved_between_files_is_not_an_introduction() -> Bool {
 // the roster dissolved when the corpus-wide sweep landed, so an identical introduction anywhere refuses.
 data far_diff: String = concat(diff_header(path: far_probe_path), added_line(name: "probe_note"))
 
-test fn prose_row_introduced_anywhere_is_refused() -> Bool {
+test fn prose_row_introduced_anywhere_is_refused() -> Bool  {
   prose_rows_render(rows: refused_of(diff_text: far_diff)) == "dag/gunbc/probe.dag probe_note"
     && verdict_refuses(diff_text: far_diff)
 }
@@ -113,7 +113,7 @@ data rename_diff: String = concat(
   concat(removed_line(name: "old_probe_note"), added_line(name: "new_probe_note"))
 )
 
-test fn prose_row_renamed_is_an_introduction() -> Bool {
+test fn prose_row_renamed_is_an_introduction() -> Bool  {
   prose_rows_render(rows: refused_of(diff_text: rename_diff)) == "dag/extdeps/auth/probe.dag new_probe_note"
 }
 
@@ -121,7 +121,7 @@ test fn prose_row_renamed_is_an_introduction() -> Bool {
 // with it: a `data` row that is not named `_note`, and a `_note`-named row that carries a real value
 // rather than prose. Widening past this is the general prose classifier the operator ruled must not
 // become a prerequisite.
-test fn only_the_prose_row_idiom_is_recognised() -> Bool {
+test fn only_the_prose_row_idiom_is_recognised() -> Bool  {
   match prose_row_decl_name(line: "data probe_note: String = \"prose\"") {
     Absent => false
     Present { value: name } =>
@@ -137,14 +137,14 @@ test fn only_the_prose_row_idiom_is_recognised() -> Bool {
 // silently uncovered run, while an empty diff genuinely is the no-op change.
 data headerless_diff: String = "@@ -3,0 +4 @@\n+data probe_note: String = \"prose\"\n"
 
-test fn hunks_without_a_file_header_refuse_rather_than_reading_as_clean() -> Bool {
+test fn hunks_without_a_file_header_refuse_rather_than_reading_as_clean() -> Bool  {
   match observe(diff_text: headerless_diff) {
     ProseRowDiffUnreadable { reason: _ } => verdict_refuses(diff_text: headerless_diff)
     ProseRowsObserved { added: _, removed: _ } => false
   }
 }
 
-test fn an_empty_diff_observes_nothing_and_admits() -> Bool {
+test fn an_empty_diff_observes_nothing_and_admits() -> Bool  {
   match observe(diff_text: "") {
     ProseRowDiffUnreadable { reason: _ } => false
     ProseRowsObserved { added: added, removed: removed } =>
