@@ -2618,7 +2618,7 @@ pub(crate) fn cost_debt_verdict_refusals(
             false,
         )
         .map_err(|e| format!("cost_debt_verdict_cause_for_reading({identity}): {e}"))?;
-        match cause {
+        match &cause {
             Value::Str(c) if c.is_empty() => {}
             Value::Str(c) => refused.push(ChangedWitnessBlocker {
                 identity: identity.clone(),
@@ -2627,7 +2627,7 @@ pub(crate) fn cost_debt_verdict_refusals(
             other => {
                 return Err(format!(
                     "cost_debt_verdict_cause_for_reading({identity}) returned {}, not a String",
-                    floor_value_shape(Some(&other))
+                    floor_value_shape(Some(other))
                 ))
             }
         }
@@ -12063,7 +12063,7 @@ pub fn run_required_floor(
         changed_witnesses.as_deref(),
         &cost_debt_roster,
         &terminal_rows,
-    );
+    )?;
     eprintln!(
         "[floor-cost-debt-verdict] required={} admitted={} refused={} (authority \
          v2.workflow.floor_cost_debt_verdict)",
