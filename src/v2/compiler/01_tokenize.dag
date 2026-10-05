@@ -503,6 +503,10 @@ fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: LexCursor) -> List
 // lexeme, a keyword refused when an identifier character follows, a choice taking its left
 // alternative first, a repeat stopping at a rejection or an empty match, and a delimited body
 // running until its close matches.
+// THIS IS THE ONE DIRECT WALK OVER LexPattern, DECLARED in v2.std.compilers.lexing beside
+// lex_pattern_is_keyword: structural questions use fold_lex_pattern, but matching threads the cursor
+// through the children, which the fold could express only by producing closures. The match below is
+// over the closed coproduct, so a new variant refuses here at compile time rather than being skipped.
 fn lex_match_pattern(pattern: LexPattern, source: LexCursor) -> LexMatchResult {
   match pattern {
     EmptyPattern => LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty }
