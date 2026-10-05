@@ -14,6 +14,7 @@ import extdeps.languages.json.number {
   read_json_number_lexeme,
   read_json_number_value,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
