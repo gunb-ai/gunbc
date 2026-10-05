@@ -111,7 +111,7 @@ import gunbc.live_deploy.role_singleton_convergence {
   MarkerReadRefused,
 }
 import gunbc.live_deploy.member_observe { EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
-import gunbc.managed_directory { managed_directory_admits_reader }
+import gunbc.managed_directory { managed_directory_admits_reader, managed_directory_permissions }
 import gunbc.fleet_posix_accounts { srv1_ci_deploy_runner_principal }
 import gunbc.fleet_converge_workflow { fleet_converge_gcp_iam_converge_job_under }
 import gunbc.live_deploy.emit { approval_broker_base_url_environment, approval_broker_base_url_unbound_marker }
@@ -746,11 +746,15 @@ test fn every_marker_field_is_read_back_and_any_mismatch_refuses() -> Bool {
 // THE READ AUTHORITY, with the real observer and the derived modes: the observer is the deploy job
 // principal (srv1_ci_deploy_runner_principal job_user), the control directory's derived mode admits it
 // to list and traverse, and the store root's derived mode does not -- which is why the marker is not in
-// the store root, and why the store root was not widened to admit it.
+// the store root, and why the store root was not widened to admit it. The observer is admitted as the
+// directory's GROUP, so the derived mode grants the other class nothing: the marker is not published
+// to every account on the host.
 test fn the_marker_observer_reads_the_control_directory_and_not_the_store_root() -> Bool {
   let i = srv1_live_dashboard_instance()
   (fabric_storage_marker_observer.name as String) == (srv1_ci_deploy_runner_principal.job_user as String)
     && managed_directory_admits_reader(d: fabric_storage_control_directory(instance: i), who: fabric_storage_marker_observer)
+    && !managed_directory_permissions(d: fabric_storage_control_directory(instance: i)).mode.other.read
+    && !managed_directory_permissions(d: fabric_storage_control_directory(instance: i)).mode.other.execute
     && !managed_directory_admits_reader(d: fabric_storage_store_root_directory(instance: i), who: fabric_storage_marker_observer)
 }
 
