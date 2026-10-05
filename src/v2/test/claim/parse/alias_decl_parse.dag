@@ -8,13 +8,17 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.node { Node, node_subtree_nodes }
-import v2.compiler.normalized_tree { no_resource_declarations }
-import v2.compiler.normalize { record_declaration_capture }
+import v2.std.node { Node }
+import v2.compiler.normalized_tree {
+  NormalizedTree,
+  normalized_tree_record_declarations,
+  normalized_tree_resource_declarations
+}
+import v2.compiler.normalize { normalize }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
+import v2.compiler.parse { parse, parse_module }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.std.symbol_index {
   LexicalAmbiguous,
@@ -111,32 +115,40 @@ fn alias_decl_keyword_reserved_in_binding_position_red_control_holds() -> Bool {
 
 data alias_decl_fill_parse_source: String = "module v2.test.parse.alias_decl_fill_probe\n\ntype AliasTargetType {}\n\nalias AliasBinding = v2.test.parse.alias_decl_fill_probe.AliasTargetType\n"
 
-fn alias_decl_fill_parse_tree() -> Outcome<Node> {
+// THE FILL READS A NORMALIZED TREE, as every production caller supplies one (v2.compiler.normalized_tree
+// normalized_tree_roots_to_binding_sources into symbol_index_fill_module_roots). This claim used to
+// hand it the raw parse tree, whose type declaration is not a lowered member, so the containment walk
+// indexed nothing (target, binding and module root all absent, measured). The assertion is unchanged.
+// ON THE REAL ROUTE IT IS STILL FALSE, AND THAT IS A DEFECT, NOT A STALE CLAIM: measured at 6296275,
+// the target is indexed and the lexical lookup of AliasBinding HITS, but not the target -- no alias
+// binding row is read from the normalized tree (alias_binding_row_from_decl_node accepts no node of
+// it), so the alias name resolves to its own grafted node. No .dag source declares an `alias`, so no
+// compile closure reaches the defect today; the claim stays red until the native route carries an
+// alias declaration's row to the index.
+fn alias_decl_fill_normalized() -> Outcome<NormalizedTree> {
   let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(
-      text: alias_decl_fill_parse_source,
-      file: ^alias_decl_fill_probe,
-      rules: lm.lex
-    ),
-    f: fn(token_stream) {
-      parse(tokens: token_stream, grammar: lm.grammar)
-    }
-  )
+  match tokenize(text: alias_decl_fill_parse_source, file: ^alias_decl_fill_probe, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: a, diagnostics: _ } => normalize(parse_tree: a.tree)
+      }
+  }
 }
 
 fn alias_decl_fill_lexical_lookup_holds() -> Bool {
-  match alias_decl_fill_parse_tree() {
+  match alias_decl_fill_normalized() {
     Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match qualified_name_from_module_node(root: tree) {
+    Accepted { value: nt, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: nt.root) {
         Rejected { diagnostics: _ } => false
         Accepted { value: module_qn, diagnostics: _ } =>
           let idx = symbol_index_fill_module_root(
             index: empty_symbol_index(),
-            root: tree,
-            record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: tree)),
-            resource_declarations: no_resource_declarations()
+            root: nt.root,
+            record_declarations: normalized_tree_record_declarations(t: nt),
+            resource_declarations: normalized_tree_resource_declarations(t: nt)
           )
           let target_path = qualified_name_snoc(qn: module_qn, segment: ^AliasTargetType)
           match symbol_index_lexical_lookup(
@@ -155,3 +167,4 @@ fn alias_decl_fill_lexical_lookup_holds() -> Bool {
       }
   }
 }
+
