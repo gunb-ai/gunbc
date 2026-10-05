@@ -7,6 +7,7 @@ import v2.std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.stat
+import extdeps.tools.stat { StatFileKind, DirectoryKind, RegularFileKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_of, stat_file_kind_word, StatFileTypeReading, StatFileTypeRead, StatFileTypeUnanswered, stat_file_type_reading }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire,
@@ -116,46 +117,12 @@ type FabricCellDirectoryObservation
   = DirectoryListed { entries: List<String> }
   | DirectoryNotPresent
   | DirectoryUnreadable { path: String, cause: String }
-  | PathOccupiedByNonDirectory { path: String, kind: FabricCellPathKind }
+  | PathOccupiedByNonDirectory { path: String, kind: StatFileKind }
 
 // THE GNU FILE-TYPE WORDS, DECODED INTO A CLOSED VOCABULARY. Every token coreutils can print for
 // `%F` gets an arm, and anything else is UnknownKind carrying the word -- not a silent default,
 // because a type this repository has not seen is a fact about the host worth reporting verbatim.
-type FabricCellPathKind
-  = DirectoryKind
-  | RegularFileKind
-  | SymbolicLinkKind
-  | SocketKind
-  | FifoKind
-  | CharacterDeviceKind
-  | BlockDeviceKind
-  | UnknownKind { word: String }
 
-fn fabric_cell_path_kind_of(word: String) -> FabricCellPathKind {
-  let w = trim(word)
-  if w == "directory" { DirectoryKind }
-  else if w == "regular file" { RegularFileKind }
-  else if w == "regular empty file" { RegularFileKind }
-  else if w == "symbolic link" { SymbolicLinkKind }
-  else if w == "socket" { SocketKind }
-  else if w == "fifo" { FifoKind }
-  else if w == "character special file" { CharacterDeviceKind }
-  else if w == "block special file" { BlockDeviceKind }
-  else { UnknownKind { word: w } }
-}
-
-fn fabric_cell_path_kind_word(kind: FabricCellPathKind) -> String {
-  match kind {
-    DirectoryKind => "directory"
-    RegularFileKind => "regular file"
-    SymbolicLinkKind => "symbolic link"
-    SocketKind => "socket"
-    FifoKind => "fifo"
-    CharacterDeviceKind => "character special file"
-    BlockDeviceKind => "block special file"
-    UnknownKind { word: w } => w
-  }
-}
 
 // THE PROJECTION IS PURE AND TOTAL, WHICH IS WHERE EVERY LAW ABOUT THIS MODULE LIVES. The host
 // effects below are unreachable in a hermetic fixture; this function is not, so the mapping from
@@ -174,7 +141,7 @@ fn fabric_cell_namespace_probe_of(observation: FabricCellDirectoryObservation) -
     PathOccupiedByNonDirectory { path: p, kind: k } =>
       NamespaceEnumerationRefused {
         cause: join([
-          p, " is a ", fabric_cell_path_kind_word(kind: k), " and not a directory",
+          p, " is a ", stat_file_kind_word(kind: k), " and not a directory",
           " -- it holds no entries to enumerate and it is not absent either, so no membership may be planned against it",
         ], ""),
       }
@@ -260,7 +227,7 @@ fn fabric_cell_directory_address_probe(
       AddressStateReadRefused { cause: join(["reading ", p, " refused: ", c], "") }
     PathOccupiedByNonDirectory { path: p, kind: k } =>
       AddressStateReadRefused {
-        cause: join([p, " is a ", fabric_cell_path_kind_word(kind: k), " and not a directory"], ""),
+        cause: join([p, " is a ", stat_file_kind_word(kind: k), " and not a directory"], ""),
       }
   }
 }
@@ -291,13 +258,13 @@ fn fabric_cell_parent_standing_of(
       ParentUnobserved { cause: join(["the containing directory ", p, " could not be listed: ", c], "") }
     PathOccupiedByNonDirectory { path: p, kind: k } =>
       ParentUnobserved {
-        cause: join(["the containing directory ", p, " is a ", fabric_cell_path_kind_word(kind: k)], ""),
+        cause: join(["the containing directory ", p, " is a ", stat_file_kind_word(kind: k)], ""),
       }
   }
 }
 
 type FabricCellPathObservation
-  = PathKindObserved { kind: FabricCellPathKind }
+  = PathKindObserved { kind: StatFileKind }
   | PathMetadataUnread { path: String, cause: String }
 
 // A COMPLETED `stat` THAT PRINTED NOTHING IS NOT A KIND, AND THE COLLAPSE IT CAUSES IS THE WORST
@@ -309,36 +276,15 @@ type FabricCellPathObservation
 // broken". The distinction is the same one the property reader below already draws for
 // `systemctl show`, and it is drawn here for the same reason -- success is a fact about the CALL,
 // never about whether the OUTPUT carrying the answer arrived.
-type FabricCellPathKindObservation
-  = PathKindRead { kind: FabricCellPathKind }
-  | PathKindReadRefused { cause: String }
-
 // PURE, SO THE `success` x `output` RELATION IS TESTABLE WITHOUT A HOST. The token decoder below it
 // is total over nonempty words by construction; what needed a wall is the step BEFORE it, which is
 // the only place an unanswered call can be mistaken for an answer.
-fn fabric_cell_path_kind_observation(
-  success: Bool,
-  output: String,
-) -> FabricCellPathKindObservation {
-  if success {
-    let w = trim(output)
-    if w == "" {
-      PathKindReadRefused {
-        cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered and not unrecognized",
-      }
-    } else {
-      PathKindRead { kind: fabric_cell_path_kind_of(word: w) }
-    }
-  } else {
-    PathKindReadRefused { cause: "the metadata read did not complete" }
-  }
-}
 
 fn fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
   let t = stat.File.FileType(path: path)
-  match fabric_cell_path_kind_observation(success: t.success, output: t.file_type) {
-    PathKindRead { kind: k } => PathKindObserved { kind: k }
-    PathKindReadRefused { cause: c } => PathMetadataUnread { path: path, cause: c }
+  match stat_file_type_reading(success: t.success, output: t.file_type) {
+    StatFileTypeRead { kind: k } => PathKindObserved { kind: k }
+    StatFileTypeUnanswered { cause: c } => PathMetadataUnread { path: path, cause: c }
   }
 }
 
