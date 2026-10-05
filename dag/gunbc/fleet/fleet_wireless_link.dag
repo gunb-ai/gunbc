@@ -14,7 +14,7 @@ import extdeps.iw {
   iw_link_argv, iw_link_of_stdout,
 }
 import extdeps.networkmanager.nmcli {
-  NmWirelessPowersave, NmPowersaveDisable, NmPowersaveEnable, nm_wireless_powersave_nick,
+  NmWirelessPowersave, NmPowersaveDisable, NmPowersaveEnable, NmPowersaveDefault, nm_wireless_powersave_nick,
   NmPowersaveRead, NmPowersaveReadValue, NmPowersaveUnreadable,
   nm_wireless_powersave_property, nm_wireless_powersave_of_getter,
   nmcli_connection_property_get_argv, nmcli_wireless_powersave_modify_argv,
@@ -436,9 +436,9 @@ fn wireless_link_decide(desired: WirelessLinkDesired, observed: WirelessLinkObse
                         let plan = WirelessLinkPlan {
                           profile: c.uuid,
                           runtime: if rt == want_runtime { none } else { Present { value: want_runtime } },
-                          persisted: if ps == want_persisted && persisted_authority_holds(r: observed.persistence, key: nm_keyfile_wireless_powersave_key, want: nm_wireless_powersave_numeric(v: want_persisted), upstream_default: 0) { none } else { Present { value: want_persisted } },
-                          auth_retries: retry_budget_step(observed: ar, want: desired.auth_retries, authority_holds: persisted_authority_holds(r: observed.persistence, key: nm_connection_auth_retries_property, want: nm_retry_budget_numeric(v: desired.auth_retries), upstream_default: -1)),
-                          autoconnect_retries: retry_budget_step(observed: acr, want: desired.autoconnect_retries, authority_holds: persisted_authority_holds(r: observed.persistence, key: nm_connection_autoconnect_retries_property, want: nm_retry_budget_numeric(v: desired.autoconnect_retries), upstream_default: -1)),
+                          persisted: if ps == want_persisted && persisted_authority_holds(r: observed.persistence, key: nm_keyfile_wireless_powersave_key, want: nm_wireless_powersave_numeric(v: want_persisted), upstream_default: nm_wireless_powersave_numeric(v: NmPowersaveDefault)) { none } else { Present { value: want_persisted } },
+                          auth_retries: retry_budget_step(observed: ar, want: desired.auth_retries, authority_holds: persisted_authority_holds(r: observed.persistence, key: nm_connection_auth_retries_property, want: nm_retry_budget_numeric(v: desired.auth_retries), upstream_default: nm_retry_budget_numeric(v: NmRetryGlobalDefault))),
+                          autoconnect_retries: retry_budget_step(observed: acr, want: desired.autoconnect_retries, authority_holds: persisted_authority_holds(r: observed.persistence, key: nm_connection_autoconnect_retries_property, want: nm_retry_budget_numeric(v: desired.autoconnect_retries), upstream_default: nm_retry_budget_numeric(v: NmRetryGlobalDefault))),
                         }
                         if wireless_link_plan_is_empty(plan: plan) { Noop } else { Apply { plan: plan } }
                       }
