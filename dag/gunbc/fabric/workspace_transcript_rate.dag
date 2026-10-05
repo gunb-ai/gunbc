@@ -16,7 +16,9 @@ import gunbc.floor_cost_distribution { permille_percentile }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host_effect { LocalShell }
 import gunbc.fabric.workspace_source {
-  WorkspaceSourceRoot, workspace_source_roots, workspace_source_pack_host, workspace_root_member,
+  WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_source_pack_host,
+  WorkspaceAgentStateSlot, AgentStateSlotAdmitted, AgentStateSlotAbsent, AgentStateSlotUnknown,
+  workspace_agent_state_slot_observe, workspace_agent_state_slot_words, workspace_root_member,
   workspace_exclusions, workspace_path_exclusion, workspace_exclusion_spellings, workspace_transcript_exclusions,
   CredentialExclusion, TranscriptExclusion,
 }
@@ -44,10 +46,13 @@ import gunbc.fabric.workspace_source {
 
 // ── WHAT IS OBSERVED, AND FOR HOW LONG ─────────────────────────────────────────────────────────
 
-// The roots are the pack's own rows selected by label, so a path is pinned once: the agent-state
-// slot and the Codex home. The gunbc clone is not observed -- no transcript lives in it, and walking
-// a build tree each interval would cost the window its resolution.
-data workspace_transcript_rate_root_labels: List<NonEmptyStr> = ["claude-agent-state-gmail3", "codex-state"]
+// THE ROOTS ARE THE PACK'S OWN: the Claude agent-state root is the one the pack's slot admission
+// (gunbc.fabric.workspace_source workspace_agent_state_slot_observe) admits from the same
+// agent_state_slot input -- the active slot moves with the operator's credential swaps, so it is a
+// declared input with no default, never a pinned path -- and the Codex home is the pack's fixed row,
+// selected by its label. The gunbc clone is not observed: no transcript lives in it, and walking a
+// build tree each interval would cost the window its resolution.
+data workspace_transcript_rate_fixed_root_labels: List<NonEmptyStr> = ["codex-state"]
 
 // TEN MINUTES AT TEN SECONDS, declared and printed in every receipt. The interval matches the
 // stage-0 checkpoint-lag target, so one row is one target-length of appends; the window spans
@@ -62,6 +67,22 @@ data workspace_transcript_rate_caveat: NonEmptyStr = "ONE SAMPLE OF WORKLOAD, NO
 type TranscriptRateRootSelection
   = TranscriptRateRootsSelected { roots: List<WorkspaceSourceRoot> }
   | TranscriptRateRootUndeclared { label: NonEmptyStr }
+  | TranscriptRateSlotRefused { slot: WorkspaceAgentStateSlot }
+
+// The admitted slot's root first, then the fixed rows; a refused slot refuses the selection, carrying
+// the admission so the receipt prints the pack's own words for it.
+fn workspace_transcript_rate_roots(slot: WorkspaceAgentStateSlot, fixed: TranscriptRateRootSelection) -> TranscriptRateRootSelection {
+  match slot {
+    AgentStateSlotAbsent { observed: _ } => TranscriptRateSlotRefused { slot: slot }
+    AgentStateSlotUnknown { requested: _, observed: _ } => TranscriptRateSlotRefused { slot: slot }
+    AgentStateSlotAdmitted { slot: _, root: agent } =>
+      match fixed {
+        TranscriptRateRootsSelected { roots: rs } => TranscriptRateRootsSelected { roots: Cons { head: agent, tail: rs } }
+        TranscriptRateRootUndeclared { label: l } => TranscriptRateRootUndeclared { label: l }
+        TranscriptRateSlotRefused { slot: s2 } => TranscriptRateSlotRefused { slot: s2 }
+      }
+  }
+}
 
 fn workspace_transcript_rate_select_roots(labels: List<NonEmptyStr>, declared: List<WorkspaceSourceRoot>) -> TranscriptRateRootSelection {
   match labels {
@@ -72,6 +93,7 @@ fn workspace_transcript_rate_select_roots(labels: List<NonEmptyStr>, declared: L
         Cons { head: r, tail: _ } =>
           match workspace_transcript_rate_select_roots(labels: rest, declared: declared) {
             TranscriptRateRootUndeclared { label: u } => TranscriptRateRootUndeclared { label: u }
+            TranscriptRateSlotRefused { slot: s } => TranscriptRateSlotRefused { slot: s }
             TranscriptRateRootsSelected { roots: rs } => TranscriptRateRootsSelected { roots: Cons { head: r, tail: rs } }
           }
       }
@@ -480,10 +502,13 @@ fn workspace_transcript_rate_observe_wet() -> ProcessExit {
   if host != (workspace_source_pack_host as String) {
     exit_failure(reason: join(["workspace_transcript_rate_observe: the transcripts live on ", workspace_source_pack_host as String, " but this job runs on '", host, "'; dispatch it with host=", workspace_source_pack_host as String], ""))
   } else {
-    match workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_root_labels, declared: workspace_source_roots) {
-      TranscriptRateRootUndeclared { label: l } => exit_failure(reason: join(["workspace_transcript_rate_observe: no workspace source root is labelled '", l as String, "'"], ""))
+    let slot = workspace_agent_state_slot_observe()
+    let slot_line = concat(workspace_agent_state_slot_words(admission: slot), "\n")
+    match workspace_transcript_rate_roots(slot: slot, fixed: workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_fixed_root_labels, declared: workspace_source_fixed_roots)) {
+      TranscriptRateRootUndeclared { label: l } => exit_failure(reason: join(["workspace_transcript_rate_observe: no fixed workspace source root is labelled '", l as String, "'"], ""))
+      TranscriptRateSlotRefused { slot: _ } => workspace_transcript_rate_finish(receipt: join(["workspace_transcript_rate_observe host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_transcript_rate_observe: ", slot_line)))
       TranscriptRateRootsSelected { roots: roots } => {
-        let head = workspace_transcript_rate_receipt_head(roots: roots)
+        let head = concat(workspace_transcript_rate_receipt_head(roots: roots), slot_line)
         let observation = workspace_transcript_rate_window_of(
           baseline: workspace_transcript_rate_sample_wet(roots: roots, label: "workspace-transcript-rate-baseline"),
           remaining: workspace_transcript_rate_interval_count(),

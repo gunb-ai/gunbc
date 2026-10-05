@@ -6,13 +6,13 @@ import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, ProcessObservation }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_command_runs_another_program }
-import gunbc.fabric.workspace_source { WorkspaceSourceRoot, workspace_source_roots }
+import gunbc.fabric.workspace_source { WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_agent_state_slot_admission }
 import gunbc.fabric.workspace_transcript_rate {
   TranscriptFileStat, workspace_transcript_rate_root_command, workspace_transcript_rate_root_reading,
   TranscriptRootRead, TranscriptRootRefused, workspace_transcript_rate_interval, workspace_transcript_rate_mtime,
   TranscriptRateSampled, TranscriptRateSampleRefused, TranscriptRateSample, workspace_transcript_rate_window_of,
-  TranscriptRateObserved, TranscriptRateRefused, workspace_transcript_rate_receipt,
-  workspace_transcript_rate_select_roots, TranscriptRateRootsSelected, TranscriptRateRootUndeclared, workspace_transcript_rate_root_labels,
+  TranscriptRateObserved, TranscriptRateRefused, TranscriptRateRootSelection, workspace_transcript_rate_receipt,
+  workspace_transcript_rate_select_roots, workspace_transcript_rate_roots, TranscriptRateRootsSelected, TranscriptRateRootUndeclared, TranscriptRateSlotRefused, workspace_transcript_rate_fixed_root_labels,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -134,13 +134,29 @@ test fn a_failed_pause_refuses_the_window() -> Bool {
   }
 }
 
-test fn the_observed_roots_are_the_packs_own_rows_and_an_undeclared_label_refuses() -> Bool {
-  (match workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_root_labels, declared: workspace_source_roots) {
-    TranscriptRateRootsSelected { roots: rs } => length(rs) == 2 && any(rs, r => (r.path as String) == "/home/briansrls/.claude@gmail3") && any(rs, r => (r.path as String) == "/home/briansrls/.codex")
+// The Claude root comes from the pack's slot admission, supplied here with an observed slot set; the
+// Codex root is the pack's fixed row. An unknown slot refuses the selection.
+fn roots_for(requested: String) -> TranscriptRateRootSelection {
+  workspace_transcript_rate_roots(
+    slot: workspace_agent_state_slot_admission(requested: Present { value: requested }, observed: ["gmail2", "gmail3"]),
+    fixed: workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_fixed_root_labels, declared: workspace_source_fixed_roots),
+  )
+}
+
+test fn the_observed_roots_are_the_admitted_slot_and_the_codex_row_and_an_unknown_slot_refuses() -> Bool {
+  (match roots_for(requested: "gmail2") {
+    TranscriptRateRootsSelected { roots: rs } => length(rs) == 2 && any(rs, r => (r.path as String) == "/home/briansrls/.claude@gmail2") && any(rs, r => (r.path as String) == "/home/briansrls/.codex")
     TranscriptRateRootUndeclared { label: _ } => false
+    TranscriptRateSlotRefused { slot: _ } => false
   })
-    && (match workspace_transcript_rate_select_roots(labels: ["no-such-root"], declared: workspace_source_roots) {
+    && (match roots_for(requested: "gmail9") {
+      TranscriptRateSlotRefused { slot: _ } => true
+      TranscriptRateRootsSelected { roots: _ } => false
+      TranscriptRateRootUndeclared { label: _ } => false
+    })
+    && (match workspace_transcript_rate_select_roots(labels: ["no-such-root"], declared: workspace_source_fixed_roots) {
       TranscriptRateRootUndeclared { label: l } => (l as String) == "no-such-root"
       TranscriptRateRootsSelected { roots: _ } => false
+      TranscriptRateSlotRefused { slot: _ } => false
     })
 }

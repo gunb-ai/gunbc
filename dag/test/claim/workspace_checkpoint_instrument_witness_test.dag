@@ -26,7 +26,10 @@ import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadC
 import gunbc.fabric.workspace_source {
   WorkspaceSourceRoot, workspace_credential_exclusions, workspace_exclusions, workspace_path_exclusion, workspace_source_tally,
   workspace_pack_readback, WorkspacePackReadback, WorkspacePackClean, WorkspacePackCarriesExcluded, WorkspacePackPlaceholderAbsent, WorkspacePackPlaceholderSizeDiffers,
-  WorkspacePackPlaceholderNotRegular, WorkspacePackPlaceholderUnread, WorkspacePackPlaceholderDigestDiffers, WorkspaceStagedPlaceholder, workspace_transcript_caveat,
+  WorkspacePackPlaceholderNotRegular, WorkspacePackPlaceholderUnread, WorkspacePackPlaceholderDigestDiffers, WorkspaceStagedPlaceholder,
+  workspace_transcript_caveat,
+  workspace_observed_agent_state_slots, workspace_agent_state_slot_admission, workspace_agent_state_slot_words,
+  AgentStateSlotAdmitted, AgentStateSlotAbsent, AgentStateSlotUnknown,
 }
 import gunbc.fabric.workspace_checkpoint_instrument {
   workspace_snapshot_capability, WorkspaceSnapshotBtrfs, WorkspaceSnapshotAbsent, WorkspaceSnapshotUnobserved,
@@ -326,6 +329,51 @@ test fn a_clean_archive_with_its_placeholder_intact_reads_back_its_member_count(
     WorkspacePackPlaceholderUnread { member: _ } => false
     WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
   }
+}
+
+// ── THE AGENT-STATE SLOT: A DECLARED INPUT, A CLOSED CHOICE OVER THE OBSERVED SLOTS ───────────
+
+data observed_home_dirs: List<String> = ["/home/briansrls/.claude@gmail2", "/home/briansrls/.claude@gmail3", "/home/briansrls/.claude", "/home/briansrls/.claude@", "/home/briansrls/gunbc", "/home/briansrls/.codex"]
+
+test fn the_observed_slots_are_the_claude_at_directories() -> Bool {
+  workspace_observed_agent_state_slots(dirs: observed_home_dirs) == ["gmail2", "gmail3"]
+}
+
+// A NAMED EXISTING SLOT IS ADMITTED, as that slot's root, and the receipt line carries slot and path.
+test fn a_named_existing_slot_is_admitted_and_its_receipt_carries_it() -> Bool {
+  let a = workspace_agent_state_slot_admission(requested: Present { value: "gmail2" }, observed: workspace_observed_agent_state_slots(dirs: observed_home_dirs))
+  let admitted = match a {
+    AgentStateSlotAdmitted { slot: s, root: r } => (s as String) == "gmail2" && (r.path as String) == "/home/briansrls/.claude@gmail2" && (r.label as String) == "claude-agent-state-gmail2"
+    AgentStateSlotAbsent { observed: _ } => false
+    AgentStateSlotUnknown { requested: _, observed: _ } => false
+  }
+  admitted && workspace_agent_state_slot_words(admission: a) == "agent_state_slot=gmail2 path=/home/briansrls/.claude@gmail2"
+}
+
+// NO DEFAULT AND NO FALLBACK: an absent (or empty) slot refuses, naming what was observed.
+test fn an_absent_slot_refuses_naming_the_observed_slots() -> Bool {
+  let observed = workspace_observed_agent_state_slots(dirs: observed_home_dirs)
+  let absent = match workspace_agent_state_slot_admission(requested: none, observed: observed) {
+    AgentStateSlotAbsent { observed: o } => o == ["gmail2", "gmail3"]
+    AgentStateSlotAdmitted { slot: _, root: _ } => false
+    AgentStateSlotUnknown { requested: _, observed: _ } => false
+  }
+  let empty = match workspace_agent_state_slot_admission(requested: Present { value: "" }, observed: observed) {
+    AgentStateSlotAbsent { observed: _ } => true
+    AgentStateSlotAdmitted { slot: _, root: _ } => false
+    AgentStateSlotUnknown { requested: _, observed: _ } => false
+  }
+  absent && empty
+}
+
+test fn an_unknown_slot_refuses_naming_the_observed_slots() -> Bool {
+  let a = workspace_agent_state_slot_admission(requested: Present { value: "gmail9" }, observed: workspace_observed_agent_state_slots(dirs: observed_home_dirs))
+  let refused = match a {
+    AgentStateSlotUnknown { requested: r, observed: o } => r == "gmail9" && o == ["gmail2", "gmail3"]
+    AgentStateSlotAdmitted { slot: _, root: _ } => false
+    AgentStateSlotAbsent { observed: _ } => false
+  }
+  refused && string_contains(s: workspace_agent_state_slot_words(admission: a), pattern: "observed=gmail2,gmail3")
 }
 
 // ── VERDICTS ───────────────────────────────────────────────────────────────────────────────────

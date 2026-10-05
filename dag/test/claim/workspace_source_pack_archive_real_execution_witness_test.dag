@@ -26,9 +26,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn with_temp_dir(scenario: fn(String) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let observed = scenario(dir.path as String)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && observed && cleaned.success
+  if dir.success == false {
+    false
+  } else {
+    let observed = scenario(dir.path as String)
+    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+    observed && cleaned.success
+  }
 }
 
 fn relative_to_root(path: String) -> String {
@@ -92,5 +96,15 @@ test fn same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_r
   with_temp_dir(scenario: dir => {
     let plan = plant(dir: dir)
     length(plan) == 1 && pack(dir: dir, plan: plan, swap_in_real_content: true) == "placeholder-digest-differs"
+  })
+}
+
+// A WORKSPACE WITH NO TRANSCRIPTS: one ordinary file and zero placeholders packs clean through the
+// same two-list route, its second list empty.
+test fn one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let made = shell.Mkdir.Parents(path: join([dir, "/real"], "") as FilePath).success
+    let readme = Filesystem.Write(path: join([dir, "/real/README.md"], ""), content: "readme\n").success
+    made && readme && pack(dir: dir, plan: [], swap_in_real_content: false) == "clean 1"
   })
 }
