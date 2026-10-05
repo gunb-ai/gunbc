@@ -3143,13 +3143,20 @@ pub(crate) fn fixture_closure_union_emit_receipt(
             ),
         ));
     }
+    // AN EMPTY UNION IS A BROKEN SEAM, NOT A CLEAN ONE (review 76399). The required floor always
+    // runs fixture claims, so a union with no members means the recording seam was bypassed (an
+    // instrument that does not record, a hit that did not replay), and holding here would let the
+    // restored capability die green.
     if union.members.is_empty() {
-        return Ok(FixtureClosureUnionObserved {
-            members: 0,
-            digest,
-            files: 0,
-            emit_diagnostics: 0,
-        });
+        return Err(refuse(
+            "FixtureClosureUnionEmpty",
+            format!(
+                "no fixture closure was recorded on this run (fixture_compiles={} memo_hits={}); \
+                 the recording seam (record_fixture_closure / record_fixture_closure_memo_hit) was \
+                 bypassed",
+                union.fixture_compiles, union.memo_hits
+            ),
+        ));
     }
     let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = union
         .members
@@ -3220,6 +3227,75 @@ pub(crate) fn fixture_closure_union_emit_receipt(
     })
 }
 
+/// The red control's member: a non-tail effectful self-call, which the rust emitter refuses
+/// (`EffectfulSelfRecursionUnrealized`, the derived form exercised by
+/// `test.claim.effectful_item_kind_collapse_witness_test`).
+const FIXTURE_CLOSURE_UNION_RED_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
+
+/// The positive control's member: the same closure with the self-call in tail position, which is
+/// lowered to a loop and renders clean.
+const FIXTURE_CLOSURE_UNION_CLEAN_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { walk(n: n - 1) } else { 0 }\n}\n";
+
+const FIXTURE_CLOSURE_UNION_CONTROL_PATH: &str = "dag/fixture_closure_union_control/efr_member.dag";
+
+/// A union built the way a fixture compile builds its closure: the member's imports resolved over
+/// the live module index, the member itself given a corpus path so it is a union MEMBER.
+pub(crate) fn fixture_closure_union_control_union(content: &str) -> FixtureClosureUnion {
+    let module_index = build_module_path_index_from_witness_roots();
+    let mut union = FixtureClosureUnion::default();
+    for source in resolve_virtual_source_with_imports(
+        FIXTURE_CLOSURE_UNION_CONTROL_PATH,
+        content,
+        &module_index,
+    ) {
+        union
+            .members
+            .insert(source.path.clone(), source.content.clone());
+    }
+    union
+}
+
+/// THE ENROLLED CONTROLS FOR [`fixture_closure_union_emit_receipt`], run by the required floor on
+/// every run before the union renders (review 76399; DESIGN §4b(4): the discriminating red and the
+/// positive control stay enrolled on the acceptance path, not only in cargo unit tests, which run on
+/// no CI path). The red member must refuse as `FixtureClosureUnionEmitRefused` located at
+/// `module=efr_member`; the clean member must hold. Either failing refuses the floor, so a later
+/// change that disables the refusal arm or breaks the clean render is a required red.
+/// Returns (red wall ms, clean wall ms) for the caller's log line.
+pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
+    let refuse = |what: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=FixtureClosureUnionControlFailed \
+             receipt=fixture_closure_union_controls -- {what}"
+        )
+    };
+    let red_started = std::time::Instant::now();
+    match fixture_closure_union_emit_receipt(&fixture_closure_union_control_union(
+        FIXTURE_CLOSURE_UNION_RED_MEMBER,
+    )) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the red member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "the red member's emit refusal did not refuse the union: {observed:?}"
+            )))
+        }
+    }
+    let red_ms = red_started.elapsed().as_millis();
+    let clean_started = std::time::Instant::now();
+    fixture_closure_union_emit_receipt(&fixture_closure_union_control_union(
+        FIXTURE_CLOSURE_UNION_CLEAN_MEMBER,
+    ))
+    .map_err(|refusal| refuse(format!("the clean member did not hold: {refusal}")))?;
+    Ok((red_ms, clean_started.elapsed().as_millis()))
+}
+
 #[cfg(test)]
 mod fixture_closure_union_tests {
     use super::*;
@@ -3227,30 +3303,11 @@ mod fixture_closure_union_tests {
     /// The recorder and the union are process-wide; tests that touch them run one at a time.
     static UNION_TEST_LOCK: Mutex<()> = Mutex::new(());
 
-    /// A union built the way a fixture compile builds its closure: the entry's imports resolved
-    /// over the live module index. The entry is given a corpus path (not [`FIXTURE_SOURCE_PATH`]),
-    /// so it is a MEMBER of the union, the way a corpus module reached by a fixture is.
-    fn union_with_member(path: &str, content: &str) -> FixtureClosureUnion {
-        let module_index = build_module_path_index_from_witness_roots();
-        let mut union = FixtureClosureUnion::default();
-        for source in resolve_virtual_source_with_imports(path, content, &module_index) {
-            union
-                .members
-                .insert(source.path.clone(), source.content.clone());
-        }
-        union
-    }
-
     /// THE DISCRIMINATING RED: a union member whose own emission the rust emitter refuses
-    /// (`EffectfulSelfRecursionUnrealized`, the derived non-tail form exercised by
-    /// `test.claim.effectful_item_kind_collapse_witness_test`) refuses the receipt, typed and
-    /// located at that member's module.
+    /// refuses the receipt, typed and located at that member's module.
     #[test]
     fn a_union_member_with_an_emit_refusal_refuses_the_floor() {
-        let union = union_with_member(
-            "dag/fixture_closure_union_control/efr_member.dag",
-            "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n",
-        );
+        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_RED_MEMBER);
         let refusal = fixture_closure_union_emit_receipt(&union)
             .expect_err("an emit refusal in a union member must refuse the floor");
         assert!(
@@ -3260,19 +3317,32 @@ mod fixture_closure_union_tests {
         );
     }
 
-    /// THE POSITIVE CONTROL: the same closure with the self-call in tail position is lowered to a
-    /// loop, so the union renders clean and every member owes a file.
+    /// THE POSITIVE CONTROL: the tail form renders clean and every member owes a file.
     #[test]
     fn a_clean_union_renders_and_holds() {
-        let union = union_with_member(
-            "dag/fixture_closure_union_control/efr_member.dag",
-            "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { walk(n: n - 1) } else { 0 }\n}\n",
-        );
+        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_CLEAN_MEMBER);
         let members = union.members.len();
         let observed = fixture_closure_union_emit_receipt(&union)
             .unwrap_or_else(|refusal| panic!("a clean union must hold: {refusal}"));
         assert_eq!(observed.members, members);
         assert!(observed.files >= members, "{observed:?}");
+    }
+
+    /// The enrolled pair the required floor runs holds at this revision.
+    #[test]
+    fn the_enrolled_controls_hold() {
+        fixture_closure_union_controls().unwrap_or_else(|refusal| panic!("{refusal}"));
+    }
+
+    /// An empty union is a bypassed recording seam and refuses (review 76399).
+    #[test]
+    fn an_empty_union_refuses() {
+        let refusal = fixture_closure_union_emit_receipt(&FixtureClosureUnion::default())
+            .expect_err("an empty union must refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmpty"),
+            "{refusal}"
+        );
     }
 
     /// One path recorded with two contents is refused, never resolved by picking one.

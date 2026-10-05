@@ -12254,6 +12254,13 @@ pub fn run_required_floor(
         .keys()
         .filter(|path| !prepared_source_paths.contains(*path))
         .count();
+    // The enrolled red and positive control run first, on every required run, so a disabled
+    // refusal arm or a broken clean render is a required red rather than a unit test nobody runs.
+    let (control_red_ms, control_clean_ms) = crate::cli_run::fixture_closure_union_controls()?;
+    eprintln!(
+        "[floor-receipt] receipt=fixture-closure-union-controls state=held red_wall_ms={control_red_ms} \
+         clean_wall_ms={control_clean_ms}"
+    );
     let union_started = std::time::Instant::now();
     let union_cpu_started = v1_interpreter::thread_cpu_nanos();
     let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
