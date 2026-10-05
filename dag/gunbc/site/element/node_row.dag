@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.markup { Fragment, Attribute, attr }
 import gunbc.site.markup { el_attrs, txt }
 import gunbc.roadmap.roadmap_hierarchy_view {
-  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_is_closed,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_is_closed,
   RelationRowChildren, RowChildrenNotCarried, RowChildrenExpandable,
 }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
@@ -17,7 +17,7 @@ import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
 import gunbc.site.element.chip { Chip, chip }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_label_inset }
 import gunbc.roadmap_priority { issue_priority_explanation }
-import gunbc.site.element.status_chip { status_chip }
+import gunbc.site.element.status_chip { status_chip, status_chip_of, StatusChipAccepted, StatusChipWithheld }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, BorderBottom, Color, CustomProperty, Display, Flex, Gap, Height,
@@ -180,6 +180,8 @@ fn node_row_place_depth(place: NodeRowPlace) -> Int {
 fn node_row_status_nodes(status: NodeStatus) -> List<Fragment> {
   match status {
     NodeStatusDerived { status: derived, closed: _ } => [status_chip(status: derived)]
+    NodeStatusAccepted => [status_chip_of(subject: StatusChipAccepted)]
+    NodeStatusWithheld => [status_chip_of(subject: StatusChipWithheld)]
     NodeStatusUnavailable { reason } => [
       el_attrs("span", [
         attr(name: "class", value: node_row_status_unavailable_class),

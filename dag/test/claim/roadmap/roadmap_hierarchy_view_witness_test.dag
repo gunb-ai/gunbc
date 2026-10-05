@@ -20,7 +20,7 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplayBlocked, DisplayUnknown }
 import gunbc.roadmap.roadmap_hierarchy_view {
   IssueHierarchyView, issue_hierarchy_view,
-  NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
+  NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_derived, node_status_is_closed,
   NodeChainRooted, NodeChainRefused,
   NodeRelation, RowChildrenNotCarried, RowChildrenExpandable,
   relation_summary, relation_count_text,
@@ -349,8 +349,8 @@ test fn witness_real_issue_page_chain_equals_the_lineage_walk() -> Bool {
             && (match hierarchy.chain {
               NodeChainRefused { refusal: _ } => false
               NodeChainRooted { ancestors, self_node } =>
-                (match self_node.status { NodeStatusDerived { status: _, closed: _ } => true  NodeStatusUnavailable { reason: _ } => false })
-                  && all(ancestors, a => match a.status { NodeStatusUnavailable { reason: _ } => true  NodeStatusDerived { status: _, closed: _ } => false })
+                (match self_node.status { NodeStatusDerived { status: _, closed: _ } => true  NodeStatusAccepted => false  NodeStatusWithheld => false  NodeStatusUnavailable { reason: _ } => false })
+                  && all(ancestors, a => match a.status { NodeStatusUnavailable { reason: _ } => true  NodeStatusAccepted => false  NodeStatusWithheld => false  NodeStatusDerived { status: _, closed: _ } => false })
             })
         }
       }
@@ -358,13 +358,14 @@ test fn witness_real_issue_page_chain_equals_the_lineage_walk() -> Bool {
   }
 }
 
-// AN ACCEPTED NODE THE PLAN OMITS IS SHOWN AS DONE, ON THE REAL PATH. The same one-row plan as the
-// claim above, with every ancestor of the real node listed as accepted, which is why a plan omits
-// them. The page's own producer (gunbc.roadmap_page observed_node_status, through
-// issue_detail_hierarchy_for) carries each one's lifecycle into the one status type: Done, and
-// closed. The claim above is this one's control: the same ancestors with no acceptance are
-// unavailable, so the status here comes from the acceptance and not from the row being absent.
-test fn witness_real_issue_page_shows_an_accepted_omitted_ancestor_as_done() -> Bool {
+// AN OMITTED NODE IS SHOWN BY THE AUTHORITY THAT ESTABLISHES IT, ON THE REAL PATH. The same
+// one-row plan as the claim above. When the acceptance authority lists every ancestor of the real
+// node, the page's own producer (gunbc.roadmap_page observed_node_status, through
+// issue_detail_hierarchy_for) shows each as Accepted, closed; when the plan's withheld set names
+// them instead, each is Withheld, not closed. The claim above is the control: the same ancestors
+// named by neither are unavailable, so each status comes from its authority and not from the row
+// being absent.
+fn real_ancestor_statuses(listed_accepted: Bool) -> List<NodeStatus> {
   let declared = declared_roadmap_nodes()
   let plan = filter(declared, n => (n.node as String) == hv_real_node_id())
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [RoadmapSection { title: "", elements: [section_group(label: "", nodes: plan, edges: [])] }] }
@@ -374,24 +375,38 @@ test fn witness_real_issue_page_shows_an_accepted_omitted_ancestor_as_done() -> 
     launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
     stale_nodes: [], profiles: [] }
   match plan.first() {
-    Absent => false
+    Absent => []
     Present { value: rn } => match lineage_walk(node_id: hv_real_node_id(), nodes: declared) {
-      LineageNoParent { walked: _, at: _ } => false
-      LineageUndeclared { walked: _, node_id: _ } => false
-      LineageCyclic { node_id: _ } => false
+      LineageNoParent { walked: _, at: _ } => []
+      LineageUndeclared { walked: _, node_id: _ } => []
+      LineageCyclic { node_id: _ } => []
       LineageRooted { ids } => {
-        let accepted = map(filter(ids, id => id != hv_real_node_id()), id => nid(s: id))
-        match issue_detail_hierarchy_for(rn: rn, plan: plan, declared: declared, edges: [], obs: obs, accepted: accepted, withheld: []).chain {
-          NodeChainRefused { refusal: _ } => false
-          NodeChainRooted { ancestors, self_node: _ } =>
-            count(ancestors) > 0
-              && count(ancestors) == count(accepted)
-              && all(ancestors, a => match a.status {
-                NodeStatusUnavailable { reason: _ } => false
-                NodeStatusDerived { status, closed } => closed && status == DisplayDone
-              })
+        let listed = map(filter(ids, id => id != hv_real_node_id()), id => nid(s: id))
+        match issue_detail_hierarchy_for(rn: rn, plan: plan, declared: declared, edges: [], obs: obs, accepted: if listed_accepted { listed } else { [] }, withheld: if listed_accepted { [] } else { listed }).chain {
+          NodeChainRefused { refusal: _ } => []
+          NodeChainRooted { ancestors, self_node: _ } => map(ancestors, a => a.status)
         }
       }
     }
   }
+}
+
+test fn witness_real_issue_page_shows_an_accepted_omitted_ancestor_as_accepted() -> Bool {
+  let statuses = real_ancestor_statuses(listed_accepted: true)
+  count(statuses) > 0 && all(statuses, st => node_status_is_closed(status: st) && match st {
+    NodeStatusAccepted => true
+    NodeStatusWithheld => false
+    NodeStatusUnavailable { reason: _ } => false
+    NodeStatusDerived { status: _, closed: _ } => false
+  })
+}
+
+test fn witness_real_issue_page_shows_a_withheld_omitted_ancestor_as_withheld() -> Bool {
+  let statuses = real_ancestor_statuses(listed_accepted: false)
+  count(statuses) > 0 && all(statuses, st => !node_status_is_closed(status: st) && match st {
+    NodeStatusWithheld => true
+    NodeStatusAccepted => false
+    NodeStatusUnavailable { reason: _ } => false
+    NodeStatusDerived { status: _, closed: _ } => false
+  })
 }

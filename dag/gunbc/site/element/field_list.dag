@@ -127,14 +127,20 @@ fn field_assistive(text: String) -> Fragment {
 
 // One line of text. Where the caller abbreviated the value, the abbreviation is hidden from
 // assistive technology and the full value is read instead.
-fn field_text_line(text: String, full: String?) -> Fragment {
+// A line that is not itself inside a control takes keyboard focus, so the full value it may cut
+// is disclosed on focus as well as on hover (element spec 5c: a title is reachable by keyboard).
+fn field_text_attributes(title: String, focusable: Bool) -> List<Attribute> {
+  concat([attr(name: "class", value: field_list_text_class), attr(name: "title", value: title)], if focusable { [attr(name: "tabindex", value: "0")] } else { [] })
+}
+
+fn field_text_line(text: String, full: String?, focusable: Bool) -> Fragment {
   match full {
-    Absent => el_attrs("span", [attr(name: "class", value: field_list_text_class), attr(name: "title", value: text)], [txt(text)])
+    Absent => el_attrs("span", field_text_attributes(title: text, focusable: focusable), [txt(text)])
     Present { value: f } =>
       if f == text {
-        el_attrs("span", [attr(name: "class", value: field_list_text_class), attr(name: "title", value: text)], [txt(text)])
+        el_attrs("span", field_text_attributes(title: text, focusable: focusable), [txt(text)])
       } else {
-        el_attrs("span", [attr(name: "class", value: field_list_text_class), attr(name: "title", value: f)], [
+        el_attrs("span", field_text_attributes(title: f, focusable: focusable), [
           el_attrs("span", [attr(name: "aria-hidden", value: "true")], [txt(text)]),
           field_assistive(text: f),
         ])
@@ -160,10 +166,10 @@ fn field_links_nodes(links: List<FieldLink>, unlinked: List<String>) -> List<Fra
   fold(parts, init: [] as List<Fragment>, f: (acc, p) => if count(acc) == 0 { [p] } else { concat(acc, [txt(", "), p]) })
 }
 
-fn field_person_nodes(person: FieldPerson) -> List<Fragment> {
+fn field_person_nodes(person: FieldPerson, focusable: Bool) -> List<Fragment> {
   [
     el_attrs("span", [attr(name: "class", value: field_list_face_class), attr(name: "aria-hidden", value: "true")], [person.face]),
-    field_text_line(text: person.identity, full: person.full),
+    field_text_line(text: person.identity, full: person.full, focusable: focusable),
   ]
 }
 
@@ -179,7 +185,7 @@ fn field_disclosure(opens: FieldDisclosureOpen, summary_attributes: List<Attribu
 
 fn field_value_nodes(value: FieldValue) -> List<Fragment> {
   match value {
-    FieldText { text, full } => [field_text_line(text: text, full: full)]
+    FieldText { text, full } => [field_text_line(text: text, full: full, focusable: true)]
     FieldLinks { links, unlinked } => [
       el_attrs("span", [attr(name: "class", value: field_list_text_class), attr(name: "title", value: field_links_title(links: links, unlinked: unlinked))], field_links_nodes(links: links, unlinked: unlinked)),
     ]
@@ -190,11 +196,11 @@ fn field_value_nodes(value: FieldValue) -> List<Fragment> {
         attr(name: "title", value: text),
       ], attributes), [txt(text)]),
     ]
-    FieldIdentity { person } => [el_attrs("span", [attr(name: "class", value: field_list_person_class)], field_person_nodes(person: person))]
+    FieldIdentity { person } => [el_attrs("span", [attr(name: "class", value: field_list_person_class)], field_person_nodes(person: person, focusable: true))]
     FieldStatusControl { status, detail } =>
       [field_disclosure(opens: FieldOpensBelow, summary_attributes: [attr(name: "title", value: issue_display_status_label(status: status))], summary: [status_chip(status: status)], panel: detail)]
     FieldIdentityControl { person, action, editor } =>
-      [field_disclosure(opens: FieldOpensInPlace, summary_attributes: [attr(name: "aria-label", value: join([action, ": ", field_full_or(full: person.full, text: person.identity)], ""))], summary: field_person_nodes(person: person), panel: editor)]
+      [field_disclosure(opens: FieldOpensInPlace, summary_attributes: [attr(name: "aria-label", value: join([action, ": ", field_full_or(full: person.full, text: person.identity)], ""))], summary: field_person_nodes(person: person, focusable: false), panel: editor)]
     FieldWork { summary, link_attributes } => [build_meter(summary: summary, link_attributes: link_attributes)]
     FieldAbsent { reason } => [
       el_attrs("span", [attr(name: "class", value: join([field_list_text_class, " ", field_list_absent_class], "")), attr(name: "title", value: reason)], [
@@ -282,6 +288,10 @@ fn field_list_rules() -> List<BuildRule> {
       decl(prop: MinHeight, value: scale_var(t: height_field_row)),
     ]) },
     StaticRule { selector: ClassSelector { name: field_list_text_class }, decls: field_single_line_decls() },
+    StaticRule { selector: RawSelector { text: join([field_selector(class_name: field_list_text_class), ":focus-within"], "") }, decls: [
+      decl(prop: WhiteSpace, value: "normal"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ] },
     StaticRule { selector: ClassSelector { name: field_list_absent_class }, decls: [
       decl(prop: Color, value: palette_var(slot: SlotTextDim)),
     ] },
@@ -364,6 +374,7 @@ fn field_list_rules() -> List<BuildRule> {
       decl(prop: TextDecoration, value: "underline"),
     ] },
     field_focus_rule(class_name: field_list_summary_class),
+    field_focus_rule(class_name: field_list_text_class),
     field_focus_rule(class_name: field_list_link_class),
     field_focus_rule(class_name: field_list_action_class),
   ]

@@ -23,7 +23,7 @@ import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, Pr
 import gunbc.roadmap_issue_location { issue_page_path }
 import gunbc.roadmap.roadmap_lineage { LineageCyclic }
 import gunbc.roadmap.roadmap_hierarchy_view {
-  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_derived,
   NodeChain, NodeChainRooted, NodeChainRefused,
   NodeRelation, RelationRow, RelationKind, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
   RowChildrenNotCarried, RowChildrenExpandable,
@@ -224,8 +224,8 @@ test fn node_row_in_a_tree_shows_its_depth_and_links_the_count_it_refers_to() ->
 }
 
 test fn node_row_says_an_underived_status_is_unavailable() -> Bool {
-  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-gone", status: NodeStatusUnavailable { reason: "withheld from the plan" }, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
-  has(s: row, pattern: "<td class=\"el-node-row-cell\" data-node-column=\"status\"><span class=\"el-node-row-status-unavailable\" title=\"withheld from the plan\" aria-label=\"Status unavailable: withheld from the plan\">Status unavailable</span></td>")
+  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-gone", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  has(s: row, pattern: "<td class=\"el-node-row-cell\" data-node-column=\"status\"><span class=\"el-node-row-status-unavailable\" title=\"no authority establishes a status\" aria-label=\"Status unavailable: no authority establishes a status\">Status unavailable</span></td>")
     && !has(s: row, pattern: "el-status-chip")
     && has(s: row, pattern: "data-node-state=\"open\"")
 }
@@ -253,7 +253,7 @@ test fn node_row_closed_styling_follows_the_status_predicate() -> Bool {
     && any(issue_display_statuses, s => !issue_display_status_is_closed(status: s))
     && row_state(status: NodeStatusDerived { status: DisplayUnknown, closed: true }) == "closed"
     && row_state(status: NodeStatusDerived { status: DisplayDone, closed: false }) == "open"
-    && row_state(status: NodeStatusUnavailable { reason: "withheld from the plan" }) == "open"
+    && row_state(status: NodeStatusUnavailable { reason: "no authority establishes a status" }) == "open"
     && has(s: css, pattern: ".el-node-row[data-node-state=\"closed\"] .el-node-row-cell { background: var(--issue-closed-row); color: var(--issue-text-dim) }")
     && has(s: css, pattern: ".el-node-row[data-node-state=\"closed\"] .el-node-row-link { color: var(--issue-text-dim) }")
     && !has(s: css, pattern: "data-node-state=\"open\"")
@@ -307,7 +307,7 @@ test fn relation_table_heading_counts_the_rows_it_shows() -> Bool {
 test fn relation_table_sub_issues_read_closed_over_total_only_when_every_status_is_derived() -> Bool {
   let derived = [fx_derived(slug: "fx-a", status: DisplayReady), fx_derived(slug: "fx-b", status: DisplayDone), fx_derived(slug: "fx-c", status: DisplaySuperseded)]
   let all_derived = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: derived, undeclared: []))
-  let one_unavailable = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: concat(derived, [fx_node(slug: "fx-d", status: NodeStatusUnavailable { reason: "withheld from the plan" }, priority: PriorityP2)]), undeclared: []))
+  let one_unavailable = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: concat(derived, [fx_node(slug: "fx-d", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2)]), undeclared: []))
   has(s: all_derived, pattern: "<h3 class=\"el-section-heading\">Sub-issues (2/3)</h3>")
     && row_count(table: all_derived) == 3
     && has(s: one_unavailable, pattern: "<h3 class=\"el-section-heading\">Sub-issues (4)</h3>")
@@ -591,13 +591,14 @@ test fn field_list_value_arms_render_one_single_line_value_with_the_full_text_in
   let links = field_html(value: FieldLinks { links: [FieldLink { text: "Parent title", href: "/issue/p", full: none }], unlinked: ["undeclared: q"] })
   let person = field_html(value: FieldIdentity { person: FieldPerson { face: field_face(), identity: field_long, full: Present { value: join(["Service — ", field_long], "") } } })
   let control = field_html(value: FieldIdentityControl { person: FieldPerson { face: field_face(), identity: field_long, full: none }, action: "Change assignee", editor: [] })
-  text == join(["<dl class=\"el-field-list\"><div class=\"el-field-list-row\" data-field-value=\"text\"><dt class=\"el-field-list-label\">Field</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text\" title=\"", field_long, "\">", field_long, "</span></dd></div></dl>"], "")
-    && has(s: short, pattern: "title=\"attempt 0cfc18886a3d3b10\"><span aria-hidden=\"true\">attempt 0cfc…</span><span class=\"el-field-list-assistive\">attempt 0cfc18886a3d3b10</span>")
+  text == join(["<dl class=\"el-field-list\"><div class=\"el-field-list-row\" data-field-value=\"text\"><dt class=\"el-field-list-label\">Field</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text\" title=\"", field_long, "\" tabindex=\"0\">", field_long, "</span></dd></div></dl>"], "")
+    && has(s: short, pattern: "title=\"attempt 0cfc18886a3d3b10\" tabindex=\"0\"><span aria-hidden=\"true\">attempt 0cfc…</span><span class=\"el-field-list-assistive\">attempt 0cfc18886a3d3b10</span>")
     && has(s: links, pattern: "<span class=\"el-field-list-text\" title=\"Parent title, undeclared: q\"><a class=\"el-field-list-link\" href=\"/issue/p\" title=\"Parent title\">Parent title</a>, undeclared: q</span>")
-    && has(s: person, pattern: join(["title=\"Service — ", field_long, "\">"], ""))
+    && has(s: person, pattern: join(["title=\"Service — ", field_long, "\" tabindex=\"0\">"], ""))
     && has(s: person, pattern: "<span class=\"el-field-list-face\" aria-hidden=\"true\">")
     && has(s: control, pattern: join(["aria-label=\"Change assignee: ", field_long, "\""], ""))
     && has(s: control, pattern: "data-field-open=\"in-place\"")
+    && !has(s: control, pattern: "tabindex")
     && has(s: html(node: field_list(input: FieldList { rows: [FieldRow { label: "Status", value: FieldStatusControl { status: DisplayActive, detail: [] } }] })), pattern: "<span class=\"el-status-chip\" data-status-form=\"assigned\">Active</span>")
     && has(s: field_html(value: FieldAction { text: "3 issues", attributes: [] }), pattern: "<button class=\"el-field-list-action\" type=\"button\" title=\"3 issues\">3 issues</button>")
 }
@@ -652,4 +653,18 @@ test fn every_priority_mark_has_the_same_geometry() -> Bool {
     && !colour_only(decls: [decl(prop: Padding, value: "var(--space-4)")])
     && all(marks, m => has(s: m, pattern: "<span class=\"el-priority-mark\" data-priority-form=\""))
     && count(priority_mark_rules()) == 4
+}
+
+// ACCEPTED AND WITHHELD ARE STATUSES, NOT ABSENCES. A node the acceptance authority lists draws the
+// Accepted chip in the filled form Done uses and reads closed; one the plan withholds draws the
+// Withheld chip in the quiet form and reads open; only a node no authority establishes says its
+// status is unavailable.
+test fn accepted_and_withheld_draw_their_own_chips() -> Bool {
+  let accepted = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-acc", status: NodeStatusAccepted, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  let withheld = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-wh", status: NodeStatusWithheld, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  let unknown = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-un", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  has(s: accepted, pattern: "<span class=\"el-status-chip\" data-status-form=\"filled\">Accepted</span>") && has(s: accepted, pattern: "data-node-state=\"closed\"")
+    && has(s: withheld, pattern: "<span class=\"el-status-chip\" data-status-form=\"quiet\">Withheld</span>") && has(s: withheld, pattern: "data-node-state=\"open\"")
+    && !has(s: accepted, pattern: "unavailable") && !has(s: withheld, pattern: "unavailable")
+    && has(s: unknown, pattern: "Status unavailable")
 }

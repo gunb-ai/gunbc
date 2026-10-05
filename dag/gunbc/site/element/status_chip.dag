@@ -84,11 +84,44 @@ data status_chip_fill_property: String = "el-status-chip-fill"
 // How much of the ink an open state's fill carries, over the surface colour.
 data status_chip_tint_pct: Int = 12
 
-fn status_chip(status: IssueDisplayStatus) -> Fragment {
+// WHAT A CHIP SHOWS. A planned node shows its one display status. A node the plan does not carry
+// is shown as what its own authority establishes: Accepted when the acceptance authority lists it,
+// Withheld when the plan's withheld set names it. Both are quiet forms beside Done and Superseded:
+// accepted is settled work and draws as Done does, withheld is set aside and draws as Superseded
+// does, each under its own word.
+type StatusChipSubject
+  = StatusChipPlanned { status: IssueDisplayStatus }
+  | StatusChipAccepted
+  | StatusChipWithheld
+
+data status_chip_accepted_label: String = "Accepted"
+data status_chip_withheld_label: String = "Withheld"
+
+fn status_chip_subject_form(subject: StatusChipSubject) -> StatusChipForm {
+  match subject {
+    StatusChipPlanned { status } => status_chip_form(status: status)
+    StatusChipAccepted => StatusChipFilled
+    StatusChipWithheld => StatusChipQuiet
+  }
+}
+
+fn status_chip_subject_label(subject: StatusChipSubject) -> String {
+  match subject {
+    StatusChipPlanned { status } => issue_display_status_label(status: status)
+    StatusChipAccepted => status_chip_accepted_label
+    StatusChipWithheld => status_chip_withheld_label
+  }
+}
+
+fn status_chip_of(subject: StatusChipSubject) -> Fragment {
   el_attrs("span", [
     attr(name: "class", value: status_chip_class),
-    attr(name: status_chip_form_attribute, value: status_chip_form_key(form: status_chip_form(status: status))),
-  ], [txt(issue_display_status_label(status: status))])
+    attr(name: status_chip_form_attribute, value: status_chip_form_key(form: status_chip_subject_form(subject: subject))),
+  ], [txt(status_chip_subject_label(subject: subject))])
+}
+
+fn status_chip(status: IssueDisplayStatus) -> Fragment {
+  status_chip_of(subject: StatusChipPlanned { status: status })
 }
 
 fn status_chip_form_selector(form: StatusChipForm) -> String {

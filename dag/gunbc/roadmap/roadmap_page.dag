@@ -79,7 +79,7 @@ import gunbc.roadmap_authority {
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, ReadinessGraph }
 import gunbc.roadmap.roadmap_hierarchy_view {
   IssueHierarchyView, issue_hierarchy_view, hierarchy_nodes,
-  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable,
   NodeChain, NodeChainRooted, NodeChainRefused,
   NodeRelation, RelationRow, RelationRowChildren, RowChildrenNotCarried, RowChildrenExpandable,
   relation_summary, relation_count_text, relation_kind_label, relation_empty_text, relation_undeclared_text,
@@ -133,6 +133,7 @@ import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
 import gunbc.site.element.build_meter { failure_event_words }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
+import gunbc.site.element.status_chip { status_chip_accepted_label, status_chip_withheld_label }
 import gunbc.site.element.field_list {
   FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
   FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
@@ -2361,12 +2362,16 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
 fn issue_node_status_text(status: NodeStatus) -> String {
   match status {
     NodeStatusDerived { status: derived, closed: _ } => issue_display_status_label(status: derived)
+    NodeStatusAccepted => status_chip_accepted_label
+    NodeStatusWithheld => status_chip_withheld_label
     NodeStatusUnavailable { reason: _ } => "Status unavailable"
   }
 }
 fn issue_node_status_reason(status: NodeStatus) -> String {
   match status {
     NodeStatusDerived { status: derived, closed: _ } => issue_display_status_label(status: derived)
+    NodeStatusAccepted => status_chip_accepted_label
+    NodeStatusWithheld => status_chip_withheld_label
     NodeStatusUnavailable { reason } => join(["Status unavailable: ", reason], "")
   }
 }
@@ -2392,6 +2397,8 @@ fn issue_membership_link(row: RelationRow, relation: NodeRelation, parent: Bool)
 fn issue_dependency_graph_status(status: NodeStatus) -> String {
   match status {
     NodeStatusUnavailable { reason: _ } => "unknown"
+    NodeStatusAccepted => "done"
+    NodeStatusWithheld => "superseded"
     NodeStatusDerived { status: derived, closed: _ } => match derived {
       DisplayDone => "done"
       DisplaySuperseded => "superseded"
@@ -2811,10 +2818,18 @@ fn observed_node_status(rn: RoadmapNode, obs: RowObservations, accepted: List<Ro
       let view = observed_row_view(rn: planned, obs: obs)
       NodeStatusDerived { status: issue_display_status(view: view), closed: work_lifecycle_is_closed(l: view.lifecycle) }
     }
-    Absent => match omitted_node_display_status(rn: rn, merged: obs.merged, accepted: any(accepted, id => id == rn.node)) {
-      Present { value: status } => NodeStatusDerived { status: status, closed: true }
-      Absent => NodeStatusUnavailable {
-        reason: if any(withheld, id => id == rn.node) { "withheld from the plan" } else { "the plan carries no row for this node" },
+    Absent => {
+      let own = omitted_node_display_status(rn: rn, merged: obs.merged, accepted: false)
+      let superseded = match own { Present { value: s } => s == DisplaySuperseded  Absent => false }
+      if superseded {
+        NodeStatusDerived { status: DisplaySuperseded, closed: true }
+      } else if any(accepted, id => id == rn.node) {
+        NodeStatusAccepted
+      } else {
+        match own {
+          Present { value: status } => NodeStatusDerived { status: status, closed: true }
+          Absent => if any(withheld, id => id == rn.node) { NodeStatusWithheld } else { NodeStatusUnavailable { reason: "no authority establishes a status: the plan carries no row for this node, and neither the acceptance authority nor the plan's withheld set names it" } }
+        }
       }
     }
   }

@@ -36,8 +36,15 @@ import gunbc.roadmap_issue_location { issue_page_path }
 // and not a reading of the status word. They can differ: a done node whose standing cannot be
 // observed is shown as Unknown and is still closed. Unavailable is reserved for a node whose
 // state the producer cannot establish at all, and says why.
+//
+// A node the plan omits is shown by the authority that establishes it, never by its absence:
+// Accepted when the acceptance authority lists it (closed), Withheld when the plan's withheld set
+// names it (not closed: it is set aside, not finished). Unavailable is left for a node no
+// authority establishes.
 type NodeStatus
   = NodeStatusDerived { status: IssueDisplayStatus, closed: Bool }
+  | NodeStatusAccepted
+  | NodeStatusWithheld
   | NodeStatusUnavailable { reason: String }
 
 // A derived status with no lifecycle beside it: closed is what the status vocabulary says of that
@@ -51,6 +58,8 @@ fn node_status_derived(status: IssueDisplayStatus) -> NodeStatus {
 fn node_status_is_closed(status: NodeStatus) -> Bool {
   match status {
     NodeStatusDerived { status: _, closed } => closed
+    NodeStatusAccepted => true
+    NodeStatusWithheld => false
     NodeStatusUnavailable { reason: _ } => false
   }
 }
@@ -243,6 +252,8 @@ fn relation_summary(relation: NodeRelation) -> RelationSummary {
   fold(relation.rows, init: RelationSummary { total: 0, closed: 0, status_unavailable: 0 }, f: fn(acc, row) {
     match row.node.status {
       NodeStatusUnavailable { reason: _ } => RelationSummary { total: acc.total + 1, closed: acc.closed, status_unavailable: acc.status_unavailable + 1 }
+      NodeStatusAccepted => RelationSummary { total: acc.total + 1, closed: acc.closed + 1, status_unavailable: acc.status_unavailable }
+      NodeStatusWithheld => RelationSummary { total: acc.total + 1, closed: acc.closed, status_unavailable: acc.status_unavailable }
       NodeStatusDerived { status: _, closed } => RelationSummary {
         total: acc.total + 1,
         closed: if closed { acc.closed + 1 } else { acc.closed },
