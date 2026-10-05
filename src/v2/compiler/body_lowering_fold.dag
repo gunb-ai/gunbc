@@ -4647,6 +4647,7 @@ fn body_lower_admit_clause_shell_optional(shell: Node) -> Optional<Node> {
             }
           _ => optional_absent()
         }
+      }
   })
 }
 
