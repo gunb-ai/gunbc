@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present }
-import extdeps.toolchain.types { Aarch64 }
+import extdeps.toolchain.types { Architecture, Aarch64, architecture_diagnostic_name }
 import extdeps.exec.command { shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_command, cat_command, nproc_command, ls_one_per_line_command }
 import extdeps.linux.procfs { ProcMeminfo, procfs_path_literal }
@@ -15,7 +15,7 @@ import extdeps.systemd { systemd_booted_runtime_dir }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.posix.test_utility { test_executable_command, test_directory_command }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
-import extdeps.tools.uname { uname_machine_command }
+import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import extdeps.github.actions_runner {
   ActionsRunnerBinaryArtifact, ActionsRunnerRelease,
@@ -224,7 +224,7 @@ type RunnerHostUp {
   mem_total: Kibibyte
   mem_available: Kibibyte
   threads: HardwareThreadCount
-  machine: NonEmptyStr
+  machine: Architecture
 }
 
 type RunnerHostUpRefusal
@@ -234,7 +234,8 @@ type RunnerHostUpRefusal
   | RunnerHostSectionFailed { name: NonEmptyStr, exit_code: String }
   | RunnerHostMeminfoFieldAbsent { field: NonEmptyStr }
   | RunnerHostNprocUnreadable { observed: String }
-  | RunnerHostMachineNotAarch64 { observed: String }
+  | RunnerHostMachineUnrecognized { observed: String }
+  | RunnerHostMachineNotAarch64 { observed: Architecture }
   | RunnerHostLabelAbsent { expected: NonEmptyStr, observed: List<String> }
   | RunnerHostTarballDigestDiffers { expected: NonEmptyStr, observed: String }
   | RunnerHostRunnerUnpublished { binary_release: ActionsRunnerRelease }
@@ -253,7 +254,8 @@ fn runner_host_up_refusal_text(refusal: RunnerHostUpRefusal) -> String {
     RunnerHostSectionFailed { name: n, exit_code: c } => concat(n as String, " exited ", c)
     RunnerHostMeminfoFieldAbsent { field: f } => concat("meminfo carries no ", f as String)
     RunnerHostNprocUnreadable { observed: o } => concat("nproc printed ", o, ", not a positive count")
-    RunnerHostMachineNotAarch64 { observed: o } => concat("uname -m printed ", o, ", the runner image is arm64")
+    RunnerHostMachineUnrecognized { observed: o } => concat("uname -m printed ", concat(o, ", which is no Linux machine spelling this projection cites"))
+    RunnerHostMachineNotAarch64 { observed: a } => concat("uname -m read back ", concat(architecture_diagnostic_name(arch: a) as String, ", the runner image is arm64"))
     RunnerHostTarballDigestDiffers { expected: e, observed: o } => concat("the runner tarball on the medium read back sha256 ", concat(o, concat(", the release cites ", e as String)))
     RunnerHostRunnerUnpublished { binary_release: r } => concat("no arm64 runner tarball is published for release ", r.version as String)
     RunnerHostLabelAbsent { expected: e, observed: o } => concat("no block device carries the admitted medium's label ", concat(e as String, concat("; labels read: ", join(o, ", "))))
@@ -360,20 +362,29 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
         Present { value: _ } => []
       }
   }
+  let arch = uname_linux_machine_architecture(spelling: machine)
   let machine_refusals = match machine_read {
     RunnerHostSectionRefused { refusal: r } => [r]
     RunnerHostSectionHeld { output: _ } =>
-      if machine == "aarch64" { [] } else { [RunnerHostMachineNotAarch64 { observed: machine }] }
+      match arch {
+        Absent => [RunnerHostMachineUnrecognized { observed: machine }]
+        Present { value: Aarch64 } => []
+        Present { value: other } => [RunnerHostMachineNotAarch64 { observed: other }]
+      }
   }
   let refusals = append(append(append(gates, items: mem_refusals), items: nproc_refusals), items: machine_refusals)
   match meminfo {
     MeminfoParsed { meminfo: m } =>
       match nproc {
         Present { value: n } =>
-          if count(refusals) == 0 {
-            RunnerHostUpObserved { up: RunnerHostUp { run: envelope.run, mem_total: m.mem_total, mem_available: m.mem_available, threads: hardware_thread_count(count: n), machine: machine as NonEmptyStr } }
-          } else {
-            RunnerHostUpRefused { refusals: refusals }
+          match arch {
+            Present { value: a } =>
+              if count(refusals) == 0 {
+                RunnerHostUpObserved { up: RunnerHostUp { run: envelope.run, mem_total: m.mem_total, mem_available: m.mem_available, threads: hardware_thread_count(count: n), machine: a } }
+              } else {
+                RunnerHostUpRefused { refusals: refusals }
+              }
+            Absent => RunnerHostUpRefused { refusals: refusals }
           }
         Absent => RunnerHostUpRefused { refusals: refusals }
       }
@@ -382,7 +393,7 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
 }
 
 // AN OPEN ENVELOPE NEVER ACCEPTS, AND REFUSES EARLY ONLY ON A COMPLETE SECTION THAT FAILED: a runner
-// install whose sha256sum -c refused is a complete fact about that run before END is printed.
+// install step that exited nonzero is a complete fact about that run before END is printed.
 fn runner_host_up_over_open(envelope: BoundHostCaptureEnvelope) -> RunnerHostUpReadback {
   let failed = flat_map(runner_host_up_section_names, n => match host_capture_section_reading(envelope: envelope, name: n as String) {
     SectionComplete { exit_code: c, output: _ } => if c == "0" { [] } else { [RunnerHostSectionFailed { name: n, exit_code: c }] }

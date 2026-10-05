@@ -7,6 +7,8 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64, Riscv64 }
+import v2.std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -41,4 +43,21 @@ fn uname_release_command() -> ArgvCommand {
 // set the running kernel executes rather than which one an image was built for.
 fn uname_machine_command() -> ArgvCommand {
   argv_command(program: uname_program(), arguments: ["-m"])
+}
+
+// THE LINUX MACHINE SPELLING, PROJECTED ONTO Architecture. On Linux `uname -m` prints the kernel's
+// utsname machine field, which each architecture's Makefile sets as UTS_MACHINE: `aarch64` for arm64,
+// `x86_64` for x86-64 and `riscv64` for 64-bit RISC-V. This is a PARTIAL projection, like every other
+// upstream spelling of Architecture (extdeps.toolchain.types architecture_diagnostic_name): a spelling
+// it does not cite refuses, never falls back to the closest variant.
+fn uname_linux_machine_architecture(spelling: String) -> Architecture? {
+  if spelling == "aarch64" {
+    Present { value: Aarch64 }
+  } else if spelling == "x86_64" {
+    Present { value: X86_64 }
+  } else if spelling == "riscv64" {
+    Present { value: Riscv64 }
+  } else {
+    none
+  }
 }

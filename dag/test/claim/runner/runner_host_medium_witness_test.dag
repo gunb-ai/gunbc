@@ -2,6 +2,7 @@ module test.claim.runner_host_medium_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { kibibyte_count, hardware_thread_count_value }
+import extdeps.toolchain.types { Aarch64, X86_64 }
 import std.process { ExitSuccess }
 import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -27,7 +28,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
-  RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
+  RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostMachineUnrecognized, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
   runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id,
 }
 
@@ -132,7 +133,7 @@ test fn the_runner_medium_is_admitted_and_names_the_runner_host_up_terminal() ->
 test fn a_closed_envelope_with_every_section_held_reads_the_runner_host_up() -> Bool {
   match readback(capture: closed(install_exit: "0", machine: "aarch64")) {
     Present { value: RunnerHostUpObserved { up: up } } =>
-      kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (up.machine as String) == "aarch64"
+      kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (match up.machine { Aarch64 => true _ => false })
     _ => false
   }
 }
@@ -144,7 +145,7 @@ test fn a_failed_install_and_a_foreign_machine_both_refuse() -> Bool {
   match readback(capture: closed(install_exit: "1", machine: "x86_64")) {
     Present { value: RunnerHostUpRefused { refusals: rs } } =>
       any(rs, r => match r { RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "runner-extract" && c == "1" _ => false })
-        && any(rs, r => match r { RunnerHostMachineNotAarch64 { observed: o } => o == "x86_64" _ => false })
+        && any(rs, r => match r { RunnerHostMachineNotAarch64 { observed: o } => (match o { X86_64 => true _ => false }) _ => false })
     _ => false
   }
 }
@@ -176,15 +177,15 @@ test fn the_boot_run_terminal_verdict_delegates_and_carries_the_whole_reading() 
     Present { value: s } => {
       let verdict = mtcollins1_boot_terminal_verdict(capture: closed(install_exit: "0", machine: "aarch64"), subject: s)
       (match verdict {
-        TerminalRunnerHostAccepted { up: up } => kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (up.machine as String) == "aarch64"
+        TerminalRunnerHostAccepted { up: up } => kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (match up.machine { Aarch64 => true _ => false })
         _ => false
       })
         && (match watch_tick(verdict: verdict, channel: SolChannelLive) {
-          WatchRunnerHostAccepted { up: up } => kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (up.machine as String) == "aarch64"
+          WatchRunnerHostAccepted { up: up } => kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (match up.machine { Aarch64 => true _ => false })
           _ => false
         })
         && (match mtcollins1_boot_terminal_verdict(capture: closed(install_exit: "0", machine: "x86_64"), subject: s) {
-          TerminalRefused { causes: cs } => any(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "uname -m printed x86_64"))
+          TerminalRefused { causes: cs } => any(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "uname -m read back X86_64"))
           _ => false
         })
     }
@@ -283,7 +284,7 @@ test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
 }
 
 fn reading_is_the_capture(up: RunnerHostUp) -> Bool {
-  kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (up.machine as String) == "aarch64"
+  kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (match up.machine { Aarch64 => true _ => false })
 }
 
 fn through(subject: AdmittedBootSubject, reading: RunnerHostUp?) -> RunnerHostUp? {
@@ -323,6 +324,16 @@ test fn a_tarball_that_reads_back_another_digest_refuses_the_terminal() -> Bool 
   match readback(capture: concat(begin_line, sections_with_digest(install_exit: "0", machine: "aarch64", tarball_digest: wrong), end_line)) {
     Present { value: RunnerHostUpRefused { refusals: rs } } =>
       any(rs, r => match r { RunnerHostTarballDigestDiffers { expected: e, observed: o } => o == wrong && (e as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String) _ => false })
+    _ => false
+  }
+}
+
+// THE MACHINE IS PARSED AT THE uname BOUNDARY: a spelling the Linux projection does not cite refuses
+// as unrecognized rather than being compared as a string.
+test fn an_unrecognized_machine_spelling_refuses_as_unrecognized() -> Bool {
+  match readback(capture: closed(install_exit: "0", machine: "arm64")) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } =>
+      any(rs, r => match r { RunnerHostMachineUnrecognized { observed: o } => o == "arm64" _ => false })
     _ => false
   }
 }
