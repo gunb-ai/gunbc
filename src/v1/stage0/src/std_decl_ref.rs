@@ -26,6 +26,14 @@ pub struct DeclarationRef {
     pub field: Rc<DeclField>,
 }
 
+pub fn declaration_ref_is_type_parameter(ref_: Rc<DeclarationRef>) -> bool {
+    match (*ref_.field.clone()).clone() {
+        DeclField::TypeParameter { name: _, .. } => true,
+        DeclField::WholeDeclaration => false,
+        DeclField::NamedField { field_name: _, .. } => false,
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
