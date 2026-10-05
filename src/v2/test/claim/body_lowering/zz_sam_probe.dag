@@ -2,7 +2,7 @@ module v2.test.claim.body_lowering.zz_sam_probe
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text, conserved_normalize, no_explained_drops }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.compiler.reference_conservation { reference_conservation_of_subject, dag_declared_token_classes }
+import v2.compiler.reference_conservation { reference_conservation_of_subject, dag_declared_token_classes, ReferenceConservationUnmeasured, TokenizeOrParseRefused, AtomExtentUnreadable, StringLiteralValueUncarried, OccurrenceRoleTableUnadmitted }
 import v2.std.node { symbol_lexeme }
 import v2.std.algebra { fold_list, Cons }
 
@@ -30,8 +30,19 @@ fn reasons(text: String) -> String {
     Accepted { value: _, diagnostics: _ } => " cn=ACC"
     Rejected { diagnostics: d } => fold_list(xs: Cons { head: d.head, tail: d.tail }, empty: " cn=REJ:", cons: fn(acc, x) { acc + " " + symbol_lexeme(sym: x.reason) })
   }
-  norm + cn + " unmeasured=" + fold_list(xs: r.unmeasured, empty: "", cons: fn(acc, _u) { acc + "U" }) + " " + render(text: text)
+  norm + cn + " unmeasured=" + fold_list(xs: r.unmeasured, empty: "", cons: fn(acc, u) { acc + umeas(u: u) }) + " " + render(text: text)
 }
 
 fn reasons3() -> String { reasons(text: p3) }
 fn reasons2() -> String { reasons(text: p2) }
+
+fn syms(xs: List<Symbol>) -> String { fold(xs, init: "", f: fn(a, s) { a + "," + symbol_lexeme(sym: s) }) }
+
+fn umeas(u: ReferenceConservationUnmeasured) -> String {
+  match u {
+    TokenizeOrParseRefused { diagnostics: _ } => "[TPR]"
+    AtomExtentUnreadable { occurrence: _ } => "[AEU]"
+    StringLiteralValueUncarried { occurrence: _ } => "[SLV]"
+    OccurrenceRoleTableUnadmitted { unlisted: a, unknown: b, unkeyed: c } => "[ORT unlisted=" + syms(xs: a) + " unknown=" + syms(xs: b) + " unkeyed=" + syms(xs: c) + "]"
+  }
+}
