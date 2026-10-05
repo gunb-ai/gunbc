@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.anonymous_record_literal_refused_against_a_declared_record_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data anonymous_record_literal_refused_against_a_declared_record_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "anonymous_record_literal_refused_against_a_declared_record_type" as NonEmptyStr,
+
+  receipts: [
+    "**v2 resolve refuses an anonymous record literal whose annotated type is a declared record** (INVALID STATE: a well-formed module is Rejected). `v2.test.long.cwc_resolution_probe` `cwc_cwc_module_resolve_accepts` normalizes `type CoproductWireContract { coproduct: String, encoding: VariantEncoding }` and `data review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }`, and resolve refuses with `lve_anonymous_record_expected_type_not_record`. Measured by claim_batch on BuildBuddy, 2026-10-04, swift-bat-688, with a temporary probe claim reading the first diagnostic reason (not landed).",
+    "DISTINGUISHING FACTS. The record is the one-line comma form, which 73 corpus files use; `v2.test.claim.body_lowering.anonymous_record_test` fixtures use the newline form and pass. Whether the form is the discriminator is NOT established. The writer that owns the refusal landed in gunbc#12740 (anonymous record literals elaborate from the authored annotation in resolve's construct-tag writer).",
+    "RUNG FOUND AT: below the floor for the program (a false refusal, loud, not silent). Invisible to the floor because the witness module is outside the required gate and rostered in `gunbc.witness.witness_deferral_freeze`. NEXT TRIGGER: bisect the entry between gunbc#12740 and main; a newline-form control beside the comma form decides whether the declaration spelling is the cause.",
+  ],
+
+  evidence: [],
+}

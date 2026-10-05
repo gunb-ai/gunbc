@@ -1,6 +1,6 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
