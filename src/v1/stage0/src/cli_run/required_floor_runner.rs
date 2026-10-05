@@ -2730,41 +2730,11 @@ pub(crate) fn cost_debt_base_tree_extract(
     Ok(())
 }
 
-/// `floor_cost_debt_roster` read inside ONE source tree AS LITERAL DATA from its declaring module.
-///
-/// THE ROSTER IS READ, NOT EVALUATED. It is literal string chunks combined by `Cons`/`Empty` and
-/// `list_flat_map(identity)`, so its rows are a fact of `v2.workflow.floor_cost_debt` alone. An
-/// earlier shape resolved and evaluated it over the tree's WHOLE `dag` + `src/v2` closure with THIS
-/// binary, so a base whose closure merely CONTAINED a use of a builtin this seed deleted (gunbc#13378:
-/// the base `std.algebra` `trim` seam called `from_code_point`, which nothing in the roster reaches)
-/// refused as `CostDebtBaseRosterUnevaluable` although the roster itself was fully readable. The read
-/// goes through `string_list_literal_from_module_source`, the one literal-list reader: any row that is
-/// not literal data (it calls a function) REFUSES typed and located, and is never evaluated instead.
+/// `floor_cost_debt_roster` evaluated inside ONE source tree (its `dag` and `src/v2` roots), through
+/// an index this read owns -- never the thread's shared slot, which holds the head tree's pool
+/// (`SharedIndexSecondResidentPool`). A tree whose roster does not resolve or evaluate to a list of
+/// identities REFUSES as `CostDebtBaseRosterUnevaluable`.
 pub(crate) fn cost_debt_roster_in_tree(tree: &Path) -> Result<Vec<String>, String> {
-    let refuse = |why: String| {
-        format!(
-            "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable path={FLOOR_COST_DEBT_ROSTER} \
-             -- {why}; which rows the base roster carried cannot be established, and is never \
-             assumed"
-        )
-    };
-    let entry = tree.join(FLOOR_COST_DEBT_ROSTER);
-    let content = std::fs::read_to_string(&entry)
-        .map_err(|e| refuse(format!("{} could not be read: {e}", entry.display())))?;
-    crate::cli_run::string_list_literal_from_module_source(
-        FLOOR_COST_DEBT_ROSTER,
-        &content,
-        "floor_cost_debt_roster",
-        true,
-    )
-    .map_err(|r| refuse(crate::cli_run::string_list_literal_refusal_text(&r)))
-}
-
-/// THE EVALUATOR'S ANSWER for the same roster, kept only as the oracle the literal read is checked
-/// against (`cost_debt_literal_read_equals_the_evaluator_on_the_live_roster`), so the two cannot
-/// drift apart silently.
-#[cfg(test)]
-fn cost_debt_roster_evaluated_in_tree(tree: &Path) -> Result<Vec<String>, String> {
     use v1_interpreter::Value;
     let refuse = |why: String| {
         format!(
@@ -14576,47 +14546,44 @@ mod changed_witness_projection_tests {
         assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
     }
 
-    /// A HEAD-extracted tree whose `v2.workflow.floor_cost_debt` is replaced by a roster of the
-    /// REAL roster's shape: one literal chunk `fn` combined by `list_flat_map(xs: Cons { .. Empty {} },
-    /// f: fn(c) { c })`. `rows` is the chunk's list literal. With `poisoned`, the roster module also
-    /// imports a module whose one function calls a builtin no seed has -- standing in for a base whose
-    /// closure uses a builtin THIS seed deleted (gunbc#13378's `from_code_point`). Nothing in the
-    /// roster reaches it. Without `roster_has_entry` the module declares no `floor_cost_debt_roster`.
-    fn cost_debt_fixture_tree(rows: &str, roster_has_entry: bool, poisoned: bool) -> PathBuf {
+    /// A real source tree at HEAD (the production extraction), with the roster replaced by a
+    /// fixture whose result comes from an IMPORTED provider and that also spells `t.new` in an
+    /// unselected chunk.
+    fn cost_debt_fixture_tree(provider_rows: &str, roster_has_entry: bool) -> PathBuf {
         let workspace = process_workspace_root();
         let tree = cost_debt_scratch_dir("fixture").expect("scratch");
         cost_debt_base_tree_extract(&workspace, "HEAD", &tree).expect("extract HEAD");
-        let poison_import = if poisoned {
-            std::fs::write(
-                tree.join("src/v2/workflow/cost_debt_fixture_poison.dag"),
-                "module v2.workflow.cost_debt_fixture_poison\n\nimport std.types { String }\n\nfn cost_debt_fixture_poison_text() -> String {\n  zz_builtin_no_seed_has(cp: 1)\n}\n",
-            )
-            .expect("write poison");
-            "import v2.workflow.cost_debt_fixture_poison { cost_debt_fixture_poison_text }\n"
-        } else {
-            ""
-        };
+        let provider = format!(
+            "module v2.workflow.cost_debt_fixture_provider\n\nimport std.types {{ List }}\n\nfn selected_rows() -> List<String> {{\n  {provider_rows}\n}}\n"
+        );
+        std::fs::write(
+            tree.join("src/v2/workflow/cost_debt_fixture_provider.dag"),
+            provider,
+        )
+        .expect("write provider");
         let entry = if roster_has_entry {
-            "fn floor_cost_debt_roster() -> List<String> {\n  list_flat_map(xs: Cons { head: floor_cost_debt_fixture_chunk_00(), tail: Empty {} }, f: fn(c) { c })\n}\n"
+            "fn floor_cost_debt_roster() -> List<String> {\n  selected_rows()\n}\n"
         } else {
             ""
         };
         let roster = format!(
-            "module v2.workflow.floor_cost_debt\n\nimport std.types {{ List }}\nimport v2.std.algebra {{ Cons, Empty, list_flat_map }}\n{poison_import}\nfn floor_cost_debt_fixture_chunk_00() -> List<String> {{\n  {rows}\n}}\n\nfn unused_chunk() -> List<String> {{\n  [\"t.unselected\"]\n}}\n\n{entry}"
+            "module v2.workflow.floor_cost_debt\n\nimport std.types {{ List }}\nimport v2.workflow.cost_debt_fixture_provider {{ selected_rows }}\n\nfn unused_chunk() -> List<String> {{\n  [\"t.new\"]\n}}\n\n{entry}"
         );
         std::fs::write(tree.join(FLOOR_COST_DEBT_ROSTER), roster).expect("write roster");
         tree
     }
 
-    /// RED (base membership is the BASE TREE's roster): the base and head trees differ only in the
-    /// chunk's rows. The base reads `t.old` alone -- the unselected chunk's `t.unselected` is not
-    /// membership -- so the head admits `t.new`. POSITIVE: an unchanged roster admits nothing.
+    /// RED (base membership is the BASE TREE's result): the base and head trees differ only in the
+    /// imported provider. The base tree evaluates to `t.old` alone -- the unselected chunk's
+    /// `t.new` is not membership, and the head provider's `t.new` cannot leak into it -- so the head
+    /// admits `t.new`. POSITIVE: an unchanged provider admits nothing. REFUSAL: a base tree whose
+    /// roster does not evaluate refuses, typed.
     #[test]
-    fn cost_debt_base_roster_is_read_from_the_base_tree() {
-        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true, false);
-        let head_tree = cost_debt_fixture_tree("[\"t.old\", \"t.new\"]", true, false);
-        let base = cost_debt_roster_in_tree(&base_tree).expect("base reads");
-        let head = cost_debt_roster_in_tree(&head_tree).expect("head reads");
+    fn cost_debt_base_roster_is_evaluated_over_the_base_tree() {
+        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true);
+        let head_tree = cost_debt_fixture_tree("[\"t.old\", \"t.new\"]", true);
+        let base = cost_debt_roster_in_tree(&base_tree).expect("base evaluates");
+        let head = cost_debt_roster_in_tree(&head_tree).expect("head evaluates");
         assert_eq!(base, vec!["t.old".to_string()]);
         assert_eq!(head, vec!["t.old".to_string(), "t.new".to_string()]);
         assert_eq!(
@@ -14630,63 +14597,17 @@ mod changed_witness_projection_tests {
         std::fs::remove_dir_all(&base_tree).ok();
     }
 
-    /// REFUSAL: a base tree with no roster function, or no roster file, refuses typed rather than
-    /// reading as carrying anything.
+    /// REFUSAL: a base tree whose roster does not evaluate, or that has no roster at all, refuses
+    /// typed rather than reading as carrying anything.
     #[test]
-    fn cost_debt_base_roster_that_is_absent_refuses() {
-        let broken = cost_debt_fixture_tree("[\"t.old\"]", false, false);
+    fn cost_debt_base_roster_that_does_not_evaluate_refuses() {
+        let broken = cost_debt_fixture_tree("[\"t.old\"]", false);
         let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
         assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
         std::fs::remove_file(broken.join(FLOOR_COST_DEBT_ROSTER)).ok();
         let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
         assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
         std::fs::remove_dir_all(&broken).ok();
-    }
-
-    /// RED (gunbc#13378): the base roster's module imports a module that calls a builtin this seed
-    /// does not have. The roster never reaches it, so the literal read answers exactly. The
-    /// evaluator -- the route this replaced -- refuses the same tree at resolve, which is the
-    /// refusal the floor raised on #13378; both are asserted, so this control is red on the old route.
-    #[test]
-    fn cost_debt_base_roster_is_read_when_its_closure_uses_a_builtin_this_seed_lacks() {
-        let tree = cost_debt_fixture_tree("[\"t.old\", \"t.kept\"]", true, true);
-        assert_eq!(
-            cost_debt_roster_in_tree(&tree).expect("the literal read does not touch the import"),
-            vec!["t.old".to_string(), "t.kept".to_string()]
-        );
-        let old_route = cost_debt_roster_evaluated_in_tree(&tree)
-            .expect_err("the evaluator resolves the whole closure and must refuse");
-        assert!(old_route.contains("zz_builtin_no_seed_has"), "{old_route}");
-        std::fs::remove_dir_all(&tree).ok();
-    }
-
-    /// REFUSAL (sharp-raven-357 requirement 1): a roster row that is not literal data -- here the
-    /// chunk calls a function the module imports -- refuses typed and located, and is never
-    /// evaluated with this seed instead.
-    #[test]
-    fn cost_debt_roster_row_that_calls_a_function_refuses_as_not_literal_data() {
-        let tree = cost_debt_fixture_tree("cost_debt_fixture_poison_text()", true, true);
-        let err = cost_debt_roster_in_tree(&tree).expect_err("a call is not literal data");
-        assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
-        assert!(err.contains("RosterNotLiteralData"), "{err}");
-        assert!(err.contains("cost_debt_fixture_poison_text"), "{err}");
-        std::fs::remove_dir_all(&tree).ok();
-    }
-
-    /// ORACLE (exact equality): on the LIVE roster, the literal read and the evaluator answer the
-    /// same rows in the same order, so the two cannot drift apart silently. If the live roster ever
-    /// takes a shape the literal read refuses, this control is where that surfaces first.
-    #[test]
-    fn cost_debt_literal_read_equals_the_evaluator_on_the_live_roster() {
-        let workspace = process_workspace_root();
-        let tree = cost_debt_scratch_dir("oracle").expect("scratch");
-        cost_debt_base_tree_extract(&workspace, "HEAD", &tree).expect("extract HEAD");
-        let read = cost_debt_roster_in_tree(&tree).expect("literal read of the live roster");
-        let evaluated =
-            cost_debt_roster_evaluated_in_tree(&tree).expect("evaluator on the live roster");
-        std::fs::remove_dir_all(&tree).ok();
-        assert!(!read.is_empty(), "the live roster read as empty");
-        assert_eq!(read, evaluated);
     }
 
     /// RED (gunbc#13344): on a merge-base comparison the base is the MERGE BASE, not the base
@@ -14827,7 +14748,7 @@ mod changed_witness_projection_tests {
     /// and this control fails.
     #[test]
     fn cost_debt_roster_only_admission_declined_by_planning_refuses_as_unreached() {
-        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true, false);
+        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true);
         let head = vec![
             "t.old".to_string(),
             "t.new".to_string(),
