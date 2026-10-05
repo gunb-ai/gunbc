@@ -1,0 +1,47 @@
+module test.claim.workspace_executor_install_witness
+
+import std.types { Bool, String }
+import gunbc.live_deploy.emit { emit_pipeline_or_poison, microvm_controller_install_intent, workspace_executor_install_steps, microvm_slot_unit_write_steps, microvm_slot_unit_file_with_workspace_root }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import v2.std.orchestration { Pipeline, FailFast }
+import gunbc.live_deploy.release_environment { installed_release_unit }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec, microvm_controller_requires_ci_reservation_unit }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+
+fn workspace_install_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }
+}
+
+fn installed_and_observed_controller_units_are_identical_control() -> Bool {
+  let dir = "/var/lib/gunbc/fixture-release"
+  serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(release_dir: dir))
+    == serialize_systemd_unit_file(file: installed_release_unit(file: microvm_slot_unit_file(
+      release_dir: dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()), release_dir: dir))
+}
+
+// Rendered over the executor's own install steps (the interface the claim is about), with one
+// structural check that the real controller install pipeline carries exactly those steps.
+fn workspace_install_includes_executor_without_starting_it_control() -> Bool {
+  let steps = workspace_executor_install_steps(revision: workspace_install_revision())
+  let script = emit_pipeline_or_poison(p: Pipeline { steps: steps, on_failure: FailFast }, refused: "")
+  all(steps, step => any(microvm_controller_install_intent(revision: workspace_install_revision()).steps, installed => installed == step))
+    && string_contains(s: script, pattern: "workspace-commissioning-executor.sh")
+    && string_contains(s: script, pattern: "workspace-commissioning-helper")
+    && string_contains(s: script, pattern: "gunbc-workspace-commissioning@.service")
+    && !string_contains(s: script, pattern: "systemctl start")
+    && !string_contains(s: script, pattern: "systemctl enable")
+}
+
+// The reservation unit is gated by one fact; the slot-unit steps the install writes are checked
+// for it directly rather than by rendering the whole controller install.
+fn workspace_install_does_not_restore_competing_ci_reservation_control() -> Bool {
+  !microvm_controller_requires_ci_reservation_unit()
+    && !string_contains(s: emit_pipeline_or_poison(p: Pipeline { steps: microvm_slot_unit_write_steps(revision: workspace_install_revision()), on_failure: FailFast }, refused: ""),
+      pattern: "gunbc-microvm-slot-reserve.service")
+}
+
+test fn installed_and_observed_controller_units_are_identical() -> Bool { installed_and_observed_controller_units_are_identical_control() }
+
+test fn workspace_install_does_not_restore_competing_ci_reservation() -> Bool { workspace_install_does_not_restore_competing_ci_reservation_control() }
+
+test fn workspace_install_includes_executor_without_starting_it() -> Bool { workspace_install_includes_executor_without_starting_it_control() }

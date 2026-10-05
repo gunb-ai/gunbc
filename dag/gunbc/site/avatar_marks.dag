@@ -1,0 +1,48 @@
+module gunbc.site.avatar_marks
+
+import std.types { String, Bool }
+import std.markup { Fragment, Element, attr }
+import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_body_transform, robot_mark_antenna_path }
+
+// Missing-picture treatments compose the existing brand geometry without changing it.
+// The host supplies the neutral circular background and foreground through its theme.
+// Opaque surface underpaint keeps faces legible and prevents rear figures showing
+// through the front figure. Border paint is too close to ink in the night theme.
+fn avatar_robot_face(antenna: Bool, opaque: Bool = false) -> Fragment {
+  Element { tag: "g", attributes: [], children: concat([
+    Element { tag: "g", attributes: [attr(name: "transform", value: robot_mark_body_transform)], children: concat(if opaque { [Element { tag: "path", attributes: [attr(name: "fill", value: "var(--surface)"), attr(name: "d", value: robot_mark_body_path)], children: [] }] } else { [] }, [
+      Element { tag: "path", attributes: [attr(name: "fill", value: "currentColor"), attr(name: "fill-rule", value: "evenodd"), attr(name: "d", value: robot_mark_body_path)], children: [] },
+    ]) },
+  ], if antenna { [Element { tag: "path", attributes: [attr(name: "fill", value: "currentColor"), attr(name: "d", value: robot_mark_antenna_path)], children: [] }] } else { [] }) }
+}
+
+fn unknown_avatar_svg(class_name: String, label: String) -> Fragment {
+  Element { tag: "svg", attributes: [attr(name: "class", value: class_name), attr(name: "viewBox", value: "0 0 64 64"), attr(name: "role", value: "img"), attr(name: "aria-label", value: label)], children: [
+    Element { tag: "g", attributes: [attr(name: "transform", value: "translate(11 20) scale(.35)")], children: [avatar_robot_face(antenna: false)] },
+    Element { tag: "g", attributes: [attr(name: "transform", value: "rotate(-10 33 13)")], children: [
+      Element { tag: "path", attributes: [attr(name: "d", value: "M28 10 C28 4 39 4 39 10 C39 14 33 14 33 18"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "3.4"), attr(name: "stroke-linecap", value: "round")], children: [] },
+      Element { tag: "circle", attributes: [attr(name: "cx", value: "33"), attr(name: "cy", value: "22"), attr(name: "r", value: "1.8"), attr(name: "fill", value: "currentColor")], children: [] },
+    ] },
+  ] }
+}
+
+// 2026-10-03 owner follow-up: opaque huddle faces must remain readable in both
+// themes. Each figure uses theme ink over solid surface paint, not dark border ink.
+fn group_avatar_svg(class_name: String, label: String) -> Fragment {
+  Element { tag: "svg", attributes: [attr(name: "class", value: class_name), attr(name: "viewBox", value: "0 0 64 64"), attr(name: "role", value: "img"), attr(name: "aria-label", value: label)], children: [
+    Element { tag: "g", attributes: [attr(name: "transform", value: "translate(3 14) rotate(-10 17 17) scale(.28)"), attr(name: "color", value: "color-mix(in srgb, currentColor 72%, var(--surface))")], children: [avatar_robot_face(antenna: true, opaque: true)] },
+    Element { tag: "g", attributes: [attr(name: "transform", value: "translate(28 14) rotate(10 17 17) scale(.28)"), attr(name: "color", value: "color-mix(in srgb, currentColor 86%, var(--surface))")], children: [avatar_robot_face(antenna: true, opaque: true)] },
+    Element { tag: "g", attributes: [attr(name: "transform", value: "translate(15 30) scale(.29)")], children: [avatar_robot_face(antenna: true, opaque: true)] },
+  ] }
+}
+
+// No assignee is a distinct state from an assigned identity whose profile is unknown.
+fn unassigned_avatar() -> Fragment {
+  Element { tag: "span", attributes: [attr(name: "class", value: "site-avatar site-avatar-unassigned"), attr(name: "data-avatar", value: "unassigned"), attr(name: "title", value: "Choose an assignee")], children: [
+    Element { tag: "svg", attributes: [attr(name: "class", value: "site-avatar-default-mark"), attr(name: "viewBox", value: "0 0 24 24"), attr(name: "role", value: "img"), attr(name: "aria-label", value: "Unassigned")], children: [
+      Element { tag: "circle", attributes: [attr(name: "cx", value: "12"), attr(name: "cy", value: "12"), attr(name: "r", value: "8"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "1.5")], children: [] },
+      Element { tag: "path", attributes: [attr(name: "d", value: "M10 9.5 C10 7.2 14 7.2 14 9.5 C14 11 12 11 12 13"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "1.5"), attr(name: "stroke-linecap", value: "round")], children: [] },
+      Element { tag: "circle", attributes: [attr(name: "cx", value: "12"), attr(name: "cy", value: "15.5"), attr(name: "r", value: ".8"), attr(name: "fill", value: "currentColor")], children: [] },
+    ] },
+  ] }
+}

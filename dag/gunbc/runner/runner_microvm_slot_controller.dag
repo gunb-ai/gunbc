@@ -1,5 +1,20 @@
 module gunbc.runner_microvm_slot_controller
 
+import gunbc.workspace_commissioning_executor_fence { workspace_executor_claim_controller, WorkspaceExecutorControllerAdmitted, WorkspaceExecutorControllerRefused }
+
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.workspace_slot_mutation {
+  workspace_slot_mutation_acquire, workspace_slot_mutation_release,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
+}
+import std.decl_ref { decl_ref }
+
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead, FieldMalformed, JsonDocumentUnreadable }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
+import gunbc.workspace_commissioning_admission_observe { workspace_observe_commissioning_admission }
+import gunbc.workspace_commissioning { WorkspaceCommissioningReady, WorkspaceCommissioningRefused }
+import gunbc.workspace_commissioning_controller { workspace_commissioning_reconcile, WorkspaceCommissioningComplete, WorkspaceCommissioningReconciliationRefused }
+
 import gunbc.fabric_executor_class { fleet_cell_sanction }
 import gunbc.runner_microvm_ci_admission {
   microvm_ci_admission, MicrovmCiLaunchAdmitted, MicrovmCiRecoveryRequired, MicrovmCiAdmissionRefused,
@@ -59,7 +74,8 @@ import extdeps.exec.command { LocalExec }
 import extdeps.posix.test_utility { test_executable_command, test_exists_command }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import extdeps.github.effect { GitHubOrganizationRef }
-import product.fabric.sanitation { CellId }
+import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations }
+import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import product.fabric.work { Work }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
 import gunbc.host_effect { LocalShell }
@@ -117,6 +133,7 @@ import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
   runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
 }
+import gunbc.runner_jit_mint { MicroVmSlotBinding }
 import gunbc.runner.runner_jit_perform {
   dispatch_jit_mint, JitMintDispatch, JitMintDispatchRefused, JitMintDispatchAuthorized,
   DispatchRefusedRunnerGroupUnrestricted,
@@ -179,6 +196,7 @@ type SlotControllerOutcome
   = SlotControllerRefused { refusal: SlotControllerRefusal }
   | SlotControllerRan { outcome: ControllerOutcome }
   | SlotControllerSettledWithoutLaunch { reason: String }
+  | SlotControllerCommissioned
 
 // ── stage 1: the slot, from the unit's own instance ─────────────────────────────────────────────
 
@@ -311,9 +329,12 @@ fn controller_credential_authority() -> GitHubCredentialAuthority {
   }
 }
 
-fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch {
+fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_under_observed_group"),
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+] {
   dispatch_jit_mint(
-    binding: binding,
+    binding: MicroVmSlotBinding { binding: binding },
     authority: controller_credential_authority(),
     control_plane: state,
     organization: github_organization_ref(),
@@ -358,7 +379,7 @@ fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlP
         mint_under_observed_group(binding: binding, state: state)
       other => JitMintReceived { delivery: JitCredentialNotDispatched { refusal: other } }
     }
-    JitMintDispatchAuthorized { attempt: _, app: _, installation: _, organization: _, request: _ } =>
+    JitMintDispatchAuthorized { dispatch: _ } =>
       mint_under_observed_group(binding: binding, state: state)
   }
 }
@@ -509,7 +530,7 @@ fn minted_registration(mint: JitMintPerformance) -> Int? {
   match mint {
     JitMintReceived { delivery: d } =>
       match d {
-        JitCredentialBoundToAttempt { attempt: _, credential: _, runner_id: id } => Present { value: id }
+        JitCredentialBoundToAttempt { slot: _, credential: _, runner_id: id } => Present { value: id }
         JitCredentialNotDispatched { refusal: _ } => none
         JitCredentialMintNotCreated { outcome: _ } => none
       }
@@ -623,6 +644,7 @@ fn outcome_text(o: SlotControllerOutcome) -> String {
     SlotControllerRefused { refusal: r } => join(["refused: ", refusal_text(r: r)], "")
     SlotControllerRan { outcome: c } => join(["ran: ", controller_outcome_label(c: c)], "")
     SlotControllerSettledWithoutLaunch { reason } => concat("settled without launch: ", reason)
+    SlotControllerCommissioned => "commissioned: readiness and provenance read back"
   }
 }
 
@@ -685,6 +707,7 @@ fn controller_exit(instance: String, invocation_id: NonEmptyStr, outcome: SlotCo
     match outcome {
       SlotControllerRan { outcome: _ } => ExitSuccess
       SlotControllerSettledWithoutLaunch { reason: _ } => ExitSuccess
+      SlotControllerCommissioned => ExitSuccess
       SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
     }
   }
@@ -748,7 +771,53 @@ fn slot_controller_dispatch(instance: String, release_dir: String, invocation_id
   }
 }
 
+// The reviewed commissioning credential uses the same installed controller and slot unit.
+// Publication is only reached after actual host, runtime, history and sanitation readback.
 fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  let commissioning = match parse_json_document(s: text) {
+    JsonDocumentParsed { value: body } => match json_field_string(obj: body, key: "schema") {
+      FieldRead { value: schema } => schema == "workspace-commissioning/v1"
+      FieldAbsent => false
+      FieldMalformed { cause: _ } => false
+    }
+    JsonDocumentUnreadable { gap: _ } => false
+  }
+  if commissioning {
+    match workspace_commissioning_directive_from_text(text: text) {
+      WorkspaceCommissioningDirectiveRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
+      WorkspaceCommissioningDirectiveReady { provenance } => match slot_of_instance(instance: instance) {
+        Absent => workspace_commissioning_slot_refused(reason: "unit instance is not a fabric slot")
+        Present { value: slot } => if slot != provenance.slot {
+          workspace_commissioning_slot_refused(reason: "credential names a different slot from its unit")
+        } else { match bind_slot_host(slot: slot) {
+          MicrovmHostBindingRefused { cause } => workspace_commissioning_slot_refused(reason: cause)
+          MicrovmHostBound { spec, host: _ } => match resolve_network_subject(slot: slot) {
+            NetworkSubjectRefused { refusal } => workspace_commissioning_slot_refused(reason: refusal_text(r: refusal))
+            NetworkSubjectResolved { subject } => match workspace_observe_commissioning_admission(
+              provenance: provenance, release_dir: release_dir as NonEmptyStr, login: spec.job_user, network: subject) {
+              WorkspaceCommissioningRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
+              WorkspaceCommissioningReady { commissioned } => match workspace_executor_claim_controller(provenance: provenance, invocation: invocation_id) {
+                WorkspaceExecutorControllerRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
+                WorkspaceExecutorControllerAdmitted { permit } => match workspace_commissioning_reconcile(
+                admitted: commissioned, provenance: provenance, network: subject, execution: permit) {
+                WorkspaceCommissioningComplete => SlotControllerCommissioned
+                WorkspaceCommissioningReconciliationRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
+                WorkspaceCommissioningProgress => workspace_commissioning_slot_refused(reason: "commissioning has an outstanding phase")
+              }
+              }
+            }
+          }
+        } }
+      }
+    }
+  } else { workspace_slot_dispatch_launch(text: text, instance: instance, release_dir: release_dir, invocation_id: invocation_id) }
+}
+
+fn workspace_commissioning_slot_refused(reason: String) -> SlotControllerOutcome {
+  SlotControllerRefused { refusal: WorkloadAdmissionRefused { detail: concat("commissioning: ", reason) } }
+}
+
+fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
   match workspace_launch_directive_from_text(text: text) {
     WorkspaceLaunchDirectiveRefused { reason } => workspace_slot_refused(reason: reason)
     WorkspaceLaunchDirectiveReady { directive } => match slot_of_instance(instance: instance) {
@@ -852,6 +921,22 @@ fn workspace_slot_readiness_route(readiness: CellIncarnationAdmission, desired: 
 
 fn workspace_slot_launch_observed(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
   store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  let owner = concat("workspace-controller:", invocation_id as String) as DurableHoldOwnerRef
+  match workspace_slot_mutation_acquire(slot_key: fabric_cell_allocation_key(slot: reservation.slot), owner: owner) {
+    WorkspaceSlotMutationRefused { reason } => workspace_slot_refused(reason: reason as String)
+    WorkspaceSlotMutationAdmitted { lease } => {
+      let outcome = workspace_slot_launch_under_exclusion(reservation: reservation, live: live, subject: subject,
+        store: store, release_dir: release_dir, invocation_id: invocation_id)
+      if workspace_slot_mutation_release(lease: lease) { outcome }
+      else { workspace_slot_refused(reason: "workspace controller returned but its mutation exclusion remains unsettled; recover this invocation") }
+    }
+  }
+}
+
+fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
+  store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_launch_observed")]
+{
   let bins = locus_binaries(release_dir: release_dir)
   if !path_is_executable(path: bins.firecracker) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } } }
   else if !path_is_executable(path: bins.jailer) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } } }
@@ -955,5 +1040,28 @@ fn workspace_retire_reserved_slot(reservation: WorkspaceReservation, subject: Sl
     Present { value: identity } => workspace_settle_controller_outcome(reservation: reservation, store: store,
       outcome: run_controller(identity: identity, allocation_generation: reservation.generation,
         plan: LaunchWithdrawn { reason: "workspace retirement requested before launch" }, subject: subject))
+  }
+}
+
+// Read-only qualification entry over the same host and network authorities the controller uses.
+// It creates no readiness, journal, reservation or runtime state. A failed observation is named.
+fn workspace_initial_sanitation_observe_wet(instance: String) -> ProcessExit {
+  match slot_of_instance(instance: instance) {
+    Absent => exit_failure(reason: "initial sanitation instance is not a fabric member")
+    Present { value: slot } => match bind_slot_host(slot: slot) {
+      MicrovmHostBindingRefused { cause } => exit_failure(reason: microvm_host_binding_refusal_text(c: cause))
+      MicrovmHostBound { spec: _, host: _ } => match resolve_network_subject(slot: slot) {
+        NetworkSubjectRefused { refusal } => exit_failure(reason: refusal_text(r: refusal))
+        NetworkSubjectResolved { subject } => match workspace_observe_initial_sanitation(subject: subject) {
+          WorkspaceInitialSanitationUnavailable { reason } => exit_failure(reason: reason)
+          WorkspaceInitialSanitationReadback { observation } => match cell_readiness_from_observations(
+            cell: runner_slot_instance_name(slot: slot) as CellId,
+            network_scope: SlotScopedNetwork, observations: observation.observations) {
+            CellReady { cell: _ } => ExitSuccess
+            unready => exit_failure(reason: to_string(unready))
+          }
+        }
+      }
+    }
   }
 }

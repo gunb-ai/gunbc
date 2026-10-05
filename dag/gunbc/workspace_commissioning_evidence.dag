@@ -9,7 +9,7 @@ import product.fabric.sanitation { CellId }
 type WorkspaceInitialReadinessPermit sole_constructor { cell: CellId, settled_generation: Int }
 
 fn workspace_initial_readiness_permit(cell: CellId, settled_generation: Int) -> WorkspaceInitialReadinessPermit
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning", decl_name: "workspace_commissioning_admit")]
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning", decl_name: "workspace_commissioning_admit"), decl_ref(module_path: "gunbc.workspace_commissioning", decl_name: "workspace_commissioning_restore_recorded")]
 {
   WorkspaceInitialReadinessPermit { cell: cell, settled_generation: settled_generation }
 }

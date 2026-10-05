@@ -1,0 +1,68 @@
+module gunbc.workspace_commissioning_executor_unit
+
+import std.types { String, NonEmptyStr }
+import std.measure { Second, second_count, second }
+import gunbc.live_deploy.release_environment { installed_release_unit }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, ServiceType, ExecMode,
+  ServiceUser, ServiceSlice, WorkingDirectory, Environment, ExecStart, Restart,
+  RemainAfterExit, TimeoutStopSec, NotInstallable, serialize_systemd_unit_file,
+  systemd_instance_name_specifier,
+}
+import extdeps.systemd.systemctl { systemctl_binary_path }
+import extdeps.languages.bash.invocation { bash_script_argv }
+import gunbc.runner_microvm_slot_unit {
+  microvm_controller_owner, microvm_controller_slice_unit_name,
+  microvm_slot_lifecycle_intent, microvm_slot_unit_instance_name,
+}
+import gunbc.runner_unit_file { runner_unit_teardown_directives }
+
+data workspace_executor_template_name: NonEmptyStr = "gunbc-workspace-commissioning@.service"
+
+fn workspace_executor_unit_instance_name(slot: NonEmptyStr) -> NonEmptyStr {
+  join(["gunbc-workspace-commissioning@", slot as String, ".service"], "") as NonEmptyStr
+}
+
+data workspace_executor_wait_bound: Second = second(count: 1200)
+
+fn workspace_executor_unit_path() -> NonEmptyStr {
+  concat("/etc/systemd/system/", workspace_executor_template_name as String) as NonEmptyStr
+}
+
+data workspace_executor_script_name: String = "workspace-commissioning-executor.sh"
+
+data workspace_executor_helper_name: String = "workspace-commissioning-helper"
+
+// Installed in the SAME root-owned, tree-receipted controller release. The helper is a bounded
+// adapter into the existing DAG authorities; the waiting process is Bash. This is not enabled at
+// boot: reviewed fleet apply starts a particular slot transaction. RemainAfterExit preserves a
+// completed submitting identity so retrying `start` does not immediately create a second actor.
+// Restart=no keeps a failed submission outstanding for journal recovery, not an automatic retry.
+// The dispatcher must inspect the journal/unit before resetting a completed or failed unit.
+fn workspace_executor_unit_file(release_dir: String, fleet_lock: String, wait_bound: Second) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [Description { text: "gunbc guarded workspace commissioning executor" }],
+    service: concat([
+      ServiceType { mode: ExecMode },
+      ServiceUser { name: microvm_controller_owner },
+      ServiceSlice { name: microvm_controller_slice_unit_name },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
+      Environment { assignment: "PATH=/usr/bin:/bin" },
+      Environment { assignment: concat("GUNBC_MICROVM_SLOT=", systemd_instance_name_specifier) as NonEmptyStr },
+      ExecStart { command: join(concat(
+        bash_script_argv(script_path: join([release_dir, "/", workspace_executor_script_name], "")),
+        [join([release_dir, "/", workspace_executor_helper_name], ""),
+          microvm_slot_unit_instance_name(slot_instance: systemd_instance_name_specifier) as String,
+          fleet_lock, to_string(second_count(s: wait_bound)), systemctl_binary_path() as String]), " ") as NonEmptyStr },
+      Restart { policy: "no" },
+      RemainAfterExit { active: true },
+      TimeoutStopSec { duration: "30s" },
+    ], runner_unit_teardown_directives(intent: microvm_slot_lifecycle_intent())),
+    install: NotInstallable,
+  }
+}
+
+fn workspace_executor_unit_text(release_dir: String, fleet_lock: String, wait_bound: Second) -> String {
+  serialize_systemd_unit_file(file: installed_release_unit(
+    file: workspace_executor_unit_file(release_dir: release_dir, fleet_lock: fleet_lock, wait_bound: wait_bound), release_dir: release_dir))
+}

@@ -140,6 +140,7 @@ import v2.std.node {
   node_subtree_nodes,
   ArrowEffectClaimsEdge,
   BinderTypeEdge,
+  ArrowSignatureOrderEdge,
   ArrowExecutionModeClaimEdge,
   ArrowResourceRequirementsEdge,
   MapLiteralEntryEdge,
@@ -5307,6 +5308,14 @@ fn body_lower_fresh_type_variable_domain_renames(edges: List<Edge>, path: List<I
 
 // Renames fresh variables in the Arrow's own signature: an atom, a record's edge targets, and the
 // type-parameter list's labels and targets. The body edge is left to the outer walk.
+//
+// A TYPE-PARAMETER BINDER SET IS RE-MINTED, NOT EDITED. Its declared order (one
+// ^arrow_signature_order_edge, v2.std.node type_binder_conj_conforms) is a projection of its binder
+// labels; renaming the labels in place while leaving that projection alone produced a set whose order
+// named the unpositioned variables and whose binders named the positioned ones, so every function
+// value and fold step failed post-normalize well-formedness (the #13038 regression, reverted by
+// #13293). The renamed binders go back through type_binder_set_children, the one mint of a set and
+// its order, so the two are one fact again.
 fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbol>, arrow_body: Bool) -> Node {
   if arrow_body {
     node
@@ -5318,9 +5327,10 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
           Absent => node
         }
       TypeNode { connective: Conj } =>
-        node_with_occurrence_id(
-          kind: node.kind,
-          children: fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
+        let renamed_edges = fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
+          if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+            acc
+          } else {
             let label = match e.label {
               StructuralLabel { label: _ } => e.label
               Authored { name: n } =>
@@ -5331,12 +5341,20 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
               Positional => e.label
             }
             list_snoc_item(xs: acc, item: Edge { label: label, target: body_lower_rename_fresh_type_variables(node: e.target, renames: renames, arrow_body: false) })
-          }),
+          }
+        })
+        node_with_occurrence_id(
+          kind: node.kind,
+          children: if body_lower_conj_carries_declared_order(node: node) { type_binder_set_children(binders: renamed_edges, source: node) } else { renamed_edges },
           occurrence_id: node.occurrence_id
         )
       _ => node
     }
   }
+}
+
+fn body_lower_conj_carries_declared_order(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: ArrowSignatureOrderEdge) })
 }
 
 fn body_lower_function_value_arrow(

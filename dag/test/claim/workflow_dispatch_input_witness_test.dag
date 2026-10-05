@@ -1,18 +1,19 @@
 module test.claim.workflow_dispatch_input_witness
 
+import gunbc.fleet_converge_scope { LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
+
 import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
-import gunbc.fleet_converge_plan {
-  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly,
-}
+
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
-  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy, HostResetReturn,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
+  fleet_converge_workspace_commissioning_plan_step, fleet_converge_any_plan_step_if,
   RunnerPasswordSessionToolConverge,
   RunnerBrowserToolchainConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
@@ -21,7 +22,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, ApprovalDeviceEnrolmentCodeIssue, fleet_converge_mutation_group_for,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkRuntimeImageProduce, SparkRuntimeImageProbe, SparkArmCheckpointMaterialize, SparkArmGroupLaunch, SparkArmGroupObserve, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for, ApprovalDeviceEnrolmentCodeIssue,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -667,10 +668,11 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
       FabricExecutionCellsOnly => false
       FabricAllocationStoreOnly => false
     WorkspaceAllocationOnly => false
+    WorkspaceSlotCommissioningOnly => false
     }
   }
   let plans_present = all(
-    [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan],
+    [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan],
     m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
   )
   deploy_live && plans_present
@@ -795,8 +797,6 @@ test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation(
 test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials() -> Bool {
   let env = step_env_text(step: fleet_converge_pair_serving_d0_step())
   let admit_env = step_env_text(step: fleet_converge_pair_serving_d0_admit_step())
-  let ids = fleet_converge_credential_prelude_ids()
-  let group = fleet_converge_mutation_concurrency_group_expression
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
     && string_contains(s: env, pattern: "GUNBC_D0_CONSENT=$\{\{ github.event.inputs.d0_consent \}\}")
     && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
@@ -807,16 +807,29 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && (match fleet_converge_mode_fleet_ssh_key_demand(mode: PairServingD0) { FleetSshKeyConsumed => true  FleetSshKeyNotConsumed => false })
     && step_id_text(step: fleet_converge_pair_serving_d0_step()) == "pair_serving_d0"
     && !any(fleet_converge_dispatch_inputs, i => i.name == "d0_group")
-    && step_index(ids: ids, id: "pair_serving_d0_admit") >= 0
+}
+
+// THE SAME MODE'S ADMISSION ORDER, split out for the same reason as its concurrency domain: the
+// credential prelude is the whole job's step roster, a different subject from the step's environment.
+test fn the_pair_serving_d0_admission_runs_before_any_credential_step() -> Bool {
+  let ids = fleet_converge_credential_prelude_ids()
+  step_index(ids: ids, id: "pair_serving_d0_admit") >= 0
     && step_index(ids: ids, id: "pair_serving_d0_admit") < step_index(ids: ids, id: "wif_auth")
     && step_index(ids: ids, id: "pair_serving_d0") < 0
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: DashboardDeploy, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: ApprovalBrokerDarkInstall, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv2")
+}
+
+// THE SAME MODE'S CONCURRENCY DOMAIN, split from the environment claim above (DESIGN section 3: a
+// conjunction of independent cases is split when splitting loses no coverage -- the domain and the
+// environment are different subjects, and together they crossed the new-witness step budget).
+test fn the_pair_serving_d0_mode_shares_group_as_arm_domain_with_srv1_control_plane() -> Bool {
+  let group = fleet_converge_mutation_concurrency_group_expression
+  fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: DashboardDeploy, host: "srv1", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: ApprovalBrokerDarkInstall, host: "srv1", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv1", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv2", target: "srv5", run_id: "1")
     && string_contains(s: group, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
     && string_contains(s: group, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
 }
@@ -826,27 +839,33 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
 // queue behind each other. The emitted step reads the target and runs the modeled entry.
 test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool {
   let step = fleet_converge_spark_v41_checkpoint_materialize_step()
-  fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv3") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
-    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv2")
+  fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv3", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2", target: "srv5", run_id: "1")
+    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2", target: "srv5", run_id: "1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv2", target: "srv5", run_id: "1")
     && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1'")
     && step_id_text(step: step) == "spark_v41_checkpoint_materialize"
     && string_contains(s: step_run_text(step: step), pattern: "--function v41_checkpoint_materialize_ci_wet")
 }
 
-// THE V4.1 IMAGE BUILD IS IN GROUP A'S ARM DOMAIN AND THE PROBE BESIDE IT IS NOT, which is the
-// whole distinction: the build is admitted by the Group A pair subject holding its target and
-// occupies that host for hours, so two dispatches naming different executors must still queue
-// behind each other and behind D0; the probe reads a pinned image and changes nothing, so it stays
-// keyed to whichever executor runs it. A regression that quietly gave the build the executor key
-// would read as green everywhere else.
-test fn the_v41_runtime_image_build_serializes_on_group_a_and_the_probe_does_not() -> Bool {
+// THE IMAGE PRODUCE AND THE CHECKPOINT MATERIALIZE ARE KEYED BY THEIR TARGET (operator ruling,
+// 2026-10-03): two targets run side by side, one target queues, and neither joins the executor's key
+// or the shared Group A key the launch and D0 hold -- the per-host claim inside each mode is the fence.
+// The probe stays keyed to its executor. The read-only observe is keyed by its own run, so no other
+// dispatch can supersede it, and the launch keeps the shared key.
+test fn the_produce_and_materialize_key_by_target_and_the_observe_by_its_own_run() -> Bool {
   let expression = fleet_converge_mutation_concurrency_group_expression
-  fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv3") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
-    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv3") == fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv2")
-    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv3") != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv2")
-    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv3") != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv3")
-    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_v41_runtime_image_build' && 'gunbc-host-mutation-srv1'")
+  let d0 = fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1")
+  fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1", target: "srv7", run_id: "1") == "gunbc-host-mutation-srv7"
+    && fleet_converge_mutation_group_for(mode: SparkArmCheckpointMaterialize, host: "srv1", target: "srv5", run_id: "1") == "gunbc-host-mutation-srv5"
+    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1", target: "srv7", run_id: "1") != fleet_converge_mutation_group_for(mode: SparkArmCheckpointMaterialize, host: "srv1", target: "srv5", run_id: "2")
+    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1", target: "srv7", run_id: "1") != d0
+    && fleet_converge_mutation_group_for(mode: SparkArmGroupLaunch, host: "srv1", target: "srv6", run_id: "1") == d0
+    && fleet_converge_mutation_group_for(mode: SparkArmGroupObserve, host: "srv1", target: "srv6", run_id: "1") != fleet_converge_mutation_group_for(mode: SparkArmGroupObserve, host: "srv1", target: "srv6", run_id: "2")
+    && fleet_converge_mutation_group_for(mode: SparkArmGroupObserve, host: "srv1", target: "srv6", run_id: "1") != d0
+    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv3", target: "srv5", run_id: "1") != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv2", target: "srv5", run_id: "1")
+    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_runtime_image_produce' && format('gunbc-host-mutation-{0}', github.event.inputs.target)")
+    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_arm_group_observe' && format('gunbc-read-only-{0}', github.run_id)")
+    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_arm_group_launch' && 'gunbc-host-mutation-srv1'")
 }
 
 // THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation
@@ -900,11 +919,37 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
 // which D0 must serialise with, still shares D0's group. Reverting the mode's row to the executor
 // domain turns the first conjunct red.
 test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_d0() -> Bool {
-  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1")
-  issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
-    && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1")
-    && issue != fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv1")
-    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2")
-    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1", target: "srv1", run_id: "0")
+  issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv1", run_id: "0")
+    && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1", target: "srv1", run_id: "0")
+    && issue != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1", target: "srv1", run_id: "0")
+    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2", target: "srv2", run_id: "0")
+    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv1", run_id: "0")
     && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
+}
+
+// The plan choice must reach the commissioning-only entry with both admission bindings,
+// and participate in the shared plan artifact upload rather than silently losing its receipt.
+test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
+  let step = fleet_converge_workspace_commissioning_plan_step()
+  let env = step_env_text(step: step)
+  let scope_matches = match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {
+    Present { value: WorkspaceSlotCommissioningOnly } => true
+    _ => false
+  }
+  scope_matches
+    && step_id_text(step: step) == "workspace_commissioning_plan"
+    && string_contains(s: step_run_text(step: step), pattern: "--function fleet_converge_workspace_commissioning_plan_wet")
+    && string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
+    && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
+    && string_contains(s: fleet_converge_any_plan_step_if, pattern: "workspace_commissioning_plan")
+    && match step {
+      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: Present { value: bound } } =>
+        bound == gunbc.fleet_workflow_steps.gunbc_ci_fleet_converge_plan_step_timeout_minutes
+      _ => false
+    }
+    && match fleet_converge_mode_fleet_ssh_key_demand(mode: WorkspaceCommissioningPlan) {
+      FleetSshKeyConsumed => true
+      FleetSshKeyNotConsumed => false
+    }
 }

@@ -10,6 +10,7 @@ import extdeps.ebay.errors { EbayErrorShape }
 import extdeps.ebay.ebay_contracts { condition_wire_contract, format_type_wire_contract }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

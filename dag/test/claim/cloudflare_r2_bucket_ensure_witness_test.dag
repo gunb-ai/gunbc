@@ -7,7 +7,7 @@ import std.upsert_decision {
   Noop, Apply, Refuse,
   UpsertClassification,
 }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.transports.rest { RestRefused, RestStatusRefused, RestTransportRefused }
 import extdeps.cloudflare.r2 { R2JurisdictionDefault, R2JurisdictionEu, R2BucketLocation, r2_bucket_location_wire }
 import extdeps.cloudflare.r2_buckets {
   R2BucketResponse,
@@ -58,10 +58,6 @@ fn witness_standing(jurisdiction_is_eu: Bool) -> R2OriginStanding {
 
 fn present(name: String, jurisdiction: String) -> R2BucketRead {
   R2BucketPresent { bucket: R2BucketResponse { name: name, jurisdiction: Present { value: jurisdiction }, location: none } }
-}
-
-fn empty_bucket() -> R2BucketResponse {
-  R2BucketResponse { name: "", jurisdiction: none, location: none }
 }
 
 fn is_noop(c: UpsertClassification<R2BucketCreatePlan>) -> Bool {
@@ -155,15 +151,13 @@ fn read_is_refused(r: R2BucketRead) -> Bool {
 
 test fn a_403_carrying_not_entitled_reads_as_unentitled() -> Bool {
   read_is_not_entitled(r: classify_r2_bucket_get(
-    outcome: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10042,\"message\":\"Please enable R2 through the Cloudflare Dashboard.\"}],\"messages\":[],\"result\":null}" },
-    bucket: empty_bucket(),
+    outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10042,\"message\":\"Please enable R2 through the Cloudflare Dashboard.\"}],\"messages\":[],\"result\":null}" } },
   ))
 }
 
 test fn a_404_carrying_no_such_bucket_reads_as_absent() -> Bool {
   read_is_absent(r: classify_r2_bucket_get(
-    outcome: RestStatusRefused { status: 404, body: "{\"success\":false,\"errors\":[{\"code\":10006,\"message\":\"The specified bucket does not exist.\"}],\"messages\":[],\"result\":null}" },
-    bucket: empty_bucket(),
+    outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "{\"success\":false,\"errors\":[{\"code\":10006,\"message\":\"The specified bucket does not exist.\"}],\"messages\":[],\"result\":null}" } },
   ))
 }
 
@@ -171,17 +165,16 @@ test fn a_404_carrying_no_such_bucket_reads_as_absent() -> Bool {
 // mentions the entitlement code, and a bare 404 is NOT an established absence.
 test fn a_403_with_another_code_is_an_unclassified_refusal() -> Bool {
   read_is_refused(r: classify_r2_bucket_get(
-    outcome: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Authentication error (not 10042)\"}]}" },
-    bucket: empty_bucket(),
+    outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Authentication error (not 10042)\"}]}" } },
   ))
 }
 
 test fn a_404_with_an_unreadable_body_is_not_an_absence() -> Bool {
-  read_is_refused(r: classify_r2_bucket_get(outcome: RestStatusRefused { status: 404, body: "not found" }, bucket: empty_bucket()))
+  read_is_refused(r: classify_r2_bucket_get(outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "not found" } }))
 }
 
 test fn a_transport_failure_is_not_an_absence() -> Bool {
-  read_is_refused(r: classify_r2_bucket_get(outcome: RestTransportRefused { cause: "tls handshake alert" }, bucket: empty_bucket()))
+  read_is_refused(r: classify_r2_bucket_get(outcome: RestRefused { refusal: RestTransportRefused { cause: "tls handshake alert" } }))
 }
 
 // ── THE REAL ROSTER REACHES THE CLASSIFIER ──────────────────────────────────────────────────────

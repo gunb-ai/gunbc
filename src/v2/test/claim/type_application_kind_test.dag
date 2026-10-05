@@ -13,7 +13,11 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
-import std.types { List }
+import std.types { List, Map }
+import v2.compiler.body_lowering_fold { body_lower_rename_fresh_type_variables }
+import v2.std.collection { empty_map, map_insert }
+import v2.std.node { type_binder_conj_conforms }
+import v2.std.type_binder { binder_conj_names }
 
 // A TYPE APPLICATION AGAINST ITS DECLARATION'S BINDERS (v2.std.type_binder type_application_conformance,
 // consumed by v2.compiler.resolve resolve_type_application). Each specimen is one inline source over the
@@ -182,4 +186,32 @@ test fn tak_arity_is_decided_before_kind() -> Bool {
     TypeApplicationArityMismatch { declared: d, supplied: s } => (d == 1) && (s == 2)
     _ => false
   }
+}
+
+// A FUNCTION VALUE'S BINDER SET STAYS ONE FACT ACROSS POSITIONING (the #13038 regression, reverted by
+// #13293). A function value's fresh type variables are minted unpositioned and then renamed to their
+// position (v2.compiler.body_lowering_fold body_lower_rename_fresh_type_variables). Renaming the binder labels
+// while leaving the set's declared-order edge naming the old variables made every lambda and fold step
+// malformed at post-normalize. Supplied at the renamer's interface: an unkinded set over two
+// unpositioned variables, renamed, must still conform and declare the renamed names in authored order.
+// The route through the real assembly is held by v2.test.claim.body_type_annotation_refusal
+// btar_unannotated_fn_literal_is_not_erased and the fold_encoding claims.
+fn tak_unkinded_binder(name: Symbol) -> Edge {
+  Edge { label: Authored { name: name }, target: tak_atom(id: name) }
+}
+
+fn tak_position_renames() -> Map<Symbol, Symbol> {
+  map_insert(m: map_insert(m: empty_map(), key: ^u_y, value: ^p_y), key: ^u_ret, value: ^p_ret)
+}
+
+test fn tak_renamed_function_value_binder_set_keeps_its_declared_order() -> Bool {
+  let renamed = body_lower_rename_fresh_type_variables(node: tak_set(binders: [tak_unkinded_binder(name: ^u_y), tak_unkinded_binder(name: ^u_ret)]), renames: tak_position_renames(), arrow_body: false)
+  type_binder_conj_conforms(t: renamed) && (binder_conj_names(conj: renamed) == [^p_y, ^p_ret])
+}
+
+// The unrenamed name is left alone: a set whose binders the map does not name comes back conforming
+// and unchanged in its declared order.
+test fn tak_binder_set_outside_the_rename_map_is_unchanged() -> Bool {
+  let kept = body_lower_rename_fresh_type_variables(node: tak_set(binders: [tak_unkinded_binder(name: ^T)]), renames: tak_position_renames(), arrow_body: false)
+  type_binder_conj_conforms(t: kept) && (binder_conj_names(conj: kept) == [^T])
 }

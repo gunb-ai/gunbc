@@ -9,7 +9,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_crypt
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr, Ipv4Prefix, ipv4_prefix, render_ipv4_prefix, ipv4_address_eq }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal, runner_slot_instance_name }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_microvm_network_shape { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,

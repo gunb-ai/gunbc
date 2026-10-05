@@ -1,14 +1,17 @@
 module extdeps.systems.types
 
-import std.types { NonEmptyStr, List, Int, Bool }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value }
+import v2.std.algebra { filter }
+import std.types { NonEmptyStr, List, Int, Bool, String }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt }
+import std.nat { Nat }
+import extdeps.storage.types { PcieLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.toolchain.types { Architecture }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
@@ -64,4 +67,268 @@ type IntegratedComputeSystemCatalogRow {
 
 fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogRow) -> Int {
   fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + hardware_thread_count_value(cluster.core_count))
+}
+
+// A COHERENT SUPERCHIP IS NOT AN INTEGRATED SYSTEM, and forcing it into the row above would erase
+// the two facts that decide what it is worth. IntegratedComputeSystemCatalogRow is a sealed
+// enclosure with ONE memory pool, its own NIC, storage and PSU. A superchip module is neither: it
+// ships with no enclosure, NIC, storage or power supply (those belong to whatever carrier board it
+// mounts on, which is a separately governed product), and its memory is TWO tiers -- the GPU's own
+// memory, read at the GPU's full bandwidth, and the CPU's memory, which the GPU reaches coherently
+// over a chip-to-chip link at a different bandwidth. Collapsing them into one MemoryFacts would either
+// report the small fast tier as the whole pool or the whole pool as fast; both are wrong answers to
+// "will this model's weights decode at HBM speed".
+//
+// The chip-to-chip link is carried PER DIRECTION, because the vendor headline is the bidirectional
+// aggregate and a reader comparing it to a one-way memory bandwidth would double it.
+//
+// The GPU tier is the nested GpuModelCatalogRow (memory + memory_bandwidth), so it is not restated.
+// figure_standing is ON the row rather than beside it so no consumer can read a figure without also
+// reading whether it was cited -- the extdeps.external_authority CitedFigureStanding coproduct.
+type CoherentMemoryTier {
+  memory: MemoryFacts
+  bandwidth: Bandwidth
+}
+
+// board_designation is Absent where no cited document names the board for that configuration: an
+// unknown identifier is carried as unknown, never as an explanatory sentence a consumer could match on.
+type CoherentSuperchipCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  board_designation: NonEmptyStr?
+  cpu_architecture: Architecture
+  cpu_core_clusters: List<CpuCoreCluster>
+  gpu: GpuModelCatalogRow
+  cpu_memory: CoherentMemoryTier
+  chip_to_chip_bandwidth_per_direction: Bandwidth
+  module_power_floor: Watt
+  module_power_ceiling: Watt
+  figure_standing: CitedFigureStanding
+}
+
+// EVERY BYTE THE GPU CAN ADDRESS COHERENTLY: its own tier plus the CPU tier behind the chip-to-chip
+// link. Derived, never authored, so the two tiers cannot disagree with their sum.
+fn coherent_superchip_coherent_capacity(row: CoherentSuperchipCatalogRow) -> ByteSize {
+  byte_size(count: byte_size_count(b: row.gpu.memory.capacity) + byte_size_count(b: row.cpu_memory.memory.capacity))
+}
+
+// ── A SYSTEM'S MEMORY COMPONENTS, ADDRESSABLE ────────────────────────────────────────────────────
+//
+// The rows above carry each memory's FACTS but give no way to name "this memory of this system", so
+// a consumer that places bytes on one memory and not another had nothing to point at. These are
+// derived projections over the existing fields and add no figures. A component's identity is the
+// system's own catalog name plus how its GPU reaches that memory.
+//
+// Addressability is a physical fact about the package, not a deployment choice:
+// - the integrated SoC's one pool serves CPU and GPU alike;
+// - a superchip's GPU memory is reached directly;
+// - its CPU memory is reached across the coherent chip-to-chip link at that link's per-direction
+//   rate.
+// A new system shape adds its own projection here. No generic enum of memories grows an arm.
+type GpuMemoryAddressability
+  = GpuAndCpuShareOnePool
+  | GpuAddressesDirectly
+  | GpuAddressesAcrossCoherentLink { per_direction: Bandwidth }
+
+// SEALED: the row-shape projections below are the only constructors, so a component always carries
+// facts copied from a catalog row and never hand-assembled ones.
+type SystemMemoryComponent sole_constructor {
+  system: NonEmptyStr
+  memory: MemoryFacts
+  addressability: GpuMemoryAddressability
+}
+
+fn integrated_system_unified_memory(row: IntegratedComputeSystemCatalogRow) -> SystemMemoryComponent {
+  SystemMemoryComponent { system: row.soc_model, memory: row.memory, addressability: GpuAndCpuShareOnePool }
+}
+
+fn integrated_system_memory_components(row: IntegratedComputeSystemCatalogRow) -> List<SystemMemoryComponent> {
+  [integrated_system_unified_memory(row: row)]
+}
+
+fn coherent_superchip_memory_components(row: CoherentSuperchipCatalogRow) -> List<SystemMemoryComponent> {
+  [
+    SystemMemoryComponent { system: row.model, memory: row.gpu.memory, addressability: GpuAddressesDirectly },
+    SystemMemoryComponent {
+      system: row.model,
+      memory: row.cpu_memory.memory,
+      addressability: GpuAddressesAcrossCoherentLink { per_direction: row.chip_to_chip_bandwidth_per_direction },
+    },
+  ]
+}
+
+fn gpu_memory_addressability_wire(a: GpuMemoryAddressability) -> NonEmptyStr {
+  match a {
+    GpuAndCpuShareOnePool => "unified" as NonEmptyStr
+    GpuAddressesDirectly => "gpu-local" as NonEmptyStr
+    GpuAddressesAcrossCoherentLink { per_direction: _ } => "across-coherent-link" as NonEmptyStr
+  }
+}
+
+// IDENTITY IS THE WHOLE FACT, not a name:
+// - the system;
+// - the memory's capacity and kind;
+// - the complete addressability, including a coherent link's rate.
+// Equality on the two coproducts is the derived structural equality (DESIGN §4: operations come
+// from inhabitance), so a new arm needs no table here.
+// Two components agree only when every fact agrees. A row edited to different memory, or to a
+// different link rate, under the same system name projects a component that is NOT the original's,
+// so a tier join can never alias them.
+fn system_memory_component_same(a: SystemMemoryComponent, b: SystemMemoryComponent) -> Bool {
+  (a.system as String) == (b.system as String)
+    && byte_size_count(b: a.memory.capacity) == byte_size_count(b: b.memory.capacity)
+    && a.memory.memory_kind == b.memory.memory_kind
+    && a.addressability == b.addressability
+}
+
+fn system_memory_component_wire(c: SystemMemoryComponent) -> NonEmptyStr {
+  join([c.system as String, "/", gpu_memory_addressability_wire(a: c.addressability) as String], "") as NonEmptyStr
+}
+
+// ── COMPLETE SUPERCHIP SERVERS ───────────────────────────────────────────────────────────────
+//
+// A COMPLETE SERVER IS THE THIRD SHAPE, beside the sealed integrated system and the bare superchip: an
+// OEM chassis built around ONE superchip module, with its own carrier, power supplies, management
+// controller, storage and slots. It references the module rows it supports rather than restating
+// their memory figures, so a server cannot disagree with NVIDIA about what a GH200 holds. Supported and
+// announced module configurations are kept apart because a vendor's "coming soon" is not a shipping
+// configuration.
+type PowerSupplyRedundancy
+  = SuppliesOnePlusOne
+  | SuppliesNonRedundant
+
+// A SUPPLY'S OUTPUT DEPENDS ON ITS INPUT, so it is a list of ratings by AC input range, as vendors
+// print them ("1000W @ 100-127Vac input / 2000W @ 200-240Vac input"). A rating whose input range the
+// source does not state carries no range, and is never assumed to hold at a site's voltage.
+type SupplyInputRange {
+  minimum_vac: Nat
+  maximum_vac: Nat
+}
+
+type SupplyOutputRating {
+  input: SupplyInputRange?
+  output: Watt
+}
+
+type ServerPowerSupplies {
+  form: NonEmptyStr
+  count: Nat
+  redundancy: PowerSupplyRedundancy
+  output_ratings: List<SupplyOutputRating>
+}
+
+// THE CARRIER INSIDE A SERVER, as its vendor documents it: the module connectors, each power input
+// with its rail where the document names one, and each connector by designator with the vendor's own
+// family name and function. Recorded so a different carrier (P4261) can be read against a documented
+// one -- as a pattern, never as its pinout.
+type BoardPowerInput {
+  designator: NonEmptyStr
+  label: NonEmptyStr
+  rail: Volt?
+}
+
+type BoardConnector {
+  designators: List<NonEmptyStr>
+  family: NonEmptyStr
+  function: NonEmptyStr
+  link: PcieLink?
+}
+
+type SuperchipCarrierBoardRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  module_connectors: List<NonEmptyStr>
+  power_inputs: List<BoardPowerInput>
+  connectors: List<BoardConnector>
+  on_board_devices: List<NonEmptyStr>
+  management_board: NonEmptyStr?
+}
+
+type ServerManagementController {
+  bmc: NonEmptyStr
+  dedicated_management_lan: NonEmptyStr
+}
+
+type StorageBay {
+  count: Nat
+  form_factor: NonEmptyStr
+  link: PcieLink?
+  placement: NonEmptyStr
+}
+
+type ExpansionSlot {
+  count: Nat
+  mechanical: NonEmptyStr
+  link: PcieLink
+  intended_for: NonEmptyStr?
+}
+
+type FrontPanelPort {
+  count: Nat
+  connector: NonEmptyStr
+  function: NonEmptyStr?
+}
+
+type ChassisDimensions {
+  width: Millimeter
+  depth: Millimeter
+  height: Millimeter
+}
+
+type TemperatureRange {
+  minimum: Celsius
+  maximum: Celsius
+}
+
+type HumidityRange {
+  minimum_percent: Nat
+  maximum_percent: Nat
+  condition: NonEmptyStr
+}
+
+type SuperchipServerCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  form_factor: NonEmptyStr
+  dimensions: ChassisDimensions?
+  supported_superchips: List<CoherentSuperchipCatalogRow>
+  announced_superchips: List<CoherentSuperchipCatalogRow>
+  module_power_ceiling: Watt
+  carrier: SuperchipCarrierBoardRow?
+  power_supplies: ServerPowerSupplies
+  management: ServerManagementController?
+  host_network: List<SystemNetworkPort>
+  storage_bays: List<StorageBay>
+  expansion_slots: List<ExpansionSlot>
+  front_panel: List<FrontPanelPort>
+  fans: NonEmptyStr?
+  operating_temperature: TemperatureRange?
+  non_operating_temperature: TemperatureRange?
+  non_operating_humidity: HumidityRange?
+  figure_standing: CitedFigureStanding
+}
+
+// THE MOST A SERVER CAN DRAW FROM ITS SUPPLIES AT A GIVEN MAINS VOLTAGE, WITH REDUNDANCY HELD: the
+// rating whose input range contains the voltage, then one supply's worth if 1+1 (the system must run on
+// one) or all of them summed if not. Absent when no stated rating covers the voltage -- a "2000W"
+// printed without its input range answers nothing about a 120 V site. A ceiling on draw, not a
+// measurement of it.
+fn supply_rating_at(row: SuperchipServerCatalogRow, mains_vac: Nat) -> Watt? {
+  match (filter(row.power_supplies.output_ratings, r => match r.input {
+    Present { value: range } => range.minimum_vac <= mains_vac && mains_vac <= range.maximum_vac
+    Absent => false
+  })).first() {
+    Absent => Absent
+    Present { value: r } => Present { value: r.output }
+  }
+}
+
+fn server_supply_ceiling_at(row: SuperchipServerCatalogRow, mains_vac: Nat) -> Watt? {
+  match supply_rating_at(row: row, mains_vac: mains_vac) {
+    Absent => Absent
+    Present { value: w } => match row.power_supplies.redundancy {
+      SuppliesOnePlusOne => Present { value: w }
+      SuppliesNonRedundant => Present { value: watt(count: watt_count(w: w) * row.power_supplies.count) }
+    }
+  }
 }

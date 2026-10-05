@@ -1,6 +1,6 @@
 module gunbc.ci_spec
 
-import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -12,8 +12,8 @@ import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
-import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
-import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
+import gunbc.spark.runtime_image_produce_dispatch { runtime_image_produce_receipt_path, runtime_image_distribute_receipt_path }
+import gunbc.spark.arm_group_launch_dispatch { arm_group_load_receipt_path, arm_checkpoint_receipt_path, arm_group_launch_plan_path, arm_group_launch_receipt_path, arm_group_observe_receipt_path }
 import gunbc.spark.v41_serving_load { v41_serving_load_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
@@ -756,6 +756,11 @@ data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = 
   function: "fleet_converge_allocation_store_plan_wet",
 }
 
+data gunbc_ci_fleet_converge_workspace_commissioning_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_workspace_commissioning_plan_wet",
+}
+
 data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_apply_wet",
@@ -1079,30 +1084,58 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
 // group -- and it is the only step in this job that can occupy a host for hours.
 // THE WIRELESS LINK CONVERGE. Root on a Spark is the administrator password leg, so it shares the
 // probe's prelude; it changes the radio's power-save policy and the connection profile only.
+// THE GRANT OBSERVE (gunbc.fleet_multi_principal_probe spark_exact_grant_probe_ci_wet). Read-only:
+// it rides the job's fleet-key agent as gunbc-automation and the bootstrap principal on every procured
+// Spark, needs no administrator credential, and installs nothing.
+data gunbc_ci_spark_grants_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
+  function: "spark_exact_grant_probe_ci_wet",
+}
+
 data gunbc_ci_spark_wireless_link_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_wireless_link_converge.dag",
   function: "spark_wireless_link_converge_ci_wet",
 }
 
-data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
-  function: "v41_runtime_image_produce_ci_wet",
+data gunbc_ci_spark_runtime_image_produce_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/runtime_image_produce_dispatch.dag",
+  function: "runtime_image_produce_ci_wet",
 }
 
 // THE DISTRIBUTION OF THAT PRODUCED IMAGE TO ANOTHER GROUP A SPARK: save on the host the production
 // receipt names, scp through the executor, load on the selected Spark, and the configuration digest
 // read back there. The same prelude, because docker's socket on both ends is root-owned.
-data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
-  function: "v41_runtime_image_distribute_ci_wet",
+data gunbc_ci_spark_runtime_image_distribute_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/runtime_image_produce_dispatch.dag",
+  function: "runtime_image_distribute_ci_wet",
 }
 
-// THE V4.1 FOUR-RANK LAUNCH ON GROUP A (gunbc.spark.v41_group_a_launch): the held image read back on
-// every host, the registry read inside its digest, occupancy read, and only on admission the Engram
-// staging and the arm transaction. The same prelude: the session host is the dispatch's target.
-data gunbc_ci_spark_v41_group_a_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/v41_group_a_launch.dag",
-  function: "v41_group_a_launch_ci_wet",
+// THE ARM GROUP LAUNCH (gunbc.spark.arm_group_launch_dispatch): one dry-plan entry and one wet entry for
+// every arm the dispatch rosters, the arm chosen by closed dispatch inputs. The same prelude: the session
+// host is the dispatch's target.
+data gunbc_ci_spark_arm_checkpoint_materialize_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
+  function: "arm_checkpoint_materialize_ci",
+}
+
+data gunbc_ci_spark_arm_group_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
+  function: "arm_group_observe_ci",
+}
+
+data gunbc_ci_spark_arm_group_launch_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
+  function: "arm_group_launch_plan_ci",
+}
+
+data gunbc_ci_spark_arm_group_load_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
+  function: "arm_group_load_ci",
+}
+
+data gunbc_ci_spark_arm_group_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
+  function: "arm_group_launch_ci_wet",
 }
 
 // THE V4.1 SERVING-LOAD STAIRCASE (gunbc.spark.v41_serving_load): the shared serving-load runner against
@@ -1309,6 +1342,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_plan_target,
     gunbc_ci_fleet_converge_launch_environment_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
+    gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
@@ -1330,6 +1364,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_spark_grants_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_microvm_slot_reserve_target,
@@ -2000,6 +2035,16 @@ fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_fleet_converge_allocation_store_plan_target.entry,
     function: gunbc_ci_fleet_converge_allocation_store_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_workspace_commissioning_plan_target.entry,
+    function: gunbc_ci_fleet_converge_workspace_commissioning_plan_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -2866,6 +2911,16 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
   )
 }
 
+fn gunbc_ci_spark_grants_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_grants_observe_target.entry,
+    function: gunbc_ci_spark_grants_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
+  )
+}
+
 fn gunbc_ci_spark_wireless_link_converge_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
@@ -2879,25 +2934,69 @@ fn gunbc_ci_spark_wireless_link_converge_invoke() -> String {
 
 // The production shares the probe's prelude, for the same reason and with the same credential: one
 // fleet-key agent from the job and one per-target administrator credential materialized to one file.
-fn gunbc_ci_spark_v41_runtime_image_distribute_invoke() -> String {
+fn gunbc_ci_spark_runtime_image_distribute_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_v41_runtime_image_distribute_target.entry,
-    function: gunbc_ci_spark_v41_runtime_image_distribute_target.function,
+    entry: gunbc_ci_spark_runtime_image_distribute_target.entry,
+    function: gunbc_ci_spark_runtime_image_distribute_target.function,
     claim_run: false,
-    receipt_rel: v41_distribution_receipt_path
+    receipt_rel: runtime_image_distribute_receipt_path
   )
 }
 
-fn gunbc_ci_spark_v41_group_a_launch_invoke() -> String {
+fn gunbc_ci_spark_arm_checkpoint_materialize_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_v41_group_a_launch_target.entry,
-    function: gunbc_ci_spark_v41_group_a_launch_target.function,
+    entry: gunbc_ci_spark_arm_checkpoint_materialize_target.entry,
+    function: gunbc_ci_spark_arm_checkpoint_materialize_target.function,
     claim_run: false,
-    receipt_rel: v41_group_a_launch_receipt_path
+    receipt_rel: arm_checkpoint_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_arm_group_observe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_arm_group_observe_target.entry,
+    function: gunbc_ci_spark_arm_group_observe_target.function,
+    claim_run: false,
+    receipt_rel: arm_group_observe_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_arm_group_launch_plan_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_arm_group_launch_plan_target.entry,
+    function: gunbc_ci_spark_arm_group_launch_plan_target.function,
+    claim_run: false,
+    receipt_rel: arm_group_launch_plan_path
+  )
+}
+
+fn gunbc_ci_spark_arm_group_load_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_arm_group_load_target.entry,
+    function: gunbc_ci_spark_arm_group_load_target.function,
+    claim_run: false,
+    receipt_rel: arm_group_load_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_arm_group_launch_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_arm_group_launch_target.entry,
+    function: gunbc_ci_spark_arm_group_launch_target.function,
+    claim_run: false,
+    receipt_rel: arm_group_launch_receipt_path
   )
 }
 
@@ -2912,14 +3011,14 @@ fn gunbc_ci_spark_v41_serving_load_invoke() -> String {
   )
 }
 
-fn gunbc_ci_spark_v41_runtime_image_build_invoke() -> String {
+fn gunbc_ci_spark_runtime_image_produce_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_v41_runtime_image_build_target.entry,
-    function: gunbc_ci_spark_v41_runtime_image_build_target.function,
+    entry: gunbc_ci_spark_runtime_image_produce_target.entry,
+    function: gunbc_ci_spark_runtime_image_produce_target.function,
     claim_run: false,
-    receipt_rel: "target/v41-runtime-image-produce-receipt.txt"
+    receipt_rel: runtime_image_produce_receipt_path
   )
 }
 
@@ -3125,7 +3224,7 @@ fn bhold(script_var: String, label: String, record: Node) -> Node {
 // runs as a checked condition, so a failed removal is reported beside the others instead of aborting
 // the trap under errexit before they are reported.
 //
-// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
+// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_megarac_kvm_still)
 // through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
 // not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
 // 1 survived KILL, 2 unobservable -- and reported, never read as released.
