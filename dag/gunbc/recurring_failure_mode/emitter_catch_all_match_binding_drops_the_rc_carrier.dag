@@ -12,13 +12,12 @@ data emitter_catch_all_match_binding_drops_the_rc_carrier: RecurringFailureMode 
 
     "HARM: loud, not silent -- the closure stops building, located at the emitted field rather than at the arm. The cost is the author's: the .dag is correct and accepted, and the refusal reads as a type error in generated code. The working spelling names every arm of the coproduct, which over a closed coproduct is the better spelling anyway, so the defect stays hidden behind the authors who happen to write that way.",
 
-    "SPECIMEN, found by lane 2K (gunbc#13164): v1.compiler.infer_emit_info resolve_type_decl_routed wrote `other => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: other }` and the seed build refused at v1_compiler_infer_emit_info.rs, `resolution: other.clone()`, expected Rc<TypeDeclResolution>. MINIMAL FIXTURE gunbc.instruments.native_emission_catch_all_rc_specimen specimen_card_of: wired as one case into gunbc.instruments.native_emission_controls on a throwaway branch off main 6f281043bf, `gunbc test //gunbc/instruments:native-emission-controls` refused EmittedCompilerBuildFailed with exactly one error, E0308 at `shade: other.clone()`, expected Rc<SpecimenShade>.",
+    "SPECIMEN, found by lane 2K (gunbc#13164, where v1.compiler.infer_emit_info resolve_type_decl_routed lands; not on main when this row was filed, so it is named here and not cited as evidence) wrote `other => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: other }` and the seed build refused at v1_compiler_infer_emit_info.rs, `resolution: other.clone()`, expected Rc<TypeDeclResolution>. MINIMAL FIXTURE gunbc.instruments.native_emission_catch_all_rc_specimen specimen_card_of: wired as one case into gunbc.instruments.native_emission_controls on a throwaway branch off main 6f281043bf, `gunbc test //gunbc/instruments:native-emission-controls` refused EmittedCompilerBuildFailed with exactly one error, E0308 at `shade: other.clone()`, expected Rc<SpecimenShade>.",
 
     "RUNG: mitigatable -- rustc stops the build; nothing in the emitter refuses or lowers the binding correctly. ATTAINABLE CEILING: structurally guaranteed -- the emitter knows the binding's .dag type and the use position's Rust carrier, so it can wrap (or bind the carrier instead of the borrow) by construction. NEXT-RUNG TRIGGER, at capability grain: a catch-all binding over a coproduct emits as the carrier the coproduct's positions use, at every use position (record field, call argument, return, list element), and the specimen is enrolled in gunbc.instruments.native_emission_controls as a held case with a red beside it. Fixing the record-field position alone is not that capability.",
   ],
 
   evidence: [
     decl_ref(module_path: "gunbc.instruments.native_emission_catch_all_rc_specimen", decl_name: "specimen_card_of"),
-    decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "resolve_type_decl_routed"),
   ],
 }
