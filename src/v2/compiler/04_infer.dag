@@ -6557,18 +6557,48 @@ type InferAdmitEntry
   = AdmitEntryCoords { coords: InferAdmitCallerCoords }
   | AdmitEntryUninterpretable
 
-// THE RECORD SHAPE DEMAND: [ module_path -> atom, decl_name -> atom ], both atom identities
-// present. Absent = the child is not such a record.
+// THE RECORD SHAPE DEMAND: [ *decl_ref, module_path -> atom, decl_name -> atom ] — the POSITIONAL
+// operator edge demands the authored spelling (^decl_ref, v1's gate: only a decl_ref call states
+// coordinates), and both atom identities must be present. Absent = the child is not such a record.
 fn infer_admit_record_check(record: Node) -> Optional<InferAdmitCallerCoords> {
-  match infer_admit_entry_field_symbol(record: record, field: ^module_path) {
+  match infer_admit_record_operator_spelling(record: record) {
     Absent => optional_absent()
-    Present { value: mp } =>
-      match infer_admit_entry_field_symbol(record: record, field: ^decl_name) {
+    Present { value: _ } =>
+      match infer_admit_entry_field_symbol(record: record, field: ^module_path) {
         Absent => optional_absent()
-        Present { value: dn } =>
-          optional_present(value: InferAdmitCallerCoords { module_path: mp, decl_name: dn })
+        Present { value: mp } =>
+          match infer_admit_entry_field_symbol(record: record, field: ^decl_name) {
+            Absent => optional_absent()
+            Present { value: dn } =>
+              optional_present(value: InferAdmitCallerCoords { module_path: mp, decl_name: dn })
+          }
       }
   }
+}
+
+// THE RECORD'S OPERATOR SPELLING: the POSITIONAL child the lowering carried from the authored call
+// must be the ^decl_ref atom. A record without it is not a decl_ref call's image.
+fn infer_admit_record_operator_spelling(record: Node) -> Optional<Symbol> {
+  fold(record.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Positional =>
+            match infer_admit_atom_identity(node: e.target) {
+              Absent => optional_absent()
+              Present { value: op } =>
+                if symbol_eq(a: op, b: ^decl_ref) {
+                  optional_present(value: op)
+                } else {
+                  optional_absent()
+                }
+            }
+          Authored { name: _ } => optional_absent()
+          StructuralLabel { label: _ } => optional_absent()
+        }
+    }
+  })
 }
 
 // ONE ENTRY OF THE LIST, READ OR REFUSED. The carrier re-hung the authored call as a POSITIONAL
@@ -6616,54 +6646,48 @@ fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
   }
 }
 
-// ONE READER FOR A GRAMMAR-SEQUENCE PROJECTION EDGE: the named edges
-// (grammar_sequence_left/right_node_projection) carry the spine; find_named_child is the accessor
-// the probes verified against the runtime tree. Outcome flattened to Optional: a missing
-// projection is a REFUSAL SITE for the caller (^infer_reason_admit_callers_entries_unreadable),
-// never a silent shorter roster.
-fn body_infer_projection_child(node: Node, name: Symbol) -> Optional<Node> {
-  match find_named_child(root: node, name: name) {
-    Accepted { value: n, diagnostics: _ } => Present { value: n }
-    Rejected { diagnostics: _ } => Absent
-  }
-}
-
 // THE ROSTER'S RECORDS, read from the core edge target the carrier hung on the Arrow. The carrier
-// re-hung each authored entry as a POSITIONAL record conj [ module_path -> atom, decl_name -> atom ]
-// inside a roster conj (the where-clause lowering's precedent for consuming an authored encoding at
-// lowering). A target that is the RAW clause shell — the carrier's fail-closed fallback for an
-// authored spine that does not read — shows Authored projection edges here, which REFUSES with
-// ^infer_reason_admit_callers_entries_unreadable: a malformed clause is never a shorter roster, and
-// the refusal names the cause instead of the downstream refused-call verdict (DESIGN §5: a failure
-// arm must refuse, never widen). A POSITIONAL child whose record does not read refuses with
-// ^infer_reason_admit_callers_entry_not_decl_ref at that child — an uninterpretable entry must not
-// be dropped, silently shrinking the permitted-caller roster below what was authored.
+// re-hung each authored entry as a POSITIONAL child inside a roster conj — a decl_ref call's image
+// is a record conj, an entry that reads but is not such a call is a marker atom the record demand
+// refuses at the entry (DESIGN §5: a failure arm must refuse, never widen). A target that is NOT a
+// conj is the carrier's fail-closed fallback marker — the authored spine did not read — and REFUSES
+// with ^infer_reason_admit_callers_entries_unreadable at the clause: a malformed clause is never a
+// shorter roster, and the refusal names the cause instead of the downstream refused-call verdict.
 fn infer_admit_clause_entries(roster: Node) -> Outcome<List<Node>> {
-  fold(roster.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      Accepted { value: records, diagnostics: _ } =>
-        match e.label {
-          Positional =>
-            match infer_admit_record_check(record: e.target) {
-              Absent =>
+  match roster.kind {
+    TypeNode { connective: Conj } =>
+      fold(roster.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Accepted { value: records, diagnostics: _ } =>
+            match e.label {
+              Positional =>
+                match infer_admit_record_check(record: e.target) {
+                  Absent =>
+                    outcome_rejected(Diagnostic {
+                      reason: ^infer_reason_admit_callers_entry_not_decl_ref,
+                      at: node_locus(node: e.target),
+                      correction: Unavailable { reason: UserInputBoundary }
+                    })
+                  Present { value: _ } =>
+                    outcome_accepted(value: Cons { head: e.target, tail: records })
+                }
+              _ =>
                 outcome_rejected(Diagnostic {
-                  reason: ^infer_reason_admit_callers_entry_not_decl_ref,
+                  reason: ^infer_reason_admit_callers_entries_unreadable,
                   at: node_locus(node: e.target),
-                  correction: Unavailable { reason: UserInputBoundary }
+                  correction: Unavailable { reason: ExternalContractUnknown }
                 })
-              Present { value: _ } =>
-                outcome_accepted(value: Cons { head: e.target, tail: records })
             }
-          _ =>
-            outcome_rejected(Diagnostic {
-              reason: ^infer_reason_admit_callers_entries_unreadable,
-              at: node_locus(node: e.target),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            })
         }
-    }
-  })
+      })
+    _ =>
+      outcome_rejected(Diagnostic {
+        reason: ^infer_reason_admit_callers_entries_unreadable,
+        at: node_locus(node: roster),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+  }
 }
 
 // EVERY DIAGNOSTIC THE LIST CARRIES, folded into the stage's Diagnostics carrier.

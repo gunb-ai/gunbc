@@ -1,481 +1,204 @@
+// caller_admission_native_wall_test -- HERMETIC WALL WITNESSES (gunbc.rung_drop
+// admit_callers_discarded_on_the_native_route).
+//
+// The wall's contract is judged over VALUES, so these claims build the roster records, the marker
+// atoms, and the caller coordinates by hand (the parameter_reference_test idiom: minted occurrence
+// identities, Node literals) and call the wall's pure entry points directly. No claim here runs the
+// ingest pipeline; the ONE real-path inhabitance claim -- the native route refusing an outside
+// cross-module call end to end -- lives in the long home
+// (src/v2/test/claim/long/caller_admission_native_wall_red_test.dag), where an over-budget claim is
+// admitted (required_floor long_home_prefixes).
+//
+// THE RECORD SHAPE these claims build is the image the lowering's carrier hangs: a roster conj of
+// POSITIONAL record conj children, each record carrying the authored operator atom
+// (identity ^decl_ref) as its POSITIONAL child and the two string lexemes as authored edges
+// (module_path, decl_name). An entry that reads but is not such a call lowers to a MARKER atom
+// (^infer_reason_admit_callers_entry_not_decl_ref); a clause whose spine does not read lowers to
+// the clause-fallback marker (^infer_reason_admit_callers_entries_unreadable). The claims pin both
+// failure arms and the positive direction, so:
+//   - deleting the judge or its refusal arm turns (1) red, and (2) red if it refuses everything;
+//   - dropping an uninterpretable entry turns (3) red;
+//   - accepting a non-conj roster (silently narrowing the roster) turns (4) red;
+//   - breaking the record reader's coordinates turns (5) red.
+
 module v2.test.claim.caller_admission_native_wall
 
-// THE DISCRIMINATING REDS AND THEIR CONTROLS for gunbc.rung_drop
-// admit_callers_discarded_on_the_native_route. The clause was parsed by the v2 grammar and then
-// discarded at Arrow lowering, so the native route never checked caller admission; the wall now
-// lives in v2.compiler.infer (infer_caller_admission_diags), keyed on the admit_callers edge
-// v2.compiler.body_lowering_fold body_lower_fn_admit_clause_edges carries onto the Arrow. The
-// claims drive fixture modules through the real pipeline (tokenize -> parse -> normalize ->
-// admitted normalized tree -> resolve -> infer, or assemble_program_from_ingest for the
-// cross-module fixtures) and assert the seed's verdicts, copied symbol for symbol from v1's
-// constructor_call_admission_diags:
-//   - a call from a declaration outside the list refuses (^infer_reason_caller_admission_refused),
-//     SAME-MODULE (caller and sealed fn in one module) and CROSS-MODULE (the subject module calls a
-//     sealed fn imported from a peer module -- the clause's real work: the judge reads the callee's
-//     declared Arrow through the use's facts entry, whose grounding evidence is the peer's
-//     declaration, edges included);
-//   - a call from the listed declaration is admitted (the floor's own behavior unchanged),
-//     SAME-MODULE and CROSS-MODULE;
-//   - an entry that is not a decl_ref(module_path: "...", decl_name: "...") call refuses at the
-//     entry (^infer_reason_admit_callers_entry_not_decl_ref), never shrinking the roster silently.
-// The fixtures are strings, so a refusal here is a verdict ABOUT the fixture, not a refusal of
-// this claim module's own prepare: the floor stays green with the wall live. Each fixture's
-// resolved outcome is computed ONCE as a nullary value of this module, and the claims read it --
-// a claim that drove its own parse inline was over the new-witness eval-step budget, as the
-// trailing-comma claim records.
-
-import v2.compiler.infer { ObligatedInferredTree, infer, body_infer_projection_child }
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_type_declaration_modifiers }
-import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar, program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome }
-import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.extdeps.languages.dag { dag_language_model, dag_lex, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
-import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_deep_unwrap_optional, body_lower_where_leaf_atom_optional, body_lower_where_argument_items, body_lower_where_arguments, WherePredicateArgument, WhereArgumentLabelled, WhereArgumentPositional }
-import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import std.content_hash { Fnv1a64Structural }
-import std.occurrence_identity { OccurrenceIdAllocator }
-import v2.compiler.resolve { ResolvedTree, resolve }
-import v2.compiler.tokenize { tokenize }
-import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
-import v2.extdeps.languages.dag { dag_language_model, dag_lex }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check }
+import v2.std.diagnostic { None, Some, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Symbol, symbol_eq, symbol_lexeme, core_edge_target_lookup, AdmitCallersEdge, CoreMarker, ProductionEdge, TypeNode, ComputationNode, Connective, Atom, Conj, Disj, Arrow, Cardinality, Instantiation, Behavior, Value, Transform, Branch, Loop, Bind, Match }
-import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
-import std.process { ProcessExit, exit_failure }
-import v2.std.text { String }
+import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Positional, Authored }
+import v2.std.optional { Absent, Present }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// ---------------------------------------------------------------------------
+// Hand-built values: the lowering's roster record image, plus the two markers.
+// ---------------------------------------------------------------------------
 
-fn aca_normalized(text: String) -> Outcome<NormalizedTree> {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      bind_outcome(
-        o: tokenize(text: text, file: ^aca_fixture, rules: dag_lex()),
-        f: fn(token_stream) {
-          program_assembly_normalized_outcome(
-            phase: program_assembly_phase_normalize_seeded(
-              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
-              seed: OccurrenceIdAllocator { next_id: 10 },
-              scope: Fnv1a64Structural { digest: "00000000000000ad" }
-            )
-          )
-        }
-      )
-  }
+// The application locus: the judge reports the refused call at its call site. Any node carries a
+// locus; the atom below is the wall's witness spelling for one.
+data wall_call_site_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 910 } }
+data wall_record_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 911 } }
+data wall_marker_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 912 } }
+data wall_roster_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 913 } }
+data wall_clause_fallback_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 914 } }
+
+data wall_application: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^wall_call_site } },
+  children: [],
+  occurrence_id: wall_call_site_locus
 }
 
-fn aca_resolved(text: String) -> Outcome<ResolvedTree> {
-  match aca_normalized(text: text) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: t, diagnostics: _ } =>
-      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: no_type_declaration_modifiers(), diagnostics: None) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
+// ONE RECORD: the image of `decl_ref(module_path: "<mp>", decl_name: "<dn>")` -- the authored
+// operator atom as the POSITIONAL child, the lexemes as authored edges.
+fn wall_record(mp: Symbol, dn: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+      },
+      Edge {
+        label: Authored { name: ^module_path },
+        target: Node { kind: TypeNode { connective: Atom { identity: mp } }, children: [], occurrence_id: OccurrenceSynthetic }
+      },
+      Edge {
+        label: Authored { name: ^decl_name },
+        target: Node { kind: TypeNode { connective: Atom { identity: dn } }, children: [], occurrence_id: OccurrenceSynthetic }
       }
+    ],
+    occurrence_id: wall_record_locus
   }
 }
 
-fn aca_inferred(text: String) -> Outcome<ObligatedInferredTree> {
-  match aca_resolved(text: text) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: rt, diagnostics: _ } => infer(tree: rt)
+// THE UNINTERPRETABLE-ENTRY MARKER: what the carrier hangs for an entry that reads but is not a
+// decl_ref(module_path, decl_name) call.
+data wall_marker_entry: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref } },
+  children: [],
+  occurrence_id: wall_marker_locus
+}
+
+// THE CLAUSE-FALLBACK MARKER: what the carrier hangs under AdmitCallersEdge when the authored
+// spine does not read.
+data wall_clause_fallback: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable } },
+  children: [],
+  occurrence_id: wall_clause_fallback_locus
+}
+
+// A ROSTER CONJ with one well-formed record.
+data wall_roster_single: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Positional,
+      target: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+          },
+          Edge {
+            label: Authored { name: ^module_path },
+            target: Node { kind: TypeNode { connective: Atom { identity: ^bcb } }, children: [], occurrence_id: OccurrenceSynthetic }
+          },
+          Edge {
+            label: Authored { name: ^decl_name },
+            target: Node { kind: TypeNode { connective: Atom { identity: ^listed_caller } }, children: [], occurrence_id: OccurrenceSynthetic }
+          }
+        ],
+        occurrence_id: wall_record_locus
+      }
+    }
+  ],
+  occurrence_id: wall_roster_locus
+}
+
+// ---------------------------------------------------------------------------
+// (1) THE RED: a call from a declaration outside the list refuses.
+// ---------------------------------------------------------------------------
+
+test fn the_wall_refuses_a_call_from_a_declaration_outside_the_list_holds() -> Bool {
+  match infer_admission_judge_entries(
+    application: wall_application,
+    entries: [wall_record(mp: ^bcb, dn: ^listed_caller)],
+    caller: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller },
+    module_symbol: ^bcb
+  ) {
+    None => false
+    Some { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
   }
 }
 
-// THE CROSS-MODULE PIPELINE: the subject module (whose calls the wall walks) plus peer modules it
-// imports. Admission carries no import-level bindings -- the subject's own `import` lines are what
-// bind the peers' names -- the same shape body_let_annotation_test drives for imported types.
-data aca_subject_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^aca_subject_artifact,
-  file_path: "src/v2/pilot/caller_admission_subject.dag"
-}
+// ---------------------------------------------------------------------------
+// (2) THE CONTROL: the listed declaration is admitted -- the judge's positive direction.
+// ---------------------------------------------------------------------------
 
-data aca_peer_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^aca_peer_artifact,
-  file_path: "src/v2/pilot/caller_admission_peer.dag"
-}
-
-fn aca_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: src, fidelity: Lossless },
-    artifact: artifact,
-    compilation_unit: cu,
-    source_root: V2Tree
+test fn the_wall_admits_a_call_from_the_listed_declaration_holds() -> Bool {
+  match infer_admission_judge_entries(
+    application: wall_application,
+    entries: [wall_record(mp: ^bcb, dn: ^listed_caller)],
+    caller: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^listed_caller },
+    module_symbol: ^bcb
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
   }
 }
 
-fn aca_assembled_with_peer(subject_src: String, peer_src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: aca_source(src: subject_src, artifact: aca_subject_artifact, cu: ^caller_admission_subject_cu),
-      tail: [
-        aca_source(src: peer_src, artifact: aca_peer_artifact, cu: ^caller_admission_peer_cu)
-      ]
-    },
-    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^bcb, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
-  )
-}
+// ---------------------------------------------------------------------------
+// (3) THE ENTRY-SHAPE RED: an entry that is not a decl_ref call refuses at the entry and is
+// reported beside the refusal -- never dropped from the roster.
+// ---------------------------------------------------------------------------
 
-fn aca_cross_inferred(subject_src: String, peer_src: String) -> Outcome<ObligatedInferredTree> {
-  match aca_assembled_with_peer(subject_src: subject_src, peer_src: peer_src) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: rt, diagnostics: _ } => infer(tree: rt)
+test fn an_entry_that_is_not_a_decl_ref_call_refuses_at_the_entry_holds() -> Bool {
+  match infer_admission_judge_entries(
+    application: wall_application,
+    entries: [wall_marker_entry],
+    caller: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller },
+    module_symbol: ^bcb
+  ) {
+    None => false
+    Some { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_admit_callers_entry_not_decl_ref
   }
 }
 
-// THE SINGLE-MODULE ROUTE. The same assembled-program pipeline as the cross-module fixtures —
-// one ingest source, no imports — so every fixture's sealed fn rides the real body lowering
-// (the carrier edge) and infer grounds the same way. An earlier spelling drove the normalized
-// tree through admit_normalized_tree and resolve directly; the clause property survived raw in
-// that image and infer refused the whole fixture on its ungrounded decl_ref call before the wall
-// ever fired.
-fn aca_assembled_single(src: String, subject_dotted: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: aca_source(src: src, artifact: aca_subject_artifact, cu: ^caller_admission_subject_cu),
-      tail: []
-    },
-    admission: Admission {
-      subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject_dotted) },
-      imports: Empty
-    },
-    lm: dag_language_model()
-  )
-}
+// ---------------------------------------------------------------------------
+// (4) THE CLAUSE-FALLBACK RED: a clause the carrier could not read refuses at the clause as
+// entries_unreadable -- a malformed clause is never a shorter roster.
+// ---------------------------------------------------------------------------
 
-fn aca_assembled_inferred_single(src: String, subject_dotted: String) -> Outcome<ObligatedInferredTree> {
-  match aca_assembled_single(src: src, subject_dotted: subject_dotted) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: rt, diagnostics: _ } => infer(tree: rt)
-  }
-}
-
-// THE RED: the module compiles clean to resolve, and infer refuses it on the call from
-// outside_caller, which the list does not name.
-fn aca_outside_caller_text() -> String {
-  "module aca.t\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"aca.t\", decl_name: \"listed_caller\")]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n\nfn outside_caller(n: Int) -> Int = sealed_mint(n: n)\n"
-}
-
-// THE CONTROL: the same sealed fn, called only from the listed declaration. The wall admits it,
-// and everything downstream of the wall is unchanged.
-fn aca_listed_caller_text() -> String {
-  "module aca.c\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"aca.c\", decl_name: \"listed_caller\")]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
-}
-
-// THE ENTRY-SHAPE RED: a bare-name entry parses (the clause admits any expression, as the
-// trailing-comma claim records) and the wall refuses it at the entry, as v1 refuses an entry it
-// cannot read as a decl_ref call.
-fn aca_bare_entry_text() -> String {
-  "module aca.u\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [listed_caller]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
-}
-
-// THE CROSS-MODULE PEER: the sealed fn in module aca, naming its one permitted caller by the
-// caller's OWN module path and declaration name.
-fn aca_cross_peer_text() -> String {
-  "module aca\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"bcb\", decl_name: \"listed_caller\")]\n  = n + 1\n"
-}
-
-// THE CROSS-MODULE RED: the subject module imports the sealed fn and calls it from a declaration
-// the peer's list does not name. The refusal must reach across the import: the judge reads the
-// callee's declared Arrow through the call's facts entry, so the edge the peer's body_lowering
-// carried survives into the subject module's judgment.
-fn aca_cross_red_subject_text() -> String {
-  "module bcb\n\nimport aca { sealed_mint }\n\nfn unlisted_caller(n: Int) -> Int = sealed_mint(n: n)\n"
-}
-
-// THE CROSS-MODULE CONTROL: the same import, called from the listed declaration in the subject
-// module. Admitted -- the roster spans modules exactly as v1's did.
-fn aca_cross_control_subject_text() -> String {
-  "module bcb\n\nimport aca { sealed_mint }\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
-}
-
-fn aca_outside_inferred() -> Outcome<ObligatedInferredTree> {
-  aca_assembled_inferred_single(src: aca_outside_caller_text(), subject_dotted: "aca.t")
-}
-
-fn aca_listed_inferred() -> Outcome<ObligatedInferredTree> {
-  aca_assembled_inferred_single(src: aca_listed_caller_text(), subject_dotted: "aca.c")
-}
-
-fn aca_bare_entry_inferred() -> Outcome<ObligatedInferredTree> {
-  aca_assembled_inferred_single(src: aca_bare_entry_text(), subject_dotted: "aca.u")
-}
-
-fn aca_cross_red_inferred() -> Outcome<ObligatedInferredTree> {
-  aca_cross_inferred(subject_src: aca_cross_red_subject_text(), peer_src: aca_cross_peer_text())
-}
-
-fn aca_cross_control_inferred() -> Outcome<ObligatedInferredTree> {
-  aca_cross_inferred(subject_src: aca_cross_control_subject_text(), peer_src: aca_cross_peer_text())
-}
-
-fn aca_rejected_with(r: Outcome<ObligatedInferredTree>, reason: Symbol) -> Bool {
-  match r {
+test fn a_clause_the_carrier_cannot_read_refuses_as_entries_unreadable_holds() -> Bool {
+  match infer_admit_clause_entries(roster: wall_clause_fallback) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_admit_callers_entries_unreadable
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: ned } => symbol_eq(a: ned.head.reason, b: reason)
   }
 }
 
-fn aca_accepted_clean(r: Outcome<ObligatedInferredTree>) -> Bool {
-  match r {
-    Accepted { value: _, diagnostics: _ } => true
+// ---------------------------------------------------------------------------
+// (5) THE READER'S POSITIVE CONTROL: a well-formed roster reads as exactly the authored
+// coordinates -- one record, spelling bcb.listed_caller.
+// ---------------------------------------------------------------------------
+
+test fn a_well_formed_roster_reads_as_the_authored_coordinates_holds() -> Bool {
+  match infer_admit_clause_entries(roster: wall_roster_single) {
     Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn the_native_wall_refuses_a_call_from_outside_the_list_holds() -> Bool {
-  aca_rejected_with(r: aca_outside_inferred(), reason: ^infer_reason_caller_admission_refused)
-}
-
-test fn the_native_wall_admits_a_call_from_the_listed_caller_holds() -> Bool {
-  aca_accepted_clean(r: aca_listed_inferred())
-}
-
-test fn the_native_wall_refuses_an_entry_that_is_not_a_decl_ref_call_holds() -> Bool {
-  aca_rejected_with(r: aca_bare_entry_inferred(), reason: ^infer_reason_admit_callers_entry_not_decl_ref)
-}
-
-test fn the_native_wall_refuses_a_cross_module_call_from_outside_the_list_holds() -> Bool {
-  aca_rejected_with(r: aca_cross_red_inferred(), reason: ^infer_reason_caller_admission_refused)
-}
-
-test fn the_native_wall_admits_a_cross_module_call_from_the_listed_caller_holds() -> Bool {
-  aca_accepted_clean(r: aca_cross_control_inferred())
-}
-
-// DBG-PROBE (temporary): identity chain of the clause shell's captured child.
-fn dbg_clause_reader_verdict() -> ProcessExit {
-  match aca_normalized(text: aca_cross_peer_text()) {
-    Rejected { diagnostics: _ } => exit_failure(reason: "normalize-refused")
-    Accepted { value: t, diagnostics: _ } =>
-      match body_lower_find_production_shell_optional(root: t.root, emitted: ^dag_surface_admit_callers_clause) {
-        Absent => exit_failure(reason: "clause-not-found-under-root")
-        Present { value: clause } =>
-          match find_named_child(root: clause, name: ^grammar_production_captured_node_projection) {
-            Rejected { diagnostics: _ } => exit_failure(reason: "clause-captured-missing")
-            Accepted { value: cap2, diagnostics: _ } =>
-              match parse_production_emitted_identity_optional(node: cap2) {
-                Present { value: id } => exit_failure(reason: symbol_lexeme(sym: id))
-                Absent =>
-                  match parse_production_captured_child_optional(node: cap2) {
-                    Present { value: inner } =>
-                      match parse_production_emitted_identity_optional(node: inner) {
-                        Present { value: id2 } => exit_failure(reason: symbol_lexeme(sym: id2))
-                        Absent => exit_failure(reason: "cap2-plain-inner-plain")
-                      }
-                    Absent => exit_failure(reason: "cap2-plain-no-inner")
-                  }
+    Accepted { value: records, diagnostics: _ } =>
+      match records {
+        Empty => false
+        Cons { head: record, tail: tail } =>
+          match tail {
+            Empty =>
+              match infer_admit_record_check(record: record) {
+                Absent => false
+                Present { value: coords } =>
+                  symbol_eq(a: coords.module_path, b: ^bcb) && symbol_eq(a: coords.decl_name, b: ^listed_caller)
               }
+            Cons { head: _, tail: _ } => false
           }
       }
-  }
-}
-
-// DBG-PROBE (temporary): first refusal reason of the cross-control fixture, after the reader fix.
-fn dbg_clause_first_child() -> ProcessExit {
-  match aca_cross_control_inferred() {
-    Accepted { value: _, diagnostics: _ } => exit_failure(reason: "inferred-ok")
-    Rejected { diagnostics: ned } => exit_failure(reason: symbol_lexeme(sym: ned.head.reason))
-  }
-}
-
-// DBG-PROBE (temporary): first refusal reason of the cross-red fixture.
-fn dbg_cross_red_reason() -> ProcessExit {
-  match aca_cross_red_inferred() {
-    Accepted { value: _, diagnostics: _ } => exit_failure(reason: "inferred-ok")
-    Rejected { diagnostics: ned } => exit_failure(reason: symbol_lexeme(sym: ned.head.reason))
-  }
-}
-
-// DBG-PROBE (temporary): the peer assembled as its own subject, so the sealed fn's clause is
-// walkable from the root.
-fn dbg_peer_assembled() -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: aca_source(src: aca_cross_peer_text(), artifact: aca_peer_artifact, cu: ^caller_admission_peer_cu),
-      tail: []
-    },
-    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^aca, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
-  )
-}
-
-// DBG-PROBE (temporary): the assembled single-module red fixture's failing node, richly.
-fn dbg_same_listed_locus() -> ProcessExit {
-  match aca_outside_inferred() {
-    Accepted { value: _, diagnostics: _ } => exit_failure(reason: "inferred-ok")
-    Rejected { diagnostics: ned } =>
-      match ned.head.at {
-        NodeLocus { anchor: a } =>
-          match parse_production_emitted_identity_optional(node: a.at) {
-            Present { value: id } => exit_failure(reason: symbol_lexeme(sym: id))
-            Absent => exit_failure(reason: concat("P=", dbg_anat_label(n: a.at), " kids:", dbg_anat_edges(n: a.at)))
-          }
-        Textual { file: f, extent: _ } => exit_failure(reason: symbol_lexeme(sym: f))
-        SourcePortLocus { anchor: _, file: f, extent: _ } => exit_failure(reason: symbol_lexeme(sym: f))
-        InvariantPortLocus { anchor: _, invariant: s } => exit_failure(reason: symbol_lexeme(sym: s))
-        DeclarationLocus { declaration: _ } => exit_failure(reason: "decl-locus")
-      }
-  }
-}
-
-// DBG-PROBE (temporary): faithful anatomy of the entry node — kind marker + edge descriptors.
-// DBG-PROBE (temporary): run the carrier's reader on the normalized clause directly.
-fn dbg_reader_on_normalized() -> ProcessExit {
-  match aca_normalized(text: aca_cross_peer_text()) {
-    Rejected { diagnostics: _ } => exit_failure(reason: "normalize-rejected")
-    Accepted { value: t, diagnostics: _ } =>
-      match body_lower_find_production_shell_optional(root: t.root, emitted: ^dag_surface_admit_callers_clause) {
-        Absent => exit_failure(reason: "no-clause-shell")
-        Present { value: clause } =>
-          match body_lower_admit_roster_node(clause: clause) {
-            Absent => exit_failure(reason: "reader-absent")
-            Present { value: roster } =>
-              match infer_admit_clause_entries(r: roster) {
-                Rejected { diagnostics: d } => exit_failure(reason: symbol_lexeme(sym: d.head.reason))
-                Accepted { value: _, diagnostics: _ } =>
-                  exit_failure(reason: "reader-ok")
-              }
-          }
-      }
-  }
-}
-
-fn dbg_anat_label(n: Node) -> String {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } => concat("atom:", symbol_lexeme(sym: id))
-    TypeNode { connective: Conj } => "conj"
-    TypeNode { connective: Disj } => "disj"
-    TypeNode { connective: Arrow } => "arrow"
-    TypeNode { connective: Cardinality } => "card"
-    TypeNode { connective: Instantiation } => "inst"
-    ComputationNode { behavior: Value } => "comp:value"
-    ComputationNode { behavior: Transform } => "comp:transform"
-    ComputationNode { behavior: Branch } => "comp:branch"
-    ComputationNode { behavior: Loop } => "comp:loop"
-    ComputationNode { behavior: Bind } => "comp:bind"
-    ComputationNode { behavior: Match } => "comp:match"
-  }
-}
-
-fn dbg_anat_edge_desc(e: Edge) -> String {
-  match e.label {
-    Authored { name: sym } => concat("@", symbol_lexeme(sym: sym), ":", dbg_anat_label(n: e.target))
-    StructuralLabel { label: CoreMarker { marker: _ } } => concat("core:", dbg_anat_label(n: e.target))
-    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => concat("prod:", dbg_anat_label(n: e.target))
-    Positional => concat("*:", dbg_anat_label(n: e.target))
-  }
-}
-
-fn dbg_anat_edges(n: Node) -> String {
-  concat(fold(xs: n.children, init: "", f: fn(acc, e) { concat(acc, " ", dbg_anat_edge_desc(e: e)) }), " ]")
-}
-
-// DBG-PROBE (temporary): dump the captured sequence's right-spine, four levels, each level's full
-// edge list, to pin the reader's positional contract against the runtime tree.
-fn dbg_anat_edge_label(e: Edge) -> String {
-  match e.label {
-    Authored { name: sym } => concat("@", symbol_lexeme(sym: sym))
-    StructuralLabel { label: CoreMarker { marker: _ } } => "core"
-    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => "prod"
-    Positional => "*"
-  }
-}
-
-fn dbg_anat_deep(n: Node, depth: Int) -> String {
-  if depth == 0 {
-    dbg_anat_label(n: n)
-  } else {
-    concat(
-      dbg_anat_label(n: n),
-      "[",
-      fold(xs: n.children, init: "", f: fn(acc, e) { concat(acc, " ", dbg_anat_edge_label(e: e), "=", dbg_anat_deep(n: e.target, depth: depth - 1)) }),
-      "]"
-    )
-  }
-}
-
-fn dbg_spine_level(n: Node, name: String) -> String {
-  concat(name, "=", dbg_anat_label(n: n), "[", dbg_anat_edges(n: n), "]")
-}
-
-fn dbg_peer_entry_shape() -> ProcessExit {
-  match dbg_peer_assembled() {
-    Rejected { diagnostics: _ } => exit_failure(reason: "assemble-refused")
-    Accepted { value: rt, diagnostics: _ } =>
-      match namespace_graft_module_body_optional(root: rt.root) {
-        Absent => exit_failure(reason: "no-body-under-root")
-        Present { value: body } =>
-          match find_named_child(root: body, name: ^sealed_mint) {
-            Rejected { diagnostics: _ } => exit_failure(reason: "no-sealed-mint-in-body")
-            Accepted { value: arrow, diagnostics: _ } =>
-              match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
-                Absent => exit_failure(reason: "no-carrier-edge")
-                Ambiguous => exit_failure(reason: "carrier-edge-ambiguous")
-                Found { target: clause } =>
-                  match parse_production_captured_child_optional(node: clause) {
-                    Absent => exit_failure(reason: "clause-no-captured")
-                    Present { value: c } =>
-                      match find_named_child(root: c, name: ^grammar_sequence_right_node_projection) {
-                        Rejected { diagnostics: _ } =>
-                          exit_failure(reason: concat("C0:", dbg_spine_level(n: c, name: "C"), " no-right"))
-                        Accepted { value: a, diagnostics: _ } =>
-                          match find_named_child(root: a, name: ^grammar_sequence_right_node_projection) {
-                            Rejected { diagnostics: _ } =>
-                              exit_failure(reason: concat(dbg_spine_level(n: c, name: "C"), " | ", dbg_spine_level(n: a, name: "A"), " no-A-right"))
-                            Accepted { value: b, diagnostics: _ } =>
-                              match find_named_child(root: b, name: ^grammar_sequence_right_node_projection) {
-                                Rejected { diagnostics: _ } =>
-                                  exit_failure(reason: concat(dbg_spine_level(n: c, name: "C"), " | ", dbg_spine_level(n: a, name: "A"), " | ", dbg_spine_level(n: b, name: "B"), " no-B-right"))
-                                Accepted { value: d, diagnostics: _ } =>
-                                  match find_named_child(root: d, name: ^grammar_sequence_left_node_projection) {
-                                    Rejected { diagnostics: _ } =>
-                                      exit_failure(reason: concat(dbg_spine_level(n: c, name: "C"), " | ", dbg_spine_level(n: d, name: "D"), " no-D-left"))
-                                    Accepted { value: entry1, diagnostics: _ } =>
-                                      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: entry1)) {
-                                        Absent => exit_failure(reason: "entry1-no-pair")
-                                        Present { value: entry_pair } =>
-                                          exit_failure(reason: concat("CHAIN=", dbg_anat_deep(n: body_lower_deep_unwrap_optional(node: entry_pair.left), depth: 8)))
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-      }
-  }
-}
-
-// DBG-PROBE (temporary): one marker per argument.
-fn dbg_anat_args(args: List<WherePredicateArgument>) -> String {
-  match args {
-    Empty => "args:[]"
-    Cons { head: h, tail: t } =>
-      match h {
-        WhereArgumentLabelled { label: l, value: v } =>
-          concat("@", symbol_lexeme(sym: l), "=", dbg_anat_deep(n: v, depth: 2), " ", dbg_anat_args(args: t))
-        WhereArgumentPositional { value: v } =>
-          concat("pos=", dbg_anat_deep(n: v, depth: 2), " ", dbg_anat_args(args: t))
-      }
-  }
-}
-
-// DBG-PROBE (temporary): first refusal reason of the same-module outside-caller red.
-fn dbg_same_outside_reason() -> ProcessExit {
-  match aca_outside_inferred() {
-    Accepted { value: _, diagnostics: _ } => exit_failure(reason: "inferred-ok")
-    Rejected { diagnostics: ned } => exit_failure(reason: symbol_lexeme(sym: ned.head.reason))
   }
 }
