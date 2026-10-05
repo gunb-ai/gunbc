@@ -2,7 +2,7 @@ module extdeps.systemd.oomd
 
 import std.algebra { trim }
 
-import std.types { NonEmptyStr, FilePath, Bool, Unit }
+import std.types { NonEmptyStr, FilePath, Bool, Unit, String }
 import std.measure { Second, second, Percent, percent, percent_count }
 import std.types { Int }
 

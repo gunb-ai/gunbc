@@ -2,7 +2,7 @@ module gunbc.auth.approval_ntfy_publish
 
 import std.types { NonEmptyStr, String, Int, Port, Secret }
 import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
-import extdeps.transports.rest { RestOutcome, RestOk }
+import extdeps.transports.rest { RestResult }
 import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
 import gunbc.fleet_host_identity { operator_host_srv1 }
@@ -19,8 +19,8 @@ import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 //
 // ── §3c: WHO CONSUMES THIS, AND BY WHAT ROUTE ───────────────────────────────────────────────
 // Stated plainly because the honest answer today is "nothing in production yet", and a reviewer
-// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, the `RestOutcome`
-// opt-in, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
+// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, its `RestResult`
+// answer, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
 // this tree. §3c admits exactly three states, and this is the middle one -- a DECLARED FRONTIER --
 // which is admissible only with its trigger stated, so it is stated here.
 //
@@ -63,7 +63,6 @@ data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: f
 // can run the filing fold THROUGH the publish call: deleting ntfy.Publish.PublishMessage from
 // approval_request_submission must fail a control, not only an annotation.
 data hermetic_ntfy_publish_message_id: String = "hermetic-mock-ntfy-message"
-data hermetic_ntfy_publish_outcome: RestOutcome = RestOk
 
 service ntfy.Publish {
   config {
@@ -85,7 +84,6 @@ service ntfy.Publish {
     }
     output {
       message_id: String from "id"
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -109,7 +107,7 @@ service ntfy.Publish {
       5xx => NtfyErrorShape
     }
     mock_response {
-      200 => { message_id: hermetic_ntfy_publish_message_id, outcome: hermetic_ntfy_publish_outcome } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
+      200 => { message_id: hermetic_ntfy_publish_message_id } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
     }
   }
 }
