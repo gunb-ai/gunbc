@@ -27,6 +27,8 @@ import gunbc.roadmap_workflow_progress {
   receipt_records_admission,
 }
 import gunbc.roadmap_workflow_command { legacy_attempt_supersedable_label }
+import gunbc.harness.harness_throughput { RoundsObserved, RoundsUnobserved }
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission,
   EnvironmentAdmitted,
@@ -561,8 +563,8 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
   }
 }
 
-test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
-  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+fn legacy_attempt_progress() -> WorkflowAttemptProgress {
+  workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
     node_id: "legacy",
     attempt_key: "",
     branch: "dispatch/legacy",
@@ -605,6 +607,10 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     goal_audit: [],
     session_placement: SessionPlacementAbsent { unit: "" },
   })
+}
+
+test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
+  let progress = legacy_attempt_progress()
   match progress.provider {
     ProviderEventsRefused { activity, detail: _ } =>
       activity == legacy_attempt_supersedable_label
@@ -999,4 +1005,22 @@ test fn a_wait_that_ends_in_a_nonzero_exit_is_failed() -> Bool {
     ProviderFailed { activity: _, detail } => string_contains(s: detail, pattern: "exited 1")
     _ => false
   }
+}
+
+// ROUND COVERAGE IS STATED BY THE PROJECTION, NOT GUESSED FROM AN EMPTY LIST. A modeled attempt
+// whose readable stream holds no round row has observed no round yet; a legacy attempt, which
+// predates round capture, has rounds this instrumentation did not observe, with that reason. The
+// red this pins: either one read as the other.
+test fn an_empty_readable_stream_is_no_round_yet_and_a_legacy_attempt_is_unobserved() -> Bool {
+  let fresh = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
+    process: WorkerProcessRunning { command: "node" as NonEmptyStr },
+  ))
+  (match fresh.rounds {
+    RoundsObserved { rounds } => count(rounds) == 0
+    RoundsUnobserved { reason: _ } => false
+  }) && (match legacy_attempt_progress().rounds {
+    RoundsUnobserved { reason } => string_contains(s: reason as String, pattern: "predates round capture")
+    RoundsObserved { rounds: _ } => false
+  })
 }

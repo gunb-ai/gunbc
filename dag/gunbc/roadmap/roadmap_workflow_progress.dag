@@ -1,6 +1,6 @@
 module gunbc.roadmap_workflow_progress
 
-import std.types { String, Int, Bool, List }
+import std.types { String, Int, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -35,7 +35,7 @@ import gunbc.roadmap_provider_events {
   provider_execution_detail,
   parse_codex_jsonl,
 }
-import gunbc.harness.harness_throughput { HarnessRoundLedger, throughput_cell_text, harness_throughput_from_ledger }
+import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger, harness_round_ledger_from_events }
 import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence }
 import gunbc.roadmap.roadmap_review_function { ReviewReport }
 import gunbc.roadmap_session_placement { SessionPlacementObservation }
@@ -1362,6 +1362,20 @@ fn workflow_attempt_reconciliation(
   )
 }
 
+// THE ROUND LEDGER IS READ ONLY FROM A STREAM THAT CAPTURED ROUNDS. An attempt that predates
+// modeled admission predates round capture as well, and a stream that could not be read records
+// nothing: both are rounds this instrumentation did not observe, said with their own reason, never
+// a stream that holds no round (which is what a new attempt's readable, empty stream is).
+fn workflow_attempt_round_ledger(evidence: WorkflowAttemptEvidence) -> HarnessRoundLedger {
+  if !evidence.modeled_state_present {
+    RoundsUnobserved { reason: "the attempt predates round capture, so its rounds were not recorded" as NonEmptyStr }
+  } else if !evidence.provider_events_readable {
+    RoundsUnobserved { reason: "the attempt's provider event stream is unreadable, so its rounds were not read" as NonEmptyStr }
+  } else {
+    harness_round_ledger_from_events(body: evidence.provider_events)
+  }
+}
+
 fn workflow_attempt_progress(
   evidence: WorkflowAttemptEvidence,
 ) -> WorkflowAttemptProgress {
@@ -1391,7 +1405,7 @@ fn workflow_attempt_progress(
       evidence: evidence,
       segments: segments,
     ),
-    rounds: harness_round_ledger_from_events(body: evidence.provider_events),
+    rounds: workflow_attempt_round_ledger(evidence: evidence),
     handoff: workflow_attempt_handoff_state(provider: provider, evidence: evidence),
   }
 }
