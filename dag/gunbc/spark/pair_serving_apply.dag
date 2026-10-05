@@ -271,14 +271,14 @@ fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<Strin
 data spark_pair_leg_exit_prefix: String = "gunbc-privileged-leg-exit="
 
 type SparkPairHostApplyOutcome
-  = SparkPairHostApplied { host: HostIdentity, detail: String, standing: ServingStanding }
+  = SparkPairHostApplied { host: HostIdentity, wire: String, stdout: String, standing: ServingStanding }
   | SparkPairHostApplyFailed { host: HostIdentity, cause: String }
   | SparkPairHostUnreached { host: HostIdentity, cause: String }
 
 fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
   match o {
-    SparkPairHostApplied { host: h, detail: d, standing: s } =>
-      join(["  ", h as String, "  applied  ", d, "  ", serving_standing_wire(s: s)], "")
+    SparkPairHostApplied { host: h, wire: w, stdout: out, standing: s } =>
+      join(["  ", h as String, "  applied  ", w, " ", out, "  ", serving_standing_wire(s: s)], "")
     SparkPairHostApplyFailed { host: h, cause: c } => join(["  ", h as String, "  FAILED  ", c], "")
     SparkPairHostUnreached { host: h, cause: c } => join(["  ", h as String, "  UNREACHED (no remote shell reported beginning; the script did not report running)  ", c], "")
   }
@@ -286,7 +286,7 @@ fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
 
 fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
   match o {
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => true
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => true
     SparkPairHostApplyFailed { host: _, cause: _ } => false
     SparkPairHostUnreached { host: _, cause: _ } => false
   }
@@ -294,7 +294,7 @@ fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
 
 fn spark_pair_host_unreached(o: SparkPairHostApplyOutcome) -> Bool {
   match o {
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => false
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => false
     SparkPairHostApplyFailed { host: _, cause: _ } => false
     SparkPairHostUnreached { host: _, cause: _ } => true
   }
@@ -332,7 +332,8 @@ fn spark_pair_leg_outcome_of(host: HostIdentity, wire: String, r: SshSessionExec
       if code == 0 {
         SparkPairHostApplied {
           host: host,
-          detail: join([wire, " ", spark_pair_leg_script_stdout(stdout: r.stdout)], ""),
+          wire: wire,
+          stdout: spark_pair_leg_script_stdout(stdout: r.stdout),
           standing: serving_standing(attempts: []),
         }
       } else {

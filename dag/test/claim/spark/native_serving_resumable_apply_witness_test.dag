@@ -3,12 +3,13 @@ module test.claim.spark.native_serving_resumable_apply_witness_test
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
 
 import std.types { Bool, String, NonEmptyStr, Int }
+import std.algebra { trim }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,
   spark_pair_host_applied, spark_pair_host_unreached, spark_pair_leg_outcome_of, spark_pair_leg_payload,
-  spark_pair_leg_exit_prefix,
+  spark_pair_leg_exit_prefix, spark_pair_host_apply_outcome_line,
 }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.native_serving_apply {
@@ -18,7 +19,7 @@ import gunbc.spark.native_serving_apply {
   spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
-import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_observe_begin_word, arm_observe_complete_word, ArmRankRead, ArmRankUnread, FactRead, FactAbsent, FactUnread }
+import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_rank_observation_of, arm_observe_complete_word, ArmRankObservation, ArmRankRead, ArmRankUnread, FactRead, FactAbsent, FactUnread }
 
 // THE INCIDENT THESE ARE THE REDS FOR: fleet-converge run 36918167575 (2026-10-01). One ssh leg to srv7
 // timed out over Wi-Fi, the four-host arm aborted, the rollback leg to srv7 timed out too, and the next
@@ -32,7 +33,7 @@ fn unreached() -> SparkPairHostApplyOutcome {
 }
 
 fn applied(word: String) -> SparkPairHostApplyOutcome {
-  SparkPairHostApplied { host: operator_host_srv9, detail: word, standing: serving_standing(attempts: []) }
+  SparkPairHostApplied { host: operator_host_srv9, wire: "management-lan", stdout: word, standing: serving_standing(attempts: []) }
 }
 
 fn ran_and_refused() -> SparkPairHostApplyOutcome {
@@ -70,7 +71,7 @@ test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> 
   })
   match o {
     SparkPairHostApplyFailed { host: _, cause: c } => string_contains(s: c, pattern: "script-exit=1") && string_contains(s: c, pattern: "PREFLIGHT-REFUSED-image-absent")
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => false
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => false
     SparkPairHostUnreached { host: _, cause: _ } => false
   }
 }
@@ -81,8 +82,8 @@ test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool {
     stdout: join([remote_leg_began_word, "\npreflight-ok\n", spark_pair_leg_exit_prefix, "0\n"], ""),
     stderr: "",
   }) {
-    SparkPairHostApplied { host: _, detail: d, standing: _ } =>
-      d == "management-lan preflight-ok"
+    SparkPairHostApplied { host: _, wire: w, stdout: out, standing: _ } =>
+      out == "preflight-ok" && w == "management-lan"
     SparkPairHostApplyFailed { host: _, cause: _ } => false
     SparkPairHostUnreached { host: _, cause: _ } => false
   }
@@ -236,33 +237,34 @@ test fn w_the_announcement_and_front_door_share_one_deadline_and_incarnation_sto
     && !string_contains(s: s, pattern: "1800"))
 }
 
-// ── THE OBSERVATION THROUGH THE REAL LEG READING (the route run 37270222679 broke) ────────────
+// ── THE OBSERVATION READS THE LEG'S STDOUT AS DATA, THROUGH THE REAL LEG READING ──────────────
 //
-// The applied leg's detail is "<wire> <stdout>" (gunbc.spark.pair_serving_apply spark_pair_leg_outcome_of),
-// so a fact on the FIRST stdout line arrives behind the wire and its key is not at the line start: run
-// 37270222679 read the planned-unit hash unread on every rank and refused. The observe leg now prints a
-// begin line first. This claim runs the wrapped stdout through the real leg reading and the real parse;
-// the RED is the same stdout with the begin line removed, which reads the first fact unread.
-fn w_observe_stdout(begin: Bool) -> String {
+// fleet-converge run 37270222679 refused on every rank: the observation parsed the applied leg's
+// RENDERED detail, "<wire> <stdout>", as if it were stdout, so the first fact arrived behind the wire
+// and read unread. The earliest unjustified boundary was the outcome carrying only that rendering, so
+// SparkPairHostApplied now carries the wire and the script's stdout as separate fields, and every
+// consumer reads stdout there; the line is rendered only for the receipt. This claim runs wrapped stdout
+// through the real leg reading (spark_pair_leg_outcome_of) and the real parse. The RED is the defect
+// itself: the same outcome's RENDERED line handed to the parser reads the first fact unread.
+fn w_observe_stdout() -> String {
   join([
     remote_leg_began_word, "\n",
-    if begin { join([arm_observe_begin_word, "\n"], "") } else { "" },
     "desired_unit_sha=aaaa\nunit_sha=aaaa\nactive_state=active\ncontainer=0123456789ab true 0\ncommitted=absent\n",
     arm_observe_complete_word, "\n",
     spark_pair_leg_exit_prefix, "0\n",
   ], "")
 }
 
-fn w_planned_hash_read(begin: Bool) -> Bool {
-  match spark_native_observation_of_leg(o: spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
-    exit_code: 0, success: true, stdout: w_observe_stdout(begin: begin), stderr: "" })) {
+fn w_planned_hash(o: ArmRankObservation) -> Bool {
+  match o {
     ArmRankUnread { host: _, cause: _ } => false
     ArmRankRead { observed: r } => match r.desired_unit_sha { FactRead { value: v } => v == "aaaa"  FactAbsent => false  FactUnread { cause: _ } => false }
   }
 }
 
-test fn w_the_observation_reads_every_fact_through_the_real_leg_reading() -> Bool {
-  w_planned_hash_read(begin: true) && !w_planned_hash_read(begin: false)
-    && string_contains(s: arm_rank_observe_script(unit_name: "u.service" as NonEmptyStr, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n"),
-         pattern: join(["echo ", arm_observe_begin_word, "\n"], ""))
+test fn w_the_observation_reads_the_legs_stdout_as_data() -> Bool {
+  let outcome = spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult { exit_code: 0, success: true, stdout: w_observe_stdout(), stderr: "" })
+  let rendered = trim(s: spark_pair_host_apply_outcome_line(o: outcome))
+  w_planned_hash(o: spark_native_observation_of_leg(o: outcome))
+    && !w_planned_hash(o: arm_rank_observation_of(host: operator_host_srv9, stdout: rendered))
 }

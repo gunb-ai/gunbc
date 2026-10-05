@@ -91,12 +91,6 @@ type ArmRankObservation
   = ArmRankRead { observed: ArmRankObserved }
   | ArmRankUnread { host: HostIdentity, cause: String }
 
-// THE BEGIN LINE ABSORBS THE LEG'S FRAMING. gunbc.spark.pair_serving_apply spark_pair_leg_outcome_of
-// reports an applied leg's detail as "<wire> <stdout>", so the FIRST stdout line arrives prefixed by the
-// wire. The observe leg's first line is this word and carries no fact, so every fact line starts with its
-// own key (fleet-converge run 37270222679 refused on every rank because desired_unit_sha was that first
-// line and read as "management-lan desired_unit_sha=...").
-data arm_observe_begin_word: String = "arm-observe-begin"
 data arm_observe_complete_word: String = "arm-observe-complete"
 data arm_fact_unread_prefix: String = "unread:"
 data arm_retired_file_key: String = "retired_file="
@@ -122,7 +116,6 @@ fn arm_rank_observe_script(unit_name: NonEmptyStr, container_name: NonEmptyStr, 
   let r = arm_committed_record_path(unit_name: unit_name)
   let ctr = shell_quote(arg: container_name as String)
   join([
-    "echo ", arm_observe_begin_word, "\n",
     "echo \"desired_unit_sha=$(printf '%s' ", shell_quote(arg: planned_unit_text), " | sha256sum | cut -c1-64)\"\n",
     "if [ -f ", u, " ]; then if s=$(sha256sum < ", u, " | cut -c1-64) && [ -n \"$s\" ]; then echo \"unit_sha=$s\"; else echo 'unit_sha=", arm_fact_unread_prefix, "sha256sum of the unit file failed'; fi\n",
     "elif [ -e ", u, " ]; then echo 'unit_sha=", arm_fact_unread_prefix, "the unit path is not a regular file'\n",

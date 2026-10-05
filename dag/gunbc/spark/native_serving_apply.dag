@@ -729,7 +729,7 @@ type SparkNativeLegRun sole_constructor {
 fn spark_native_unreached_cause(o: SparkPairHostApplyOutcome) -> String {
   match o {
     SparkPairHostUnreached { host: _, cause: c } => c
-    SparkPairHostApplied { host: _, detail: d, standing: _ } => d
+    SparkPairHostApplied { host: _, wire: w, stdout: out, standing: _ } => join([w, " ", out], "")
     SparkPairHostApplyFailed { host: _, cause: c } => c
   }
 }
@@ -1048,7 +1048,7 @@ fn spark_native_readback_arm(
 
 fn spark_native_leg_refusal(o: SparkPairHostApplyOutcome) -> ArmRankReadbackRefusal? {
   match o {
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => none
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => none
     SparkPairHostApplyFailed { host: h, cause: c } => Present { value: ArmRankReadbackRefusal { host: h, cause: c } }
     SparkPairHostUnreached { host: h, cause: c } => Present { value: ArmRankReadbackRefusal { host: h, cause: join(["never reached: ", c], "") } }
   }
@@ -1069,7 +1069,7 @@ type SparkNativeObservation
 
 fn spark_native_observation_of_leg(o: SparkPairHostApplyOutcome) -> ArmRankObservation {
   match o {
-    SparkPairHostApplied { host: h, detail: d, standing: _ } => arm_rank_observation_of(host: h, stdout: d)
+    SparkPairHostApplied { host: h, wire: _, stdout: out, standing: _ } => arm_rank_observation_of(host: h, stdout: out)
     SparkPairHostApplyFailed { host: h, cause: c } => ArmRankUnread { host: h, cause: join(["the observation leg failed: ", c], "") }
     SparkPairHostUnreached { host: h, cause: c } => ArmRankUnread { host: h, cause: join(["the observation leg never reached the host within its attempt budget: ", c], "") }
   }
