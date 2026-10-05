@@ -6808,41 +6808,85 @@ fn infer_caller_admission_application_diags(
   application: Node,
   caller: Optional<InferAdmitCallerCoords>,
   module_symbol: Symbol,
-  entries: List<InferredFactsEntry>
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex
 ) -> Diagnostics {
   match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
-    Absent => None
-    Present { value: arrow } =>
-      match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
-        Ambiguous =>
-          infer_admission_diags_of([
-            Diagnostic {
-              reason: ^infer_reason_admit_callers_edge_ambiguous,
-              at: node_locus(node: application),
-              correction: Unavailable { reason: UserInputBoundary }
-            }
-          ])
+    Absent =>
+      match infer_callee_arrow_from_declarations(declarations: declarations, operator: application) {
         Absent => None
-        Found { target: roster } =>
-          match infer_admit_clause_entries(roster: roster) {
-            Rejected { diagnostics: d } => Some { diagnostics: d }
-            Accepted { value: records, diagnostics: _ } =>
-              match caller {
-                Absent => infer_admission_diags_of([
-                  Diagnostic {
-                    reason: ^infer_reason_caller_admission_caller_unkeyed,
-                    at: node_locus(node: application),
-                    correction: Unavailable { reason: UserInputBoundary }
-                  }
-                ])
-                Present { value: coords } =>
-                  infer_admission_judge_entries(
-                    application: application,
-                    entries: records,
-                    caller: coords,
-                    module_symbol: module_symbol
-                  )
+        Present { value: arrow } =>
+          infer_caller_admission_judged_diags(
+            application: application,
+            caller: caller,
+            module_symbol: module_symbol,
+            arrow: arrow
+          )
+      }
+    Present { value: arrow } =>
+      infer_caller_admission_judged_diags(
+        application: application,
+        caller: caller,
+        module_symbol: module_symbol,
+        arrow: arrow
+      )
+  }
+}
+
+// THE CALLEE'S ARROW FROM THE RESOLVED-DECLARATIONS INDEX: a cross-module callee's facts are never in
+// the subject's gather (the gather walks the subject root), so the wall reads the callee's own
+// declaration node from resolved_declarations -- declarations WITH RESOLVED BODIES, imported modules
+// included. Absent when the operator is not a qualified reference or names no declaration.
+fn infer_callee_arrow_from_declarations(declarations: SymbolIndex, operator: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: operator), index: 0) {
+    Absent => optional_absent()
+    Present { value: callee_ref } =>
+      match qualified_name_from_node(root: callee_ref) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: qn, diagnostics: _ } =>
+          match map_lookup(m: declarations.entries, key: qn) {
+            Absent => optional_absent()
+            Present { value: decl } => infer_operator_arrow(operator: decl)
+          }
+      }
+  }
+}
+
+fn infer_caller_admission_judged_diags(
+  application: Node,
+  caller: Optional<InferAdmitCallerCoords>,
+  module_symbol: Symbol,
+  arrow: Node
+) -> Diagnostics {
+  match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
+    Ambiguous =>
+      infer_admission_diags_of([
+        Diagnostic {
+          reason: ^infer_reason_admit_callers_edge_ambiguous,
+          at: node_locus(node: application),
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      ])
+    Absent => None
+    Found { target: roster } =>
+      match infer_admit_clause_entries(roster: roster) {
+        Rejected { diagnostics: d } => Some { diagnostics: d }
+        Accepted { value: records, diagnostics: _ } =>
+          match caller {
+            Absent => infer_admission_diags_of([
+              Diagnostic {
+                reason: ^infer_reason_caller_admission_caller_unkeyed,
+                at: node_locus(node: application),
+                correction: Unavailable { reason: UserInputBoundary }
               }
+            ])
+            Present { value: coords } =>
+              infer_admission_judge_entries(
+                application: application,
+                entries: records,
+                caller: coords,
+                module_symbol: module_symbol
+              )
           }
       }
   }
@@ -6908,7 +6952,8 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
               application: self,
               caller: ctx.caller,
               module_symbol: ctx.module_symbol,
-              entries: entries
+              entries: entries,
+              declarations: tree.resolved_declarations
             )
           },
           child_context: fn(self, ctx, edge) { infer_admission_child_context(self: self, ctx: ctx, edge: edge) },
