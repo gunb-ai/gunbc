@@ -76,6 +76,7 @@ import v1.std.core { Unmarked,
   LeafOwner, SingleOwner, LeafAmbiguous
 }
 
+import std.compiler_entry { NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator }
 import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, RenderEveryModule, RenderSelectedMirrors }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
@@ -270,7 +271,7 @@ import v1.compiler.emit {
   ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
-  NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken,
+  NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
   NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator,
   FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
@@ -18081,7 +18082,6 @@ type NativeEntryEffects {
   entry_module: String
   entry_function: String
   admissions: List<NativeEffectRealizationAdmission>
-  module_files: List<String>
 }
 
 fn native_entry_function_name(modules: List<TypedModule>) -> String? {
@@ -18095,18 +18095,13 @@ data native_serve_entry_function: String = "native_serve_handle"
 data native_cli_entry_function: String = "v2_cli_main"
 data native_claim_entry_function: String = "native_claim_report"
 
-type NativeEffectDeclSite {
-  item: Node
-  module_file: String
-}
-
 fn native_effect_decl_sites(modules: List<TypedModule>, kind: ParsedModuleItemKind, name: String) -> List<NativeEffectDeclSite> {
   modules |> flat_map(tm => {
     let si = tm.type_env.source_indices
-    let file = module_to_filename(name: authored_name_at(source_indices: si, node: tm.module))
+    let module_name = authored_name_at(source_indices: si, node: tm.module)
     tm.items
       |> filter(item => item.module_item_kind == kind && authored_name_at(source_indices: si, node: item) == name)
-      |> map(item => NativeEffectDeclSite { item: item, module_file: file })
+      |> map(item => NativeEffectDeclSite { item: item, module_name: module_name })
   })
 }
 
@@ -18130,37 +18125,24 @@ fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemIn
       let info = lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: entry_module, decl_name: entry_fn })
       let resources = match info { Present { value: i } => i.resource_requirements  Absent => [] }
       let services = match info { Present { value: i } => i.service_names  Absent => [] }
-      let resource_rows = resources |> map(r => {
+      let resource_admissions = resources |> map(r => {
         let rname = type_leaf_name_for_collapse(n: r.resource, source_indices: si)
-        let sites = native_effect_decl_sites(modules: modules, kind: ModuleItemResource, name: rname)
-        let site = if (sites |> count) == 1 { sites |> first } else { none }
-        NativeEntryEffectRow {
-          admission: admit_native_resource_effect(binding: r.binding_name, resource: rname, capability_count: match site { Present { value: d } => Present { value: d.item.children |> count }  Absent => none }, denominator: denominator),
-          module_file: match site { Present { value: d } => d.module_file  Absent => "" }
-        }
+        admit_native_resource_effect(binding: r.binding_name, resource: rname,
+          resolution: native_effect_resolution(sites: native_effect_decl_sites(modules: modules, kind: ModuleItemResource, name: rname)),
+          denominator: denominator)
       })
-      let service_rows = services |> map(sn => {
-        let sites = native_effect_decl_sites(modules: modules, kind: ModuleItemService, name: sn)
-        let site = if (sites |> count) == 1 { sites |> first } else { none }
-        NativeEntryEffectRow {
-          admission: admit_native_service_effect(service: sn, item: match site { Present { value: d } => Present { value: d.item }  Absent => none }, denominator: denominator, source_indices: si),
-          module_file: match site { Present { value: d } => d.module_file  Absent => "" }
-        }
-      })
-      let rows = concat(resource_rows, service_rows)
+      let service_admissions = services |> map(sn =>
+        admit_native_service_effect(service: sn,
+          resolution: native_effect_resolution(sites: native_effect_decl_sites(modules: modules, kind: ModuleItemService, name: sn)),
+          denominator: denominator, source_indices: si)
+      )
       Present { value: NativeEntryEffects {
         entry_module: entry_module,
         entry_function: entry_fn,
-        admissions: rows |> map(r => r.admission),
-        module_files: rows |> map(r => r.module_file)
+        admissions: concat(resource_admissions, service_admissions)
       } }
     }
   }
-}
-
-type NativeEntryEffectRow {
-  admission: NativeEffectRealizationAdmission
-  module_file: String
 }
 
 fn native_entry_effect_diagnostics(effects: NativeEntryEffects?, modules: List<TypedModule>) -> List<ErrorNode> {
@@ -18208,15 +18190,16 @@ fn native_effect_binding_of(var: String, type_path: String, constructor: String)
   }
 }
 
-fn native_effect_binding_text(a: NativeEffectRealizationAdmission, module_file: String, crate_name: String) -> NativeEffectBindingText? {
+fn native_effect_binding_text(a: NativeEffectRealizationAdmission, crate_name: String) -> NativeEffectBindingText? {
   match a {
     NativeEffectHandlerBound { effect_contract: c, handler_identity: _ } => match c {
-      NativeServiceEffect { service: sn } => {
-        let path = concat(crate_name, "::", module_file, "::", sanitize_service_name(name: sn))
+      NativeServiceEffect { declaration: d } => {
+        let sn = d.decl_name as String
+        let path = concat(crate_name, "::", module_to_filename(name: d.module_path as String), "::", sanitize_service_name(name: sn))
         Present { value: native_effect_binding_of(var: service_var_name(service_name: sn), type_path: path, constructor: concat(path, "::new(Default::default())")) }
       }
-      NativeResourceEffect { binding: b, resource: r } => {
-        let path = concat(crate_name, "::", module_file, "::", r)
+      NativeResourceEffect { binding: b, declaration: d } => {
+        let path = concat(crate_name, "::", module_to_filename(name: d.module_path as String), "::", d.decl_name as String)
         Present { value: native_effect_binding_of(var: emit_ident(name: b, target: Rust), type_path: path, constructor: path) }
       }
     }
@@ -18227,13 +18210,11 @@ fn native_effect_binding_text(a: NativeEffectRealizationAdmission, module_file: 
 fn native_effect_bindings(effects: NativeEntryEffects?, crate_name: String) -> List<NativeEffectBindingText> {
   match effects {
     Absent => []
-    Present { value: e } => e.admissions |> enumerate |> flat_map(pair => {
-      let file = match e.module_files |> skip(pair.first) |> first { Present { value: f } => f  Absent => "" }
-      match native_effect_binding_text(a: pair.second, module_file: file, crate_name: crate_name) {
+    Present { value: e } => e.admissions |> flat_map(a =>
+      match native_effect_binding_text(a: a, crate_name: crate_name) {
         Present { value: t } => [t]
         Absent => []
-      }
-    })
+      })
   }
 }
 

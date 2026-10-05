@@ -1,5 +1,6 @@
 module std.compiler_entry
 
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure {
   Nanosecond,
   nanosecond,
@@ -91,12 +92,12 @@ import std.measure {
 // NativeClaimReport`, which computes every case, renders one row per case identity and decides the
 // terminal;
 // the rendered main performs only the operations no fold can -- writing stdout and setting the
-// status -- and reads no argv. Its DECLARED RESOURCE SET is {Filesystem}: a report that reaches no
+// status -- and reads no argv. Its DECLARED RESOURCE SET is native_claim_route_denominator below: a report that reaches no
 // effect gets a synchronous main that binds nothing, and a report whose only demand is the
 // Filesystem service gets that service bound to the existing extdeps.filesystem.filesystem_io
 // handler, the binding NativeCliDriver's main already performs, with a transport error reported as
 // no observation. Any other demand is refused at emission in place of a main
-// (v1.compiler.emit NativeEffectRealizationAdmission under native_claim_route_denominator), so a claim cannot reach an effect this
+// (native_claim_route_denominator below, read by v1.compiler.emit NativeEffectRealizationAdmission), so a claim cannot reach an effect this
 // driver has not declared. It exists because a claim that must EXECUTE natively has
 // no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
 // evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
@@ -145,6 +146,66 @@ type CompilerEntryDriver
   | NativeCliDriver
   | NativeClaimDriver
   | NativeServeDriver
+
+// WHICH EFFECTS EACH NATIVE ENTRY ROUTE ADMITS: one denominator per native driver, owned here beside
+// the drivers and read by v1.compiler.emit NativeEffectRealizationAdmission. An effect is named by
+// what it IS, never by a spelling: a declaration identity (a service or resource declaration), or
+// NativeOutgoingHttp -- any service whose operations bind the REST transport, which is what makes a
+// service an outgoing-HTTP (Network) effect whatever it is called. Each denominator cites the ruling
+// that set it as a declaration reference, so the refusal names its authority rather than restating it.
+type NativeEffectClass
+  = NativeEffectDeclaration { declaration: DeclarationRef }
+  | NativeOutgoingHttp
+
+type NativeEffectScope
+  = NativeAdmitAllExcept { excluded: List<NativeEffectClass> }
+  | NativeAdmitOnly { admitted: List<NativeEffectClass> }
+
+type NativeEffectDenominator {
+  route: CompilerEntryDriver
+  ruling: DeclarationRef
+  scope: NativeEffectScope
+}
+
+fn native_effect_declared(module_path: String, decl_name: String) -> NativeEffectClass {
+  NativeEffectDeclaration { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+// The compiler route keeps the operator's 2026-09-16 ruling (demand-engine-program D11) whole: no
+// clock, no outgoing HTTP, no entropy, no auth context.
+data native_compiler_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
+  route: NativeCliDriver,
+  ruling: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"),
+  scope: NativeAdmitAllExcept { excluded: [
+    native_effect_declared(module_path: "std.resources", decl_name: "Clock"),
+    native_effect_declared(module_path: "std.resources", decl_name: "Network"),
+    native_effect_declared(module_path: "std.resources", decl_name: "Entropy"),
+    native_effect_declared(module_path: "std.resources", decl_name: "AuthContext"),
+    native_effect_declared(module_path: "extdeps.clock", decl_name: "Clock"),
+    NativeOutgoingHttp
+  ] }
+}
+
+// The service route is that ruling's declared extension (gentle-dove-36, 2026-10-04, recorded on the
+// same D11 row): the clock and outgoing HTTP come back in; entropy and auth context stay out.
+data native_service_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
+  route: NativeServeDriver,
+  ruling: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"),
+  scope: NativeAdmitAllExcept { excluded: [
+    native_effect_declared(module_path: "std.resources", decl_name: "Entropy"),
+    native_effect_declared(module_path: "std.resources", decl_name: "AuthContext")
+  ] }
+}
+
+// The claim route DECLARES its set rather than excluding from an open one: a claim report may demand
+// the extdeps.filesystem.filesystem_io Filesystem service and nothing else.
+data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
+  route: NativeClaimDriver,
+  ruling: decl_ref(module_path: "std.compiler_entry", decl_name: "NativeClaimDriver"),
+  scope: NativeAdmitOnly { admitted: [
+    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem")
+  ] }
+}
 
 // MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
 // loop closed its prepare span and then let the module's resolved tree fall out of scope at the end
