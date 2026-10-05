@@ -1950,7 +1950,16 @@ fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelC
                   match admission {
                     RotationApplyAdmitted { standing: st, request: req, decided_by: by } =>
                       ChannelWritesAdmitted { writes: concat(done, [PlannedChannelAccessWrite { channel: ch, route: st, request: req, decided_by: by }]) }
-                    _ => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyRouteNotGrounded { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyRouteEffectUnobserved { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyApprovalRefused { cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyApprovalDenied => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyApprovalForAnotherAuthority { authority: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
                   }
                 }
               }
