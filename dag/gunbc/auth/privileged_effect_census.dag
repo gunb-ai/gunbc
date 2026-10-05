@@ -310,6 +310,26 @@ fn route_qualification_effect() -> PrivilegedEffect {
   }
 }
 
+// ROTATION ROUTE QUALIFICATION, CHANNEL-ACCESS SHAPE (cut O1a-2). The same qualification effect
+// executed for an IPMI Set User Access request: one per controller and build. Its characteristics
+// are stated as they are rather than copied from the password row. IRREVERSIBLE, AND SAID SO: a
+// privilege write to the wrong user or channel can remove the last administrator's access over the
+// LAN, and getting it back needs hands on the unit (a host-side interface or a reflash), which no
+// reapply over the network can do. It applies NO credential: it changes a privilege limit, not a
+// password. No dispatched run carries it; in this cut it is modeled with a dry realization only.
+fn route_qualification_channel_access_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "qualify a BMC channel-access route: execute one IPMI Set User Access request in its privilege-limit-only form on one controller at one firmware build and read it back with Get User Access" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "a privilege write to the wrong user or channel can remove the last administrator's LAN access; recovering it needs hands on the unit, not a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries route qualification; in cut O1a-2 it is modeled with a dry realization only" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
 // account to a stored and exact-fetched generation and retire the published account to a break-glass
 // generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
@@ -642,8 +662,14 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_password_route_qualification"),
     effect: route_qualification_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_privilege_limit_route_qualification"),
+    effect: route_qualification_channel_access_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },

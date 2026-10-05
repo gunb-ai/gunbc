@@ -139,6 +139,41 @@ type FilesystemCreateNew
   | FilesystemCreateRefused { path: String, kind: FilesystemFailureKind, error: String }
   | FilesystemCreateKindUnrecognized { path: String, observed: String, error: String }
 
+// A DELETE IS OBSERVED THE SAME WAY A CREATE IS: the host's error KIND, admitted through the one
+// classifier, never its message. An absent target is its own arm because a caller confirming that a
+// name is gone (a store retiring an evicted object) must tell "already gone" from "the host refused";
+// the second leaves bytes on disk and the first does not.
+type FilesystemDelete
+  = FilesystemDeleted { path: String }
+  | FilesystemDeleteTargetAbsent { path: String }
+  | FilesystemDeleteRefused { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemDeleteKindUnrecognized { path: String, observed: String, error: String }
+
+fn filesystem_delete(
+  path: String,
+  success: Bool,
+  error: String,
+  error_kind: String,
+) -> FilesystemDelete {
+  if success {
+    FilesystemDeleted { path: path }
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemDeleteKindUnrecognized { path: path, observed: o, error: error }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        match k {
+          FilesystemNotFound => FilesystemDeleteTargetAbsent { path: path }
+          FilesystemAlreadyExists => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemPermissionDenied => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemNotDirectory => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemOtherFailure => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemCrossDevice => FilesystemDeleteRefused { path: path, kind: k, error: error }
+        }
+    }
+  }
+}
+
 fn filesystem_create_new(
   path: String,
   success: Bool,
@@ -818,6 +853,7 @@ service Filesystem {
     output {
       success: Bool from "delete_success"
       error: String from "error"
+      error_kind: String from "error_kind"
     }
     transport file { path: "{path}", verb: "delete" }
   }
