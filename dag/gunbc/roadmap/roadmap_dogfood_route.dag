@@ -752,7 +752,7 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
                                     match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr) {
                                       DerivedPayloadKeyNotSlotAddressable { key: _ } => DogfoodStartRefused { reason: "the start receipt key is not slot-addressable" }
                                       DerivedPayloadAdmitted { verified } =>
-                                        match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: verified, retention: KeepAllGenerations).outcome {
+                                        match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: verified) {
                                           CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
                                           CasPreconditionFailed { expected: _, observed } =>
                                             match observed {
