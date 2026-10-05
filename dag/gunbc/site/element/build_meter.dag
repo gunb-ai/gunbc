@@ -208,17 +208,67 @@ fn failure_event_words(kind: FailureKind, stage: WorkflowSegmentKind) -> String 
   }], "")
 }
 
+// WHERE A FAILURE LINK GOES, at the precision the record has. An exact event is one recorded event
+// with its own identity; a round operation is one operation in one round; a stage group is the
+// failures recorded against one stage, listed together on the Work tab. The producer uses the most
+// precise target its record carries and never makes one up: today the record ties a failure to its
+// stage obligation and nothing finer, so every target it emits is a stage group. Each arm carries the
+// Work tab anchor that opens it, and its words say how precise it is.
+type FailureTarget
+  = FailureExactEvent { event_id: String, anchor: String }
+  | FailureRoundOperation { round: Int, kind: BuildMeterKind, anchor: String }
+  | FailureStageGroup { stage: WorkflowSegmentKind, anchor: String }
+
+fn failure_target_anchor(target: FailureTarget) -> String {
+  match target {
+    FailureExactEvent { event_id: _, anchor } => anchor
+    FailureRoundOperation { round: _, kind: _, anchor } => anchor
+    FailureStageGroup { stage: _, anchor } => anchor
+  }
+}
+
+fn failure_target_round(target: FailureTarget) -> Int? {
+  match target {
+    FailureExactEvent { event_id: _, anchor: _ } => none
+    FailureRoundOperation { round, kind: _, anchor: _ } => Present { value: round }
+    FailureStageGroup { stage: _, anchor: _ } => none
+  }
+}
+
+fn failure_target_key(target: FailureTarget) -> String {
+  match target {
+    FailureExactEvent { event_id: _, anchor: _ } => "event"
+    FailureRoundOperation { round: _, kind: _, anchor: _ } => "round-operation"
+    FailureStageGroup { stage: _, anchor: _ } => "stage-group"
+  }
+}
+
+// What following the link opens, said at the target's precision.
+fn failure_target_words(target: FailureTarget) -> String {
+  match target {
+    FailureExactEvent { event_id: _, anchor: _ } => "open the event"
+    FailureRoundOperation { round, kind, anchor: _ } => join(["open the ", build_meter_kind_key(kind: kind), " in round ", to_string(round)], "")
+    FailureStageGroup { stage, anchor: _ } => join(["open the ", workflow_segment_kind_label(kind: stage), " stage failures"], "")
+  }
+}
+
+// Where the failure happened, at the target's precision: a round when the record ties it to one.
+fn failure_target_place(target: FailureTarget) -> String {
+  match failure_target_round(target: target) {
+    Present { value: n } => join([" in round ", to_string(n)], "")
+    Absent => ""
+  }
+}
+
 // The digest the producer derives from an attempt's failure events: the primary event, by its
 // workflow obligation identity, how many failure events the attempt has (one or more by
-// construction: no digest is made from none), the round the primary event is tied to when the
-// record ties it to one, its stage, and the Work tab destination that opens it.
+// construction: no digest is made from none), its stage, and the target the link opens.
 type FailureDigest {
   kind: FailureKind
   primary_event: WorkflowFactKey
   event_count: Int
-  round: Int?
   stage: WorkflowSegmentKind
-  destination: String
+  target: FailureTarget
 }
 
 type BuildMeterView {
@@ -389,7 +439,7 @@ fn build_meter_rounds_words(coverage: BuildMeterCoverage) -> String {
 
 fn build_meter_stage_words(view: BuildMeterView) -> String {
   match view.failure {
-    Present { value: d } => failure_event_words(kind: d.kind, stage: d.stage)
+    Present { value: d } => join([failure_event_words(kind: d.kind, stage: d.stage), failure_target_place(target: d.target)], "")
     Absent => match view.pose {
       BuildMeterWaitingForSeat => "Waiting for a serving seat"
       BuildMeterWorking => build_meter_current_stage_words(view: view)
@@ -425,14 +475,17 @@ fn build_meter_accessible_name(view: BuildMeterView) -> String {
     concat(
       match build_meter_handoff_words(state: view.handoff) { Present { value: w } => [build_meter_sentence(text: w)]  Absent => [] },
       if view.stale { ["Launched on an earlier revision."] } else { [] })),
-    [build_meter_sentence(text: join(["Open attempt ", view.attempt_label, match view.failure { Present { value: _ } => " failures"  Absent => " work" }], ""))]),
+    [build_meter_sentence(text: match view.failure {
+      Present { value: d } => join(["Attempt ", view.attempt_label, ": ", failure_target_words(target: d.target)], "")
+      Absent => join(["Open attempt ", view.attempt_label, " work"], "")
+    })]),
     " ")
 }
 
 // The one optional line shown on hover or focus: the stage and the most telling count.
 fn build_meter_digest_line(view: BuildMeterView) -> String {
   match view.failure {
-    Present { value: d } => join([failure_event_words(kind: d.kind, stage: d.stage), " · ", to_string(d.event_count), if d.event_count == 1 { " event" } else { " events" }], "")
+    Present { value: d } => join([failure_event_words(kind: d.kind, stage: d.stage), failure_target_place(target: d.target), " · ", to_string(d.event_count), if d.event_count == 1 { " event" } else { " events" }, "; ", failure_target_words(target: d.target)], "")
     Absent => join([build_meter_stage_words(view: view), " · ", match view.coverage {
       BuildMeterNoRoundYet => "no round yet"
       BuildMeterRoundsNotRecorded { reason: _ } => "rounds not recorded"
@@ -481,11 +534,12 @@ fn build_meter_mark_nodes(mark: BuildMeterMark) -> List<Fragment> {
     if lit { [build_meter_rect(x: 0, y: y, w: build_meter_mark_width, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "lit"), attr(name: "opacity", value: ".3")])] } else { [] })
 }
 
+// Each mark says where its count came from: a typed operation, or which legacy proxy.
 fn build_meter_mark_text(mark: BuildMeterMark) -> String {
   match mark.evidence {
-    BuildMeterTypedOperation => join([build_meter_kind_key(kind: mark.kind), " ", to_string(mark.count)], "")
-    BuildMeterToolCallCount => join([to_string(mark.count), if mark.count == 1 { " tool call" } else { " tool calls" }], "")
-    BuildMeterChangedPathCountRise => join([to_string(mark.count), if mark.count == 1 { " more changed path" } else { " more changed paths" }], "")
+    BuildMeterTypedOperation => join([build_meter_kind_key(kind: mark.kind), " ", to_string(mark.count), " (typed)"], "")
+    BuildMeterToolCallCount => join([to_string(mark.count), if mark.count == 1 { " tool call" } else { " tool calls" }, " (proxy: tool-call count)"], "")
+    BuildMeterChangedPathCountRise => join([to_string(mark.count), if mark.count == 1 { " more changed path" } else { " more changed paths" }, " (proxy: changed-path count rise)"], "")
   }
 }
 
@@ -499,7 +553,7 @@ fn build_meter_round_title(round: BuildMeterRound) -> String {
 
 fn build_meter_failure_round(view: BuildMeterView) -> Int? {
   match view.failure {
-    Present { value: d } => d.round
+    Present { value: d } => failure_target_round(target: d.target)
     Absent => none
   }
 }
@@ -509,7 +563,7 @@ fn build_meter_failure_round(view: BuildMeterView) -> Int? {
 fn build_meter_round_failure_nodes(view: BuildMeterView, round: BuildMeterRound) -> List<Fragment> {
   match view.failure {
     Absent => []
-    Present { value: d } => match d.round {
+    Present { value: d } => match failure_target_round(target: d.target) {
       Absent => []
       Present { value: step } => if step != round.step { [] } else { match d.kind {
         FailureVerificationFailed => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "seal"), build_meter_translate(x: 0 - 2, y: 0)], children: [build_meter_seal_node()])]
@@ -608,7 +662,7 @@ fn build_meter_budget_bracket_node() -> Fragment {
 fn build_meter_edge_mark(view: BuildMeterView) -> Fragment? {
   match view.failure {
     Absent => none
-    Present { value: d } => match d.round {
+    Present { value: d } => match failure_target_round(target: d.target) {
       Present { value: _ } => none
       Absent => Present { value: match d.kind {
         FailureVerificationFailed => build_meter_edge_group(edge: "seal", y: 7, mark: build_meter_seal_node())

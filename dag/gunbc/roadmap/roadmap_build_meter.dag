@@ -7,6 +7,8 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsObserved, RoundsUnobserved, RoundObservation, round_changed_path_count_rise,
 }
+import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
+import v2.std.algebra { filter }
 import gunbc.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
@@ -30,12 +32,12 @@ import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import gunbc.roadmap.roadmap_event_log { EventPrincipal, event_principal_is_fabric }
 import gunbc.roadmap_issue_location { issue_work_path, issue_work_event_path }
 import gunbc.site.element.build_meter {
-  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterKind,
-  BuildMeterEvidence, BuildMeterToolCallCount, BuildMeterChangedPathCountRise,
+  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterRead, BuildMeterEdit, BuildMeterKind,
+  BuildMeterEvidence, BuildMeterTypedOperation, BuildMeterToolCallCount, BuildMeterChangedPathCountRise,
   BuildMeterCoverage, BuildMeterNoRoundYet, BuildMeterRoundsRecorded, BuildMeterRoundsNotRecorded,
   BuildMeterPose, BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
   FailureKind, FailureRefused, FailureVerificationFailed, FailureActivityFailed, FailureBudgetSpent, FailureHandoffBlocked,
-  FailureDigest, CompactWorkSummary,
+  FailureDigest, FailureTarget, FailureStageGroup, failure_target_anchor, failure_target_round, failure_target_key, CompactWorkSummary,
   build_meter_kind_key, build_meter_evidence_key, build_meter_pose_key, failure_kind_key,
 }
 
@@ -189,9 +191,8 @@ fn failure_digest_of(node_id: String, events: List<FailureEvent>) -> FailureDige
       kind: primary.kind,
       primary_event: primary.key,
       event_count: count(events),
-      round: none,
       stage: primary.stage,
-      destination: issue_work_event_path(node_id: node_id, workflow_id: primary.key.workflow_id, obligation_id: primary.key.obligation_id),
+      target: FailureStageGroup { stage: primary.stage, anchor: issue_work_event_path(node_id: node_id, workflow_id: primary.key.workflow_id, obligation_id: primary.key.obligation_id) },
     } }
   }
 }
@@ -201,7 +202,37 @@ type BuildMeterRoundFold {
   rounds: List<BuildMeterRound>
 }
 
-fn build_meter_round_marks(tool_calls: Int?, changed_path_rise: Int?) -> List<BuildMeterMark> {
+// TYPED OPERATIONS, BY ROUND. The producer that dispatches the harness's tools knows which tool it
+// called (gunbc.harness.harness_tool HarnessTool, the one closed vocabulary), so a round whose
+// operations it recorded carries one count per tool. Today's ledger does not carry them: the real
+// path supplies none, and the dispatcher that stamps the kind on each tool event (the
+// harness/typed-tool-event-kind change) is the named producer that will. A round with typed
+// operations draws those and nothing else: its tool-call count and changed-path rise are proxies
+// for the same operations, so drawing them too would count the round twice.
+type BuildMeterToolCount {
+  tool: HarnessTool
+  count: Int
+}
+
+type BuildMeterRoundOperations {
+  step: Int
+  operations: List<BuildMeterToolCount>
+}
+
+fn build_meter_tool_kind(tool: HarnessTool) -> BuildMeterKind {
+  match tool {
+    RunCommandTool => BuildMeterRun
+    ReadFileTool => BuildMeterRead
+    WriteFileTool => BuildMeterWrite
+    EditFileTool => BuildMeterEdit
+  }
+}
+
+fn build_meter_typed_marks(operations: List<BuildMeterToolCount>) -> List<BuildMeterMark> {
+  map(filter(operations, o => o.count > 0), o => BuildMeterMark { kind: build_meter_tool_kind(tool: o.tool), count: o.count, evidence: BuildMeterTypedOperation })
+}
+
+fn build_meter_proxy_marks(tool_calls: Int?, changed_path_rise: Int?) -> List<BuildMeterMark> {
   concat(
     match tool_calls {
       Present { value: n } => if n > 0 { [BuildMeterMark { kind: BuildMeterRun, count: n, evidence: BuildMeterToolCallCount }] } else { [] }
@@ -213,12 +244,26 @@ fn build_meter_round_marks(tool_calls: Int?, changed_path_rise: Int?) -> List<Bu
     })
 }
 
-fn build_meter_round_step(acc: BuildMeterRoundFold, r: RoundObservation) -> BuildMeterRoundFold {
+fn build_meter_round_marks(typed: List<BuildMeterToolCount>?, tool_calls: Int?, changed_path_rise: Int?) -> List<BuildMeterMark> {
+  match typed {
+    Present { value: operations } => build_meter_typed_marks(operations: operations)
+    Absent => build_meter_proxy_marks(tool_calls: tool_calls, changed_path_rise: changed_path_rise)
+  }
+}
+
+fn build_meter_typed_for(step: Int, typed: List<BuildMeterRoundOperations>) -> List<BuildMeterToolCount>? {
+  match filter(typed, t => t.step == step).first() {
+    Present { value: t } => Present { value: t.operations }
+    Absent => none
+  }
+}
+
+fn build_meter_round_step(acc: BuildMeterRoundFold, r: RoundObservation, typed: List<BuildMeterRoundOperations>) -> BuildMeterRoundFold {
   BuildMeterRoundFold {
     last_measured: match r.files_changed { Present { value: n } => Present { value: n }  Absent => acc.last_measured },
     rounds: acc.rounds.list_push(BuildMeterRound {
       step: r.step,
-      marks: build_meter_round_marks(tool_calls: r.tool_calls, changed_path_rise: round_changed_path_count_rise(now: r.files_changed, last_measured: acc.last_measured)),
+      marks: build_meter_round_marks(typed: build_meter_typed_for(step: r.step, typed: typed), tool_calls: r.tool_calls, changed_path_rise: round_changed_path_count_rise(now: r.files_changed, last_measured: acc.last_measured)),
       input_tokens: r.input_tokens,
       output_tokens: r.output_tokens,
     }),
@@ -227,13 +272,13 @@ fn build_meter_round_step(acc: BuildMeterRoundFold, r: RoundObservation) -> Buil
 
 // Coverage from the ledger: rounds with the last round's own recorded clock; a read ledger that
 // holds none; or a ledger this instrumentation did not observe, with its reason.
-fn build_meter_coverage(ledger: HarnessRoundLedger) -> BuildMeterCoverage {
+fn build_meter_coverage(ledger: HarnessRoundLedger, typed: List<BuildMeterRoundOperations> = []) -> BuildMeterCoverage {
   match ledger {
     RoundsUnobserved { reason } => BuildMeterRoundsNotRecorded { reason: reason as String }
     RoundsObserved { rounds } => match rounds.last() {
       Absent => BuildMeterNoRoundYet
       Present { value: last } => BuildMeterRoundsRecorded {
-        rounds: fold(rounds, init: BuildMeterRoundFold { last_measured: none, rounds: [] }, f: (acc, r) => build_meter_round_step(acc: acc, r: r)).rounds,
+        rounds: fold(rounds, init: BuildMeterRoundFold { last_measured: none, rounds: [] }, f: (acc, r) => build_meter_round_step(acc: acc, r: r, typed: typed)).rounds,
         last_recorded_at: iso8601_utc_text(unix: last.epoch_ms / 1000),
       }
     }
@@ -313,6 +358,7 @@ fn build_meter_view_of(
   provider: ProviderExecutionState,
   handoff: CandidateHandoffState,
   stale: Bool,
+  typed: List<BuildMeterRoundOperations> = [],
 ) -> BuildMeterView {
   let failure = failure_digest_of(node_id: node_id, events: attempt_failure_events_of(node_id: node_id, attempt_key: attempt_key, segments: segments, provider: provider, handoff: handoff))
   let stage = build_meter_current_segment(segments: segments)
@@ -321,12 +367,12 @@ fn build_meter_view_of(
     attempt_label: attempt_key_short_form(key: attempt_key),
     stage: match stage { Present { value: s } => Present { value: s.kind }  Absent => none },
     stage_state: match stage { Present { value: s } => Present { value: s.state }  Absent => none },
-    coverage: build_meter_coverage(ledger: rounds),
+    coverage: build_meter_coverage(ledger: rounds, typed: typed),
     pose: build_meter_pose(failed: match failure { Present { value: _ } => true  Absent => false }, provider: provider, handoff: handoff),
     stale: stale,
     failure: failure,
     handoff: handoff,
-    destination: match failure { Present { value: d } => d.destination  Absent => issue_work_path(node_id: node_id) },
+    destination: match failure { Present { value: d } => failure_target_anchor(target: d.target)  Absent => issue_work_path(node_id: node_id) },
   }
 }
 
@@ -385,9 +431,10 @@ fn build_meter_failure_json(f: FailureDigest?) -> JsonValue {
       json_kv(key: "workflow_id", value: json_string(s: d.primary_event.workflow_id)),
       json_kv(key: "obligation_id", value: json_string(s: d.primary_event.obligation_id)),
       json_kv(key: "event_count", value: json_int(n: d.event_count)),
-      json_kv(key: "round", value: match d.round { Present { value: n } => json_int(n: n)  Absent => json_null() }),
       json_kv(key: "stage", value: json_string(s: workflow_segment_kind_key(kind: d.stage))),
-      json_kv(key: "destination", value: json_string(s: d.destination)),
+      json_kv(key: "target", value: json_string(s: failure_target_key(target: d.target))),
+      json_kv(key: "round", value: match failure_target_round(target: d.target) { Present { value: n } => json_int(n: n)  Absent => json_null() }),
+      json_kv(key: "destination", value: json_string(s: failure_target_anchor(target: d.target))),
     ])
   }
 }

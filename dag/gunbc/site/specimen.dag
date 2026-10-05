@@ -48,12 +48,10 @@ import gunbc.site.element.field_list {
   FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
 }
 import gunbc.site.element.build_meter {
-  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterKind, BuildMeterTypedOperation, BuildMeterRoundsRecorded, BuildMeterWorking,
-  BuildMeterReason, BuildMeterRead, BuildMeterWrite, BuildMeterEdit, BuildMeterRun, BuildMeterSearch, BuildMeterReport, build_meter,
+  BuildMeterView, build_meter,
 }
-import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view }
-import gunbc.roadmap_issue_location { issue_work_path }
-import gunbc.roadmap_workflow_command { attempt_key_short_form }
+import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view, BuildMeterToolCount, BuildMeterRoundOperations }
+import gunbc.harness.harness_tool { RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
 import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused }
 import gunbc.roadmap_workflow_stage {
@@ -513,36 +511,70 @@ fn specimen_meter_running() -> ProviderExecutionState {
   ProviderRunning { activity: "Agent working" }
 }
 
-// A typed round: each pair is a kind and its count, recorded by the producer that dispatched it.
-fn specimen_typed_round(step: Int, marks: List<BuildMeterMark>, output_tokens: Int) -> BuildMeterRound {
-  BuildMeterRound { step: step, marks: marks, input_tokens: 9000 + step * 650, output_tokens: output_tokens }
+// THE TYPED SPECIMENS go through the producer the rail uses (gunbc.roadmap.roadmap_build_meter
+// build_meter_view_of): a round ledger plus, per round, the operations the dispatcher recorded by
+// tool (gunbc.harness.harness_tool HarnessTool). Only the four tools the harness has appear: run,
+// read, write and edit. Neither specimen draws a mark itself.
+fn specimen_ops(step: Int, run: Int, read: Int, write: Int, edit: Int) -> BuildMeterRoundOperations {
+  BuildMeterRoundOperations { step: step, operations: [
+    BuildMeterToolCount { tool: RunCommandTool, count: run },
+    BuildMeterToolCount { tool: ReadFileTool, count: read },
+    BuildMeterToolCount { tool: WriteFileTool, count: write },
+    BuildMeterToolCount { tool: EditFileTool, count: edit },
+  ] }
 }
 
-fn specimen_typed(kind: BuildMeterKind, n: Int) -> BuildMeterMark {
-  BuildMeterMark { kind: kind, count: n, evidence: BuildMeterTypedOperation }
+data specimen_forty: List<Int> = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+]
+
+// Tool-heavy, mixed: reading dominates the first rounds, then running is the steady beat; a write
+// lands every seventh round and an edit every fourth, with a longer reasoning gap every tenth.
+fn specimen_tool_heavy_ops(i: Int) -> BuildMeterRoundOperations {
+  specimen_ops(step: i,
+    run: if i <= 6 { i % 2 } else if i % 3 == 0 { 3 } else { 1 + i % 2 },
+    read: if i <= 6 { 3 + i % 3 } else if i % 5 == 0 { 2 } else { i % 2 },
+    write: if i % 7 == 0 { 1 } else { 0 },
+    edit: if i % 4 == 0 { 1 + i % 3 % 2 } else { 0 })
 }
 
-fn specimen_read_heavy_rounds() -> List<BuildMeterRound> {
-  map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], i => specimen_typed_round(step: i, output_tokens: 200 + (i - (i / 5) * 5) * 700, marks: if i - (i / 4) * 4 == 0 { [specimen_typed(kind: BuildMeterReason, n: 1), specimen_typed(kind: BuildMeterSearch, n: 2), specimen_typed(kind: BuildMeterRead, n: 3)] } else if i - (i / 7) * 7 == 0 { [specimen_typed(kind: BuildMeterRead, n: 4), specimen_typed(kind: BuildMeterRun, n: 1)] } else { [specimen_typed(kind: BuildMeterRead, n: 1 + i - (i / 3) * 3)] }))
+fn specimen_tool_heavy_ledger() -> List<RoundObservation> {
+  map(specimen_forty, i => RoundObservation {
+    step: i,
+    input_tokens: 9000 + i * 700,
+    output_tokens: if i % 10 == 0 { 4200 } else { 300 + (i % 4) * 350 },
+    epoch_ms: specimen_meter_first_round_ms + i * specimen_meter_round_ms + (i / 10) * 60000,
+    files_changed: Present { value: i / 7 + i / 4 },
+    tool_calls: Present { value: 0 },
+  })
 }
 
-fn specimen_write_heavy_rounds() -> List<BuildMeterRound> {
-  map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], i => specimen_typed_round(step: i, output_tokens: 600 + i * 300, marks: if i == 1 { [specimen_typed(kind: BuildMeterRead, n: 3), specimen_typed(kind: BuildMeterReason, n: 1)] } else if i - (i / 3) * 3 == 0 { [specimen_typed(kind: BuildMeterEdit, n: 2), specimen_typed(kind: BuildMeterRun, n: 1)] } else if i == 14 { [specimen_typed(kind: BuildMeterRun, n: 2), specimen_typed(kind: BuildMeterReport, n: 1)] } else { [specimen_typed(kind: BuildMeterWrite, n: 1 + i - (i / 2) * 2), specimen_typed(kind: BuildMeterEdit, n: 1)] }))
+// Single tool, forty times: every round ran one command. The marks stay one colour; the rounds
+// differ only in what was recorded about them (output size, and a longer pause every eighth).
+fn specimen_single_tool_ledger() -> List<RoundObservation> {
+  map(specimen_forty, i => RoundObservation {
+    step: i,
+    input_tokens: 9000 + i * 400,
+    output_tokens: if i % 8 == 0 { 1800 } else { 220 },
+    epoch_ms: specimen_meter_first_round_ms + i * specimen_meter_round_ms + (i / 8) * 90000,
+    files_changed: Present { value: 0 },
+    tool_calls: Present { value: 1 },
+  })
 }
 
-fn specimen_typed_view(attempt_key: String, rounds: List<BuildMeterRound>, last_at: String) -> BuildMeterView {
-  BuildMeterView {
-    attempt_key: attempt_key,
-    attempt_label: attempt_key_short_form(key: attempt_key),
-    stage: Present { value: AgentWorkflowSegment },
-    stage_state: Present { value: WorkflowSegmentActive },
-    coverage: BuildMeterRoundsRecorded { rounds: rounds, last_recorded_at: last_at },
-    pose: BuildMeterWorking,
-    stale: false,
-    failure: none,
-    handoff: HandoffAwaitingWorker,
-    destination: issue_work_path(node_id: specimen_meter_subject),
-  }
+fn specimen_typed_derived(attempt_key: String, ledger: List<RoundObservation>, typed: List<BuildMeterRoundOperations>) -> BuildMeterView {
+  build_meter_view_of(node_id: specimen_meter_subject, attempt_key: attempt_key,
+    segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: []),
+    rounds: RoundsObserved { rounds: ledger }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: false, typed: typed)
+}
+
+fn specimen_tool_heavy_view() -> BuildMeterView {
+  specimen_typed_derived(attempt_key: "4b7e2c9105d8a3f6", ledger: specimen_tool_heavy_ledger(), typed: map(specimen_forty, i => specimen_tool_heavy_ops(i: i)))
+}
+
+fn specimen_single_tool_view() -> BuildMeterView {
+  specimen_typed_derived(attempt_key: "2d5b8f04a1c7e936", ledger: specimen_single_tool_ledger(), typed: map(specimen_forty, i => specimen_ops(step: i, run: 1, read: 0, write: 0, edit: 0)))
 }
 
 type SpecimenMeter {
@@ -561,8 +593,8 @@ fn specimen_meters() -> List<SpecimenMeter> {
       attempt_key: "a5908ed38768df111",
       segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: ["", "", "the harness ended the turn at its 40-step budget"]),
       rounds: RoundsObserved { rounds: specimen_real_run_rounds }, provider: ProviderBudgetSpent { activity: "Agent stopped at its step budget", detail: "40 of 40 steps taken" }, handoff: HandoffAwaitingWorker, stale: false) },
-    SpecimenMeter { caption: "Read-heavy (typed operations, supplied)", view: specimen_typed_view(attempt_key: "4b7e2c9105d8a3f6", rounds: specimen_read_heavy_rounds(), last_at: "2026-09-29T15:12:31Z") },
-    SpecimenMeter { caption: "Write and edit heavy (typed operations, supplied)", view: specimen_typed_view(attempt_key: "2d5b8f04a1c7e936", rounds: specimen_write_heavy_rounds(), last_at: "2026-09-29T15:10:58Z") },
+    SpecimenMeter { caption: "Tool-heavy, mixed typed operations — supplied", view: specimen_tool_heavy_view() },
+    SpecimenMeter { caption: "Single-tool stress — 40 runs", view: specimen_single_tool_view() },
     SpecimenMeter { caption: "Waiting for a seat, no round yet", view: specimen_meter_derived(
       attempt_key: "0bd4418ce2a75f90", segments: agent_active,
       rounds: RoundsObserved { rounds: [] }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) },
@@ -613,7 +645,7 @@ fn specimen_field_list_fixture() -> FieldList {
       action: "Change assignee",
       editor: [specimen_note(text: "The assign form opens here, in place of the identity.")],
     } },
-    FieldRow { label: "Work", value: FieldWork { summary: compact_work_summary_of_view(subject: "specimen-field-list", view: specimen_typed_view(attempt_key: "2d5b8f04a1c7e936", rounds: specimen_write_heavy_rounds(), last_at: "2026-09-29T15:10:58Z")), link_attributes: [] } },
+    FieldRow { label: "Work", value: FieldWork { summary: compact_work_summary_of_view(subject: "specimen-field-list", view: specimen_tool_heavy_view()), link_attributes: [] } },
     FieldRow { label: "Reporter", value: FieldAbsent { reason: "Not recorded: an authored roadmap row has no creation event" } },
     FieldRow { label: "Component", value: FieldText { text: "@shell", full: none } },
     FieldRow { label: "Parent", value: FieldLinks { links: [FieldLink { text: "DP-M2: shell-to-dag batch 1 lands, then batch 2 retires the residue of the shell invocation layer", href: issue_page_path(node_id: "dp-m2-shell-residue-retired"), full: none }], unlinked: [] } },
@@ -635,7 +667,7 @@ fn specimen_field_list_section() -> Fragment {
 // publishing. Each is the production meter over a supplied view; the page's theme switch shows
 // the same strip in the other scheme.
 data specimen_pose_captions: List<String> = [
-  "Read-heavy (typed operations, supplied)",
+  "Tool-heavy, mixed typed operations — supplied",
   "Waiting for a seat, no round yet",
   "Verification failed after 18 rounds",
   "Stale: launched on an earlier revision",
