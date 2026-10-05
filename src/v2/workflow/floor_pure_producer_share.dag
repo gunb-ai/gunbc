@@ -1,3 +1,510 @@
+module v2.workflow.floor_pure_producer_share
+
+import std.types { List }
+import std.computation_identity { ComputationIdentity, identity_permits_share }
+import std.cache_interface {
+  ByteCapacity, CapacityBounded, ExactLimit, ProviderRetention, ReleasedAtProviderScopeExit,
+  RefuseNewStore
+}
+import std.materialization_ladder {
+  CacheProvider, ContentKeyed, CoversIdentities, Frame, FrameDemand, IsolatedChildrenFrame,
+  LadderVerdict, MemoTier, PureComputation, SharedStateFrame, group_verdict,
+  AuthoredDuplication, DeadComputation, Discharged, RefusedNoProvider, RefusedScopeTooNarrow,
+  RefusedExistenceKeyed, RefusedRetentionUnbounded, RefusedRetentionUnobserved,
+  RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
+  AcceptedEffectIsTheUse, RefusedNatureConflict
+}
+import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
+import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
+import v2.std.algebra { any, list_flat_map, list_map }
+
+// THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
+// once and serve to every planned claim that demands them.
+//
+// THE DEFECT THIS CLOSES. The floor builds a fresh evaluation frame per claim (deliberately --
+// one witness must not contaminate the next), so the eval-frame memo dies at every claim
+// boundary and every claim that reaches the same pure computation re-derives it. DESIGN section
+// 2 calls that one reuse obligation at the least common visible ancestor of the consuming claims:
+// required-floor preparation, across an isolation boundary, which only a store tier can discharge.
+//
+// ADMISSION IS DERIVED, NOT AUTHORED. Until this revision admission was a hand-authored roster of
+// several hundred qualified spellings, appended one row per measured incident. That roster was a
+// second authority over a fact the demand graph already carries (section 3): a witness module
+// whose claims re-ran a module-constant producer had to hand-restructure itself, or hand-append a
+// row, before it fit its enrolment margin. The roster is deleted. Admission is now the fold
+// below, over one observation row per COMPUTATION IDENTITY reached by the run's PLANNED claims:
+// a pure call reached by more than one planned claim with one closed identity is admitted, and
+// nothing else is -- save the five-member frozen residual below, whose identity exists only at run time. Because the observation is over the planned claims' reach, the admitted set
+// is also exactly what this run can demand -- a producer no planned claim reaches is never filled.
+//
+// THE KEY IS THE FULL COMPUTATION IDENTITY (std.computation_identity, DESIGN section 3b keys
+// row): the callee's resolved declaration plus the canonical preimage of its CLOSED argument row.
+// A call whose argument row is not a closed constant has no identity the floor can know before
+// the claims run, so it is not a fill candidate; it is COUNTED under a typed cause
+// (`CallSiteDemandCause`) and never widened to its declaration. The grade is
+// `NormalizedIdentical` with the normalizer named on the row: two sites with equal normalized
+// argument expressions denote one value because the callee is pure and the arguments are closed;
+// two sites with different expressions that happen to evaluate equal are a missed share, never a
+// wrong one.
+//
+// WHERE THE OBSERVATION COMES FROM, AND WHY IT IS A REALIZATION OF THIS INTERFACE. The rows are
+// produced by the seed (`v1_compiler.cli_run.claim_call_site_demand`), which walks each planned
+// claim's reach over the prepared subject and reads each reached call site. That is a realization
+// of the row type declared here, retained only because no `.dag` carrier yet hands the floor
+// per-claim call-site demand identity: when demand-engine M1.b's demand-identity carrier lands
+// it produces these same rows and the seed observer is deleted
+// (`gunbc.floor_call_site_demand_seed_growth`). The seed counts distinct claims per identity --
+// it carries a fact across the claim-frame boundary only it can see -- and decides nothing: the
+// threshold, the identity grade, and every exclusion are this fold's.
+//
+// WHAT AN ADMITTED ROW DOES AT RUN TIME. The seed admits the row's call sites. The first planned
+// claim that actually evaluates one of them fills the tier and the fill is netted from that
+// claim's charged clocks and eval steps (`[floor-shared-fill]` cache=cross_claim_pure_share), so
+// no claim's budget carries a computation it shares; every later claim is served the retained
+// value. A statically reached site no claim evaluates fills nothing. The serve itself is keyed on
+// the evaluated argument VALUES, verified against the stored canonical preimage before any serve,
+// so the static identity decides only eligibility -- a wrong static judgment can cost a missed
+// share or a wasted store, never a wrong value. A store the tier declines (origin-bound value,
+// entry cap, byte budget, a dispatched effect) recomputes per claim exactly as if never admitted,
+// and is counted.
+//
+// THE EXCLUSIONS THAT STAY, because derivation cannot see them: a producer this file measured and
+// refused (`floor_cross_claim_refused_candidates` -- including the one arm that is a correctness
+// refusal rather than a cost one, `KeyOmitsAnInputTheValueDependsOn`), and a producer whose value
+// is carried from a committed checkout input (`floor_cross_claim_carried_input_warm_rows`, keyed
+// on the carried content and admitted by its own row kind). Both are identity gates under
+// `std.materialization_ladder`; neither is an admission roster.
+
+// ── THE OBSERVATION: ONE ROW PER IDENTITY THE PLANNED CLAIMS REACH ────────────────────────
+
+// Why a reached call site carries no closed computation identity. CLOSED: a new reason is a new
+// arm, so the seed cannot mint an unclassified one.
+//   CalleeUnresolved          -- the site's callee is not a resolved source declaration (a
+//                                runtime primitive, an undetermined target): nothing to key a
+//                                fill on.
+//   CalleeIsAValue            -- the site calls a function VALUE (a parameter, a let, a lambda):
+//                                the callee is whatever the value is at run time, so the site
+//                                has no static identity.
+//   CalleeDeclaresEffects     -- the callee declares effect uses; its value depends on the world,
+//                                which the key cannot represent (carried inputs are their own row kind).
+//   ArgumentNotClosedConstant -- some argument mentions a binder of the enclosing declaration or
+//                                an expression form the normalizer does not admit, so the argument
+//                                row is not fixed before the claim runs.
+//   CallShapeUnread           -- the observer could not read the site at all. Counted rather than
+//                                skipped or crashed: a nonzero count is a defect in the observer
+//                                with a located population, never a silent hole in the demand.
+type CallSiteDemandCause
+  = CalleeUnresolved
+  | CalleeIsAValue
+  | CalleeDeclaresEffects
+  | ArgumentNotClosedConstant
+  | CallShapeUnread
+
+// `producer` is the callee's qualified declaration; `argument_preimage` the canonical normalized
+// argument row; `claims` the DISTINCT claims DECLARED in the prepared subject whose reach contains
+// a site of this identity (each becomes one ladder demand at its claim frame); `planned_claims`
+// how many of those this run plans; `sites` those sites as `<file>:<start>-<end>` byte spans, which
+// is what the seed admits.
+//
+// WHY DECLARED AND NOT PLANNED (sharp-raven-357, 2026-10-03): recurrence is a fact about the
+// declared subject, not about which claims a diff happens to plan. Counting only planned claims
+// made a claim's budget depend on which OTHER claims the diff planned -- a producer two declared
+// claims share was shared on a whole-corpus run and charged in full to the one claim a narrow PR
+// planned, so the same claim passed on main and failed on the PR. Counting declared claims makes
+// each claim's budget deterministic. Warming only what a PLANNED claim reaches keeps the run's own
+// demand minimal: an obligation no planned claim can discharge in this run is not filled here.
+// An unadmissible row aggregates every site sharing one cause: `claims` counts distinct planned
+// claims reaching any of them, `sites` counts the sites.
+type CallSiteDemandObservation
+  = ClosedCallSiteDemand {
+      producer: String
+      argument_preimage: String
+      identity: ComputationIdentity
+      claims: List<String>
+      planned_claims: Int
+      sites: List<String>
+    }
+  | UnadmissibleCallSiteDemand {
+      cause: CallSiteDemandCause
+      claims: Int
+      sites: Int
+    }
+
+// ── THE DECISION ──────────────────────────────────────────────────────────────────────────
+
+// THE FRAME PATH, and each frame's kind is a fact about the floor's own execution rather than a
+// label. Preparation is a SHARED-STATE frame: one process, one prepared subject, and the carried
+// value is bound in it. A claim is an ISOLATED-CHILDREN frame because the floor builds a fresh
+// evaluation frame per claim deliberately — one witness must not contaminate the next — which is
+// exactly why the eval-frame memo dies at every claim boundary and why the obligation LCA is
+// preparation rather than any claim.
+fn floor_preparation_frame() -> Frame {
+  Frame { name: "required-floor-preparation", kind: SharedStateFrame }
+}
+
+fn floor_claim_frame(name: String) -> Frame {
+  Frame { name: name, kind: IsolatedChildrenFrame }
+}
+
+fn floor_claim_site(name: String) -> List<Frame> {
+  [floor_preparation_frame(), floor_claim_frame(name: name)]
+}
+
+// THE PROVIDER: the cross-claim pure-producer tier, described as it actually behaves.
+//
+// scope      — the preparation frame, which is the least common visible ancestor of the claims.
+// coverage   — the identities a caller admits (the derived rows below, or the carried-input rows)
+//              and nothing else, never every pure call.
+// tier       — MemoTier { ContentKeyed }: an in-process store whose key is the resolved fn node
+//              plus the portable argument row, and the carried value IS that argument row.
+// retention  — released when the prepared subject is cleared, with the exact 256 MiB ceiling the
+//              tier enforces at publication and RefuseNewStore as its at-capacity disposition
+//              (an over-budget producer recomputes per claim as if never enrolled).
+fn cross_claim_tier_retention() -> ProviderRetention {
+  ProviderRetention {
+    release_policy: ReleasedAtProviderScopeExit,
+    capacity: CapacityBounded {
+      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 268435456) } },
+      at_capacity: RefuseNewStore
+    }
+  }
+}
+
+fn cross_claim_share_provider(identities: List<String>) -> CacheProvider {
+  CacheProvider {
+    id: "floor-cross-claim-pure-share",
+    scope: [floor_preparation_frame()],
+    coverage: CoversIdentities { identities: identities },
+    tier: MemoTier { keying: ContentKeyed },
+    retention: cross_claim_tier_retention()
+  }
+}
+
+// THE LADDER JUDGMENT FOR ONE CLOSED IDENTITY (std.materialization_ladder, the structural
+// authority DESIGN section 2 names). Each demanding planned claim is one FrameDemand at its claim
+// frame under preparation. Two or more claims put the obligation's least common ancestor at the
+// SHARED-STATE preparation frame, which the ladder judges AuthoredDuplication: the repair is to
+// carry the first value to preparation, and the derived warm is that carry. One claim is
+// AcceptedSingleRecompute. The ladder identity is the full computation identity: producer plus
+// canonical argument preimage.
+fn share_ladder_identity(producer: String, argument_preimage: String) -> String {
+  concat(producer, concat(" ", argument_preimage))
+}
+
+fn closed_demand_ladder_verdict(identity: String, claims: List<String>) -> LadderVerdict {
+  group_verdict(
+    identity: identity,
+    group: list_map(xs: claims, f: fn(c) {
+      FrameDemand { identity: identity, site: floor_claim_site(name: c), nature: PureComputation }
+    }),
+    providers: [cross_claim_share_provider(identities: [identity])],
+    cost_floor_exempt: []
+  )
+}
+
+// WHY A ROW IS ADMITTED. `SharedByDeclaredDemand` is the reuse obligation: two or more declared
+// claims demand the identity. `SingleClaimFillDebt` is NOT sharing and is named so it cannot be
+// read as sharing: one declared claim demands the identity, that claim is an ACTIVE member of
+// `floor_single_claim_fill_debt`, and admitting the identity nets the claim's own fixture fill from
+// its budget -- a cost transfer exposed per claim (DESIGN section 5's honest arm), never a silent one.
+type ShareBasis
+  = SharedByDeclaredDemand
+  | SingleClaimFillDebt { claim: String }
+
+type DerivedShareRow {
+  producer: String
+  argument_preimage: String
+  identity: String
+  basis: ShareBasis
+  claims: Int
+  sites: List<String>
+}
+
+// Why a CLOSED identity is still not admitted. Every closed row lands in exactly one of `admitted`
+// or one of these, and the counts reconcile against the observation population
+// (`cross_claim_share_derivation_reconciles`). The three gates come first because they are
+// identity facts the ladder cannot see; the ladder then decides whether a carry is owed.
+type ShareDerivationDecline
+  = DemandedByOneClaim
+  | ReachedByNoPlannedClaim
+  | IdentityGradeNotShareable
+  | RefusedByMeasurement
+  | CarriedInputProducer
+  | LadderOwesNoCarry { verdict: LadderVerdict }
+
+type DeclinedShareRow {
+  producer: String
+  argument_preimage: String
+  decline: ShareDerivationDecline
+}
+
+type UnadmissibleDemandCount {
+  cause: CallSiteDemandCause
+  claims: Int
+  sites: Int
+}
+
+type CrossClaimShareDerivation {
+  admitted: List<DerivedShareRow>
+  declined: List<DeclinedShareRow>
+  unadmissible: List<UnadmissibleDemandCount>
+}
+
+// The ladder verdict's consequence for admission: AuthoredDuplication owes the carry, so the row
+// is admitted (empty list); a single recompute is a one-claim demand; every other verdict owes no
+// carry and is carried on the decline so the floor names it.
+fn ladder_decline(verdict: LadderVerdict) -> List<ShareDerivationDecline> {
+  match verdict {
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => []
+    AcceptedSingleRecompute { identity: _ } => [DemandedByOneClaim]
+    DeadComputation { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    Discharged { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedNoProvider { identity: _, lca: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    ExemptFreshEffect { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    AcceptedBelowCostFloor { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    AcceptedEffectIsTheUse { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedNatureConflict { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+  }
+}
+
+fn closed_demand_decline(
+  producer: String,
+  argument_preimage: String,
+  identity: ComputationIdentity,
+  claims: List<String>,
+  planned_claims: Int,
+  refused_names: List<String>,
+  carried_names: List<String>,
+  debt: List<SingleClaimFillDebtModule>
+) -> List<ShareDerivationDecline> {
+  if identity_permits_share(ci: identity) == false {
+    [IdentityGradeNotShareable]
+  } else if planned_claims == 0 {
+    [ReachedByNoPlannedClaim]
+  } else if any(xs: refused_names, predicate: fn(r) { r == producer }) {
+    [RefusedByMeasurement]
+  } else if any(xs: carried_names, predicate: fn(c) { c == producer }) {
+    [CarriedInputProducer]
+  } else if length(xs: sole_active_debt_claim(claims: claims, debt: debt)) == 1 {
+    []
+  } else {
+    ladder_decline(verdict: closed_demand_ladder_verdict(
+      identity: share_ladder_identity(producer: producer, argument_preimage: argument_preimage),
+      claims: claims
+    ))
+  }
+}
+
+// The identity's sole demanding claim, when there is exactly one and it is an ACTIVE debt member;
+// empty otherwise. A list so the caller reads "none" without an optional.
+fn sole_active_debt_claim(claims: List<String>, debt: List<SingleClaimFillDebtModule>) -> List<String> {
+  if length(xs: claims) == 1 {
+    filter(xs: claims, predicate: fn(c) { fill_debt_claim_is_active(claim: c, debt: debt) })
+  } else {
+    []
+  }
+}
+
+fn share_basis_of(claims: List<String>, debt: List<SingleClaimFillDebtModule>) -> ShareBasis {
+  let sole = sole_active_debt_claim(claims: claims, debt: debt)
+  if length(xs: sole) == 1 {
+    SingleClaimFillDebt { claim: join(sole, "") }
+  } else {
+    SharedByDeclaredDemand
+  }
+}
+
+fn derived_share_rows_for(
+  observation: CallSiteDemandObservation,
+  refused_names: List<String>,
+  carried_names: List<String>,
+  debt: List<SingleClaimFillDebtModule>
+) -> List<DerivedShareRow> {
+  match observation {
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s } =>
+      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt)) == 0 {
+        [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), basis: share_basis_of(claims: c, debt: debt), claims: length(xs: c), sites: s }]
+      } else {
+        []
+      }
+    UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
+  }
+}
+
+fn declined_share_rows_for(
+  observation: CallSiteDemandObservation,
+  refused_names: List<String>,
+  carried_names: List<String>,
+  debt: List<SingleClaimFillDebtModule>
+) -> List<DeclinedShareRow> {
+  match observation {
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _ } =>
+      list_map(
+        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt),
+        f: fn(d) { DeclinedShareRow { producer: p, argument_preimage: a, decline: d } }
+      )
+    UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
+  }
+}
+
+fn unadmissible_counts_for(observation: CallSiteDemandObservation) -> List<UnadmissibleDemandCount> {
+  match observation {
+    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => []
+    UnadmissibleCallSiteDemand { cause: k, claims: c, sites: n } =>
+      [UnadmissibleDemandCount { cause: k, claims: c, sites: n }]
+  }
+}
+
+// THE FOLD THE FLOOR CONSUMES. Each output list is one linear pass over the observations and the
+// rows are never accumulated by copying, so the decision is linear in the identity population.
+fn derive_cross_claim_share(
+  observations: List<CallSiteDemandObservation>,
+  refused: List<RefusedShareCandidate>,
+  carried: List<CarriedInputWarmRow>,
+  debt: List<SingleClaimFillDebtModule>
+) -> CrossClaimShareDerivation {
+  let refused_names = refused_share_producers(refused: refused)
+  let carried_names = carried_input_warm_producers(rows: carried)
+  CrossClaimShareDerivation {
+    admitted: list_flat_map(xs: observations, f: fn(o) { derived_share_rows_for(observation: o, refused_names: refused_names, carried_names: carried_names, debt: debt) }),
+    declined: list_flat_map(xs: observations, f: fn(o) { declined_share_rows_for(observation: o, refused_names: refused_names, carried_names: carried_names, debt: debt) }),
+    unadmissible: list_flat_map(xs: observations, f: fn(o) { unadmissible_counts_for(observation: o) }),
+  }
+}
+
+// THE COST FLOOR: DESIGN section 2's economic realization, chosen only after the ladder has ruled a
+// carry lawful ("only after both hold does section 6 choose the economically optimal realization").
+// It is NOT the ladder's AcceptedBelowCostFloor exemption, which the ladder applies only below an
+// isolated least common ancestor; at the shared-state preparation frame the ladder owes the carry
+// whatever it costs, so the floor is a policy of the BOUNDED provider about which carried values to
+// retain. An admitted identity whose isolated warm performs fewer evaluator steps than this is
+// not retained: a store costs a key, a byte budget share and an entry in a bounded population, and
+// below this line the recomputation it saves is smaller than what it occupies. MEASURED REASON for
+// it existing (run 37089182924, the first derived run): 2807 of 2919 admitted identities warmed in
+// under 5ms, and retaining all of them exhausted the tier's entry cap so that every identity a
+// claim actually needed (each costing seconds) was refused a store. The value is declared policy in
+// eval steps -- the floor's own deterministic unit -- set at about seven percent of the new-witness
+// claim budget (v2.workflow.required_floor claim_eval_step_budget_for_identity), so a share below it
+// cannot be what moves a claim across that budget. The seed applies it to the warm's measured steps
+// and counts every identity it declines (`BelowCostFloor`).
+fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
+  5000
+}
+
+// THE FLOOR HAS A CPU ARM, as declared policy: a fill is below the floor only when it is below the
+// step floor above AND its thread CPU is below this one. Steps alone undercount a fill whose cost
+// is native. The measured case: dag_prepared_grammar is a nullary wrapper over
+// prepare_grammar(grammar: dag_grammar()); once prepare_grammar is served the wrapper performs a
+// handful of steps and still pays the content hash and total reification of the whole grammar
+// value to key that lookup -- 466 ms and 1140 ms on two measured fills (probe runs 37160051963 and
+// 37199261433). Judged on steps it was declined (205 times on probe 37160050318), so every claim
+// that reached it re-paid that keying natively, outside its step budget.
+//
+// WHY THE VALUE IS THE NEW-WITNESS ENVELOPE AND NOT THE STEP FLOOR CONVERTED TO TIME. Converting
+// 5000 steps at the calibration rate gives about 7 ms, and that was tried: it retained some sixty
+// further producers whose fills are tens of milliseconds and whose values are large trees, the
+// tier reached its byte budget, and seven claims ran over budget only with this change (probe
+// 37199261433). The arm exists for a fill whose native cost by itself is a claim's whole
+// allowance, so its value is that allowance: v2.workflow.required_floor
+// required_floor_new_witness_envelope_ms, one authority, not a second literal.
+fn floor_cross_claim_share_cost_floor_cpu() -> Millisecond {
+  required_floor_new_witness_envelope_ms()
+}
+
+fn floor_cross_claim_share_cost_floor_cpu_millisecond_count() -> Int {
+  millisecond_count(m: floor_cross_claim_share_cost_floor_cpu())
+}
+
+// THE IN-FLIGHT FILL WALL CEILING: a declared POLICY budget, in nanoseconds of wall per evaluator
+// step. A claim that first-touches an admitted fill has the fill's wall excused from its own wall
+// safety deadline only while the fill is DOING WORK: the excused wall is at most the fill's steps
+// so far times this ceiling, under the preparation wall safety limit as the outer hard cap
+// (v2.workflow.required_floor required_floor_preparation_wall_safety_limit). The wall deadline
+// exists to catch a claim that is blocked or descheduled, which step counting cannot see; a fill
+// that stops advancing accrues wall without steps, is excused nothing, and the deadline fires
+// naming the producer, its steps and its wall. There is no per-producer cost list: the bound is
+// each fill's own work, measured in the run it happens in (sharp-raven-357 ruling, 2026-10-03).
+//
+// HOW THE VALUE WAS SET, as policy and not as a fact about the tree: on the planning probe
+// 37147337255 the interpreted fills of 200ms or more ran between the calibrated rate
+// (v2.workflow.floor_eval_step_calibration) and about 6,200 ns of wall per step; the ceiling is
+// set at four times that observed top, to cover the runner-to-runner timing variance this floor
+// has measured without admitting a stall of any useful length. Re-derive the observation from
+// that run's [floor-shared-fill] claim= rows (fill_wall_ms over fill_eval_steps); change the
+// policy here, never by copying a new figure in.
+//
+// THE UNIT IS IN THE TYPE (review 75137): the ceiling is a std.measure `Nanosecond` of wall per one
+// evaluator step, so a millisecond figure cannot be written here by mistake. The seed reads the
+// count through `nanosecond_count`, the one crossing std.measure declares for it.
+fn floor_cross_claim_fill_wall_per_step_ceiling() -> Nanosecond {
+  nanosecond(count: 25000)
+}
+
+fn floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count() -> Int {
+  nanosecond_count(n: floor_cross_claim_fill_wall_per_step_ceiling())
+}
+
+// The live derivation, over the refused and carried rows this file declares. The seed calls this.
+fn floor_cross_claim_share_derivation(
+  observations: List<CallSiteDemandObservation>
+) -> CrossClaimShareDerivation {
+  derive_cross_claim_share(
+    observations: observations,
+    refused: floor_cross_claim_refused_candidates,
+    carried: floor_cross_claim_carried_input_warm_rows,
+    debt: floor_single_claim_fill_debt
+  )
+}
+
+fn closed_observation_count(observations: List<CallSiteDemandObservation>) -> Int {
+  length(xs: filter(xs: observations, predicate: fn(o) {
+    match o {
+      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => true
+      UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => false
+    }
+  }))
+}
+
+// THE PARTITION HOLDS: every closed observation is admitted or declined, exactly once.
+fn cross_claim_share_derivation_reconciles(
+  observations: List<CallSiteDemandObservation>,
+  derivation: CrossClaimShareDerivation
+) -> Bool {
+  length(xs: derivation.admitted) + length(xs: derivation.declined) == closed_observation_count(observations: observations)
+}
+
+// The admitted producers as names, for the refused-carrier overlap wall in the seed and for the
+// collision walls below.
+fn derived_share_producers(derivation: CrossClaimShareDerivation) -> List<String> {
+  list_map(xs: derivation.admitted, f: fn(row) { row.producer })
+}
+
+// ── SINGLE-CLAIM FILL DEBT: A CLAIM'S OWN FIXTURE COST, NETTED FROM ITS BUDGET, NAMED PER CLAIM ──
+//
+// WHAT THIS IS, AND WHY IT IS NOT SHARING. Most rows of the deleted hand roster were never shared:
+// each named a fixture producer exactly ONE declared claim demands, and warming it in preparation
+// moved that claim's own cost outside its budget. That is a cost transfer, and DESIGN section 5
+// admits only two honest arms for one: absorb it, or expose it as a separately named contract.
+// Withholding the claims would have dropped their verdicts from the floor (rejected: a safety
+// regression bought to make a cost figure look honest); holding the derivation until every owning
+// module restructures would have stalled the general repair. So the transfer is EXPOSED: a claim
+// listed here keeps running, its single-claim fixture identities are admitted to the tier so its
+// own fill is netted from its budget, and every such admission is reported with basis
+// SingleClaimFillDebt naming the claim (sharp-raven-357 ruling A, 2026-10-03).
+//
+// A MONOTONE DEBT CONTRACT (DESIGN section 5), AT IDENTITY GRAIN. The set is closed: membership is
+// by claim identity (module plus claim), the fill identities it covers are DERIVED from the run's
+// observation (the closed identities whose only declared demander is that claim) rather than
+// authored, and the seed joins the two by identity each run -- an ACTIVE member the run observes
+// with no single-claim identity left to bill is STALE and refuses (it was restructured, or its
+// fixture became shared, and the row must say which). A member leaves only by a typed disposition;
+// a member is added only with a declared source. No count is asserted anywhere.
+//
 // THE TRIGGER, PER MODULE: the DESIGN section 3 witness rule -- the module supplies each claim's
 // judged subject at the interface the claim inspects and keeps ONE inhabitance claim on the real
 // front-end path -- after which its claims fit their budget unaided and retire as

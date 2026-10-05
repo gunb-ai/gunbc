@@ -393,6 +393,7 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
@@ -727,6 +728,7 @@ fn symbol_index_mark_variant_alias_carrier(index: SymbolIndex, alias_path: Quali
     ),
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
-    namespace_bodies: index.namespace_bodies
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots
   }
 }
