@@ -1128,8 +1128,9 @@ fn parse_prov_merge(
 // second arm, memoized by the arm-body guard !(pattern =>), lost its extent this way (gunbc#13056).
 // The table is the state every result threads, accepted or rejected, so it records the allocator
 // each STORED memo entry consumed through, and a parse resumes past it AT THE SITES THAT RESUME AFTER A
-// REJECTION -- the next ordered alternative, an absorbed optional, a stopped repetition, a not-predicate
-// whose element failed -- and nowhere on the accepted path, which never rewinds.
+// REJECTION -- the next ordered alternative, an absorbed optional, a stopped repetition (either arm: an
+// element that rejects, or one that accepts without progress and is discarded), a not-predicate whose
+// element failed -- and nowhere on the accepted path, which never rewinds.
 // Only a STORED accepted entry retains nodes past a rejection, so only it raises the high-water: a
 // parse whose memo stores nothing, or none of whose attempts is rejected, mints exactly as before.
 // The stored subparse ran forward from every earlier entry, so its allocator is the new mark.
@@ -4709,7 +4710,7 @@ fn parse_expr_repeat_step(
               acc_nodes: acc.acc_nodes,
               acc_diags: acc.acc_diags,
               done: true,
-              prov: acc.prov,
+              prov: parse_prov_past_memo(prov: acc.prov, table: table1),
               table: table1
             }
         }

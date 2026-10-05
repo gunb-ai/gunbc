@@ -432,6 +432,100 @@ test fn parse_memo_entry_from_a_rejected_guard_resolves_like_a_memo_free_parse()
   }
 }
 
+// A MEMO ENTRY FILLED INSIDE A REPETITION ELEMENT THAT ACCEPTS WITHOUT PROGRESS.
+//
+//   S = H P y      H = x ((P z)?)*      P = a      tokens: x a y
+//
+// At `a` the optional parses P, which is memoized, then fails at z, and it accepts zero-width. The
+// repetition discards an element that made no progress, and with it that element's provenance. It
+// must still resume past what the memo retains, or its stamp reuses P's ids and S's memo hit on P
+// resolves to the stamp (review of gunbc#13341). The oracle and the route assertion are the
+// guarded specimen's.
+fn empty_element_memo_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^empty_element_memo_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^empty_element_memo_s,
+        expression: Sequence {
+          left: Nonterminal { production: ^empty_element_memo_h },
+          right: Sequence {
+            left: Nonterminal { production: ^empty_element_memo_p },
+            right: abandoned_terminal(token_class: ^empty_element_tok_y)
+          }
+        },
+        emitted: grammar_atom(identity: ^empty_element_memo_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^empty_element_memo_h,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^empty_element_tok_x),
+          right: Repeat {
+            element: Optional {
+              element: Sequence {
+                left: Nonterminal { production: ^empty_element_memo_p },
+                right: abandoned_terminal(token_class: ^empty_element_tok_z)
+              }
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^empty_element_memo_h)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^empty_element_memo_p,
+        expression: abandoned_terminal(token_class: ^empty_element_tok_a),
+        emitted: grammar_atom(identity: ^empty_element_memo_p)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn empty_element_memo_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^empty_element_tok_x, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^empty_element_tok_a, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^empty_element_tok_y, offset: 2),
+  tail: std.algebra.Empty } } }
+}
+
+fn empty_element_memo_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^empty_element_memo_grammar_contract)
+  match grammar_validate_for_parse(root: empty_element_memo_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_memo_frame_replay_run_modeled(
+        tokens: empty_element_memo_tokens(),
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: validated.root),
+        materialization: materialization
+      )
+  }
+}
+
+test fn parse_memo_entry_from_a_discarded_empty_element_resolves_like_a_memo_free_parse() -> Bool {
+  match empty_element_memo_run(materialization: Memoize) {
+    Absent => false
+    Present { value: warm } =>
+      match empty_element_memo_run(materialization: Recompute) {
+        Absent => false
+        Present { value: cold } =>
+          match parse_memo_frame_replay_loci(run: warm) {
+            Absent => false
+            Present { value: warm_loci } =>
+              match parse_memo_frame_replay_loci(run: cold) {
+                Absent => false
+                Present { value: cold_loci } =>
+                  (parse_memo_frame_replay_hits(run: warm) > 0)
+                    && (parse_memo_frame_replay_hits(run: cold) == 0)
+                    && (length(xs: warm_loci) > 0)
+                    && (warm_loci == cold_loci)
+              }
+          }
+      }
+  }
+}
+
 // THE REPAIR MOVES NO ID ON A PARSE THAT RETAINS NOTHING. Only a stored memo entry raises the
 // high-water the parse resumes past, so the same guard with the store refused (Recompute) must mint
 // exactly the ids it minted before the repair: the guard's own attempt is discarded and its ids are
