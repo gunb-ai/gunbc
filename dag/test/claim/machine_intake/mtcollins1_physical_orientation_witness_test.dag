@@ -18,8 +18,10 @@ import gunbc.managed_host {
 }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation { mtcollins1_blue_connector_observation }
 import gunbc.machine_intake_dimm_physical_orientation {
-  DimmPlacementAnchor, DimmViewHypothesis, DimmSlotMap, DimmOrientedHost, DimmTrainedSlot, DimmDamagedConnectorReport,
-  HostDimmOriented, HostDimmBoardUnmodeled,
+  DimmOrientedHost, HostDimmOriented, HostDimmBoardUnmodeled, host_dimm_orientation, host_dimm_slot_map, host_damaged_candidates,
+}
+import gunbc.machine_intake_dimm_row_orientation {
+  DimmPlacementAnchor, DimmViewHypothesis, DimmSlotMap, DimmTrainedSlot, DimmDamagedConnectorReport,
   ChassisViewpoint, ChassisEnd, FirmwareTrainedFact, OperatorByEyeReport, VendorFigureFact, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
   IntendedAtPhysicalConnectors,
   FigureOrder, FullMirror, SocketHalvesSwapped,
@@ -32,7 +34,6 @@ import gunbc.machine_intake_dimm_physical_orientation {
   ViewpointAgreesWithFigureBet, ViewpointDisagreesWithFigureBet,
   SlotDamaged, SlotPopulated, SlotEmpty,
   PlacementReadbackMatches, PlacementReadbackDiffers, PlacementReadbackUnevaluable,
-  host_dimm_orientation, host_dimm_slot_map, host_damaged_candidates,
   anchor_verdict, resolve_orientation, damaged_connector_candidates, population_damage_standing,
   expected_firmware_readback, trained_sets_equal,
 }

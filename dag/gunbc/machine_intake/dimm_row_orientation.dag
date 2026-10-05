@@ -1,0 +1,574 @@
+module gunbc.machine_intake_dimm_row_orientation
+
+import v2.std.algebra { filter }
+import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.nat { Nat }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmFigure, MtCollinsDimmFigureBank, chassis_orientation_figure,
+}
+import gunbc.mt_collins_dimm_physical_identity {
+  MtCollinsDimmPopulationIdentity, MtCollinsPhysicalIdentificationGap,
+  ConnectorSilkscreenNotEstablished, PhysicalColourRoleNotEstablished,
+  DimmDiagramIdentityResolved, DimmDiagramIdentityRefused,
+  PopulationDiagramResolved, PopulationDiagramRefused, PopulationCountDisagrees, PopulationConnectorRepeated,
+  resolve_dimm_diagram_identity, population_diagram_identity,
+}
+import gunbc.baseboard_dimm_figure {
+  BaseboardDimmFigure, MtCollinsGettingStartedGuideFigures, figure_chassis_orientation,
+}
+
+// THE PHYSICAL ORIENTATION OF A DIMM ROW, AS LOGIC OVER A BOARD FIGURE: the vocabulary a unit's
+// placement readings are written in, and the folds that resolve which way the row is read. Every fold
+// takes the figure it reads as a parameter. Which figure a HOST has is not decided here:
+// gunbc.machine_intake_dimm_physical_orientation selects it from the baseboard its bound controller
+// reported. This module imports no managed-host seam and names no unit, so a unit's receipt module can
+// write its readings in this vocabulary without depending on the roster that lists the unit. The
+// vendor's figure facts stay in their extdeps authorities and nothing here edits them.
+//
+// ONE CANONICAL FRAME. Every hypothesis, and the resolved order, is the row as seen from the
+// front. Each anchor carries the end its operator faced and is normalised into this frame
+// before it tests anything, so a rear-observed anchor can never be read as a front one.
+
+// Three standings kept apart by type (§4d): a vendor figure, an operator's by-eye report, and
+// what firmware trained. On 2026-09-23 they were conflated on Mt. Collins unit 1: the operator
+// placed DIMMs by a drawing derived from Figure 9, and the firmware trained connectors the drawing
+// did not name.
+type DimmPhysicalFactStanding
+  = VendorFigureFact { figure: MtCollinsDimmFigure, standing: CitedFigureStanding }
+  | OperatorByEyeReport { observed_on: SpecificationDocumentDate, relay: NonEmptyStr, method: NonEmptyStr }
+  | FirmwareTrainedFact { run_id: Nat, artifact: NonEmptyStr, roster_lines: List<NonEmptyStr> }
+
+// WHICH END THE OPERATOR FACED. "Left" and "right" name nothing without it, so every count or
+// placement carries its own frame; none borrows another report's.
+type ChassisEnd = FrontEnd | RearEnd
+
+type ChassisViewpoint
+  = ViewpointReported { end: ChassisEnd, report: DimmPhysicalFactStanding }
+  | ViewpointNotYetReported { asked: NonEmptyStr }
+
+// A firmware roster line reduced to its identity: socket, memory controller, slot.
+type DimmTrainedSlot {
+  socket: Nat
+  controller: Nat
+  slot: Nat
+}
+
+// What the operator meant to install, in the words they used. Only drawing labels are an
+// input to the orientation join; a described intent is kept as said and joins nothing.
+type DimmIntendedPlacement
+  = IntendedAsDescribed { description: NonEmptyStr }
+  | IntendedAtDrawingLabels { labels: List<Nat> }
+  | IntendedAtPhysicalConnectors { connectors: List<Nat> }
+
+data dimm_canonical_end: ChassisEnd = FrontEnd
+
+// Candidate readings of the operator's left-to-right view against the figure's bank order.
+// Each is a hypothesis; only firmware anchors eliminate one. FullMirror is what a rigid board
+// looks like from the end opposite the figure's; SocketHalvesSwapped keeps each bank's order
+// and exchanges the two sockets' sides, which no rigid viewpoint produces but which a single
+// anchor may not exclude.
+type DimmViewHypothesis
+  = FigureOrder
+  | FullMirror
+  | SocketHalvesSwapped
+
+data dimm_view_hypotheses: List<DimmViewHypothesis> = [FigureOrder, FullMirror, SocketHalvesSwapped]
+
+fn banks_connectors(banks: List<MtCollinsDimmFigureBank>) -> List<Nat> {
+  fold(banks, init: [], f: (acc, bank) => concat(acc, bank.connectors_left_to_right))
+}
+
+// The operator's left-to-right connector order under a hypothesis, derived from the figure
+// banks, never authored: a second literal slot list would be a parallel authority.
+fn view_order(hypothesis: DimmViewHypothesis, banks: List<MtCollinsDimmFigureBank>) -> List<Nat> {
+  let figure = banks_connectors(banks: banks)
+  match hypothesis {
+    FigureOrder => figure
+    FullMirror => reverse(figure)
+    SocketHalvesSwapped => concat(
+      banks_connectors(banks: filter(banks, b => b.processor_socket != 0)),
+      banks_connectors(banks: filter(banks, b => b.processor_socket == 0)))
+  }
+}
+
+type DimmRowPosition {
+  from_left: Nat
+  connector: Nat
+}
+
+fn positions(order: List<Nat>) -> List<DimmRowPosition> {
+  fold(order, init: [], f: (acc, c) => concat(acc, [DimmRowPosition { from_left: list_length(items: acc), connector: c }]))
+}
+
+fn connector_at(order: List<Nat>, from_left: Nat) -> Nat? {
+  let hits = filter(positions(order: order), p => p.from_left == from_left)
+  let unique = if list_length(items: hits) == 1 { hits } else { [] }
+  map(unique, p => p.connector).first()
+}
+
+fn index_of(order: List<Nat>, connector: Nat) -> Nat? {
+  let hits = filter(positions(order: order), p => p.connector == connector)
+  let unique = if list_length(items: hits) == 1 { hits } else { [] }
+  map(unique, p => p.from_left).first()
+}
+
+fn nat_member(xs: List<Nat>, x: Nat) -> Bool {
+  fold(xs, init: false, f: (acc, y) => acc || y == x)
+}
+
+fn trained_slot_eq(a: DimmTrainedSlot, b: DimmTrainedSlot) -> Bool {
+  a.socket == b.socket && a.controller == b.controller && a.slot == b.slot
+}
+
+fn trained_slot_member(xs: List<DimmTrainedSlot>, x: DimmTrainedSlot) -> Bool {
+  fold(xs, init: false, f: (acc, y) => acc || trained_slot_eq(a: y, b: x))
+}
+
+fn trained_sets_equal(a: List<DimmTrainedSlot>, b: List<DimmTrainedSlot>) -> Bool {
+  list_length(items: a) == list_length(items: b)
+    && fold(a, init: true, f: (acc, x) => acc && trained_slot_member(xs: b, x: x))
+    && fold(b, init: true, f: (acc, x) => acc && trained_slot_member(xs: a, x: x))
+}
+
+// One boot read as a placement test: where the operator put DIMMs, named in the drawing's labels
+// (which is how they named them), and what the firmware trained. live_sockets is the firmware fact
+// of which sockets are present; a DIMM on an absent socket trains nothing.
+type DimmPlacementAnchor {
+  evidence: DimmPhysicalFactStanding
+  frame: ChassisViewpoint
+  placed_at_drawing_labels: List<Nat>
+  trained: List<DimmTrainedSlot>
+  live_sockets: List<Nat>
+}
+
+fn drawing_labels(intended: DimmIntendedPlacement) -> List<Nat> {
+  match intended {
+    IntendedAtDrawingLabels { labels: ls } => ls
+    IntendedAsDescribed { description: _ } => []
+    IntendedAtPhysicalConnectors { connectors: _ } => []
+  }
+}
+
+type DimmAnchorVerdict
+  = AnchorConsistent
+  | AnchorContradicted { predicted: List<DimmTrainedSlot> }
+  | AnchorUnevaluable { unresolved_key: Nat }
+  | AnchorFrameUnreported
+
+type DimmReadbackPrediction {
+  predicted: List<DimmTrainedSlot>
+  unresolved: List<Nat>
+}
+
+// The firmware readback a set of physical connectors must produce: each connector's channel and
+// slot role through the figure's channel join, with absent sockets training nothing. The install
+// plan's expected readback and the anchor prediction are this one function.
+fn expected_firmware_readback(connectors: List<Nat>, live_sockets: List<Nat>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmReadbackPrediction {
+  fold(connectors, init: DimmReadbackPrediction { predicted: [], unresolved: [] }, f: (acc, c) => match resolve_dimm_diagram_identity(connector: c, banks: banks, pairs: pairs) {
+    DimmDiagramIdentityRefused { connector: _, cause: _ } => DimmReadbackPrediction { predicted: acc.predicted, unresolved: concat(acc.unresolved, [c]) }
+    DimmDiagramIdentityResolved { identity: i } =>
+      if nat_member(xs: live_sockets, x: i.channel.processor_socket) {
+        DimmReadbackPrediction {
+          predicted: concat(acc.predicted, [DimmTrainedSlot { socket: i.channel.processor_socket, controller: i.channel.memory_controller, slot: i.legend.slot_number }]),
+          unresolved: acc.unresolved,
+        }
+      } else { acc }
+  })
+}
+
+fn frame_end(frame: ChassisViewpoint) -> ChassisEnd? {
+  match frame {
+    ViewpointReported { end: e, report: _ } => Present { value: e }
+    ViewpointNotYetReported { asked: _ } => Absent
+  }
+}
+
+// The row as seen from `end`, given the canonical-frame row.
+fn row_seen_from(end: ChassisEnd, canonical: List<Nat>) -> List<Nat> {
+  if end == dimm_canonical_end { canonical } else { reverse(canonical) }
+}
+
+// Predict the roster a placement would produce under a hypothesis: drawing label -> drawing
+// position -> the connector the operator's view has there -> expected_firmware_readback. A label
+// that does not resolve makes the anchor unevaluable; it never silently drops out.
+fn predict_trained(anchor: DimmPlacementAnchor, anchor_end: ChassisEnd, hypothesis: DimmViewHypothesis, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmReadbackPrediction {
+  let drawing = view_order(hypothesis: FigureOrder, banks: banks)
+  let view = row_seen_from(end: anchor_end, canonical: view_order(hypothesis: hypothesis, banks: banks))
+  let unlocated = filter(anchor.placed_at_drawing_labels, label => match index_of(order: drawing, connector: label) {
+    Present { value: i } => match connector_at(order: view, from_left: i) { Present { value: _ } => false  Absent => true }
+    Absent => true
+  })
+  if list_length(items: unlocated) > 0 {
+    DimmReadbackPrediction { predicted: [], unresolved: unlocated }
+  } else {
+    let connectors = fold(anchor.placed_at_drawing_labels, init: [], f: (acc, label) => match index_of(order: drawing, connector: label) {
+      Present { value: i } => match connector_at(order: view, from_left: i) { Present { value: c } => concat(acc, [c])  Absent => acc }
+      Absent => acc
+    })
+    expected_firmware_readback(connectors: connectors, live_sockets: anchor.live_sockets, banks: banks, pairs: pairs)
+  }
+}
+
+fn anchor_verdict(anchor: DimmPlacementAnchor, hypothesis: DimmViewHypothesis, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmAnchorVerdict {
+  match frame_end(frame: anchor.frame) {
+    Absent => AnchorFrameUnreported
+    Present { value: e } => {
+      let p = predict_trained(anchor: anchor, anchor_end: e, hypothesis: hypothesis, banks: banks, pairs: pairs)
+      match p.unresolved.first() {
+        Present { value: key } => AnchorUnevaluable { unresolved_key: key }
+        Absent => if trained_sets_equal(a: p.predicted, b: anchor.trained) { AnchorConsistent } else { AnchorContradicted { predicted: p.predicted } }
+      }
+    }
+  }
+}
+
+type DimmOrientationOutcome
+  = OrientationResolved { hypothesis: DimmViewHypothesis, order: List<Nat> }
+  | OrientationAmbiguous { surviving: List<DimmViewHypothesis> }
+  | OrientationContradicted
+  | OrientationUnevaluable { hypothesis: DimmViewHypothesis, unresolved_key: Nat }
+  | OrientationAnchorFrameUnreported { run_id: Nat }
+  | OrientationAnchorFramesDisagree { run_ids: List<Nat> }
+
+fn hypothesis_survives(anchors: List<DimmPlacementAnchor>, hypothesis: DimmViewHypothesis, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> Bool {
+  fold(anchors, init: true, f: (acc, a) => acc && anchor_verdict(anchor: a, hypothesis: hypothesis, banks: banks, pairs: pairs) == AnchorConsistent)
+}
+
+fn first_unevaluable(anchors: List<DimmPlacementAnchor>, hypotheses: List<DimmViewHypothesis>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmOrientationOutcome? {
+  fold(hypotheses, init: Absent, f: (acc, h) => match acc {
+    Present { value: _ } => acc
+    Absent => fold(anchors, init: Absent, f: (inner, a) => match inner {
+      Present { value: _ } => inner
+      Absent => match anchor_verdict(anchor: a, hypothesis: h, banks: banks, pairs: pairs) {
+        AnchorUnevaluable { unresolved_key: l } => Present { value: OrientationUnevaluable { hypothesis: h, unresolved_key: l } }
+        AnchorConsistent => Absent
+        AnchorContradicted { predicted: _ } => Absent
+        AnchorFrameUnreported => Absent
+      }
+    })
+  })
+}
+
+fn anchor_run_id(anchor: DimmPlacementAnchor) -> Nat {
+  match anchor.evidence {
+    FirmwareTrainedFact { run_id: r, artifact: _, roster_lines: _ } => r
+    VendorFigureFact { figure: _, standing: _ } => 0
+    OperatorByEyeReport { observed_on: _, relay: _, method: _ } => 0
+  }
+}
+
+// An unframed anchor refuses the whole resolution before any hypothesis is tested: without its
+// end, its left and right cannot be normalised, and an unnormalised anchor would be read in
+// whatever frame the resolver happened to assume. Anchors from different ends refuse too:
+// normalisation is only as good as each anchor's reported end, and one mis-reported end among
+// the anchors does not contradict anything -- it can silently resolve SocketHalvesSwapped.
+// One shared end is the join that makes the anchors' frames checkable against each other.
+fn resolve_orientation(anchors: List<DimmPlacementAnchor>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmOrientationOutcome {
+  match filter(anchors, a => match frame_end(frame: a.frame) { Present { value: _ } => false  Absent => true }).first() {
+    Present { value: unframed } => OrientationAnchorFrameUnreported { run_id: anchor_run_id(anchor: unframed) }
+    Absent => {
+      let ends = fold(anchors, init: [], f: (acc, a) => match frame_end(frame: a.frame) {
+        Present { value: e } => if fold(acc, init: false, f: (seen, x) => seen || x == e) { acc } else { concat(acc, [e]) }
+        Absent => acc
+      })
+      if list_length(items: ends) > 1 {
+        OrientationAnchorFramesDisagree { run_ids: map(anchors, a => anchor_run_id(anchor: a)) }
+      } else {
+        resolve_framed_orientation(anchors: anchors, banks: banks, pairs: pairs)
+      }
+    }
+  }
+}
+
+// An unevaluable anchor refuses before survival is counted: an anchor that cannot be read
+// must not be allowed to eliminate, or preserve, a hypothesis.
+fn resolve_framed_orientation(anchors: List<DimmPlacementAnchor>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmOrientationOutcome {
+  match first_unevaluable(anchors: anchors, hypotheses: dimm_view_hypotheses, banks: banks, pairs: pairs) {
+    Present { value: refusal } => refusal
+    Absent => {
+      let surviving = filter(dimm_view_hypotheses, h => hypothesis_survives(anchors: anchors, hypothesis: h, banks: banks, pairs: pairs))
+      match surviving.first() {
+        Absent => OrientationContradicted
+        Present { value: only } =>
+          if list_length(items: surviving) == 1 {
+            OrientationResolved { hypothesis: only, order: view_order(hypothesis: only, banks: banks) }
+          } else {
+            OrientationAmbiguous { surviving: surviving }
+          }
+      }
+    }
+  }
+}
+
+// THE DAMAGED CONNECTOR, recorded by the position the operator actually counted, not by a
+// J number: the J number is derived per surviving hypothesis, so it is a candidate set until
+// the orientation resolves, and a single connector after.
+type DimmRowEdge = OperatorLeftEdge | OperatorRightEdge
+
+type DimmSupersessionCause
+  = LabelReadFromUnanchoredDrawing { basis: NonEmptyStr }
+
+// History is kept, not deleted. The earlier report's own words are the record; its location
+// is not known to this repository, so none is invented.
+type DimmSupersededDamageReport {
+  quote: NonEmptyStr
+  stated_label: Nat
+  location: NonEmptyStr?
+  cause: DimmSupersessionCause
+}
+
+// The edge is only meaningful in a frame: the report carries the chassis end the operator
+// faced when counting, and an unreported frame refuses rather than borrowing another report's.
+type DimmDamagedConnectorReport {
+  frame: ChassisViewpoint
+  counted_from: DimmRowEdge
+  ordinal: Nat
+  damage: NonEmptyStr
+  report: DimmPhysicalFactStanding
+  supersedes: DimmSupersededDamageReport
+}
+
+// Ordinals are 1-based and counted without subtraction: the right edge is the reversed row.
+fn connector_counted_from(order: List<Nat>, edge: DimmRowEdge, ordinal: Nat) -> Nat? {
+  let row = match edge { OperatorLeftEdge => order  OperatorRightEdge => reverse(order) }
+  map(filter(positions(order: row), p => p.from_left + 1 == ordinal), p => p.connector).first()
+}
+
+type DimmDamagedCandidates
+  = DamagedCandidates { connectors: List<Nat>, hypotheses: List<DimmViewHypothesis> }
+  | DamagedCandidatesRefused { orientation: DimmOrientationOutcome }
+  | DamageFrameUnreported
+
+// The orientation's order is the canonical-frame row; a report counted from the other end reads
+// the reversed row, and a report with no frame names no connector.
+fn damaged_connector_candidates(report: DimmDamagedConnectorReport, orientation: DimmOrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> DimmDamagedCandidates {
+  match frame_end(frame: report.frame) {
+    Absent => DamageFrameUnreported
+    Present { value: report_end } => damaged_candidates_in_frame(report: report, orientation: orientation, report_end: report_end, banks: banks)
+  }
+}
+
+fn damaged_candidates_in_frame(report: DimmDamagedConnectorReport, orientation: DimmOrientationOutcome, report_end: ChassisEnd, banks: List<MtCollinsDimmFigureBank>) -> DimmDamagedCandidates {
+  let surviving = match orientation {
+    OrientationResolved { hypothesis: h, order: _ } => [h]
+    OrientationAmbiguous { surviving: s } => s
+    OrientationContradicted => []
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => []
+    OrientationAnchorFrameUnreported { run_id: _ } => []
+    OrientationAnchorFramesDisagree { run_ids: _ } => []
+  }
+  let located = fold(surviving, init: [], f: (acc, h) => match connector_counted_from(order: row_seen_from(end: report_end, canonical: view_order(hypothesis: h, banks: banks)), edge: report.counted_from, ordinal: report.ordinal) {
+    Present { value: c } => if nat_member(xs: acc, x: c) { acc } else { concat(acc, [c]) }
+    Absent => acc
+  })
+  if list_length(items: surviving) == 0 || list_length(items: located) == 0 {
+    DamagedCandidatesRefused { orientation: orientation }
+  } else {
+    DamagedCandidates { connectors: located, hypotheses: surviving }
+  }
+}
+
+// CONSEQUENCE FOR POPULATION CHOICE. Every candidate is excluded, not only the likeliest: a
+// candidate set is an unresolved fact, and excluding all of it is refusal, not widening.
+type DimmPopulationDamageStanding
+  = PopulationAvoidsDamage { population: MtCollinsDimmPopulationRow }
+  | PopulationUsesDamaged { population: MtCollinsDimmPopulationRow, connectors: List<Nat> }
+  | PopulationDamageUndetermined { candidates: DimmDamagedCandidates }
+
+fn population_damage_standing(population: MtCollinsDimmPopulationRow, candidates: DimmDamagedCandidates) -> DimmPopulationDamageStanding {
+  match candidates {
+    DamagedCandidatesRefused { orientation: _ } => PopulationDamageUndetermined { candidates: candidates }
+    DamageFrameUnreported => PopulationDamageUndetermined { candidates: candidates }
+    DamagedCandidates { connectors: cs, hypotheses: _ } => {
+      let hit = filter(population.connectors, c => nat_member(xs: cs, x: c))
+      if list_length(items: hit) == 0 { PopulationAvoidsDamage { population: population } } else { PopulationUsesDamaged { population: population, connectors: hit } }
+    }
+  }
+}
+
+fn chassis_end_landmark(end: ChassisEnd, figure: BaseboardDimmFigure) -> NonEmptyStr {
+  match end {
+    FrontEnd => figure_chassis_orientation(figure: figure).top_landmark
+    RearEnd => figure_chassis_orientation(figure: figure).bottom_landmark
+  }
+}
+
+// A bet, typed as one (§4d), per figure. Mt. Collins: IF Figure 9 is drawn from the same viewpoint as
+// Figure 10 (seen from above, front at the top), then a reader at the rear sees FigureOrder and a
+// reader at the front sees FullMirror, and nobody sees SocketHalvesSwapped. The guide does not state
+// that Figure 9 shares Figure 10's viewpoint. It is a non-gating cross-check against the canonical
+// frame the anchors resolved in; the anchors, not this bet, decide the J numbers.
+fn figure_viewpoint_bet(figure: BaseboardDimmFigure) -> DimmPhysicalFactStanding {
+  match figure {
+    MtCollinsGettingStartedGuideFigures => VendorFigureFact {
+      figure: chassis_orientation_figure,
+      standing: TranscribedUncited {
+        read_obligation: "Collins GSG Issue 1.05 does not state that Figure 9 (page 11) is drawn from Figure 10's (page 13) top-down, front-at-top viewpoint. A firmware anchor on a reported viewpoint, or a vendor statement, grounds it.",
+      },
+    }
+  }
+}
+
+type DimmViewpointAgreement
+  = ViewpointAgreesWithFigureBet { bet: DimmPhysicalFactStanding }
+  | ViewpointDisagreesWithFigureBet { expected: DimmViewHypothesis, bet: DimmPhysicalFactStanding }
+
+fn figure_bet_agreement(hypothesis: DimmViewHypothesis, figure: BaseboardDimmFigure) -> DimmViewpointAgreement {
+  let expected = match dimm_canonical_end { RearEnd => FigureOrder  FrontEnd => FullMirror }
+  let bet = figure_viewpoint_bet(figure: figure)
+  if expected == hypothesis { ViewpointAgreesWithFigureBet { bet: bet } } else { ViewpointDisagreesWithFigureBet { expected: expected, bet: bet } }
+}
+
+// The physical connectors a placement populated, under the resolved orientation; Absent for a
+// placement that was only described, or when the orientation is unresolved.
+fn placement_physical_population(intended: DimmIntendedPlacement, frame: ChassisViewpoint, orientation: DimmOrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> List<Nat>? {
+  match intended {
+    IntendedAtPhysicalConnectors { connectors: cs } => Present { value: cs }
+    IntendedAsDescribed { description: _ } => drawing_physical_population(intended: intended, frame: frame, orientation: orientation, banks: banks)
+    IntendedAtDrawingLabels { labels: _ } => drawing_physical_population(intended: intended, frame: frame, orientation: orientation, banks: banks)
+  }
+}
+
+fn drawing_physical_population(intended: DimmIntendedPlacement, frame: ChassisViewpoint, orientation: DimmOrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> List<Nat>? {
+  let labels = drawing_labels(intended: intended)
+  let canonical = match orientation {
+    OrientationResolved { hypothesis: _, order: o } => o
+    OrientationAmbiguous { surviving: _ } => []
+    OrientationContradicted => []
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => []
+    OrientationAnchorFrameUnreported { run_id: _ } => []
+    OrientationAnchorFramesDisagree { run_ids: _ } => []
+  }
+  let order = match frame_end(frame: frame) { Present { value: e } => row_seen_from(end: e, canonical: canonical)  Absent => [] }
+  let drawing = view_order(hypothesis: FigureOrder, banks: banks)
+  let connectors = fold(labels, init: [], f: (acc, label) => match index_of(order: drawing, connector: label) {
+    Present { value: i } => match connector_at(order: order, from_left: i) { Present { value: c } => concat(acc, [c])  Absent => acc }
+    Absent => acc
+  })
+  let complete = list_length(items: labels) > 0 && list_length(items: connectors) == list_length(items: labels)
+  filter([connectors], _ => complete).first()
+}
+
+// A placement made by physical J number is not an orientation anchor (it was placed using the
+// resolved orientation, so it cannot test it without circularity). It is a readback check: the
+// firmware must train exactly what a correct install on this board reads back, every socket
+// included, so a silent socket is a PlacementReadbackDiffers, never a match.
+type DimmPlacementReadback
+  = PlacementReadbackMatches { run_id: Nat }
+  | PlacementReadbackDiffers { run_id: Nat, expected: List<DimmTrainedSlot> }
+  | PlacementReadbackUnevaluable { run_id: Nat }
+
+fn placement_readback(run_id: Nat, intended: DimmIntendedPlacement, trained: List<DimmTrainedSlot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> DimmPlacementReadback? {
+  match intended {
+    IntendedAtPhysicalConnectors { connectors: cs } => {
+      let e = expected_firmware_readback(connectors: cs, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
+      Present { value: if list_length(items: e.unresolved) > 0 { PlacementReadbackUnevaluable { run_id: run_id } } else { if trained_sets_equal(a: e.predicted, b: trained) { PlacementReadbackMatches { run_id: run_id } } else { PlacementReadbackDiffers { run_id: run_id, expected: e.predicted } } } }
+    }
+    IntendedAsDescribed { description: _ } => Absent
+    IntendedAtDrawingLabels { labels: _ } => Absent
+  }
+}
+
+fn board_sockets(banks: List<MtCollinsDimmFigureBank>) -> List<Nat> {
+  fold(banks, init: [], f: (acc, b) => if nat_member(xs: acc, x: b.processor_socket) { acc } else { concat(acc, [b.processor_socket]) })
+}
+
+// THE TECH-FACING SLOT MAP. A projection, regenerated from the bound host's orientation, the damage
+// report and the population: nothing in its text is authored except the frame words. Consumes
+// gunbc.mt_collins_dimm_physical_identity population_diagram_identity through the figure's arm,
+// discharging its operator_projection_frontier.
+type DimmSlotState = SlotPopulated | SlotEmpty | SlotDamaged
+
+type DimmSlotMapLine {
+  from_left: Nat
+  colour: NonEmptyStr
+  connector: Nat
+  socket: Nat
+  controller: Nat
+  state: DimmSlotState
+}
+
+type DimmSlotMapRefusal
+  = SlotMapOrientationUnresolved { orientation: DimmOrientationOutcome }
+  | SlotMapDamageUnresolved { candidates: DimmDamagedCandidates }
+  | SlotMapPopulationUsesDamaged { connectors: List<Nat> }
+  | SlotMapPopulationUnresolved { identity: MtCollinsDimmPopulationIdentity }
+  | SlotMapConnectorUnresolved { connector: Nat }
+
+type DimmSlotMap
+  = SlotMapRendered { end: ChassisEnd, readback: List<DimmTrainedSlot>, lines: List<DimmSlotMapLine>, damage: DimmPopulationDamageStanding, agreement: DimmViewpointAgreement, text: String }
+  | SlotMapRefused { refusal: DimmSlotMapRefusal }
+
+// The diagram identity of a population on the figure's own board model.
+fn figure_population_identity(figure: BaseboardDimmFigure, population: MtCollinsDimmPopulationRow) -> MtCollinsDimmPopulationIdentity {
+  match figure { MtCollinsGettingStartedGuideFigures => population_diagram_identity(population: population) }
+}
+
+// Colour comes from the unit's own operator observation, supplied as the connectors it reported
+// blue; connectors outside that set are reported as not blue, never assigned a colour nobody reported.
+fn slot_colour(blue_connectors: List<Nat>, connector: Nat) -> NonEmptyStr {
+  if nat_member(xs: blue_connectors, x: connector) { "blue" } else { "not blue" }
+}
+
+fn slot_state_text(state: DimmSlotState) -> String {
+  match state { SlotPopulated => "populated"  SlotEmpty => "empty"  SlotDamaged => "DAMAGED - do not use" }
+}
+
+// The cross-check is rendered with the bet's standing: it corroborates, it does not decide.
+// The J numbers come from the firmware anchors in the reported frame alone.
+fn agreement_text(agreement: DimmViewpointAgreement) -> String {
+  match agreement {
+    ViewpointAgreesWithFigureBet { bet: b } => concat("Cross-check: the firmware-resolved front view agrees with reading Figure 9 in Figure 10's frame. That reading is uncited: ", bet_obligation(bet: b))
+    ViewpointDisagreesWithFigureBet { expected: _, bet: b } => concat("Cross-check: the firmware-resolved front view DISAGREES with reading Figure 9 in Figure 10's frame; the firmware anchors decide the J numbers. That reading is uncited: ", bet_obligation(bet: b))
+  }
+}
+
+fn bet_obligation(bet: DimmPhysicalFactStanding) -> String {
+  match bet {
+    VendorFigureFact { figure: _, standing: st } => match st {
+      TranscribedUncited { read_obligation: o } => o
+      CitedToAuthority { authority: _ } => "cited."
+    }
+    OperatorByEyeReport { observed_on: _, relay: _, method: _ } => "not a vendor figure."
+    FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => "not a vendor figure."
+  }
+}
+
+fn trained_slot_text(slot: DimmTrainedSlot) -> String {
+  concat(concat(concat(concat(concat("SK", to_string(slot.socket)), " MC"), to_string(slot.controller)), " S"), to_string(slot.slot))
+}
+
+fn chassis_end_text(end: ChassisEnd) -> String {
+  match end { FrontEnd => "FRONT"  RearEnd => "REAR" }
+}
+
+fn slot_map_line_text(line: DimmSlotMapLine) -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    to_string(line.from_left + 1), ". "), line.colour), "  J"), to_string(line.connector)),
+    "  SK"), to_string(line.socket)), " MC"), to_string(line.controller)), "  "), slot_state_text(state: line.state))
+}
+
+fn damage_standing_text(standing: DimmPopulationDamageStanding) -> String {
+  match standing {
+    PopulationAvoidsDamage { population: p } => concat(concat("Population of ", to_string(p.dimm_count)), " DIMMs avoids the damaged connector.")
+    PopulationUsesDamaged { population: p, connectors: cs } => concat(concat(concat("Population of ", to_string(p.dimm_count)), " DIMMs uses damaged J"), join(map(cs, c => to_string(c)), ", J"))
+    PopulationDamageUndetermined { candidates: _ } => "Damaged connector not located; population not checked."
+  }
+}
+
+fn gap_text(gap: MtCollinsPhysicalIdentificationGap) -> String {
+  match gap {
+    ConnectorSilkscreenNotEstablished { basis: _ } => "J numbers are derived, not read from board silkscreen."
+    PhysicalColourRoleNotEstablished { basis: _ } => "Colours are the operator's report for this unit, not a vendor legend."
+  }
+}
+
+fn readback_unresolved(population: MtCollinsDimmPopulationRow, live_sockets: List<Nat>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> List<Nat> {
+  expected_firmware_readback(connectors: population.connectors, live_sockets: live_sockets, banks: banks, pairs: pairs).unresolved
+}
+

@@ -9,10 +9,11 @@ import extdeps.ampere.smpro_register { SmproBootProgress, SmproBootProgressRead,
 import extdeps.ampere.mt_collins_product_brief.memory_population { MtCollinsChannelConnectorPair }
 import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank }
 import gunbc.baseboard_dimm_figure { figure_banks, figure_channel_pairs }
-import gunbc.machine_intake_dimm_physical_orientation {
+import gunbc.machine_intake_dimm_physical_orientation { DimmOrientedHost }
+import gunbc.machine_intake_dimm_row_orientation {
   DimmPhysicalFactStanding, VendorFigureFact, OperatorByEyeReport, FirmwareTrainedFact,
   IntendedAsDescribed, IntendedAtDrawingLabels, IntendedAtPhysicalConnectors,
-  DimmTrainedSlot, DimmPlacementAnchor, DimmOrientedHost,
+  DimmTrainedSlot, DimmPlacementAnchor,
   DimmDamagedConnectorReport, DimmSupersededDamageReport, LabelReadFromUnanchoredDrawing, OperatorRightEdge,
   DimmPlacementReadback,
   drawing_labels, placement_physical_population, placement_readback, expected_firmware_readback,
@@ -39,7 +40,8 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
 
 // MT. COLLINS UNIT 1'S DIMM-ROW READINGS AND ITS SOCKET-1 DIAGNOSIS. A receipt in the observing
 // layer (DESIGN §3). The orientation logic is host-generic and lives in
-// gunbc.machine_intake_dimm_physical_orientation, over the figure of the baseboard the bound host's
+// gunbc.machine_intake_dimm_physical_orientation (the bound host) and
+// gunbc.machine_intake_dimm_row_orientation (the row logic), over the figure of the baseboard the bound host's
 // controller reported; this module holds only what this unit observed -- its boot receipts read as
 // anchors, its damaged-connector report -- and the diagnosis of its socket 1, which reads the
 // generic orientation of the bound host it is handed and never a board figure of its own.

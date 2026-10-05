@@ -10,10 +10,10 @@ import gunbc.managed_host {
   managed_hosts, managed_host_binding, managed_host_fixture,
 }
 import gunbc.baseboard_dimm_figure { BaseboardDimmFigureOf, BoardFigureUnmodeled, MtCollinsGettingStartedGuideFigures, baseboard_dimm_figure }
-import gunbc.machine_intake_dimm_physical_orientation {
-  DimmPlacementAnchor, HostDimmOriented, HostDimmBoardUnmodeled, FullMirror,
+import gunbc.machine_intake_dimm_physical_orientation { HostDimmOriented, HostDimmBoardUnmodeled, host_dimm_orientation }
+import gunbc.machine_intake_dimm_row_orientation {
+  DimmPlacementAnchor, FullMirror,
   OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable, OrientationAnchorFrameUnreported, OrientationAnchorFramesDisagree,
-  host_dimm_orientation,
 }
 import gunbc.machine_intake_mtcollins1_physical_orientation { mtcollins1_placement_anchors }
 

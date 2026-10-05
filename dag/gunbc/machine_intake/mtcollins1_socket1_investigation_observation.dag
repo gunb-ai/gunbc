@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { Gibibyte, gibibyte, Millivolt, millivolt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.publication { SpecificationDocumentDate }
-import gunbc.machine_intake_dimm_physical_orientation {
+import gunbc.machine_intake_dimm_row_orientation {
   DimmPhysicalFactStanding, VendorFigureFact, OperatorByEyeReport, FirmwareTrainedFact,
   ChassisViewpoint, ViewpointReported, ViewpointNotYetReported, FrontEnd, RearEnd,
   DimmTrainedSlot, DimmIntendedPlacement, IntendedAsDescribed, IntendedAtDrawingLabels, IntendedAtPhysicalConnectors,
@@ -19,7 +19,7 @@ import extdeps.ampere.smpro_register { SmproBootProgress, smpro_boot_progress_of
 // mtcollins1-boot-receipts artifact (mtcollins1-boot-sol.capture) and carries that capture's
 // sha256, so re-reading the artifact re-derives the row. Nothing here interprets placement:
 // which physical connectors a boot populated is derived by
-// gunbc.machine_intake_dimm_physical_orientation from the drawing labels recorded here,
+// gunbc.machine_intake_dimm_row_orientation from the drawing labels recorded here,
 // under the orientation the firmware anchors resolve.
 data mtcollins1_socket1_investigation_predecessor: DeclarationRef = DeclarationRef {
   module_path: "gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation",
@@ -28,7 +28,7 @@ data mtcollins1_socket1_investigation_predecessor: DeclarationRef = DeclarationR
 }
 
 // The fact standings, the chassis frame, the trained-slot identity and the intended placement are
-// the host-generic vocabulary of gunbc.machine_intake_dimm_physical_orientation; this module's rows
+// the host-generic vocabulary of gunbc.machine_intake_dimm_row_orientation; this module's rows
 // are this unit's readings in that vocabulary.
 
 // The operator's frame for today's counts and drawing-label placements. "usually" is theirs: a
