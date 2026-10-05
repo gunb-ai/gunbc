@@ -450,11 +450,10 @@ fn uri_hex_digit_value(cp: Int) -> Int? {
   else { none } } }
 }
 
-// A literal character's UTF-8 octets, prepended in reverse. An ASCII character is its own octet; any
-// other is encoded by the one UTF-8 encoder (std.bytes utf8_encode_bytes).
+// A literal character's UTF-8 octets, from the one UTF-8 encoder (std.bytes utf8_encode_bytes),
+// prepended in reverse.
 fn uri_decode_literal(octets_rev: List<Int>, c: Char) -> List<Int> {
-  let octets: List<Int> = if c < 128 { [c] } else { bytes_octets(b: utf8_encode_bytes(s: char_text(c: c))) }
-  fold(octets, init: octets_rev, f: (acc, o) => Cons { head: o, tail: acc })
+  fold(bytes_octets(b: utf8_encode_bytes(s: char_text(c: c))), init: octets_rev, f: (acc, o) => Cons { head: o, tail: acc })
 }
 
 fn uri_percent_decode_step(state: UriPercentDecodeFold, c: Char) -> UriPercentDecodeFold {
