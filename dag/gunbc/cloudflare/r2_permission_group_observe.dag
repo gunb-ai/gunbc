@@ -6,7 +6,7 @@ import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.account_api_tokens
 import extdeps.cloudflare.account_api_tokens { PermissionGroupRef }
 import gunbc.cloudflare.r2_origin {
@@ -91,22 +91,20 @@ fn observe_account_permission_groups_standing() -> PermissionGroupListing {
                 SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
                   PermissionGroupListingRefused { cause: concat(concat("THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
                     concat(", answered about ", resolved)) as NonEmptyStr }
-                SecretCredentialReady { credential: bootstrap, resolved_version: _ } => {
-                  let listed = cloudflare.AccountTokens.ListPermissionGroups(
+                SecretCredentialReady { credential: bootstrap, resolved_version: _ } =>
+                  match cloudflare.AccountTokens.ListPermissionGroups(
                     auth_token: bootstrap,
                     account_id: account_id as String,
-                  )
-                  match listed.outcome {
-                    RestStatusRefused { status: _, body: body } =>
+                  ) {
+                    RestRefused { refusal: RestStatusRefused { status: _, body: body } } =>
                       PermissionGroupListingRefused { cause: concat("LISTING REFUSED: ", body) as NonEmptyStr }
-                    RestTransportRefused { cause: cause } =>
+                    RestRefused { refusal: RestTransportRefused { cause: cause } } =>
                       PermissionGroupListingRefused { cause: concat("LISTING GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
-                    RestBodyUndecodable { status: _, cause: cause } =>
+                    RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>
                       PermissionGroupListingRefused { cause: concat("LISTING BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
-                    RestOk =>
+                    RestAnswered { answer: listed } =>
                       PermissionGroupsListed { rendered: join(map(listed.groups, g => join([g.id as String, g.name, join(g.scopes, "+")], " | ")), "\n") }
                   }
-                }
               }
           }
       }

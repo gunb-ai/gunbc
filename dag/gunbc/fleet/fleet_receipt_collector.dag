@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_converge_cli {
   ConvergeCliReceipt,
   fleet_converge_receipt_path,
@@ -259,7 +259,11 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
 // carry its readback in the collect receipt, mirroring the probe entry.
 fn collect_fleet_convergence_wet() -> ProcessExit {
-  let enroll_lines = fleet_host_key_enroll_apply()
+  let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  let enroll_lines = fleet_host_key_enroll_apply(home: home)
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(
     enrollments: fleet_subsumption_enrollments,

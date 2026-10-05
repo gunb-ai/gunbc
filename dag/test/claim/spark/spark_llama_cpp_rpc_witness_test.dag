@@ -109,7 +109,7 @@ test fn a_deployment_whose_two_ends_are_one_host_refuses() -> Bool {
         Absent => false
         Present { value: e } =>
           match llama_cpp_rpc_construct(
-            alias: "x" as NonEmptyStr,
+            served_alias: "x" as NonEmptyStr,
             front_door: llama_cpp_rpc_front_door(
               host: operator_host_srv8,
               client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 233),
@@ -132,7 +132,7 @@ test fn a_peer_addressed_off_the_fabric_refuses() -> Bool {
   {
     let link = llama_cpp_rpc_observed_fabric
       match llama_cpp_rpc_construct(
-        alias: "x" as NonEmptyStr,
+        served_alias: "x" as NonEmptyStr,
         front_door: llama_cpp_rpc_front_door(
           host: operator_host_srv7,
           client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232),
@@ -375,7 +375,7 @@ test fn a_unit_whose_ends_share_an_address_and_port_has_no_constructor() -> Bool
         Absent => false
         Present { value: e } =>
           match llama_cpp_rpc_construct(
-            alias: "fixture" as NonEmptyStr,
+            served_alias: "fixture" as NonEmptyStr,
             front_door: llama_cpp_rpc_front_door(
               host: operator_host_srv7, client_address: e.address, port: 50052),
             weights_peer: llama_cpp_rpc_weights_peer(

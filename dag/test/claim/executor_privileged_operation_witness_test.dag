@@ -9,7 +9,7 @@ import gunbc.generated_artifact_emit {
   ArtifactGenerationRefused,
 }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_host_grants {
   runner_slot_teardown_grant_index_bound,
   runner_slot_grammar_dirs_to_bound,
@@ -24,6 +24,7 @@ import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, s
 import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
 import gunbc.executor_privileged_operation { sudoers_argument_word }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

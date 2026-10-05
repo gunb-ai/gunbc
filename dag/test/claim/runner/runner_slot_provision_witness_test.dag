@@ -60,7 +60,7 @@ import gunbc.membership_reconcile {
   OwnershipUnknown,
 }
 import gunbc.ownership { Owned }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,

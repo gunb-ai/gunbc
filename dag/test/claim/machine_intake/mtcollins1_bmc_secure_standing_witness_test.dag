@@ -1,10 +1,14 @@
 module test.claim.machine_intake_mtcollins1_bmc_secure_standing_witness_test
 
-import std.types { Bool }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.ipmi_channel { ipmi_controller_channel_census }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
-import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.deployment_risk { TestRisk }
+import gunbc.machine_intake_phase { machine_qualification_policy }
 import gunbc.machine_intake_subject { UnitKeyBound, UnitKeyRefused }
 import gunbc.machine_intake_bmc_secure {
   BmcSecured,
@@ -29,7 +33,6 @@ import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
   mtcollins1_published_probes,
   mtcollins1_published_user,
   mtcollins1_rotation_applied_at,
-  mtcollins1_secured_account,
   mtcollins1_unit_key_standing,
   mtcollins1_user2_retire_at,
   mtcollins1_user2_retire_evidence,
@@ -68,9 +71,9 @@ test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool {
                     && standing == derive_bmc_secure(
                       subject: subject,
                       observation: observation,
-                      policy: intake_qualification_policy(environment: DevelopmentAndTest),
+                      policy: machine_qualification_policy(admits: TestRisk),
                     )
-                    && match mtcollins1_secured_account() {
+                    && match managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint) {
                       Present { value: account } => account == r.account
                       Absent => false
                     }
@@ -104,7 +107,7 @@ test fn unit1_single_address_without_census_refuses() -> Bool {
               published_user: observation.published_user,
               published_account: observation.published_account,
             ),
-            policy: intake_qualification_policy(environment: DevelopmentAndTest),
+            policy: machine_qualification_policy(admits: TestRisk),
           ).outcome {
             BmcSecureRefused { cause: c } => c == PublishedCredentialCensusNotTaken
             BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => false
@@ -140,7 +143,7 @@ test fn unit1_census_before_rotation_refuses() -> Bool {
               published_user: mtcollins1_published_user,
               published_account: observation.published_account,
             ),
-            policy: intake_qualification_policy(environment: DevelopmentAndTest),
+            policy: machine_qualification_policy(admits: TestRisk),
           ).outcome {
             BmcSecureRefused { cause: c } =>
               c == PublishedCredentialCensusPrecedesRotation {

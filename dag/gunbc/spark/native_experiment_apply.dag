@@ -9,7 +9,7 @@ import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { serialize_content_hash }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -458,7 +458,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
       Present { value: head } =>
         let window = spark_churn_window_seconds(admitted_seconds: plan.max_runtime_seconds)
         let context_window = token_count_value(t: plan.profile.max_model_len)
-        let alias = plan.profile.served_alias
+        let served = plan.profile.served_alias
         Present { value: SparkExperimentWorkloadPhase {
           variant: variant,
           readiness_gate: SparkExperimentWorkloadLeg {
@@ -475,9 +475,9 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
               host: head.host,
               unit_name: head.unit_name,
               script: match variant.mode {
-                SparkSeatsConcurrent => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: false, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
-                SparkSeatsSequential => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: true, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
-                SparkCacheReuseQualification => systemd_workload_cache_reuse_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_window: seat_window, context_window: context_window)
+                SparkSeatsConcurrent => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: false, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
+                SparkSeatsSequential => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: true, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
+                SparkCacheReuseQualification => systemd_workload_cache_reuse_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, seat_window: seat_window, context_window: context_window)
               },
             },
           },
@@ -486,7 +486,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: variant.request_timeout_seconds),
+              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: served, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: variant.request_timeout_seconds),
             },
           },
           sampling: SparkExperimentWorkloadLeg {
