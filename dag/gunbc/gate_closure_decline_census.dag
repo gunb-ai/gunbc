@@ -76,35 +76,38 @@ fn census_excludes_module(module: String) -> Bool {
   fold(gate_closure_decline_census_excluded_prefixes, init: false, f: fn(acc, p) { acc || starts_with(s: module, prefix: p) })
 }
 
-type RosterFold {
-  line_number: Int
-  refused: Bool
-  refusal: DispositionRosterRead
-  identities: List<String>
-}
+// THE ACCUMULATOR IS A SUM, so a stopped fold cannot also hold a success arm (review 76598): the
+// only way to carry a refusal is the arm that carries nothing else.
+type RosterFold
+  = RosterReading { line_number: Int, identities_reversed: List<String> }
+  | RosterStopped { refusal: DispositionRosterRead }
 
 // The declined identities, after the exclusion, or the FIRST refused line. The accumulator is
 // built in reverse and reversed once, so the fold is linear in lines.
 fn gate_closure_declined_identities(lines: List<String>) -> DispositionRosterRead {
-  let done = fold(lines, init: RosterFold { line_number: 0, refused: false, refusal: DispositionRosterRows { identities: [] }, identities: [] }, f: fn(acc, line) {
-    let n = acc.line_number + 1
-    if acc.refused {
-      acc
-    } else {
-      match read_disposition_line(line: line) {
-        DispositionLineSkipped => RosterFold { line_number: n, refused: false, refusal: acc.refusal, identities: acc.identities }
-        DispositionLineRefused { cause } => RosterFold { line_number: n, refused: true, refusal: DispositionRosterRefused { line_number: n, line: line, cause: cause }, identities: acc.identities }
-        DispositionLineRow { identity, disposition } =>
-          if disposition == gate_closure_decline_disposition
-            && !census_excludes_module(module: changed_selection_identity_module_path(identity: identity)) {
-            RosterFold { line_number: n, refused: false, refusal: acc.refusal, identities: concat([identity], acc.identities) }
-          } else {
-            RosterFold { line_number: n, refused: false, refusal: acc.refusal, identities: acc.identities }
-          }
+  let done = fold(lines, init: RosterReading { line_number: 0, identities_reversed: [] }, f: fn(acc, line) {
+    match acc {
+      RosterStopped { refusal } => acc
+      RosterReading { line_number, identities_reversed } => {
+        let n = line_number + 1
+        match read_disposition_line(line: line) {
+          DispositionLineSkipped => RosterReading { line_number: n, identities_reversed: identities_reversed }
+          DispositionLineRefused { cause } => RosterStopped { refusal: DispositionRosterRefused { line_number: n, line: line, cause: cause } }
+          DispositionLineRow { identity, disposition } =>
+            if disposition == gate_closure_decline_disposition
+              && !census_excludes_module(module: changed_selection_identity_module_path(identity: identity)) {
+              RosterReading { line_number: n, identities_reversed: concat([identity], identities_reversed) }
+            } else {
+              RosterReading { line_number: n, identities_reversed: identities_reversed }
+            }
+        }
       }
     }
   })
-  if done.refused { done.refusal } else { DispositionRosterRows { identities: reverse(done.identities) } }
+  match done {
+    RosterStopped { refusal } => refusal
+    RosterReading { line_number: _, identities_reversed } => DispositionRosterRows { identities: reverse(identities_reversed) }
+  }
 }
 
 // One count per declining module, keyed once per identity (a map, so the tally is linear in rows).
