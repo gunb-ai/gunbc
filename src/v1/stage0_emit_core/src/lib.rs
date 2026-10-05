@@ -24,6 +24,10 @@ pub mod gunbc_rust_emitted_edge {
     pub use v1_stage0_std_core::gunbc_rust_emitted_edge::*;
 }
 
+pub mod std_unicode_scalar {
+    pub use v1_stage0_std_core::std_unicode_scalar::*;
+}
+
 pub mod v1_compiler_artifact {
     pub use v1_stage0_v1_artifact::v1_compiler_artifact::*;
 }
