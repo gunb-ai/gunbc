@@ -1,0 +1,140 @@
+module test.claim.parse_test_block_headed_operand_class
+
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared_measured_seeded }
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import std.occurrence_identity { occurrence_id_allocator_initial }
+import v2.std.compilers.lexing { token_stream_layout, token_stream_remaining }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BLOCK-HEADED EXPRESSION IS AN OPERAND OF EVERY BINARY OPERATOR CLASS. `match`, `if` and `loop` are
+// primaries of binary_expr (v2.extdeps.languages.dag dag_grammar_primary_expr_core), so a block heads
+// a chain of any operator, as the seed reads it (v1.compiler.parse parse_expr_bp).
+// v2.test.parse.block_expr_as_binary_operand_parse holds `&&` with a `match` and with an `if`, the
+// bare forms and their lowered shape (so an `if` heading a chain is held there); these claims hold the
+// remaining operator classes, one each, with a `match` as the LEFT operand. They are what fails if a block-form alternative returns ahead of
+// binary_expr in dag_grammar_expr_expr, or if an operator class stops admitting a primary block. One
+// fragment each, parsed at the ONE production the claims are about (dag_production_expr) rather than
+// inside a whole module, whose header and declaration are not their subject (DESIGN section 3, a witness
+// discriminates at one interface). A production parse refuses leftover tokens, so a block alternative
+// returned ahead of binary_expr would leave the operator and its right operand unconsumed and refuse;
+// each claim also asserts the match_expr shell is in the tree. (Every expression parses through a
+// binary_expr shell, a bare `match` included, so that shell would discriminate nothing.) The one
+// claim that runs the real module route end to end is the `+` case through the census's own route
+// (v2.compiler.parse_acceptance_census parse_acceptance_of_text), so a census run and this module
+// cannot disagree on the same text.
+
+// One fragment parsed at one production of the real prepared grammar, with the stream's own layout
+// (the dual-role `-` asks whether a line break precedes it, and a stream without layout refuses).
+fn bc_parse_at(text: String, production: Symbol) -> Outcome<Node> {
+  match tokenize_prepared(text: text, file: ^block_headed_operand_class_probe, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: PreparedVoidGrammar, diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: PreparedModeled { modeled: modeled, materialization: materialization }, diagnostics: _ } =>
+          match parse_production_prepared_measured_seeded(
+            tokens: token_stream_remaining(stream: ts),
+            validated: modeled.validated,
+            analysis: modeled.analysis,
+            production_name: production,
+            seed: occurrence_id_allocator_initial(),
+            layout: token_stream_layout(stream: ts),
+            materialization: materialization
+          ).outcome {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+      }
+  }
+}
+
+// Whether a shell emitted as `emitted` lies at or beneath n.
+fn bc_has_shell(n: Node, emitted: Symbol) -> Bool {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: e } => e == emitted
+    Absent => false
+  }
+  here || fold(n.children, init: false, f: fn(acc, e) { acc || bc_has_shell(n: e.target, emitted: emitted) })
+}
+
+// The fragment parses whole at `expr` (leftover tokens refuse), with a match_expr shell in its tree.
+fn bc_block_headed_chain_holds(text: String) -> Bool {
+  match bc_parse_at(text: text, production: ^dag_production_expr) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      bc_has_shell(n: tree, emitted: ^dag_surface_match_expr)
+  }
+}
+
+// The one end-to-end claim's whole-module text.
+data bc_add_module_source: String = "module probe.bc_add\n\ndata d: Int = match w {\n  _ => 1\n} + 2\n"
+
+// multiplicative `*`
+data bc_mul_source: String = "match w {\n  _ => 1\n} * 2"
+
+// additive `+`
+data bc_add_source: String = "match w {\n  _ => 1\n} + 2"
+
+// additive `-`, same line as the closing brace
+data bc_sub_source: String = "match w {\n  _ => 1\n} - 2"
+
+// comparison `<`
+data bc_cmp_source: String = "match w {\n  _ => 1\n} < 2"
+
+// equality `==`
+data bc_eq_source: String = "match w {\n  _ => 1\n} == 2"
+
+// logical `||`
+data bc_or_source: String = "match w {\n  _ => true\n} || t"
+
+// pipe `|>`
+data bc_pipe_source: String = "match w {\n  _ => 1\n} |> g"
+
+test fn a_block_headed_left_operand_of_mul_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_mul_source)
+}
+
+test fn a_block_headed_left_operand_of_add_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_add_source)
+}
+
+test fn a_block_headed_left_operand_of_sub_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_sub_source)
+}
+
+test fn a_block_headed_left_operand_of_cmp_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_cmp_source)
+}
+
+test fn a_block_headed_left_operand_of_eq_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_eq_source)
+}
+
+test fn a_block_headed_left_operand_of_or_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_or_source)
+}
+
+test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool {
+  bc_block_headed_chain_holds(text: bc_pipe_source)
+}
+
+
+test fn a_block_headed_left_operand_parses_on_the_real_module_route_holds() -> Bool {
+  parse_acceptance_of_text(text: bc_add_module_source, path: "probe/bc_add.dag") == "accepted"
+}
+
+fn probe_leftover_operator_refuses() -> Bool { bc_block_headed_chain_holds(text: "match w {\n  _ => 1\n} * ") }
+fn probe_e2e_short_name() -> Bool { parse_acceptance_of_text(text: "module p\n\ndata d: Int = match w {\n  _ => 1\n} + 2\n", path: "p.dag") == "accepted" }
+fn probe_e2e_one_line() -> Bool { parse_acceptance_of_text(text: "module p\ndata d: Int = match w { _ => 1 } + 2\n", path: "p.dag") == "accepted" }
+fn probe_sub_next_line_refuses() -> Bool { bc_block_headed_chain_holds(text: "match w {\n  _ => 1\n}\n- 2") }
+fn probe_parse_at_accepts_bare_match() -> Bool { match bc_parse_at(text: "match w {\n  _ => 1\n}", production: ^dag_production_expr) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false } }
