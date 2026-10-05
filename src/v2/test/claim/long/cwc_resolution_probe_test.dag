@@ -5,6 +5,7 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.tokenize { tokenize }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -265,5 +266,17 @@ fn cwc_verdict_review_disj_has_four_arms() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
     Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn zp_tree() -> Node {
+  let lm = dag_language_model()
+  match tokenize(text: cwc_src_type_malformed_coproduct, file: ^cwc_probe_file, rules: lm.lex) {
+    Accepted { value: toks, diagnostics: _ } =>
+      match parse(tokens: toks, grammar: lm.grammar) {
+        Accepted { value: p, diagnostics: _ } => p
+        Rejected { diagnostics: _ } => Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+      }
+    Rejected { diagnostics: _ } => Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
   }
 }
