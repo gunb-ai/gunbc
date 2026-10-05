@@ -8,7 +8,7 @@ import gunbc.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap_presentation { issue_status_sort_rank }
 import gunbc.roadmap_issue_status {
   DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
-  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label, issue_display_status_is_closed,
+  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
 }
 import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
@@ -23,7 +23,7 @@ import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigned_avatar }
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
-import gunbc.roadmap.roadmap_lineage { lineage_lookup, lineage_refusal_detail }
+import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap_issue_command { IssueFormContext }
@@ -82,7 +82,8 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable,
   NodeChain, NodeChainRooted, NodeChainRefused,
   NodeRelation, RelationRow, RelationRowChildren, RowChildrenNotCarried, RowChildrenExpandable,
-  relation_summary, relation_count_text, relation_kind_label,
+  relation_summary, relation_count_text, relation_kind_label, relation_empty_text, relation_undeclared_text,
+  node_status_is_closed, node_chain_refusal_text,
 }
 import gunbc.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
@@ -1779,7 +1780,7 @@ fn issue_relation_undeclared_nodes(relation: NodeRelation) -> List<Fragment> {
   if count(relation.undeclared) == 0 {
     []
   } else {
-    [ el_class("span", "issue-panel-empty", [ txt(join([relation_kind_label(kind: relation.kind), " names no declared node: ", join(relation.undeclared, ", ")], "")) ]) ]
+    [ el_class("span", "issue-panel-empty", [ txt(join([relation_undeclared_text(kind: relation.kind), ": ", join(relation.undeclared, ", ")], "")) ]) ]
   }
 }
 
@@ -2288,7 +2289,7 @@ fn issue_breadcrumb_tree(ancestors: List<NodePresentation>, self_node: NodePrese
 fn issue_chain_breadcrumb_node(chain: NodeChain) -> Fragment {
   el_attrs("nav", [attr(name: "class", value: "issue-breadcrumb"), attr(name: "aria-label", value: "Issue hierarchy")], match chain {
     NodeChainRefused { refusal } =>
-      [ el_class("span", "issue-breadcrumb-refused", [ txt(join(["project path unavailable: ", lineage_refusal_detail(w: refusal)], "")) ]) ]
+      [ el_class("span", "issue-breadcrumb-refused", [ txt(node_chain_refusal_text(refusal: refusal)) ]) ]
     NodeChainRooted { ancestors, self_node } => {
       let labels = issue_breadcrumb_compact_labels(ancestors: ancestors)
       if count(labels) == 0 { [] } else {
@@ -2358,12 +2359,6 @@ fn issue_node_status_reason(status: NodeStatus) -> String {
     NodeStatusUnavailable { reason } => join(["Status unavailable: ", reason], "")
   }
 }
-fn issue_node_is_closed(status: NodeStatus) -> Bool {
-  match status {
-    NodeStatusDerived { status: derived } => issue_display_status_is_closed(status: derived)
-    NodeStatusUnavailable { reason: _ } => false
-  }
-}
 fn issue_relation_row_children_attrs(children: RelationRowChildren) -> List<Attribute> {
   match children {
     RowChildrenNotCarried => []
@@ -2372,7 +2367,7 @@ fn issue_relation_row_children_attrs(children: RelationRowChildren) -> List<Attr
 }
 fn issue_membership_link(row: RelationRow, relation: NodeRelation, parent: Bool) -> Fragment {
   el_attrs("a", concat([attr(name: "class", value: "issue-graph-node"), attr(name: "href", value: row.node.route),
-    attr(name: "data-complete", value: if issue_node_is_closed(status: row.node.status) { "1" } else { "0" }),
+    attr(name: "data-complete", value: if node_status_is_closed(status: row.node.status) { "1" } else { "0" }),
     attr(name: "data-priority", value: to_string(roadmap_priority_rank(priority: row.node.priority.priority))),
     attr(name: "aria-label", value: join([relation_kind_label(kind: relation.kind), ": ", row.node.title], "")),
     attr(name: "title", value: join([relation_kind_label(kind: relation.kind), " · ", row.node.slug, " · ", roadmap_priority_label(priority: row.node.priority.priority), " · ", issue_node_status_reason(status: row.node.status)], ""))], issue_relation_row_children_attrs(children: row.children)), [
@@ -2429,7 +2424,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, hierarchy: IssueHierarchyView
               el_class("strong", "issue-membership-selected", [txt(view.headline)]),
               el_attrs("span", [attr(name: "class", value: "issue-membership-count"), attr(name: "aria-hidden", value: "true")], [txt(sub_issue_count)]),
             ]),
-          ], concat(if count(sub_issues.rows) == 0 { [el_class("p", "issue-panel-empty", [txt("No sub-issues")])] } else { [el_class("div", "issue-membership-list", map(sub_issues.rows, row => issue_membership_link(row: row, relation: sub_issues, parent: false)))] }, issue_relation_undeclared_nodes(relation: sub_issues)))),
+          ], concat(if count(sub_issues.rows) == 0 { [el_class("p", "issue-panel-empty", [txt(relation_empty_text(kind: sub_issues.kind))])] } else { [el_class("div", "issue-membership-list", map(sub_issues.rows, row => issue_membership_link(row: row, relation: sub_issues, parent: false)))] }, issue_relation_undeclared_nodes(relation: sub_issues)))),
         ]),
       ]))),
     ]),

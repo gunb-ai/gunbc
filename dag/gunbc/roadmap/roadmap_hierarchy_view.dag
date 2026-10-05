@@ -6,7 +6,7 @@ import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapNodeId, roadmap_pa
 import gunbc.roadmap_nesting { roadmap_memberships_of }
 import gunbc.roadmap.roadmap_lineage {
   LineageWalk, LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic,
-  lineage_walk_in, lineage_index, lineage_lookup,
+  lineage_walk_in, lineage_index, lineage_lookup, lineage_refusal_detail,
 }
 import gunbc.roadmap.roadmap_project {
   RoadmapMembershipIndex, membership_index, node_project_membership_in, project_member_ids_in,
@@ -35,6 +35,16 @@ type NodeStatus
   = NodeStatusDerived { status: IssueDisplayStatus }
   | NodeStatusUnavailable { reason: String }
 
+// CLOSED IS READ FROM THE DERIVED STATUS (gunbc.roadmap_issue_status
+// issue_display_status_is_closed). A node whose status is unavailable is not known to be closed,
+// so it is not shown as closed.
+fn node_status_is_closed(status: NodeStatus) -> Bool {
+  match status {
+    NodeStatusDerived { status: derived } => issue_display_status_is_closed(status: derived)
+    NodeStatusUnavailable { reason: _ } => false
+  }
+}
+
 // ONE NODE AS SHOWN, wherever it is shown. `route` is the node's canonical address
 // (gunbc.roadmap_issue_location issue_page_path); `slug` is its id.
 type NodePresentation {
@@ -53,6 +63,11 @@ type NodePresentation {
 type NodeChain
   = NodeChainRooted { ancestors: List<NodePresentation>, self_node: NodePresentation }
   | NodeChainRefused { refusal: LineageWalk }
+
+// What a surface says in place of a refused chain: the lineage walk's own located reason.
+fn node_chain_refusal_text(refusal: LineageWalk) -> String {
+  join(["project path unavailable: ", lineage_refusal_detail(w: refusal)], "")
+}
 
 // A SUB-ISSUE ROW REFERS TO ITS OWN SUB-ISSUES BY COUNT; IT DOES NOT LOAD THEM. Loading them would
 // put a status derivation for the whole subtree on every issue page -- at the root that is the
@@ -226,21 +241,33 @@ fn relation_summary(relation: NodeRelation) -> RelationSummary {
   })
 }
 
-// THE COUNT AS A LABEL SHOWS IT. Sub-issues read closed over total; every other relation reads its
+// THE COUNT A LABEL SHOWS. Sub-issues read closed over total; every other relation reads its
 // total. Closed-over-total is stated only when every row's status was derived -- a count of closed
-// rows beside rows of unknown status would understate it.
-fn relation_count_text(relation: NodeRelation) -> String {
+// rows beside rows of unknown status would understate it. The count is a value, so a heading that
+// formats it and a label that prints it read the same decision.
+type RelationCount
+  = RelationCountTotal { total: Int }
+  | RelationCountClosedOfTotal { closed: Int, total: Int }
+
+fn relation_count(relation: NodeRelation) -> RelationCount {
   let summary = relation_summary(relation: relation)
   match relation.kind {
     RelationSubIssues =>
       if summary.status_unavailable == 0 {
-        join([to_string(value: summary.closed), "/", to_string(value: summary.total)], "")
+        RelationCountClosedOfTotal { closed: summary.closed, total: summary.total }
       } else {
-        to_string(value: summary.total)
+        RelationCountTotal { total: summary.total }
       }
-    RelationParent => to_string(value: summary.total)
-    RelationBlockedBy => to_string(value: summary.total)
-    RelationBlocking => to_string(value: summary.total)
+    RelationParent => RelationCountTotal { total: summary.total }
+    RelationBlockedBy => RelationCountTotal { total: summary.total }
+    RelationBlocking => RelationCountTotal { total: summary.total }
+  }
+}
+
+fn relation_count_text(relation: NodeRelation) -> String {
+  match relation_count(relation: relation) {
+    RelationCountTotal { total } => to_string(value: total)
+    RelationCountClosedOfTotal { closed, total } => join([to_string(value: closed), "/", to_string(value: total)], "")
   }
 }
 
@@ -251,4 +278,19 @@ fn relation_kind_label(kind: RelationKind) -> String {
     RelationBlockedBy => "Blocked by"
     RelationBlocking => "Blocking"
   }
+}
+
+// What a relation with no rows says in place of its table.
+fn relation_empty_text(kind: RelationKind) -> String {
+  match kind {
+    RelationParent => "No parent"
+    RelationSubIssues => "No sub-issues"
+    RelationBlockedBy => "Not blocked by any issue"
+    RelationBlocking => "Not blocking any issue"
+  }
+}
+
+// What a relation says about an id it names that no declared node answers to.
+fn relation_undeclared_text(kind: RelationKind) -> String {
+  join([relation_kind_label(kind: kind), " names no declared node"], "")
 }
