@@ -2,14 +2,14 @@ module v2.test.floor_prepared_effect_input_ladder
 
 import v2.workflow.floor_prepared_effect_input_ladder {
   carried_input_identities, carried_input_verdicts_after_the_carry,
-  carried_input_verdicts_before_the_carry, cross_claim_tier_retention,
+  carried_input_verdicts_before_the_carry,
   every_carried_identity_is_a_single_demand_after_the_carry,
   every_carried_identity_is_authored_duplication_before_the_carry,
   the_minimized_demand_graph_is_green, prepared_effect_input_provider
 }
 import v2.workflow.floor_pure_producer_share {
-  carried_input_roster_collisions, carried_input_rows_without_a_prepared_input,
-  floor_cross_claim_admitted_producers, floor_cross_claim_carried_input_warm_rows,
+  cross_claim_tier_retention,
+  carried_input_rows_without_a_prepared_input, floor_cross_claim_carried_input_warm_rows,
   floor_cross_claim_prepared_effect_inputs
 }
 import std.cache_interface { retention_growth_is_bounded, retention_has_exact_byte_bound }
@@ -59,11 +59,12 @@ test fn the_covered_population_is_not_empty() -> Bool {
     && length(xs: carried_input_verdicts_after_the_carry()) > 0
 }
 
-// THE TWO ROSTER WALLS, over the live rows: every carried-input row names an input that is
-// actually prepared, and no producer stands in both a plain roster and a carried-input row —
-// the second is the one that matters, because a plain warm row stores under the EMPTY argument
-// row while a carried-input row stores under the carried content, so a producer in both would be
-// servable under a key that does not represent the carrier.
+// THE ROSTER WALL, over the live rows: every carried-input row names an input that is actually
+// prepared. The second wall that stood here -- no producer both carried and plainly rostered --
+// is construction now: the plain roster is deleted, and the derived share declines every closed
+// demand for a carried producer (`CarriedInputProducer`, red in
+// `v2.test.floor.pure_producer_share_refusal`
+// `a_carried_input_producer_is_declined_as_a_plain_share`).
 test fn every_carried_row_names_a_prepared_input() -> Bool {
   length(xs: carried_input_rows_without_a_prepared_input(
     rows: floor_cross_claim_carried_input_warm_rows,
@@ -71,9 +72,3 @@ test fn every_carried_row_names_a_prepared_input() -> Bool {
   )) == 0
 }
 
-test fn no_producer_is_both_carried_and_plainly_rostered() -> Bool {
-  length(xs: carried_input_roster_collisions(
-    rows: floor_cross_claim_carried_input_warm_rows,
-    admitted: floor_cross_claim_admitted_producers()
-  )) == 0
-}

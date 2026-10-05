@@ -3986,7 +3986,7 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 }
 
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
+// derive_cross_claim_share). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
 //
 // WHAT THE SET HOLDS: the names the language model mints as atoms a resolved body may carry --
