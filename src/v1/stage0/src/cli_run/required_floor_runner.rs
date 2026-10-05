@@ -723,22 +723,52 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
 /// run without a diff baseline never needs a base side, and a refusal is held so every reader
 /// reports the same cause rather than re-asking the resolver.
 pub(crate) struct FloorBaseTree {
-    window:
-        std::cell::OnceCell<Result<(FreezeBaselineComparison, ResolvedComparisonWindow), String>>,
+    /// `None` reads the run's own comparison (`floor_diff_comparison_readout`) at the process
+    /// workspace; `Some` is a supplied comparison over a supplied repository, the same resolver.
+    supplied: Option<(FreezeBaselineComparison, PathBuf)>,
+    window: std::cell::OnceCell<
+        Result<
+            (
+                FreezeBaselineComparison,
+                comparison_window::ResolvedComparisonWindow,
+            ),
+            String,
+        >,
+    >,
 }
 
 impl FloorBaseTree {
     pub(crate) fn unresolved() -> Self {
         Self {
+            supplied: None,
             window: std::cell::OnceCell::new(),
         }
     }
 
-    fn window(&self) -> Result<&(FreezeBaselineComparison, ResolvedComparisonWindow), String> {
+    /// A supplied comparison over a supplied repository, resolved by the same `resolve_window`.
+    pub(crate) fn for_comparison(comparison: FreezeBaselineComparison, root: PathBuf) -> Self {
+        Self {
+            supplied: Some((comparison, root)),
+            window: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn window(
+        &self,
+    ) -> Result<
+        &(
+            FreezeBaselineComparison,
+            comparison_window::ResolvedComparisonWindow,
+        ),
+        String,
+    > {
         self.window
             .get_or_init(|| {
-                let comparison = floor_diff_comparison_readout()?;
-                let window = comparison.resolve_window(&process_workspace_root())?;
+                let (comparison, root) = match &self.supplied {
+                    Some((comparison, root)) => (comparison.clone(), root.clone()),
+                    None => (floor_diff_comparison_readout()?, process_workspace_root()),
+                };
+                let window = comparison.resolve_window(&root)?;
                 Ok((comparison, window))
             })
             .as_ref()
@@ -746,13 +776,13 @@ impl FloorBaseTree {
     }
 
     /// The commit whose tree is the base side of this run's comparison.
-    pub(crate) fn commit(&self) -> Result<&str, String> {
-        Ok(self.window()?.1.base_tree.as_str())
+    pub(crate) fn commit(&self) -> Result<&comparison_window::BaseTreeCommit, String> {
+        Ok(self.window()?.1.base_tree())
     }
 
     /// The resolved head commit of this run's comparison.
     pub(crate) fn head(&self) -> Result<&str, String> {
-        Ok(self.window()?.1.head.as_str())
+        Ok(self.window()?.1.head())
     }
 
     /// The base REF and the base-tree commit, for a located line. Never a tree route.
@@ -761,7 +791,7 @@ impl FloorBaseTree {
         Ok(format!(
             "base_ref={} base_tree={}",
             comparison.base_ref(),
-            window.base_tree
+            window.base_tree()
         ))
     }
 }
@@ -861,7 +891,7 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
 /// resolves a removed call against. Returns an exact identity map of the model's edit labels and budgets.
 /// Tokenization is shared only within this observed file pair, never across revisions.
 pub(crate) fn cost_debt_changed_witness_ceilings(
-    base: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
     rel_path: &str,
     functions: &[String],
     head_source: &str,
@@ -874,7 +904,7 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
         .map_err(|e| format!("floor_cost_debt_edit resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
-        (Some("base".to_string()), str_value(base)),
+        (Some("base".to_string()), str_value(base_tree.as_str())),
         (Some("path".to_string()), str_value(rel_path)),
         (
             Some("functions".to_string()),
@@ -952,7 +982,7 @@ pub(crate) fn floor_base_file_read(
     path: &str,
 ) -> Result<Option<String>, String> {
     use v1_interpreter::Value;
-    let base = base_tree.commit()?;
+    let base = base_tree.commit()?.as_str();
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
@@ -1005,7 +1035,7 @@ pub(crate) fn floor_base_test_decl_census(
     if paths.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-    let base = base_tree.commit()?;
+    let base = base_tree.commit()?.as_str();
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
@@ -1782,7 +1812,7 @@ fn interface_consumer_planning(
     // direct comparison at the base ref itself -- the same relation the affected-set diff was
     // taken under, so the interface delta and the line-range attribution describe one change.
     let workspace = process_workspace_root();
-    let base_commit = base_tree.commit()?.to_string();
+    let base_commit = base_tree.commit()?.as_str().to_string();
     let head_commit = base_tree.head()?.to_string();
     match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
@@ -2652,18 +2682,10 @@ pub(crate) fn unimported_bare_provider_gate(
                 head.rows.len()
             );
         } else {
-            let base = base_tree.commit()?.to_string();
             let located = base_tree.located()?;
-            let base_source = unimported_bare_provider_roster_source_at_base(source_roots, &base)?;
-            let base_reading = unimported_bare_provider_base_reading(&base_source)?;
-            let base_coherence = head.refusals(
-                "unimported_bare_provider_roster_coherence",
-                &[(Some("rows".to_string()), base_reading.rows_value.clone())],
-            )?;
-            for r in base_coherence
-                .into_iter()
-                .chain(head.judge_edit(&base_reading, &head)?)
-            {
+            for r in unimported_bare_provider_edit_refusals(base_tree, &head, &head, |base| {
+                unimported_bare_provider_roster_source_at_base(source_roots, base)
+            })? {
                 refusals.push(format!(
                     "{ROUTE} cause=UnimportedBareProvider {r} {located}"
                 ));
@@ -2718,10 +2740,31 @@ pub fn unimported_bare_provider_entry_refusals(
 
 /// The roster's bytes at the diff base, read through the `.dag` (`unimported_bare_provider_roster_at_base`),
 /// whose unreadable arm refuses here rather than reading as an empty roster.
+/// THE ROSTER EDIT JUDGMENT AT THE RUN'S BASE TREE: the base side is read at `base_tree.commit()`
+/// and nowhere else, then evaluated for coherence and judged against the head. The reader is the
+/// one seam: the gate supplies the `.dag` read (`unimported_bare_provider_roster_source_at_base`),
+/// and it can only be handed a `BaseTreeCommit`, so a tip ref does not type-check here.
+fn unimported_bare_provider_edit_refusals(
+    base_tree: &FloorBaseTree,
+    judge: &UnimportedBareProviderRosterReading,
+    head: &UnimportedBareProviderRosterReading,
+    read_base: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    let base_source = read_base(base_tree.commit()?)?;
+    let base_reading = unimported_bare_provider_base_reading(&base_source)?;
+    let mut refusals = judge.refusals(
+        "unimported_bare_provider_roster_coherence",
+        &[(Some("rows".to_string()), base_reading.rows_value.clone())],
+    )?;
+    refusals.extend(judge.judge_edit(&base_reading, head)?);
+    Ok(refusals)
+}
+
 fn unimported_bare_provider_roster_source_at_base(
     source_roots: &[String],
-    base: &str,
+    base_tree: &comparison_window::BaseTreeCommit,
 ) -> Result<String, String> {
+    let base = base_tree.as_str();
     let (graph, indices) = resolve_entry_graph_shared(
         source_roots,
         &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
@@ -8669,7 +8712,7 @@ pub fn run_required_floor(
                 } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
-                    let base = floor_base_tree.commit()?.to_string();
+                    let base = floor_base_tree.commit()?;
                     let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
                     if file_cost_debt_ceilings.is_none() {
                         let head_source = std::fs::read_to_string(&file.path).map_err(|e| {
@@ -8696,7 +8739,7 @@ pub fn run_required_floor(
                             functions.len()
                         );
                         file_cost_debt_ceilings = Some(cost_debt_changed_witness_ceilings(
-                            &base, &rel_path, &functions, &head_source,
+                            base, &rel_path, &functions, &head_source,
                             &discovered_test_fn_identities,
                         ).map_err(|e| format!(
                             "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved identity={identity} — {e}"
@@ -12152,50 +12195,65 @@ mod pure_producer_share_tests {
             );
             git(&["checkout", "--quiet", "subject"]);
 
-            let read_at = |rev: &str| {
+            // THE PRODUCTION SELECTION AND JUDGMENT: `FloorBaseTree` resolves the window and
+            // `unimported_bare_provider_edit_refusals` reads at its commit. The read seam is the
+            // fixture's `git show` in this repository, since the `.dag` read runs in the process
+            // workspace; that read itself is the end-to-end test below.
+            let reader = |base: &comparison_window::BaseTreeCommit| -> Result<String, String> {
+                Ok(git(&["show", &format!("{base}:{UNIMPORTED_BARE_PROVIDER_ROSTER}")]) + "\n")
+            };
+            let head_at = |rev: &str| {
                 let src = git(&["show", &format!("{rev}:{UNIMPORTED_BARE_PROVIDER_ROSTER}")]);
                 unimported_bare_provider_base_reading(&(src + "\n")).expect("lone roster")
             };
-            let window = |head: &str| {
-                FreezeBaselineComparison::MergeBase {
-                    base: "main".to_string(),
-                    head: head.to_string(),
-                    kind: "MergeTargetBaseline".to_string(),
-                }
-                .resolve_window(&dir)
-                .expect("merge-base window")
+            let tree = |merge_base: bool, head: &str| {
+                let (base, head, kind) = (
+                    "main".to_string(),
+                    head.to_string(),
+                    "MergeTargetBaseline".to_string(),
+                );
+                FloorBaseTree::for_comparison(
+                    if merge_base {
+                        FreezeBaselineComparison::MergeBase { base, head, kind }
+                    } else {
+                        FreezeBaselineComparison::Direct { base, head, kind }
+                    },
+                    dir.clone(),
+                )
+            };
+            let judged = |tree: &FloorBaseTree, head: &str| {
+                unimported_bare_provider_edit_refusals(tree, &judge, &head_at(head), reader)
+                    .expect("verdict")
             };
 
-            // RED (before the window): the tip reads main's later edit as this change's.
-            let head_reading = read_at(&untouched_head);
+            // THE CONTRAST: a base tree at the tip (what the gate read before) attributes main's
+            // own later retirement edit to the branch.
+            let tip_tree = tree(false, &untouched_head);
+            assert_eq!(tip_tree.commit().expect("tip").as_str(), tip);
             assert_eq!(
-                judge.judge_edit(&read_at(&tip), &head_reading).expect("verdict"),
+                judged(&tip_tree, &untouched_head),
                 vec![
                     "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
                         .to_string()
                 ],
                 "the base tip attributes main's own later retirement edit to the branch"
             );
-            // THE WALL: the window's base tree is the departure point, and nothing refuses.
-            let resolved = window(&untouched_head);
-            assert_eq!(resolved.base_tree, departure);
-            assert_eq!(resolved.head, untouched_head);
+            // THE WALL: under the merge-base relation the base tree is the departure point.
+            let floor_tree = tree(true, &untouched_head);
+            assert_eq!(floor_tree.commit().expect("window").as_str(), departure);
+            assert_eq!(floor_tree.head().expect("head"), untouched_head);
             assert_eq!(
-                judge
-                    .judge_edit(&read_at(&resolved.base_tree), &head_reading)
-                    .expect("verdict"),
+                judged(&floor_tree, &untouched_head),
                 Vec::<String>::new(),
                 "a row main retired after the branch point is not this change's edit"
             );
 
             // POSITIVE CONTROL: the branch really rewrites the retirement, and still refuses.
             let edited_head = commit("ActiveDebt", "H2: the branch un-retires the row");
-            let resolved = window(&edited_head);
-            assert_eq!(resolved.base_tree, departure);
+            let floor_tree = tree(true, &edited_head);
+            assert_eq!(floor_tree.commit().expect("window").as_str(), departure);
             assert_eq!(
-                judge
-                    .judge_edit(&read_at(&resolved.base_tree), &read_at(&edited_head))
-                    .expect("verdict"),
+                judged(&floor_tree, &edited_head),
                 vec![
                     "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> ActiveDebt)"
                         .to_string()
@@ -12219,8 +12277,19 @@ mod pure_producer_share_tests {
                 .map(|r| root.join(r).to_string_lossy().to_string())
                 .collect();
             let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
+            let head_tree = FloorBaseTree::for_comparison(
+                FreezeBaselineComparison::Direct {
+                    base: "HEAD".to_string(),
+                    head: "HEAD".to_string(),
+                    kind: "OperatorOverrideBaseline".to_string(),
+                },
+                root.clone(),
+            );
+            let base_source = unimported_bare_provider_roster_source_at_base(
+                &roots,
+                head_tree.commit().expect("HEAD resolves"),
+            )
+            .expect("the roster exists at HEAD and decodes as BaseRosterShown");
             let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
             let base = read(&base_source);
             let active = "standing: ActiveDebt }";

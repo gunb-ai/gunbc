@@ -25005,58 +25005,53 @@ pub fn collect_frozen_path_deferral_additions() -> Result<Vec<String>, String> {
     collect_frozen_path_deferral_additions_for(&workspace_root(), &comparison)
 }
 
-/// THE COMPARISON WINDOW, as the seed sees it. Mirrors `FloorDiffComparisonReadout` arm for arm;
-/// the mode is a variant rather than a flag because it selects which commit the base side is read
-/// at, and a bool would let a caller forget to ask.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FreezeBaselineComparison {
-    /// Two-dot: the endpoints are compared directly. `PushBefore` and `ExactReplayBoundary` are
-    /// this, and for them the base is EXACT — imposing a merge base here is what passes real
-    /// growth on a rewritten push.
-    Direct {
-        base: String,
-        head: String,
-        kind: String,
-    },
-    /// Three-dot: the comparison is against the point the head departed the base from, so a base
-    /// that moves after the subject is fixed does not change the verdict.
-    MergeBase {
-        base: String,
-        head: String,
-        kind: String,
-    },
-}
+/// THE BASE-TREE COMMIT AS A TYPE ONLY THE RESOLVER CAN BUILD
+/// (`gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`).
+/// A base-side reader takes `&BaseTreeCommit`, never a `&str`, and the field is private to this
+/// module, so the only constructor is `resolve`, which applies the comparison's relation: the base
+/// ref under two-dot, the departure point under merge-base. The tip string `base_ref()` returns does
+/// not type-check at a reader. The limit is explicit: a consumer may still hand any ref to git
+/// directly, outside these readers, which is why this is a ceiling-3 guarantee and not ceiling 4.
+pub mod comparison_window {
+    use super::FreezeBaselineComparison;
 
-/// THE TWO COMMITS A BASE-TREE READER MAY TAKE, resolved from a `FreezeBaselineComparison` by
-/// `resolve_window` and by nothing else. `base_tree` is the commit whose TREE is the base side of
-/// the comparison: the base ref itself under two-dot, the departure point under merge-base. Every
-/// reader of a base-side file takes this commit, so no reader can choose a relation for itself --
-/// the defect `gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`
-/// records, where two readers took the base TIP while a third applied the merge-base arm and a
-/// roster row main retired after the branch point read as this change's edit.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedComparisonWindow {
-    pub base_tree: String,
-    pub head: String,
-}
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct BaseTreeCommit(String);
 
-impl FreezeBaselineComparison {
-    /// The base REF as the authority named it. For printing and locating only: it is not a tree.
-    /// A reader that needs base-side content takes `resolve_window`'s `base_tree`, because under
-    /// merge-base mode this ref's tree carries every change the base made after the head departed.
-    pub(crate) fn base_ref(&self) -> &str {
-        match self {
-            Self::Direct { base, .. } | Self::MergeBase { base, .. } => base,
+    impl BaseTreeCommit {
+        pub fn as_str(&self) -> &str {
+            &self.0
         }
     }
 
-    /// THE BASE COMMIT, with the relation applied -- the one place the arm is read for a tree.
+    impl std::fmt::Display for BaseTreeCommit {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.0)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ResolvedComparisonWindow {
+        base_tree: BaseTreeCommit,
+        head: String,
+    }
+
+    impl ResolvedComparisonWindow {
+        pub fn base_tree(&self) -> &BaseTreeCommit {
+            &self.base_tree
+        }
+
+        pub fn head(&self) -> &str {
+            &self.head
+        }
+    }
+
     /// Two-dot compares the exact base; merge-base compares the commit the head departed from.
     /// The match may never grow a default: imposing merge-base on a two-dot arm passes growth on a
     /// rewritten push, and reading the tip on a merge-base arm attributes the base's own later
     /// edits to the change. Each refusal carries a typed cause and never degrades to a ref.
-    pub(crate) fn resolve_window(
-        &self,
+    pub(crate) fn resolve(
+        comparison: &FreezeBaselineComparison,
         root: &std::path::Path,
     ) -> Result<ResolvedComparisonWindow, String> {
         let run = |args: &[&str]| -> Result<std::process::Output, String> {
@@ -25084,12 +25079,12 @@ impl FreezeBaselineComparison {
             }
             Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
         };
-        let base = self.base_ref();
+        let base = comparison.base_ref();
         let base_commit = resolve(base, "base")?;
-        let head = resolve(self.head(), "head")?;
-        let base_tree = match self {
-            Self::Direct { .. } => base_commit,
-            Self::MergeBase { .. } => {
+        let head = resolve(comparison.head(), "head")?;
+        let base_tree = match comparison {
+            FreezeBaselineComparison::Direct { .. } => base_commit,
+            FreezeBaselineComparison::MergeBase { .. } => {
                 let merge_base = run(&["merge-base", &base_commit, &head])?;
                 let fork_point = String::from_utf8_lossy(&merge_base.stdout)
                     .trim()
@@ -25107,7 +25102,52 @@ impl FreezeBaselineComparison {
                 fork_point
             }
         };
-        Ok(ResolvedComparisonWindow { base_tree, head })
+        Ok(ResolvedComparisonWindow {
+            base_tree: BaseTreeCommit(base_tree),
+            head,
+        })
+    }
+}
+
+/// THE COMPARISON WINDOW, as the seed sees it. Mirrors `FloorDiffComparisonReadout` arm for arm;
+/// the mode is a variant rather than a flag because it selects which commit the base side is read
+/// at, and a bool would let a caller forget to ask.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FreezeBaselineComparison {
+    /// Two-dot: the endpoints are compared directly. `PushBefore` and `ExactReplayBoundary` are
+    /// this, and for them the base is EXACT — imposing a merge base here is what passes real
+    /// growth on a rewritten push.
+    Direct {
+        base: String,
+        head: String,
+        kind: String,
+    },
+    /// Three-dot: the comparison is against the point the head departed the base from, so a base
+    /// that moves after the subject is fixed does not change the verdict.
+    MergeBase {
+        base: String,
+        head: String,
+        kind: String,
+    },
+}
+
+impl FreezeBaselineComparison {
+    /// The base REF as the authority named it. For printing and locating only: it is not a tree.
+    /// A reader that needs base-side content takes `resolve_window`'s `base_tree`, because under
+    /// merge-base mode this ref's tree carries every change the base made after the head departed.
+    pub(crate) fn base_ref(&self) -> &str {
+        match self {
+            Self::Direct { base, .. } | Self::MergeBase { base, .. } => base,
+        }
+    }
+
+    /// THE BASE COMMIT, with the relation applied: the one place the arm is read for a tree
+    /// (`comparison_window::resolve`).
+    pub(crate) fn resolve_window(
+        &self,
+        root: &std::path::Path,
+    ) -> Result<comparison_window::ResolvedComparisonWindow, String> {
+        comparison_window::resolve(self, root)
     }
 
     fn head(&self) -> &str {
@@ -25152,12 +25192,11 @@ pub fn collect_frozen_path_deferral_additions_for(
     let base = comparison.base_ref();
     // THE BASELINE COMMIT is the window's base tree: the relation is applied once, by the
     // comparison itself, for this gate and every floor base-tree reader alike.
-    let ResolvedComparisonWindow {
-        base_tree: baseline_commit,
-        head: head_commit,
-    } = comparison
+    let window = comparison
         .resolve_window(root)
         .map_err(|cause| located(format!("WITNESS ADMISSION REFUSAL {cause} (frozen path-deferral roster: a monotone debt contract, so growth cannot be ruled out)")))?;
+    let baseline_commit = window.base_tree().as_str().to_string();
+    let head_commit = window.head().to_string();
 
     // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one, and this runs BEFORE any arm that
     // can permit. Reading the live filesystem keeps an uncommitted local roster edit in scope (the
