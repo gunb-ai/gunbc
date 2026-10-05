@@ -212,7 +212,9 @@ fn fps_type_of(facts: Optional<InferredFacts>) -> Optional<Node> {
   }
 }
 
-// THE WARM PRODUCERS, one per fixture program; each is listed in floor_cross_claim_pure_producers_warm.
+// THE FIXTURE PRODUCERS, one per fixture program, nullary so the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills one once wherever two or
+// more declared claims read it; one read by a single claim is that claim's own cost.
 fn fps_no_projection_reading() -> FpsReading { fps_reading_of(o: fps_no_projection_source()) }
 fn fps_valid_field_reading() -> FpsReading { fps_reading_of(o: fps_valid_field_source()) }
 fn fps_absent_field_reading() -> FpsReading { fps_reading_of(o: fps_absent_field_source()) }
