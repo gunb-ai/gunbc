@@ -112,6 +112,7 @@ fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<S
   [
     concat("1. regenerate the derived projections: ", regen_command),
     "2. rebuild and run the seed emitter: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 (it writes the candidate tree under target/stage0-regen-candidate/src BEFORE it judges it; install every generated file it names into src/v1/stage0/src)",
+    "   OUTSIDE A MERGE, once the edit is COMMITTED, step 2 may add --regen-affected-scope to re-emit only the mirrors the edit reaches (a scoped round refuses an uncommitted .dag edit, so it cannot run here, mid-merge); an edit under v1.compiler. or extdeps.languages. always answers the WHOLE population, because the emitter can change every mirror",
     "3. ONLY IF step 2 installed a mirror of the emitter's own pipeline (v1.compiler infer, emit_rust, compile and the stages they call): rebuild from the installed seed and re-run step 2's command, installing what it names, until it installs nothing -- cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2",
     "   (the step-2 binary predates that change, and CI builds its seed from the installed mirrors; this is convergence, not a determinism re-check -- that was removed by operator ruling 2026-10-04 -- and any other change is done after step 2)",
   ]

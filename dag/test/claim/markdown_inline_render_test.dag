@@ -7,6 +7,7 @@ import std.markdown {
   ImageInline,
 }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

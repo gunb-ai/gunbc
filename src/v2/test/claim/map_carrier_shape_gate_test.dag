@@ -22,6 +22,7 @@ import v2.std.collection {
   map_lookup,
 }
 import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
