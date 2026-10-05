@@ -43,7 +43,8 @@ import gunbc.machine_intake_subject {
   qualification_subject_of,
 }
 import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.deployment_risk { TestRisk }
+import gunbc.machine_intake_phase { machine_qualification_policy }
 import gunbc.machine_intake_bmc_secure {
   BmcCredentialRotationObservation,
   BmcSecured,
@@ -243,7 +244,7 @@ fn mtcollins1_bmc_secure_standing() -> BmcSecureStanding? {
             value: derive_bmc_secure(
               subject: subject,
               observation: observation,
-              policy: intake_qualification_policy(environment: DevelopmentAndTest),
+              policy: machine_qualification_policy(admits: TestRisk),
             ),
           }
       }
