@@ -18,21 +18,15 @@ import product.fabric.candidate_field { FieldRequest }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_allocation_reservation { workspace_demand }
-import gunbc.workspace_commissioning_store { WorkspaceCommittedCommissioning }
-import gunbc.workspace_guest_image { VerifiedWorkspaceImage }
-import gunbc.workspace_tool_observer { WorkspaceToolsObserved }
-import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence }
-import gunbc.workspace_allocation_supply { WorkspaceHostSupplyObservation, workspace_candidate_field, workspace_supply_from_field }
-import gunbc.workspace_offer_producer { WorkspaceOfferTerms, workspace_offer_from_observations, WorkspaceOfferProduced, WorkspaceOfferUnmet }
+import gunbc.workspace_allocation_supply { workspace_candidate_field, workspace_supply_from_field }
+import gunbc.workspace_offer_producer { WorkspaceOfferTerms, WorkspaceHostOfferAdmission, workspace_offer_from_admission, WorkspaceOfferProduced, WorkspaceOfferUnmet }
 import gunbc.workspace_preparation { workspace_prepare_recorded_intent, WorkspacePreparationRecorded, WorkspacePreparationUnmet }
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved, workspace_convergence_observe }
 
+// One host's admitted offer, joined with the commercial terms and route facts the preparation
+// policy supplies for it. The host-local readings stay on the host that took them.
 type WorkspacePreparationEvidence {
-  commissioned: WorkspaceCommittedCommissioning
-  image: VerifiedWorkspaceImage
-  host: WorkspaceHostSupplyObservation
-  tools: WorkspaceToolsObserved
-  gateway: WorkspaceGatewayEvidence
+  admission: WorkspaceHostOfferAdmission
   terms: WorkspaceOfferTerms
   route_facts: ProviderRouteFacts
 }
@@ -64,8 +58,7 @@ fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, 
     WorkspaceConvergenceUnobserved { reason: "provider-use policy scope belongs to another demand or Work" }
   } else {
   let produced = fold(evidence, init: WorkspaceProducedField { offers: [], routes: [], unmet: [] }, f: (acc, sample) =>
-    match workspace_offer_from_observations(root: root, request: request, commissioned: sample.commissioned,
-      image: sample.image, host: sample.host, tools: sample.tools, gateway: sample.gateway, terms: sample.terms, now: now) {
+    match workspace_offer_from_admission(admission: sample.admission, request: request, terms: sample.terms, now: now) {
       WorkspaceOfferUnmet { reason: detail } => WorkspaceProducedField { offers: acc.offers, routes: acc.routes, unmet: acc.unmet + [detail] }
       WorkspaceOfferProduced { request: offered } => WorkspaceProducedField { offers: acc.offers + [offered],
         routes: acc.routes + [OfferRouteRow { offer: offered.offer.id, facts: sample.route_facts }], unmet: acc.unmet }
@@ -75,7 +68,7 @@ fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, 
     let field = workspace_candidate_field(request: request, routes: produced.routes, sanctions: policy.sanctions, active: policy.active,
       scope: policy.scope, decision_receipt: policy.decision_receipt, exercises: policy.exercises, readiness: policy.readiness,
       at: at, offers: produced.offers)
-    let supply = workspace_supply_from_field(root: root, field: field, observations: map(evidence, sample => sample.host), now: now)
+    let supply = workspace_supply_from_field(field: field, admitted_slots: map(evidence, sample => sample.admission.slot))
     match workspace_prepare_recorded_intent(store: store, root: root, request: request,
       demand: admitted_demand, attempt: attempt,
       supply: supply.supply, resource_policy: policy.resource_budget, duration: policy.duration, initial_account: policy.initial_account) {
