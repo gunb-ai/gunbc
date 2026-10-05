@@ -367,12 +367,21 @@ fn spark_pair_apply_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bo
 // grant installer is the proof that they eventually do. Raised in review 63709 against the first cut of
 // this repair, which left this twin standing while claiming consumers no longer choose a shaper; that
 // claim is only true once this one derives too.
-fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
-  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
-    Absent => SparkPairHostApplyFailed { host: plan.host, cause: "the privileged invocation is not expressible as portable remote words" }
+// ONE PRIVILEGED SESSION, under any invocation prefix the caller names (plain sudo, or sudo under a client
+// bound): the session's result, or the cause it never ran. The leg outcome and the bounded wait leg both
+// read it, so there is one route to a privileged shell on a host.
+type SparkPairPrivilegedSession
+  = PrivilegedSessionRan { result: SshSessionExecResult }
+  | PrivilegedSessionNotRun { cause: String }
+
+data spark_pair_privileged_invocation: List<String> = ["sudo", "-S", "sh", "-s"]
+
+fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, invocation: List<String>, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairPrivilegedSession {
+  match portable_remote_words(raws: invocation) {
+    Absent => PrivilegedSessionNotRun { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } =>
       match spark_reach_endpoint(host: plan.host, path: path) {
-        Absent => SparkPairHostApplyFailed { host: plan.host, cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
+        Absent => PrivilegedSessionNotRun { cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
         Present { value: endpoint } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: trust,
@@ -384,12 +393,17 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
             stdin_payload: join([admin_credential as String, "\n", spark_pair_leg_payload(script: plan.script), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: admin_credential_file },
           ) {
-            FleetPrincipalLegRefused { cause: why } =>
-              SparkPairHostApplyFailed { host: plan.host, cause: why as String }
-            FleetPrincipalLegRan { session: _, result: r } =>
-              spark_pair_leg_outcome_of(host: plan.host, wire: spark_reach_path_wire(p: path), r: r)
+            FleetPrincipalLegRefused { cause: why } => PrivilegedSessionNotRun { cause: why as String }
+            FleetPrincipalLegRan { session: _, result: r } => PrivilegedSessionRan { result: r }
           }
       }
+  }
+}
+
+fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
+  match spark_pair_privileged_session(trust: trust, path: path, plan: plan, invocation: spark_pair_privileged_invocation, admin_credential: admin_credential, admin_credential_file: admin_credential_file) {
+    PrivilegedSessionNotRun { cause: c } => SparkPairHostApplyFailed { host: plan.host, cause: c }
+    PrivilegedSessionRan { result: r } => spark_pair_leg_outcome_of(host: plan.host, wire: spark_reach_path_wire(p: path), r: r)
   }
 }
 

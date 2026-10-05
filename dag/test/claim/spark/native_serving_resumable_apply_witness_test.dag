@@ -23,7 +23,8 @@ import gunbc.spark.native_serving_apply {
   spark_native_leftover_resolve_script, spark_native_leftover_observe_script,
   spark_native_preserve_script, spark_native_commit_script, spark_native_rollback_prepare_script, spark_native_rollback_finish_script,
   spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_transport_announcement_script, spark_native_front_door_script,
-  spark_native_transport_verdicts,
+  spark_native_transport_verdicts, spark_native_wait_leg_of, spark_native_front_door_refusals,
+  SparkNativeWaitLeg, WaitLegReturned, WaitLegOutlivedBound,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.awaited_incarnation { AwaitedIncarnation, awaited_of, awaited_binding_refusal, awaited_header_word, awaited_poll_word, awaited_field_separator, awaited_probe_ok_word }
@@ -465,7 +466,7 @@ test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bo
       awaited_poll_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, awaited_probe_ok_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, "4000\n",
       spark_pair_leg_exit_prefix, "0\n"], ""),
     stderr: "" }) })
-  let awaited = awaited_of(verdicts: spark_native_transport_verdicts(legs: [leg]))
+  let awaited = awaited_of(verdicts: spark_native_transport_verdicts(legs: [WaitLegReturned { leg: leg }]))
   count(awaited) == 1
     && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "aaaa1111", awaited: awaited) { Absent => true  Present { value: _ } => false })
     && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "bbbb2222", awaited: awaited) { Absent => false  Present { value: why } => string_contains(s: why, pattern: "replaced between the wait and the readback") })
@@ -482,4 +483,34 @@ test fn w_the_front_door_report_quotes_the_field_separator() -> Bool {
   string_contains(s: d, pattern: "echo \"served|yes\"")
     && string_contains(s: d, pattern: "echo \"served|no\"")
     && !string_contains(s: d, pattern: "echo served|")
+}
+
+// ── A WAIT LEG MAY NOT OUTLIVE ITS BOUND (valiant-crab-775, after run 37304585650) ───────────────────
+//
+// The front-door probe succeeded at 12:27Z and the leg stayed open until the step timeout at 13:54Z. The
+// leg now runs under `timeout` bounded by the awaited deadline plus grace; these supply the session result
+// at the decision's own interface. RED: a session `timeout` ended (124, or 137 after the kill-after) with
+// no exit line reported reads as a script failure, or a bounded kill is accepted by the front door.
+fn w_bounded_session(exit_code: Int, stdout: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: exit_code, success: exit_code == 0, stdout: stdout, stderr: "" }
+}
+
+test fn w_a_leg_the_bound_killed_is_its_own_outcome_and_the_front_door_refuses_it() -> Bool {
+  let began_only = join([remote_leg_began_word, "\n", awaited_header_word, awaited_field_separator, "0f3a9c1d2e4b", awaited_field_separator, "1234567\n"], "")
+  let killed = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 124, stdout: began_only))
+  let killed_hard = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 137, stdout: began_only))
+  (match killed { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
+    && (match killed_hard { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
+    && all(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head]), r => string_contains(s: r, pattern: "outlived its bound of 441s"))
+    && count(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head])) == 1
+}
+
+// THE CONTROL: the script's own exit 124, REPORTED on its exit line, is the script's outcome, not the bound;
+// and a 255 with no exit line is still the transport's (unreached or failed), never the bound.
+test fn w_a_reported_124_or_an_ssh_failure_is_not_the_bound() -> Bool {
+  let reported = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441),
+    r: w_bounded_session(exit_code: 124, stdout: join([remote_leg_began_word, "\n", spark_pair_leg_exit_prefix, "124\n"], "")))
+  let ssh = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 255, stdout: ""))
+  (match reported { WaitLegReturned { leg: _ } => true  WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => false })
+    && (match ssh { WaitLegReturned { leg: _ } => true  WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => false })
 }
