@@ -666,6 +666,21 @@ fn probe_hold_release_outcome_text(o: ProbeHoldReleaseOutcome) -> String {
   }
 }
 
+// THE HOLD EXIT IS DECIDED BY THE OUTCOME, BY NAME. The release step fails loudly only when
+// something this run owns stays held (Unreleased); released, already-free, not-ours and
+// left-alone-stale each report that nothing of ours is held -- by arm, not by wildcard, so a
+// release outcome added later must state its exit here instead of inheriting success. The caller
+// owns the failure's wording; this fn owns the decision.
+fn probe_hold_release_step_exit(o: ProbeHoldReleaseOutcome, context_line: String) -> ProcessExit {
+  match o {
+    ProbeHoldReleased => ExitSuccess
+    ProbeHoldAlreadyFree => ExitSuccess
+    ProbeHoldNotOurs { holder: _ } => ExitSuccess
+    ProbeHoldStale { detail: _ } => ExitSuccess
+    ProbeHoldUnreleased { cause: _ } => exit_failure(reason: context_line)
+  }
+}
+
 fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),

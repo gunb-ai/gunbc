@@ -1,6 +1,8 @@
 module test.claim.machine_intake.mtcollins1_kvm_observer_observe_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.managed_host_unit_hold { probe_hold_release_step_exit, ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased }
 import std.measure { second, millisecond }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.hash { sha256_digest }
@@ -177,4 +179,23 @@ test fn the_always_release_reads_the_journal_and_keeps_the_hold_when_unsure() ->
     && keeps(g: kvm_probe_seat_gap_from_journal(journal: KvmJournalAbsent, process: OwnedReleaseNotOwned { standing: OwnedRunning { pid: "1", start_time: "7" } }), pattern: "process")
     && lets_go(g: kvm_probe_seat_gap_from_journal(journal: KvmJournalText { text: "1790000000000 2026-09-30T20:00:00.000Z session-release result=released\n1790000000001 2026-09-30T20:00:00.001Z browser-close result=closed\n" }, process: OwnedReleased { pid: "1" }))
     && keeps(g: kvm_probe_seat_gap_from_journal(journal: KvmJournalText { text: "1790000000000 2026-09-30T20:00:00.000Z session-release result=release-failed detail=\"released\"\n1790000000001 2026-09-30T20:00:00.001Z browser-close result=closed\n" }, process: OwnedReleased { pid: "1" }), pattern: "session")
+}
+
+// THE HOLD EXIT IS A HERMETIC DECISION: probe_hold_release_step_exit answers each release outcome
+// by name, so the wet step's verdict is pinned here without GitHub Actions, a journal or a store.
+// ONLY UNRELEASED IS LOUD -- released, already-free, not-ours and left-alone-stale each report
+// that nothing this run owns stays held -- and the failure carries the run's context line.
+test fn an_unreleased_hold_fails_loudly_with_the_run_context() -> Bool {
+  match probe_hold_release_step_exit(o: ProbeHoldUnreleased { cause: "the unit is still held" }, context_line: "mtcollins1 kvm observer release: unit hold NOT released: the unit is still held") {
+    ExitFailure { code: _, reason: r } => r == "mtcollins1 kvm observer release: unit hold NOT released: the unit is still held"
+    _ => false
+  }
+}
+
+// A REAL RELEASE STILL PASSES, by arm; so do already-free, not-ours and stale.
+test fn released_and_no_op_holds_still_pass() -> Bool {
+  probe_hold_release_step_exit(o: ProbeHoldReleased, context_line: "unused on success") == ExitSuccess
+    && probe_hold_release_step_exit(o: ProbeHoldAlreadyFree, context_line: "unused on success") == ExitSuccess
+    && probe_hold_release_step_exit(o: ProbeHoldNotOurs { holder: "another-run" }, context_line: "unused on success") == ExitSuccess
+    && probe_hold_release_step_exit(o: ProbeHoldStale { detail: "the slot moved to another generation" }, context_line: "unused on success") == ExitSuccess
 }

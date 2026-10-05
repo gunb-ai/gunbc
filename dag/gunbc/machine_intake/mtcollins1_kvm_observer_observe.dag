@@ -252,10 +252,8 @@ fn kvm_probe_seat_gap_from_journal(journal: KvmJournalRead, process: OwnedReleas
 // (pid, start time) -- so the viewer seat and the web session it holds are let go -- then the unit hold,
 // only if THIS run holds it (gunbc.managed_host_unit_hold
 // kvm_observer_release_unit_hold). A probe that finished cleanly left nothing, and both
-// halves report that as a no-op. It fails loudly only when something this run owns stays held:
-// Unreleased is the one loud outcome, and released, already-free, not-ours and stale each report
-// that nothing of ours is held -- by arm, not by wildcard, so a release outcome added later must
-// state its exit instead of inheriting success.
+// halves report that as a no-op. It fails loudly only when something this run owns stays held;
+// the outcome-to-exit decision is probe_hold_release_step_exit, by name.
 fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
 {
   let run_id = match actions_variable_read(name: github_run_id_variable_name) {
@@ -273,11 +271,5 @@ fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
   }
   let hold = kvm_observer_release_unit_hold(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr)
   let line = join(["mtcollins1 kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
-  match hold {
-    ProbeHoldReleased => ExitSuccess
-    ProbeHoldAlreadyFree => ExitSuccess
-    ProbeHoldNotOurs { holder: _ } => ExitSuccess
-    ProbeHoldStale { detail: _ } => ExitSuccess
-    ProbeHoldUnreleased { cause: _ } => exit_failure(reason: line)
-  }
+  probe_hold_release_step_exit(o: hold, context_line: line)
 }

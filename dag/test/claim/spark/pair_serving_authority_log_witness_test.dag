@@ -2,9 +2,11 @@ module test.claim.spark.pair_serving_authority_log_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
+import std.process { ExitSuccess, ExitFailure }
 import v2.std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.pair_serving_authority_log { placement_cleanup_step_exit, PlacementFinalizedAt, PlacementCleanupStillFencing, PlacementCleanupUnread }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import product.capacity.lease { LeaseGrant }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
@@ -835,4 +837,29 @@ test fn an_ephemeral_run_carries_its_labels_and_memory_cap() -> Bool {
   let plain = join(argv_words(command: docker_run_ephemeral_command(image: "img" as NonEmptyStr, gpus_all: false, mounts: [], labels: [] as List<DockerLabel>, memory_limit: Absent, entrypoint: "sh" as NonEmptyStr, argv: ["-c", "true"])), " ")
   contains(capped, "--label gunbc.lane=a-lane --memory 1024 --memory-swap 1024 --entrypoint sh img -c true")
     && !contains(plain, "--label") && !contains(plain, "--memory")
+}
+
+// THE CLEANUP EXIT IS A HERMETIC DECISION: placement_cleanup_step_exit answers each cleanup state
+// by name, so the wet step's verdict is pinned here without an executor, a host store or a clock.
+// AN UNREADABLE OUTCOME IS NOT EVIDENCE THE FENCE IS DOWN: it fails loudly with its cause -- the
+// answer the old wildcard answered success, which is the behavior change this cut repairs.
+test fn an_unread_placement_cleanup_fails_loudly_with_its_cause() -> Bool {
+  match placement_cleanup_step_exit(c: PlacementCleanupUnread { cause: "the log store could not be read" }) {
+    ExitFailure { code: _, reason: r } => r == "the log store could not be read"
+    _ => false
+  }
+}
+
+// A REAL COMPLETION STILL PASSES: finalized and aborted report completion, by arm.
+test fn a_finalized_placement_cleanup_still_passes() -> Bool {
+  placement_cleanup_step_exit(c: PlacementFinalizedAt { preparation: "authoritative-preparation" as EventId, id: "e-1" as EventId }) == ExitSuccess
+    && placement_cleanup_step_exit(c: PlacementAbortedAt { preparation: "authoritative-preparation" as EventId, id: "e-2" as EventId }) == ExitSuccess
+}
+
+// STILL FENCING FAILS LOUDLY WITH ITS CAUSE, by arm as before.
+test fn a_placement_still_fencing_fails_loudly_with_its_cause() -> Bool {
+  match placement_cleanup_step_exit(c: PlacementCleanupStillFencing { preparation: "authoritative-preparation" as EventId, cause: "the fence release has not committed" }) {
+    ExitFailure { code: _, reason: r } => r == "the fence release has not committed"
+    _ => false
+  }
 }
