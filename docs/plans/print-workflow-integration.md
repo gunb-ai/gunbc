@@ -104,8 +104,7 @@ IDs to get past a refusal. Partial acceptance and replacement demands remain CAS
 
 ## Validation
 
-`test.claim.printer_batch_workflow_witness_test.validate_preparation` runs the combined
-boundary witnesses, executes the archive/G-code positive and negative controls, and calls
+`test.claim.printer_batch_workflow_witness_test.validate_preparation` executes the archive/G-code positive and negative controls and calls
 the production entrypoint with `mode=prepare`. It cannot start a printer. The controls
 include extra plates, wrong membership, scaled objects, bad checksums, out-of-bed XY/Z,
 forbidden support, leading-dot motion words and full-circle arcs.
@@ -114,3 +113,7 @@ The recorded shadow plan produces two lower-post plates, approximately 4 h 05 mi
 85 g each. The live printer/approval/controller route has not been exercised by this
 change. Existing running prints were left alone. See the adjacent validation receipts
 for the exact exercised source and artifact digests; CI is a separate gate.
+
+Boundary tests run individually through the witness runner. The original aggregate
+wrapper was rejected by the current compiler because tests cannot call other tests;
+it was removed without removing any of the individual boundary tests.
