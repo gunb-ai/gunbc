@@ -122,7 +122,8 @@ test fn the_wall_refuses_a_call_from_a_declaration_outside_the_list_holds() -> B
     module_symbol: ^bcb
   ) {
     None => false
-    Some { diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_reason_caller_admission_refused)
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_caller_admission_refused)
   }
 }
 
