@@ -7,7 +7,7 @@ import gunbc.roadmap_issue_status { IssueDisplayStatus, issue_display_status_lab
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
 import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_1, space_2, space_3, space_4, space_6, space_8, radius_999, border_2 }
 import gunbc.site.element.tokens {
-  radius_element, height_button_small, height_field_row, field_label_min, field_label_max,
+  radius_element, height_button_small, height_field_row, field_label_max,
   field_label_gap, field_avatar,
 }
 import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotTextDim, SlotAction, SlotHover }
@@ -236,13 +236,13 @@ fn field_negative(t: String) -> String {
   join(["calc(", t, " * -1)"], "")
 }
 
-// The label column is shared by every row of one list (each row is a subgrid of the list), sized
-// to the list's longest label: at least the measured minimum and, through the label's own maximum
-// width, at most the measured maximum. A label is one line and is never cut; a label longer than
-// the maximum is a wording problem, not a layout one. The product's 23% resolves to its minimum at
-// the rail's width, so the percentage is not used.
+// The label column is one fixed width, the measured maximum, shared by every row of a list (each
+// row is a subgrid of the list), so a value starts at the same x in every list on every page. A
+// label is one line and is never cut; a label wider than the column is a wording problem to report,
+// not a layout to absorb. The product's 23% clamp resolves to its minimum at the rail's width and
+// would make the column follow the labels, so neither the percentage nor the content width is used.
 fn field_label_column() -> String {
-  join(["minmax(", scale_var(t: field_label_min), ", max-content)"], "")
+  scale_var(t: field_label_max)
 }
 
 fn field_single_line_decls() -> List<CssDecl> {

@@ -2295,6 +2295,7 @@ test fn witness_issue_rail_is_one_field_list_with_no_empty_rows() -> Bool {
     && occurrence_count(s: h, pattern: "<div class=\"el-field-list-row\"") == count(rows)
     && count(rows) >= 6
     && all(rows, r => r.label != "")
+    && string_contains(s: gunbc.design.material.serialize_rules(rules: gunbc.site.element.field_list.field_list_rules()), pattern: ".el-field-list { display: grid; grid-template-columns: var(--w-field-label-max) minmax(0, 1fr);")
     && !string_contains(s: h, pattern: "<dd class=\"el-field-list-value\"></dd>")
     && !string_contains(s: h, pattern: "issue-field")
     && string_contains(s: h, pattern: "<dt class=\"el-field-list-label\">Reporter</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text el-field-list-absent\" title=\"Not recorded: an authored roadmap row has no creation event\">")
