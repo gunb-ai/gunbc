@@ -19,7 +19,7 @@ import v2.std.arrow_signature { declared_signature_arrow }
 import v2.std.node_query { binder_edge }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, DeclaredInputUnbound, DuplicateInputBinding, ExecutablePositionNotLiteral, OperationNotFound, TokenListInStringPosition, UndeclaredInputBound }
-import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.symbol_index { SymbolIndex, disj_variant_counts_in_module, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Absent, Optional, Present, optional_absent }
@@ -208,7 +208,13 @@ fn sr_module(realization_label: Symbol) -> Node {
 }
 
 fn sr_index(module: Node) -> SymbolIndex {
-  symbol_index_fill_containment_node(index: empty_symbol_index(), path: Cons { head: ^m, tail: Empty }, node: module)
+  symbol_index_fill_containment_node(
+    index: empty_symbol_index(),
+    path: Cons { head: ^m, tail: Empty },
+    node: module,
+    counts: disj_variant_counts_in_module(root: module),
+    module_qn: Cons { head: ^m, tail: Empty }
+  )
 }
 
 fn sr_indexed(index: SymbolIndex, path: List<Symbol>) -> Bool {

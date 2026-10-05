@@ -3,7 +3,7 @@ module v2.test.name_resolve.arrow_domain_is_first_positional
 import v2.compiler.resolve { arrow_domain_frame_binders, arrow_domain_has_named_bindings }
 import v2.std.arrow_signature { declared_signature }
 import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
-import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
+import v2.std.symbol_index { disj_variant_counts_in_module, empty_symbol_index, symbol_index_lookup }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.collection { map_lookup }
 import v2.std.optional { Absent, Present }
@@ -58,7 +58,9 @@ test fn arrow_domain_is_first_positional_in_symbol_index_fill_holds() -> Bool {
     index: symbol_index_fill_containment_node(
       index: empty_symbol_index(),
       path: qualified_name_from_dotted_string(dotted: "m.f"),
-      node: adf_named_first_arrow()
+      node: adf_named_first_arrow(),
+      counts: disj_variant_counts_in_module(root: adf_named_first_arrow()),
+      module_qn: qualified_name_from_dotted_string(dotted: "m.f")
     ),
     qualified_path: qualified_name_from_dotted_string(dotted: "m.f.x")
   ) {

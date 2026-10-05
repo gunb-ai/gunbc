@@ -11,11 +11,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_strip_provenance_marker
 }
 import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode }
-import v2.std.symbol_index {
-  empty_symbol_index,
-  symbol_index_lexical_lookup,
-  symbol_index_lookup
-}
+import v2.std.symbol_index { disj_variant_counts_in_module, empty_symbol_index, symbol_index_lexical_lookup, symbol_index_lookup }
 import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
 import v2.std.qualified_name {
   QualifiedName,
@@ -111,7 +107,9 @@ fn ms_fill_index(root: Node) -> SymbolIndex {
   symbol_index_fill_containment_node(
     index: empty_symbol_index(),
     path: Empty,
-    node: root
+    node: root,
+    counts: disj_variant_counts_in_module(root: root),
+    module_qn: Empty
   )
 }
 

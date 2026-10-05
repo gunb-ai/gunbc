@@ -99,7 +99,9 @@ data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
 data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
   index: empty_symbol_index(),
   path: si_unique_module_qn,
-  node: si_unique_module_root_node
+  node: si_unique_module_root_node,
+  counts: disj_variant_counts_in_module(root: si_unique_module_root_node),
+  module_qn: si_unique_module_qn
 )
 
 test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
