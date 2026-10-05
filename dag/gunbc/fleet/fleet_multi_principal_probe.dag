@@ -64,6 +64,7 @@ import gunbc.spark.managed_grant_reconcile {
   spark_inspect_dropin_shape_wire,
 }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
@@ -571,6 +572,31 @@ fn spark_exact_grant_probe_wet(attempt_raw: String) -> ProcessExit
       }
     },
   )
+}
+
+// THE CONVERGENCE ROUTE (fleet-converge mode spark_grants_observe). The operator approved reading
+// every Spark's grant listing on condition that convergence reads it, so this is the entry the mode
+// runs: the in-run ssh-agent context every Spark mode uses, then the exact-grant report over
+// spark_standing_hosts -- all procured Sparks -- written to its receipt. It installs and removes
+// nothing. A host whose managed account cannot be reached is a row reporting the failure, never a
+// skipped host; only a probe that could not be asked at all fails the step.
+data spark_grant_probe_ci_attempt_raw: String = "spark-grant-probe-ci"
+
+fn spark_exact_grant_probe_ci_wet() -> ProcessExit
+{
+  let report = match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_probe_ci_attempt_raw) {
+    FleetSshContextRefused { cause: c } => GrantProbeNotAttempted { cause: c }
+    FleetSshContextReady { context: context, receipt: _ } => spark_exact_grant_report(context: context)
+  }
+  let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))
+  if !w.success {
+    exit_failure(reason: join(["exact-grant probe receipt write failed: ", w.error], ""))
+  } else {
+    match spark_grant_report_refusal(report: report) {
+      Present { value: c } => exit_failure(reason: join(["spark exact-grant probe could not run: ", c], ""))
+      Absent => ExitSuccess
+    }
+  }
 }
 
 // ── The derived standing, from the same legs the receipt above reports ──────────────────────────

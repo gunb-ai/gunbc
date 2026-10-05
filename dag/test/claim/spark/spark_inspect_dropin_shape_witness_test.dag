@@ -1,13 +1,19 @@
 module test.claim.spark.spark_inspect_dropin_shape_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { filter, length, any }
 import gunbc.spark.managed_grant_reconcile {
   SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
   spark_inspect_dropin_shape_of_listing,
   spark_sudoers_dropin_listing_argv,
 }
 import gunbc.fleet_multi_principal_probe { spark_standing_hosts }
+import gunbc.fleet_converge_workflow {
+  SparkGrantsObserve, FleetSshKeyConsumed, FleetSshKeyNotConsumed,
+  fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
+  fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
+}
+import gunbc.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
 // alone; a host converged by the #13040 installer carries per-container files and no shared one.
@@ -65,4 +71,31 @@ test fn w_probe_roster_is_every_procured_spark() -> Bool {
 // shared shape the probe will report until an operator-approved converge replaces it.
 test fn w_group_b_listing_shape_reads_shared_alone() -> Bool {
   is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-ethtool-module-info\ngunbc-reboot\nREADME\n", stderr: ""))
+}
+
+// ── the convergence route ─────────────────────────────────────────────────────────────────────
+//
+// The operator's condition (2026-10-05): every Spark's grant listing is read by convergence. These
+// pin the route: the mode is a dispatch option, its step runs exactly the probe entry over the
+// registered run target, the step is gated on that mode alone, and the mode consumes the fleet key
+// (it reads over ssh) while declaring no host scope (it reads every procured Spark).
+
+test fn w_grants_observe_is_a_dispatch_mode() -> Bool {
+  any(fleet_converge_mode_options, m => m == "spark_grants_observe")
+}
+
+test fn w_grants_observe_runs_the_probe_entry() -> Bool {
+  length(filter(gunbc_run_step_targets(), t =>
+    t.entry == "dag/gunbc/fleet/fleet_multi_principal_probe.dag" && t.function == "spark_exact_grant_probe_ci_wet")) == 1
+    && contains(gunbc_ci_spark_grants_observe_invoke(), "spark_exact_grant_probe_ci_wet")
+    && contains(gunbc_ci_spark_grants_observe_invoke(), "target/spark-exact-grant-probe-receipt.txt")
+}
+
+test fn w_grants_observe_step_is_gated_on_its_mode_and_reads_over_the_fleet_key() -> Bool {
+  contains(fleet_converge_spark_grants_observe_step_if, "'spark_grants_observe'")
+    && contains(fleet_converge_fleet_ssh_key_step_if, "'spark_grants_observe'")
+    && match fleet_converge_mode_fleet_ssh_key_demand(mode: SparkGrantsObserve) {
+      FleetSshKeyConsumed => true
+      FleetSshKeyNotConsumed => false
+    }
 }
