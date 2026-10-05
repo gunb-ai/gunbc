@@ -9,6 +9,7 @@ import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, h
 import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
 import gunbc.site.element.tokens { field_rail_width, field_rail_inset, field_rail_divider }
 import gunbc.site.element.palette { palette_var, SlotBorder, SlotSurface }
+import gunbc.site.element.priority_mark { priority_mark_label_inset }
 
 // Local control geometry needs wider priority badges and an intrinsic modified heading.
 // App ordering is distinct from the observed upstream roster. Header, rows and tracks share it.
@@ -112,26 +113,10 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-cell-priority" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center")
+      decl(prop: JustifyContent, value: "flex-start")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-priority" }, decls: [
-      decl(prop: Display, value: "inline-flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center"),
-      decl(prop: MinWidth, value: scale_var(t: height_compact_face)),
-      decl(prop: Height, value: scale_var(t: height_compact_face)),
-      decl(prop: LineHeight, value: "1"),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-      role_decl(prop: Color, r: TextDimRole)
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"0\"]" }, decls: [
-      decl(prop: Color, value: "var(--surface)"),
-      decl(prop: Background, value: "var(--issue-error)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"1\"]" }, decls: [
-      decl(prop: Color, value: "var(--issue-error)")
+    StaticRule { selector: RawSelector { text: ".issue-col.issue-col-priority" }, decls: [
+      decl(prop: RawProperty { name: "padding-left" }, value: join(["calc(", scale_var(t: space_8), " + ", priority_mark_label_inset(), ")"], ""))
     ] },
     StaticRule { selector: RawSelector { text: ".issue-empty" }, decls: [
       decl(prop: Display, value: "none"),

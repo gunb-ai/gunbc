@@ -47,7 +47,7 @@ import gunbc.site.element.section_heading {
 import gunbc.site.element.status_chip { status_chip, status_chip_rules }
 import gunbc.site.element.button { Button, ButtonSmall, ButtonRegular, button, button_rules }
 import gunbc.site.element.chip { Chip, chip, chip_rules }
-import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_rules }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_rules, priority_mark_forms, priority_mark_form_decls }
 import gunbc.site.element.node_row {
   NodeRow, NodeRowFlat, NodeRowInTree, NodeRowDensityTable, NodeRowDensityGrid,
   node_row, node_row_header, node_row_rules,
@@ -60,7 +60,7 @@ import gunbc.site.element.field_list {
   FieldStatusControl, FieldIdentityControl, FieldAbsent, FieldPerson, field_list, field_list_rules,
 }
 import extdeps.languages.css.selectors { RawSelector }
-import extdeps.languages.css.properties { Color, Padding }
+import extdeps.languages.css.properties { Color, Padding, css_property_wire }
 
 // GUARDS FOR THE FRONTEND ELEMENTS. Each claim below reads one interface with a supplied fixture:
 // an element's markup function, an element's rules, the token block, the palette, a text role.
@@ -180,18 +180,19 @@ fn fx_derived(slug: String, status: IssueDisplayStatus) -> NodePresentation {
 // Chip and PriorityMark.
 test fn chip_and_priority_mark_render_their_typed_inputs() -> Bool {
   html(node: chip(input: Chip { text: "shell-typed-invocation" })) == "<span class=\"el-chip\">shell-typed-invocation</span>"
-    && html(node: priority_mark(input: PriorityMark { priority: PriorityP0 })) == "<span class=\"el-priority-mark\" data-priority-form=\"ringed\">P0</span>"
-    && html(node: priority_mark(input: PriorityMark { priority: PriorityP1 })) == "<span class=\"el-priority-mark\" data-priority-form=\"ringed\">P1</span>"
-    && html(node: priority_mark(input: PriorityMark { priority: PriorityP2 })) == "<span class=\"el-priority-mark\" data-priority-form=\"plain\">P2</span>"
-    && html(node: priority_mark(input: PriorityMark { priority: PriorityP3 })) == "<span class=\"el-priority-mark\" data-priority-form=\"plain\">P3</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP0, explanation: none })) == "<span class=\"el-priority-mark\" data-priority-form=\"solid\">P0</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP1, explanation: none })) == "<span class=\"el-priority-mark\" data-priority-form=\"ringed\">P1</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP2, explanation: none })) == "<span class=\"el-priority-mark\" data-priority-form=\"plain\">P2</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP3, explanation: Present { value: "P3 · fixture" } })) == "<span class=\"el-priority-mark\" data-priority-form=\"quiet\" title=\"P3 · fixture\">P3</span>"
 }
 
 test fn chip_and_priority_mark_rules_draw_the_measured_marks() -> Bool {
   let chip_css = serialize_rules(rules: chip_rules())
   let mark_css = serialize_rules(rules: priority_mark_rules())
   has(s: chip_css, pattern: ".el-chip { display: inline-flex; align-items: center; min-height: var(--h-chip); padding: var(--space-0) var(--space-6); border-radius: var(--radius-4); background: color-mix(in srgb, var(--issue-text) 6%, transparent); font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22); font-weight: 400;")
-    && has(s: mark_css, pattern: ".el-priority-mark { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: var(--w-priority-mark); height: var(--h-chip); border: var(--border-2) solid transparent; border-radius: var(--radius-4); font-family: var(--font-sans); font-size: var(--text-13);")
+    && has(s: mark_css, pattern: ".el-priority-mark { display: inline-flex; align-items: center; justify-content: flex-start; box-sizing: border-box; min-width: var(--w-priority-mark); height: var(--h-chip); padding: var(--space-0) var(--space-2); border: var(--border-2) solid transparent; border-radius: var(--radius-4); font-family: var(--font-sans); font-size: var(--text-13);")
     && has(s: mark_css, pattern: ".el-priority-mark[data-priority-form=\"ringed\"] { border-color: var(--issue-action) }")
+    && has(s: mark_css, pattern: ".el-priority-mark[data-priority-form=\"solid\"] { border-color: var(--issue-action); background: var(--issue-action); color: var(--issue-on-action) }")
 }
 
 // NodeRow.
@@ -200,7 +201,7 @@ test fn node_row_renders_title_priority_slug_and_status_from_the_presentation() 
   row == join([
     "<tr class=\"el-node-row\" data-node-density=\"table\" data-node-state=\"open\" data-node-depth=\"0\">",
     "<td class=\"el-node-row-cell\" data-node-column=\"title\"><div class=\"el-node-row-lead\"><a class=\"el-node-row-link\" href=\"/issue/fx-parent\">Title of fx-parent</a></div></td>",
-    "<td class=\"el-node-row-cell\" data-node-column=\"priority\"><span class=\"el-priority-mark\" data-priority-form=\"ringed\">P1</span></td>",
+    "<td class=\"el-node-row-cell\" data-node-column=\"priority\"><span class=\"el-priority-mark\" data-priority-form=\"ringed\" title=\"P1 · fixture\">P1</span></td>",
     "<td class=\"el-node-row-cell\" data-node-column=\"id\"><span class=\"el-chip\">fx-parent</span></td>",
     "<td class=\"el-node-row-cell\" data-node-column=\"status\"><span class=\"el-status-chip\" data-status-form=\"assigned\">Active</span></td>",
     "</tr>",
@@ -635,4 +636,20 @@ test fn specimen_field_list_fixture_covers_the_rail_cases() -> Bool {
   let h = html(node: field_list(input: specimen_field_list_fixture()))
   all(["status-control", "identity-control", "work", "absent", "text", "links", "action", "identity"], k => has(s: h, pattern: join(["data-field-value=\"", k, "\""], "")))
     && has(s: h, pattern: "iam.gserviceaccount.com")
+}
+
+// EVERY PRIORITY IS THE SAME BOX. The one rule that sets geometry (size, padding, border width,
+// alignment) names the element's class alone, and each form's rule may set only colours: the
+// border's colour, the fill and the ink. So no priority can move its label's left edge, and the
+// column is aligned by construction. A form rule that changed a length is reported.
+fn colour_only(decls: List<CssDecl>) -> Bool {
+  all(decls, d => any(["border-color", "background", "color"], n => css_property_wire(p: d.prop) == n))
+}
+
+test fn every_priority_mark_has_the_same_geometry() -> Bool {
+  let marks = map([PriorityP0, PriorityP1, PriorityP2, PriorityP3], p => html(node: priority_mark(input: PriorityMark { priority: p, explanation: none })))
+  all(priority_mark_forms, f => colour_only(decls: priority_mark_form_decls(form: f)))
+    && !colour_only(decls: [decl(prop: Padding, value: "var(--space-4)")])
+    && all(marks, m => has(s: m, pattern: "<span class=\"el-priority-mark\" data-priority-form=\""))
+    && count(priority_mark_rules()) == 4
 }

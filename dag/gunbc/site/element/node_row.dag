@@ -15,7 +15,8 @@ import gunbc.site.element.tokens {
 import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotText, SlotTextDim, SlotBorder, SlotAction, SlotClosedRow }
 import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
 import gunbc.site.element.chip { Chip, chip }
-import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_label_inset }
+import gunbc.roadmap_priority { issue_priority_explanation }
 import gunbc.site.element.status_chip { status_chip }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
@@ -196,7 +197,7 @@ fn node_row_cell_nodes(input: NodeRow, column: NodeRowColumn) -> List<Fragment> 
         el_attrs("a", [attr(name: "class", value: node_row_link_class), attr(name: "href", value: input.node.route)], [txt(input.node.title)]),
       ], node_row_place_children(node: input.node, place: input.place)))),
     ]
-    NodeRowColumnPriority => [priority_mark(input: PriorityMark { priority: input.node.priority.priority })]
+    NodeRowColumnPriority => [priority_mark(input: PriorityMark { priority: input.node.priority.priority, explanation: Present { value: issue_priority_explanation(value: input.node.priority) } })]
     NodeRowColumnId => [chip(input: Chip { text: input.node.slug })]
     NodeRowColumnStatus => node_row_status_nodes(status: input.node.status)
   }
@@ -266,6 +267,9 @@ fn node_row_rules() -> List<BuildRule> {
       StaticRule { selector: RawSelector { text: node_row_title_column_selector(class_name: node_row_cell_class) }, decls: [
         decl(prop: Width, value: "100%"),
         decl(prop: WhiteSpace, value: "normal"),
+      ] },
+      StaticRule { selector: RawSelector { text: node_row_attribute_selector(class_name: node_row_heading_class, attribute: node_row_column_attribute, value: node_row_column_key(column: NodeRowColumnPriority)) }, decls: [
+        decl(prop: RawProperty { name: "padding-left" }, value: join(["calc(", scale_var(t: relation_cell_padding), " + ", priority_mark_label_inset(), ")"], "")),
       ] },
       StaticRule { selector: RawSelector { text: node_row_title_column_selector(class_name: node_row_heading_class) }, decls: [
         decl(prop: Width, value: "100%"),

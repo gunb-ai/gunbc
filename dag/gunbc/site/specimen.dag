@@ -361,10 +361,10 @@ fn specimen_marks_section() -> Fragment {
     specimen_row(children: [
       chip(input: Chip { text: "shell-typed-invocation" }),
       chip(input: Chip { text: "dp-m2-shell-residue-retired" }),
-      priority_mark(input: PriorityMark { priority: PriorityP0 }),
-      priority_mark(input: PriorityMark { priority: PriorityP1 }),
-      priority_mark(input: PriorityMark { priority: PriorityP2 }),
-      priority_mark(input: PriorityMark { priority: PriorityP3 }),
+      priority_mark(input: PriorityMark { priority: PriorityP0, explanation: none }),
+      priority_mark(input: PriorityMark { priority: PriorityP1, explanation: none }),
+      priority_mark(input: PriorityMark { priority: PriorityP2, explanation: none }),
+      priority_mark(input: PriorityMark { priority: PriorityP3, explanation: none }),
     ]),
   ])
 }

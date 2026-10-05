@@ -105,6 +105,7 @@ data button_border: ScaleToken = length_token(prefix: "border", px: issue_tracke
 data chip_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_header_chip.side_padding_px)
 data priority_mark_width: ScaleToken = named_length_token(name: "w-priority-mark", px: issue_tracker_measured_priority_mark.width_px)
 data priority_mark_border: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_priority_mark.border_px)
+data priority_mark_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_priority_mark.side_padding_px)
 data relation_section_gap: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_relation_table.section_gap_px)
 data relation_cell_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_relation_table.cell_side_padding_px)
 data relation_row_line: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_relation_table.row_line_px)
@@ -177,7 +178,7 @@ fn element_length_tokens() -> List<ScaleToken> {
     card_padding, card_outer_margin, card_border, card_leading_bar,
     status_chip_padding, status_chip_ring,
     button_small_padding, button_padding, button_border,
-    chip_padding, priority_mark_width, priority_mark_border,
+    chip_padding, priority_mark_width, priority_mark_border, priority_mark_padding,
     relation_section_gap, relation_cell_padding, relation_row_line, relation_level_indent,
     height_field_row, field_label_min, field_label_max, field_label_gap, field_avatar,
     field_rail_width, field_rail_divider, field_rail_inset,

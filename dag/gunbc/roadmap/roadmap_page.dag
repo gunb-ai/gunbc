@@ -132,6 +132,7 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
 import gunbc.site.element.build_meter { failure_event_words }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
 import gunbc.site.element.field_list {
   FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
   FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
@@ -1629,12 +1630,7 @@ fn workspace_assignee_label(holder: EventPrincipal, profiles: List<PrincipalProf
 
 fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> List<Fragment> {
   match col.kind {
-    IssueColumnPriority => [el_attrs("span", [
-      attr(name: "class", value: "issue-priority"),
-      attr(name: "data-priority", value: to_string(roadmap_priority_rank(priority: priority.priority))),
-      attr(name: "title", value: issue_priority_explanation(value: priority)),
-      attr(name: "aria-label", value: issue_priority_explanation(value: priority))
-    ], [txt(roadmap_priority_label(priority: priority.priority))])]
+    IssueColumnPriority => [priority_mark(input: PriorityMark { priority: priority.priority, explanation: Present { value: issue_priority_explanation(value: priority) } })]
     IssueColumnTitle =>
       [ el_attrs("a", [
           attr(name: "class", value: "issue-title-link" ),

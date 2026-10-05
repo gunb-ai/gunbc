@@ -51,6 +51,7 @@ import gunbc.site.element.tokens { element_token_decls }
 import gunbc.site.element.build_meter { build_meter_rules }
 import gunbc.site.element.status_chip { status_chip_rules }
 import gunbc.site.element.field_list { field_list_rules }
+import gunbc.site.element.priority_mark { priority_mark_rules }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.accessibility.wcag_contrast { srgb8_relative_luminance_scaled_for_max, contrast_ratio_x100 }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
@@ -448,7 +449,7 @@ fn activity_round_strip_rules() -> List<BuildRule> {
 // rules, unchanged, and (in roadmap_styles) the element tokens they read.
 fn roadmap_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules(),
-    concat(figure_rules(), concat(activity_round_strip_rules(), concat(standing_chip_rules(), concat(roadmap_behavior_rules(rows: roadmap_behaviors), concat(build_meter_rules(), concat(status_chip_rules(), field_list_rules())))))))
+    concat(figure_rules(), concat(activity_round_strip_rules(), concat(standing_chip_rules(), concat(roadmap_behavior_rules(rows: roadmap_behaviors), concat(build_meter_rules(), concat(status_chip_rules(), concat(priority_mark_rules(), field_list_rules()))))))))
 }
 
 // The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.

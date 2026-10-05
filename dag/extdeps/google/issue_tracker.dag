@@ -676,17 +676,20 @@ data issue_tracker_measured_header_chip: IssueTrackerMeasuredHeaderChip = IssueT
   fill_ink_pct: 6,
 }
 
-// PRIORITY MARK ANATOMY: the priority as body text centred in a box 23 wide and the chip height
-// tall, inside a 2px border on the shared radius. The border is transparent except on P1, where
+// PRIORITY MARK ANATOMY: the priority as body text in a box 23 wide and the chip height tall,
+// inside a 2px border on the shared radius, with 2px of side padding inside the border (the rail's
+// priority, probe t1-detail rail.priority). The border is transparent except on P1, where
 // it is the action colour. P0 was not captured.
 type IssueTrackerMeasuredPriorityMark {
   width_px: Int
   border_px: Int
+  side_padding_px: Int
 }
 
 data issue_tracker_measured_priority_mark: IssueTrackerMeasuredPriorityMark = IssueTrackerMeasuredPriorityMark {
   width_px: 23,
   border_px: 2,
+  side_padding_px: 2,
 }
 
 // RELATION TABLE ANATOMY (the Dependencies and Blocking tabs): the Parents, Blockers and Child
