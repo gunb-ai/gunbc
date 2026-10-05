@@ -1,0 +1,554 @@
+module gunbc.live_deploy.tailnet_door_cutover
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.decl_ref { decl_ref }
+import gunbc.readiness { Ready, Pending, Refused }
+import gunbc.live_deploy.readiness { ServiceReadiness, ServiceReadyEvidence, service_readiness_reason }
+import extdeps.tailscale.serve { tailscale_serve_backend_of_proxy_target }
+
+// THE ROUTE RE-POINT IS A JOURNALED TRANSACTION, NOT A DEPLOYMENT MEMBER'S APPLY STEP. A deployment
+// whose serve route targets its tailnet door redirects every tailnet request to another process
+// when the mapping is written, so the write may happen only once that process is proven, must be
+// undone if the redirected path does not work, and must stay undoable when the run that wrote it
+// does not live to undo it. The order is fixed here:
+//
+//   read the journal  ->  door ready (the permit)  ->  observe the route, capture a RESTORABLE
+//   backend  ->  journal Prepared  ->  re-point  ->  journal Repointed  ->  read the route back
+//   ->  exercise the proxied path  ->  journal Committed
+//
+// and on a failure after the re-point: journal RollingBack, restore the CAPTURED backend, prove
+// the restoration by reading the route back, journal RolledBack. The capture is written to the
+// journal before the route is touched, so a later run that finds Prepared, Repointed or
+// RollingBack resumes with the capture the interrupted run made -- it never needs to guess what
+// the route used to be. This module decides and sequences; what it cannot do itself arrives as
+// ServeCutoverEffects, so the same fold runs over the host (gunbc.live_deploy.apply) and over
+// supplied observations.
+
+// What the node's serve configuration shows at the deployment's route key.
+type ServeRouteObservation
+  = ServeRouteTargets { targets: List<String> }
+  | ServeRouteUnreadable { detail: String }
+
+// The backend the route had before this transaction touched it: the rollback authority. A
+// captured target carries the serve backend word that reproduces it, established AT CAPTURE, so
+// nothing is captured that could not be put back.
+type CapturedServeBackend
+  = CapturedRestorableBackend { target: String, backend: NonEmptyStr }
+  | CapturedNoRoute
+
+type ServeRouteCapture
+  = ServeRouteCaptured { prior: CapturedServeBackend }
+  | ServeRouteCaptureUnreadable { detail: String }
+  | ServeRouteCaptureAmbiguous { targets: List<String> }
+  | ServeRouteCaptureNotRestorable { target: String }
+
+fn serve_route_capture(observation: ServeRouteObservation) -> ServeRouteCapture {
+  match observation {
+    ServeRouteUnreadable { detail: why } => ServeRouteCaptureUnreadable { detail: why }
+    ServeRouteTargets { targets } =>
+      if count(targets) > 1 {
+        ServeRouteCaptureAmbiguous { targets: targets }
+      } else {
+        match first(targets) {
+          Absent => ServeRouteCaptured { prior: CapturedNoRoute }
+          Present { value: t } =>
+            match tailscale_serve_backend_of_proxy_target(target: t) {
+              Absent => ServeRouteCaptureNotRestorable { target: t }
+              Present { value: b } => ServeRouteCaptured { prior: CapturedRestorableBackend { target: t, backend: b } }
+            }
+        }
+      }
+  }
+}
+
+// ── The journal ────────────────────────────────────────────────────────────────────────────────
+
+// Prepared, Repointed and RollingBack are IN FLIGHT: a run that reads one of them resumes it.
+// Committed and RolledBack are settled: a run that reads one of them starts afresh.
+type CutoverPhase
+  = CutoverPrepared
+  | CutoverRepointed
+  | CutoverRollingBack
+  | CutoverSettledCommitted
+  | CutoverSettledRolledBack
+
+// What one record binds: the route it is about, the door it was pointed at, the release whose
+// reviewed plan wrote it, the capture, and how far the transaction got.
+type CutoverJournalRecord {
+  route: String
+  door_target: String
+  release_revision: String
+  prior: CapturedServeBackend
+  phase: CutoverPhase
+}
+
+// The journal is one generation-fenced slot: a write names the generation it read, and a write
+// that names a stale one is refused by the store. Generation zero is the absent slot.
+type CutoverJournalRead
+  = CutoverJournalAbsent
+  | CutoverJournalPresent { record: CutoverJournalRecord, generation: Int }
+  | CutoverJournalUnreadable { detail: String }
+
+type CutoverJournalWrite
+  = CutoverJournalWritten { generation: Int }
+  | CutoverJournalFenced
+  | CutoverJournalWriteRefused { detail: String }
+
+// What this run is cutting over: the same three identities a record binds.
+type CutoverBinding {
+  route: String
+  door_target: String
+  release_revision: String
+}
+
+// ── The permit ─────────────────────────────────────────────────────────────────────────────────
+
+// It exists only as the result of tailnet_door_cutover_permit over a Ready observation of the
+// door, and a re-point is reachable only through a value of it.
+type TailnetDoorReadyForCutover sole_constructor {
+  door_target: String
+  evidence: ServiceReadyEvidence
+}
+
+type ServeCutoverPermit
+  = ServeCutoverPermitted { permit: TailnetDoorReadyForCutover }
+  | ServeCutoverNotPermitted { detail: String }
+
+fn tailnet_door_ready_for_cutover(door_target: String, evidence: ServiceReadyEvidence) -> TailnetDoorReadyForCutover
+  admit_callers: [
+    decl_ref(module_path: "gunbc.live_deploy.tailnet_door_cutover", decl_name: "tailnet_door_cutover_permit"),
+  ]
+  = TailnetDoorReadyForCutover { door_target: door_target, evidence: evidence }
+
+fn tailnet_door_cutover_permit(door: ServiceReadiness, door_target: String) -> ServeCutoverPermit {
+  match door {
+    Ready { evidence: e } => ServeCutoverPermitted { permit: tailnet_door_ready_for_cutover(door_target: door_target, evidence: e) }
+    Pending { cause: _ } => ServeCutoverNotPermitted { detail: service_readiness_reason(r: door) }
+    Refused { cause: _ } => ServeCutoverNotPermitted { detail: service_readiness_reason(r: door) }
+  }
+}
+
+// ── Outcomes ───────────────────────────────────────────────────────────────────────────────────
+
+// Why this run performed no route effect.
+type ServeCutoverRefusal
+  = CutoverJournalNotReadable { detail: String }
+  | CutoverJournalForeign { route: String, door_target: String, release_revision: String }
+  | CutoverJournalNotRecorded { detail: String }
+  | CutoverDoorNotReady { detail: String }
+  | CutoverPriorRouteUnreadable { detail: String }
+  | CutoverPriorRouteAmbiguous { targets: List<String> }
+  | CutoverPriorRouteNotRestorable { target: String }
+  | CutoverAlreadyRoutedButProxiedPathFailed { detail: String }
+
+// Why a route at the door was not committed.
+type ServeCutoverFailure
+  = CutoverRouteNotAtDoorAfterRepoint { observed: ServeRouteObservation, repoint_detail: String }
+  | CutoverProxiedPathFailed { detail: String }
+  | CutoverDoorNotReadyOnResume { detail: String }
+  | CutoverRollbackResumed
+  | CutoverCommitNotRecorded { detail: String }
+
+// What became of the route after a failure. A restore is applied only while the route is still
+// exactly the door, or cannot be read: a route showing anything else was written by someone else
+// after us, and overwriting it with a stale capture would be a second defect.
+type ServeRestoration
+  = RestoredAndProven { prior: CapturedServeBackend }
+  | PriorStillInPlace { prior: CapturedServeBackend }
+  | RestoreSkippedNewerMapping { observed: List<String> }
+  | RestoreUnproven { detail: String }
+  | RouteLeftAtDoor
+
+type ServeCutoverOutcome
+  = CutoverCommitted { repointed: Bool }
+  | CutoverRefused { cause: ServeCutoverRefusal }
+  | CutoverRolledBack { failure: ServeCutoverFailure, restoration: ServeRestoration }
+
+// The effects performed, in order: the record a control reads to say what did and did not happen.
+type ServeCutoverStep
+  = CutoverObserved { observation: ServeRouteObservation }
+  | CutoverJournaled { phase: CutoverPhase }
+  | CutoverRepointApplied
+  | CutoverProxiedProbed
+  | CutoverRestoreApplied { prior: CapturedServeBackend }
+
+type ServeCutoverRun {
+  outcome: ServeCutoverOutcome
+  steps: List<ServeCutoverStep>
+}
+
+// THE EFFECTS. observe is handed how many observations precede it, so a supplied implementation
+// can answer the sequence a scenario describes. repoint and restore answer the empty string when
+// their effect converged and its refusal otherwise.
+type ServeCutoverEffects {
+  journal_read: fn() -> CutoverJournalRead
+  journal_write: fn(Int, CutoverJournalRecord) -> CutoverJournalWrite
+  observe: fn(Int) -> ServeRouteObservation
+  repoint: fn(TailnetDoorReadyForCutover) -> String
+  proxied: fn() -> ServiceReadiness
+  restore: fn(CapturedServeBackend) -> String
+}
+
+// What a run threads: the steps so far and the journal generation it last read or wrote.
+type CutoverProgress {
+  steps: List<ServeCutoverStep>
+  generation: Int
+}
+
+fn cutover_finished(outcome: ServeCutoverOutcome, progress: CutoverProgress) -> ServeCutoverRun {
+  ServeCutoverRun { outcome: outcome, steps: progress.steps }
+}
+
+fn serve_route_is_exactly(observation: ServeRouteObservation, target: String) -> Bool {
+  match observation {
+    ServeRouteUnreadable { detail: _ } => false
+    ServeRouteTargets { targets } => count(targets) == 1 && all(targets, t => t == target)
+  }
+}
+
+fn serve_route_shows_captured(observation: ServeRouteObservation, prior: CapturedServeBackend) -> Bool {
+  match prior {
+    CapturedRestorableBackend { target: t, backend: _ } => serve_route_is_exactly(observation: observation, target: t)
+    CapturedNoRoute =>
+      match observation {
+        ServeRouteUnreadable { detail: _ } => false
+        ServeRouteTargets { targets } => count(targets) == 0
+      }
+  }
+}
+
+fn cutover_observe(effects: ServeCutoverEffects, progress: CutoverProgress) -> ServeRouteObservation {
+  let observe = effects.observe
+  observe(count(filter(progress.steps, s => match s {
+    CutoverObserved { observation: _ } => true
+    CutoverJournaled { phase: _ } => false
+    CutoverRepointApplied => false
+    CutoverProxiedProbed => false
+    CutoverRestoreApplied { prior: _ } => false
+  })))
+}
+
+fn cutover_observed(progress: CutoverProgress, observation: ServeRouteObservation) -> CutoverProgress {
+  CutoverProgress { steps: concat(progress.steps, [CutoverObserved { observation: observation }]), generation: progress.generation }
+}
+
+fn cutover_stepped(progress: CutoverProgress, step: ServeCutoverStep) -> CutoverProgress {
+  CutoverProgress { steps: concat(progress.steps, [step]), generation: progress.generation }
+}
+
+// One journal write, fenced on the generation this run holds. A write that lands advances the
+// generation and is recorded as a step; one that does not leaves the progress as it was and says
+// why.
+type CutoverJournalStep
+  = CutoverJournalAdvanced { progress: CutoverProgress }
+  | CutoverJournalHeld { detail: String }
+
+fn cutover_journal(
+  effects: ServeCutoverEffects, binding: CutoverBinding, prior: CapturedServeBackend,
+  phase: CutoverPhase, progress: CutoverProgress,
+) -> CutoverJournalStep {
+  let write = effects.journal_write
+  match write(progress.generation, CutoverJournalRecord { route: binding.route, door_target: binding.door_target, release_revision: binding.release_revision, prior: prior, phase: phase }) {
+    CutoverJournalWritten { generation: g } =>
+      CutoverJournalAdvanced { progress: CutoverProgress { steps: concat(progress.steps, [CutoverJournaled { phase: phase }]), generation: g } }
+    CutoverJournalFenced => CutoverJournalHeld { detail: "another run advanced the cutover journal after this run read it" }
+    CutoverJournalWriteRefused { detail: why } => CutoverJournalHeld { detail: why }
+  }
+}
+
+// A journal write whose failure does not change what the run does next: the earlier in-flight
+// record still carries the capture, and the next run resumes from it.
+fn cutover_journal_best_effort(
+  effects: ServeCutoverEffects, binding: CutoverBinding, prior: CapturedServeBackend,
+  phase: CutoverPhase, progress: CutoverProgress,
+) -> CutoverProgress {
+  match cutover_journal(effects: effects, binding: binding, prior: prior, phase: phase, progress: progress) {
+    CutoverJournalAdvanced { progress: advanced } => advanced
+    CutoverJournalHeld { detail: _ } => progress
+  }
+}
+
+fn cutover_phase_in_flight(phase: CutoverPhase) -> Bool {
+  match phase {
+    CutoverPrepared => true
+    CutoverRepointed => true
+    CutoverRollingBack => true
+    CutoverSettledCommitted => false
+    CutoverSettledRolledBack => false
+  }
+}
+
+// WHOSE RECORD IT IS. A record about another route or door is never this run's. An IN-FLIGHT
+// record is resumed only by the release that wrote it: its capture and phase belong to that
+// release's reviewed plan, and a different release acting on them would be a mutation nobody
+// reviewed. A settled record of any release is history, and a fresh attempt may follow it.
+// ── The run ────────────────────────────────────────────────────────────────────────────────────
+
+fn tailnet_door_cutover_run(door: ServiceReadiness, binding: CutoverBinding, effects: ServeCutoverEffects) -> ServeCutoverRun {
+  let read = effects.journal_read
+  match read() {
+    CutoverJournalUnreadable { detail: why } =>
+      ServeCutoverRun { outcome: CutoverRefused { cause: CutoverJournalNotReadable { detail: why } }, steps: [] }
+    CutoverJournalAbsent =>
+      tailnet_door_cutover_fresh(door: door, binding: binding, effects: effects, progress: CutoverProgress { steps: [], generation: 0 })
+    CutoverJournalPresent { record, generation } =>
+      if record.route != binding.route || record.door_target != binding.door_target || (cutover_phase_in_flight(phase: record.phase) && record.release_revision != binding.release_revision) {
+        ServeCutoverRun { outcome: CutoverRefused { cause: CutoverJournalForeign { route: record.route, door_target: record.door_target, release_revision: record.release_revision } }, steps: [] }
+      } else {
+        let progress = CutoverProgress { steps: [], generation: generation }
+        match record.phase {
+          CutoverSettledCommitted => tailnet_door_cutover_fresh(door: door, binding: binding, effects: effects, progress: progress)
+          CutoverSettledRolledBack => tailnet_door_cutover_fresh(door: door, binding: binding, effects: effects, progress: progress)
+          CutoverPrepared => tailnet_door_cutover_resume(door: door, binding: binding, prior: record.prior, effects: effects, progress: progress)
+          CutoverRepointed => tailnet_door_cutover_resume(door: door, binding: binding, prior: record.prior, effects: effects, progress: progress)
+          CutoverRollingBack => {
+            let current = cutover_observe(effects: effects, progress: progress)
+            tailnet_door_cutover_roll_back(failure: CutoverRollbackResumed, current: current, binding: binding, prior: record.prior, effects: effects, progress: cutover_observed(progress: progress, observation: current))
+          }
+        }
+      }
+  }
+}
+
+// NO IN-FLIGHT RECORD. Without the permit nothing is performed. With it: a route already at the
+// door is a settled retry, decided by the proxied path alone and never rolled back, because this
+// run holds no capture for it. Otherwise the route is captured as a restorable backend -- or the
+// run refuses before touching it -- and the capture is journaled BEFORE the re-point.
+fn tailnet_door_cutover_fresh(door: ServiceReadiness, binding: CutoverBinding, effects: ServeCutoverEffects, progress: CutoverProgress) -> ServeCutoverRun {
+  match tailnet_door_cutover_permit(door: door, door_target: binding.door_target) {
+    ServeCutoverNotPermitted { detail: why } => cutover_finished(outcome: CutoverRefused { cause: CutoverDoorNotReady { detail: why } }, progress: progress)
+    ServeCutoverPermitted { permit } => {
+      let before = cutover_observe(effects: effects, progress: progress)
+      let observed = cutover_observed(progress: progress, observation: before)
+      if serve_route_is_exactly(observation: before, target: binding.door_target) {
+        tailnet_door_cutover_already_routed(effects: effects, progress: observed)
+      } else {
+        match serve_route_capture(observation: before) {
+          ServeRouteCaptureUnreadable { detail: why } => cutover_finished(outcome: CutoverRefused { cause: CutoverPriorRouteUnreadable { detail: why } }, progress: observed)
+          ServeRouteCaptureAmbiguous { targets } => cutover_finished(outcome: CutoverRefused { cause: CutoverPriorRouteAmbiguous { targets: targets } }, progress: observed)
+          ServeRouteCaptureNotRestorable { target: t } => cutover_finished(outcome: CutoverRefused { cause: CutoverPriorRouteNotRestorable { target: t } }, progress: observed)
+          ServeRouteCaptured { prior } =>
+            match cutover_journal(effects: effects, binding: binding, prior: prior, phase: CutoverPrepared, progress: observed) {
+              CutoverJournalHeld { detail: why } => cutover_finished(outcome: CutoverRefused { cause: CutoverJournalNotRecorded { detail: why } }, progress: observed)
+              CutoverJournalAdvanced { progress: prepared } =>
+                tailnet_door_cutover_repoint(permit: permit, binding: binding, prior: prior, effects: effects, progress: prepared)
+            }
+        }
+      }
+    }
+  }
+}
+
+fn tailnet_door_cutover_already_routed(effects: ServeCutoverEffects, progress: CutoverProgress) -> ServeCutoverRun {
+  let probe = effects.proxied
+  let proxied = probe()
+  let probed = cutover_stepped(progress: progress, step: CutoverProxiedProbed)
+  match proxied {
+    Ready { evidence: _ } => cutover_finished(outcome: CutoverCommitted { repointed: false }, progress: probed)
+    Pending { cause: _ } => cutover_finished(outcome: CutoverRefused { cause: CutoverAlreadyRoutedButProxiedPathFailed { detail: service_readiness_reason(r: proxied) } }, progress: probed)
+    Refused { cause: _ } => cutover_finished(outcome: CutoverRefused { cause: CutoverAlreadyRoutedButProxiedPathFailed { detail: service_readiness_reason(r: proxied) } }, progress: probed)
+  }
+}
+
+// AN IN-FLIGHT RECORD. The capture is the journal's, made by the run that was interrupted. Where
+// the route stands decides how far that run got: still the capture, it never re-pointed, and this
+// run may (with the permit) or settles the record as rolled back (without it); at the door, the
+// re-point landed and what remains is the exercise and the commit, or the rollback; anything
+// else is handled by the rollback's own rule.
+fn tailnet_door_cutover_resume(
+  door: ServiceReadiness, binding: CutoverBinding, prior: CapturedServeBackend,
+  effects: ServeCutoverEffects, progress: CutoverProgress,
+) -> ServeCutoverRun {
+  let current = cutover_observe(effects: effects, progress: progress)
+  let observed = cutover_observed(progress: progress, observation: current)
+  let permit = tailnet_door_cutover_permit(door: door, door_target: binding.door_target)
+  if serve_route_is_exactly(observation: current, target: binding.door_target) {
+    match permit {
+      ServeCutoverNotPermitted { detail: why } =>
+        tailnet_door_cutover_roll_back(failure: CutoverDoorNotReadyOnResume { detail: why }, current: current, binding: binding, prior: prior, effects: effects, progress: observed)
+      ServeCutoverPermitted { permit: _ } =>
+        tailnet_door_cutover_exercise(repointed: false, binding: binding, prior: prior, effects: effects, progress: cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverRepointed, progress: observed))
+    }
+  } else if serve_route_shows_captured(observation: current, prior: prior) {
+    match permit {
+      ServeCutoverNotPermitted { detail: why } =>
+        cutover_finished(outcome: CutoverRefused { cause: CutoverDoorNotReady { detail: why } }, progress: cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverSettledRolledBack, progress: observed))
+      ServeCutoverPermitted { permit: granted } =>
+        tailnet_door_cutover_repoint(permit: granted, binding: binding, prior: prior, effects: effects, progress: observed)
+    }
+  } else {
+    tailnet_door_cutover_roll_back(failure: CutoverRouteNotAtDoorAfterRepoint { observed: current, repoint_detail: "" }, current: current, binding: binding, prior: prior, effects: effects, progress: observed)
+  }
+}
+
+fn tailnet_door_cutover_repoint(
+  permit: TailnetDoorReadyForCutover, binding: CutoverBinding, prior: CapturedServeBackend,
+  effects: ServeCutoverEffects, progress: CutoverProgress,
+) -> ServeCutoverRun {
+  let repoint = effects.repoint
+  let repoint_detail = repoint(permit)
+  let applied = cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverRepointed, progress: cutover_stepped(progress: progress, step: CutoverRepointApplied))
+  let after = cutover_observe(effects: effects, progress: applied)
+  let observed = cutover_observed(progress: applied, observation: after)
+  if !serve_route_is_exactly(observation: after, target: binding.door_target) {
+    tailnet_door_cutover_roll_back(failure: CutoverRouteNotAtDoorAfterRepoint { observed: after, repoint_detail: repoint_detail }, current: after, binding: binding, prior: prior, effects: effects, progress: observed)
+  } else {
+    tailnet_door_cutover_exercise(repointed: true, binding: binding, prior: prior, effects: effects, progress: observed)
+  }
+}
+
+// The route shows the door. The proxied path decides, and a commit is a commit only once the
+// journal says so: an unrecorded one leaves the record in flight and the route where it works,
+// for the next run to commit.
+fn tailnet_door_cutover_exercise(
+  repointed: Bool, binding: CutoverBinding, prior: CapturedServeBackend,
+  effects: ServeCutoverEffects, progress: CutoverProgress,
+) -> ServeCutoverRun {
+  let probe = effects.proxied
+  let proxied = probe()
+  let probed = cutover_stepped(progress: progress, step: CutoverProxiedProbed)
+  match proxied {
+    Ready { evidence: _ } =>
+      match cutover_journal(effects: effects, binding: binding, prior: prior, phase: CutoverSettledCommitted, progress: probed) {
+        CutoverJournalAdvanced { progress: committed } => cutover_finished(outcome: CutoverCommitted { repointed: repointed }, progress: committed)
+        CutoverJournalHeld { detail: why } => cutover_finished(outcome: CutoverRolledBack { failure: CutoverCommitNotRecorded { detail: why }, restoration: RouteLeftAtDoor }, progress: probed)
+      }
+    Pending { cause: _ } => tailnet_door_cutover_restore_after_probe(detail: service_readiness_reason(r: proxied), binding: binding, prior: prior, effects: effects, progress: probed)
+    Refused { cause: _ } => tailnet_door_cutover_restore_after_probe(detail: service_readiness_reason(r: proxied), binding: binding, prior: prior, effects: effects, progress: probed)
+  }
+}
+
+// The proxied probe took time, so the route is read again before anything is restored.
+fn tailnet_door_cutover_restore_after_probe(
+  detail: String, binding: CutoverBinding, prior: CapturedServeBackend,
+  effects: ServeCutoverEffects, progress: CutoverProgress,
+) -> ServeCutoverRun {
+  let current = cutover_observe(effects: effects, progress: progress)
+  tailnet_door_cutover_roll_back(failure: CutoverProxiedPathFailed { detail: detail }, current: current, binding: binding, prior: prior, effects: effects, progress: cutover_observed(progress: progress, observation: current))
+}
+
+// THE COMPENSATION, decided over the route as it is NOW. Already the captured backend: nothing to
+// do. Still the door: journal RollingBack, restore the capture, prove it by readback. Unreadable:
+// the same, but ONLY if the RollingBack write lands -- a blind restore is made solely by the run
+// that holds the journal's generation, so a run fenced out by a newer one cannot overwrite what
+// it cannot see. Anything else is a newer mapping and is left alone. Each settled arm journals
+// RolledBack; an unproven restore leaves the record RollingBack so the next run resumes it.
+fn tailnet_door_cutover_roll_back(
+  failure: ServeCutoverFailure, current: ServeRouteObservation, binding: CutoverBinding, prior: CapturedServeBackend,
+  effects: ServeCutoverEffects, progress: CutoverProgress,
+) -> ServeCutoverRun {
+  if serve_route_shows_captured(observation: current, prior: prior) {
+    cutover_finished(
+      outcome: CutoverRolledBack { failure: failure, restoration: PriorStillInPlace { prior: prior } },
+      progress: cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverSettledRolledBack, progress: progress),
+    )
+  } else {
+    match current {
+      ServeRouteUnreadable { detail: why } =>
+        match cutover_journal(effects: effects, binding: binding, prior: prior, phase: CutoverRollingBack, progress: progress) {
+          CutoverJournalHeld { detail: fence } =>
+            cutover_finished(outcome: CutoverRolledBack { failure: failure, restoration: RestoreUnproven { detail: join(["the route could not be read (", why, ") and this run does not hold the journal (", fence, "), so nothing was restored blind"], "") } }, progress: progress)
+          CutoverJournalAdvanced { progress: rolling } =>
+            tailnet_door_cutover_apply_restore(failure: failure, binding: binding, prior: prior, effects: effects, progress: rolling)
+        }
+      ServeRouteTargets { targets } =>
+        if serve_route_is_exactly(observation: current, target: binding.door_target) {
+          tailnet_door_cutover_apply_restore(failure: failure, binding: binding, prior: prior, effects: effects, progress: cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverRollingBack, progress: progress))
+        } else {
+          cutover_finished(
+            outcome: CutoverRolledBack { failure: failure, restoration: RestoreSkippedNewerMapping { observed: targets } },
+            progress: cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverSettledRolledBack, progress: progress),
+          )
+        }
+    }
+  }
+}
+
+fn tailnet_door_cutover_apply_restore(
+  failure: ServeCutoverFailure, binding: CutoverBinding, prior: CapturedServeBackend,
+  effects: ServeCutoverEffects, progress: CutoverProgress,
+) -> ServeCutoverRun {
+  let restore = effects.restore
+  let restore_detail = restore(prior)
+  let applied = cutover_stepped(progress: progress, step: CutoverRestoreApplied { prior: prior })
+  let proof = cutover_observe(effects: effects, progress: applied)
+  let observed = cutover_observed(progress: applied, observation: proof)
+  if serve_route_shows_captured(observation: proof, prior: prior) {
+    cutover_finished(
+      outcome: CutoverRolledBack { failure: failure, restoration: RestoredAndProven { prior: prior } },
+      progress: cutover_journal_best_effort(effects: effects, binding: binding, prior: prior, phase: CutoverSettledRolledBack, progress: observed),
+    )
+  } else {
+    cutover_finished(
+      outcome: CutoverRolledBack { failure: failure, restoration: RestoreUnproven { detail: join(["the route does not show the captured backend after the restore", if restore_detail == "" { "" } else { concat(": ", restore_detail) }], "") } },
+      progress: observed,
+    )
+  }
+}
+
+// ── What the outcome says ───────────────────────────────────────────────────────────────────────
+
+fn serve_route_observation_text(observation: ServeRouteObservation) -> String {
+  match observation {
+    ServeRouteUnreadable { detail: why } => concat("unreadable: ", why)
+    ServeRouteTargets { targets } => if count(targets) == 0 { "no route" } else { join(targets, ", ") }
+  }
+}
+
+fn captured_serve_backend_text(prior: CapturedServeBackend) -> String {
+  match prior {
+    CapturedRestorableBackend { target: t, backend: _ } => t
+    CapturedNoRoute => "no route"
+  }
+}
+
+fn serve_restoration_text(restoration: ServeRestoration) -> String {
+  match restoration {
+    RestoredAndProven { prior } => concat("the route was restored to its captured backend and read back: ", captured_serve_backend_text(prior: prior))
+    PriorStillInPlace { prior } => concat("the route shows its captured backend: ", captured_serve_backend_text(prior: prior))
+    RestoreSkippedNewerMapping { observed } => concat("the route shows a mapping this transaction did not write, which was left in place: ", join(observed, ", "))
+    RestoreUnproven { detail: why } => concat("THE ROUTE MAY STILL TARGET THE DOOR, and the journal holds the capture for the next run: ", why)
+    RouteLeftAtDoor => "the route was left at the door, where the proxied path answers, and the journal holds the capture"
+  }
+}
+
+fn serve_cutover_outcome_committed(outcome: ServeCutoverOutcome) -> Bool {
+  match outcome {
+    CutoverCommitted { repointed: _ } => true
+    CutoverRefused { cause: _ } => false
+    CutoverRolledBack { failure: _, restoration: _ } => false
+  }
+}
+
+fn serve_cutover_refusal_text(cause: ServeCutoverRefusal) -> String {
+  match cause {
+    CutoverJournalNotReadable { detail: why } => concat("the cutover journal could not be read, so an interrupted cutover cannot be ruled out: ", why)
+    CutoverJournalForeign { route, door_target, release_revision } => join(["the cutover journal holds a record this run may not act on: another route or door, or a cutover left in flight by another release, which only that release's plan may resume (", route, " -> ", door_target, ", release ", release_revision, ")"], "")
+    CutoverJournalNotRecorded { detail: why } => concat("the captured backend could not be journaled, so the route was not touched: ", why)
+    CutoverDoorNotReady { detail: why } => concat("the door is not ready: ", why)
+    CutoverPriorRouteUnreadable { detail: why } => concat("the route as it stands could not be read, so there is no backend to restore to: ", why)
+    CutoverPriorRouteAmbiguous { targets } => concat("the route as it stands shows more than one backend: ", join(targets, ", "))
+    CutoverPriorRouteNotRestorable { target: t } => concat("the route as it stands targets a backend that could not be put back: ", t)
+    CutoverAlreadyRoutedButProxiedPathFailed { detail: why } => concat("the route already targets the door under a settled record, so this run holds no backend to restore, and the proxied path did not answer: ", why)
+  }
+}
+
+fn serve_cutover_failure_text(failure: ServeCutoverFailure) -> String {
+  match failure {
+    CutoverRouteNotAtDoorAfterRepoint { observed, repoint_detail: why } =>
+      join(["the route does not show the door (", serve_route_observation_text(observation: observed), if why == "" { ")" } else { concat("; ", concat(why, ")")) }], "")
+    CutoverProxiedPathFailed { detail: why } => concat("the proxied path did not answer: ", why)
+    CutoverDoorNotReadyOnResume { detail: why } => concat("an interrupted cutover left the route at a door that is not ready: ", why)
+    CutoverRollbackResumed => "an interrupted rollback was resumed from the journal"
+    CutoverCommitNotRecorded { detail: why } => concat("the proxied path answered but the commit could not be journaled: ", why)
+  }
+}
+
+fn serve_cutover_outcome_reason(outcome: ServeCutoverOutcome) -> String {
+  match outcome {
+    CutoverCommitted { repointed: moved } => if moved { "the serve route was re-pointed to the tailnet door and the proxied path answered" } else { "the serve route already targets the tailnet door and the proxied path answered" }
+    CutoverRefused { cause } => concat("tailnet door cutover refused with no route effect: ", serve_cutover_refusal_text(cause: cause))
+    CutoverRolledBack { failure, restoration } =>
+      join(["tailnet door cutover not committed, ", serve_cutover_failure_text(failure: failure), "; ", serve_restoration_text(restoration: restoration)], "")
+  }
+}

@@ -24,6 +24,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   ensured_subject_identity,
   deployment_fabric_storage_steps,
+  deployment_tailnet_door_steps,
   deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
   deployment_fabric_storage_door_socket,
@@ -124,6 +125,7 @@ import gunbc.live_deploy.emit {
   approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
+  deployment_serve_route_script,
   emit_release_member_effects,
   deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
@@ -498,6 +500,9 @@ fn witness_apply_preamble_text() -> String {
   }
 }
 
+// The production route targets the tailnet door, so the bulk apply must NOT write it: that write
+// is the cutover transaction's (test.claim.live_deploy.tailnet_door_cutover_witness_test). The
+// tailscale package is still ensured here.
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let spec = deployment_spec_srv1()
   let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
@@ -512,7 +517,7 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
-    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
+    && !string_contains(s: sh, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tailscale)))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
@@ -876,11 +881,16 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 // are named by the functions that decide them and subtracted from production by path; every other
 // production member must have a twin member of the same kind and vice versa, and the twin must own
 // no host singleton at all. The count form this replaces (`twin + fabric == live`) went red the day
-// #12747 added a second host-scoped member, though nothing about the twin was wrong.
+// #12747 added a second host-scoped member, though nothing about the twin was wrong. Production's
+// tailnet door unit is subtracted the same way: it exists because production's serve route targets
+// a socket, which the twin's derived route does not, and the twin must own none.
 fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
   concat(
     deployment_fabric_storage_steps(holding: live.role_singletons, names: live.names),
-    deployment_approval_broker_front_door_steps(holding: live.role_singletons),
+    concat(
+      deployment_approval_broker_front_door_steps(holding: live.role_singletons),
+      deployment_tailnet_door_steps(names: live.names),
+    ),
   ) |> map(s => s.path as String)
 }
 
@@ -903,6 +913,7 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
     && count(deployment_fabric_storage_steps(holding: twin.role_singletons, names: twin.names)) == 0
     && count(deployment_approval_broker_front_door_steps(holding: twin.role_singletons)) == 0
+    && count(deployment_tailnet_door_steps(names: twin.names)) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
@@ -1049,8 +1060,10 @@ data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN 
 // are scoped by design, so "no --set-path anywhere" stopped being the fact -- and subtracting the
 // broker's commands from the full apply cost 98,345 eval steps against the 72,300 budget (floor run
 // 36683351599). The claim is therefore stated at the interface it is about: the dashboard's own
-// TailscaleServeMapping member emits its root enable and scopes no path. The broker's two mounts are
-// pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
+// route is the root mount and scopes no path. Since the route targets the tailnet door, the member
+// itself emits nothing into the apply and the one script that writes the route is the cutover's
+// (gunbc.live_deploy.emit deployment_serve_route_script), which is where the fact is read. The
+// broker's two mounts are pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
   let own = pipeline_steps_text(steps: emit_artifact_upsert(
@@ -1061,8 +1074,10 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  string_contains(s: own, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
-    && !string_contains(s: own, pattern: "--set-path")
+  let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
+  !string_contains(s: own, pattern: "tailscale")
+    && string_contains(s: route, pattern: "'serve' '--bg' '--https=443' 'unix:")
+    && !string_contains(s: route, pattern: "--set-path")
 }
 
 test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
