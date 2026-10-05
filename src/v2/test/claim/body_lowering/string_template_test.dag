@@ -1,0 +1,218 @@
+module v2.test.claim.body_lowering.string_template
+
+import std.types { List }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module, grammar_choice_ambiguity_count }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_grammar_root,
+  dag_language_model,
+  dag_string_literal_node_from_lexeme,
+  dag_string_literal_value_optional,
+  dag_string_template_part_node_from_lexeme,
+  dag_string_template_part_value_optional
+}
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, node_atom_identity_optional, node_subtree_nodes, symbol_lexeme }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// STRING TEMPLATES: LEXED DISJOINTLY FROM PLAIN LITERALS, PARSED AS ONE NODE, LOWERED TO A CONCAT
+// CHAIN BEFORE NORMALIZE ENDS (XL-2 PR2b).
+//
+// One claim runs the real route -- tokenize -> parse -> normalize over a module whose function body
+// is a template -- and asserts the ROUTE, not only the answer: the parse carries one
+// ^dag_string_template node, and the normalized tree carries none but does carry the concat
+// operator and both text parts as string literals. Every other claim supplies its input at one
+// interface: the lexer over a short source, or the part decoder over a lexeme (DESIGN section 3, a
+// witness discriminates at one interface).
+//
+// Fixture sources are written with every brace escaped (`\{`), so THIS module's own literals stay
+// plain; the tokenizer reads the unescaped text shown beside each.
+
+// ---- the lexer's interface --------------------------------------------------------------------
+
+fn st_classes(source: String) -> List<Symbol> {
+  match tokenize(text: source, file: ^string_template_file, rules: dag_language_model().lex) {
+    Rejected { diagnostics: d } => [diagnostics_fatal_reason(d: d)]
+    Accepted { value: ts, diagnostics: _ } => fold(ts.all, init: [], f: fn(acc, t) { concat(acc, [t.class]) })
+  }
+}
+
+// HOLE-FREE LITERALS STAY ONE PLAIN LITERAL TOKEN. A brace not followed by a hole start, an escaped
+// brace, an empty pair and a Unicode scalar escape are all text, so each source is exactly one
+// dag_token_string_literal -- the class, and so the node and hash, it had before templates existed.
+//   "a{ b"   "\{x"   "{}"   "\u{e9}"   "\uZ"
+test fn a_hole_free_literal_lexes_as_one_plain_literal() -> Bool {
+  (st_classes(source: "\"a\{ b\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\\\{x\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\{\}\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\\u\{e9\}\"") == [^dag_token_string_literal])
+    && (st_classes(source: "\"\\uZ\"") == [^dag_token_string_literal])
+}
+
+// A HOLE SPLITS THE STRING: head, the hole's ordinary tokens, tail.   "a{x}b"
+test fn a_hole_lexes_as_head_expression_tail() -> Bool {
+  st_classes(source: "\"a\{x\}b\"")
+    == [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_tail]
+}
+
+// TWO HOLES ARE SEPARATED BY A MIDDLE.   "{a}-{b}"
+test fn two_holes_lex_with_a_middle() -> Bool {
+  st_classes(source: "\"\{a\}-\{b\}\"")
+    == [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail]
+}
+
+// BRACE DEPTH IS THE MODE STACK. A record literal inside a hole opens a brace the hole's closer may
+// not take: its `}` is an ordinary rbrace, and only the next `}` closes the hole.   "p{R { v: y }}q"
+test fn a_nested_brace_closes_before_the_hole() -> Bool {
+  st_classes(source: "\"p\{R \{ v: y \}\}q\"")
+    == [
+      ^dag_token_string_template_head,
+      ^dag_token_ident,
+      ^dag_token_lbrace,
+      ^dag_token_ident,
+      ^dag_token_colon,
+      ^dag_token_ident,
+      ^dag_token_rbrace,
+      ^dag_token_string_template_tail
+    ]
+}
+
+// A TEMPLATE INSIDE A HOLE IS ITS OWN HEAD AND TAIL.   "a{f(s: "x{y}")}b"
+test fn a_template_nests_inside_a_hole() -> Bool {
+  st_classes(source: "\"a\{f(s: \"x\{y\}\")\}b\"")
+    == [
+      ^dag_token_string_template_head,
+      ^dag_token_ident,
+      ^dag_token_lparen,
+      ^dag_token_ident,
+      ^dag_token_colon,
+      ^dag_token_string_template_head,
+      ^dag_token_ident,
+      ^dag_token_string_template_tail,
+      ^dag_token_rparen,
+      ^dag_token_string_template_tail
+    ]
+}
+
+// ---- the part decoder's interface --------------------------------------------------------------
+
+fn st_part_value(token_class: Symbol, lexeme: String) -> String {
+  match dag_string_template_part_node_from_lexeme(token_class: token_class, lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } =>
+      match dag_string_template_part_value_optional(node: n) {
+        Present { value: v } => v
+        Absent => "<no value payload>"
+      }
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+// Each part drops its own frame and decodes its escapes with the string literal's one decoder.
+test fn each_template_part_decodes_inside_its_frame() -> Bool {
+  (st_part_value(token_class: ^dag_token_string_template_head, lexeme: "\"a\\tb\{") == "a\tb")
+    && (st_part_value(token_class: ^dag_token_string_template_middle, lexeme: "\}-\{") == "-")
+    && (st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\}\\\{z\"") == "\{z")
+    && (st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\}\"") == "")
+}
+
+// A part framed as another part refuses: a head's lexeme is not a tail.
+test fn a_misframed_template_part_refuses() -> Bool {
+  st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\"a\{") == "dag_string_literal_lexeme_unframed"
+}
+
+// ---- the grammar: no new choice ambiguity ------------------------------------------------------
+
+// The template's FIRST key is its own head token class, so adding it adds no choice-overlap row.
+// The count is the grammar's own: zero, held by the overlap program (gunbc#13126) for the whole
+// grammar, and this production must not be the one that breaks it.
+test fn the_dag_grammar_has_no_choice_ambiguity() -> Bool {
+  grammar_choice_ambiguity_count(root: dag_grammar_root()) == 0
+}
+
+// ---- the real route ----------------------------------------------------------------------------
+
+// The fixture's own text:
+//   fn greet(name: String) -> String {
+//     "hello, {name}!"
+//   }
+data string_template_source: String = "module chunk\n\nfn greet(name: String) -> String {\n  \"hello, \{name\}!\"\n}\n"
+
+type StringTemplateRoute {
+  outcome: Symbol
+  parsed_templates: Int
+  normalized_templates: Int
+  normalized_concats: Int
+  normalized_texts: List<String>
+}
+
+fn st_count_atom(nodes: List<Node>, identity: Symbol) -> Int {
+  fold(nodes, init: 0, f: fn(acc, n) {
+    match node_atom_identity_optional(node: n) {
+      Present { value: id } => if id == identity { acc + 1 } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+fn st_count_template(nodes: List<Node>) -> Int {
+  fold(nodes, init: 0, f: fn(acc, n) {
+    match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } => if id == ^dag_string_template { acc + 1 } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+fn st_texts(nodes: List<Node>) -> List<String> {
+  fold(nodes, init: [], f: fn(acc, n) {
+    match dag_string_literal_value_optional(node: n) {
+      Present { value: v } => concat(acc, [v])
+      Absent => acc
+    }
+  })
+}
+
+fn st_route_marker(marker: Symbol) -> StringTemplateRoute {
+  StringTemplateRoute { outcome: marker, parsed_templates: 0, normalized_templates: 0, normalized_concats: 0, normalized_texts: [] }
+}
+
+fn st_route() -> StringTemplateRoute {
+  let lm = dag_language_model()
+  match tokenize(text: string_template_source, file: ^string_template_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => st_route_marker(marker: ^st_tokenize_refused)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => st_route_marker(marker: ^st_parse_refused)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => st_route_marker(marker: diagnostics_fatal_reason(d: d))
+            Accepted { value: normalized, diagnostics: _ } =>
+              StringTemplateRoute {
+                outcome: ^st_accepted,
+                parsed_templates: st_count_template(nodes: node_subtree_nodes(root: artifact.tree)),
+                normalized_templates: st_count_template(nodes: node_subtree_nodes(root: normalized.root)),
+                normalized_concats: st_count_atom(nodes: node_subtree_nodes(root: normalized.root), identity: ^concat),
+                normalized_texts: st_texts(nodes: node_subtree_nodes(root: normalized.root))
+              }
+          }
+      }
+  }
+}
+
+// THE ROUTE: the parser builds one template node; normalize leaves none, and in its place is the
+// concat chain over the head and tail text ("hello, " then the hole then "!": two concats).
+test fn a_string_template_lowers_to_a_concat_chain_through_normalize() -> Bool {
+  let r = st_route()
+  (r.outcome == ^st_accepted)
+    && (r.parsed_templates == 1)
+    && (r.normalized_templates == 0)
+    && (r.normalized_concats == 2)
+    && (r.normalized_texts == ["hello, ", "!"])
+}

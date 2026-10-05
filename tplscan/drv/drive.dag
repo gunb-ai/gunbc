@@ -2,6 +2,11 @@ module tplscan.drive
 import v2.lens.enforcement.grammar_coverage { grammar_coverage_ingest_path, ParsedClean, ParseRejected }
 import v2.std.node { symbol_lexeme }
 import v2.std.algebra { fold_list }
+import v2.compiler.parse { grammar_choice_ambiguity_roster, parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
+import v2.std.node { content_hash }
+import v2.std.diagnostic { Accepted, Rejected }
 data tplscan_paths: List<String> = [
   "dag/extdeps/bmc/http.dag",
   "dag/extdeps/bmc/ipmi.dag",
@@ -101,5 +106,33 @@ fn run() -> String {
       ParseRejected { stage: s, reason: r } => concat("REFUSED ", concat(s, concat(" ", symbol_lexeme(sym: r))))
     }
     concat(acc, concat(p, concat("\t", concat(v, "\n"))))
+  })
+}
+
+fn roster() -> String {
+  fold_list(xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()), empty: "", cons: fn(acc, row) { concat(acc, concat(symbol_lexeme(sym: row.production), "\n")) })
+}
+
+data tplscan_controls: List<String> = [
+  "module c\ndata a: String = \"a\{ b\"\n",
+  "module c\ndata a: String = \"\\\{x\"\n",
+  "module c\ndata a: String = \"\{\}\"\n",
+  "module c\ndata a: String = \"\\u\{e9\}\"\n",
+  "module c\ndata a: String = \"\\uZ\"\n",
+  "module c\ndata a: String = \"plain\\t\\\"q\\\\\"\n"
+]
+
+fn controls() -> String {
+  let lm = dag_language_model()
+  fold_list(xs: tplscan_controls, empty: "", cons: fn(acc, src) {
+    let line = match tokenize(text: src, file: ^tplscan_control, rules: lm.lex) {
+      Rejected { diagnostics: _ } => "TOKENIZE-REFUSED"
+      Accepted { value: ts, diagnostics: _ } =>
+        match parse_module(tokens: ts, grammar: lm.grammar) {
+          Rejected { diagnostics: _ } => "PARSE-REFUSED"
+          Accepted { value: art, diagnostics: _ } => content_hash(n: art.tree).digest
+        }
+    }
+    concat(acc, concat(line, "\n"))
   })
 }

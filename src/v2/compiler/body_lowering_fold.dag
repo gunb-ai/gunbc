@@ -52,6 +52,11 @@ import v2.compiler.body_producer_forward {
 }
 import v2.extdeps.languages.dag {
   namespace_graft_namespace_body_node,
+  StringTemplateHole,
+  StringTemplatePart,
+  StringTemplateText,
+  dag_string_literal_node,
+  string_template_parts_optional,
   dag_int_literal_magnitude_int_from_node,
   ParseSubtreeAbsent,
   ParseSubtreeFind,
@@ -1650,7 +1655,13 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
     true => OperandRefLowered { lowered: node }
     false =>
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: _emitted } =>
+    Present { value: emitted } =>
+      if emitted == ^dag_string_template {
+        match body_lower_string_template(shell: node) {
+          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+        }
+      } else {
       match parse_production_captured_child_optional(node: node) {
         Present { value: captured } =>
           match body_lower_operand_ref_read(node: captured) {
@@ -1659,6 +1670,7 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
             OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
           }
         Absent => body_lower_operand_fold_children_read(node: node)
+      }
       }
     Absent =>
       match dag_node_is_int_literal_atom(node: node) {
@@ -3646,7 +3658,9 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
 }
 
 fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
-        if emitted == ^dag_surface_match_expr {
+        if emitted == ^dag_string_template {
+          body_lower_string_template(shell: node)
+        } else if emitted == ^dag_surface_match_expr {
           body_lower_match_expr(shell: node)
         } else if emitted == ^dag_surface_if_expr {
           body_lower_if_expr(shell: node)
@@ -6554,6 +6568,61 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
       }
   }
   }
+  }
+}
+
+// A STRING TEMPLATE LOWERS TO A CONCAT CHAIN, AND NO TEMPLATE SURVIVES NORMALIZE. Its parts, read
+// by the one reader (v2.extdeps.languages.dag string_template_parts_optional), fold left into
+// `concat(concat(t0, h1), t1) ...`: each text part becomes the string literal it spells (located at
+// that part), each hole its own lowered expression, and the operator is the bare `concat` a source
+// call would name, so the chain types exactly as an authored chain does -- through the free-monoid
+// bound on the roster's concat row. That is why a hole whose value is not text REFUSES at its
+// argument instead of being converted: there is no implicit to_string (DESIGN section 4, the
+// coercion law). Every text part is kept, empty ones included, so even `"{x}"` is a concat and x is
+// judged as text. A shell the reader cannot read, or a hole that lowers to no operand, refuses
+// located; nothing is retained.
+fn body_lower_string_template(shell: Node) -> Outcome<Node> {
+  match string_template_parts_optional(node: shell) {
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unread, n: shell))
+    Present { value: parts } =>
+      bind_outcome(o: body_lower_string_template_chain(parts: parts, shell: shell), f: fn(chain) {
+        match chain {
+          Present { value: lowered } => outcome_accepted(value: lowered)
+          Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unread, n: shell))
+        }
+      })
+  }
+}
+
+fn body_lower_string_template_chain(parts: List<StringTemplatePart>, shell: Node) -> Outcome<Optional<Node>> {
+  fold(parts, init: outcome_accepted(value: optional_absent()), f: fn(acc, part) {
+    bind_outcome(o: acc, f: fn(chain) {
+      bind_outcome(o: body_lower_string_template_part(part: part, shell: shell), f: fn(operand) {
+        match chain {
+          Absent => outcome_accepted(value: optional_present(value: operand))
+          Present { value: left } =>
+            outcome_accepted(value: optional_present(value: body_lower_transform_call(
+              operator: body_lower_param_ref_atom(source: shell, identity: ^concat),
+              args: [Edge { label: Positional, target: left }, Edge { label: Positional, target: operand }]
+            )))
+        }
+      })
+    })
+  })
+}
+
+fn body_lower_string_template_part(part: StringTemplatePart, shell: Node) -> Outcome<Node> {
+  match part {
+    StringTemplateText { value: value, at: at } =>
+      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: at.occurrence_id))
+    StringTemplateHole { expr: expr } =>
+      bind_outcome(o: body_lower_fold(node: expr), f: fn(folded) {
+        match body_lower_operand_ref_read(node: folded) {
+          OperandRefLowered { lowered: lowered } => outcome_accepted(value: lowered)
+          OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+          OperandRefAbsent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_hole_unlowered, n: expr))
+        }
+      })
   }
 }
 
@@ -11565,7 +11634,9 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
-  } else if emitted == ^dag_surface_postfix_expr {
+  } else if emitted == ^dag_string_template {
+    body_lowering_lowered(o: body_lower_string_template(shell: shell))
+} else if emitted == ^dag_surface_postfix_expr {
     body_lowering_lowered(o: body_lower_postfix_expr(shell: shell))
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lowering_lowered(o: body_lower_unwrap_pass_through(shell: shell))
