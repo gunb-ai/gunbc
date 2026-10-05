@@ -2,7 +2,7 @@ module gunbc.host.path_observation
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.measure { ByteSize }
-import extdeps.tools.stat { StatFileKind, stat_file_kind_is_regular, stat_file_kind_word, StatFileTypeRead, StatFileTypeUnanswered, stat_file_type_reading }
+import extdeps.tools.stat { StatFileKind, RegularFileKind, DirectoryKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_word, StatFileTypeRead, StatFileTypeUnanswered, stat_file_type_reading }
 import gunbc.host_operation_exec { HostOperation, StatFileType, HeadBytes, host_operation_label }
 import gunbc.compute.host_occupancy { host_operation_ran, HostOperationRan, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
 import gunbc.spark.host_effect_quiescence { ArgvRun }
@@ -77,16 +77,30 @@ fn small_file_read(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: B
     HostPathAbsent => SmallFileAbsent
     HostPathUnread { cause: c } => SmallFileUnread { cause: c }
     HostPathPresent { kind: k } =>
-      if !stat_file_kind_is_regular(kind: k) { SmallFileUnread { cause: join([path as String, " is a ", stat_file_kind_word(kind: k), ", not a regular file"], "") } }
-      else {
-      let operation = HeadBytes { path: path, count: limit }
-      match host_operation_ran(run: run, operation: operation) {
-        HostOperationNotRun { cause: c } => SmallFileUnread { cause: c }
-        HostOperationResultUnreceived { cause: c } => SmallFileUnread { cause: c }
-        HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
-          if code == 0 { SmallFileText { text: out } }
-          else { SmallFileUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+      match k {
+        RegularFileKind => small_file_head(run: run, path: path, limit: limit)
+        DirectoryKind => small_file_not_regular(path: path, kind: k)
+        SymbolicLinkKind => small_file_not_regular(path: path, kind: k)
+        SocketKind => small_file_not_regular(path: path, kind: k)
+        FifoKind => small_file_not_regular(path: path, kind: k)
+        CharacterDeviceKind => small_file_not_regular(path: path, kind: k)
+        BlockDeviceKind => small_file_not_regular(path: path, kind: k)
+        UnknownKind { word: _ } => small_file_not_regular(path: path, kind: k)
       }
-    }
+  }
+}
+
+fn small_file_not_regular(path: NonEmptyStr, kind: StatFileKind) -> SmallFileRead {
+  SmallFileUnread { cause: join([path as String, " is a ", stat_file_kind_word(kind: kind), ", not a regular file"], "") }
+}
+
+fn small_file_head(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: ByteSize) -> SmallFileRead {
+  let operation = HeadBytes { path: path, count: limit }
+  match host_operation_ran(run: run, operation: operation) {
+    HostOperationNotRun { cause: c } => SmallFileUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => SmallFileUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
+      if code == 0 { SmallFileText { text: out } }
+      else { SmallFileUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
   }
 }

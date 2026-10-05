@@ -278,32 +278,6 @@ fn stat_file_kind_word(kind: StatFileKind) -> String {
   }
 }
 
-fn stat_file_kind_is_regular(kind: StatFileKind) -> Bool {
-  match kind {
-    RegularFileKind => true
-    DirectoryKind => false
-    SymbolicLinkKind => false
-    SocketKind => false
-    FifoKind => false
-    CharacterDeviceKind => false
-    BlockDeviceKind => false
-    UnknownKind { word: _ } => false
-  }
-}
-
-fn stat_file_kind_is_directory(kind: StatFileKind) -> Bool {
-  match kind {
-    DirectoryKind => true
-    RegularFileKind => false
-    SymbolicLinkKind => false
-    SocketKind => false
-    FifoKind => false
-    CharacterDeviceKind => false
-    BlockDeviceKind => false
-    UnknownKind { word: _ } => false
-  }
-}
-
 // A COMPLETED READ THAT PRINTED NOTHING IS UNANSWERED, NOT UNRECOGNIZED: an empty word is not a kind.
 // A read that did not complete is unanswered too; what a non-completion MEANS (absent, refused) is the
 // consumer's to decide from the diagnostic, not this decoder's.
