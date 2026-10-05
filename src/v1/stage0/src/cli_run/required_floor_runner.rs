@@ -2239,6 +2239,278 @@ pub(crate) fn floor_enrolment_dead_band_envelope_floor_ms(
     }
 }
 
+/// THE SAME-RUN HOST-SPEED CALIBRATION'S POLICY INPUTS, read out of the model. Authority:
+/// `v2.workflow.floor_eval_step_calibration` (the specimen, its declared steps, the pinned rate, the
+/// plausible-range bounds), projected through `v2.workflow.floor_enrolment_margin`'s
+/// `enrolment_host_speed_*` read points so it is evaluated in the frame this gate already declares.
+/// Nothing here is a Rust literal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HostSpeedCalibrationPolicy {
+    pub(crate) specimen: String,
+    /// `host_speed_specimen_replicates`, in order; the first is `specimen`.
+    pub(crate) replicates: Vec<String>,
+    pub(crate) specimen_eval_steps: u64,
+    pub(crate) rate: u64,
+    pub(crate) lower_permille: u64,
+    pub(crate) upper_permille: u64,
+}
+
+pub(crate) fn floor_host_speed_calibration_policy(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<HostSpeedCalibrationPolicy, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let int = |func: &str| -> Result<u64, String> {
+        let qualified = format!("{MODULE}.{func}");
+        match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+            Ok(v1_interpreter::Value::Int(n)) if n > 0 => Ok(n as u64),
+            Ok(other) => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {qualified}: \
+                 expected a positive Int, got {}",
+                floor_value_shape(Some(&other))
+            )),
+            Err(e) => Err(format!("{qualified}: {e}")),
+        }
+    };
+    let specimen_q = format!("{MODULE}.enrolment_host_speed_specimen_identity");
+    let specimen = match v1_interpreter::run_in_context(&ctx, &specimen_q, false) {
+        Ok(v1_interpreter::Value::Str(ref s)) if !s.is_empty() => s.to_string(),
+        Ok(other) => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {specimen_q}: \
+                 expected a qualified claim identity, got {}",
+                floor_value_shape(Some(&other))
+            ))
+        }
+        Err(e) => return Err(format!("{specimen_q}: {e}")),
+    };
+    let replicates_q = format!("{MODULE}.enrolment_host_speed_specimen_replicates");
+    let replicates_value = v1_interpreter::run_in_context(&ctx, &replicates_q, false)
+        .map_err(|e| format!("{replicates_q}: {e}"))?;
+    let mut replicates = Vec::new();
+    for item in floor_decode_list(&ctx, Some(&replicates_value))
+        .map_err(|e| format!("{replicates_q}: {e}"))?
+    {
+        match item {
+            v1_interpreter::Value::Str(r) if !r.is_empty() => replicates.push(r.to_string()),
+            other => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded \
+                     {replicates_q}: expected qualified claim identities, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        }
+    }
+    if replicates.first() != Some(&specimen) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {replicates_q} \
+             must begin with the pinned specimen {specimen}, got {replicates:?}"
+        ));
+    }
+    let policy = HostSpeedCalibrationPolicy {
+        specimen,
+        replicates,
+        specimen_eval_steps: int("enrolment_host_speed_specimen_eval_steps_count")?,
+        rate: int("enrolment_host_speed_rate_count")?,
+        lower_permille: int("enrolment_host_speed_lower_permille_count")?,
+        upper_permille: int("enrolment_host_speed_upper_permille_count")?,
+    };
+    if policy.lower_permille >= policy.upper_permille {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded the plausible range \
+             [{}, {}] permille is empty",
+            policy.lower_permille, policy.upper_permille
+        ));
+    }
+    Ok(policy)
+}
+
+/// THE RUN'S HOST-SPEED CALIBRATION. Mirror of `v2.workflow.floor_eval_step_calibration`
+/// `HostSpeedCalibration`, produced as `v2.workflow.floor_enrolment_margin`
+/// `enrolment_host_speed_calibration` produces it. Only `Calibrated` admits; every other arm refuses
+/// the run, typed, and there is no default factor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HostSpeedCalibration {
+    Calibrated {
+        specimen_cpu_ms: u64,
+        factor_permille: u64,
+    },
+    SpecimenNotMeasured {
+        cause: String,
+    },
+    SpecimenCensored {
+        cpu_lower_bound_ms: u64,
+    },
+    SpecimenMoved {
+        declared_steps: u64,
+        observed_steps: u64,
+    },
+    FactorOutOfRange {
+        factor_permille: u64,
+        lower_permille: u64,
+        upper_permille: u64,
+    },
+}
+
+impl HostSpeedCalibration {
+    /// Mirror of `host_speed_calibration_name`.
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            HostSpeedCalibration::Calibrated { .. } => "calibrated",
+            HostSpeedCalibration::SpecimenNotMeasured { .. } => "host_speed_specimen_not_measured",
+            HostSpeedCalibration::SpecimenCensored { .. } => "host_speed_specimen_censored",
+            HostSpeedCalibration::SpecimenMoved { .. } => "host_speed_specimen_moved",
+            HostSpeedCalibration::FactorOutOfRange { .. } => "host_speed_factor_out_of_range",
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            HostSpeedCalibration::Calibrated {
+                specimen_cpu_ms,
+                factor_permille,
+            } => format!("specimen_cpu_ms={specimen_cpu_ms} factor_permille={factor_permille}"),
+            HostSpeedCalibration::SpecimenNotMeasured { cause } => format!("cause={cause}"),
+            HostSpeedCalibration::SpecimenCensored { cpu_lower_bound_ms } => {
+                format!("cpu_at_least_ms={cpu_lower_bound_ms} (a bound yields no factor)")
+            }
+            HostSpeedCalibration::SpecimenMoved {
+                declared_steps,
+                observed_steps,
+            } => format!("declared_steps={declared_steps} observed_steps={observed_steps}"),
+            HostSpeedCalibration::FactorOutOfRange {
+                factor_permille,
+                lower_permille,
+                upper_permille,
+            } => format!(
+                "factor_permille={factor_permille} plausible=[{lower_permille}, {upper_permille}]"
+            ),
+        }
+    }
+
+    /// The factor, or the typed, located refusal of the run. Never a default.
+    pub(crate) fn factor_or_refusal(&self, specimen: &str) -> Result<u64, String> {
+        match self {
+            HostSpeedCalibration::Calibrated {
+                factor_permille, ..
+            } => Ok(*factor_permille),
+            refused => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationRefused standing={} \
+                 specimen={specimen} {} -- the enrolment margin is judged in calibrated CPU ms and \
+                 this run produced no admissible host-speed factor (authority: \
+                 v2.workflow.floor_eval_step_calibration HostSpeedCalibration)",
+                refused.name(),
+                refused.detail()
+            )),
+        }
+    }
+}
+
+/// Mirror of `enrolment_host_speed_calibration` over the run's own cost population, with
+/// `host_speed_calibration_of`'s arithmetic: `specimen_cpu * rate * 1000 / specimen_eval_steps`.
+pub(crate) fn host_speed_calibration_for(
+    policy: &HostSpeedCalibrationPolicy,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> HostSpeedCalibration {
+    // Mirror of `host_speed_fastest_of`: any refusing replicate refuses the run (the first, in
+    // replicate order); otherwise the smallest factor -- the fastest reading -- stands. No replicate
+    // at all is a refusal.
+    let mut best: Option<HostSpeedCalibration> = None;
+    for replicate in &policy.replicates {
+        let one = host_speed_calibration_of_replicate(policy, replicate, claim_cost, dispositions);
+        match (&one, &best) {
+            (HostSpeedCalibration::Calibrated { .. }, None) => best = Some(one),
+            (
+                HostSpeedCalibration::Calibrated {
+                    factor_permille: f, ..
+                },
+                Some(HostSpeedCalibration::Calibrated {
+                    factor_permille: b, ..
+                }),
+            ) => {
+                if f < b {
+                    best = Some(one);
+                }
+            }
+            _ => return one,
+        }
+    }
+    best.unwrap_or(HostSpeedCalibration::SpecimenNotMeasured {
+        cause: "no_replicate_readings".to_string(),
+    })
+}
+
+fn host_speed_calibration_of_replicate(
+    policy: &HostSpeedCalibrationPolicy,
+    replicate: &str,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> HostSpeedCalibration {
+    match enrolment_gate_execution_disposition(replicate, dispositions) {
+        Some(crate::cli_run::RequiredFloorDisposition::Planned)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        Some(other) => {
+            return HostSpeedCalibration::SpecimenNotMeasured {
+                cause: format!("{replicate}: {}", required_floor_disposition_label(other)),
+            }
+        }
+        None => {
+            return HostSpeedCalibration::SpecimenNotMeasured {
+                cause: format!("{replicate}: no_disposition_row"),
+            }
+        }
+    }
+    let Some(row) = claim_cost.get(replicate) else {
+        return HostSpeedCalibration::SpecimenNotMeasured {
+            cause: format!("{replicate}: no_claim_cost_row_for_a_planned_identity"),
+        };
+    };
+    match &row.reading {
+        crate::cli_run::ClaimCostReading::RightCensored(r) => {
+            HostSpeedCalibration::SpecimenCensored {
+                cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
+            }
+        }
+        crate::cli_run::ClaimCostReading::Observed {
+            observed_cpu_ms, ..
+        } => host_speed_calibration_of(policy, *observed_cpu_ms, row.eval_steps),
+    }
+}
+
+/// Mirror of `v2.workflow.floor_eval_step_calibration` `host_speed_calibration_of`.
+pub(crate) fn host_speed_calibration_of(
+    policy: &HostSpeedCalibrationPolicy,
+    specimen_cpu_ms: u64,
+    specimen_eval_steps: u64,
+) -> HostSpeedCalibration {
+    if specimen_eval_steps != policy.specimen_eval_steps {
+        return HostSpeedCalibration::SpecimenMoved {
+            declared_steps: policy.specimen_eval_steps,
+            observed_steps: specimen_eval_steps,
+        };
+    }
+    let factor_permille = specimen_cpu_ms * policy.rate * 1000 / policy.specimen_eval_steps;
+    if factor_permille < policy.lower_permille || factor_permille > policy.upper_permille {
+        return HostSpeedCalibration::FactorOutOfRange {
+            factor_permille,
+            lower_permille: policy.lower_permille,
+            upper_permille: policy.upper_permille,
+        };
+    }
+    HostSpeedCalibration::Calibrated {
+        specimen_cpu_ms,
+        factor_permille,
+    }
+}
+
+/// Mirror of `calibrated_cpu_ms`: raw CPU to CPU ms on the calibration runner. One factor per run.
+pub(crate) fn calibrated_cpu_ms(raw_ms: u64, factor_permille: u64) -> u64 {
+    raw_ms * 1000 / factor_permille
+}
+
 /// THE TYPED COST-DEBT ROW'S ENVELOPE FLOOR, READ OUT OF THE MODEL like the dead band's:
 /// `v2.workflow.floor_enrolment_margin` `floor_enrolment_roster_envelope_floor_ms_count` derives it by
 /// applying the same measured p90 runner envelope to the per-subject line. Strictly positive and
@@ -2925,6 +3197,9 @@ pub(crate) struct EnrolmentThresholds {
     pub(crate) dead_band_envelope_floor_ms: u64,
     pub(crate) per_subject_line_ms: u64,
     pub(crate) roster_envelope_floor_ms: u64,
+    /// The run's host-speed factor (`HostSpeedCalibration::Calibrated`), applied to every reading
+    /// before any threshold above is consulted. 1000 is the calibration runner's own speed.
+    pub(crate) host_speed_factor_permille: u64,
 }
 
 pub(crate) fn enrolment_margin_standing_for(
@@ -2939,7 +3214,11 @@ pub(crate) fn enrolment_margin_standing_for(
         dead_band_envelope_floor_ms,
         per_subject_line_ms,
         roster_envelope_floor_ms,
+        host_speed_factor_permille,
     } = *thresholds;
+    // EVERY CPU FIGURE BELOW IS CALIBRATED, exact or bound, by the one factor of this run
+    // (mirror of `v2.workflow.floor_enrolment_margin` `enrolment_calibrated_reading`).
+    let cal = |raw: u64| calibrated_cpu_ms(raw, host_speed_factor_permille);
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
     //
     // The enrolled population is derived from the DIFF and is root-agnostic; the executed
@@ -2994,11 +3273,11 @@ pub(crate) fn enrolment_margin_standing_for(
                 crate::cli_run::ClaimCostReading::Observed {
                     observed_cpu_ms, ..
                 } => EnrolmentDeclaredCostReading::Observed {
-                    observed_cpu_ms: *observed_cpu_ms,
+                    observed_cpu_ms: cal(*observed_cpu_ms),
                 },
                 crate::cli_run::ClaimCostReading::RightCensored(r) => {
                     EnrolmentDeclaredCostReading::BoundWithoutCeiling {
-                        cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
+                        cpu_lower_bound_ms: cal(r.elapsed_cpu_at_least_ms),
                     }
                 }
             },
@@ -3085,14 +3364,15 @@ pub(crate) fn enrolment_margin_standing_for(
         crate::cli_run::ClaimCostReading::Observed {
             observed_cpu_ms, ..
         } => {
-            if *observed_cpu_ms > budget_ms {
+            let calibrated = cal(*observed_cpu_ms);
+            if calibrated > budget_ms {
                 EnrolmentMarginStanding::OverMargin {
-                    exact_cpu_ms: *observed_cpu_ms,
+                    exact_cpu_ms: calibrated,
                     budget_ms,
                 }
             } else {
                 EnrolmentMarginStanding::WithinMargin {
-                    exact_cpu_ms: *observed_cpu_ms,
+                    exact_cpu_ms: calibrated,
                     budget_ms,
                 }
             }
@@ -3121,7 +3401,7 @@ pub(crate) fn enrolment_margin_standing_for(
             // comment. Nothing is widened either way: the enrolment question stays unanswered and
             // the row stays refused.
             EnrolmentMarginStanding::BoundWithoutCeiling {
-                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
+                cpu_lower_bound_ms: cal(reading.elapsed_cpu_at_least_ms),
             }
         }
     }
@@ -12471,19 +12751,35 @@ pub fn run_required_floor(
         let per_subject_line_ms = floor_per_subject_cpu_line_ms(&prepared)?;
         let roster_envelope_floor_ms =
             floor_enrolment_roster_envelope_floor_ms(&prepared, per_subject_line_ms)?;
-        let thresholds = EnrolmentThresholds {
-            budget_ms,
-            dead_band_envelope_floor_ms,
-            per_subject_line_ms,
-            roster_envelope_floor_ms,
-        };
-        enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
             .required_floor_disposition
             .iter()
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
+        // THE MARGIN IS JUDGED IN CALIBRATED CPU MS (node adhoc-c9504740-637). The factor is the
+        // calibration specimen's reading in THIS run on THIS runner against the pinned rate; a
+        // specimen that is absent, censored, moved or implausible refuses the run here, before any
+        // identity is judged, and never defaults.
+        let calibration_policy = floor_host_speed_calibration_policy(&prepared)?;
+        let calibration =
+            host_speed_calibration_for(&calibration_policy, &cost_by_identity, &dispositions);
+        eprintln!(
+            "[enrolment-margin] host_speed_calibration specimen={} standing={} {}",
+            calibration_policy.specimen,
+            calibration.name(),
+            calibration.detail()
+        );
+        let host_speed_factor_permille =
+            calibration.factor_or_refusal(&calibration_policy.specimen)?;
+        let thresholds = EnrolmentThresholds {
+            budget_ms,
+            dead_band_envelope_floor_ms,
+            per_subject_line_ms,
+            roster_envelope_floor_ms,
+            host_speed_factor_permille,
+        };
+        enrolment_budget_ms = Some(budget_ms);
         let typed_admission = floor_enrolment_typed_cost_debt_identities(&prepared)?;
         let dead_band = floor_enrolment_dead_band_observed_identities(&prepared)?;
         for identity in newly_enrolled {
@@ -12500,8 +12796,20 @@ pub fn run_required_floor(
                 &thresholds,
                 declared_expensiveness,
             );
+            // RAW MS STAY REPORTED beside the calibrated standing: the detail's figures are
+            // calibrated, and this is the reading the runner actually took.
+            let raw_cpu_ms = match cost_by_identity.get(identity.as_str()).map(|r| &r.reading) {
+                Some(crate::cli_run::ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                }) => observed_cpu_ms.to_string(),
+                Some(crate::cli_run::ClaimCostReading::RightCensored(r)) => {
+                    format!("at_least_{}", r.elapsed_cpu_at_least_ms)
+                }
+                None => "none".to_string(),
+            };
             eprintln!(
-                "[enrolment-margin] identity={identity} standing={} {}",
+                "[enrolment-margin] identity={identity} standing={} {} raw_cpu_ms={raw_cpu_ms} \
+                 host_speed_factor_permille={host_speed_factor_permille}",
                 standing.name(),
                 standing.detail()
             );
@@ -13416,14 +13724,18 @@ mod scope_fragment_memo_equivalence {
 mod changed_witness_projection_tests {
     use super::*;
 
-    /// The enrolment thresholds these tests decide against: the 302 ms margin, its 182 ms dead-band
-    /// floor, the 500 ms per-subject line, and its 302 ms typed cost-debt floor -- the values the model
-    /// derives today, fixed here so each test pins a boundary rather than re-deriving one.
+    /// A FIXTURE, not the model's current derivation: the 302 ms margin, its 182 ms dead-band floor,
+    /// the 500 ms per-subject line and its 302 ms typed cost-debt floor, at the reference host speed.
+    /// These were the model's values before gunbc#13352 withdrew the cross-runner envelope from the
+    /// calibrated gate (the model now derives 391 / 306 / 500 / 391; the host reads those at run time
+    /// and never this constant). Each test pins a boundary RELATIVE to this fixture, so the fixture
+    /// is kept rather than re-derived; the calibration controls below state the current thresholds.
     const TEST_ENROLMENT_THRESHOLDS: EnrolmentThresholds = EnrolmentThresholds {
         budget_ms: 302,
         dead_band_envelope_floor_ms: 182,
         per_subject_line_ms: 500,
         roster_envelope_floor_ms: 302,
+        host_speed_factor_permille: 1000,
     };
 
     /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
@@ -16139,6 +16451,175 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     /// (302, 250, 183 against a 182 floor) it is within the runner envelope and does not block; at the
     /// floor it is stale and blocks (182), above
     /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
+    /// THE HOST-SPEED CALIBRATION CONTROLS (node adhoc-c9504740-637), the seed half of
+    /// `v2.test.floor_enrolment_margin`'s. Policy figures are the model's today: the specimen's
+    /// 55,011 steps at 723 steps/ms, plausible range [400, 2500] permille.
+    fn test_calibration_policy() -> HostSpeedCalibrationPolicy {
+        HostSpeedCalibrationPolicy {
+            specimen: "m.specimen".to_string(),
+            replicates: vec![
+                "m.specimen".to_string(),
+                "m.replicate_two".to_string(),
+                "m.replicate_three".to_string(),
+            ],
+            specimen_eval_steps: 55011,
+            rate: 723,
+            lower_permille: 400,
+            upper_permille: 2500,
+        }
+    }
+
+    fn calibration_occurrence(
+        identity: &str,
+        cpu: u64,
+        steps: u64,
+    ) -> crate::cli_run::WitnessExecutionOccurrence {
+        crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "passed".to_string(),
+            reading: crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms: cpu,
+                observed_wall_ms: cpu,
+            },
+            eval_steps: steps,
+            verdict_reached: true,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        }
+    }
+
+    fn calibrated_factor_at(specimen_cpu: u64) -> u64 {
+        match host_speed_calibration_of(&test_calibration_policy(), specimen_cpu, 55011) {
+            HostSpeedCalibration::Calibrated {
+                factor_permille, ..
+            } => factor_permille,
+            other => panic!("expected a calibrated factor, got {other:?}"),
+        }
+    }
+
+    /// SAME CLAIM, TWO RUNNERS OF DIFFERENT SPEED, ONE VERDICT -- the gunbc#13168 shape, synthetic:
+    /// the specimen is scaled 1.75x with the claim. Raw, the two readings would disagree.
+    #[test]
+    fn the_same_claim_gets_the_same_enrolment_verdict_at_two_runner_speeds() {
+        let identity = "m.claim";
+        let planned = RequiredFloorDisposition::Planned;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let standing = |cpu: u64, factor: u64| {
+            let row = calibration_occurrence(identity, cpu, 48760);
+            let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+                HashMap::new();
+            cost.insert(identity, &row);
+            // The model's current calibrated thresholds (v2.workflow.floor_enrolment_margin).
+            let thresholds = EnrolmentThresholds {
+                budget_ms: 391,
+                dead_band_envelope_floor_ms: 306,
+                per_subject_line_ms: 500,
+                roster_envelope_floor_ms: 391,
+                host_speed_factor_permille: factor,
+            };
+            enrolment_margin_standing_for(identity, &cost, &dispositions, &thresholds, None)
+        };
+        let fast = standing(240, calibrated_factor_at(76));
+        let slow = standing(426, calibrated_factor_at(133));
+        assert_eq!(fast.name(), "admitted");
+        assert_eq!(slow.name(), "admitted");
+        assert_eq!(standing(426, 1000).name(), "measured_over_margin");
+        // A GENUINELY EXPENSIVE CLAIM STILL REFUSES at both speeds.
+        assert_eq!(
+            standing(466, calibrated_factor_at(76)).name(),
+            "measured_over_margin"
+        );
+        assert_eq!(
+            standing(815, calibrated_factor_at(133)).name(),
+            "measured_over_margin"
+        );
+    }
+
+    /// A MISSING, CENSORED, MOVED OR IMPLAUSIBLE SPECIMEN REFUSES THE RUN, typed; never a default.
+    #[test]
+    fn the_host_speed_calibration_refuses_without_an_exact_plausible_specimen_reading() {
+        let policy = test_calibration_policy();
+        let planned = RequiredFloorDisposition::Planned;
+        let declined = RequiredFloorDisposition::DeclinedOutsideRequiredGate;
+        let healthy = calibration_occurrence("m.specimen", 76, 55011);
+        // The other two replicates are healthy, so each case below is decided by the first alone:
+        // one bad replicate refuses the run however good the others are.
+        let two = calibration_occurrence("m.replicate_two", 80, 55011);
+        let three = calibration_occurrence("m.replicate_three", 90, 55011);
+        let run = |dispo: Option<&RequiredFloorDisposition>,
+                   row: Option<&crate::cli_run::WitnessExecutionOccurrence>| {
+            let mut dispositions = HashMap::new();
+            if let Some(d) = dispo {
+                dispositions.insert("m.specimen", d);
+            }
+            dispositions.insert("m.replicate_two", &planned);
+            dispositions.insert("m.replicate_three", &planned);
+            let mut cost = HashMap::new();
+            if let Some(r) = row {
+                cost.insert("m.specimen", r);
+            }
+            cost.insert("m.replicate_two", &two);
+            cost.insert("m.replicate_three", &three);
+            host_speed_calibration_for(&policy, &cost, &dispositions)
+        };
+        // THE FASTEST REPLICATE STANDS: a 1.75x-slow first touch on the pinned specimen does not
+        // loosen the factor, because replicate two read faster.
+        let slow_first = calibration_occurrence("m.specimen", 133, 55011);
+        assert_eq!(
+            run(Some(&planned), Some(&slow_first)).factor_or_refusal("m.specimen"),
+            Ok(80 * 723 * 1000 / 55011)
+        );
+        assert_eq!(run(Some(&planned), Some(&healthy)).name(), "calibrated");
+        assert_eq!(
+            run(Some(&planned), Some(&healthy)).factor_or_refusal("m.specimen"),
+            Ok(998)
+        );
+        let absent = run(Some(&planned), None);
+        assert_eq!(absent.name(), "host_speed_specimen_not_measured");
+        assert!(absent
+            .factor_or_refusal("m.specimen")
+            .unwrap_err()
+            .contains("cause=HostSpeedCalibrationRefused"));
+        assert_eq!(
+            run(Some(&declined), Some(&healthy)).name(),
+            "host_speed_specimen_not_measured"
+        );
+        assert_eq!(
+            run(None, Some(&healthy)).name(),
+            "host_speed_specimen_not_measured"
+        );
+        let mut cut = calibration_occurrence("m.specimen", 900, 1);
+        cut.reading = crate::cli_run::ClaimCostReading::RightCensored(
+            crate::cli_run::SafetyInterruptReading {
+                raised_by: crate::cli_run::SafetyInterruptTrigger::WallDeadlineRaised,
+                elapsed_cpu_at_least_ms: 900,
+                elapsed_wall_at_least_ms: 1000,
+                wall_safety_limit_ms: 1000,
+            },
+        );
+        assert_eq!(
+            run(Some(&planned), Some(&cut)).name(),
+            "host_speed_specimen_censored"
+        );
+        let moved = calibration_occurrence("m.specimen", 76, 55012);
+        assert_eq!(
+            run(Some(&planned), Some(&moved)).name(),
+            "host_speed_specimen_moved"
+        );
+        let too_fast = calibration_occurrence("m.specimen", 20, 55011);
+        let too_slow = calibration_occurrence("m.specimen", 400, 55011);
+        assert_eq!(
+            run(Some(&planned), Some(&too_fast)).name(),
+            "host_speed_factor_out_of_range"
+        );
+        assert_eq!(
+            run(Some(&planned), Some(&too_slow)).name(),
+            "host_speed_factor_out_of_range"
+        );
+    }
+
     #[test]
     fn the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line() {
         let identity = "m.dead_band";

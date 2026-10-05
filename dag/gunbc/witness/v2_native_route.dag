@@ -11,7 +11,7 @@ import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
-  NativeTestFileRefusal, native_test_verdict_text, native_test_stage_eq
+  NativeTestFileRefusal, native_test_file_refusal_fatal_reason, native_test_verdict_text, native_test_stage_eq
 }
 import v2.std.diagnostic { Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.workflow.compile_door_cause_ownership {
@@ -802,7 +802,7 @@ fn native_route_exclusions_all_classified(census: NativeRouteCensus) -> Bool {
 // frontier fact surfacing where nobody counted it, and it blocks admission by its own name.
 fn native_route_file_refusals_attributed(receipt: NativeRouteReceipt) -> Bool {
   !any(xs: receipt.file_refusals, predicate: fn(fr) {
-    match cause_ownership_lookup(cause: fr.fatal_reason) {
+    match cause_ownership_lookup(cause: native_test_file_refusal_fatal_reason(fr: fr)) {
       Present { value: _ } => false
       Absent => true
     }
@@ -833,7 +833,7 @@ fn native_route_file_refusal_tally(receipt: NativeRouteReceipt) -> List<NativeRo
         cause: row.cause,
         lane: row.lane,
         file_refusals: count_where(xs: receipt.file_refusals, predicate: fn(fr) {
-          fr.fatal_reason == row.cause
+          native_test_file_refusal_fatal_reason(fr: fr) == row.cause
         })
       })
     }
@@ -855,7 +855,7 @@ fn native_route_frontier_cause_member(retirement: FrontierRetirement, reason: Sy
 
 fn native_route_frontier_population(retirement: FrontierRetirement, receipt: NativeRouteReceipt) -> Int {
   count_where(xs: receipt.file_refusals, predicate: fn(fr) {
-    native_route_frontier_cause_member(retirement: retirement, reason: fr.fatal_reason)
+    native_route_frontier_cause_member(retirement: retirement, reason: native_test_file_refusal_fatal_reason(fr: fr))
   })
     + count_where(xs: receipt.population, predicate: fn(row) {
       match row.verdict {
@@ -913,7 +913,7 @@ fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
             !any(xs: receipt.module_source_index, predicate: fn(ms) {
               ms.module == row.identity.module
               && any(xs: receipt.file_refusals, predicate: fn(fr) {
-                fr.path == ms.path && fr.fatal_reason == diagnostics_fatal_reason(d: d)
+                fr.path == ms.path && native_test_file_refusal_fatal_reason(fr: fr) == diagnostics_fatal_reason(d: d)
               })
             })
           NativeTestStagePrepare => false

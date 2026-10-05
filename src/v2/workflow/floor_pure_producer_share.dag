@@ -577,8 +577,10 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // only it demands.
 // Nine more were added from the probe pair 37210396855 against 37210398646 (main 44ed81c294), for the
 // nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind).
-// Those nine are RETIRED as ClaimDeleted: gunbc#13293 reverted #13038 and the module with it. If the
-// change re-lands, its claims are re-probed, not un-retired by hand.
+// Those nine were RETIRED as ClaimDeleted when gunbc#13293 reverted #13038, and are ACTIVE again on
+// the re-land (gunbc#13309), re-probed by its floor run 37268087131 at 27e140c4f3: with no warm row,
+// each refused enrolment as the one claim demanding its own assembly specimen (410642-422505 eval
+// steps each against the 72300 new-witness budget). That run names exactly these nine.
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
@@ -603,15 +605,15 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.type_application_kind",
     claims: [
-      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: RetiredFillDebt { disposition: ClaimDeleted } }
+      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

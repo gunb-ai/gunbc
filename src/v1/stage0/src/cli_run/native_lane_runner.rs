@@ -1075,21 +1075,30 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no path: {line}"))?;
-            let head_reason = refusal
-                .get("head_reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("file refusal carries no head_reason: {line}"))?;
-            let fatal_reason = refusal
-                .get("fatal_reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("file refusal carries no fatal_reason: {line}"))?;
-            // The chain's LAST link is the fatal one (carriage order); a row without a chain, or
-            // with an empty one, refuses rather than printing an unpositioned cause.
-            let fatal_link = refusal
+            // THE CHAIN IS THE ROW (`v2.compiler.native_test_vocabulary` `NativeTestFileRefusal`):
+            // a non-empty `{head, tail}` of links in carriage order, the head first and the fatal
+            // last. The head and fatal reasons are read from it, never from stored copies. A row
+            // without a chain, a head or a tail refuses rather than printing an unpositioned or
+            // invented cause.
+            let chain = refusal
                 .get("chain")
-                .and_then(|v| v.as_array())
-                .and_then(|links| links.last())
                 .ok_or_else(|| format!("file refusal carries no chain: {line}"))?;
+            let head_link = chain
+                .get("head")
+                .ok_or_else(|| format!("file refusal chain carries no head: {line}"))?;
+            let tail = chain
+                .get("tail")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| format!("file refusal chain carries no tail: {line}"))?;
+            let fatal_link = tail.last().unwrap_or(head_link);
+            let link_reason = |link: &serde_json::Value| -> Result<String, String> {
+                link.get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("file refusal link carries no reason: {line}"))
+            };
+            let head_reason = link_reason(head_link)?;
+            let fatal_reason = link_reason(fatal_link)?;
             let fatal_at = file_refusal_at_text(
                 fatal_link
                     .get("at")
@@ -1097,8 +1106,8 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             )?;
             file_refusals.push(NativeFileRefusalObserved {
                 path: path.to_string(),
-                head_reason: head_reason.to_string(),
-                fatal_reason: fatal_reason.to_string(),
+                head_reason,
+                fatal_reason,
                 fatal_at,
             });
             continue;
@@ -3458,8 +3467,8 @@ mod tests {
     #[test]
     fn terminal_marker_carries_the_refused_admission_summary() {
         let stdout = concat!(
-            "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\",",
-            "\"chain\":[{\"reason\":\"f\",\"at\":{\"_variant\":\"FileRefusalAtWholeFile\"}}]}}\n",
+            "{\"file_refusal\":{\"path\":\"a.dag\",",
+            "\"chain\":{\"head\":{\"reason\":\"f\",\"at\":{\"_variant\":\"FileRefusalAtWholeFile\"}},\"tail\":[]}}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
             "\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
@@ -3481,10 +3490,19 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
+        // Both reasons are DERIVED from the chain: the head link's and the last link's.
+        assert_eq!(
+            parsed.file_refusals[0].head_reason,
+            "parse_grammar_choice_overlap_residue"
+        );
+        assert_eq!(
+            parsed.file_refusals[0].fatal_reason,
+            "parse_g0_tokens_remain"
+        );
         assert!(native_file_refusal_summary(&parsed.file_refusals)
             .contains("refused a.dag at=12:5 fatal=parse_g0_tokens_remain"));
         // The pre-chain row shape: three symbols, no position. It must refuse, not print a cause
@@ -3500,6 +3518,16 @@ mod tests {
             Ok(_) => panic!("a row with no chain must refuse"),
         };
         assert!(cause.contains("carries no chain"), "got: {cause}");
+        // A chain with no head refuses: the row is non-empty by construction, so a missing head is
+        // a producer or decoder defect, never a refusal with no cause.
+        let headless = format!(
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"chain\":{{\"tail\":[]}}}}}}\n{marker}\n"
+        );
+        let cause = match parse_native_run_output(&headless) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a chain with no head must refuse"),
+        };
+        assert!(cause.contains("carries no head"), "got: {cause}");
         // An arm the vocabulary does not declare is a decoder refusal, never a blank position.
         assert!(file_refusal_at_text(&serde_json::json!({"_variant": "Somewhere"})).is_err());
     }
