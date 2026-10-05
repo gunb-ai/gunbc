@@ -2700,7 +2700,7 @@ fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Op
         optional_absent()
       }
     LexicalAmbiguous { candidates: candidates } =>
-      resolve_first_declared_payload_path(ctx: ctx, paths: list_map(xs: candidates, f: fn(c) { c.path }))
+      resolve_sole_declared_payload_path(ctx: ctx, paths: list_map(xs: candidates, f: fn(c) { c.path }))
     LexicalUnbound =>
       match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
         GlobalBareHit { node: _, path: path } =>
@@ -2709,7 +2709,7 @@ fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Op
           } else {
             optional_absent()
           }
-        GlobalBareLookupAmbiguous { paths: paths } => resolve_first_declared_payload_path(ctx: ctx, paths: paths)
+        GlobalBareLookupAmbiguous { paths: paths } => resolve_sole_declared_payload_path(ctx: ctx, paths: paths)
         GlobalBareLookupUnbound => optional_absent()
       }
   }
@@ -2733,7 +2733,7 @@ fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: FreeMonoid<Qu
 // widens). Exactly one declared-payload candidate names the arm; a wider set leaves the binder
 // untyped, the behaviour that preceded binder typing. The arm the binder means is settled by the
 // scrutinee's coproduct at infer, not by name order here.
-fn resolve_first_declared_payload_path(ctx: ResolveContext, paths: List<QualifiedName>) -> Optional<QualifiedName> {
+fn resolve_sole_declared_payload_path(ctx: ResolveContext, paths: List<QualifiedName>) -> Optional<QualifiedName> {
   match resolve_declared_payload_candidates(ctx: ctx, paths: paths) {
     Cons { head: only, tail: Empty } => optional_present(value: only)
     _ => optional_absent()
