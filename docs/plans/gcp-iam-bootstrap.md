@@ -267,3 +267,14 @@ The first probe lease was removed after 30 token-mint refusals over roughly one
 minute. That did not establish a permission-design defect: Google documents policy
 propagation as typically two minutes, potentially seven or longer. The bounded
 retry now permits seven minutes within the original lease; no role is widened.
+
+### Re-running after an interrupted probe-authority stage
+
+The probe stage first reads back the operator identity, and only then does
+`iam_bootstrap_cell_authority_reconcile` pin an intent or elect a publication. A run that
+stops inside that readback therefore leaves no `gcp-iam-probe-*` journal and no grant.
+Re-run with a fresh `GUNBC_IAM_BOOTSTRAP_RECEIPT` (the started receipt is create-only):
+earlier stages read back and adopt what exists (the deny stage elects no temporary
+authority when its policy already reads back), and the probe stage elects fresh under
+the same or a new probe intent. Any `gcp-iam-probe-*` or `gcp-iam-authority-*` journal
+that does exist must be kept with its original environment, as above.
