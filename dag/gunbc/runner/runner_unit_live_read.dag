@@ -120,9 +120,23 @@ fn converge_target_live_verdict(
       match per_slot_memory_limit_for_property(read: read, property: p) {
         Present { value: observed } =>
           Present { value: memory_limit_converge_verdict_for_bytes_value(observed: observed, bytes_value: bv) }
-        _ => none
+        Absent => none
       }
-    _ => none
+    SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => none
+    RunnerWidth { instance_glob: _ } => none
+    JobserverTokens { env_file: _, env_key: _, service_unit: _ } => none
+    VerifyOnlyCap { slice_unit: _, property: _ } => none
+    GunbcPinnedTree {
+      gunbc_root_env_key: _,
+      gunbc_root_path: _,
+      dag_root: _,
+      ctrl_checkout_path: _,
+      binary: _,
+      pin_read_script: _,
+      green_place_marker: _,
+      live_apply: _,
+    } => none
+    CodexRuntimeBundle { host_identity: _ } => none
   }
 }
 

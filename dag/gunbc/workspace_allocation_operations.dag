@@ -1,0 +1,25 @@
+module gunbc.workspace_allocation_operations
+
+import gunbc.fleet_converge_state_path { fleet_converge_state_root }
+import std.types { String, NonEmptyStr, List }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, workspace_launch_credential_source_path }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, InstallFile, SystemdStartUnit }
+
+// The plan artifact is DATA, copied to the one slot's credential name. systemd's credential
+// snapshot is parsed by the installed controller; no user bytes become environment assignments.
+fn workspace_launch_staging_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  join([fleet_converge_state_root as String, "/workspace-launch-", runner_slot_instance_name(slot: slot) as String, ".json"], "") as NonEmptyStr
+}
+
+fn workspace_launch_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
+  [
+    EnsureOwnedDirectory { path: "/etc/credstore" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, mode: "0700" as NonEmptyStr },
+    InstallFile {
+      source: workspace_launch_staging_path(slot: slot),
+      destination: workspace_launch_credential_source_path(instance: runner_slot_instance_name(slot: slot) as String) as NonEmptyStr,
+      owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, mode: "0400" as NonEmptyStr,
+    },
+    SystemdStartUnit { unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: slot) as String) },
+  ]
+}

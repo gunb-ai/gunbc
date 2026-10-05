@@ -1,0 +1,24 @@
+{
+  "source_revision": "70009ad9d2c8f184153976576f5a1ec2211da1b3",
+  "binary_sha256": "179882133a4c03958a1bed8a8b444ea06e48c63a6c42263ff83694508825b415",
+  "closure_modules": 843,
+  "closure_manifest_sha256": "73b2373809d4b41d22cf8d00db62dc996afd06042a28b676409e735b6b3653ca",
+  "memory_max": "6G",
+  "memory_swap_max": 0,
+  "focused_controls_passed": 12,
+  "authority_operation": "deny-bootstrap-org-20260928-1",
+  "authority_expires_at": "2026-09-28T23:15:00Z",
+  "organization": "organizations/266638272282",
+  "operator_subject": "116084671989231734979",
+  "operator_member": "user:brian@gunb.ai",
+  "cloud_status": "temporary authority granted and read back; deny policy installed and read back; temporary authority removed and absence verified; capabilities stopped at missing pool policy etag",
+  "full_landing_suite": "not run",
+  "workflow_trust": "not enabled",
+  "credential_file_removed": true,
+  "pool_policy_readback": {
+    "http": 200,
+    "etag_header": null,
+    "policy": {}
+  },
+  "remaining_dependency": "safe initial pool IAM policy publication with concurrency protection"
+}

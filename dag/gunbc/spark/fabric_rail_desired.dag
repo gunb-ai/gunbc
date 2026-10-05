@@ -2,7 +2,7 @@ module gunbc.spark.fabric_rail_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.netplan.netplan { netplan_config_dir }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host, fabric_leg_cable_observed }

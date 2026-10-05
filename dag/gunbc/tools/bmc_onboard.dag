@@ -64,6 +64,12 @@ import gunbc.auth.access_token_source {
   ensure_access_token,
 }
 import std.types { FilePath, NonEmptyStr, Secret, String }
+import extdeps.transports.rest {
+  RestResult, RestAnswered, RestRefused,
+  RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  classify_rest_refusal, RestMutationExchange,
+  RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
+}
 import std.algebra { trim }
 import std.logic { Bool }
 import std.bytes { utf8_encode_bytes }
@@ -321,6 +327,31 @@ fn bmc_establish_custody_container(secret_id: NonEmptyStr, token: Secret) -> Bmc
   }
 }
 
+// A REFUSED AddVersion IS TWO DIFFERENT FACTS WITH OPPOSITE REMEDIES. AddVersion mints a version on
+// every success, so a status the service decided on may be retried while a lost or server-error
+// answer may have minted one; classify_rest_refusal over RestMutationExchange separates them.
+// Either way nothing has been sent to the BMC, because the store precedes the rotation.
+fn bmc_add_version_refusal_reason(refusal: RestRefusal) -> String {
+  match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+    RestExchangeStatusRefused { status, body } =>
+      concat("store: Secret Manager refused to add the credential version; nothing was sent to the BMC: HTTP ", to_string(status), ": ", body)
+    RestExchangeCommitAmbiguous { detail } =>
+      concat("store: AddVersion outcome UNKNOWN -- a version may have been minted; nothing was sent to the BMC: ", detail as String)
+    RestExchangeUnreached { cause } =>
+      concat("store: AddVersion outcome UNKNOWN -- a version may have been minted; nothing was sent to the BMC: ", cause as String)
+    RestExchangeUndecodable { status: _, cause } =>
+      concat("store: AddVersion outcome UNKNOWN -- a version may have been minted; nothing was sent to the BMC: ", cause as String)
+  }
+}
+
+fn bmc_read_back_refusal_text(refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status, body } => concat("HTTP ", to_string(status), ": ", body)
+    RestTransportRefused { cause } => cause as String
+    RestBodyUndecodable { status, cause } => concat("HTTP ", to_string(status), " with an undecodable body: ", cause as String)
+  }
+}
+
 // STORE, THEN READ BACK THE EXACT VERSION, BEFORE THE CREDENTIAL IS PUT TO USE ANYWHERE. Shared by
 // every flow that mints a BMC credential -- the administrator rotation and the health-reader account
 // -- because the rule is the same for both: a credential the BMC accepts but custody cannot return
@@ -330,38 +361,46 @@ fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credenti
   match bmc_establish_custody_container(secret_id: secret_id, token: token) {
     BmcCustodyRefused { reason: r } => return BmcCustodyRefused { reason: r }
     BmcCustodyEstablished => {
-      stored = gcp.SecretManager.AddVersion(
+      match gcp.SecretManager.AddVersion(
         access_token: token,
         secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
         payload_b64: encode_sm_access_version_payload_wire(credential: credential)
-      )
-      match bmc_readback_target(stored_name: stored.name as String) {
-        BmcReadbackUnaddressable { supplied: supplied } =>
-          return BmcCustodyRefused { reason: concat("store: AddVersion returned a name this run cannot address a read-back against: ", supplied) }
-        BmcReadbackAddressed { identity: stored_identity, version: stored_version } => {
-          readback = gcp.SecretManager.AccessVersion(
-            access_token: token,
-            project_id: fleet_secrets_gcp_project,
-            secret: secret_id,
-            version: stored_version
-          )
-          let expected_payload = utf8_encode_bytes(s: credential as String)
-          let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
-            SmAccessVersionPayloadDecoded { payload: stored_payload } =>
-              stored_payload == expected_payload
-            SmAccessVersionPayloadDecodeRefused { cause: _ } => false
-          }
-          match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
-            SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-              return BmcCustodyRefused { reason: "store: GCP read-back resolved version identity refused by wire decoder" }
-            SmResolvedVersionIdentityDecoded { identity: readback_identity } =>
-              return if !readback_ok || stored_identity != readback_identity {
-                BmcCustodyRefused { reason: concat("store: GCP durability read-back mismatch -- refusing to use the credential on ", host_label, "; stored version ", stored_identity as String) }
-              } else {
-                BmcCustodyEstablished
+      ) {
+        RestRefused { refusal } =>
+          return BmcCustodyRefused { reason: bmc_add_version_refusal_reason(refusal: refusal) }
+        RestAnswered { answer: stored } =>
+          match bmc_readback_target(stored_name: stored.name as String) {
+            BmcReadbackUnaddressable { supplied: supplied } =>
+              return BmcCustodyRefused { reason: concat("store: AddVersion returned a name this run cannot address a read-back against: ", supplied) }
+            BmcReadbackAddressed { identity: stored_identity, version: stored_version } =>
+              match gcp.SecretManager.AccessVersion(
+                access_token: token,
+                project_id: fleet_secrets_gcp_project,
+                secret: secret_id,
+                version: stored_version
+              ) {
+                RestRefused { refusal } =>
+                  return BmcCustodyRefused { reason: concat("store: the version was added but its read-back was refused, so custody has not proven it holds these bytes -- refusing to use the credential on ", host_label, "; stored version ", stored_identity as String, ": ", bmc_read_back_refusal_text(refusal: refusal)) }
+                RestAnswered { answer: readback } => {
+                  let expected_payload = utf8_encode_bytes(s: credential as String)
+                  let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
+                    SmAccessVersionPayloadDecoded { payload: stored_payload } =>
+                      stored_payload == expected_payload
+                    SmAccessVersionPayloadDecodeRefused { cause: _ } => false
+                  }
+                  match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
+                    SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+                      return BmcCustodyRefused { reason: "store: GCP read-back resolved version identity refused by wire decoder" }
+                    SmResolvedVersionIdentityDecoded { identity: readback_identity } =>
+                      return if !readback_ok || stored_identity != readback_identity {
+                        BmcCustodyRefused { reason: concat("store: GCP durability read-back mismatch -- refusing to use the credential on ", host_label, "; stored version ", stored_identity as String) }
+                      } else {
+                        BmcCustodyEstablished
+                      }
+                  }
+                }
               }
           }
-        }
       }
     }
   }

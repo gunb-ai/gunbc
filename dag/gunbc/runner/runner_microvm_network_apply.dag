@@ -8,7 +8,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.git
 import extdeps.git.inspect
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding {

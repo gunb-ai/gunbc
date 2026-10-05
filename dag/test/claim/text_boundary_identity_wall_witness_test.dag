@@ -105,7 +105,7 @@ test fn u_kernel_value_at_alias_of_text_parameter_unfolds() -> Bool {
 // DECLARATION-BOUND formal, not passed through as the caller's reading of the spelling.
 test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.text_unfold_caller_probe\nimport v2.std.text { string_is_empty }\nfn host_empty(s: String) -> v2.std.logic.Bool { string_is_empty(s: s) }\n",
+    "module test.claim.text_unfold_caller_probe\nimport v2.std.text { string_is_empty }\nfn host_empty(s: String) -> Bool { string_is_empty(s: s) }\n",
     "src/test_claim_text_unfold_caller_probe.rs",
     [".chars().map(|c| c as i64)"],
     ["string_is_empty(s)", "string_is_empty(s.clone())"]
@@ -116,7 +116,7 @@ test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
 // which it did not while the formal was re-resolved in the caller as host text.
 test fn u_kernel_literal_at_foreign_bare_structural_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.text_unfold_caller_literal_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.logic.Bool { string_is_empty(s: \"hi\") }\n",
+    "module test.claim.text_unfold_caller_literal_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> Bool { string_is_empty(s: \"hi\") }\n",
     "src/test_claim_text_unfold_caller_literal_probe.rs",
     ["vec![104, 105]"],
     ["\"hi\".to_string()"]
@@ -134,7 +134,7 @@ test fn c_structural_value_at_structural_parameter_is_admitted() -> Bool {
 }
 
 test fn c_structural_value_at_foreign_structural_parameter_is_admitted() -> Bool {
-  admitted(source: "module probe_structural_into_foreign\nimport v2.std.text { string_is_empty }\nfn probe(t: v2.std.text.String) -> v2.std.logic.Bool { string_is_empty(s: t) }\n")
+  admitted(source: "module probe_structural_into_foreign\nimport v2.std.text { string_is_empty }\nfn probe(t: v2.std.text.String) -> Bool { string_is_empty(s: t) }\n")
 }
 
 // The literal half stays on its homomorphism: a kernel LITERAL at a structural position is the
@@ -198,4 +198,70 @@ test fn u_refined_host_value_at_qualified_text_parameter_unfolds() -> Bool {
     [".chars().map(|c| c as i64)"],
     ["take(s)", "take(s.clone())"]
   )
+}
+
+// THE REFUSAL NAMES THE RIGHT ROUTE (review 75433). A refused text crossing carries
+// TextCrossingHasNoImplicitRoute with the route function that would make it lawful, chosen by the
+// produced side's reading. Each direction asserts its own route, so swapping the two arms in
+// v1.compiler.infer text_crossing_or_type_mismatch_error reds one of them; the p_ control writes the
+// same crossing as the named call and must raise no crossing.
+fn names_route(source: String, route: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      (rs |> filter(r => r.blocking && (r.diagnostic_class as String) == "TextCrossingHasNoImplicitRoute" && r.subject_name == route) |> count) > 0
+    }
+  }
+}
+
+test fn n_host_value_at_code_point_return_names_the_unfold() -> Bool {
+  names_route(source: "module probe_route_unfold\nimport v2.std.text { string_is_empty }\nfn f(t: String) -> v2.std.text.String { t }\n", route: "unicode_scalar_unfold")
+}
+
+test fn n_code_point_value_at_host_return_names_the_fold() -> Bool {
+  names_route(source: "module probe_route_fold\nimport v2.std.text { string_is_empty }\nfn f(t: v2.std.text.String) -> String { t }\n", route: "unicode_scalar_fold")
+}
+
+test fn p_the_named_route_call_raises_no_crossing() -> Bool {
+  census_runs(source: route_called_source()) && !names_route(source: route_called_source(), route: "unicode_scalar_unfold")
+}
+
+// The p_ control asserts the CROSSING diagnostic is absent where the route is called, not that the
+// whole fixture compiles clean: a census fixture that imports std.coercion also reports that module's
+// bare-channel names (LiteralHomomorphism, DeclarationRef, NonEmptyStr) as unresolved, because the
+// census compile does not supply the bare channel std.coercion relies on by design. That is the census
+// environment, not the route; the production closure resolves them, and the n_ / p_ pair discriminates
+// on the one row this rule owns.
+fn route_called_source() -> String {
+  "module probe_route_called\nimport std.coercion { unicode_scalar_unfold }\nimport v2.std.text { string_is_empty }\nfn f(t: String) -> v2.std.text.String { unicode_scalar_unfold(s: t) }\n"
+}
+
+fn census_runs(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: _ } => true
+  }
+}
+
+// THE GENERIC-FORMAL HOLE (gunbc.rung_drop text_boundary_identity_wall, third gap). A host String at a
+// FreeMonoid<T> formal whose T is unbound at the call was admitted, because the direct-call check
+// stopped judging a formal carrying an unbound variable and a FreeMonoid over a non-Char element is
+// not text to the classifier; std.effect_grant's call to v2.std.algebra length reached rustc. The r_
+// row must refuse at the crossing; the c_ row hands the same formal a code-point sequence and must stay
+// admitted, so the wall refuses by representation and not by the formal's shape.
+test fn r_host_string_into_generic_free_monoid_formal_refuses() -> Bool {
+  refuses(source: "module probe_generic_free_monoid_host\nimport std.types { String, Int }\nimport v2.std.algebra { length }\nfn n(t: String) -> Int { length(xs: t) }\n")
+}
+
+test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool {
+  admitted(source: "module probe_generic_free_monoid_structural\nimport v2.std.algebra { length }\nimport v2.std.text { string_is_empty }\nfn n(t: v2.std.text.String) -> Int { length(xs: t) }\n")
+}
+
+// THE STRUCTURAL ARGUMENT THAT MUST NOT REFUSE: the shape of target_model apply_emit_spelling_escapes,
+// where a qualified v2.std.text String is the empty value of a generic fold. The first version of the
+// generic-formal check refused it (emit-build), so this accepted control keeps that false refusal from
+// coming back however the host-text reading is tuned.
+test fn c_qualified_text_as_generic_fold_empty_admitted() -> Bool {
+  admitted(source: "module probe_fold_qualified_empty\nimport std.types { List }\nimport v2.std.algebra { fold_list }\nimport v2.std.text { string_is_empty }\nfn f(spelling: v2.std.text.String, xs: List<Int>) -> v2.std.text.String { fold_list(xs: xs, empty: spelling, cons: fn(acc, x) { acc }) }\n")
 }

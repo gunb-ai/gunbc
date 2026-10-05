@@ -1,0 +1,189 @@
+module gunbc.workspace_offer_producer
+
+import std.types { NonEmptyStr, String, Timestamp, List, Int }
+import std.measure { Second, hardware_thread_count_value, byte_size_count, gibibyte_to_byte_size }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.supply { SupplierOffer, OfferQuote, ObservedSupply }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.selection { DispatchInputs }
+import product.fabric.candidate_field { FieldRequest }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
+import gunbc.workspace_commissioning_store { WorkspaceCommittedCommissioning }
+import gunbc.workspace_guest_image { VerifiedWorkspaceImage }
+import gunbc.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
+import gunbc.workspace_tool_observer { WorkspaceToolsObserved, workspace_tools_refusal }
+import gunbc.workspace_allocation { WorkspaceRequest, workspace_execution_requirements, workspace_profile_vcpus, workspace_profile_memory }
+import gunbc.workspace_allocation_supply { WorkspaceHostSupplyObservation, workspace_slot_observation_refusal }
+import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_refusal }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key }
+import product.placement_supply { HostIdentity }
+import std.algebra { trim }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { identity_is_workspace_execution_member }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_nat, json_field_value }
+
+// Commercial observations remain supplied evidence; no zero-cost quote or regulatory permit is
+// invented here. Commissioning, installed image, host observation and access each retain their
+// authority. The resulting offer still passes the ordinary candidate-field route admission.
+type WorkspaceOfferTerms {
+  supplier: NonEmptyStr
+  route: ProviderRoute
+  quote: OfferQuote
+  billing_quantum: Second
+  dispatch: DispatchInputs<NonEmptyStr>
+}
+type WorkspaceOfferProduction
+  = WorkspaceOfferProduced { request: FieldRequest<NonEmptyStr> }
+  | WorkspaceOfferUnmet { reason: NonEmptyStr }
+
+// THE HOST-LOCAL HALF. Commissioning, image, tools and host supply are sole-constructor readings
+// that exist only on the host that took them, so the coordinator never receives them: it receives
+// this admission, minted here only after every host-local refusal has passed, and nothing else.
+type WorkspaceHostOfferAdmission sole_constructor {
+  host: HostIdentity
+  slot: RunnerSlotIdentity
+  observed_at: Timestamp
+  commissioning_plan_hash: NonEmptyStr
+  gateway_receipt: NonEmptyStr
+  image: NonEmptyStr
+  request_key: NonEmptyStr
+}
+type WorkspaceHostOfferRead
+  = WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission }
+  | WorkspaceHostOfferUnmet { host: HostIdentity, reason: NonEmptyStr }
+
+fn workspace_host_offer_admit(root: NonEmptyStr, request: WorkspaceRequest,
+  commissioned: WorkspaceCommittedCommissioning, image: VerifiedWorkspaceImage,
+  host: WorkspaceHostSupplyObservation, tools: WorkspaceToolsObserved,
+  gateway: WorkspaceGatewayEvidence, now: Timestamp) -> WorkspaceHostOfferRead {
+  let guest_bytes = byte_size_count(b: workspace_profile_memory(profile: request.profile))
+  let realization_bytes = byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))
+  if image.identity != request.image { WorkspaceHostOfferUnmet { host: host.host, reason: "installed image does not match admitted request" } }
+  else if hardware_thread_count_value(t: commissioned.admitted.cpu_budget) < workspace_profile_vcpus(profile: request.profile)
+    || byte_size_count(b: commissioned.admitted.attempt_envelope) < guest_bytes + realization_bytes {
+    WorkspaceHostOfferUnmet { host: host.host, reason: "commissioned exclusive slot budget cannot contain the selected guest and realization reserve" }
+  } else if (match workspace_tools_refusal(observation: tools, slot: commissioned.admitted.slot, now: now) { Present { value: _ } => true Absent => false }) {
+    WorkspaceHostOfferUnmet { host: host.host, reason: "controller tools are stale, unobserved, or belong to another host" }
+  } else { match workspace_slot_observation_refusal(root: root, slot: commissioned.admitted.slot, observation: host, now: now) {
+    Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
+    Absent => match workspace_gateway_refusal(slot: commissioned.admitted.slot, evidence: gateway, now: now) {
+      Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
+      Absent => WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission {
+        host: host.host, slot: commissioned.admitted.slot, observed_at: host.observed_at,
+        commissioning_plan_hash: commissioned.admitted.commissioning_plan_hash as NonEmptyStr,
+        gateway_receipt: gateway.receipt, image: image.identity, request_key: request.idempotency_key,
+      } }
+    }
+  } }
+}
+
+fn workspace_host_offer_json(read: WorkspaceHostOfferRead) -> JsonValue {
+  match read {
+    WorkspaceHostOfferAdmitted { admission: a } => json_object(members: [
+      json_kv(key: "schema", value: json_string(s: workspace_host_offer_schema)),
+      json_kv(key: "host", value: json_string(s: a.host as String)),
+      json_kv(key: "slot_index", value: json_int(n: a.slot.slot_index)),
+      json_kv(key: "observed_at", value: json_string(s: a.observed_at)),
+      json_kv(key: "commissioning_plan_hash", value: json_string(s: a.commissioning_plan_hash as String)),
+      json_kv(key: "gateway_receipt", value: json_string(s: a.gateway_receipt as String)),
+      json_kv(key: "image", value: json_string(s: a.image as String)),
+      json_kv(key: "request_key", value: json_string(s: a.request_key as String)),
+    ])
+    WorkspaceHostOfferUnmet { host: h, reason: r } => json_object(members: [
+      json_kv(key: "schema", value: json_string(s: workspace_host_offer_schema)),
+      json_kv(key: "host", value: json_string(s: h as String)),
+      json_kv(key: "unmet", value: json_string(s: r as String)),
+    ])
+  }
+}
+
+data workspace_host_offer_schema: String = "workspace-host-offer/v1"
+
+fn workspace_host_offer_text(read: WorkspaceHostOfferRead) -> String { serialize_json(v: workspace_host_offer_json(read: read)) }
+
+fn workspace_host_offer_field(doc: JsonValue, field: String) -> String {
+  match json_field_value(r: json_field_string(obj: doc, key: field)) { Present { value: v } => v Absent => "" }
+}
+
+// THE DECODE IS EXACT AND REFUSES BY TYPE. The coordinator learns the host from the transport it
+// chose, never from the payload: a payload naming any other host, an unknown or duplicated field,
+// any non-canonical spelling (detected by re-rendering), or a slot outside the workspace roster
+// is a located refusal for that host -- it is never dropped and never read as "no supply".
+type WorkspaceHostOfferDecode
+  = WorkspaceHostOfferDecoded { read: WorkspaceHostOfferRead }
+  | WorkspaceHostOfferUndecodable { host: HostIdentity, reason: NonEmptyStr }
+
+fn workspace_host_offer_decode(text: String, expected_host: HostIdentity) -> WorkspaceHostOfferDecode {
+  match parse_json_document(s: trim(s: text)) {
+    JsonDocumentUnreadable { gap: _ } => WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer is not one JSON document" }
+    JsonDocumentParsed { value: doc } => if workspace_host_offer_field(doc: doc, field: "host") != (expected_host as String) {
+      WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer names a host other than the observed transport target" }
+    } else if workspace_host_offer_field(doc: doc, field: "unmet") != "" {
+      let candidate = WorkspaceHostOfferUnmet { host: expected_host, reason: workspace_host_offer_field(doc: doc, field: "unmet") as NonEmptyStr }
+      if workspace_host_offer_text(read: candidate) == trim(s: text) { WorkspaceHostOfferDecoded { read: candidate } }
+      else { WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer refusal is not canonical" } }
+    } else { match json_field_value(r: json_field_nat(obj: doc, key: "slot_index")) {
+      Absent => WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer names no slot" }
+      Present { value: index } => {
+        let slot = RunnerSlotIdentity { host: expected_host, slot_index: index }
+        if !identity_is_workspace_execution_member(identity: slot) { WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer names a slot outside the workspace roster" } }
+        else if workspace_host_offer_field(doc: doc, field: "observed_at") == "" || workspace_host_offer_field(doc: doc, field: "commissioning_plan_hash") == ""
+          || workspace_host_offer_field(doc: doc, field: "gateway_receipt") == "" || workspace_host_offer_field(doc: doc, field: "image") == ""
+          || workspace_host_offer_field(doc: doc, field: "request_key") == "" {
+          WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer is missing a required field" }
+        } else {
+          let candidate = WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission {
+            host: expected_host, slot: slot, observed_at: workspace_host_offer_field(doc: doc, field: "observed_at"),
+            commissioning_plan_hash: workspace_host_offer_field(doc: doc, field: "commissioning_plan_hash") as NonEmptyStr,
+            gateway_receipt: workspace_host_offer_field(doc: doc, field: "gateway_receipt") as NonEmptyStr,
+            image: workspace_host_offer_field(doc: doc, field: "image") as NonEmptyStr,
+            request_key: workspace_host_offer_field(doc: doc, field: "request_key") as NonEmptyStr,
+          } }
+          if workspace_host_offer_text(read: candidate) == trim(s: text) { WorkspaceHostOfferDecoded { read: candidate } }
+          else { WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer is not canonical" } }
+        }
+      }
+    } }
+  }
+}
+
+// THE CENTRAL HALF. The offer is a function of the host admission, the request it was taken for,
+// and the commercial terms; freshness is judged again here against the coordinator's own clock,
+// because an admission that was fresh on its host can arrive stale.
+fn workspace_offer_from_admission(admission: WorkspaceHostOfferAdmission, request: WorkspaceRequest,
+  terms: WorkspaceOfferTerms, now: Timestamp) -> WorkspaceOfferProduction {
+  let required = workspace_execution_requirements(profile: request.profile)
+  if admission.request_key != request.idempotency_key || admission.image != request.image {
+    WorkspaceOfferUnmet { reason: "host offer was taken for another request" }
+  } else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: admission.observed_at)
+    || utc_instant_seconds_after(later: now, earlier: admission.observed_at) < 0
+    || utc_instant_seconds_after(later: now, earlier: admission.observed_at) > workspace_offer_freshness_seconds {
+    WorkspaceOfferUnmet { reason: "host offer is stale or in the future at join" }
+  } else {
+    let offer_id = workspace_observed_offer_identity(admission: admission, request: request, supplier: terms.supplier)
+    if !fabric_identity_eq(left: terms.dispatch.offer, right: offer_id) { WorkspaceOfferUnmet { reason: "commercial observations name another observed offer" } }
+    else {
+      let offer = SupplierOffer {
+        id: offer_id, executor: fabric_cell_allocation_key(slot: admission.slot), route: terms.route,
+        shape: required.shape, capabilities: required.capabilities, trust_domain: required.trust_domain, isolation: required.isolation,
+        quantity_bound: 1, ready_at: admission.observed_at, quote: terms.quote, billing_quantum: terms.billing_quantum,
+        evidence: ObservedSupply { observed_at: admission.observed_at, receipt: admission.commissioning_plan_hash as ObservationReceiptRef },
+      }
+      WorkspaceOfferProduced { request: FieldRequest { offer: offer, dispatch: terms.dispatch, delivery: OfferDoesNotClaimNodeDelivery } }
+    }
+  }
+}
+
+// The same bound the host observer applies (workspace_slot_observation_refusal), named once.
+data workspace_offer_freshness_seconds: Int = 60
+
+fn workspace_observed_offer_identity(admission: WorkspaceHostOfferAdmission, request: WorkspaceRequest,
+  supplier: NonEmptyStr) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: supplier, key: serialize_content_hash(hash: content_hash_of_value(value: concat(
+    admission.commissioning_plan_hash as String, fabric_cell_allocation_key(slot: admission.slot) as String,
+    request.image as String, to_string(request.profile), admission.gateway_receipt as String, admission.observed_at))) as OfferKey }
+}

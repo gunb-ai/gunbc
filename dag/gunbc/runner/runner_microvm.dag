@@ -1,5 +1,7 @@
 module gunbc.runner_microvm
 
+import gunbc.runner_microvm_network_shape { RunnerMicroVmNetworking, GuestNetworkTap, GuestNetworkAbsent }
+
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.measure {
   Mebibyte,
@@ -985,17 +987,6 @@ fn runner_microvm_admission_after_credential(
 // Every field a caller could get wrong independently is instead a consequence: the root drive is
 // the image, the second drive is the credential transport's own drive_id, and the size is the
 // declared size. A hand-authored config beside these rows would be a second spelling of one VM.
-// A GUEST WITH NO INTERFACE IS A DIFFERENT KIND OF VM, NOT A VM MISSING AN ARGUMENT.
-//
-// The builder previously required a tap device and a MAC, so the only configuration it could express
-// was one with egress -- and a boot smoke, which has no tap because the per-slot network is a later
-// slice, could not be expressed at all without handing it the name of a device that does not exist.
-// A guest that cannot reach the network is not a degraded runner: it CANNOT REGISTER, so it is not a
-// runner at all, and saying so in the type is what stops a caller from expecting one to appear in
-// the runner list. GuestNetworkAbsent carries its cause for the same reason every refusal here does.
-type RunnerMicroVmNetworking
-  = GuestNetworkTap { device: NonEmptyStr, guest_mac: NonEmptyStr }
-  | GuestNetworkAbsent { cause: String }
 
 fn runner_microvm_network_interfaces(net: RunnerMicroVmNetworking) -> List<FirecrackerNetworkInterface> {
   match net {

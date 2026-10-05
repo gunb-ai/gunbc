@@ -42,3 +42,10 @@ data dgx_spark_05: PhysicalAssetIdentity = "dgx-spark-05" as PhysicalAssetIdenti
 data dgx_spark_06: PhysicalAssetIdentity = "dgx-spark-06" as PhysicalAssetIdentity
 data dgx_spark_07: PhysicalAssetIdentity = "dgx-spark-07" as PhysicalAssetIdentity
 data dgx_spark_08: PhysicalAssetIdentity = "dgx-spark-08" as PhysicalAssetIdentity
+
+// The GH200 hardware bought 2026-10-04 (product.superchip_assembly_qualification). Allocated before
+// the units arrive so qualification evidence binds to a physical asset from the first receipt: two
+// modules of ONE part number are two assets, and a part number is never an instance identifier.
+data gh200_dv5_a: PhysicalAssetIdentity = "gh200-dv5-a" as PhysicalAssetIdentity
+data gh200_dv5_b: PhysicalAssetIdentity = "gh200-dv5-b" as PhysicalAssetIdentity
+data p4261_k1_a: PhysicalAssetIdentity = "p4261-k1-a" as PhysicalAssetIdentity
