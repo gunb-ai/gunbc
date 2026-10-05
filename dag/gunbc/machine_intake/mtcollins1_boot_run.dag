@@ -31,7 +31,8 @@ import gunbc.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
-import gunbc.machine_intake_megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation }
+import gunbc.megarac_managed_host { MegaRacIpmiReadBound }
+import gunbc.machine_intake_megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation }
 import gunbc.machine_intake_megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir }

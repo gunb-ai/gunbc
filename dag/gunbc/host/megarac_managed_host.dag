@@ -1,6 +1,7 @@
 module gunbc.megarac_managed_host
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Second }
 import std.decl_ref { decl_ref }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
@@ -204,4 +205,12 @@ fn megarac_host_refusal_text(cause: MegaRacHostRefusal) -> NonEmptyStr {
 // subject) can require the two name one host.
 fn admitted_megarac_host_identity(host: AdmittedMegaRacHost) -> HostIdentity {
   host.binding.host.host
+}
+
+// THE BOUND ON ONE ipmitool READ OF AN ADMITTED CONTROLLER, as `timeout --kill-after` operands. It lives
+// beside the carrier every MegaRAC body takes (moved here from gunbc.machine_intake_megarac_boot_media_attach
+// by managed-host cut 5) so a read that is not the boot's media attach does not import the boot.
+type MegaRacIpmiReadBound {
+  deadline: Second
+  kill_after: Second
 }

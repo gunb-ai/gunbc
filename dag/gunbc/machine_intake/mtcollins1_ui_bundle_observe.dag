@@ -7,7 +7,7 @@ import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
 import gunbc.megarac_operation_standing { MegaRacServedUiRead }
-import gunbc.machine_intake_megarac_boot_media_attach { MegaRacIpmiReadBound }
+import gunbc.megarac_managed_host { MegaRacIpmiReadBound }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_megarac_ui_bundle_observe { MegaRacUiBundlePaths, megarac_ui_bundle_observe_with, megarac_ui_bundle_read_bound }
 

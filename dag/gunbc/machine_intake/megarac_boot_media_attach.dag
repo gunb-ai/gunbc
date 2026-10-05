@@ -7,7 +7,7 @@ import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacIpmiReadBound, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
 import gunbc.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MediaAttachAttempted,
@@ -69,12 +69,6 @@ import gunbc.machine_intake_megarac_media_attach {
 // THE MEGARAC ADMISSION FOR VIRTUAL MEDIA, OF THE HOST THE PROOF HOLDS.
 fn megarac_boot_media_host(proof: UnitHoldProof) -> MegaRacHostAdmission {
   admit_megarac_host(host: proof.subject.host, operation: MegaRacVirtualMediaAttach)
-}
-
-// THE BOUND ON ONE ipmitool READ OF THE CONTROLLER, as `timeout --kill-after` operands.
-type MegaRacIpmiReadBound {
-  deadline: Second
-  kill_after: Second
 }
 
 // THE CHASSIS POWER READ, over the admitted controller only.

@@ -15,7 +15,7 @@ import extdeps.bmc.megarac { megarac_ui_bundle_path }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import gunbc.megarac_managed_host { AdmittedMegaRacHost }
 import gunbc.megarac_operation_standing { MegaRacServedUiRead, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
-import gunbc.machine_intake_megarac_boot_media_attach { MegaRacIpmiReadBound }
+import gunbc.megarac_managed_host { MegaRacIpmiReadBound }
 import gunbc.machine_intake_megarac_media_attach { megarac_media_read_max_time, megarac_media_read_max_time_operand }
 import std.measure { Second, second, second_count }
 import std.nat { Nat }
