@@ -33,6 +33,7 @@ import std.markdown {
   TextInline,
   LinkInline,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

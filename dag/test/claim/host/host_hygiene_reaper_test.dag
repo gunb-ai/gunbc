@@ -9,6 +9,7 @@ import gunbc.host_hygiene_reaper_remediate {
   ReapEffectRefused,
   residual_reap_effect_for,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
