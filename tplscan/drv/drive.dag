@@ -199,3 +199,17 @@ fn controls_text() -> String {
     concat(acc, concat(line, "\n"))
   })
 }
+
+data tplscan_paths_fix: List<String> = [
+  "dag/extdeps/filesystem/filesystem_rust_realization.dag",
+  "dag/extdeps/version/pep440.dag",
+  "dag/extdeps/version/semver.dag",
+  "dag/gunbc/instruments/emit_host_fixtures.dag",
+  "dag/gunbc/instruments/module_impact_query_front_door.dag",
+  "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag",
+  "src/v2/lens/grounding.dag"
+]
+
+fn runfix() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_fix)) }
+}
