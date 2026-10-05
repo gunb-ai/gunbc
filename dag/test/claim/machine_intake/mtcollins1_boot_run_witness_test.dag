@@ -1,11 +1,12 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
-import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_still_allowance }
+import gunbc.machine_intake_megarac_kvm_still { megarac_kvm_still_allowance }
 import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
 import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
 import extdeps.github.log_annotations { log_annotation_message_line }
 import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
-import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_stale_power_off_allowance }
+import gunbc.machine_intake_megarac_boot_media_attach { megarac_stale_power_off_allowance }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ipmi_read_bound }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
@@ -94,11 +95,11 @@ fn smpro_probed_empty() -> SmproReading {
 test fn the_step_timeout_covers_the_boot_phases() -> Bool {
   let covered = (second_count(s: mtcollins1_sol_notice_ready_allowance) as Int)
     + (second_count(s: mtcollins1_sol_notice_final_allowance) as Int)
-    + (second_count(s: mtcollins1_kvm_still_allowance()) as Int)
+    + (second_count(s: megarac_kvm_still_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: megarac_convergence_allowance()) as Int)
-    + (second_count(s: mtcollins1_stale_power_off_allowance()) as Int)
+    + (second_count(s: megarac_stale_power_off_allowance(bound: mtcollins1_boot_ipmi_read_bound)) as Int)
     + 3 * (second_count(s: megarac_presentation_look_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)

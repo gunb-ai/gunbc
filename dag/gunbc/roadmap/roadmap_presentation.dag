@@ -2055,6 +2055,7 @@ fn workspace_flat_table(
 type IssueLinkView {
   node_id: String
   headline: String
+  status: String
 }
 
 // Nesting and blocking are independent dimensions with one shared ownership authority.
@@ -2063,10 +2064,12 @@ type IssueLinkPanel {
   children: List<IssueLinkView>
   blocking: List<IssueLinkView>
   blocked_by: List<IssueLinkView>
+  prerequisites: List<IssueLinkView>
+  cycle: Bool
 }
 
-fn issue_link_view_of(rn: RoadmapNode) -> IssueLinkView {
-  IssueLinkView { node_id: rn.node as String, headline: row_headline(line: rn.line) }
+fn issue_link_view_of(rn: RoadmapNode, merged: List<Int> = []) -> IssueLinkView {
+  IssueLinkView { node_id: rn.node as String, headline: row_headline(line: rn.line), status: work_lifecycle_key(l: work_lifecycle(rn: rn, merged: merged)) }
 }
 
 // A child is a node that names this one among its parents — the same roadmap_parent_ids read the
@@ -2082,28 +2085,30 @@ fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Ro
 // under the root -- a membership erased by a missing title. The declared membership decides the
 // relation; the title is looked up among the plan rows, then among `member_titles` (the page passes
 // every declared node), and a target with no title anywhere shows its id -- never absence.
-fn issue_member_link_view(id: String, nodes: List<RoadmapNode>, member_titles: List<RoadmapNode>) -> IssueLinkView {
+fn issue_member_link_view(id: String, nodes: List<RoadmapNode>, member_titles: List<RoadmapNode>, merged: List<Int> = []) -> IssueLinkView {
   match find_node(nodes: nodes, node_id: id) {
-    Present { value: p } => issue_link_view_of(rn: p)
+    Present { value: p } => issue_link_view_of(rn: p, merged: merged)
     Absent => match find_node(nodes: member_titles, node_id: id) {
-      Present { value: p } => issue_link_view_of(rn: p)
-      Absent => IssueLinkView { node_id: id, headline: id }
+      Present { value: p } => issue_link_view_of(rn: p, merged: merged)
+      Absent => IssueLinkView { node_id: id, headline: id, status: "unknown" }
     }
   }
 }
 
-fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships(), member_titles: List<RoadmapNode> = []) -> IssueLinkPanel {
+fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships(), member_titles: List<RoadmapNode> = [], merged: List<Int> = []) -> IssueLinkPanel {
   IssueLinkPanel {
     parent: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
-      MembershipMember { arc } => Present { value: issue_member_link_view(id: arc, nodes: nodes, member_titles: member_titles) }
+      MembershipMember { arc } => Present { value: issue_member_link_view(id: arc, nodes: nodes, member_titles: member_titles, merged: merged) }
       MembershipStandalone => none
       MembershipAmbiguous { arcs: _ } => none
     },
-    children: map(project_member_ids(arc: rn.node as String, memberships: memberships), id => issue_member_link_view(id: id, nodes: nodes, member_titles: member_titles)),
-    blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),
+    children: map(project_member_ids(arc: rn.node as String, memberships: memberships), id => issue_member_link_view(id: id, nodes: nodes, member_titles: member_titles, merged: merged)),
+    blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), n => issue_link_view_of(rn: n, merged: merged)),
+    prerequisites: map(roadmap_parent_ids(edges: edges, node: rn.node), id => issue_member_link_view(id: id as String, nodes: nodes, member_titles: member_titles, merged: merged)),
+    cycle: dependency_cycle_touches(node_id: rn.node as String, edges: edges),
     blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
       match find_node(nodes: nodes, node_id: pid) {
-        Present { value: p } => [ issue_link_view_of(rn: p) ]
+        Present { value: p } => [ issue_link_view_of(rn: p, merged: merged) ]
         Absent => []
       }),
   }
@@ -2125,33 +2130,69 @@ fn issue_work_history_rounds(ledger: HarnessRoundLedger) -> List<RoundSegment> {
   fold(round_segments(ledger: ledger), init: [], f: (acc, seg) => concat([seg], acc))
 }
 
-// THE FOUR-FACT PRESENT-TENSE EXPLANATION (owner ruling 2026-09-22, "The frontend as an issue
-// tracker"): planning status (lifecycle × scheduling), the current workflow obligation (the first
-// unsettled roster position), the attempt outcome (the ActivityView arm), and the delivery
-// evidence (the view's evidence rows) stay FOUR SEPARATE FACTS on the row — the status field
-// derives ONE concise present-tense sentence from them at render, exactly in the ruling's worked
-// shapes ("verifying candidate 2ccf4dc72f", "blocked: turn 2's artifact undecidable; turn 3
-// re-declared"). Nothing is stored: the derivation runs from the decided view, so the facts can
-// never silently collapse into the sentence, and the sentence never flattens into one label like
-// "Submission failed" plus a row of misleading pending stages.
-fn issue_explanation(view: WorkRowView) -> String {
+// 2026-10-03 owner UI decision supersedes the 2026-09-22 sentence-as-status
+// ruling here. The primary word is a projection, never stored. The four facts remain
+// separate in IssueStatusDetails and the Work ledger; pending stages retain wait targets.
+type IssueStatusDetails { planning: String, obligation: String, outcome: String, evidence: List<ActivityEvidenceRow> }
+fn issue_status_label(view: WorkRowView) -> String {
+  let standing = match view.standing {
+    Absent => "unknown"
+    Present { value: st } => match st {
+      NodeOpen => "open"
+      NodeClaimed { by: _, since: _ } => "claimed"
+      NodeInProgress { by: _, last_note: _ } => "in_progress"
+      NodeBlocked { by: _, reason: _ } => "blocked"
+      NodeHandedBack { by: _, reason: _ } => "handed_back"
+      NodeReadyForReview { by: _, pr: _, head: _ } => "ready_for_review"
+      NodeForked { heads: _ } => "unknown"
+      NodeHistoryIncomplete { missing_parents: _ } => "unknown"
+    }
+  }
+  let lifecycle = work_lifecycle_key(l: view.lifecycle)
+  let scheduling = work_scheduling_key(s: view.scheduling)
+  let activity = activity_arm_key(a: view.activity)
+  if standing == "unknown" || activity == "unobservable" { "Unknown" }
+  else if lifecycle == "superseded" { "Superseded" }
+  else if lifecycle == "done" { "Done" }
+  else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { "Blocked" }
+  else if standing == "in_progress" || activity == "active" { "Active" }
+  else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { "Review" }
+  else if standing == "handed_back" { "Returned" }
+  else if standing == "claimed" { "Assigned" }
+  else if scheduling == "not-ready" { "Blocked" }
+  else if scheduling == "ready" { "Ready" }
+  else { "Open" }
+}
+// Owner 2026-10-04: descending status means Ready first, not lexical order.
+// The same numeric value drives the initial server order and interactive column sorting.
+fn issue_status_sort_rank(view: WorkRowView) -> Int {
+  let label = issue_status_label(view: view)
+  if label == "Ready" { 10 }
+  else if label == "Active" { 9 }
+  else if label == "Review" { 8 }
+  else if label == "Assigned" { 7 }
+  else if label == "Returned" { 6 }
+  else if label == "Open" { 5 }
+  else if label == "Blocked" { 4 }
+  else if label == "Unknown" { 3 }
+  else if label == "Done" { 2 }
+  else { 1 }
+}
+
+fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
+  let planning = join([work_lifecycle_key(l: view.lifecycle), " · ", match view.scheduling {
+    SchedulingReady => "Ready to dispatch"
+    SchedulingNotReady { missing } => readiness_reason_text(r: NotReady { missing: missing })
+    SchedulingDone => "Delivered; acceptance evidence remains authoritative"
+    SchedulingSuperseded => concat("Superseded by ", view.superseded_by)
+  }], "")
   match view.activity {
-    NoActiveWork =>
-      match view.scheduling {
-        SchedulingReady => "open — ready to dispatch"
-        SchedulingNotReady { missing } =>
-          join(["open — ", readiness_text(r: NotReady { missing: missing }), " (", readiness_reason_text(r: NotReady { missing: missing }), ")"], "")
-        SchedulingDone => "delivered — its evidence is under review"
-        SchedulingSuperseded =>
-          if view.superseded_by == "" { "superseded" }
-          else { join(["superseded by ", view.superseded_by], "") }
-      }
-    ActivityUnobservable { reason } => join(["attempt unobservable: ", reason], "")
-    CompletedWork { outcome, evidence: _, obligations: _ } => outcome
-    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => summary
-    ActiveWorkRefused { summary, located_reason: _, evidence: _, obligations: _ } => summary
-    LegacySupersedableAttempt { summary, located_reason, attempt_key, evidence: _ } =>
-      join([summary, " — ", located_reason, "; a fresh attempt must re-declare (superseded ", attempt_key, ")"], "")
+    NoActiveWork => IssueStatusDetails { planning: planning, obligation: "No current workflow obligation", outcome: "No attempt observed", evidence: [] as List<ActivityEvidenceRow> }
+    ActivityUnobservable { reason } => IssueStatusDetails { planning: planning, obligation: "Unavailable", outcome: reason, evidence: [] as List<ActivityEvidenceRow> }
+    ActiveWork { summary, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } => IssueStatusDetails { planning: planning, obligation: issue_first_open_kind(segments: obligations), outcome: summary, evidence: evidence }
+    ActiveWorkRefused { summary: _, located_reason, evidence, obligations } => IssueStatusDetails { planning: planning, obligation: issue_first_open_kind(segments: obligations), outcome: located_reason, evidence: evidence }
+    LegacySupersedableAttempt { summary: _, located_reason, attempt_key: _, evidence } => IssueStatusDetails { planning: planning, obligation: "Fresh attempt must redeclare", outcome: located_reason, evidence: evidence }
+    CompletedWork { outcome, evidence, obligations } => IssueStatusDetails { planning: planning, obligation: issue_first_open_kind(segments: obligations), outcome: outcome, evidence: evidence }
   }
 }
 
@@ -2436,4 +2477,14 @@ fn hidden_not_ready_summary(ws: DailyWorkspaceView) -> String {
   } else {
     join([to_string(ws.hidden_not_ready), " not-ready node(s) without members or work in flight are hidden; each one's issue page names what it is missing."], "")
   }
+}
+
+// Reachability is bounded by visited nodes, so any cycle length terminates.
+fn dependency_path_reaches(node_id: String, target: String, edges: List<RoadmapEdge>, visited: List<String>) -> Bool {
+  if node_id == target { true }
+  else if any(visited, n => n == node_id) { false }
+  else { any(filter(edges, e => (e.child as String) == node_id), e => dependency_path_reaches(node_id: e.parent as String, target: target, edges: edges, visited: concat(visited, [node_id]))) }
+}
+fn dependency_cycle_touches(node_id: String, edges: List<RoadmapEdge>) -> Bool {
+  any(filter(edges, e => (e.child as String) == node_id), e => dependency_path_reaches(node_id: e.parent as String, target: node_id, edges: edges, visited: []))
 }

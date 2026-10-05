@@ -1,0 +1,284 @@
+module gunbc.workspace_commissioning_executor_helper
+
+import std.types { String, NonEmptyStr, Bool }
+import std.algebra { trim }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import extdeps.shell
+import extdeps.systemd.systemctl
+import extdeps.systemd { ControlGroup, systemd_unit_property_wire }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentCgroupObserved, MembershipMalformed, MembershipMissing }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.workspace_commissioning_start_observe {
+  WorkspaceCommissioningStartSnapshot, workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
+}
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, ExecutorSubmissionRecorded, ExecutorInvocationRecorded,
+  workspace_executor_record_coherent,
+}
+import gunbc.workspace_commissioning_executor_store {
+  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished, WorkspaceExecutorJournalConflict, WorkspaceExecutorJournalRefused, WorkspaceExecutorJournalUnreadable,
+}
+import gunbc.workspace_commissioning_executor_fence { workspace_executor_mutation_matches }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }
+import gunbc.workspace_commissioning_apply_readback {
+  WorkspaceCommissioningApplyCompleted, WorkspaceCommissioningApplyFinished, WorkspaceCommissioningApplyFinishRefused,
+  workspace_commissioning_apply_recover_completed,
+}
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.workspace_commissioning_executor_journal { ExecutorReleaseObserved, ExecutorGenerationCommitted }
+import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+
+
+// Helpers run as children of the native systemd-owned executor, not as its MainPID. An
+// inherited INVOCATION_ID alone is not authority: the manager and this process's actual
+// unified cgroup membership must agree, with the invocation stable around those reads.
+type WorkspaceExecutorActor sole_constructor {
+  slot: NonEmptyStr
+  invocation: NonEmptyStr
+  cgroup: NonEmptyStr
+}
+
+type WorkspaceExecutorActorRead
+  = WorkspaceExecutorActorObserved { actor: WorkspaceExecutorActor }
+  | WorkspaceExecutorActorRefused { reason: String }
+
+fn workspace_executor_actor_matches(snapshot: WorkspaceCommissioningStartSnapshot,
+  expected_unit: NonEmptyStr, invocation: String, own_cgroup: String, managed_cgroup: String) -> Bool {
+  snapshot.unit == expected_unit && snapshot.load == "loaded"
+    && (snapshot.active == "active" || snapshot.active == "activating")
+    && content_hash_validate_lower_hex_length(text: invocation, expected_hex_digits: 32)
+    && snapshot.invocation == invocation
+    && (match parse_int(s: snapshot.main_pid) { Present { value: pid } => pid > 0 Absent => false })
+    && own_cgroup != "" && own_cgroup != "/" && own_cgroup == managed_cgroup
+}
+
+fn workspace_executor_actor_observe(slot: NonEmptyStr) -> WorkspaceExecutorActorRead {
+  let unit = workspace_executor_unit_instance_name(slot: slot)
+  match shell.Env.Get(name: "INVOCATION_ID").value {
+    Absent => WorkspaceExecutorActorRefused { reason: "executor invocation environment is absent" }
+    Present { value: invocation } => match workspace_commissioning_start_observe(unit: unit) {
+      WorkspaceCommissioningStartObserved { snapshot: before } => {
+        let managed = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ControlGroup))
+        let own = Filesystem.Read(path: "/proc/self/cgroup")
+        if !managed.success || !own.success { WorkspaceExecutorActorRefused { reason: "executor cgroup membership is unreadable" } }
+        else { match read_unified_cgroup_membership(content: own.content) {
+          CurrentCgroupObserved { relative_path } => if !workspace_executor_actor_matches(snapshot: before,
+            expected_unit: unit, invocation: invocation, own_cgroup: relative_path as String, managed_cgroup: trim(s: managed.value)) {
+            WorkspaceExecutorActorRefused { reason: "helper is not in the expected live executor invocation" }
+          } else { match workspace_commissioning_start_observe(unit: unit) {
+            WorkspaceCommissioningStartObserved { snapshot: after } => if before != after {
+              WorkspaceExecutorActorRefused { reason: "executor identity changed during membership observation" }
+            } else { WorkspaceExecutorActorObserved { actor: WorkspaceExecutorActor {
+              slot: slot, invocation: invocation as NonEmptyStr, cgroup: relative_path,
+            } } }
+            WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorActorRefused { reason: "executor identity became unreadable" }
+          } }
+          MembershipMissing => WorkspaceExecutorActorRefused { reason: "helper cgroup membership is missing, ambiguous or malformed" }
+          MembershipAmbiguous { first: _, second: _ } => WorkspaceExecutorActorRefused { reason: "helper cgroup membership is missing, ambiguous or malformed" }
+          MembershipMalformed { cause: _ } => WorkspaceExecutorActorRefused { reason: "helper cgroup membership is missing, ambiguous or malformed" }
+        } }
+      }
+      WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorActorRefused { reason: "executor unit is unreadable" }
+    }
+  }
+}
+
+type WorkspaceExecutorHelperResult
+  = WorkspaceExecutorHelperAccepted
+  | WorkspaceExecutorHelperRefused { reason: String }
+
+// The bounded bind adapter performs no start. It joins the real executor, actual selected
+// controller invocation and exact held mutation to the protected CAS journal. If the controller
+// already won the same CAS, publication is an idempotent readback; another winner refuses.
+fn workspace_executor_helper_bind(slot: NonEmptyStr, executor: NonEmptyStr,
+  controller: NonEmptyStr) -> WorkspaceExecutorHelperResult {
+  match workspace_executor_actor_observe(slot: slot) {
+    WorkspaceExecutorActorRefused { reason } => WorkspaceExecutorHelperRefused { reason: reason }
+    WorkspaceExecutorActorObserved { actor } => if actor.invocation != executor {
+      WorkspaceExecutorHelperRefused { reason: "bind caller does not name this executor invocation" }
+    } else { match workspace_executor_journal_observe(slot_key: slot) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: record } => if record.submitter != executor
+          || !workspace_executor_mutation_matches(record: record)
+          || (record.phase != ExecutorSubmissionRecorded && record.phase != ExecutorInvocationRecorded) {
+          WorkspaceExecutorHelperRefused { reason: "bind has no matching live submission and mutation generation" }
+        } else {
+          let unit = microvm_slot_unit_instance_name(slot_instance: slot as String)
+          match workspace_commissioning_start_observe(unit: unit) {
+            WorkspaceCommissioningStartObserved { snapshot: observed } => if observed.load != "loaded"
+              || observed.invocation != (controller as String) {
+              WorkspaceExecutorHelperRefused { reason: "controller invocation does not match the manager" }
+            } else {
+              let bound = WorkspaceExecutorRecord { subject: record.subject, submitter: record.submitter,
+                previous_invocation: record.previous_invocation, invocation: controller as String,
+                phase: ExecutorInvocationRecorded }
+              if !workspace_executor_record_coherent(record: bound) {
+                WorkspaceExecutorHelperRefused { reason: "controller invocation is malformed or repeats the predecessor" }
+              } else { match workspace_executor_journal_publish(snapshot: snapshot, record: bound) {
+                WorkspaceExecutorJournalPublished { snapshot: _ } => match workspace_commissioning_start_observe(unit: unit) {
+                  WorkspaceCommissioningStartObserved { snapshot: after } => if after.load != "loaded"
+                    || after.invocation != (controller as String) || !workspace_executor_mutation_matches(record: bound) {
+                    WorkspaceExecutorHelperRefused { reason: "controller or mutation changed during binding; recovery remains outstanding" }
+                  } else { match workspace_executor_actor_observe(slot: slot) {
+                    WorkspaceExecutorActorObserved { actor: current } => if current == actor { WorkspaceExecutorHelperAccepted }
+                      else { WorkspaceExecutorHelperRefused { reason: "executor identity changed during binding" } }
+                    WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorHelperRefused { reason: "executor identity became unreadable during binding" }
+                  } }
+                  WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorHelperRefused { reason: "controller became unreadable during binding" }
+                }
+                WorkspaceExecutorJournalConflict => WorkspaceExecutorHelperRefused { reason: "invocation binding lost CAS or could not be read back" }
+                WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorHelperRefused { reason: "invocation binding lost CAS or could not be read back" }
+              } }
+            }
+            WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorHelperRefused { reason: "controller unit is unreadable" }
+          }
+        }
+        Absent => WorkspaceExecutorHelperRefused { reason: "bind has no durable submission" }
+      }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorHelperRefused { reason: "executor journal is unreadable" }
+    } }
+  }
+}
+
+// This is a settlement result, NOT the native helper's successful fleet terminal. Only a
+// subsequent publication through the existing fleet generation authority can complete apply.
+// The sealed completed readback is retained rather than flattened to a successful exit code.
+type WorkspaceExecutorSettlement sole_constructor {
+  record: WorkspaceExecutorRecord
+  completed: WorkspaceCommissioningApplyCompleted
+}
+
+type WorkspaceExecutorSettlementRead
+  = WorkspaceExecutorSettlementObserved { settlement: WorkspaceExecutorSettlement }
+  | WorkspaceExecutorSettlementRefused { reason: String }
+
+fn workspace_executor_helper_settle(executor: NonEmptyStr, controller: NonEmptyStr,
+  bundle: NonEmptyStr, provenance: WorkspaceCommissioningProvenance, release_dir: NonEmptyStr,
+  login: NonEmptyStr, network: SlotNetworkSanitationSubject) -> WorkspaceExecutorSettlementRead {
+  let slot = runner_slot_instance_name(slot: provenance.slot)
+  match workspace_executor_actor_observe(slot: slot) {
+    WorkspaceExecutorActorRefused { reason } => WorkspaceExecutorSettlementRefused { reason: reason }
+    WorkspaceExecutorActorObserved { actor } => if actor.invocation != executor {
+      WorkspaceExecutorSettlementRefused { reason: "settlement caller is not this executor invocation" }
+    } else { match workspace_executor_journal_observe(slot_key: slot) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: record } => if record.subject.plan_hash != provenance.plan_hash
+          || record.subject.fleet_bundle_hash != bundle || record.invocation != (controller as String) {
+          WorkspaceExecutorSettlementRefused { reason: "settlement does not match the recorded plan, reviewed bundle and controller" }
+        } else { match workspace_commissioning_apply_recover_completed(provenance: provenance,
+          acquired: record.subject.mutation_generation, invocation: controller, release_dir: release_dir,
+          login: login, network: network) {
+          WorkspaceCommissioningApplyFinishRefused { reason } => WorkspaceExecutorSettlementRefused { reason: reason }
+          WorkspaceCommissioningApplyFinished { completed } => match workspace_executor_journal_observe(slot_key: slot) {
+            WorkspaceExecutorJournalObserved { snapshot: current } => match current.record {
+              Present { value: settled } => if settled.subject != record.subject
+                || settled.submitter != record.submitter || settled.previous_invocation != record.previous_invocation
+                || settled.invocation != record.invocation || settled.phase != ExecutorReleaseObserved {
+                WorkspaceExecutorSettlementRefused { reason: "release lacks the exact durable executor settlement" }
+              } else { match workspace_executor_actor_observe(slot: slot) {
+                WorkspaceExecutorActorObserved { actor: after } => if after == actor {
+                  WorkspaceExecutorSettlementObserved { settlement: WorkspaceExecutorSettlement {
+                    record: settled, completed: completed,
+                  } }
+                } else { WorkspaceExecutorSettlementRefused { reason: "executor identity changed during settlement" } }
+                WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorSettlementRefused { reason: "executor identity became unreadable during settlement" }
+              } }
+              Absent => WorkspaceExecutorSettlementRefused { reason: "settled executor record disappeared" }
+            }
+            WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorSettlementRefused { reason: "settled executor journal is unreadable" }
+          }
+        } }
+        Absent => WorkspaceExecutorSettlementRefused { reason: "settlement has no durable executor submission" }
+      }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorSettlementRefused { reason: "executor journal is unreadable before settlement" }
+    } }
+  }
+}
+
+// Commit only after sealed controller/cleanup settlement. Publication uses immutable receipts
+// under the existing fleet authority, so a lost response can be recovered even after a later
+// fleet apply. The terminal journal transition is last; supply stays closed until it is read back.
+fn workspace_executor_helper_publish(executor: NonEmptyStr,
+  settlement: WorkspaceExecutorSettlement) -> WorkspaceExecutorHelperResult {
+  let record = settlement.record
+  match workspace_executor_actor_observe(slot: record.subject.slot) {
+    WorkspaceExecutorActorRefused { reason } => WorkspaceExecutorHelperRefused { reason: reason }
+    WorkspaceExecutorActorObserved { actor } => if actor.invocation != executor {
+      WorkspaceExecutorHelperRefused { reason: "publication caller is not this executor invocation" }
+    } else { match workspace_executor_journal_observe(slot_key: record.subject.slot) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: current } => if current != record {
+          WorkspaceExecutorHelperRefused { reason: "executor settlement changed before fleet publication" }
+        } else { match run_shell_command_capture(command: fleet_generation_publication_as_owner(
+          action: "publish", host: settlement.completed.provenance.slot.host as NonEmptyStr,
+          prior: record.subject.prior_fleet_generation, planned: record.subject.planned_fleet_generation,
+          bundle: record.subject.fleet_bundle_hash), transport: LocalExec) {
+          ProcessOutputPresent { text } => if trim(s: text) != "committed" {
+            WorkspaceExecutorHelperRefused { reason: "fleet publication returned no committed receipt" }
+          } else { match workspace_executor_actor_observe(slot: record.subject.slot) {
+            WorkspaceExecutorActorObserved { actor: after } => if after != actor {
+              WorkspaceExecutorHelperRefused { reason: "executor identity changed during fleet publication" }
+            } else { match workspace_executor_journal_publish(snapshot: snapshot, record: WorkspaceExecutorRecord {
+              subject: record.subject, submitter: record.submitter, previous_invocation: record.previous_invocation,
+              invocation: record.invocation, phase: ExecutorGenerationCommitted,
+            }) {
+              WorkspaceExecutorJournalPublished { snapshot: _ } => WorkspaceExecutorHelperAccepted
+              WorkspaceExecutorJournalConflict => WorkspaceExecutorHelperRefused { reason: "fleet publication committed but executor readback is outstanding" }
+              WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorHelperRefused { reason: "fleet publication committed but executor readback is outstanding" }
+            } }
+            WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorHelperRefused { reason: "executor identity became unreadable after publication" }
+          } }
+          ProcessOutputAbsent => WorkspaceExecutorHelperRefused { reason: "fleet publication failed or is unsettled; retain the durable obligation" }
+          ProcessRefused { exit_code: _, stderr: _ } => WorkspaceExecutorHelperRefused { reason: "fleet publication failed or is unsettled; retain the durable obligation" }
+        } }
+        Absent => WorkspaceExecutorHelperRefused { reason: "executor settlement disappeared before publication" }
+      }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorHelperRefused { reason: "executor settlement is unreadable before publication" }
+    } }
+  }
+}
+
+// A completed transaction may be replayed after legitimate slot reuse. It reads the protected
+// completion and shared publication history, never the predecessor guest's current readiness.
+// Incomplete transactions still take the strong settlement path before publication.
+fn workspace_executor_helper_finish(executor: NonEmptyStr, controller: NonEmptyStr,
+  bundle: NonEmptyStr, provenance: WorkspaceCommissioningProvenance, release_dir: NonEmptyStr,
+  login: NonEmptyStr, network: SlotNetworkSanitationSubject) -> WorkspaceExecutorHelperResult {
+  let slot = runner_slot_instance_name(slot: provenance.slot)
+  match workspace_executor_journal_observe(slot_key: slot) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => if (record.phase == ExecutorGenerationCommitted) {
+        if record.subject.plan_hash != provenance.plan_hash || record.subject.fleet_bundle_hash != bundle
+          || record.invocation != (controller as String) {
+          WorkspaceExecutorHelperRefused { reason: "completed executor belongs to a different reviewed transaction" }
+        } else { match workspace_executor_actor_observe(slot: slot) {
+          WorkspaceExecutorActorObserved { actor } => if actor.invocation != executor {
+            WorkspaceExecutorHelperRefused { reason: "completion replay caller is not this executor" }
+          } else { match run_shell_command_capture(command: fleet_generation_publication_as_owner(
+            action: "observe", host: provenance.slot.host as NonEmptyStr,
+            prior: record.subject.prior_fleet_generation, planned: record.subject.planned_fleet_generation,
+            bundle: record.subject.fleet_bundle_hash), transport: LocalExec) {
+            ProcessOutputPresent { text } => if trim(s: text) == "committed" { WorkspaceExecutorHelperAccepted }
+              else { WorkspaceExecutorHelperRefused { reason: "completed executor has no coherent fleet publication history" } }
+            ProcessOutputAbsent => WorkspaceExecutorHelperRefused { reason: "fleet publication history is unreadable" }
+            ProcessRefused { exit_code: _, stderr: _ } => WorkspaceExecutorHelperRefused { reason: "fleet publication history is unreadable" }
+          } }
+          WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorHelperRefused { reason: "completion replay executor is unreadable" }
+        } }
+      } else { match workspace_executor_helper_settle(executor: executor, controller: controller,
+        bundle: bundle, provenance: provenance, release_dir: release_dir, login: login, network: network) {
+        WorkspaceExecutorSettlementObserved { settlement } => workspace_executor_helper_publish(executor: executor, settlement: settlement)
+        WorkspaceExecutorSettlementRefused { reason } => WorkspaceExecutorHelperRefused { reason: reason }
+      } }
+      Absent => WorkspaceExecutorHelperRefused { reason: "finish has no recorded executor transaction" }
+    }
+    WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorHelperRefused { reason: "finish cannot read the executor transaction" }
+  }
+}

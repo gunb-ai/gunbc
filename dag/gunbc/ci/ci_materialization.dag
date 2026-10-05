@@ -380,14 +380,14 @@ fn warm_without_provider_receipt(r: ResolveRealization) -> Bool {
   match r {
     SatisfiedFromSharedPool { obligation: _, provider: p, receipt: rec } =>
       p.provider_id == "" || rec.provider_id == "" || rec.provider_id != p.provider_id
-    _ => false
+    ColdResolvePerformed { obligation: _, receipt: _ } => false
   }
 }
 
 fn cold_without_resolve_receipt(r: ResolveRealization) -> Bool {
   match r {
     ColdResolvePerformed { obligation: _, receipt: rec } => nanosecond_count(rec.resolve_nanos) == 0
-    _ => false
+    SatisfiedFromSharedPool { obligation: _, provider: _, receipt: _ } => false
   }
 }
 

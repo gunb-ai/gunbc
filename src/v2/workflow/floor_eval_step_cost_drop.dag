@@ -34,6 +34,8 @@ import std.types { NonEmptyStr, List }
 //     target's emit (`dag_emit_round_trip_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_approval_intent_digest_rows`: the one real-path claim of each
 //     approval-request constructor (`approval_intent_digest_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_dag_text_round_trip_rows`: the two nested-Bind text round trips
+//     of the dag target (`dag_text_round_trip_nested_bind_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -400,8 +402,25 @@ data floor_eval_step_cost_drop_dag_emit_round_trip_rows: List<EvalStepCostDropMe
   },
 ]
 
+// THE dag TARGET TEXT ROUND-TRIP NESTED-BIND CLAIMS (gunbc#13233; `gunbc.rung_drop`
+// `dag_text_round_trip_nested_bind_new_witness_eval_step_cost`). Two identities, each rendering one
+// emitted two-Bind token sequence, lexing it and parsing it ONCE at `fn_body`. Two lets is the
+// smallest text that exercises a Bind in the body block and a Bind in the value group, so the
+// fragment cannot shrink without dropping the route. Their four one-let siblings in the same module
+// measure under the budget on their own and are not here.
+data floor_eval_step_cost_drop_dag_text_round_trip_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.emit.dag_target_text_round_trip.a_bind_with_a_bind_body_round_trips_as_text" as NonEmptyStr,
+    measured_by: "gunbc#13233, PR required floor run 37210735827 at 9929145faf (main merged after gunbc#13244), D0-ADJUDICATE BLOCKING line for this identity: verdict pass, over the new-witness budget; re-derived by claim_batch --hermetic --source-root dag --source-root src/v2 --entry src/v2/test/claim/emit/dag_target_text_round_trip_test.dag --function a_bind_with_a_bind_body_round_trips_as_text. The billed work is one render, one lex and one real parse at fn_body of a two-Bind text, and the parse carries most of it" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.emit.dag_target_text_round_trip.a_bind_with_a_bind_value_round_trips_as_text" as NonEmptyStr,
+    measured_by: "gunbc#13233, PR required floor run 37210735827 at 9929145faf (main merged after gunbc#13244), D0-ADJUDICATE BLOCKING line for this identity: verdict pass, over the new-witness budget; re-derived by claim_batch --hermetic --source-root dag --source-root src/v2 --entry src/v2/test/claim/emit/dag_target_text_round_trip_test.dag --function a_bind_with_a_bind_value_round_trips_as_text. The billed work is one render, one lex and one real parse at fn_body of a two-Bind text, and the parse carries most of it" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

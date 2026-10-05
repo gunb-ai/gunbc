@@ -95,6 +95,72 @@ fn header_bound_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a generic fn stored as a function value forwards its bounds to the enclosing fn
+// (v1.compiler.emit_rust v1_fn_result_fn_value_clone_forwarded_param_names). control_keying is the
+// shape of std.key_relation key_relation_global: it stores the generic control_global_scope_of into
+// an arrow field, which instantiates that fn at control_keying's own S. The callee emits
+// `<T: Clone>` and the wrapper emitted `<S: 'static, K: 'static>`, which rustc refuses (E0277,
+// `S: Clone`). Three spellings on purpose -- the callee's generic is T, the record's slot is
+// Subject, the wrapper's is S -- so a join that read the reference's own type, or the
+// declaration's uninstantiated field, would find a name the wrapper does not have and bound
+// nothing here.
+type ControlKeying<Subject, Key> {
+  scope_of: fn(Subject) -> String
+  key_of: fn(Subject) -> Key
+}
+
+fn control_global_scope_of<T>(_subject: T) -> String {
+  "global"
+}
+
+fn control_keying<S, K>(key_of: fn(S) -> K) -> ControlKeying<S, K> {
+  ControlKeying { scope_of: control_global_scope_of, key_of: key_of }
+}
+
+// The next hop: this fn stores nothing itself, it hands its own arrow to control_keying. Once
+// control_keying owes `S: Clone`, this one owes it for A -- joined through the arrow's argument
+// position, because an arrow-typed parameter has no head or type argument to match on.
+fn control_keying_via<A, B>(key_of: fn(A) -> B) -> ControlKeying<A, B> {
+  control_keying(key_of: key_of)
+}
+
+fn control_name_length(name: String) -> Int {
+  string_length(s: name)
+}
+
+fn control_keying_scope(name: String) -> String {
+  let keying = control_keying(key_of: control_name_length)
+  let scope_of = keying.scope_of
+  scope_of(name)
+}
+
+fn control_keying_key(name: String) -> Int {
+  let keying = control_keying_via(key_of: control_name_length)
+  let key_of = keying.key_of
+  key_of(name)
+}
+
+fn fn_value_bound_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "fn_value_stored_generic_fn_answers",
+      held: control_keying_scope(name: "abc") == "global"
+    },
+    NativeEmissionCase {
+      identity: "fn_value_red_stored_generic_fn_is_not_another_answer",
+      held: !(control_keying_scope(name: "abc") == "abc")
+    },
+    NativeEmissionCase {
+      identity: "fn_value_passed_fn_answers_beside_it",
+      held: control_keying_key(name: "abc") == 3
+    },
+    NativeEmissionCase {
+      identity: "fn_value_red_passed_fn_reads_its_argument",
+      held: !(control_keying_key(name: "abcd") == 3)
+    }
+  ]
+}
+
 // RULE: an expression legal in value position is projected the same way in a branch condition. A
 // filter -- a call taking a lambda -- in an if-condition was refused at emission
 // (FilterInBranchCondition, deleted) on an unobserved premise that the guarded branch was dropped,
@@ -259,6 +325,10 @@ data native_emission_expected_identities: List<String> = [
   "set_struct_eq_red_everyone_is_not_a_listing",
   "set_and_list_struct_eq_same_fields",
   "set_and_list_struct_eq_red_list_order_differs",
+  "fn_value_stored_generic_fn_answers",
+  "fn_value_red_stored_generic_fn_is_not_another_answer",
+  "fn_value_passed_fn_answers_beside_it",
+  "fn_value_red_passed_fn_reads_its_argument",
   "filter_guard_pipe_then_arm",
   "filter_guard_pipe_else_arm",
   "filter_guard_call_then_arm",
@@ -280,7 +350,7 @@ data native_emission_expected_identities: List<String> = [
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())
+  concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
