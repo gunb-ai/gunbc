@@ -87,6 +87,10 @@ data nfr_reason_verification_producer_absent: String = "NOT terminal-state absor
 
 data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
 
+data nfr_reason_work_provider_local_typed_argv_cutover: String = "unit-termination and unit-lifecycle residue in work_provider_local.dag (match arms the residue checker classifies as wildcard over the closed UnitPopulation / SystemdRunWaitSummary coproducts) predates the typed-argv cutover; that cutover's diff touched the module, so the diff-scoped residue scan now requires these sites rostered — declared so the ratchet re-arms"
+
+data nfr_dissolve_work_provider_local_typed_argv_cutover: DissolutionCondition = unbound_dissolution(description: "the four sites' matches are spelled exhaustively over their closed coproducts (every variant named, no catch-all) in a change that edits work_provider_local.dag — the rows delete with that change")
+
 data nfr_reason_dispatch_selection_routing: String = "provider-selection routing residue (match on ProviderSelectionRequest, ProviderOffer, or ResolvedProviderSelection with off-shape wildcard refusal or false arms) landed with Slice A dispatch_selection.dag; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_dispatch_selection_routing: DissolutionCondition = unbound_dissolution(description: "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold")
@@ -816,6 +820,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/compiler/05_eval.dag::eval_field_projection_of_receiver" },
     reason: nfr_reason_eval_projection_receiver_not_aggregate,
     dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/compute/work_provider_local.dag::compute_summary_is_oom_kill" },
+    reason: nfr_reason_work_provider_local_typed_argv_cutover,
+    dissolution: nfr_dissolve_work_provider_local_typed_argv_cutover,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/compute/work_provider_local.dag::compute_unit_ending" },
+    reason: nfr_reason_work_provider_local_typed_argv_cutover,
+    dissolution: nfr_dissolve_work_provider_local_typed_argv_cutover,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/compute/work_provider_local.dag::unit_lifecycle_decide" },
+    reason: nfr_reason_work_provider_local_typed_argv_cutover,
+    dissolution: nfr_dissolve_work_provider_local_typed_argv_cutover,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/compute/work_provider_local.dag::unit_termination_decide" },
+    reason: nfr_reason_work_provider_local_typed_argv_cutover,
+    dissolution: nfr_dissolve_work_provider_local_typed_argv_cutover,
   },
 ]
 
