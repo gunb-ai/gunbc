@@ -3440,7 +3440,7 @@ mod binary_freshness_tests {
 /// `SourceFile` data; that module decides which files are subjects (those whose v1 lexing yields an
 /// interpolating template), the host loads each subject's closure, and the union is handed back for
 /// one compile. The standing, every row, every count and every completeness mismatch are that
-/// module's; this function maps the standing's first line to a termination. An unreadable root,
+/// module's; this function holds only when the fixture standing AND the receipt's corpus standing (its first line) both hold. An unreadable root,
 /// file, fixture or closure is `SubjectUnreached`, never a standing.
 fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     use crate::v1_compiler_compile::SourceFile;
@@ -3511,7 +3511,8 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     for line in receipt.lines() {
         println!("interpolation-hole-census: report {line}");
     }
-    let held = standing.lines().next() == Some("STANDING held");
+    let held = standing.lines().next() == Some("STANDING held")
+        && receipt.lines().next() == Some("CORPUS complete");
     InvocationOutcome {
         termination: if held {
             Termination::ObservationHeld
@@ -3519,8 +3520,9 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
             Termination::ObservationDidNotHold
         },
         message: format!(
-            "interpolation-hole-census: {} (controls over {FIXTURE}; report over {} subjects of {corpus_files} corpus files, {compiled} sources compiled)",
+            "interpolation-hole-census: {} {} (controls over {FIXTURE}; report over {} subjects of {corpus_files} corpus files, {compiled} sources compiled)",
             standing.lines().next().unwrap_or("STANDING absent"),
+            receipt.lines().next().unwrap_or("CORPUS absent"),
             subjects.len()
         ),
     }

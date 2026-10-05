@@ -8,7 +8,9 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 import v1.std.core {
   Node, NewlineIndex, Token, Resolved, authored_name_at, param_node_name_at, source_text_at, byte_to_line_col,
   ShStrBegin, ShStrMid, ShStrEnd,
-  ExprStringInterp, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprLiteral, ExprBinOp
+  ExprStringInterp, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprLiteral, ExprBinOp,
+  NoExprData, ExprElaboratedLiteral, ExprError, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
+  ExprUnaryOp, ExprLambda, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn
 }
 import std.types { List, String, Map, Bool, Int }
 
@@ -133,11 +135,33 @@ fn ihc_shape(e: Node) -> HoleShape {
   }
 }
 
+// Every other expression kind by its own name, with no wildcard, so a new ExprData constructor
+// refuses here rather than being counted under a label that hides what v1 built.
 fn ihc_expr_data_label(e: Node) -> String {
   match e.expr_data {
+    NoExprData => "no_expr_data"
     ExprLiteral { value: _ } => "literal"
+    ExprElaboratedLiteral { value: _, elaboration: _ } => "elaborated_literal"
+    ExprError { kind: _, message: _ } => "expr_error"
+    ExprVar { binding_kind: _ } => "identifier"
+    ExprFieldAccess { summary: _ } => "dotted"
+    ExprCall { call_semantics: _, descent_evidence: _ } => "call"
+    ExprMethodCall { method_semantics: _ } => "method_call"
+    ExprMatch => "match"
+    ExprIf => "if"
+    ExprLet => "let"
+    ExprRecordLit { parent_enum: _ } => "record_literal"
+    ExprListLit => "list_literal"
+    ExprBinOp { op: _, algebra_field: _, operand: _ } => "binary_op"
+    ExprUnaryOp { op: _ } => "unary_op"
+    ExprLambda => "lambda"
     ExprStringInterp => "template"
-    _ => "other_expression"
+    ExprBlock => "block"
+    ExprCast => "cast"
+    ExprForEach => "for_each"
+    ExprIndex => "index"
+    ExprSlice => "slice"
+    ExprReturn => "return"
   }
 }
 
@@ -169,6 +193,7 @@ fn ihc_hole_text(e: Node, si: Map<String, NewlineIndex>) -> String {
       concat(concat(concat(ihc_named_or_span(e: e, si: si), "/"), to_string(e.children |> count)), "-arg call")
     ExprMethodCall { method_semantics: _ } =>
       concat(concat(concat(ihc_named_or_span(e: e, si: si), "/"), to_string(e.children |> count)), "-arg method call")
+    ExprError { kind: _, message: m } => concat(concat(ihc_span_text(e: e, si: si), " v1 error: "), m)
     _ => ihc_span_text(e: e, si: si)
   }
 }
@@ -501,6 +526,13 @@ fn ihc_census_from_sources(sources: List<SourceFile>, subjects: List<String>) ->
   }
 }
 
+// THE CORPUS STANDING, the receipt's first line. The counts are a decision input (and the conversion
+// change's acceptance gate), so a corpus run in which any lexed hole went unobserved must not exit as
+// held: its counts would be short by exactly the holes it could not see.
+fn ihc_corpus_standing(c: IhcCensus) -> String {
+  if (ihc_completeness_lines(c: c) |> count) == 0 { "CORPUS complete" } else { "CORPUS incomplete" }
+}
+
 // THE ENTRY THE DRIVER CALLS for the corpus: the closure sources and the subject paths in, the
 // receipt (summary, then one row per hole) out. A compile that produces no graph REFUSES in the
 // return value.
@@ -509,7 +541,7 @@ fn interpolation_hole_census_from_sources(sources: List<SourceFile>, subjects: L
     Absent => "REFUSED\tcompile_to_resolved produced no graph"
     Present { value: c } =>
       concat(
-        concat(ihc_summary_lines(c: c), [interpolation_hole_census_header()]),
+        concat(concat([ihc_corpus_standing(c: c)], ihc_summary_lines(c: c)), [interpolation_hole_census_header()]),
         c.rows |> map(r => ihc_row_tsv(r: r))
       ) |> join(separator: "\n")
   }

@@ -14,7 +14,10 @@ pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprCall, ExprFieldAccess, ExprLiteral, ExprMethodCall, ExprStringInterp, ExprVar,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::TokenShape::{ShStrBegin, ShStrEnd, ShStrMid};
@@ -220,9 +223,34 @@ pub fn ihc_shape(e: Rc<Node>) -> Rc<HoleShape> {
 
 pub fn ihc_expr_data_label(e: Rc<Node>) -> String {
     match (*e.expr_data.clone()).clone() {
+        ExprData::NoExprData => "no_expr_data".to_string(),
         ExprData::ExprLiteral { value: _, .. } => "literal".to_string(),
+        ExprData::ExprElaboratedLiteral { .. } => "elaborated_literal".to_string(),
+        ExprData::ExprError { .. } => "expr_error".to_string(),
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => "identifier".to_string(),
+        ExprData::ExprFieldAccess { summary: _, .. } => "dotted".to_string(),
+        ExprData::ExprCall { .. } => "call".to_string(),
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => "method_call".to_string(),
+        ExprData::ExprMatch => "match".to_string(),
+        ExprData::ExprIf => "if".to_string(),
+        ExprData::ExprLet => "let".to_string(),
+        ExprData::ExprRecordLit { parent_enum: _, .. } => "record_literal".to_string(),
+        ExprData::ExprListLit => "list_literal".to_string(),
+        ExprData::ExprBinOp { .. } => "binary_op".to_string(),
+        ExprData::ExprUnaryOp { op: _, .. } => "unary_op".to_string(),
+        ExprData::ExprLambda => "lambda".to_string(),
         ExprData::ExprStringInterp => "template".to_string(),
-        _ => "other_expression".to_string(),
+        ExprData::ExprBlock => "block".to_string(),
+        ExprData::ExprCast => "cast".to_string(),
+        ExprData::ExprForEach => "for_each".to_string(),
+        ExprData::ExprIndex => "index".to_string(),
+        ExprData::ExprSlice => "slice".to_string(),
+        ExprData::ExprReturn => "return".to_string(),
     }
 }
 
@@ -284,6 +312,13 @@ pub fn ihc_hole_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> 
                     (e.children.clone().len() as i64).to_string(),
                 ),
                 "-arg method call".to_string(),
+            ),
+            ExprData::ExprError { message: m, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    ihc_span_text(e.clone(), si.clone()),
+                    " v1 error: ".to_string(),
+                ),
+                m.clone(),
             ),
             _ => ihc_span_text(e.clone(), si.clone()),
         }
@@ -959,6 +994,14 @@ pub fn ihc_census_from_sources(
     }
 }
 
+pub fn ihc_corpus_standing(c: Rc<IhcCensus>) -> String {
+    if ((ihc_completeness_lines(c.clone()).len() as i64) == 0) {
+        "CORPUS complete".to_string()
+    } else {
+        "CORPUS incomplete".to_string()
+    }
+}
+
 pub fn interpolation_hole_census_from_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     subjects: Rc<Vec<String>>,
@@ -967,7 +1010,10 @@ pub fn interpolation_hole_census_from_sources(
         std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
         Some(c) => v1_rt::concat(
             v1_rt::concat(
-                ihc_summary_lines(c.clone()),
+                v1_rt::concat(
+                    Rc::new(vec![ihc_corpus_standing(c.clone())]),
+                    ihc_summary_lines(c.clone()),
+                ),
                 Rc::new(vec![interpolation_hole_census_header()]),
             ),
             Rc::new({
