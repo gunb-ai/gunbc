@@ -45,6 +45,7 @@ import gunbc.codex_provider_runtime_receipt {
   codex_process_fingerprint_unobserved_reason,
 }
 import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
+import gunbc.cursor_harness_credential { cursor_api_key_harness_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.roadmap_sizing {
   NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
@@ -833,7 +834,7 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
                 reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
               },
             },
-            credential: CursorLocalLoginRef,
+            credential: CursorApiKeySecretRef { secret_ref: cursor_api_key_harness_secret_ref },
             standing: provider_standing_inventory_unobserved(),
             default_model: cursor_model_auto,
             process_fingerprint: dispatch_cursor_process_fingerprint,
@@ -1337,7 +1338,7 @@ fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionR
     CursorCliProvider =>
       SelectCursor {
         profile: ProfileAutomatic,
-        credential: CursorLocalLoginRef,
+        credential: CursorApiKeySecretRef { secret_ref: cursor_api_key_harness_secret_ref },
         model: cursor_model_auto,
         agent_mode: "default-edit" as NonEmptyStr,
       }
