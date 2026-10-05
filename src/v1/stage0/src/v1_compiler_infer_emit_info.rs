@@ -452,20 +452,23 @@ pub fn resolve_type_decl_routed(
                     resolution: type_decl_resolution_at_identity(index.clone(), identity.clone()),
                 }),
                 std::option::Option::None => {
-                    let leaf = crate::v1_std_core::qualified_last_segment(
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            type_expr.clone(),
-                        ),
+                    let authored = crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        type_expr.clone(),
                     );
+                    let leaf = crate::v1_std_core::qualified_last_segment(authored.clone());
                     let by_spelling = resolve_type_decl_leaf(index.clone(), leaf.clone());
                     let referencing_module_identity = match (*by_spelling.clone()).clone() {
                         TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
-                            type_decl_referencing_module_declarer(
-                                index.clone(),
-                                l.clone(),
-                                type_expr.clone(),
-                            )
+                            if (authored.clone() == l.clone()) {
+                                type_decl_referencing_module_declarer(
+                                    index.clone(),
+                                    l.clone(),
+                                    type_expr.clone(),
+                                )
+                            } else {
+                                std::option::Option::None
+                            }
                         }
                         TypeDeclResolution::TypeDeclResolved { .. } => std::option::Option::None,
                         TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {

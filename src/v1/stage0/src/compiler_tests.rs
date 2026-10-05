@@ -5476,6 +5476,44 @@ mod compiler_tests {
         );
     }
 
+    // A QUALIFIED REFERENCE IS NOT DECIDED BY THE LOCAL DECLARER. hom.local declares its own Slot
+    // and ALSO names no.such.module.Slot, which resolve cannot bind, so the reference reaches the
+    // emitter unstamped while two modules declare Slot. The referencing-module arm
+    // (v1.compiler.infer_emit_info type_decl_referencing_module_declarer) would pick the LOCAL Slot:
+    // the wrong-declarer class itself. It is admitted only for a bare spelling, so this refuses.
+    // THE CONTROL is the same module without the second declarer: the spelling names a sole
+    // declarer, and nothing refuses.
+    #[test]
+    fn qualified_reference_is_not_decided_by_the_local_declarer() {
+        use crate::v1_compiler_compile::SourceFile;
+        let wide = || {
+            std::rc::Rc::new(SourceFile { path: "fixtures/same_leaf_qualified/wide.dag".to_string(), content: "module hom.wide\n\ntype Inner<C> {\n  value: C\n}\n\ntype Slot<A, B> {\n  first: Inner<A>\n  second: Inner<B>\n}\n".to_string() })
+        };
+        let local = || {
+            std::rc::Rc::new(SourceFile { path: "fixtures/same_leaf_qualified/local.dag".to_string(), content: "module hom.local\n\ntype Slot<T> {\n  held: T\n}\n\ntype Odd<K> {\n  slot: no.such.module.Slot<K>\n}\n".to_string() })
+        };
+        let emitted = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {
+            let result = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(sources.into()),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            result
+                .files
+                .iter()
+                .find(|f| f.path.contains("hom_local"))
+                .map(|f| f.content.clone())
+                .unwrap_or_default()
+        };
+        let red = emitted(vec![wide(), local()]);
+        assert!(red.contains("compile_error!") && red.contains("item 'Odd' references type 'Slot', which more than one module of this closure declares"), "a qualified unstamped reference must refuse, not take the local Slot:\n{red}");
+        let control = emitted(vec![local()]);
+        assert!(
+            control.contains("pub struct Odd<K: Clone>")
+                && !control.contains("more than one module of this closure declares"),
+            "a sole declarer resolves by spelling:\n{control}"
+        );
+    }
+
     // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
     // predates this row. Its message once blamed a value parameter and called a type a fn, so the
     // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
