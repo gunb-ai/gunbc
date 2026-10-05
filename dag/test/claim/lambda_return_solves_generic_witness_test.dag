@@ -36,3 +36,25 @@ test fn a_lambda_after_the_argument_that_fixes_its_parameter_solves_the_result()
 test fn the_same_calls_at_the_type_the_lambda_returns_are_accepted() -> Bool {
   total_blocking_count_for(source: lambda_return_at_its_own_type_source) == 0
 }
+
+// THE ROUND-2 MISMATCH IS ALREADY JUDGED, AND THIS PINS IT. R is fixed by `r: true`, so the
+// lambda is inferred against the substituted callable fn(Int) -> Bool and its Int return is a
+// located mismatch. This held before the lambda-return solve and must keep holding beside it.
+data lambda_return_disagrees_with_a_fixed_parameter_source: String = "module test.claim.lrs_round_two_mismatch\nimport std.types { Bool, Int }\nfn lrs_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { lrs_ap(f: fn(v) { v }, x: 1, r: true) }\n"
+
+// THE TWO-ROUND BOUNDARY, PINNED AS WHAT IT IS. The lambda comes BEFORE the argument that fixes
+// T, so in round 1 its return is the unresolved callable_param and is not bound, round 2 does not
+// contribute, and R reaches the Bool position unsolved and unjudged: Accepted with zero blocking.
+// That is the open member of gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged,
+// whose wall (refuse an unresolved generic at a declared-type position) closes it. This test is
+// EXPECTED to go red when that wall lands, and is then rewritten to assert the refusal: it pins the
+// boundary so that neither a wider bound nor the wall can arrive unannounced.
+data lambda_before_the_fixing_argument_source: String = "module test.claim.lrs_two_round_boundary\nimport std.types { Bool, Int }\nfn lrs_apply2<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn lrs_take(b: Bool) -> Bool { b }\nfn probe() -> Bool { lrs_take(b: lrs_apply2(f: fn(v) { v }, x: 1)) }\n"
+
+test fn a_lambda_return_that_disagrees_with_a_fixed_parameter_refuses() -> Bool {
+  blocking_class_count_for(source: lambda_return_disagrees_with_a_fixed_parameter_source, wanted_class: "TypeMismatch") >= 1
+}
+
+test fn a_lambda_before_the_argument_that_fixes_its_parameter_stays_unsolved_at_the_two_round_bound() -> Bool {
+  total_blocking_count_for(source: lambda_before_the_fixing_argument_source) == 0
+}

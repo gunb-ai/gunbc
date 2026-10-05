@@ -15009,7 +15009,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 }
                             }
                             std::option::Option::None => {
-                                type_variable_node(empty_list_element_variable_id())
+                                type_variable_node("empty_list_element".to_string())
                             }
                         }
                     }
@@ -23670,14 +23670,8 @@ pub fn unify_generics(
                 std::option::Option::None => {
                     break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
                 }
-                Some(existing) => {
-                    if (unify_binding_is_placeholder(existing.clone())
-                        && !unify_binding_is_placeholder(actual.clone()))
-                    {
-                        break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
-                    } else {
-                        break acc.clone();
-                    }
+                Some(_) => {
+                    break acc.clone();
                 }
             }
         } else {
@@ -23844,13 +23838,7 @@ pub fn unify_lambda_solves(
                         std::option::Option::None => {
                             v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
                         }
-                        Some(existing) => {
-                            if unify_binding_is_placeholder(existing.clone()) {
-                                v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
-                            } else {
-                                st.clone()
-                            }
-                        }
+                        Some(_) => st.clone(),
                     }
                 }
             }
@@ -23866,44 +23854,6 @@ pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: _, .. }) => {
                 break true;
-            }
-            _ => {
-                if ((n.children.clone().len() as i64) == 1) {
-                    match n.children.clone().first().cloned() {
-                        Some(c) => {
-                            let __tco_0 =
-                                crate::v1_compiler_infer_types::child_type_node(c.clone());
-                            __tco_loop_n = __tco_0;
-                            continue;
-                        }
-                        std::option::Option::None => {
-                            break false;
-                        }
-                    }
-                } else {
-                    break false;
-                }
-            }
-        }
-    }
-}
-
-pub fn empty_list_element_variable_id() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "empty_list_element".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn unify_binding_is_placeholder(mut __tco_loop_n: Rc<Node>) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv, .. }) => {
-                break (tv.clone() == empty_list_element_variable_id());
             }
             _ => {
                 if ((n.children.clone().len() as i64) == 1) {
