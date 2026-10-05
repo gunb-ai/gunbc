@@ -235,8 +235,9 @@ pub use crate::v1_compiler_infer_emit_info::{
     emit_info_with_expected_type, emit_info_with_fn_return, emit_info_with_fn_type_context,
     empty_emit_graph_info, find_variant_parent, is_enum_in_summaries, is_known_variant,
     lookup_emit_type_summary, resolve_type_decl_reference, summary_is_enum_with_variant,
-    type_decl_identity, type_summary_answer_or_false, type_summary_decided, type_summary_lookup,
-    type_summary_of_reference, type_summary_values, variant_belongs_to_enum, variant_summary_key,
+    type_decl_identity, type_summary_answer_or_false, type_summary_decided,
+    type_summary_keys_of_leaf, type_summary_lookup, type_summary_of_reference, type_summary_values,
+    variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, TypeDeclIndex, TypeDeclResolution, TypeRepr, TypeSummary, TypeSummaryIndex,
@@ -916,15 +917,46 @@ pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
 }
 
 pub fn declaration_is_grounded_coproduct_native_alias(
-    module_path: String,
-    decl_name: String,
+    mut __tco_loop_module_path: String,
+    mut __tco_loop_decl_name: String,
 ) -> bool {
-    ((is_host_freemonoid_vec_alias(decl_name.clone())
-        || declaration_owns_host_option(module_path.clone(), decl_name.clone()))
-        || crate::std_decl_ref::declaration_ref_in_list(
-            crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
-            rust_host_option_carrier_declarations(),
-        ))
+    loop {
+        #[allow(unused_mut)]
+        let mut module_path = __tco_loop_module_path;
+        #[allow(unused_mut)]
+        let mut decl_name = __tco_loop_decl_name;
+        if v1_rt::contains(decl_name.clone(), ".".to_string()) {
+            let segments = Rc::new(
+                decl_name
+                    .clone()
+                    .split(&".".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            {
+                let __tco_0 = Rc::new(
+                    segments
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .take(v1_rt::int_sub((segments.clone().len() as i64), 1) as usize)
+                        .collect::<Vec<_>>(),
+                )
+                .join(&".".to_string());
+                let __tco_1 = crate::v1_std_core::qualified_last_segment(decl_name);
+                __tco_loop_module_path = __tco_0;
+                __tco_loop_decl_name = __tco_1;
+                continue;
+            }
+        } else {
+            break ((is_host_freemonoid_vec_alias(decl_name.clone())
+                || declaration_owns_host_option(module_path.clone(), decl_name.clone()))
+                || crate::std_decl_ref::declaration_ref_in_list(
+                    crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+                    rust_host_option_carrier_declarations(),
+                ));
+        }
+    }
 }
 
 pub fn summary_declares_grounded_coproduct_native_alias(summary: Rc<TypeSummary>) -> bool {
@@ -6440,6 +6472,44 @@ pub fn maybe_mark_shared_type(
     }
 }
 
+pub fn shared_by_every_declarer(
+    type_summaries: Rc<TypeSummaryIndex>,
+    name: String,
+    recursive_type_set: Rc<BTreeSet<String>>,
+    target_needs_sharing: bool,
+) -> bool {
+    {
+        let mut __all = true;
+        for key in crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
+            type_summaries.clone(),
+            name.clone(),
+        )
+        .iter()
+        .cloned()
+        {
+            if !(match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                type_summaries.clone(),
+                key.clone(),
+            ) {
+                Some(summary) => v1_rt::set_contains(
+                    &maybe_mark_shared_type(
+                        v1_rt::rc_empty_set::<String>(),
+                        summary.clone(),
+                        recursive_type_set.clone(),
+                        target_needs_sharing.clone(),
+                    ),
+                    name.clone(),
+                ),
+                std::option::Option::None => true,
+            }) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
 pub fn build_shared_types(
     type_summaries: Rc<TypeSummaryIndex>,
     recursive_type_set: Rc<BTreeSet<String>>,
@@ -6454,12 +6524,21 @@ pub fn build_shared_types(
                 .fold(
                     v1_rt::rc_empty_set::<String>(),
                     |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
-                        maybe_mark_shared_type(
-                            acc,
-                            summary.clone(),
+                        if shared_by_every_declarer(
+                            type_summaries.clone(),
+                            summary.name.clone(),
                             recursive_type_set.clone(),
                             sharing.needs_sharing.clone(),
-                        )
+                        ) {
+                            maybe_mark_shared_type(
+                                acc.clone(),
+                                summary.clone(),
+                                recursive_type_set.clone(),
+                                sharing.needs_sharing.clone(),
+                            )
+                        } else {
+                            acc.clone()
+                        }
                     },
                 );
         let collection_keys = Rc::new({
@@ -21560,8 +21639,34 @@ pub fn is_optional_variant_name(name: String) -> bool {
 }
 
 pub fn is_optional_like_parent_name(name: String) -> bool {
-    ((name.clone() == kernel_optional_mint_name())
-        || is_host_diagnostics_carrier_alias(name.clone()))
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        {
+            let segments = Rc::new(
+                name.clone()
+                    .split(&".".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            let module_path = Rc::new(
+                segments
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .take(v1_rt::int_sub((segments.clone().len() as i64), 1) as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .join(&".".to_string());
+            let decl_name = crate::v1_std_core::qualified_last_segment(name.clone());
+            (declaration_owns_host_option(module_path.clone(), decl_name.clone())
+                || crate::std_decl_ref::declaration_ref_in_list(
+                    crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+                    rust_host_option_carrier_declarations(),
+                ))
+        }
+    } else {
+        ((name.clone() == kernel_optional_mint_name())
+            || is_host_diagnostics_carrier_alias(name.clone()))
+    }
 }
 
 pub fn is_some_like_variant_name(name: String) -> bool {
