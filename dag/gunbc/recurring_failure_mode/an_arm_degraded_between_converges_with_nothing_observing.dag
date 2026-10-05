@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.an_arm_degraded_between_converges_with_nothing_observing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_arm_degraded_between_converges_with_nothing_observing: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_arm_degraded_between_converges_with_nothing_observing" as NonEmptyStr,
+
+  receipts: [
+    "AN ARM WAS DEGRADED FOR ALMOST FOUR HOURS AND NOTHING NOTICED. The arm converge (docs/plans/arm-convergence-recovery-design.md) observes the arm only when a converge runs. Between converges nothing reads it, so a rank that dies is first seen by the NEXT converge -- or by a person -- and the arm reports nothing in the meantime.",
+
+    "SPECIMEN, 2026-10-05, Group A fp8-16: the arm was started by hand at 03:45Z and adopted as committed by converge run 37275627394. Its units are bounded experiments (gunbc.spark.native_serving_realization arm_unit_lifetime_for, ArmBoundedExperiment: RuntimeMaxSec 4h 39min 36s, derived by arm_memory_experiment_runtime). srv5's rank reached its runtime limit at 08:19Z ('Failed with result timeout'), so from 08:19Z the arm could not serve, and it stayed that way until converge run 37304585650 observed the dead rank at 12:04Z and restarted the whole arm. The whole-arm Apply was the correct remedy; the defect is the four hours before it.",
+
+    "TWO FACTS ARE MISSING, AND THEY ARE SEPARATE. (1) No observer of the arm between converges: the converge's own observation (arm_rank_observe_script plus the readback) is the right read, but nothing runs it on a schedule, and no consumer is told when it would diverge. (2) The bounded experiment's expiry is a KNOWN, scheduled end -- the unit's RuntimeMaxSec fixes it at start -- yet it surfaces as an unexplained dead rank. An arm parked between staircase steps under an experiment intent therefore always ends this way, about 4h40m after each start, and the end looks like a crash.",
+
+    "RUNG FOUND AT: outside the ladder for four hours (silent degradation), caught by the next converge. CEILING: mechanically preventable -- an observation of the arm on a cadence shorter than any admitted lifetime, whose divergence is reported. The scheduled expiry is decidable from the unit and should be stated, not discovered. NEXT-RUNG TRIGGER: an arm observe on a cadence (the read-only spark_arm_group_observe mode already exists, with no scheduler), plus the committed-arm record carrying the bounded unit's expiry instant, so an expiry reads as 'ended as scheduled' rather than as a dead rank.",
+  ],
+
+  evidence: [],
+}
