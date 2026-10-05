@@ -1967,7 +1967,8 @@ pub fn load_parse_environment_with_closure(
     let dest = revision_scratch_root("parse-env");
     // If the base's closure has a member the head's does not, the materialized set is incomplete
     // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
-    let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
+    let carried = closure_members_carried_at(repo, revision, closure)?;
+    let outcome = materialize_environment_closure_at(repo, revision, &dest, &carried)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
@@ -2032,6 +2033,29 @@ impl Default for LiveDagIndex {
     }
 }
 
+/// The members of a LIVE-TREE closure that `revision` carries.
+///
+/// Every closure here is resolved over the live tree, which is the head, and is then materialized
+/// at another revision, usually the base. A file the revision does not carry cannot belong to that
+/// revision's closure, so handing it to `git archive` only refused the whole read as a missing
+/// pathspec: every module newly imported into the environment or the kernel-types closure turned the
+/// base reconstruction into NotEvaluated. Comparisons that decide agreement still run over the full
+/// closure, where an absent base blob differs from any head blob. A base member the head's closure
+/// no longer names is not recovered here; resolution then refuses, located, as before.
+fn closure_members_carried_at(
+    repo: &std::path::Path,
+    revision: &str,
+    closure: &BTreeSet<String>,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let mut carried = BTreeSet::new();
+    for path in closure {
+        if blob_id_at(repo, revision, path)?.is_some() {
+            carried.insert(path.clone());
+        }
+    }
+    Ok(carried)
+}
+
 /// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
 fn closure_paths_of(
     entry_rel: &str,
@@ -2094,26 +2118,16 @@ pub fn environment_agreement(
 ) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
     let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
     let mut differing = Vec::new();
-    // THE CLOSURE IS THE HEAD'S, SO A MEMBER MAY NOT EXIST AT THE BASE. A file the base does not
-    // carry cannot be part of the base's environment, so it is not handed to the base's archive,
-    // which refuses a missing pathspec and turned every module newly imported into the environment
-    // into a refused reconstruction. It still counts as a difference. A base module the head's
-    // closure no longer names is not recovered here: the base load then refuses, located.
-    let mut base_closure = BTreeSet::new();
     for path in &closure {
-        let base_blob = blob_id_at(repo, base, path)?;
-        if base_blob != blob_id_at(repo, head, path)? {
+        if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
             differing.push(path.clone());
-        }
-        if base_blob.is_some() {
-            base_closure.insert(path.clone());
         }
     }
     if differing.is_empty() {
         return Ok(EnvironmentAgreement::Identical);
     }
     Ok(EnvironmentAgreement::Differs {
-        base_environment: load_parse_environment_with_closure(repo, base, &base_closure)?,
+        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
         differing_paths: differing,
     })
 }
@@ -2175,7 +2189,8 @@ pub fn kernel_names_at(
     revision: &str,
     live: &LiveDagIndex,
 ) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    let closure = closure_paths_of(KERNEL_TYPES_PATH, live)?;
+    let closure =
+        closure_members_carried_at(repo, revision, &closure_paths_of(KERNEL_TYPES_PATH, live)?)?;
     let dest = revision_scratch_root("kernel-set");
     let outcome = materialize_revision_paths(
         repo,
