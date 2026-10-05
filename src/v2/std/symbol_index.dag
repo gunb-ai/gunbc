@@ -28,7 +28,7 @@ import v2.std.optional {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
-import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
+import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, type_alias_renaming }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -86,7 +86,7 @@ type SymbolIndex {
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
-  declared_type_params: Map<QualifiedName, Node>
+  declared_type_params: Map<QualifiedName, List<Symbol>>
   declared_resources: Map<QualifiedName, ResourceDeclared>
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
 }
@@ -372,7 +372,7 @@ fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: Qualifi
   }
 }
 
-fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: Node) -> SymbolIndex {
+fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
@@ -386,16 +386,10 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
 }
 
 fn symbol_index_declared_type_params_at(index: SymbolIndex, qualified_path: QualifiedName) -> List<Symbol> {
-  match symbol_index_declared_binders_at(index: index, qualified_path: qualified_path) {
-    Present { value: binders } => binder_conj_names(conj: binders)
+  match map_lookup(m: index.declared_type_params, key: qualified_path) {
+    Present { value: params } => params
     Absent => Empty
   }
-}
-
-// THE BINDER CONJ A DECLARATION BINDS, kinds included (v2.std.type_binder type_param_kind_optional).
-// Absent for a declaration that binds no type parameters.
-fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  map_lookup(m: index.declared_type_params, key: qualified_path)
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
@@ -581,6 +575,11 @@ fn symbol_index_candidates_at(
   }
 }
 
+// CANDIDATES ARE DECLARATION IDENTITIES, NOT ROUTES: a candidate's path is its DECLARING path
+// (symbol_index_candidates_at), so one declaration reached twice -- its own import plus an
+// ancestor's import of it, or an import plus the ancestor that declares it -- is one candidate.
+// Distinct declarations under one name stay distinct and the selection still refuses them as
+// ambiguous: this is identity, never first-wins or a preference order.
 // A SERVICE NAMESPACE IS A LOOKUP BOUNDARY (symbol_index_binds_namespace_body_at): a position that binds
 // one contributes no candidates, and a candidate that binds one is never an answer, so from inside
 // `shell.Find.Run` neither a sibling service `Env` nor the prefix `shell` binds bare. The walk still
@@ -598,7 +597,11 @@ fn symbol_index_lexical_collect(
       xs: symbol_index_candidates_at(index: index, position: position, name: name),
       empty: acc,
       cons: fn(a, candidate) {
-        if symbol_index_binds_namespace_body_at(index: index, qualified_path: candidate.path) { a } else { list_snoc_item(xs: a, item: candidate) }
+        if symbol_index_binds_namespace_body_at(index: index, qualified_path: candidate.path) {
+          a
+        } else {
+          if contains(xs: a, item: candidate, eq: fn(seen, c) { seen.path == c.path }) { a } else { list_snoc_item(xs: a, item: candidate) }
+        }
       }
     )
   }

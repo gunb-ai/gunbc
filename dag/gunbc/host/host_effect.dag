@@ -18,6 +18,7 @@ import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIn
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
@@ -81,6 +82,7 @@ type HostEffect =
   | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
+  | LiveDeployServeRoute { endpoint: TailscaleServeEndpoint, enabled: Bool }
   | DeployAccessPreflight {}
   | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
   | EnsureRunnerSlotDirectory { slot: RunnerSlotIdentity, artifact: ActionsRunnerBinaryArtifact }
