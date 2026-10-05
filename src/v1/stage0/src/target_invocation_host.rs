@@ -1225,7 +1225,7 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
                 run.infer_refused,
                 run.cause_groups,
                 run.roots,
-                run.type_census
+                run.type_census.word()
             ),
         },
         Err(cause) => InvocationOutcome {

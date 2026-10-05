@@ -2759,7 +2759,36 @@ pub struct NativeCensusRun {
     pub advised_files: u64,
     pub inferred: u64,
     pub infer_refused: u64,
-    pub type_census: String,
+    pub type_census: TypeCensusVerdictWord,
+}
+
+/// THE TYPE CENSUS'S VERDICT AS THE TERMINAL CARRIES IT: one of the three words the rendered main
+/// writes from `std.compiler_entry` `NativeClaimTerminal`, and nothing else. Any other value refuses
+/// rather than being copied into the receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeCensusVerdictWord {
+    Held,
+    NotHeld,
+    NoObservation,
+}
+
+impl TypeCensusVerdictWord {
+    fn decode(word: &str) -> Option<Self> {
+        match word {
+            "held" => Some(Self::Held),
+            "not_held" => Some(Self::NotHeld),
+            "no_observation" => Some(Self::NoObservation),
+            _ => None,
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Held => "held",
+            Self::NotHeld => "not_held",
+            Self::NoObservation => "no_observation",
+        }
+    }
 }
 
 /// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-infer` verb
@@ -2877,11 +2906,15 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
     let type_census = terminal
         .get("type_census")
         .and_then(|v| v.as_str())
-        .map(str::to_string)
         .ok_or_else(|| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no type_census: {terminal}"
-            )
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no type_census: {terminal}")
+        })
+        .and_then(|word| {
+            TypeCensusVerdictWord::decode(word).ok_or_else(|| {
+                format!(
+                    "V2-NATIVE-CENSUS REFUSAL cause=TypeCensusWordUnknown — {word:?} is not held, not_held or no_observation: {terminal}"
+                )
+            })
         })?;
     Ok(NativeCensusRun {
         cause_groups: need_u64("cause_groups")?,
@@ -3575,6 +3608,20 @@ mod tests {
             .err()
             .expect("must refuse");
         assert!(cause.contains("TerminalNotComplete"), "got: {cause}");
+        // DISCRIMINATING: a type_census word outside the three the main writes refuses.
+        let odd = with_row
+            .replace("census-resolve", "census-infer")
+            .replace("\"held\"", "\"hold\"");
+        let cause = decode_native_census_output(&odd, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("TypeCensusWordUnknown"), "got: {cause}");
+        let run = decode_native_census_output(
+            &with_row.replace("census-resolve", "census-infer"),
+            Some(0),
+        )
+        .expect("a known word decodes");
+        assert_eq!(run.type_census, TypeCensusVerdictWord::Held);
         // A malformed row refuses here exactly as it does under `census`: one decoder.
         let malformed =
             format!("{{\"accepted_file_advisories\":{{\"path\":\"a.dag\"}}}}\n{terminal}");
