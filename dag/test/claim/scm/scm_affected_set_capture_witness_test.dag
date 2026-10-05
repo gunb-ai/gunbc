@@ -37,7 +37,7 @@ import v2.std.collection { map_lookup }
 import gunbc.scm.object_shard_json { shard_partition, shard_identity_of, shard_members_of, shard_batch_size }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit, commit_at_reference, empty_repository,
-  encode_repository_v7, encode_repository_v8,
+  encode_repository_v7, encode_repository_v8, encode_repository_v9,
   decode_repository_v7_index, decode_repository_v8_index, decode_repository_v7_finish,
   ShardedIndexDecoded, ShardedIndexRefused, ObjectRosterAbsentByFormat, ObjectRosterDeclared,
   RepositoryDecoded, RepositoryDecodeRefused,
@@ -55,7 +55,7 @@ import gunbc.scm.write_spine {
   commit_staged, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
-import test.claim.scm_repository_save_witness { scm_sv_v7_fixture_path, scm_sv_v8_fixture_path }
+import test.claim.scm_repository_save_witness { scm_sv_v7_fixture_path, scm_sv_v8_fixture_path, scm_sv_v9_fixture_path }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -501,6 +501,12 @@ test fn a_roster_disagreeing_with_its_shard_is_caught_by_the_whole_load() -> Boo
 // already there.
 test fn the_committed_v8_fixture_is_the_writers_bytes() -> Bool {
   Filesystem.Read(path: scm_sv_v8_fixture_path).content == serialize_json(v: encode_repository_v8(repo: empty_repository()))
+}
+
+// THE WRITER NOW EMITS v9 (the typed intake record), so the committed v9 fixture is the one the
+// guarded save rewrites idempotently; the v8 file above stays the frozen v8 encoder's bytes.
+test fn the_committed_v9_fixture_is_the_writers_bytes() -> Bool {
+  Filesystem.Read(path: scm_sv_v9_fixture_path).content == serialize_json(v: encode_repository_v9(repo: empty_repository()))
 }
 
 // THE COLLISION WALL OVER A PARTIAL STORE (ruling on #13111). A producer that inserts under an
