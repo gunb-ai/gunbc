@@ -1,0 +1,172 @@
+module gunbc.site.element.tokens
+
+import std.types { Bool, Int, List, String }
+import std.list { distinct_by_key }
+import std.decimal { fixed_point_wire }
+import v2.std.algebra { filter }
+import extdeps.google.issue_tracker {
+  IssueTrackerMeasuredText,
+  IssueTrackerMeasuredFace, IssueTrackerFaceBody, IssueTrackerFaceHeading, IssueTrackerFaceMonospace,
+  issue_tracker_visual_tokens,
+  issue_tracker_measured_type_scale, IssueTrackerMeasuredTypeScale,
+  issue_tracker_measured_metrics,
+  issue_tracker_measured_card,
+  issue_tracker_measured_status_chip,
+  issue_tracker_measured_button,
+}
+import gunbc.design.material { CssDecl, decl }
+import gunbc.design.scale {
+  ScaleToken, length_token, named_length_token, font_token, scale_var, scale_decl,
+  all_scale_tokens, font_sans, height_control,
+}
+import extdeps.languages.css.values { GenericFamily, GenericMonospace }
+import extdeps.languages.css.properties { CustomProperty }
+
+// The length and font tokens of the internal tools frontend, each built from the upstream
+// measurement it adopts (extdeps.google.issue_tracker) with the constructors of
+// gunbc.design.scale. They are scoped to this frontend: the shared scale's :root block is
+// emitted on every site page, including pages outside this frontend, so nothing is added to it.
+// A value-named token (space-16, text-13, radius-4) is the same token whoever constructs it, so
+// the block emitted here is this module's tokens MINUS the ones the shared scale already emits,
+// computed by name; a size the shared scale later gains simply stops being emitted here.
+
+// Corners. One radius for cards, chips, buttons, inputs and status; a smaller one for code.
+data radius_element: ScaleToken = length_token(prefix: "radius", px: issue_tracker_measured_metrics.radius_px)
+data radius_code: ScaleToken = length_token(prefix: "radius", px: issue_tracker_measured_metrics.code_radius_px)
+
+// Heights (ruling R3: the product's density on desktop). Two are local adjustments and say so:
+// relation rows adopt the measured header height where the product's rows are one px taller, and
+// grid rows adopt 36 where the product's are 37. The measurements stay as measured upstream.
+data height_chip: ScaleToken = named_length_token(name: "h-chip", px: issue_tracker_measured_metrics.chip_height_px)
+data height_button_small: ScaleToken = named_length_token(name: "h-button-small", px: issue_tracker_measured_metrics.button_small_height_px)
+data height_button: ScaleToken = named_length_token(name: "h-button", px: issue_tracker_measured_metrics.button_height_px)
+data height_tab: ScaleToken = named_length_token(name: "h-tab", px: issue_tracker_measured_metrics.tab_height_px)
+data height_relation_row: ScaleToken = named_length_token(name: "h-relation-row", px: issue_tracker_measured_metrics.relation_header_height_px)
+data height_grid_row: ScaleToken = named_length_token(name: "h-grid-row", px: 36)
+data height_bar: ScaleToken = named_length_token(name: "h-bar", px: issue_tracker_measured_metrics.top_bar_height_px)
+data height_card_label_row: ScaleToken = named_length_token(name: "h-card-label-row", px: issue_tracker_measured_card.label_row_height_px)
+
+// One row per adopted height beside the measurement it was adopted from, for the specimen's
+// density table. The touch target is the shared h-control token (ruling R3: 40px under a coarse
+// pointer); it has no upstream measurement because the product does not reflow for touch.
+type ElementHeightRow {
+  label: String
+  token: ScaleToken
+  measured_px: Int?
+}
+
+fn element_height_rows() -> List<ElementHeightRow> {
+  [
+    ElementHeightRow { label: "Chip", token: height_chip, measured_px: Present { value: issue_tracker_measured_metrics.chip_height_px } },
+    ElementHeightRow { label: "Button, small", token: height_button_small, measured_px: Present { value: issue_tracker_measured_metrics.button_small_height_px } },
+    ElementHeightRow { label: "Button", token: height_button, measured_px: Present { value: issue_tracker_measured_metrics.button_height_px } },
+    ElementHeightRow { label: "Tab", token: height_tab, measured_px: Present { value: issue_tracker_measured_metrics.tab_height_px } },
+    ElementHeightRow { label: "Relation row", token: height_relation_row, measured_px: Present { value: issue_tracker_measured_metrics.relation_row_height_px } },
+    ElementHeightRow { label: "Grid row", token: height_grid_row, measured_px: Present { value: issue_tracker_measured_metrics.grid_row_height_px } },
+    ElementHeightRow { label: "Card label row", token: height_card_label_row, measured_px: Present { value: issue_tracker_measured_card.label_row_height_px } },
+    ElementHeightRow { label: "Top bar", token: height_bar, measured_px: Present { value: issue_tracker_measured_metrics.top_bar_height_px } },
+    ElementHeightRow { label: "Touch target", token: height_control, measured_px: Absent },
+  ]
+}
+
+// Card, status chip and button geometry.
+data card_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_card.padding_px)
+data card_outer_margin: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_card.outer_margin_px)
+data card_border: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_card.border_px)
+data card_leading_bar: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_card.leading_bar_px)
+data status_chip_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_status_chip.side_padding_px)
+data status_chip_ring: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_status_chip.ring_px)
+data button_small_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_button.small_side_padding_px)
+data button_padding: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_button.side_padding_px)
+data button_border: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_button.border_px)
+
+// A custom property whose value is not a typed length or font stack: the product's heading
+// stack, which the upstream row carries as one string, and a fractional letter spacing.
+type RawToken {
+  name: String
+  value: String
+}
+
+fn raw_var(t: RawToken) -> String {
+  join(["var(--", t.name, ")"], "")
+}
+
+fn raw_decl(t: RawToken) -> CssDecl {
+  decl(prop: CustomProperty { name: t.name }, value: t.value)
+}
+
+// Faces. Body is the shared sans token, which already names the product's body stack. The
+// heading stack is the upstream row's own string. Code is the generic monospace family (ruling
+// R2: no monospace file is shipped). No font file is served by this change, so the named
+// families resolve only where the viewer's machine has them.
+data font_heading: RawToken = RawToken { name: "font-heading", value: issue_tracker_visual_tokens.font_heading }
+data font_code: ScaleToken = font_token(name: "font-code", families: [GenericFamily { kind: GenericMonospace }])
+
+fn face_var(face: IssueTrackerMeasuredFace) -> String {
+  match face {
+    IssueTrackerFaceBody => scale_var(t: font_sans)
+    IssueTrackerFaceHeading => raw_var(t: font_heading)
+    IssueTrackerFaceMonospace => scale_var(t: font_code)
+  }
+}
+
+// Type. A measured row's size is adopted in whole CSS px (ruling: sizes 11, 12, 13, 14, 18), so
+// the markdown heading's measured 18.2 is adopted as 18; every other row is already whole.
+fn text_size_token(m: IssueTrackerMeasuredText) -> ScaleToken {
+  length_token(prefix: "text", px: m.size_tenths_px / 10)
+}
+
+fn text_leading_token(m: IssueTrackerMeasuredText) -> ScaleToken {
+  length_token(prefix: "leading", px: m.line_height_px)
+}
+
+fn text_tracking_token(m: IssueTrackerMeasuredText) -> RawToken {
+  RawToken {
+    name: join(["tracking-", to_string(m.tracking_hundredths_px)], ""),
+    value: join([fixed_point_wire(value: m.tracking_hundredths_px, decimals: 2), "px"], ""),
+  }
+}
+
+fn text_tracks(m: IssueTrackerMeasuredText) -> Bool {
+  m.tracking_hundredths_px != 0
+}
+
+// Every measured type row, so that whichever row a text role adopts has its tokens emitted.
+fn measured_text_rows(s: IssueTrackerMeasuredTypeScale) -> List<IssueTrackerMeasuredText> {
+  [
+    s.body, s.field_label, s.card_label, s.section_heading, s.control, s.control_small,
+    s.title, s.markdown_heading, s.chip, s.inline_code,
+  ]
+}
+
+fn element_length_tokens() -> List<ScaleToken> {
+  concat([
+    radius_element, radius_code,
+    height_chip, height_button_small, height_button, height_tab, height_relation_row,
+    height_grid_row, height_bar, height_card_label_row,
+    card_padding, card_outer_margin, card_border, card_leading_bar,
+    status_chip_padding, status_chip_ring,
+    button_small_padding, button_padding, button_border,
+    font_code,
+  ], flat_map(measured_text_rows(s: issue_tracker_measured_type_scale), m => [
+    text_size_token(m: m), text_leading_token(m: m),
+  ]))
+}
+
+fn element_raw_tokens() -> List<RawToken> {
+  concat([font_heading], map(
+    filter(measured_text_rows(s: issue_tracker_measured_type_scale), m => text_tracks(m: m)),
+    m => text_tracking_token(m: m)))
+}
+
+fn token_in_shared_scale(t: ScaleToken) -> Bool {
+  fold(all_scale_tokens(), init: false, f: (acc, shared) => acc || shared.name == t.name)
+}
+
+// The block this frontend adds to :root: its tokens that the shared scale does not already emit,
+// each name once.
+fn element_token_decls() -> List<CssDecl> {
+  concat(
+    map(distinct_by_key(xs: filter(element_length_tokens(), t => !token_in_shared_scale(t: t)), key: t => t.name), t => scale_decl(t: t)),
+    map(distinct_by_key(xs: element_raw_tokens(), key: t => t.name), t => raw_decl(t: t)))
+}

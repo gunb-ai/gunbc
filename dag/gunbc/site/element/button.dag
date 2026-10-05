@@ -1,0 +1,127 @@
+module gunbc.site.element.button
+
+import std.types { Int, List, String }
+import std.markup { Fragment, Attribute, attr }
+import gunbc.site.markup { el_attrs, txt }
+import extdeps.google.issue_tracker {
+  IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
+  issue_button_idiom_wire,
+  IssueActionAvailability, IssueActionEnabled, IssueActionDisabled,
+  issue_tracker_measured_button,
+}
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_2, border_2 }
+import gunbc.site.element.tokens {
+  radius_element, height_button, height_button_small, button_padding, button_small_padding, button_border,
+}
+import gunbc.site.element.palette {
+  palette_var, SlotText, SlotSurface, SlotBorder, SlotAction, SlotActionHover, SlotOnAction,
+}
+import gunbc.site.element.text { element_text_decls, element_control_small_size_decls, ElementControl }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, Border, BorderColor, BorderRadius, Color, Cursor, Display, Height,
+  JustifyContent, MinHeight, Outline, Padding, WhiteSpace, RawProperty,
+}
+
+// Button: one control in the product's three idioms (filled, outlined, text) and two sizes. The
+// idiom and the availability are the upstream vocabulary (extdeps.google.issue_tracker), so a
+// button's kind has one spelling from the model to the attribute a rule selects on. An
+// unavailable button stays visible and is not interactive. Every button here is a plain
+// press control; a form's submit control is added when a form adopts this element.
+type ButtonSize
+  = ButtonSmall
+  | ButtonRegular
+
+type Button {
+  label: String
+  idiom: IssueActionButtonIdiom
+  size: ButtonSize
+  availability: IssueActionAvailability
+}
+
+data button_class: String = "el-button"
+data button_idiom_attribute: String = "data-button-idiom"
+data button_size_attribute: String = "data-button-size"
+
+fn button_size_key(size: ButtonSize) -> String {
+  match size {
+    ButtonSmall => "small"
+    ButtonRegular => "regular"
+  }
+}
+
+fn button_availability_attributes(availability: IssueActionAvailability) -> List<Attribute> {
+  match availability {
+    IssueActionEnabled => []
+    IssueActionDisabled => [attr(name: "disabled", value: "")]
+  }
+}
+
+fn button(input: Button) -> Fragment {
+  el_attrs("button", concat([
+    attr(name: "class", value: button_class),
+    attr(name: "type", value: "button"),
+    attr(name: button_idiom_attribute, value: issue_button_idiom_wire(idiom: input.idiom)),
+    attr(name: button_size_attribute, value: button_size_key(size: input.size)),
+  ], button_availability_attributes(availability: input.availability)), [txt(input.label)])
+}
+
+fn button_idiom_selector(idiom: IssueActionButtonIdiom) -> String {
+  join([".", button_class, "[", button_idiom_attribute, "=\"", issue_button_idiom_wire(idiom: idiom), "\"]"], "")
+}
+
+// A disabled button draws its label and its boundary as fractions of one ink (the upstream
+// button row); the ink here is the text colour of the current scheme.
+fn button_disabled_mix(pct: Int) -> String {
+  join(["color-mix(in srgb, ", palette_var(slot: SlotText), " ", to_string(pct), "%, transparent)"], "")
+}
+
+fn button_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: button_class }, decls: concat([
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Height, value: scale_var(t: height_button)),
+      decl(prop: MinHeight, value: scale_var(t: height_button)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: button_padding)),
+      decl(prop: Border, value: scale_border(w: button_border, color_var: "transparent")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ], element_text_decls(role: ElementControl)) },
+    StaticRule { selector: RawSelector { text: join([".", button_class, "[", button_size_attribute, "=\"", button_size_key(size: ButtonSmall), "\"]"], "") }, decls: concat([
+      decl(prop: Height, value: scale_var(t: height_button_small)),
+      decl(prop: MinHeight, value: scale_var(t: height_button_small)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: button_small_padding)),
+    ], element_control_small_size_decls()) },
+    StaticRule { selector: RawSelector { text: button_idiom_selector(idiom: IssueButtonContainedPrimary) }, decls: [
+      decl(prop: Background, value: palette_var(slot: SlotAction)),
+      decl(prop: Color, value: palette_var(slot: SlotOnAction)),
+    ] },
+    StaticRule { selector: RawSelector { text: button_idiom_selector(idiom: IssueButtonOutlined) }, decls: [
+      decl(prop: Background, value: palette_var(slot: SlotSurface)),
+      decl(prop: BorderColor, value: palette_var(slot: SlotBorder)),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", button_class, ":disabled"], "") }, decls: [
+      decl(prop: Color, value: button_disabled_mix(pct: issue_tracker_measured_button.disabled_label_pct)),
+      decl(prop: Cursor, value: "default"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([button_idiom_selector(idiom: IssueButtonContainedPrimary), ":disabled"], "") }, decls: [
+      decl(prop: Background, value: button_disabled_mix(pct: issue_tracker_measured_button.disabled_boundary_pct)),
+    ] },
+    StaticRule { selector: RawSelector { text: join([button_idiom_selector(idiom: IssueButtonOutlined), ":disabled"], "") }, decls: [
+      decl(prop: Background, value: "transparent"),
+      decl(prop: BorderColor, value: button_disabled_mix(pct: issue_tracker_measured_button.disabled_boundary_pct)),
+    ] },
+    ResponseRule { subject: RawSelector { text: join([button_idiom_selector(idiom: IssueButtonContainedPrimary), ":enabled"], "") }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: palette_var(slot: SlotActionHover)),
+    ] },
+    ResponseRule { subject: ClassSelector { name: button_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+      decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
+    ] },
+  ]
+}

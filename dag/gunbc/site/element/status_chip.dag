@@ -1,0 +1,130 @@
+module gunbc.site.element.status_chip
+
+import std.types { Int, List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap_issue_status {
+  IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked,
+  DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
+}
+import gunbc.design.material { BuildRule, StaticRule, decl }
+import gunbc.design.scale { scale_var, scale_pair, space_0 }
+import gunbc.site.element.tokens { radius_element, height_chip, status_chip_padding, status_chip_ring }
+import gunbc.site.element.palette {
+  PaletteSlot, palette_var, SlotTextDim, SlotSubtle, SlotSurface,
+  SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
+}
+import gunbc.site.element.text { element_text_decls, ElementIdentifier }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, BorderRadius, BoxShadow, Color, CustomProperty, Display, Height, Padding, WhiteSpace,
+}
+
+// StatusChip: the one rendering of an issue's displayed status. It takes the typed status
+// (gunbc.roadmap_issue_status) and nothing else, so no caller can hand it a word to classify.
+// The geometry is the product's status chip. The vocabulary is ours, mapped onto the product's
+// three forms: an ink ring over a light tint of the same ink for the open states, text in the
+// surface colour on a muted fill for done, and a muted ring on the subtle ground for superseded
+// and unknown.
+type StatusChipInk
+  = StatusChipInkReady
+  | StatusChipInkAssigned
+  | StatusChipInkBlocked
+
+type StatusChipForm
+  = StatusChipTinted { ink: StatusChipInk }
+  | StatusChipFilled
+  | StatusChipQuiet
+
+fn status_chip_form(status: IssueDisplayStatus) -> StatusChipForm {
+  match status {
+    DisplayReady => StatusChipTinted { ink: StatusChipInkReady }
+    DisplayAssigned => StatusChipTinted { ink: StatusChipInkAssigned }
+    DisplayActive => StatusChipTinted { ink: StatusChipInkAssigned }
+    DisplayReview => StatusChipTinted { ink: StatusChipInkAssigned }
+    DisplayBlocked => StatusChipTinted { ink: StatusChipInkBlocked }
+    DisplayReturned => StatusChipTinted { ink: StatusChipInkBlocked }
+    DisplayDone => StatusChipFilled
+    DisplaySuperseded => StatusChipQuiet
+    DisplayUnknown => StatusChipQuiet
+  }
+}
+
+data status_chip_inks: List<StatusChipInk> = [StatusChipInkReady, StatusChipInkAssigned, StatusChipInkBlocked]
+
+fn status_chip_ink_key(ink: StatusChipInk) -> String {
+  match ink {
+    StatusChipInkReady => "ready"
+    StatusChipInkAssigned => "assigned"
+    StatusChipInkBlocked => "blocked"
+  }
+}
+
+fn status_chip_ink_slot(ink: StatusChipInk) -> PaletteSlot {
+  match ink {
+    StatusChipInkReady => SlotStatusReady
+    StatusChipInkAssigned => SlotStatusAssigned
+    StatusChipInkBlocked => SlotStatusBlocked
+  }
+}
+
+fn status_chip_form_key(form: StatusChipForm) -> String {
+  match form {
+    StatusChipTinted { ink } => status_chip_ink_key(ink: ink)
+    StatusChipFilled => "filled"
+    StatusChipQuiet => "quiet"
+  }
+}
+
+data status_chip_class: String = "el-status-chip"
+data status_chip_form_attribute: String = "data-status-form"
+data status_chip_ring_property: String = "el-status-chip-ring"
+data status_chip_fill_property: String = "el-status-chip-fill"
+
+// How much of the ink an open state's fill carries, over the surface colour.
+data status_chip_tint_pct: Int = 12
+
+fn status_chip(status: IssueDisplayStatus) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: status_chip_class),
+    attr(name: status_chip_form_attribute, value: status_chip_form_key(form: status_chip_form(status: status))),
+  ], [txt(issue_display_status_label(status: status))])
+}
+
+fn status_chip_form_selector(form: StatusChipForm) -> String {
+  join([".", status_chip_class, "[", status_chip_form_attribute, "=\"", status_chip_form_key(form: form), "\"]"], "")
+}
+
+fn status_chip_property_var(name: String) -> String {
+  join(["var(--", name, ")"], "")
+}
+
+fn status_chip_tinted_rule(ink: StatusChipInk) -> BuildRule {
+  StaticRule { selector: RawSelector { text: status_chip_form_selector(form: StatusChipTinted { ink: ink }) }, decls: [
+    decl(prop: CustomProperty { name: status_chip_ring_property }, value: palette_var(slot: status_chip_ink_slot(ink: ink))),
+    decl(prop: CustomProperty { name: status_chip_fill_property }, value: join([
+      "color-mix(in srgb, ", palette_var(slot: status_chip_ink_slot(ink: ink)), " ", to_string(status_chip_tint_pct), "%, ", palette_var(slot: SlotSurface), ")",
+    ], "")),
+  ] }
+}
+
+fn status_chip_rules() -> List<BuildRule> {
+  concat([
+    StaticRule { selector: ClassSelector { name: status_chip_class }, decls: concat([
+      decl(prop: CustomProperty { name: status_chip_ring_property }, value: palette_var(slot: SlotTextDim)),
+      decl(prop: CustomProperty { name: status_chip_fill_property }, value: palette_var(slot: SlotSubtle)),
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Height, value: scale_var(t: height_chip)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: status_chip_padding)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: Background, value: status_chip_property_var(name: status_chip_fill_property)),
+      decl(prop: BoxShadow, value: join(["inset 0 0 0 ", scale_var(t: status_chip_ring), " ", status_chip_property_var(name: status_chip_ring_property)], "")),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ], element_text_decls(role: ElementIdentifier)) },
+    StaticRule { selector: RawSelector { text: status_chip_form_selector(form: StatusChipFilled) }, decls: [
+      decl(prop: CustomProperty { name: status_chip_fill_property }, value: palette_var(slot: SlotTextDim)),
+      decl(prop: Color, value: palette_var(slot: SlotSurface)),
+    ] },
+  ], map(status_chip_inks, ink => status_chip_tinted_rule(ink: ink)))
+}

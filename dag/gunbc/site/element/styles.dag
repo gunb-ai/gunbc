@@ -1,0 +1,39 @@
+module gunbc.site.element.styles
+
+import std.types { List, String }
+import gunbc.design.material { BuildRule }
+import gunbc.site.document { SiteThemeDecls }
+import gunbc.site.element.palette { palette_decls }
+import gunbc.site.element.tokens { element_token_decls }
+import gunbc.site.element.card { card_class, card_rules }
+import gunbc.site.element.section_heading { section_heading_class, section_heading_rules }
+import gunbc.site.element.status_chip { status_chip_class, status_chip_rules }
+import gunbc.site.element.button { button_class, button_rules }
+
+// What a page needs to use the elements: every element's rules, and the :root blocks they read
+// (the palette per scheme, and this frontend's tokens, which do not vary by scheme). Each element
+// is one row naming its class and its rules, and the ownership guard reads the same rows.
+type ElementStyle {
+  class_name: String
+  rules: List<BuildRule>
+}
+
+fn element_styles() -> List<ElementStyle> {
+  [
+    ElementStyle { class_name: card_class, rules: card_rules() },
+    ElementStyle { class_name: section_heading_class, rules: section_heading_rules() },
+    ElementStyle { class_name: status_chip_class, rules: status_chip_rules() },
+    ElementStyle { class_name: button_class, rules: button_rules() },
+  ]
+}
+
+fn element_rules() -> List<BuildRule> {
+  flat_map(element_styles(), s => s.rules)
+}
+
+fn element_themes() -> List<SiteThemeDecls> {
+  [
+    SiteThemeDecls { day: palette_decls(night: false), night: palette_decls(night: true) },
+    SiteThemeDecls { day: element_token_decls(), night: element_token_decls() },
+  ]
+}
