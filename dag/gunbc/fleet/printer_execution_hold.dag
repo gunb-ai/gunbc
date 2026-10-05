@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_execution_hold
 import std.types {NonEmptyStr,Bool}
+import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.durable_compare_and_set {CasGeneration,cas_generation_count}
 import std.durable_exclusive_hold {DurableHoldOwnerRef,DurableHoldReleaseRef,HoldSlotHeld,durable_hold_owner_equal}
@@ -9,21 +10,20 @@ import gunbc.durable_exclusive_hold_file_store {file_hold_acquire,FileHoldAcquir
 // Existing single starts also acquire it, so a legacy entry cannot race a batch.
 // A crashed/uncertain owner remains held until the existing dead-holder recovery
 // protocol establishes recovery; merely using the same owner text does not re-enter.
-data hold_root:NonEmptyStr = "/var/lib/gunbc/printer-starts/controller"
 data hold_key:NonEmptyStr = "fleet-print-controller"
 type PrinterExecutionHold sole_constructor {owner:DurableHoldOwnerRef,generation:CasGeneration}
 fn hold_current(hold:PrinterExecutionHold) -> Bool {
- match observe_file_hold(root:hold_root,key:hold_key) {
+ match observe_file_hold(root:printer_start_claim_directory,key:hold_key) {
   HoldSlotHeld {owner:o,generation:g}=>durable_hold_owner_equal(left:o,right:hold.owner) && cas_generation_count(g:g)==cas_generation_count(g:hold.generation)
   _=>false
  }
 }
 fn with_execution_hold(owner:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
- match file_hold_acquire(root:hold_root,slot_key:hold_key,requested_owner:owner as DurableHoldOwnerRef) {
+ match file_hold_acquire(root:printer_start_claim_directory,slot_key:hold_key,requested_owner:owner as DurableHoldOwnerRef) {
   FileHoldAcquired {slot_key:_,owner:o,generation:g}=>{
    let result=use(PrinterExecutionHold {owner:o,generation:g})
    match result {
-    ExitSuccess=>match file_hold_release_assess(root:hold_root,slot_key:hold_key,owner:o,acquired_generation:g,released_by:owner as DurableHoldReleaseRef) {
+    ExitSuccess=>match file_hold_release_assess(root:printer_start_claim_directory,slot_key:hold_key,owner:o,acquired_generation:g,released_by:owner as DurableHoldReleaseRef) {
      FileHoldReleasePlanned {plan:p}=>match file_hold_release_commit(plan:p) {FileHoldReleased {slot_key:_,generation:_}=>ExitSuccess _=>exit_failure(reason:"Printer controller hold release failed; do not start another controller")}
      _=>exit_failure(reason:"Printer controller hold changed before release")
     }

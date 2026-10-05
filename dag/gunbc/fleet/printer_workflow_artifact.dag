@@ -1,6 +1,11 @@
 module gunbc.fleet.printer_workflow_artifact
 
-import std.types { String }
+import std.types { String,NonEmptyStr }
 
 // The runtime writer, CI display and workflow uploader share one receipt path.
 data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
+
+// Shared, pre-provisioned LAN-host state. Claims, the controller hold and batch
+// observations use the same established directory and host access policy.
+data printer_start_claim_directory:NonEmptyStr = "/var/lib/gunbc/printer-starts"
+fn printer_batch_state_path() -> String {concat(printer_start_claim_directory as String,"/batch-state.json")}

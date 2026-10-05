@@ -21,8 +21,9 @@ import gunbc.fleet.printer_report { report_using_session }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
 import gunbc.fleet.printer_start_reconciliation {StartObservationPolicy,ConfirmBeforeReturn,ObserveOnFleetTicks,record_publication}
+import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
 import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current,with_execution_hold}
-import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_version,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_project_delivery {
   PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
   PayloadIdentificationRefusedResidueRemains, project_payload_digest, abandon_payload,
@@ -145,7 +146,7 @@ fn report_allows_start(text: String) -> Bool {
 
 // Fixed host state: changing output folders cannot re-admit the same grant. Never delete
 // claims on failure; an unknown physical effect must be reconciled by observation.
-data printer_start_claim_directory: String = "/var/lib/gunbc/printer-starts"
+
 fn start_claim_path(escalation_id:NonEmptyStr) -> String { join([printer_start_claim_directory,"/",escalation_id as String,".claimed"],"") }
 
 // A batch plate's identity survives new output directories, new slicing digests and
@@ -215,7 +216,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 fn start_authorized(observation_policy:StartObservationPolicy,hold:PrinterExecutionHold,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
- if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
+ if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
  let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}
  if request.subject!=expected.subject || request.escalation_id!=expected.escalation_id {return exit_failure(reason:"Approval request does not describe these printer bytes")}
  let now=match approval_instant_now() {Present {value:t}=>t Absent=>return exit_failure(reason:"Approval clock unavailable")}

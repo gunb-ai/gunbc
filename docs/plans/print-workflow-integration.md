@@ -94,7 +94,7 @@ There are three durable boundaries:
 
 Per-start receipts and observations live beside their claim under
 `/var/lib/gunbc/printer-starts`. The timestamped fleet projection is
-`controller/batch-state.json`. The old single-printer receipt filename remains a
+`batch-state.json`. The old single-printer receipt filename remains a
 compatibility projection; the batch consumes the per-start records instead.
 
 On uncertainty or process death, holds/claims remain. Same-owner text does not prove the

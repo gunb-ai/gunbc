@@ -12,6 +12,7 @@ import extdeps.tools.sleep
 import extdeps.shell.exec {ProcessOutputPresent}
 import extdeps.tools.hostname
 import std.algebra {trim}
+import gunbc.fleet.printer_workflow_artifact {printer_batch_state_path}
 import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
 import gunbc.fleet.printer_tool_readiness {printer_mqtt_tool_ready}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
@@ -156,7 +157,7 @@ fn drive_tick(hold:PrinterExecutionHold,state:DriveState,token_source:AccessToke
    let filed=map(lanes,l=>file_ready(lane:l))
    let advanced=map(filed,l=>advance_lane(hold:hold,lane:l,token_source:token_source))
    let observed_at=match approval_instant_now() {Present {value:t}=>t Absent=>return DriveStopped {exit:exit_failure(reason:"Cannot timestamp fleet progress; controller hold retained")}}
-   if !Filesystem.Write(path:"/var/lib/gunbc/printer-starts/controller/batch-state.json",content:serialize_json(v:json_object(members:[json_kv(key:"schema",value:json_string(s:"gunbc.printer-batch.v1")),json_kv(key:"observed_at",value:json_string(s:observed_at as String)),json_kv(key:"lanes",value:json_array(elements:map(advanced,l=>lane_json(lane:l))))]))).success {return DriveStopped {exit:exit_failure(reason:"Cannot retain fleet progress; controller hold retained")}}
+   if !Filesystem.Write(path:printer_batch_state_path(),content:serialize_json(v:json_object(members:[json_kv(key:"schema",value:json_string(s:"gunbc.printer-batch.v1")),json_kv(key:"observed_at",value:json_string(s:observed_at as String)),json_kv(key:"lanes",value:json_array(elements:map(advanced,l=>lane_json(lane:l))))]))).success {return DriveStopped {exit:exit_failure(reason:"Cannot retain fleet progress; controller hold retained")}}
    let counts=batch_counts(phases:map(advanced,l=>l.phase))
    if counts.pending==0 && counts.printing==0 {return DriveStopped {exit:if counts.attention==0 {ExitSuccess} else {exit_failure(reason:"Fleet batch has lanes requiring attention; inspect per-start evidence")}}}
    if !sleep.Delay.Seconds(seconds:"10").success {return DriveStopped {exit:exit_failure(reason:"Fleet polling delay failed; retain start claims")}}
