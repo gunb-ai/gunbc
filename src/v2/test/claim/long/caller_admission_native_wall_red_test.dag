@@ -264,7 +264,7 @@ fn dbg_decl_lookup() -> ProcessExit {
                         Absent => exit_failure(reason: "NO-MODULE-BODY")
                         Present { value: body } =>
                           match sugar_named_child_optional(root: body, name: ^unlisted_caller) {
-                            Absent => exit_failure(reason: "NO-ARROW")
+                            Absent => exit_failure(reason: concat("NO-ARROW ROOT ", dbg_anat_deep(n: rt.root, depth: 30)))
                             Present { value: arrow } =>
                               match dbg_admit_decl_lookup_from_arrow(arrow: arrow, declarations: rt.resolved_declarations) {
                                 Absent => exit_failure(reason: "LINKS-UNREADABLE")
