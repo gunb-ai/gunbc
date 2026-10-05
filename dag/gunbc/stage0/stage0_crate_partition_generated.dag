@@ -59,6 +59,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_checked_arithmetic",
         "std_induction",
         "std_graph",
+        "std_unicode_scalar",
         "extdeps_uri",
         "extdeps_external_authority",
         "extdeps_posix_clock_gettime",
