@@ -24,6 +24,7 @@ import v2.workflow.floor_enrolment_margin {
   enrolment_margin_blocking_cause,
   EnrolmentMarginBlocker, EnrolmentMarginRow,
   enrolment_margin_blockers,
+  enrolment_host_speed_calibration,
 }
 import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import gunbc.floor_cost_distribution {
@@ -33,6 +34,10 @@ import gunbc.floor_cost_distribution {
 import v2.workflow.floor_enrolment_dead_band { app_attest_verifier_enrolment_dead_band_observed_only, mtcollins1_boot_matrix_enrolment_dead_band_observed_only }
 import v2.std.integer { Int }
 import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
+import v2.workflow.floor_eval_step_calibration {
+  HostSpeedFactor, HostSpeedCalibrated,
+  host_speed_reference_factor, host_speed_calibration_holds, host_speed_calibration_name,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
@@ -89,6 +94,7 @@ fn bound_without_ceiling(lower_bound_ms: Int) -> EnrolmentCostReading {
 fn standing_of(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
   enrolment_margin_standing(
     reading: reading,
+    factor: host_speed_reference_factor(),
     budget_ms: floor_enrolment_margin_budget_ms(),
     per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
     declaration: EnrolmentExpensivenessNotDeclared,
@@ -102,6 +108,7 @@ fn standing_declared(
 ) -> EnrolmentMarginStanding {
   enrolment_margin_standing(
     reading: reading,
+    factor: host_speed_reference_factor(),
     budget_ms: floor_enrolment_margin_budget_ms(),
     per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
     declaration: EnrolmentExpensivenessIsDeclared {
@@ -554,6 +561,7 @@ test fn the_roster_envelope_floor_is_derived_from_the_line_and_the_envelope() ->
 test fn the_line_envelope_is_reachable_only_through_a_typed_cost_debt_row() -> Bool {
   let undeclared = enrolment_margin_standing(
     reading: observed(cpu_ms: 466),
+    factor: host_speed_reference_factor(),
     budget_ms: floor_enrolment_margin_budget_ms(),
     per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
     declaration: EnrolmentExpensivenessNotDeclared,
@@ -659,6 +667,7 @@ test fn the_envelope_floor_is_strictly_inside_the_margin() -> Bool {
 test fn an_undeclared_reading_over_the_margin_still_refuses() -> Bool {
   let s = enrolment_margin_standing(
     reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count() + 1),
+    factor: host_speed_reference_factor(),
     budget_ms: floor_enrolment_margin_budget_ms(),
     per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
     declaration: EnrolmentExpensivenessNotDeclared,
@@ -713,4 +722,80 @@ test fn the_dead_band_authority_names_exactly_the_two_app_attest_claims() -> Boo
       map(app_attest_verifier_enrolment_dead_band_observed_only(), o => o.identity),
       map(mtcollins1_boot_matrix_enrolment_dead_band_observed_only(), o => o.identity),
     )
+}
+
+// THE HOST-SPEED CALIBRATION CONTROLS (node adhoc-c9504740-637). The factor comes from the
+// calibration specimen's reading in the same run; these fixtures SCALE THAT READING to stand for two
+// runners of different speed, exactly as the evidence on gunbc#13168 did in the wild. The specimen's
+// declared work is 55,011 eval steps at a pinned 723 steps/ms, so it costs about 76ms on the
+// calibration runner; 133ms is the same specimen on a runner 1.75x slower.
+fn specimen_reading(cpu_ms: Int, steps: Int) -> EnrolmentCostReading {
+  EnrolmentCostMeasured {
+    reading: ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms), eval_steps: eval_step_count(count: steps) }
+  }
+}
+
+fn factor_at(specimen_cpu_ms: Int) -> HostSpeedFactor {
+  match enrolment_host_speed_calibration(specimen: specimen_reading(cpu_ms: specimen_cpu_ms, steps: 55011)) {
+    HostSpeedCalibrated { specimen_cpu_ms: _, factor: f } => f
+    _ => HostSpeedFactor { factor_permille: 0 }
+  }
+}
+
+fn standing_at(reading: EnrolmentCostReading, factor: HostSpeedFactor) -> EnrolmentMarginStanding {
+  enrolment_margin_standing(
+    reading: reading,
+    factor: factor,
+    budget_ms: floor_enrolment_margin_budget_ms(),
+    per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
+    declaration: EnrolmentExpensivenessNotDeclared,
+  )
+}
+
+// SAME CLAIM, TWO RUNNERS, ONE VERDICT. The #13168 shape: 240ms on the fast runner, 426ms on a
+// runner 1.75x slower. Raw, the slow reading is over the margin and the fast one is not -- the flip
+// this change exists to remove, asserted here so the control cannot pass by both readings
+// happening to sit on one side.
+test fn the_same_claim_gets_the_same_verdict_on_two_runners_of_different_speed() -> Bool {
+  let fast = standing_at(reading: observed(cpu_ms: 240), factor: factor_at(specimen_cpu_ms: 76))
+  let slow = standing_at(reading: observed(cpu_ms: 426), factor: factor_at(specimen_cpu_ms: 133))
+  let raw_fast = standing_at(reading: observed(cpu_ms: 240), factor: host_speed_reference_factor())
+  let raw_slow = standing_at(reading: observed(cpu_ms: 426), factor: host_speed_reference_factor())
+  standing_kind(s: fast) == standing_kind(s: slow)
+    && standing_kind(s: fast) == "within-margin"
+    && standing_kind(s: raw_fast) != standing_kind(s: raw_slow)
+}
+
+// A GENUINELY EXPENSIVE CLAIM STILL REFUSES ON A SLOW RUNNER. Calibration rescales, it does not
+// excuse: 466ms of native cost at the calibration runner's speed is 815ms on the 1.75x runner, and
+// it refuses at both.
+test fn a_genuinely_expensive_native_claim_still_refuses_after_calibration() -> Bool {
+  let at_reference = standing_at(reading: observed(cpu_ms: 466), factor: factor_at(specimen_cpu_ms: 76))
+  let on_slow = standing_at(reading: observed(cpu_ms: 815), factor: factor_at(specimen_cpu_ms: 133))
+  standing_kind(s: at_reference) == "over-margin" && standing_kind(s: on_slow) == "over-margin"
+}
+
+// A MISSING CALIBRATION REFUSES, AND SO DOES A CENSORED, MOVED OR OUT-OF-RANGE ONE. No arm yields a
+// default factor.
+test fn a_missing_calibration_refuses_and_never_defaults() -> Bool {
+  let absent = enrolment_host_speed_calibration(specimen: EnrolmentCostAbsent { witness_identity: "specimen", cause: "no_claim_cost_row" })
+  let withheld = enrolment_host_speed_calibration(specimen: EnrolmentNotPlanned { witness_identity: "specimen", disposition: "declined" })
+  let cut = enrolment_host_speed_calibration(specimen: censored(lower_bound_ms: 900, ceiling_ms: 1000))
+  let unbounded = enrolment_host_speed_calibration(specimen: bound_without_ceiling(lower_bound_ms: 900))
+  !host_speed_calibration_holds(c: absent) && host_speed_calibration_name(c: absent) == "host_speed_specimen_not_measured"
+    && !host_speed_calibration_holds(c: withheld)
+    && !host_speed_calibration_holds(c: cut) && host_speed_calibration_name(c: cut) == "host_speed_specimen_censored"
+    && !host_speed_calibration_holds(c: unbounded)
+}
+
+test fn a_moved_specimen_or_an_implausible_factor_refuses() -> Bool {
+  let moved = enrolment_host_speed_calibration(specimen: specimen_reading(cpu_ms: 76, steps: 55012))
+  let too_fast = enrolment_host_speed_calibration(specimen: specimen_reading(cpu_ms: 20, steps: 55011))
+  let too_slow = enrolment_host_speed_calibration(specimen: specimen_reading(cpu_ms: 400, steps: 55011))
+  let healthy = enrolment_host_speed_calibration(specimen: specimen_reading(cpu_ms: 76, steps: 55011))
+  host_speed_calibration_name(c: moved) == "host_speed_specimen_moved"
+    && host_speed_calibration_name(c: too_fast) == "host_speed_factor_out_of_range"
+    && host_speed_calibration_name(c: too_slow) == "host_speed_factor_out_of_range"
+    && host_speed_calibration_holds(c: healthy)
+    && factor_at(specimen_cpu_ms: 76).factor_permille == 998
 }

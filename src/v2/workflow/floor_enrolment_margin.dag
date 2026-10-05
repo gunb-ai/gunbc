@@ -1,7 +1,7 @@
 module v2.workflow.floor_enrolment_margin
 
 import v2.std.algebra { list_reverse }
-import std.types { List }
+import std.types { List, NonEmptyStr }
 import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import v2.workflow.floor_cost_debt_admission {
   floor_cost_debt_typed_admitted_identities,
@@ -12,7 +12,12 @@ import gunbc.floor_cost_distribution {
 }
 import v2.workflow.floor_enrolment_dead_band { enrolment_dead_band_identities }
 import v2.std.integer { Int }
-import std.measure { Millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond_count, eval_step_count_value }
+import v2.workflow.floor_eval_step_calibration {
+  HostSpeedFactor, HostSpeedCalibration, HostSpeedSpecimenNotMeasured, HostSpeedSpecimenCensored,
+  host_speed_calibration_of, calibrated_cpu_ms, floor_eval_step_calibration, calibration_specimen_identity,
+  calibration_rate, calibration_specimen_eval_steps, host_speed_factor_lower_permille, host_speed_factor_upper_permille,
+}
 
 // THE ENROLMENT MARGIN GATE: a newly enrolled witness must be SHOWN to reach a verdict with
 // headroom, and the headroom is derived from how much a RUNNER varies rather than from what our
@@ -117,6 +122,17 @@ fn floor_enrolment_margin_envelope_permille() -> Int {
 // witness and a renderer and decided nothing, which is the dangling declaration DESIGN section 3c
 // exists to catch. Consuming it IS the payment; minting a second statistic beside it would be the
 // section 3 fork.
+//
+// THE BUDGET IS IN CALIBRATED CPU MILLISECONDS (node adhoc-c9504740-637, sharp-raven-357 ruling
+// 2026-10-05). Every reading this gate judges is first put through the run's host-speed factor
+// (`enrolment_calibrated_reading`), so the budget, the dead band's floor and the roster floor are all
+// compared against CPU ms on the calibration runner, not on whichever runner the run drew. The
+// figure is unchanged and is POLICY: the per-subject line inside the measured p90 runner envelope.
+// The envelope is KEPT although the factor now removes most runner-to-runner speed, because what is
+// left -- one specimen reading's timing noise, and claims whose workload moves with the host
+// differently from the specimen's -- has not been measured on calibrated data. Re-deriving the
+// envelope over calibrated readings is how the margin would legitimately widen; until then the
+// margin stays where the uncalibrated evidence put it.
 fn floor_enrolment_margin_budget_ms() -> Millisecond {
   implied_clean_run_budget(
     ceiling_ms: required_floor_per_subject_cpu_line_ms(),
@@ -444,13 +460,18 @@ fn enrolment_declared_measured_standing(
 // path; changed-witness still refuses `PlannedWithoutTerminalVerdict`. (3) Absent with a reached
 // verdict: `CostObservationMissingUnderVerdictOnly` — standing down this gate with nothing
 // published is the discriminating red, not a silent admit.
+//
+// THE READING IS CALIBRATED ON ENTRY, AND THE FACTOR IS A REQUIRED PARAMETER rather than a step the
+// caller may skip: a standing cannot be computed from an uncalibrated CPU reading. One factor per
+// run, applied to every identity alike.
 fn enrolment_margin_standing(
   reading: EnrolmentCostReading,
+  factor: HostSpeedFactor,
   budget_ms: Millisecond,
   per_subject_line_ms: Millisecond,
   declaration: EnrolmentExpensivenessDeclaration,
 ) -> EnrolmentMarginStanding {
-  match reading {
+  match enrolment_calibrated_reading(reading: reading, factor: factor) {
     EnrolmentNotPlanned { witness_identity: i, disposition: d } =>
       EnrolmentOutsideThisRunsExecution { witness_identity: i, disposition: d }
     EnrolmentCostAbsent { witness_identity: i, cause: k } =>
@@ -497,6 +518,78 @@ fn enrolment_margin_standing(
           }
       }
   }
+}
+
+// ONE READING IN CALIBRATED UNITS. Every CPU figure the reading carries, exact or bound, is
+// rescaled by the same factor; eval steps are host-independent and pass through untouched. Absence
+// and non-planning carry no figure and pass through.
+fn enrolment_calibrated_reading(reading: EnrolmentCostReading, factor: HostSpeedFactor) -> EnrolmentCostReading {
+  match reading {
+    EnrolmentNotPlanned { witness_identity: i, disposition: d } => EnrolmentNotPlanned { witness_identity: i, disposition: d }
+    EnrolmentCostAbsent { witness_identity: i, cause: k } => EnrolmentCostAbsent { witness_identity: i, cause: k }
+    EnrolmentCostMeasured { reading: r } =>
+      EnrolmentCostMeasured {
+        reading: match r {
+          ObservedCpuReading { cpu_ms: c, eval_steps: st } =>
+            ObservedCpuReading { cpu_ms: calibrated_cpu_ms(raw: c, factor: factor), eval_steps: st }
+          RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling, eval_steps_before_censor: st } =>
+            RightCensoredCpuReading {
+              cpu_lower_bound_ms: calibrated_cpu_ms(raw: b, factor: factor),
+              censoring_ceiling_ms: ceiling,
+              eval_steps_before_censor: st,
+            }
+          CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: st } =>
+            CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: calibrated_cpu_ms(raw: b, factor: factor), eval_steps_before_censor: st }
+        },
+      }
+  }
+}
+
+// THE RUN'S HOST-SPEED CALIBRATION FROM THE SPECIMEN'S OWN READING IN THIS RUN. The exact arm is
+// classified by the calibration authority; the two arms that carry no exact figure refuse here,
+// typed, because no factor may be derived from a bound or from silence -- a default of 1000 would be
+// the absorbing fallback DESIGN section 5 forbids.
+fn enrolment_host_speed_calibration(specimen: EnrolmentCostReading) -> HostSpeedCalibration {
+  let id = calibration_specimen_identity(calibration: floor_eval_step_calibration)
+  match specimen {
+    EnrolmentNotPlanned { witness_identity: _, disposition: d } =>
+      HostSpeedSpecimenNotMeasured { specimen: id, cause: d }
+    EnrolmentCostAbsent { witness_identity: _, cause: k } =>
+      HostSpeedSpecimenNotMeasured { specimen: id, cause: k }
+    EnrolmentCostMeasured { reading: r } =>
+      match r {
+        ObservedCpuReading { cpu_ms: c, eval_steps: st } =>
+          host_speed_calibration_of(calibration: floor_eval_step_calibration, specimen_cpu_ms: c, specimen_eval_steps: eval_step_count_value(s: st))
+        RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _, eval_steps_before_censor: _ } =>
+          HostSpeedSpecimenCensored { specimen: id, cpu_lower_bound_ms: b }
+        CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
+          HostSpeedSpecimenCensored { specimen: id, cpu_lower_bound_ms: b }
+      }
+  }
+}
+
+// THE HOST READ POINTS FOR THE CALIBRATION, in this gate's frame because this gate is the
+// calibration's only consumer and is already the module the seed evaluates by name. Projections
+// with no arithmetic of their own; the seed's mirror of `host_speed_calibration_of` computes from
+// exactly these and nothing else.
+fn enrolment_host_speed_specimen_identity() -> NonEmptyStr {
+  calibration_specimen_identity(calibration: floor_eval_step_calibration)
+}
+
+fn enrolment_host_speed_specimen_eval_steps_count() -> Int {
+  eval_step_count_value(s: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration))
+}
+
+fn enrolment_host_speed_rate_count() -> Int {
+  calibration_rate(calibration: floor_eval_step_calibration)
+}
+
+fn enrolment_host_speed_lower_permille_count() -> Int {
+  host_speed_factor_lower_permille()
+}
+
+fn enrolment_host_speed_upper_permille_count() -> Int {
+  host_speed_factor_upper_permille()
 }
 
 // THE REFUSING POLARITY, STATED ONCE. Only a row MEASURED and measured INSIDE the margin is
