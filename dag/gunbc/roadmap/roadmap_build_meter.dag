@@ -1,0 +1,259 @@
+module gunbc.roadmap.roadmap_build_meter
+
+import std.types { Bool, Int, List, String }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsObserved, RoundsUnobserved, RoundObservation, round_files_rise,
+}
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
+  ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
+  provider_execution_activity, provider_execution_detail,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentState,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
+  WorkflowSegmentRefused, WorkflowSegmentStopped,
+  workflow_segment_kind_label, workflow_segment_state_key, workflow_segment_detail_bounded,
+}
+import gunbc.roadmap.roadmap_submission {
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
+  HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished, candidate_handoff_state_label,
+}
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.site.element.build_meter {
+  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite,
+  BuildMeterRounds, BuildMeterRoundsRecorded, BuildMeterRoundsUnobserved,
+  BuildMeterPose, BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
+  BuildMeterHalt, build_meter_view_key,
+}
+
+// THE BUILD METER'S VIEW OF ONE ATTEMPT, derived here and only drawn by the element
+// (gunbc.site.element.build_meter). Every field is read from the attempt's progress projection
+// (gunbc.roadmap_workflow_progress WorkflowAttemptProgress) through the authority that owns it:
+// stage names and states from gunbc.roadmap_workflow_stage, the write rule from
+// gunbc.harness.harness_throughput, the activity sentence from gunbc.roadmap_provider_events, the
+// outcome from gunbc.roadmap.roadmap_submission. Nothing is classified by reading text.
+//
+// WHAT A ROUND'S MARKS ARE, TODAY. The ledger records, per round, how many tool calls the model
+// made and how many paths the worktree reported changed afterwards. So a round yields at most
+// two marks: run, counted by its tool calls, and write, counted by how far the changed-path count
+// rose over the last measured value. The event stream does not yet say which tool a call was, so
+// no other kind is produced here; when the producer types its tool kinds they arrive as further
+// marks and the element already draws them.
+
+type BuildMeterRoundFold {
+  last_measured: Int?
+  rounds: List<BuildMeterRound>
+}
+
+fn build_meter_round_marks(tool_calls: Int?, files_rise: Int?) -> List<BuildMeterMark> {
+  concat(
+    match tool_calls {
+      Present { value: n } => if n > 0 { [BuildMeterMark { kind: BuildMeterRun, count: n }] } else { [] }
+      Absent => []
+    },
+    match files_rise {
+      Present { value: rise } => if rise > 0 { [BuildMeterMark { kind: BuildMeterWrite, count: rise }] } else { [] }
+      Absent => []
+    })
+}
+
+fn build_meter_round_step(acc: BuildMeterRoundFold, r: RoundObservation) -> BuildMeterRoundFold {
+  BuildMeterRoundFold {
+    last_measured: match r.files_changed { Present { value: n } => Present { value: n }  Absent => acc.last_measured },
+    rounds: acc.rounds.list_push(BuildMeterRound {
+      step: r.step,
+      marks: build_meter_round_marks(tool_calls: r.tool_calls, files_rise: round_files_rise(now: r.files_changed, last_measured: acc.last_measured)),
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+    }),
+  }
+}
+
+// An unread ledger keeps its reason. The last round's time is the round's own recorded clock.
+fn build_meter_rounds(ledger: HarnessRoundLedger) -> BuildMeterRounds {
+  match ledger {
+    RoundsUnobserved { reason } => BuildMeterRoundsUnobserved { reason: reason as String }
+    RoundsObserved { rounds } => BuildMeterRoundsRecorded {
+      rounds: fold(rounds, init: BuildMeterRoundFold { last_measured: none, rounds: [] }, f: (acc, r) => build_meter_round_step(acc: acc, r: r)).rounds,
+      last_recorded_at: match rounds.last() {
+        Present { value: last } => Present { value: iso8601_utc_text(unix: last.epoch_ms / 1000) }
+        Absent => none
+      },
+    }
+  }
+}
+
+fn build_meter_segment_is_complete(state: WorkflowSegmentState) -> Bool {
+  match state {
+    WorkflowSegmentComplete => true
+    WorkflowSegmentPending => false
+    WorkflowSegmentActive => false
+    WorkflowSegmentFailed => false
+    WorkflowSegmentRefused => false
+    WorkflowSegmentStopped => false
+  }
+}
+
+fn build_meter_segment_is_halted(state: WorkflowSegmentState) -> Bool {
+  match state {
+    WorkflowSegmentFailed => true
+    WorkflowSegmentRefused => true
+    WorkflowSegmentStopped => true
+    WorkflowSegmentPending => false
+    WorkflowSegmentActive => false
+    WorkflowSegmentComplete => false
+  }
+}
+
+// The current stage is the first one that has not completed; when every stage has, it is the
+// last.
+fn build_meter_current_segment(segments: List<WorkflowSegment>) -> WorkflowSegment? {
+  match fold(segments, init: none, f: (acc, s) => match acc {
+    Present { value: found } => Present { value: found }
+    Absent => if build_meter_segment_is_complete(state: s.state) { none } else { Present { value: s } }
+  }) {
+    Present { value: open } => Present { value: open }
+    Absent => segments.last()
+  }
+}
+
+fn build_meter_segment_subject(segment: WorkflowSegment) -> String {
+  join([workflow_segment_kind_label(kind: segment.kind), " ", workflow_segment_state_key(state: segment.state)], "")
+}
+
+fn build_meter_provider_halt(provider: ProviderExecutionState) -> List<BuildMeterHalt> {
+  let halt = [BuildMeterHalt { subject: provider_execution_activity(state: provider), reason: provider_execution_detail(state: provider) }]
+  match provider {
+    ProviderFailed { activity: _, detail: _ } => halt
+    ProviderBudgetSpent { activity: _, detail: _ } => halt
+    ProviderEventsRefused { activity: _, detail: _ } => halt
+    ProviderNotStarted => []
+    ProviderStarting { activity: _ } => []
+    ProviderAwaitingSeat { detail: _ } => []
+    ProviderRunning { activity: _ } => []
+    ProviderCompleted { activity: _ } => []
+  }
+}
+
+// Every stage that ended without completing, in stage order, each with its recorded detail under
+// the one bound every surface uses. A provider that stopped while no stage records it is stated
+// in the provider's own words.
+fn build_meter_halts(segments: List<WorkflowSegment>, provider: ProviderExecutionState) -> List<BuildMeterHalt> {
+  let staged = map(filter(segments, s => build_meter_segment_is_halted(state: s.state)), s =>
+    BuildMeterHalt { subject: build_meter_segment_subject(segment: s), reason: workflow_segment_detail_bounded(detail: s.detail) })
+  if count(staged) == 0 { build_meter_provider_halt(provider: provider) } else { staged }
+}
+
+fn build_meter_is_published(handoff: CandidateHandoffState) -> Bool {
+  match handoff {
+    HandoffPublished { head_sha: _, pr_number: _, url: _ } => true
+    HandoffAwaitingWorker => false
+    HandoffYielded { reason: _ } => false
+    HandoffEvidenceRefused { reason: _ } => false
+    HandoffDeclaredBlocked { head_sha: _, readiness: _, explanation: _ } => false
+    HandoffSubmitted { head_sha: _ } => false
+    HandoffVerificationFailed { head_sha: _, verdict_key: _ } => false
+    HandoffAwaitingIntegration { head_sha: _ } => false
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => false
+    HandoffPublicationOwed { head_sha: _ } => false
+    HandoffBlockedOnPublication { head_sha: _, cause: _ } => false
+  }
+}
+
+// The pose comes from observed activity and the terminal standing, never from the marks. A stop
+// outranks everything; a published candidate rests; otherwise the provider's observed state
+// decides, and a provider that is neither running nor waiting leaves the worker idle.
+fn build_meter_pose(halted: Bool, provider: ProviderExecutionState, handoff: CandidateHandoffState) -> BuildMeterPose {
+  if halted {
+    BuildMeterStopped
+  } else if build_meter_is_published(handoff: handoff) {
+    BuildMeterDone
+  } else {
+    match provider {
+      ProviderRunning { activity: _ } => BuildMeterWorking
+      ProviderStarting { activity: _ } => BuildMeterWorking
+      ProviderAwaitingSeat { detail: _ } => BuildMeterWaitingForSeat
+      ProviderNotStarted => BuildMeterIdle
+      ProviderCompleted { activity: _ } => BuildMeterIdle
+      ProviderFailed { activity: _, detail: _ } => BuildMeterStopped
+      ProviderBudgetSpent { activity: _, detail: _ } => BuildMeterStopped
+      ProviderEventsRefused { activity: _, detail: _ } => BuildMeterStopped
+    }
+  }
+}
+
+fn build_meter_seat_wait(provider: ProviderExecutionState) -> String? {
+  match provider {
+    ProviderAwaitingSeat { detail } =>
+      Present { value: if detail == "" { provider_execution_activity(state: provider) } else { join([provider_execution_activity(state: provider), ": ", detail], "") } }
+    ProviderNotStarted => none
+    ProviderStarting { activity: _ } => none
+    ProviderRunning { activity: _ } => none
+    ProviderCompleted { activity: _ } => none
+    ProviderFailed { activity: _, detail: _ } => none
+    ProviderBudgetSpent { activity: _, detail: _ } => none
+    ProviderEventsRefused { activity: _, detail: _ } => none
+  }
+}
+
+// The outcome is the handoff's label once the worker has handed anything off; before that there
+// is no outcome to state.
+fn build_meter_outcome(handoff: CandidateHandoffState) -> String? {
+  match handoff {
+    HandoffAwaitingWorker => none
+    HandoffYielded { reason: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffEvidenceRefused { reason: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffDeclaredBlocked { head_sha: _, readiness: _, explanation: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffSubmitted { head_sha: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffVerificationFailed { head_sha: _, verdict_key: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffAwaitingIntegration { head_sha: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffPublicationOwed { head_sha: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffBlockedOnPublication { head_sha: _, cause: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+    HandoffPublished { head_sha: _, pr_number: _, url: _ } => Present { value: candidate_handoff_state_label(state: handoff) }
+  }
+}
+
+// THE ONE DERIVATION. It takes the five facts of an attempt the meter shows, so a claim about it
+// supplies those facts directly; build_meter_view below is the same call on a real projection.
+fn build_meter_view_of(
+  attempt_key: String,
+  segments: List<WorkflowSegment>,
+  rounds: HarnessRoundLedger,
+  provider: ProviderExecutionState,
+  handoff: CandidateHandoffState,
+) -> BuildMeterView {
+  let halts = build_meter_halts(segments: segments, provider: provider)
+  let stage = build_meter_current_segment(segments: segments)
+  BuildMeterView {
+    attempt_key: attempt_key,
+    stage_label: match stage { Present { value: s } => workflow_segment_kind_label(kind: s.kind)  Absent => "Stage" },
+    stage_state: match stage { Present { value: s } => workflow_segment_state_key(state: s.state)  Absent => "unavailable" },
+    seat_wait: build_meter_seat_wait(provider: provider),
+    rounds: build_meter_rounds(ledger: rounds),
+    pose: build_meter_pose(halted: count(halts) > 0, provider: provider, handoff: handoff),
+    halts: halts,
+    outcome: build_meter_outcome(handoff: handoff),
+  }
+}
+
+fn build_meter_view(progress: WorkflowAttemptProgress) -> BuildMeterView {
+  build_meter_view_of(
+    attempt_key: progress.attempt_key,
+    segments: progress.segments,
+    rounds: progress.rounds,
+    provider: progress.provider,
+    handoff: progress.handoff,
+  )
+}
+
+// THE METER ON THE WORKFLOW WIRE IS ITS KEY AND NOTHING ELSE. Every observation carries every
+// attempt, and a rendered meter is wanted only by a page that shows that attempt's meter, so the
+// wire carries the cheap fact (which view is current) and the page that holds a different key
+// asks the issue page for the rendering. The browser never draws a meter itself.
+fn build_meter_wire_key(progress: WorkflowAttemptProgress) -> String {
+  build_meter_view_key(view: build_meter_view(progress: progress))
+}

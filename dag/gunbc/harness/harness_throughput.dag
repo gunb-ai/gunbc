@@ -389,14 +389,27 @@ type SegmentFold {
   segments: List<RoundSegment>
 }
 
-fn round_segment_kind(now: Int?, last_measured: Int?, tool_calls: Int?) -> RoundSegmentKind {
+// HOW FAR THE CHANGED-PATH COUNT ROSE OVER THE LAST MEASURED VALUE: the one statement of "kind is
+// a delta" above, read by the strip's kind below and by the build meter's write marks
+// (gunbc.roadmap.roadmap_build_meter), so the two cannot disagree about which rounds wrote. An
+// unread count has no rise; a first measurement rises from an unmeasured tree, which is a fresh
+// worktree with nothing changed. The result may be zero or negative (a commit lowers the count),
+// and only a positive rise is a write.
+fn round_files_rise(now: Int?, last_measured: Int?) -> Int? {
   match now {
-    Absent => UnmeasuredRound
+    Absent => none
     Present { value: n } =>
       match last_measured {
-        Absent => if n > 0 { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
-        Present { value: m } => if n > m { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
+        Absent => Present { value: n }
+        Present { value: m } => Present { value: n - m }
       }
+  }
+}
+
+fn round_segment_kind(now: Int?, last_measured: Int?, tool_calls: Int?) -> RoundSegmentKind {
+  match round_files_rise(now: now, last_measured: last_measured) {
+    Absent => UnmeasuredRound
+    Present { value: rise } => if rise > 0 { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
   }
 }
 

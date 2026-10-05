@@ -610,6 +610,26 @@ fn candidate_handoff_state_for_terminal(
   }
 }
 
+// THE HANDOFF STATE AS A READER IS TOLD IT: what this attempt's candidate has reached, in the
+// handoff's own terms. It names the candidate's standing and never the issue's: a published
+// candidate is on offer for review, which is not the issue being done.
+fn candidate_handoff_state_label(state: CandidateHandoffState) -> String {
+  match state {
+    HandoffAwaitingWorker => "Awaiting the worker"
+    HandoffYielded { reason: _ } => "Yielded without a submission"
+    HandoffEvidenceRefused { reason: _ } => "Submission evidence refused"
+    HandoffDeclaredBlocked { head_sha: _, readiness, explanation: _ } =>
+      join(["Handed back by the worker, declared ", submission_readiness_key(r: readiness)], "")
+    HandoffSubmitted { head_sha: _ } => "Submitted, awaiting verification"
+    HandoffVerificationFailed { head_sha: _, verdict_key } => join(["Blocked on verification: ", verdict_key], "")
+    HandoffAwaitingIntegration { head_sha: _ } => "Verified, awaiting integration"
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => "Blocked on integration"
+    HandoffPublicationOwed { head_sha: _ } => "Verified, publication owed"
+    HandoffBlockedOnPublication { head_sha: _, cause: _ } => "Blocked on publication"
+    HandoffPublished { head_sha: _, pr_number, url: _ } => join(["Published for review, PR #", to_string(pr_number)], "")
+  }
+}
+
 fn candidate_handoff_state_key(state: CandidateHandoffState) -> String {
   match state {
     HandoffAwaitingWorker => "awaiting-worker"
