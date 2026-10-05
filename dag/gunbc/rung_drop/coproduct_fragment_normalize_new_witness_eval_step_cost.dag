@@ -1,0 +1,46 @@
+module gunbc.rung_drop.coproduct_fragment_normalize_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_coproduct_fragment_normalize_rows }
+
+// DECLARED 4b(3) DROP (gunbc v2.test.parse census phase 3, 2026-10-05; ruling stern-bear-500,
+// grammar program, under sharp-raven-357's phase-3 approval). The DECLARATION lives here; the
+// POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. Every identity stays on the gate: planned,
+// executed and measured; a semantic red and a wall-clock crossing still block. Only an eval-step
+// overrun is reported under this drop rather than refusing. The budget is not raised.
+//
+// WHY A DROP AND NOT A SMALLER CLAIM. Each claim already lowers ONE declaration fragment parsed at
+// its own production (test.claim.parse_test_coproduct_leading_pipe cp_lowered), not a whole module.
+// A scaling probe (claim_batch, BuildBuddy invocation d04df9ae) read body lowering of one fn_decl as
+// LINEAR in its node count, with no quadratic or exponential link, and the fragment probe (BuildBuddy
+// invocation b01c394f) showed the bill: a fixed term per declaration lowered plus a per-token term, on
+// top of the fragment's parse. Going below the declaration would mean supplying hand-built parse
+// trees, the designed-fixture drift DESIGN section 3 warns of. The fixed term is a candidate for its
+// own repair (reading every signature field in one fold rather than one deep search each), recorded
+// in the PR that declared this drop; it is not this drop's trigger.
+data coproduct_fragment_normalize_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_coproduct_fragment_normalize_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_coproduct_fragment_normalize_rows; measured by "), m.measured_by))
+
+data coproduct_fragment_normalize_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "coproduct_fragment_normalize_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the seven coproduct lowering claims of test.claim.parse_test_coproduct_leading_pipe (one type or fn declaration fragment parsed at its production and lowered by normalize): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-10-05",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "honest linear cost of parsing and lowering one declaration fragment at the interpreted route: a fixed term per lowered declaration plus a per-token term; owner: grammar program (stern-bear-500)",
+    },
+    population: coproduct_fragment_normalize_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: normalize (body lowering) of a single fn_decl or type_decl fragment costs at most 1.0k eval steps per source token plus at most 20k fixed, measured as in claim_batch BuildBuddy invocations d04df9ae and b01c394f (normalize cost = lowered minus parse-only). WHAT IT MUST BE SUFFICIENT FOR: each of the seven identities, still parsing its own declaration fragment at its production on the real prepared grammar and lowering it with normalize_node, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting an identity, shrinking a fragment below the construct it names, supplying its parse or its lowered tree, or bundling it into a shared producer does not satisfy this trigger.",
+  }
+}
