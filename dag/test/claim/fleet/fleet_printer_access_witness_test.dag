@@ -24,7 +24,7 @@ import gunbc.fleet_printer_access {
   classify_container_observation,
 }
 import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
 fn roster_has_printer(rows: List<PrinterAccessCodeLocus>, printer: PhysicalAssetIdentity) -> Bool {
@@ -99,12 +99,11 @@ test fn both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
     && printer_02_access_code_locus.human_retrieval.locator == "drive.google.com/file/d/12m1vfJmdzSQ_3BxfnwEWaF-MuI0ujwFj/view"
 }
 
-fn classify_for_printer_01_unrecorded(outcome: RestOutcome, container_name: String) -> PrinterCredentialResolution {
+fn classify_for_printer_01_unrecorded(outcome: RestResult<String>) -> PrinterCredentialResolution {
   classify_container_observation(
     printer: printer_01,
     desired: printer_access_code_desired_ref(printer: printer_01),
     outcome: outcome,
-    container_name: container_name,
     record: NoRecordedMaterialization,
   )
 }
@@ -139,8 +138,7 @@ fn is_observation_refused(r: PrinterCredentialResolution) -> Bool {
 // stops holding the observation has stopped being able to answer the question it exists to ask.
 test fn a_404_is_read_as_the_container_being_absent() -> Bool {
   is_provision_required(r: classify_for_printer_01_unrecorded(
-    outcome: RestStatusRefused { status: 404, body: "{\"error\":{\"code\":404}}" },
-    container_name: "",
+    outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "{\"error\":{\"code\":404}}" } },
   ))
 }
 
@@ -150,25 +148,24 @@ test fn a_404_is_read_as_the_container_being_absent() -> Bool {
 // a transport refusal is the strongest case: nothing was reached, so nothing is known.
 test fn a_status_that_is_not_404_never_becomes_absence() -> Bool {
   is_observation_refused(r: classify_for_printer_01_unrecorded(
-      outcome: RestStatusRefused { status: 403, body: "permission denied" }, container_name: ""))
+      outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "permission denied" } }))
     && is_observation_refused(r: classify_for_printer_01_unrecorded(
-      outcome: RestStatusRefused { status: 401, body: "unauthenticated" }, container_name: ""))
+      outcome: RestRefused { refusal: RestStatusRefused { status: 401, body: "unauthenticated" } }))
     && is_observation_refused(r: classify_for_printer_01_unrecorded(
-      outcome: RestStatusRefused { status: 429, body: "rate limited" }, container_name: ""))
+      outcome: RestRefused { refusal: RestStatusRefused { status: 429, body: "rate limited" } }))
     && is_observation_refused(r: classify_for_printer_01_unrecorded(
-      outcome: RestTransportRefused { cause: "connection refused" }, container_name: ""))
+      outcome: RestRefused { refusal: RestTransportRefused { cause: "connection refused" } }))
     && is_observation_refused(r: classify_for_printer_01_unrecorded(
-      outcome: RestBodyUndecodable { status: 200, cause: "not json" }, container_name: ""))
+      outcome: RestRefused { refusal: RestBodyUndecodable { status: 200, cause: "not json" } }))
 }
 
-// A PRESENT CONTAINER WITH NO RECEIPT IS NOT AN ABSENT ONE. The roster is empty today, so RestOk
+// A PRESENT CONTAINER WITH NO RECEIPT IS NOT AN ABSENT ONE. The roster is empty today, so RestAnswered
 // must reach VersionUnrecorded and NOT ProvisionRequired -- re-provisioning a secret that exists
 // would mint a second version and leave the printer authenticating against whichever one a later
 // reader pinned.
 test fn a_present_container_with_no_receipt_is_not_reported_as_absent() -> Bool {
   match classify_for_printer_01_unrecorded(
-    outcome: RestOk,
-    container_name: "projects/gunbai-secrets/secrets/printer-01-lan-access-code",
+    outcome: RestAnswered { answer: "projects/gunbai-secrets/secrets/printer-01-lan-access-code" },
   ) {
     PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
       p == printer_01 && c == "projects/gunbai-secrets/secrets/printer-01-lan-access-code"
@@ -183,15 +180,13 @@ test fn a_present_container_with_no_receipt_is_not_reported_as_absent() -> Bool 
 }
 
 fn classify_for_printer_01_with_record(
-  outcome: RestOutcome,
-  container_name: String,
+  outcome: RestResult<String>,
   record: PrinterMaterializationRecord,
 ) -> PrinterCredentialResolution {
   classify_container_observation(
     printer: printer_01,
     desired: printer_access_code_desired_ref(printer: printer_01),
     outcome: outcome,
-    container_name: container_name,
     record: record,
   )
 }
@@ -217,8 +212,7 @@ test fn a_404_over_an_existing_receipt_is_not_read_as_never_provisioned() -> Boo
       ref: printer_access_code_desired_ref(printer: printer_01), version: "7"),
   }
   match classify_for_printer_01_with_record(
-    outcome: RestStatusRefused { status: 404, body: "not found" },
-    container_name: "",
+    outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "not found" } },
     record: recorded,
   ) {
     PrinterCredentialMaterializationVanished { printer: p, exact: _ } => p == printer_01

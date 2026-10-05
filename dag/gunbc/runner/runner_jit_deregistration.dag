@@ -4,11 +4,11 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import extdeps.transports.rest { RestExchangePerformance, RestExchangeSucceeded }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestReadExchange, RestExchangeRefusal, classify_rest_refusal }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef, DeleteOrganizationRunner }
 import extdeps.github.actions_jit_runner { JitRunnerName }
-import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerDeletedBody }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -66,49 +66,66 @@ fn jit_registration_of(dispatch: JitMintDispatch) -> JitRegistration? {
 type JitRunnerListing
   = JitRunnerListed { ids: List<Int> }
   | JitRunnerNotListed
-  | JitRunnerListingUnreadable { performance: RestExchangePerformance, cause: NonEmptyStr }
+  | JitRunnerListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
+
+// WHY A LISTING IS NOT A READING, as two facts rather than one exchange performance: an answer
+// whose page is shorter than total_count (the exchange succeeded and the listing is still
+// incomplete), or an exchange the remote refused, classified as the read it is. There is no
+// succeeded-exchange value to carry: an answered listing is the RestAnswered arm, and the only
+// answered way to be unreadable is the short page.
+type JitListingUnreadableReason
+  = JitListingPageIncomplete { listed: Int, total: Int }
+  | JitListingExchangeRefused { refusal: RestExchangeRefusal }
 
 // THE PURE CLASSIFIER. A page shorter than total_count is not a listing: the name filter makes more
 // than one page implausible, but a runner on an unread page would read as absent, which is the one
 // wrong answer this fold exists to refuse.
-fn jit_runner_listing_of(name: JitRunnerName, performance: RestExchangePerformance, body: OrganizationRunnerListWire) -> JitRunnerListing {
-  match performance {
-    RestExchangeSucceeded =>
+fn jit_runner_listing_of(name: JitRunnerName, listing: RestResult<OrganizationRunnerListWire>) -> JitRunnerListing {
+  match listing {
+    RestAnswered { answer: body } =>
       if count(body.runners) != body.total_count {
         JitRunnerListingUnreadable {
-          performance: performance,
+          reason: JitListingPageIncomplete { listed: count(body.runners), total: body.total_count },
           cause: join(["runner listing returned ", to_string(count(body.runners)), " of total_count ", to_string(body.total_count)], "") as NonEmptyStr,
         }
       } else {
         let ids = body.runners |> filter(r => r.name == (name.value as String)) |> map(r => r.id)
         if count(ids) == 0 { JitRunnerNotListed } else { JitRunnerListed { ids: ids } }
       }
-    other => JitRunnerListingUnreadable { performance: other, cause: "the organization runner listing did not succeed" as NonEmptyStr }
+    RestRefused { refusal } =>
+      JitRunnerListingUnreadable {
+        reason: JitListingExchangeRefused { refusal: classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) },
+        cause: "the organization runner listing did not succeed" as NonEmptyStr,
+      }
   }
 }
 
 fn jit_runner_listing_of_read(name: JitRunnerName, read: OrganizationRunnerListRead) -> JitRunnerListing {
-  jit_runner_listing_of(name: name, performance: read.performance, body: read.body)
+  jit_runner_listing_of(name: name, listing: read.listing)
 }
 
 fn plan_jit_deregistration(listing: JitRunnerListing) -> UpsertDecision<List<Int>> {
   match listing {
     JitRunnerNotListed => Noop
     JitRunnerListed { ids: ids } => Apply { plan: ids }
-    JitRunnerListingUnreadable { performance: _, cause: c } => Refuse { reason: c }
+    JitRunnerListingUnreadable { reason: _, cause: c } => Refuse { reason: c }
   }
 }
 
+// THE DELETE IS CARRIED AS GITHUB ANSWERED IT, never as a verdict: absence is decided by the
+// readback alone, so the attempt is evidence beside it. Its refused arm classifies through
+// classify_rest_refusal(RestMutationExchange { .. }), which is where a 5xx or a lost response reads
+// as commit-ambiguous rather than as a refusal.
 type JitRunnerDeleteAttempt {
   runner_id: Int
-  performance: RestExchangePerformance
+  result: RestResult<OrganizationRunnerDeletedBody>
 }
 
 type JitDeregistrationRefusal
   = DeregistrationTokenForAnotherInstallation { app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
   | DeregistrationAuthorityForAnotherInstallation
   | DeregistrationCredentialRefused { unsatisfied: List<CredentialCapability> }
-  | DeregistrationListingUnreadable { performance: RestExchangePerformance, cause: NonEmptyStr }
+  | DeregistrationListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
   | DeregistrationReadbackForAnotherSubject { organization: NonEmptyStr, name: NonEmptyStr, app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
   | DeregistrationRunnerStillListed { ids: List<Int>, deletes: List<JitRunnerDeleteAttempt> }
 
@@ -122,7 +139,7 @@ fn classify_jit_deregistration(readback: JitRunnerListing, deletes: List<JitRunn
   match readback {
     JitRunnerNotListed => ReadbackShowsAbsent
     JitRunnerListed { ids: ids } => ReadbackRefused { refusal: DeregistrationRunnerStillListed { ids: ids, deletes: deletes } }
-    JitRunnerListingUnreadable { performance: p, cause: c } => ReadbackRefused { refusal: DeregistrationListingUnreadable { performance: p, cause: c } }
+    JitRunnerListingUnreadable { reason: r, cause: c } => ReadbackRefused { refusal: DeregistrationListingUnreadable { reason: r, cause: c } }
   }
 }
 
@@ -270,7 +287,7 @@ fn ensure_jit_runner_deregistered(
           let after = readback_after_deletes(
             token: token,
             registration: registration,
-            deletes: ids |> map(id => JitRunnerDeleteAttempt { runner_id: id, performance: delete_runner_with(token: token, organization: org, runner_id: id) }),
+            deletes: ids |> map(id => JitRunnerDeleteAttempt { runner_id: id, result: delete_runner_with(token: token, organization: org, runner_id: id) }),
           )
           conclude_from_readback(registration: registration, exit: exit, deletes: after.deletes, readback: after.readback)
         }
