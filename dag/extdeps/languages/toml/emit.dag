@@ -1,5 +1,6 @@
 module extdeps.languages.toml.emit
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, String, List, Int }
 import v2.std.collection { list_at_optional }
 import v2.std.algebra { list_head, skip, HeadFound, HeadAbsent }
@@ -77,7 +78,7 @@ fn toml_escape_remaining_control(point: Int) -> String {
   if (point < 32) || (point == 127) {
     concat("\\u00", concat(toml_hex_nibble(n: point / 16), toml_hex_nibble(n: point - ((point / 16) * 16))))
   } else {
-    from_code_point(point)
+    char_text(c: point)
   }
 }
 
@@ -152,7 +153,7 @@ fn toml_comment_lines(text: String) -> List<String> {
 // rather than merely verbose.
 fn toml_comment_char(point: Int) -> String {
   if point == 9 {
-    from_code_point(point)
+    char_text(c: point)
   } else {
     toml_escape_remaining_control(point: point)
   }

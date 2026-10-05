@@ -1,5 +1,6 @@
 module test.claim.heal_candidate_witness
 
+import std.unicode.scalar { char_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import std.types { String, NonEmptyStr, Bool }
@@ -49,7 +50,7 @@ fn oid(hex: String) -> GitObjectId {
 }
 
 fn stage_record(mode: String, hex: String, stage: String, path: String) -> String {
-  join([mode, " ", hex, " ", stage, from_code_point(9), path, from_code_point(0)], "")
+  join([mode, " ", hex, " ", stage, char_text(c: 9), path, char_text(c: 0)], "")
 }
 
 fn design_record(mode: String, stage: String) -> String {

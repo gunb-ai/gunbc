@@ -1,5 +1,6 @@
 module gunbc.native_serve
 
+import std.unicode.scalar { char_text }
 import std.types { Int, List, String, Bool, CommitSha }
 import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count }
 import std.algebra { Cons, Empty, trim }
@@ -369,7 +370,7 @@ type NativeServeOutgoing {
 fn native_serve_value_is_field_safe(value: String) -> Bool {
   (split(s: value, delimiter: "\r") |> count) == 1
     && (split(s: value, delimiter: "\n") |> count) == 1
-    && (split(s: value, delimiter: from_code_point(0)) |> count) == 1
+    && (split(s: value, delimiter: char_text(c: 0)) |> count) == 1
 }
 
 fn native_serve_unwritable(reason: String) -> NativeServeOutgoing {

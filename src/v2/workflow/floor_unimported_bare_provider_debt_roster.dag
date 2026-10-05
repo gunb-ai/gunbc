@@ -1285,7 +1285,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/floor/incremental_floor_authority_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/fs_box_published_claims_witness_test.dag", name: "any", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/git_ls_remote_witness_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/git_ls_remote_witness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/git_plumbing_ref_mutation_witness_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/git_upstream_model_witness_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/go_module_versioning_witness_test.dag", name: "GoMvsProperty", standing: Retired { cause: ImportsFixed } },
