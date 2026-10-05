@@ -33,7 +33,7 @@ import v2.lens.argv_word_construction {
   argv_word_construction_census_covers,
   argv_word_construction_roster_shrinks,
   argv_word_construction_site_named,
-  argv_word_construction_site_class_of,
+  site_class_of,
   facts_of,
   is_census_member,
   raw_tree_of_text
@@ -161,12 +161,8 @@ test fn census_fixture_route_reads_fn_signals() -> Bool {
                       && (with_props.counted == true) && (with_props.returns_argv_words == true)
                       && (with_props.list_string_params == 1)
                       && member_named(xs: with_props.flag_words, x: "--unit=")
-                      // A List<String> parameter IS the argv-interface class per the census
-                      // contract, whether or not the body glues flags: counted, no flag words.
                       && (label_rows.counted == true) && (label_rows.list_string_params == 1)
                       && (length(xs: label_rows.flag_words) == 0)
-                      // A flag literal outside an argv position: candidate class, not counted,
-                      // still a member because candidates are reported.
                       && (waits.counted == false) && member_named(xs: waits.candidates, x: "--wait")
                   }
               }
@@ -218,10 +214,10 @@ fn class_is(c: ArgvWordsSiteClass, want: ArgvWordsSiteClass) -> Bool {
 }
 
 test fn census_site_class_routes_the_modeled_roots() -> Bool {
-  match argv_word_construction_site_class_of(module_file: specimen_path) {
+  match site_class_of(module_file: specimen_path) {
     Absent => false
     Present { value: c } =>
-      match argv_word_construction_site_class_of(module_file: specimen_workflow_path) {
+      match site_class_of(module_file: specimen_workflow_path) {
         Absent => false
         Present { value: w } =>
           class_is(c: c, want: ExtdepsInterfaceBuilder) && class_is(c: w, want: WorkflowCallSite)
