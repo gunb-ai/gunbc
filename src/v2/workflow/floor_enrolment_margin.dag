@@ -227,10 +227,11 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
 // two matrix cases): 332 and 339 ms in PR floor run 36648847499, then 294 and 294 ms in run
 // 36661418914 -- identical eval_steps, a 1.13-1.15x spread, inside the envelope's 1.653x p90 -- a
 // pair the band could not hold, because the fast run staled rows the slow run needed.
-// SINCE gunbc#13352 THE ENVELOPE IS THE RESIDUAL ONE (above), over CALIBRATED readings: "fast" and
-// "slow" now mean same-host noise on the claim and specimen readings, not two runners. The receipts
-// quoted below are RAW cross-runner spreads (1.13-1.15x here, 1.25x at the line), and each still sits
-// inside the 1.276x residual envelope, so normalisation can only shrink them further.
+// SINCE gunbc#13352 BOTH ENVELOPE FLOORS BELOW (the dead band's and the roster's) USE THE RESIDUAL
+// ENVELOPE (above), over CALIBRATED readings: "fast" and "slow" now mean same-host noise on the claim
+// and specimen readings, not two runners. The receipts quoted with each are RAW cross-runner spreads
+// (1.13-1.15x for the dead band, 1.25x at the line), and each still sits inside the 1.276x residual
+// envelope, so normalisation can only shrink them further.
 fn floor_enrolment_dead_band_envelope_floor(budget_ms: Millisecond) -> Millisecond {
   implied_clean_run_budget(ceiling_ms: budget_ms, inflation_permille: floor_enrolment_margin_envelope_permille())
 }
@@ -250,10 +251,6 @@ fn floor_enrolment_dead_band_envelope_floor_ms_count() -> Int {
 // an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one read 523, 582 and 543 ms on srv1 and
 // srv3 (PR floor runs 36765162766, 36775473983, 36783312538) and 466 ms on srv4 in merge-group run
 // 36793281217, which staled its row and dequeued gunbc#12800.
-// SINCE gunbc#13352 THE ENVELOPE IS THE RESIDUAL ONE (above), over CALIBRATED readings: "fast" and
-// "slow" now mean same-host noise on the claim and specimen readings, not two runners. The receipts
-// quoted below are RAW cross-runner spreads (1.13-1.15x here, 1.25x at the line), and each still sits
-// inside the 1.276x residual envelope, so normalisation can only shrink them further.
 fn floor_enrolment_roster_envelope_floor(line_ms: Millisecond) -> Millisecond {
   implied_clean_run_budget(ceiling_ms: line_ms, inflation_permille: floor_enrolment_margin_envelope_permille())
 }

@@ -373,8 +373,10 @@ fn eval_step_rate_grounding_holds(grounding: EvalStepRateGrounding) -> Bool {
 // noise (the rate sample's ~10% spread at a larger depth), and the specimen's workload (a tight
 // interpreted recursion) is not every claim's workload. A claim whose cost is native moves with the
 // host differently from the specimen. Neither is hidden by the factor -- a native-heavy claim still
-// reads its full native CPU, only rescaled uniformly -- and neither is measured yet, which is why
-// the margin's runner envelope is kept beside it (`v2.workflow.floor_enrolment_margin`).
+// reads its full native CPU, only rescaled uniformly. Timing noise is reduced by taking the fastest
+// of three replicates and priced by the margin's residual same-host envelope; the native-cost
+// mismatch is NOT priced by anything yet. Both, and that envelope's re-derivation trigger, are stated
+// at `v2.workflow.floor_enrolment_margin` `floor_enrolment_same_host_spread_permille`.
 type HostSpeedFactor {
   factor_permille: Int
 }
