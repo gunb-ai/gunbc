@@ -375,7 +375,7 @@ type ComputeUnitRun {
 // set must refuse rather than have its figures read against a format nobody has checked. Reading
 // `systemctl --version` there would answer about a DIFFERENT executable than the one that prints the
 // line, which on a mixed install is a different version.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRun {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
