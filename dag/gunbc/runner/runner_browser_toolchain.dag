@@ -76,11 +76,13 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import v2.std.node { Node }
 import gunbc.runner_unit { runner_unit_dropin_path }
 import gunbc.runner_unit_file { runner_host_browser_ready_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
-import gunbc.shell_command_text { shell_command_intent, shell_privileged_command_intent, shell_command_text_of_stmts }
-import gunbc.retained_shell_script { retained_srvn }
-import gunbc.host_effect_realize { run_shell_transport, ShellExecObserved }
+import gunbc.host_effect_realize {
+  run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
+  run_argv_transport_succeeded, RunArgvTransportOutcome,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
-import v2.extdeps.languages.bash_build { bash_build_pipe, bash_build_with_redir_to_file, bash_build_word_lit }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
@@ -1226,37 +1228,37 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
 data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
 
 type BrowserReadyLabelsPlan
-  = BrowserReadyLabelsPlanned { script: String }
+  = BrowserReadyLabelsGrantReady { write: ArgvCommand, content: String, reload: ArgvCommand }
+  | BrowserReadyLabelsRevokeReady { remove: ArgvCommand, reload: ArgvCommand }
   | BrowserReadyLabelsUnrenderable { cause: String }
 
-// Both plans are one modeled program under set -e: a failed write stops it, and the verdict sees it.
+// THE PLANS ARE TYPED ARGV STEPS, NOT SCRIPT TEXT. The deleted plan rendered intents to a script
+// string and shipped it through the retained-shell wall; the steps were already modeled, so the
+// text was a lossy projection of something the type system already held. The grant is two steps:
+// the drop-in bytes reach an elevated tee on STDIN (the same overwrite the deleted
+// `printf | sudo tee >/dev/null` performed -- tee truncates by default, and the bytes cross as
+// data, never as script text, so a unit body carrying quotes or metacharacters cannot change the
+// command's meaning), then an elevated daemon-reload. The revoke is the elevated rm -f, then the
+// same reload. The deleted plan's leading `set -e` (stop at the first failed step) is modeled by
+// the converge's own fold: each leg runs only if the previous succeeded, and a failed leg is the
+// failed outcome. Elevation keeps the sudo -n posture through sudo_elevate_command, the same
+// carrier the deleted privileged intents rendered.
 fn browser_ready_labels_grant_plan(host: HostIdentity) -> BrowserReadyLabelsPlan {
   match runner_host_browser_ready_labels_dropin_text(host: host) {
     RunnerUnitTextRefused { reason: r } => BrowserReadyLabelsUnrenderable { cause: r as String }
     RunnerUnitText { text: content } =>
-      BrowserReadyLabelsPlanned {
-        script: shell_command_text_of_stmts(stmts: [
-          shell_command_intent(words: ["set", "-e"]),
-          bash_build_pipe(
-            left: shell_command_intent(words: ["printf", "%s", content]),
-            right: bash_build_with_redir_to_file(
-              inner: shell_privileged_command_intent(argv: ["tee", browser_ready_labels_dropin_path as String]),
-              path: bash_build_word_lit(text: "/dev/null"),
-            ),
-          ),
-          shell_privileged_command_intent(argv: systemctl_daemon_reload_argv()),
-        ]),
+      BrowserReadyLabelsGrantReady {
+        write: sudo_elevate_command(command: ["tee", browser_ready_labels_dropin_path as String]),
+        content: content,
+        reload: sudo_elevate_command(command: systemctl_daemon_reload_argv()),
       }
   }
 }
 
 fn browser_ready_labels_revoke_plan() -> BrowserReadyLabelsPlan {
-  BrowserReadyLabelsPlanned {
-    script: shell_command_text_of_stmts(stmts: [
-      shell_command_intent(words: ["set", "-e"]),
-      shell_privileged_command_intent(argv: ["rm", "-f", browser_ready_labels_dropin_path as String]),
-      shell_privileged_command_intent(argv: systemctl_daemon_reload_argv()),
-    ]),
+  BrowserReadyLabelsRevokeReady {
+    remove: sudo_elevate_command(command: ["rm", "-f", browser_ready_labels_dropin_path as String]),
+    reload: sudo_elevate_command(command: systemctl_daemon_reload_argv()),
   }
 }
 
@@ -1289,17 +1291,43 @@ fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: 
   match plan {
     BrowserReadyLabelsUnrenderable { cause: c } =>
       BrowserReadyLabelsFailed { cause: concat("the readiness labels drop-in does not render: ", c) }
-    BrowserReadyLabelsPlanned { script: body } => {
-      let observed = run_shell_transport(
-        script: retained_srvn(body: body, reason: "browser readiness label grant/revoke: template drop-in write and daemon-reload over the administrator edge" as NonEmptyStr),
-        transport: transport,
-      )
-      if observed.success {
-        if ready { BrowserReadyLabelsGranted } else { BrowserReadyLabelsRevoked }
+    BrowserReadyLabelsGrantReady { write: w, content: payload, reload: r } => {
+      let written = run_argv_stdin_over_host_effect_transport(command: w, stdin_payload: payload, transport: transport)
+      if run_argv_transport_succeeded(outcome: written) {
+        let reloaded = run_argv_over_host_effect_transport(command: r, transport: transport)
+        if run_argv_transport_succeeded(outcome: reloaded) {
+          BrowserReadyLabelsGranted
+        } else {
+          browser_ready_labels_step_failed(step: "daemon-reload", outcome: reloaded)
+        }
       } else {
-        BrowserReadyLabelsFailed { cause: join(["exit=", to_string(observed.exit_code), " ", observed.stderr], "") }
+        browser_ready_labels_step_failed(step: "the readiness labels drop-in write", outcome: written)
       }
     }
+    BrowserReadyLabelsRevokeReady { remove: rm, reload: r } => {
+      let removed = run_argv_over_host_effect_transport(command: rm, transport: transport)
+      if run_argv_transport_succeeded(outcome: removed) {
+        let reloaded = run_argv_over_host_effect_transport(command: r, transport: transport)
+        if run_argv_transport_succeeded(outcome: reloaded) {
+          BrowserReadyLabelsRevoked
+        } else {
+          browser_ready_labels_step_failed(step: "daemon-reload", outcome: reloaded)
+        }
+      } else {
+        browser_ready_labels_step_failed(step: "the readiness labels drop-in removal", outcome: removed)
+      }
+    }
+  }
+}
+
+// ONE FAILURE SHAPE FOR EVERY LEG: the refused arm carries the wall's own admission text (the
+// broken wall, not a connection error), the observed arm carries the real exit status and stderr.
+fn browser_ready_labels_step_failed(step: String, outcome: RunArgvTransportOutcome) -> BrowserReadyLabelsOutcome {
+  match outcome {
+    RunArgvTransportRefused { reason: why } =>
+      BrowserReadyLabelsFailed { cause: join([step, ": the transport refused before the leg ran: ", why], "") }
+    RunArgvTransportObserved { observed: o } =>
+      BrowserReadyLabelsFailed { cause: join([step, ": exit=", to_string(o.exit_code), " ", o.stderr], "") }
   }
 }
 

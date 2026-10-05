@@ -11,37 +11,76 @@ import gunbc.runner_registration_labels {
   gunbc_browser_ready_label,
 }
 import gunbc.runner_browser_toolchain {
-  BrowserReadyLabelsPlan, BrowserReadyLabelsPlanned, BrowserReadyLabelsUnrenderable,
+  BrowserReadyLabelsPlan, BrowserReadyLabelsGrantReady, BrowserReadyLabelsRevokeReady,
+  BrowserReadyLabelsUnrenderable,
   browser_ready_labels_grant_plan, browser_ready_labels_revoke_plan, browser_ready_labels_outcome_holds,
   BrowserReadyLabelsGranted, BrowserReadyLabelsRevoked, BrowserReadyLabelsFailed,
 }
+import extdeps.exec.command { argv_words }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE gunbc-browser-ready LABEL IS GRANTED BY A READY BROWSER-TOOLCHAIN CONVERGE AND NOTHING ELSE.
-// Each claim supplies its subject at one interface: the plan text, the conformance relation, the
-// converge verdict. The wet write is the converge's own and is not re-run here.
+// Each claim supplies its subject at one interface: the plan's typed steps, the conformance
+// relation, the converge verdict. The wet write is the converge's own and is not re-run here.
+// The plan is typed argv steps (the retained-shell text is gone), so these claims read the STEPS:
+// the elevated write's words, the drop-in bytes on stdin, the reload, the removal -- pure over the
+// rendered plan, no transport. The revoke's no-write property is now TYPED: a RevokeReady carries
+// no write leg at all, so a revoke that rewrites rather than removes cannot even be constructed.
 
-fn plan_script(p: BrowserReadyLabelsPlan) -> String {
+fn plan_write_words(p: BrowserReadyLabelsPlan) -> List<String> {
   match p {
-    BrowserReadyLabelsPlanned { script: s } => s
+    BrowserReadyLabelsGrantReady { write: w, content: _, reload: _ } => argv_words(command: w)
+    BrowserReadyLabelsRevokeReady { remove: _, reload: _ } => []
+    BrowserReadyLabelsUnrenderable { cause: _ } => []
+  }
+}
+
+fn plan_payload(p: BrowserReadyLabelsPlan) -> String {
+  match p {
+    BrowserReadyLabelsGrantReady { write: _, content: c, reload: _ } => c
+    BrowserReadyLabelsRevokeReady { remove: _, reload: _ } => ""
     BrowserReadyLabelsUnrenderable { cause: _ } => ""
   }
 }
 
-// GRANT writes the template drop-in carrying the label and reloads; REVOKE removes the same path.
-// Discriminating: a grant without the label, or a revoke that rewrote rather than removed, reds.
+fn plan_reload_words(p: BrowserReadyLabelsPlan) -> List<String> {
+  match p {
+    BrowserReadyLabelsGrantReady { write: _, content: _, reload: r } => argv_words(command: r)
+    BrowserReadyLabelsRevokeReady { remove: _, reload: r } => argv_words(command: r)
+    BrowserReadyLabelsUnrenderable { cause: _ } => []
+  }
+}
+
+fn plan_remove_words(p: BrowserReadyLabelsPlan) -> List<String> {
+  match p {
+    BrowserReadyLabelsGrantReady { write: _, content: _, reload: _ } => []
+    BrowserReadyLabelsRevokeReady { remove: rm, reload: _ } => argv_words(command: rm)
+    BrowserReadyLabelsUnrenderable { cause: _ } => []
+  }
+}
+
+// GRANT writes the template drop-in carrying the label (bytes on stdin to an elevated tee at the
+// drop-in path) and reloads; REVOKE removes the same path and carries no write step.
+// Discriminating: a grant without the label, a revoke whose removal misses the path, or a revoke
+// that carries a write leg, reds.
 test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
-  let grant = plan_script(p: browser_ready_labels_grant_plan(host: operator_host_srv3))
-  let revoke = plan_script(p: browser_ready_labels_revoke_plan())
-  string_contains(s: grant, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
-    && string_contains(s: grant, pattern: "gunbc-browser-ready")
-    && string_contains(s: grant, pattern: "srv3")
-    && string_contains(s: grant, pattern: "daemon-reload")
-    && string_contains(s: revoke, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
-    && string_contains(s: revoke, pattern: "'rm' '-f'")
-    && !string_contains(s: revoke, pattern: "gunbc-browser-ready")
+  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3)
+  let revoke = browser_ready_labels_revoke_plan()
+  let write = join(plan_write_words(p: grant), " ")
+  let payload = plan_payload(p: grant)
+  let reload = join(plan_reload_words(p: grant), " ")
+  let remove = join(plan_remove_words(p: revoke), " ")
+  string_contains(s: write, pattern: "tee")
+    && string_contains(s: write, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
+    && string_contains(s: payload, pattern: "gunbc-browser-ready")
+    && string_contains(s: payload, pattern: "srv3")
+    && string_contains(s: reload, pattern: "daemon-reload")
+    && string_contains(s: remove, pattern: "rm -f")
+    && string_contains(s: remove, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
+    && plan_payload(p: revoke) == ""
+    && join(plan_write_words(p: revoke), " ") == ""
 }
 
 // THE CONVERGE VERDICT: only a grant on a ready toolchain leaves the host floor-ready; a revoke is
