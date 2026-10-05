@@ -1,0 +1,52 @@
+module gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+// DECLARED 2026-10-04 beside managed-host cut 3 (#13261), under staging ruling C (eager-gull-22, relayed
+// by warm-crane-577): the current-build gate is built in shadow and production is cut over in one
+// later transition, as O1b was.
+//
+// WHAT THE RUNG IS. The invalid state is a MegaRAC operation carrier -- media attach, KVM still, SDR
+// socket naming -- minted for a controller whose CURRENT build is not the build the operation is
+// grounded at. gunbc.megarac_managed_host admit_megarac_host_at_current_build makes that state
+// unmintable: AdmittedMegaRacHost is sole_constructor, and the gate mints it only when the binding's
+// observed build is the controller's latest known build (gunbc.megarac_operation_standing
+// megarac_current_build) and the operation is grounded there by committed evidence. Its RED is enrolled
+// (test.claim.megarac_managed_host_witness
+// w_a_historical_observation_beside_a_known_later_build_mints_no_carrier): STRUCTURALLY GUARANTEED.
+//
+// WHAT PRODUCTION HOLDS INSTEAD. admit_megarac_host grounds the operation at the build the binding's
+// access observation read, and mtcollins1's observation is the 2026-09-05 read of BMC 0.32 while the
+// controller was reflashed to 0.45.3 on 2026-10-02. So production mints carriers "as 0.32" and drives a
+// 0.45.3 controller. What remains is mitigation, and it is real: every operation still reads the
+// controller's own answers and refuses an uncatalogued or unreadable one (the media readiness and
+// cd_error folds, the viewer's catalogued route and feature list, the SDR decode), so a build that
+// answers differently is refused at the wire, typed and located. MITIGATABLE.
+//
+// WHY NOT CUT OVER NOW. Cutting production over today refuses every mtcollins1 MegaRAC operation and
+// so stops its boot: no reading of the 0.45.3 build is committed, and fleet-converge run 37102391062's
+// receipts (2026-10-03) are receipts of a run, not of a build.
+
+data megarac_operations_admitted_through_a_superseded_build_observation: RungDrop = RungDrop {
+  identity: "megarac_operations_admitted_through_a_superseded_build_observation" as NonEmptyStr,
+
+  subject: "production MegaRAC operation admission (gunbc.megarac_managed_host admit_megarac_host) grounds media attach, KVM still and SDR socket naming at the build a managed host's access observation read, which for mtcollins1 is BMC 0.32 (2026-09-05) although the controller was reflashed to 0.45.3 on 2026-10-02; the current-build gate (admit_megarac_host_at_current_build) that refuses this is built and enrolled in shadow",
+
+  declared: "2026-10-04",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.megarac_managed_host admit_megarac_host_at_current_build over gunbc.megarac_operation_standing (current build from committed build readings and recorded firmware transitions; operations grounded at an observed baseboard and firmware by receipts joined to a reading of that build with no transition between), rows in gunbc.machine_intake_megarac_operation_evidence",
+    },
+    population: [
+      "mtcollins1's MegaRAC virtual media attach, KVM canvas still and SDR socket naming as admitted by admit_megarac_host, and the gunbc.machine_intake_mtcollins1_boot_run boot that depends on them -- the only managed host is mtcollins1",
+    ],
+    restoration_trigger: "THE CAPABILITY: EACH OF mtcollins1's MEGARAC OPERATIONS ADMITTED THROUGH THE CURRENT-BUILD GATE FROM A COMMITTED CURRENT-BUILD OBSERVATION PLUS EXECUTED EVIDENCE AT THAT BUILD -- a committed read-only probe of the controller's build (mc info / hpm check) entered as a build reading in gunbc.machine_intake_megarac_operation_evidence, and, for each of media attach, KVM still and SDR socket naming, a committed receipt that joins to that reading with no firmware transition recorded between. SUFFICIENT FOR: switching every production caller from admit_megarac_host to admit_megarac_host_at_current_build in one transition with the boot still admitted. A probe alone, or receipts without a build reading, or a gate that admits some operations while the boot needs all three, does not retire this row.",
+  }
+}

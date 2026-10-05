@@ -368,7 +368,7 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // from --issue-action; the ASSIGNEE cell becomes the avatar chip (flex-centered, the chip's
 // 24px-token circle + workflow badge + the fail-closed .issue-cell-assignee-missing); and the
 // durable Assign control lands (.issue-assign-form/-input/-suggestions/-suggestion/-name/-email/
-// -kind + .issue-avatar family). Behavioral receipts: w_issue_results_row_tracks_derive_from_the_
+// -kind + .site-avatar family). Behavioral receipts: w_issue_results_row_tracks_derive_from_the_
 // roster, w_issue_results_tracks_take_no_population_and_never_re_measures, w_title_is_the_primary_
 // column_with_the_dominant_share, witness_issue_table_assignee_renders_the_avatar_chip_or_
 // placeholder, witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee (the form),
@@ -431,8 +431,8 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // (roadmap_css_derived_digest on the merged tree, 18b798669b7c1358); this digest only pins bytes.
 // Re-pinned 2026-09-27 for the header avatar PFP slice (the Google picture rides the session
 // wire as its optional member; the /avatar proxy endpoint remains the tailnet-privacy
-// follow-up): the .issue-avatar chip becomes the image's positioning context and clips it
-// (position: relative; overflow: hidden) and the .issue-avatar img rule paints any image
+// follow-up): the .site-avatar chip becomes the image's positioning context and clips it
+// (position: relative; overflow: hidden) and the .site-avatar img rule paints any image
 // inside a chip (absolute / inset 0 / 100% x 100% / object-fit cover via RawProperty — the
 // projection the assignee avatar slots reuse). Behavioral receipts:
 // witness_header_account_static_body_carries_signin_and_hidden_target (the account menu's
@@ -451,12 +451,12 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_inline_assignment_context_chip_html_carries_the_profile_display, the register censuses
 // unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
 // 13bfe2bf4b369f2f); this digest only pins bytes.
-// 2026-09-30: the .issue-avatar-badge rule is deleted -- the workflow kind no longer renders as
+// 2026-09-30: the .site-avatar-badge rule is deleted -- the workflow kind no longer renders as
 // clipped text inside the 24px avatar circle (it rides the chip's class and hover title), so the
 // rule has no consumer. Derived by execution (roadmap_css_derived_digest on this tree).
 // 2026-09-30 (step 2): the .issue-rail-link rule -- the rail's relation counts open the
 // Dependencies tab as a text-styled button. Derived by execution (roadmap_css_derived_digest).
-// 2026-09-30 (robot mark): the .issue-avatar-mark rule sizes the Fabric chip's robot mark
+// 2026-09-30 (robot mark): the .site-avatar-mark rule sizes the Fabric chip's robot mark
 // (gunbc.site.robot_mark) inside the 24px circle. Derived by execution (roadmap_css_derived_digest).
 // 2026-09-30 (rail containment): issue-field-label no longer shrinks under a long value, and
 // issue-field-value takes the remaining width and wraps unbroken tokens instead of running past

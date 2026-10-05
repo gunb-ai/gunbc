@@ -259,6 +259,7 @@ fn transition_decl(props: String, t: TimingToken) -> CssDecl {
 type TriggerShape
   = SelfResponse
   | WithinSubject { target: String }
+  | PseudoElementOfSubject { name: String }
   | ContainerHas { container: String, target: String }
 
 type BuildRule
@@ -278,6 +279,7 @@ fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> Stri
   match shape {
     SelfResponse => selector_subject_wire(s: subject)
     WithinSubject { target } => join([selector_subject_wire(s: subject), " ", target], "")
+    PseudoElementOfSubject { name } => join([selector_subject_wire(s: subject), "::", name], "")
     ContainerHas { container: _, target } => target
   }
 }
@@ -287,6 +289,7 @@ fn response_hot_selector(subject: SelectorSubject, shape: TriggerShape, trigger:
   match shape {
     SelfResponse => concat(selector_subject_wire(s: subject), pseudo)
     WithinSubject { target } => join([selector_subject_wire(s: subject), pseudo, " ", target], "")
+    PseudoElementOfSubject { name } => join([selector_subject_wire(s: subject), pseudo, "::", name], "")
     ContainerHas { container, target } =>
       join([container, ":has(", selector_subject_wire(s: subject), pseudo, ") ", target], "")
   }

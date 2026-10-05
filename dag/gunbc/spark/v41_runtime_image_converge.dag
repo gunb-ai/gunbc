@@ -1,9 +1,10 @@
 module gunbc.spark.v41_runtime_image_converge
 
+import extdeps.crypto.hash { digest_shell_verify_line, sha256_digest }
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+
 import v2.std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { Filesystem }
+
 import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.measure { Second, second }
@@ -13,53 +14,24 @@ import extdeps.exec.command { argv_words }
 import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_7_1rc1_wheel_url }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
-import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+
 import gunbc.file_access { FileTreeScope }
 import gunbc.host_effect { FleetSsh }
 import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, PlannedRemoteStep }
-import gunbc.typed_remote_file_write {
-  typed_remote_file_write_seal, TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused,
-  RemoteFileModeOwnerReadWrite,
-}
+import gunbc.typed_remote_file_write { typed_remote_file_write_seal, TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused, RemoteFileModeOwnerReadWrite }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.fleet_multi_principal_probe {
-  SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused,
-  spark_converge_target_selection,
-}
+
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
-import gunbc.spark.serving_subject { PairServingUnitOn }
-import gunbc.spark.host_occupancy_admission { admit_spark_host_unoccupied, spark_ctx_argv_run }
-import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
+
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
-import gunbc.spark.remote_step_sequence {
-  run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
-}
-import gunbc.spark.vllm_runtime_image_build {
-  VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
-  SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, SparkBuildHostWork, with_spark_build_host,
-  vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue, vllm_build_host_memory_need,
-  vllm_image_receipt_line,
-  VllmImageDistributionSubject, distribute_vllm_image, vllm_image_distribution_wire, vllm_image_distribution_succeeded,
-  vllm_image_transfer_tar_path,
-}
+import gunbc.spark.group_image_produce { GroupImageProduction, ProducedImageHeld }
+import gunbc.spark.remote_step_sequence { run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire }
+import gunbc.spark.vllm_runtime_image_build { VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, SparkBuildHostWork, vllm_build_root, vllm_image_receipt_line, VllmImageDistributionSubject }
 import gunbc.spark.vllm_image_identity { vllm_image_tag_for_key }
-import gunbc.spark.v41_source_patch_converge {
-  V41PatchedImageBuild, V41PatchedImageBuilt, V41PatchedImageRefused,
-  converge_vllm_runtime_image_with_patches,
-  V41ObservedSourceIdentity, v41_observed_source_identity_of, v41_patched_image_build_key,
-}
-import gunbc.spark.v41_runtime_candidate {
-  V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
-  v41_candidate_inputs, v41_candidate_recipe, v41_candidate_partition, v41_storage_backed_patch_population,
-}
-import gunbc.spark.v41_runtime_realized {
-  V41ProducedRuntimeStanding, V41RuntimeProduced, V41RuntimeProductionUnestablished, V41RuntimeProductionRefused,
-  v41_produced_runtime_image, v41_admit_produced_runtime, v41_produced_runtime_line, v41_runtime_was_produced,
-}
-import gunbc.spark.v41_runtime_image_probe {
-  V41ProbeOutcome, V41ProbeRead, V41ProbeRefused,
-  v41_probe_image_in_place, v41_probe_body, v41_probe_all_present,
-}
+import gunbc.spark.v41_source_patch_converge { V41PatchedImageBuilt, V41PatchedImageRefused, converge_vllm_runtime_image_with_patches, V41ObservedSourceIdentity, v41_observed_source_identity_of, v41_patched_image_build_key }
+import gunbc.spark.v41_runtime_candidate { V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished, v41_candidate_inputs, v41_candidate_recipe, v41_candidate_partition, v41_storage_backed_patch_population }
+import gunbc.spark.v41_runtime_realized { V41ProducedRuntimeStanding, v41_produced_runtime_image, v41_admit_produced_runtime, v41_produced_runtime_line, v41_runtime_was_produced }
+import gunbc.spark.v41_runtime_image_probe { V41ProbeOutcome, V41ProbeRead, V41ProbeRefused, v41_probe_image_in_place, v41_probe_body, v41_probe_all_present }
 
 // ── PRODUCING THE V4.1 IMAGE, AND WHY THAT IS A DIFFERENT ROOT FROM KEYING IT ──────────────────
 //
@@ -132,7 +104,7 @@ fn v41_wheel_verify_script(wheels: List<FlashInferWheel>) -> String {
     fold(wheels, init: "", f: (acc, w) => join([
       acc,
       "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_1rc1_wheel_url(w: w) as String, "\n",
-      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+      digest_shell_verify_line(digest: sha256_digest(hex: w.sha256.hex as String as NonEmptyStr), file_path: join([dir, "/", w.filename as String], "") as NonEmptyStr), "\n",
     ], "")),
   ], "")
 }
@@ -433,59 +405,18 @@ fn v41_production_succeeded(p: V41ProducedRuntime) -> Bool {
 // claims by the seam that only claims. Concurrency at the workflow layer is Group A's arm domain in
 // gunbc.fleet_converge_workflow, so a dispatch also queues behind D0 and the pair-serving apply.
 data v41_production_attempt_raw: String = "v41-runtime-image-produce"
-data v41_production_receipt_path: String = "target/v41-runtime-image-produce-receipt.txt"
 
-fn v41_runtime_image_produce_ci_wet() -> ProcessExit
-{
-  let now = clock_now_probed_at()
-  match spark_converge_target_selection(execute_apply: true) {
-    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
-    SparkConvergeTargetAllObserveOnly =>
-      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: producing this image occupies one host for hours, so it refuses rather than choosing one")
-    SparkConvergeTargetSingle { host: build_host } =>
-      match admit_host_held_by_subject(raw: build_host, subject: PairServingUnitOn { group: FabricGroupA }) {
-        Present { value: why } => exit_failure(reason: why)
-        Absent =>
-          match claim_host_effect_live(host: build_host, term: vllm_build_host_effect_term, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
-            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
-            HostEffectClaimLanded { handle: handle } =>
-              release_host_effect_live(handle: Present { value: handle }, exit: {
-                match with_spark_build_host(
-                  host: build_host,
-                  attempt_raw: v41_production_attempt_raw,
-                  identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
-                  use: fn(target, context, ctx) {
-                    match admit_spark_host_unoccupied(run: spark_ctx_argv_run(ctx: ctx), host: build_host, purpose: vllm_build_host_purpose, need: vllm_build_host_memory_need) {
-                      Present { value: why } => SparkBuildHostWork { receipt: join(["refused-before-run: ", why, "\n"], ""), converged: false }
-                      Absent => {
-                        let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
-                        SparkBuildHostWork {
-                          receipt: v41_production_receipt(p: produced),
-                          converged: v41_production_succeeded(p: produced),
-                        }
-                      }
-                    }
-                  },
-                ) {
-                  SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
-                  SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
-                    let body = join([
-                      join(["v41 runtime image produce probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
-                      trust_receipt,
-                      work.receipt,
-                    ], "")
-                    let w = Filesystem.Write(path: v41_production_receipt_path, content: body)
-                    if !w.success {
-                      exit_failure(reason: join(["v41 runtime image produce receipt write failed: ", w.error], ""))
-                    } else if work.converged {
-                      ExitSuccess
-                    } else {
-                      exit_failure(reason: join(["the V4.1 runtime image was not produced and admitted:\n", body], ""))
-                    }
-                  }
-                }})
-          }
-      }
+// THE V4.1 IMAGE AS ONE PRODUCTION OF THE ONE ENTRY (gunbc.spark.group_image_produce, deforking cut 8c).
+fn v41_runtime_image_production() -> GroupImageProduction {
+  GroupImageProduction {
+    title: "v41 runtime image produce" as NonEmptyStr,
+    group: FabricGroupA,
+    attempt_raw: v41_production_attempt_raw,
+    identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
+    produce: fn(target, context, ctx) {
+      let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
+      SparkBuildHostWork { receipt: v41_production_receipt(p: produced), converged: v41_production_succeeded(p: produced) }
+    },
   }
 }
 
@@ -557,99 +488,15 @@ fn v41_produced_image_subject(p: V41ProducedImageHeld) -> VllmImageDistributionS
   }
 }
 
-// WHAT THIS MODE DOES TO A HOST, handed to the host-effect claim on both ends: the source writes a
-// tar of the image's size into its fabric blob root and serves it on the rail, and the target pulls
-// it into its own and then loads it. Two hours bounds a ~30 GB save, a rail pull and a load; an unreleased claim reads
-// OVERDUE after it and still fences until the host is observed quiet. The residue a crashed run
-// leaves is the digest-named tar, which every leg carries on its command line.
-data v41_image_distribution_host_purpose: NonEmptyStr = "a runtime image distribution, which saves or loads the produced image through a digest-named staging tar" as NonEmptyStr
-data v41_image_distribution_host_effect_term: Second = second(count: 7200)
-
-fn v41_image_distribution_host_residue(p: V41ProducedImageHeld) -> HostEffectResidueSpec {
-  HostEffectResidueSpec { process_pattern: vllm_image_transfer_tar_path(config: p.config), container: none }
-}
-
-fn v41_with_host_effect_claim(host: HostIdentity, p: V41ProducedImageHeld, run: fn() -> ProcessExit) -> ProcessExit {
-  match claim_host_effect_live(host: host, term: v41_image_distribution_host_effect_term, purpose: v41_image_distribution_host_purpose, residue: v41_image_distribution_host_residue(p: p)) {
-    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
-    HostEffectClaimLanded { handle: handle } => release_host_effect_live(handle: Present { value: handle }, exit: run())
-  }
-}
-
-data v41_distribution_attempt_raw: String = "v41-runtime-image-distribute"
-data v41_distribution_receipt_path: String = "target/v41-runtime-image-distribute-receipt.txt"
-
-fn v41_distribute_to(target_host: HostIdentity, p: V41ProducedImageHeld) -> ProcessExit {
-  let now = clock_now_probed_at()
-  let image = v41_produced_image_subject(p: p)
-  match with_spark_build_host(
-    host: p.held_on,
-    attempt_raw: v41_distribution_attempt_raw,
-    identity_file_name: "gunbc-v41-runtime-image-distribute-admin-password" as NonEmptyStr,
-    use: fn(target, context, ctx) {
-      let dist = distribute_vllm_image(source_ctx: ctx, image: image, targets: [target_host])
-      SparkBuildHostWork {
-        receipt: vllm_image_distribution_wire(dist: dist),
-        converged: vllm_image_distribution_succeeded(dist: dist),
-      }
-    },
-  ) {
-    SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
-    SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
-      let body = join([
-        join(["v41 runtime image distribute probed_at=", probed_at_word(reading: now) as String, " source=", p.held_on as String, " endpoint=", endpoint as String, " target=", target_host as String, " executor=", executor, "\n"], ""),
-        trust_receipt,
-        join(["image tag=", image.tag as String, " config_digest=", render_oci_content_digest_wire(d: image.config), " receipt_run=", p.receipt_run as String, "\n"], ""),
-        work.receipt,
-      ], "")
-      let w = Filesystem.Write(path: v41_distribution_receipt_path, content: body)
-      if !w.success {
-        exit_failure(reason: join(["v41 runtime image distribute receipt write failed: ", w.error], ""))
-      } else if work.converged {
-        ExitSuccess
-      } else {
-        exit_failure(reason: join(["the V4.1 runtime image was not verified on the target:\n", body], ""))
-      }
-    }
-  }
-}
-
-// ── THE MODE ENTRY ────────────────────────────────────────────────────────────────────────────
-//
-// SPARK_CONVERGE_TARGET NAMES THE TARGET; THE SOURCE IS THE RECEIPT'S HOST. Where the bytes are is
-// a fact the production run established, not an operator's choice, so it is not an input; an
-// unset target refuses rather than fanning out, because this mode writes tens of gigabytes to the
-// host it delivers to.
-//
-// BOTH HOSTS ARE ADMITTED BY THE RELATION THE PRODUCTION USES -- the Group A pair subject HOLDS
-// them (gunbc.spark.host_commitment admit_host_held_by_subject) -- and both are CLAIMED, because
-// both carry the effect: a save and a staging tar on one, a staging tar and a load on the other. A
-// target that is the source holds the image already; the fold reads it as the Noop, and the one host
-// is claimed once. Occupancy (gunbc.spark.host_occupancy_admission, #12351) answers a GPU and memory
-// need, which a save and a load do not have; the need this effect does have is disk, and the fold
-// states and checks it on every filesystem a copy lands on before a byte moves.
-fn v41_runtime_image_distribute_ci_wet() -> ProcessExit
-{
-  let p = v41_production_produced_image
-  match spark_converge_target_selection(execute_apply: true) {
-    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
-    SparkConvergeTargetAllObserveOnly =>
-      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: distributing this image writes tens of gigabytes to the host it names, so it refuses rather than choosing one")
-    SparkConvergeTargetSingle { host: target_host } =>
-      match admit_host_held_by_subject(raw: p.held_on, subject: PairServingUnitOn { group: FabricGroupA }) {
-        Present { value: why } => exit_failure(reason: why)
-        Absent =>
-          match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
-            Present { value: why } => exit_failure(reason: why)
-            Absent =>
-              v41_with_host_effect_claim(host: p.held_on, p: p, run: fn() {
-                if host_identity_eq(a: target_host, b: p.held_on) {
-                  v41_distribute_to(target_host: target_host, p: p)
-                } else {
-                  v41_with_host_effect_claim(host: target_host, p: p, run: fn() { v41_distribute_to(target_host: target_host, p: p) })
-                }
-              })
-          }
-      }
+// THE V4.1 PRODUCTION ROW AS THE ONE DISTRIBUTION ENTRY'S SUBJECT (gunbc.spark.group_image_produce
+// produced_image_distribute_wet, deforking cut 8c). SPARK_CONVERGE_TARGET names the target; the source
+// is the receipt's host, a fact the production run established and not an operator's choice.
+fn v41_produced_image_held() -> ProducedImageHeld {
+  ProducedImageHeld {
+    title: "v41 runtime image" as NonEmptyStr,
+    group: FabricGroupA,
+    subject: v41_produced_image_subject(p: v41_production_produced_image),
+    held_on: v41_production_produced_image.held_on,
+    receipt_run: v41_production_produced_image.receipt_run,
   }
 }
