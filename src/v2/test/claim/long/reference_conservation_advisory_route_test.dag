@@ -3,6 +3,7 @@ module v2.test.claim.long.reference_conservation_advisory_route
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.reference_conservation { reference_conservation_report_lines, reference_conservation_subject_of_read }
 import v2.test.claim.namespace_xl0.reference_conservation { conservation_fixture_read, conservation_report_of }
+import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { any }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected, Some, Unavailable, UserInputBoundary, diagnostics_has_reason, diagnostics_singleton, invariant_port_locus }
@@ -29,7 +30,7 @@ test fn an_accepted_subjects_advisories_reach_the_report_by_identity_holds() -> 
     Accepted { value: prepared, diagnostics: _ } =>
       let report = conservation_report_of(subject: reference_conservation_subject_of_read(
         read: conservation_fixture_read(id_tail: "advisory_route", source: supplied_route_source),
-        lm: dag_language_model(),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
         prepared: prepared,
         residue: Some {
           diagnostics: diagnostics_singleton(d: Diagnostic {
