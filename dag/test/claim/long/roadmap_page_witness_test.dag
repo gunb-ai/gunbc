@@ -1781,7 +1781,7 @@ test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
         && string_contains(s: h, pattern: "<button class=\"chip\" type=\"button\" data-tab-chip=\"history\">")
         && string_contains(s: h, pattern: "<section class=\"panel-comments\">")
         && string_contains(s: h, pattern: "<section class=\"panel-dependencies\">")
-        && string_contains(s: h, pattern: "<section class=\"panel-work\">")
+        && string_contains(s: h, pattern: "<section class=\"panel-work\" id=\"work\">")
         && string_contains(s: h, pattern: "<section class=\"panel-history\">")
         && string_contains(s: h, pattern: "<aside class=\"issue-rail\">")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
@@ -1821,7 +1821,7 @@ test fn witness_issue_work_tab_renders_history_newest_first() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
+      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\" id=\"work\">")
       count(work_parts) == 2
         && ordered_work_steps(work_section: string_at(parts: work_parts, index: 1)) == ["4", "3", "2"]
         && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "taskbar-title\">write</span>")
@@ -1922,7 +1922,7 @@ test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
     profiles: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
+      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\" id=\"work\">")
       count(work_parts) == 2
         && occurrence_count(s: string_at(parts: work_parts, index: 1), pattern: "class=\"taskbar work-attempt-row\"") == 3
         && occurrence_count(s: string_at(parts: work_parts, index: 1), pattern: "data-attempt=") == 3
@@ -2250,13 +2250,12 @@ test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bo
   }
 }
 
-// THE RAIL'S BUILD METER, THROUGH THE REAL PROJECTION. The rail's own function is given a real
-// attempt projection (the belt witness's completed attempt, built by workflow_attempt_progress)
-// and an assignment held by the Fabric workflow. It renders the BuildMeter element inside the
-// rail's wrapper, as a link to this issue's Work tab carrying the tab chip, and the element's key
-// begins with the projection's own attempt key: the real attempt reached the real element by the
-// real derivation. The fixture attempt's agent completed and nothing verified it, so its current
-// stage is the first that has not completed.
+// THE RAIL'S COMPACT WORK SUMMARY, THROUGH THE REAL PROJECTION. The rail's own function is given
+// a real attempt projection (the belt witness's completed attempt, built by
+// workflow_attempt_progress) and an assignment held by the Fabric workflow. It places the
+// BuildMeter element inside the rail's wrapper, as a link into this issue's Work tab carrying the
+// tab chip, and the element's revision is the producer's revision of that projection: the real
+// attempt reached the real element by the real derivation.
 fn fx_rail_meter_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipal?, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>) -> String {
   extdeps.languages.html.serialize_html_source(node: Element { tag: "div", attributes: [], children: gunbc.roadmap_page.issue_rail_build_meter_nodes(
     view: issue_detail_fixture_view(),
@@ -2265,14 +2264,16 @@ fn fx_rail_meter_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipal?, a
 }
 
 test fn witness_issue_rail_renders_the_build_meter_for_a_fabric_attempt() -> Bool {
-  let h = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ])
-  string_contains(s: h, pattern: "<div><div class=\"issue-rail-meter\"><a class=\"el-build-meter\" href=\"/issue/issue-detail-specimen#work\" data-build-meter=\"issue-detail-specimen\" data-tab-chip=\"work\"><span class=\"el-build-meter-body\" data-meter-key=\"feedfacefeedface|")
+  let attempt = completed_attempt_progress(node_id: "issue-detail-specimen")
+  let h = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
+  string_contains(s: h, pattern: join(["<div><div class=\"issue-rail-meter\"><a class=\"el-build-meter\" href=\"/issue/issue-detail-specimen#work", ""], ""))
+    && string_contains(s: h, pattern: "data-build-meter=\"issue-detail-specimen\" data-tab-chip=\"work\"><span class=\"el-build-meter-body\" data-attempt-view-revision=\"")
+    && string_contains(s: h, pattern: join(["data-attempt-view-revision=\"", gunbc.roadmap.roadmap_build_meter.attempt_view_revision(progress: attempt, stale: false), "\""], ""))
     && string_contains(s: h, pattern: "<svg class=\"el-build-meter-art\" aria-hidden=\"true\"")
-    && string_contains(s: h, pattern: "<span class=\"el-build-meter-stage\">")
     && !string_contains(s: h, pattern: "aria-valuenow")
 }
 
-// NOTHING IS RENDERED WHEN THERE IS NOTHING TO SHOW: held by Fabric with no attempt, held by a
+// NOTHING IS PLACED WHEN THE PRODUCER GIVES NO SUMMARY: held by Fabric with no attempt, held by a
 // person with an attempt, and unassigned with an attempt each yield no node at all, not an empty
 // meter. The red this pins: a rail that draws an empty meter or a placeholder row.
 test fn witness_issue_rail_renders_no_build_meter_without_fabric_or_an_attempt() -> Bool {
@@ -2282,18 +2283,34 @@ test fn witness_issue_rail_renders_no_build_meter_without_fabric_or_an_attempt()
     && fx_rail_meter_html(holder: none, attempts: [ attempt ]) == "<div></div>"
 }
 
-// THE WORKFLOW WIRE NAMES THE SAME VIEW THE RAIL DREW. The belt's own attempt object, built for
-// the same real projection, carries the meter view's key, and it is the key the rail's rendering
-// of that projection carries. A page compares the two to learn that its meter is out of date, so
-// they must agree when nothing has changed; the wire carries no rendering.
-test fn witness_workflow_wire_carries_the_key_the_rail_meter_draws() -> Bool {
+// THE LINK OPENS THE EVENT IT NAMES. A real legacy projection (refused stages, rounds not
+// recorded) gives the rail a failure summary whose link targets the Work tab anchor of its first
+// failure event, and the Work tab's attempt row for the same projection carries a row with exactly
+// that id. Deleting the anchored rows, or spelling either side differently, leaves the link
+// pointing at nothing and turns this red.
+test fn witness_failure_link_targets_a_row_the_work_tab_renders() -> Bool {
+  let attempt = test.claim.roadmap_workflow_progress_witness_test.legacy_attempt_progress()
+  let rail = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
+  let fragment = string_at(parts: split(s: string_at(parts: split(s: rail, delimiter: "class=\"el-build-meter\" href=\""), index: 1), delimiter: "\""), index: 0)
+  let anchor = string_at(parts: split(s: fragment, delimiter: "#"), index: 1)
+  let row = extdeps.languages.html.serialize_html_source(node: gunbc.roadmap_page.issue_attempt_history_row_node(progress: attempt))
+  string_contains(s: anchor, pattern: "work-")
+    && string_contains(s: row, pattern: join(["<li class=\"work-attempt-failure\" id=\"", anchor, "\">"], ""))
+    && string_contains(s: rail, pattern: "data-history=\"not-recorded\"")
+    && string_contains(s: rail, pattern: "data-edge=\"stop-cap\"")
+}
+
+// THE WORKFLOW WIRE NAMES THE SAME REVISION THE RAIL DREW. The belt's own attempt object, built for
+// the same real projection, carries the attempt's view revision, and it is the revision the rail's
+// rendering of that projection carries, so a page compares the two and asks for nothing while
+// nothing has changed. The wire carries no rendering.
+test fn witness_workflow_wire_carries_the_revision_the_rail_draws() -> Bool {
   let attempt = completed_attempt_progress(node_id: "issue-detail-specimen")
-  let key = gunbc.roadmap.roadmap_build_meter.build_meter_wire_key(progress: attempt)
   let wire = serialize_json(v: gunbc.roadmap_belt_actuate.belt_workflow_attempt_presentation_json(progress: attempt))
   let rail = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
-  string_contains(s: key, pattern: "feedfacefeedface|")
-    && string_contains(s: wire, pattern: join(["\"meter_key\": ", serialize_json(v: extdeps.languages.json.emit.json_string(s: key))], ""))
-    && string_contains(s: rail, pattern: "data-meter-key=\"feedfacefeedface|")
+  let revision = string_at(parts: split(s: string_at(parts: split(s: rail, delimiter: "data-attempt-view-revision=\""), index: 1), delimiter: "\""), index: 0)
+  string_length(s: revision) == 16
+    && string_contains(s: wire, pattern: join(["\"attempt_view_revision\": \"", revision, "\""], ""))
     && !string_contains(s: wire, pattern: "el-build-meter")
 }
 
