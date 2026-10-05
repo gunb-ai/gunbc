@@ -1,5 +1,7 @@
 module v2.extdeps.runtimes.v2_evaluator
 
+import v2.std.grammar { node_atom_identity_optional }
+
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection {
@@ -337,14 +339,14 @@ fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
 fn v2_eval_transform_is_int_add(node: Node) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Present { value: op_node } =>
-      match op_node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
+      match node_atom_identity_optional(node: op_node) {
+        Present { value: id } =>
           id == ^dag_token_plus
             || canonical_operation_wire_matches_operation(
               wire: op_node,
               operation: canonical_operation_op_add()
             )
-        _ => false
+        Absent => false
       }
     Absent => false
   }

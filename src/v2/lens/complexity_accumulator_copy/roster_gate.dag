@@ -1,5 +1,6 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
+import v2.lens.complexity_accumulator_copy { Finding }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,

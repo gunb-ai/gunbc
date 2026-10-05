@@ -1,5 +1,6 @@
 module test.claim.orthogonal_topology_witness
 
+import v2.std.algebra { length }
 import std.types { Bool, Int, List }
 import std.measure {
   Micro,

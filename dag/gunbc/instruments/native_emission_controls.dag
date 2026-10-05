@@ -247,6 +247,39 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a list index is realized as the optional its type says it is. v1.compiler.infer_access
+// check_index_access_node types `xs[i]` as `T?`, an out-of-range index having no element, and the
+// Rust list_index template (v1.compiler.languages) used to print the bare `xs[i as usize].clone()`,
+// which panics out of range and is no Option to match -- rustc refused every carrier below. It is
+// now `.get(i as usize).cloned()`, so the elimination the type demands is a program and an absent
+// index is the Absent arm (gunbc.recurring_failure_mode
+// list_index_typed_optional_but_realized_as_the_bare_element). A negative index is out of range
+// on the same footing: it has no element.
+fn index_reads_value(xs: List<Int>, i: Int, want: Int) -> Bool {
+  match xs[i] {
+    Present { value: v } => v == want
+    Absent => false
+  }
+}
+
+fn index_reads_absent(xs: List<Int>, i: Int) -> Bool {
+  match xs[i] {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn list_index_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "list_index_in_range_yields_the_element", held: index_reads_value(xs: [10, 20, 30], i: 1, want: 20) },
+    NativeEmissionCase { identity: "list_index_red_in_range_is_not_another_element", held: !index_reads_value(xs: [10, 20, 30], i: 1, want: 10) },
+    NativeEmissionCase { identity: "list_index_red_in_range_is_not_absent", held: !index_reads_absent(xs: [10, 20, 30], i: 2) },
+    NativeEmissionCase { identity: "list_index_past_the_end_is_absent", held: index_reads_absent(xs: [10, 20, 30], i: 3) },
+    NativeEmissionCase { identity: "list_index_negative_is_absent", held: index_reads_absent(xs: [10, 20, 30], i: 0 - 1) },
+    NativeEmissionCase { identity: "list_index_into_empty_is_absent", held: index_reads_absent(xs: [], i: 0) }
+  ]
+}
+
 // RULE: the NativeClaimDriver binds its declared Filesystem resource (std.compiler_entry
 // NativeClaimDriver; v1.compiler.emit_rust native_claim_report_effect_demand). Reaching Filesystem
 // makes native_claim_report effectful, so this whole program runs only if the rendered main binds
@@ -420,12 +453,18 @@ data native_emission_expected_identities: List<String> = [
   "fold_constructor_init_sums_all_nonnegative",
   "fold_constructor_init_red_negative_switches_arm",
   "fold_constructor_init_red_empty_keeps_init",
+  "list_index_in_range_yields_the_element",
+  "list_index_red_in_range_is_not_another_element",
+  "list_index_red_in_range_is_not_absent",
+  "list_index_past_the_end_is_absent",
+  "list_index_negative_is_absent",
+  "list_index_into_empty_is_absent",
   "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
   "generic_empty_map_red_no_repeat_reports_nothing"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), generic_empty_map_turbofish_cases())
+  concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), generic_empty_map_turbofish_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

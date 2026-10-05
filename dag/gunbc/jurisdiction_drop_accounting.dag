@@ -3,7 +3,7 @@ module gunbc.jurisdiction_drop_accounting
 import std.types { Bool, List }
 import std.decl_ref { DeclarationRef }
 import product.fabric.provider_route { JurisdictionDropEnrollment, CompliancePostureRevision }
-import gunbc.rung_drop.roster { standing_rung_drops }
+import gunbc.rung_drop.standing { standing_rung_drops }
 
 // THE ACCOUNTING JOIN FOR A JURISDICTION DROP ENROLLMENT, AND WHY IT LIVES HERE RATHER THAN IN THE
 // FABRIC. product.fabric.provider_route JurisdictionDropEnrollment carries a drop reference so that
