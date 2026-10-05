@@ -285,21 +285,24 @@ fn envelope_constrains_phase(p: ArmMemoryFitPhase) -> Bool {
 // bound. Open is NEITHER: the named obligation states what measurement would bound it. A zero is
 // not the Open arm in a wig.
 //
-// NotPlaced says the component has no residency in THIS memory tier. The placement decision named
-// in `placement` put it in another tier. It contributes nothing here, and it says so with a reason.
-// It is not a zero standing where a bound was missing. On a one-pool host no row carries it,
-// because every component lives in the one pool.
+// NotPlaced says the component has no residency in THIS memory tier, because it is placed in
+// `placed_in`, another memory of the same host. The mint holds it to that:
+// - the named tier must be one of the subject's tiers and not this row's own;
+// - the same rank's row in the named tier must carry a real bound for the component.
+// So a component cannot be marked absent from every tier, and a one-pool host cannot carry the arm
+// at all. Supply deductions never take it: a deduction that does not exist in a tier is an exact
+// zero, stated as such.
 type ArmComponentBound
   = ComponentBoundExact { bytes: ByteSize, how: NonEmptyStr }
   | ComponentBoundInterval { lower: ByteSize, upper: ByteSize, how: NonEmptyStr }
   | ComponentBoundCeiling { bytes: ByteSize, receipt: NonEmptyStr }
   | ComponentBoundOpen { obligation: NonEmptyStr }
-  | ComponentBoundNotPlaced { placement: NonEmptyStr }
+  | ComponentBoundNotPlaced { placed_in: SystemMemoryComponent }
 
 fn bound_is_open(b: ArmComponentBound) -> Bool {
   match b {
     ComponentBoundOpen { obligation: _ } => true
-    ComponentBoundNotPlaced { placement: _ } => false
+    ComponentBoundNotPlaced { placed_in: _ } => false
     ComponentBoundExact { bytes: _, how: _ } => false
     ComponentBoundInterval { lower: _, upper: _, how: _ } => false
     ComponentBoundCeiling { bytes: _, receipt: _ } => false
@@ -308,7 +311,7 @@ fn bound_is_open(b: ArmComponentBound) -> Bool {
 
 fn bound_upper_opt(b: ArmComponentBound) -> ByteSize? {
   match b {
-    ComponentBoundNotPlaced { placement: _ } => Present { value: byte_size(count: 0) }
+    ComponentBoundNotPlaced { placed_in: _ } => Present { value: byte_size(count: 0) }
     ComponentBoundExact { bytes: b, how: _ } => Present { value: b }
     ComponentBoundInterval { lower: _, upper: u, how: _ } => Present { value: u }
     ComponentBoundCeiling { bytes: b, receipt: _ } => Present { value: b }
@@ -318,7 +321,7 @@ fn bound_upper_opt(b: ArmComponentBound) -> ByteSize? {
 
 fn bound_lower(b: ArmComponentBound) -> ByteSize {
   match b {
-    ComponentBoundNotPlaced { placement: _ } => byte_size(count: 0)
+    ComponentBoundNotPlaced { placed_in: _ } => byte_size(count: 0)
     ComponentBoundExact { bytes: b, how: _ } => b
     ComponentBoundInterval { lower: l, upper: _, how: _ } => l
     ComponentBoundCeiling { bytes: _, receipt: _ } => byte_size(count: 0)
@@ -459,6 +462,8 @@ type ArmCheckpointTierSplitMint
 
 fn checkpoint_tier_split(
   standing: VllmWeightOffloadSplitStanding,
+  device_tier: SystemMemoryComponent,
+  host_tier: SystemMemoryComponent,
   checkpoint_bytes: ByteSize,
   offloaded_layers: Nat,
   offloaded_bytes_per_layer: ByteSize,
@@ -470,6 +475,8 @@ fn checkpoint_tier_split(
     WeightOffloadSplitEstablished { law: law } =>
       checkpoint_tier_split_under_law(
         device_copies: law.device_copies_per_offloaded_parameter,
+        device_tier: device_tier,
+        host_tier: host_tier,
         checkpoint_bytes: checkpoint_bytes,
         offloaded_layers: offloaded_layers,
         offloaded_bytes_per_layer: offloaded_bytes_per_layer,
@@ -479,6 +486,8 @@ fn checkpoint_tier_split(
 
 fn checkpoint_tier_split_under_law(
   device_copies: Nat,
+  device_tier: SystemMemoryComponent,
+  host_tier: SystemMemoryComponent,
   checkpoint_bytes: ByteSize,
   offloaded_layers: Nat,
   offloaded_bytes_per_layer: ByteSize,
@@ -500,11 +509,11 @@ fn checkpoint_tier_split_under_law(
     ArmCheckpointTierSplitReady { split: ArmCheckpointTierSplit {
       device_residency: ComponentBoundExact {
         bytes: byte_size(count: device),
-        how: join(["checkpoint bytes left on the device tier plus the engine's device copies of offloaded parameters, by the split law: ", how as String], "") as NonEmptyStr,
+        how: join(["checkpoint bytes left on tier ", system_memory_component_wire(c: device_tier) as String, " plus the engine's device copies of offloaded parameters, by the split law: ", how as String], "") as NonEmptyStr,
       },
       host_residency: ComponentBoundExact {
         bytes: byte_size(count: host),
-        how: join(["checkpoint bytes moved to the linked host tier, by the split law: ", how as String], "") as NonEmptyStr,
+        how: join(["checkpoint bytes moved to tier ", system_memory_component_wire(c: host_tier) as String, ", by the split law: ", how as String], "") as NonEmptyStr,
       },
     } }
   }
@@ -609,6 +618,134 @@ fn arm_host_memory(host: ArmHostClass) -> List<SystemMemoryComponent> {
   }
 }
 
+// ── THE FACTS INSIDE EACH TIER ARE BOUND TO THAT TIER ────────────────────────────────────────────
+//
+// The tier-set join establishes which tiers exist. These walls establish that what each tier row
+// says belongs to it:
+// - every NotPlaced points at a placed bound in another of the host's tiers;
+// - no supply deduction is NotPlaced;
+// - a tier's pool never reads above its catalog memory's capacity, so a larger memory's pool cannot
+//   stand on a smaller tier;
+// - on a host with more than one tier, every derived or measured bound names the tier it was
+//   derived or measured for, as it already names the checkpoint, runtime and topology.
+fn bound_text(b: ArmComponentBound) -> String? {
+  match b {
+    ComponentBoundExact { bytes: _, how: h } => Present { value: h as String }
+    ComponentBoundInterval { lower: _, upper: _, how: h } => Present { value: h as String }
+    ComponentBoundCeiling { bytes: _, receipt: r } => Present { value: r as String }
+    ComponentBoundOpen { obligation: _ } => none
+    ComponentBoundNotPlaced { placed_in: _ } => none
+  }
+}
+
+fn bound_is_not_placed(b: ArmComponentBound) -> Bool {
+  match b {
+    ComponentBoundNotPlaced { placed_in: _ } => true
+    ComponentBoundExact { bytes: _, how: _ } => false
+    ComponentBoundInterval { lower: _, upper: _, how: _ } => false
+    ComponentBoundCeiling { bytes: _, receipt: _ } => false
+    ComponentBoundOpen { obligation: _ } => false
+  }
+}
+
+fn row_for(ranks: List<ArmRankDemand>, rank: Nat, tier: SystemMemoryComponent) -> ArmRankDemand? {
+  first(filter(ranks, r => r.rank == rank && system_memory_component_same(a: r.tier, b: tier)))
+}
+
+fn not_placed_refusal(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>, rd: ArmRankDemand, c: ArmMemoryComponent) -> NonEmptyStr? {
+  match rank_component_bound(rd: rd, c: c) {
+    ComponentBoundNotPlaced { placed_in: p } => {
+      let where_ = join(["rank ", to_string(rd.rank), " ", arm_memory_component_wire(c: c), " in tier ", system_memory_component_wire(c: rd.tier) as String], "")
+      if system_memory_component_same(a: p, b: rd.tier) {
+        Present { value: join([where_, " is marked not placed but names its own tier as where it is placed"], "") as NonEmptyStr }
+      } else if !any(tiers, t => system_memory_component_same(a: t.tier, b: p)) {
+        Present { value: join([where_, " is marked placed in ", system_memory_component_wire(c: p) as String, ", which is not a memory of this host"], "") as NonEmptyStr }
+      } else {
+        match row_for(ranks: ranks, rank: rd.rank, tier: p) {
+          Absent => Present { value: join([where_, " names a placement tier with no row for this rank"], "") as NonEmptyStr }
+          Present { value: other } =>
+            if bound_is_not_placed(b: rank_component_bound(rd: other, c: c)) {
+              Present { value: join([where_, " is marked placed in ", system_memory_component_wire(c: p) as String, ", but that tier also marks it not placed: the component would be priced nowhere"], "") as NonEmptyStr }
+            } else {
+              none
+            }
+        }
+      }
+    }
+    ComponentBoundExact { bytes: _, how: _ } => none
+    ComponentBoundInterval { lower: _, upper: _, how: _ } => none
+    ComponentBoundCeiling { bytes: _, receipt: _ } => none
+    ComponentBoundOpen { obligation: _ } => none
+  }
+}
+
+fn tier_naming_refusal(tiers: List<ArmTierSupply>, rd: ArmRankDemand, c: ArmMemoryComponent) -> NonEmptyStr? {
+  if count(tiers) < 2 {
+    none
+  } else {
+    match bound_text(b: rank_component_bound(rd: rd, c: c)) {
+      Absent => none
+      Present { value: t } =>
+        if string_contains(s: t, pattern: system_memory_component_wire(c: rd.tier) as String) {
+          none
+        } else {
+          Present { value: join([
+            "rank ", to_string(rd.rank), " ", arm_memory_component_wire(c: c), " carries a bound whose derivation or receipt does not name its tier ",
+            system_memory_component_wire(c: rd.tier) as String, ": on a host with more than one memory, a bound is evidence about one of them",
+          ], "") as NonEmptyStr }
+        }
+    }
+  }
+}
+
+fn tier_supply_refusal(ts: ArmTierSupply) -> NonEmptyStr? {
+  let wire = system_memory_component_wire(c: ts.tier) as String
+  if bound_is_not_placed(b: ts.deductions.host_os_control_reserve) || bound_is_not_placed(b: ts.deductions.foreign_residency) {
+    Present { value: join(["a supply deduction of tier ", wire, " is marked not placed: a deduction is a fact about its own tier, and one that does not exist there is an exact zero"], "") as NonEmptyStr }
+  } else {
+    match ts.pool {
+      ArmPoolUnbounded { obligation: _ } => none
+      ArmPoolBounded { span: sp, how: _ } =>
+        if byte_size_count(b: interval_high(interval: sp)) > byte_size_count(b: ts.tier.memory.capacity) {
+          Present { value: join([
+            "the pool of tier ", wire, " reads up to ", to_string(byte_size_count(b: interval_high(interval: sp))),
+            " bytes, above that memory's catalog capacity of ", to_string(byte_size_count(b: ts.tier.memory.capacity)),
+            " bytes: the reading is of another memory",
+          ], "") as NonEmptyStr }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn first_refusal(xs: List<NonEmptyStr?>) -> NonEmptyStr? {
+  fold(xs, init: Absent, f: (acc, x) => match acc { Present { value: _ } => acc Absent => x })
+}
+
+fn tier_facts_refusal(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>) -> NonEmptyStr? {
+  first_refusal(concat(
+    map(tiers, ts => tier_supply_refusal(ts: ts)),
+    flat_map(ranks, rd => flat_map(arm_memory_components, c => [
+      not_placed_refusal(ranks: ranks, tiers: tiers, rd: rd, c: c),
+      tier_naming_refusal(tiers: tiers, rd: rd, c: c),
+    ]))))
+}
+
+fn tier_facts_ok(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>) -> Bool {
+  match tier_facts_refusal(ranks: ranks, tiers: tiers) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn tier_facts_refusal_cause(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>) -> NonEmptyStr {
+  match tier_facts_refusal(ranks: ranks, tiers: tiers) {
+    Present { value: c } => c
+    Absent => "unreachable: the tier facts were refused by the same wall that now admits them" as NonEmptyStr
+  }
+}
+
 fn tier_set_refusal_cause(host_memory: List<SystemMemoryComponent>, tiers: List<ArmTierSupply>) -> NonEmptyStr {
   match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
     Present { value: c } => c
@@ -645,7 +782,7 @@ fn bound_names_identity(b: ArmComponentBound, ckpt: ServingCheckpoint, rt: Servi
   let rt_wire = serving_runtime_wire(r: rt) as String
   let tp_wire = serving_topology_wire(t: tp) as String
   match b {
-    ComponentBoundNotPlaced { placement: _ } => true
+    ComponentBoundNotPlaced { placed_in: _ } => true
     ComponentBoundExact { bytes: _, how: h } =>
       string_contains(s: h as String, pattern: ckpt_wire)
         && string_contains(s: h as String, pattern: tp_wire)
@@ -728,6 +865,8 @@ fn arm_memory_fit_subject(
   }
   if !tier_ok {
     ArmMemorySubjectRefused { cause: tier_set_refusal_cause(host_memory: host_memory, tiers: tiers) }
+  } else if !tier_facts_ok(ranks: [] as List<ArmRankDemand>, tiers: tiers) {
+    ArmMemorySubjectRefused { cause: tier_facts_refusal_cause(ranks: [] as List<ArmRankDemand>, tiers: tiers) }
   } else if !profile_joins_intent(intent: intent, p: requested_profile) {
     ArmMemorySubjectRefused {
       cause: join([
@@ -762,7 +901,7 @@ fn arm_memory_fit_subject(
                       tiers: tiers,
                     } }
                 }
-              ComponentBoundNotPlaced { placement: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundNotPlaced { placed_in: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundExact { bytes: _, how: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundCeiling { bytes: _, receipt: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundOpen { obligation: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
@@ -794,6 +933,8 @@ fn arm_memory_fit_subject_with_rank_demands(
     ArmMemorySubjectRefused { cause: tier_set_refusal_cause(host_memory: host_memory, tiers: tiers) }
   } else if !rank_roster_valid(ranks: ranks, rank_count: rank_count, tiers: tiers) {
     ArmMemorySubjectRefused { cause: rank_roster_refusal(ranks: ranks, rank_count: rank_count, tiers: tiers) }
+  } else if !tier_facts_ok(ranks: ranks, tiers: tiers) {
+    ArmMemorySubjectRefused { cause: tier_facts_refusal_cause(ranks: ranks, tiers: tiers) }
   } else if !roster_names_identity(ranks: ranks, ckpt: checkpoint, rt: runtime, tp: topology) {
     ArmMemorySubjectRefused { cause: "a measured bound's receipt or derivation does not name this checkpoint x runtime x topology: a receipt carried onto a changed checkpoint or runtime is evidence about a subject that is not this one, and is refused at the mint" as NonEmptyStr }
   } else {
@@ -819,7 +960,7 @@ fn arm_memory_fit_subject_with_rank_demands(
                       tiers: tiers,
                     } }
                 }
-              ComponentBoundNotPlaced { placement: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundNotPlaced { placed_in: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundExact { bytes: _, how: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundCeiling { bytes: _, receipt: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundOpen { obligation: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
@@ -923,7 +1064,7 @@ fn demand_for_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) -> ArmPhaseDema
   let lower = fold(resident_components, init: byte_size(count: 0), f: (acc, c) =>
     measure_add(a: acc, b: demand_term_lower(bound: rank_component_bound(rd: rd, c: c))))
   let lower_components = filter(resident_components, c => match rank_component_bound(rd: rd, c: c) {
-    ComponentBoundNotPlaced { placement: _ } => false
+    ComponentBoundNotPlaced { placed_in: _ } => false
     ComponentBoundExact { bytes: _, how: _ } => true
     ComponentBoundInterval { lower: _, upper: _, how: _ } => true
     ComponentBoundCeiling { bytes: _, receipt: _ } => false
@@ -1324,7 +1465,7 @@ fn open_term_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> {
               "rank ", to_string(rb.rank), tier_label(subject: subject, tier: rb.tier), " ", arm_memory_component_wire(c: c),
               " has no defensible bound: ", o as String,
             ], "") as NonEmptyStr]
-          ComponentBoundNotPlaced { placement: _ } => [] as List<NonEmptyStr>
+          ComponentBoundNotPlaced { placed_in: _ } => [] as List<NonEmptyStr>
           ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
           ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
           ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
@@ -1337,7 +1478,7 @@ fn tier_deduction_obligations(subject: ArmMemoryFitSubject, ts: ArmTierSupply) -
       match ts.deductions.host_os_control_reserve {
         ComponentBoundOpen { obligation: o } =>
           [join(["the supply deduction", tier_label(subject: subject, tier: ts.tier), " host-os-control-reserve has no defensible upper bound: ", o as String], "") as NonEmptyStr]
-        ComponentBoundNotPlaced { placement: _ } => [] as List<NonEmptyStr>
+        ComponentBoundNotPlaced { placed_in: _ } => [] as List<NonEmptyStr>
         ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
@@ -1345,7 +1486,7 @@ fn tier_deduction_obligations(subject: ArmMemoryFitSubject, ts: ArmTierSupply) -
       match ts.deductions.foreign_residency {
         ComponentBoundOpen { obligation: o } =>
           [join(["the supply deduction", tier_label(subject: subject, tier: ts.tier), " foreign-residency has no defensible upper bound: ", o as String], "") as NonEmptyStr]
-        ComponentBoundNotPlaced { placement: _ } => [] as List<NonEmptyStr>
+        ComponentBoundNotPlaced { placed_in: _ } => [] as List<NonEmptyStr>
         ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
@@ -1358,7 +1499,7 @@ fn ceiling_terms_resident_in_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) 
   filter(filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase)), c =>
     match rank_component_bound(rd: rd, c: c) {
       ComponentBoundCeiling { bytes: _, receipt: _ } => true
-      ComponentBoundNotPlaced { placement: _ } => false
+      ComponentBoundNotPlaced { placed_in: _ } => false
       ComponentBoundExact { bytes: _, how: _ } => false
       ComponentBoundInterval { lower: _, upper: _, how: _ } => false
       ComponentBoundOpen { obligation: _ } => false
@@ -1675,7 +1816,7 @@ type ArmObservationVerdict
 
 fn arm_readback_observation(component: ArmMemoryComponent, predicted: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr) -> ArmObservationVerdict {
   match predicted {
-    ComponentBoundNotPlaced { placement: _ } =>
+    ComponentBoundNotPlaced { placed_in: _ } =>
       match byte_size_count(b: observed) == 0 {
         true => ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
         false => ArmMemoryModelFalsified { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
@@ -2540,7 +2681,7 @@ fn arm_wet_standing_discharges_open(standing: ArmWetStanding, open: ArmComponent
         ArmWetGraphAttributionUnestablished { raw_hundredths_gib: _, receipt: _ } => false
         ArmWetModelFalsified { component: _, predicted: _, observed_bytes: _, receipt: _ } => false
       }
-    ComponentBoundNotPlaced { placement: _ } => false
+    ComponentBoundNotPlaced { placed_in: _ } => false
     ComponentBoundExact { bytes: _, how: _ } => false
     ComponentBoundInterval { lower: _, upper: _, how: _ } => false
     ComponentBoundCeiling { bytes: _, receipt: _ } => false
