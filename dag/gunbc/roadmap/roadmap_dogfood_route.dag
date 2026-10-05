@@ -970,8 +970,10 @@ fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEv
 
 fn dogfood_durable_result_defect(receipt: DogfoodStartReceipt, observation: ResultReturnedObservation) -> String {
   match observation {
-    ResultReturnedObserved { node: _, attempt: _, event, claim, return_to: _, outcome, recorded_at: _ } =>
-      if (event as String) != receipt.result_event || (claim as String) != receipt.result_claim { "the attempt's returned result is another event or claim than the pinned one" }
+    ResultReturnedObserved { node, attempt, event, claim, return_to: _, outcome, recorded_at } =>
+      if (node as String) != receipt.node_id || (attempt as String) != receipt.attempt_key { "the attempt's returned result names another node or attempt" }
+      else if (event as String) != receipt.result_event || (claim as String) != receipt.result_claim { "the attempt's returned result is another event or claim than the pinned one" }
+      else if (match service_evidence_snapshot_published_result(snapshot: receipt.service_evidence) { Absent => true  Present { value } => value.recorded_at != recorded_at }) { "the attempt's returned result was recorded at another time than the pinned completion_time" }
       else {
         match outcome {
           ResultPublished { pr, head } => if (pr as String) != receipt.pr_url || (head as String) != receipt.head_sha { "the attempt's returned result publishes another PR or head than the pinned one" } else { "" }

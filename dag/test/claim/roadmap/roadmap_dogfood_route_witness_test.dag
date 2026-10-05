@@ -252,11 +252,13 @@ data pr_url: String = "https://github.com/gunb-ai/gunbc/pull/4242"
 
 fn result_published(claim: String, h: String) -> ResultReturnedObservation { result_published_at(claim: claim, h: h, pr: pr_url) }
 
-fn result_published_at(claim: String, h: String, pr: String) -> ResultReturnedObservation {
+fn result_published_at(claim: String, h: String, pr: String) -> ResultReturnedObservation { result_published_when(claim: claim, h: h, pr: pr, at: "2026-10-03T07:00:00Z") }
+
+fn result_published_when(claim: String, h: String, pr: String, at: String) -> ResultReturnedObservation {
   ResultReturnedObserved {
     node: "n1" as NonEmptyStr as RoadmapNodeId, attempt: "k1" as NonEmptyStr, event: "evt-result" as NonEmptyStr as RoadmapEventId, claim: claim as NonEmptyStr as RoadmapEventId,
     return_to: LegacyEmailPrincipal { email: "requester@example.com" as NonEmptyStr, authentication_unestablished: true },
-    outcome: ResultPublished { pr: pr as NonEmptyStr, head: h as NonEmptyStr }, recorded_at: "2026-10-03T07:00:00Z",
+    outcome: ResultPublished { pr: pr as NonEmptyStr, head: h as NonEmptyStr }, recorded_at: at,
   }
 }
 
@@ -659,6 +661,24 @@ test fn a_pinned_result_for_another_pull_request_at_the_same_head_is_not_a_start
 
 test fn a_result_answering_another_claim_than_the_pinned_request_is_not_a_start() -> Bool {
   !decodes(text: payload_claimed(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: evidence_observed_n1, ev_digest: digest_of(wire: evidence_observed_n1), result_claim: "evt-other"))
+}
+
+// THE PINNED COMPLETION TIME IS THE LIVE EVENT'S: the receipt pins completion_time T1, and the live
+// exact result event -- same id, claim, PR and head -- was recorded at T2; the read-boundary judgment
+// refuses. Driven through dogfood_durable_g3_g4_defect, the function the occupied-slot read calls.
+test fn a_live_result_recorded_at_another_time_than_the_pinned_completion_is_a_defect() -> Bool {
+  match dogfood_start_receipt_decode(payload: good()) {
+    StartReceiptInvalid { reason: _ } => false
+    StartReceiptDecoded { receipt } =>
+      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+        binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+        inputs: ServiceEvidenceInputs {
+          session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
+          metering: MeteringRead { observation: MeteringNotYetWritten },
+          result_returned: ResultReturnedRead { observation: result_published_when(claim: "evt-claim", h: head, pr: pr_url, at: "2026-10-04T09:00:00Z"), close: SnapshotNotOpened },
+        },
+      } }) { Present { value } => string_contains(s: value, pattern: "recorded at another time")  Absent => false }
+  }
 }
 
 // AT THE INSTANCE-BOUND READ: the attempt's result observed through a snapshot that failed to close is
