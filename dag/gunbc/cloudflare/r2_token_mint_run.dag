@@ -302,10 +302,10 @@ fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2Mi
 
 // THE CONTAINER IS ENSURED BY THE MINT FLOW: OBSERVED, AND CREATED WHEN ABSENT (operator direction,
 // 2026-09-19). The create runs BEFORE the Cloudflare Create, so a refused or ambiguous create spends
-// nothing at Cloudflare. Whether it succeeds is a fact about the RUNNING identity, not a choice made
-// here: an operator identity holds project-wide secrets.create and converges in one run; the fleet
-// convergence identity holds only per-secret cells and is refused, and the refusal names the
-// project-level permission it lacks rather than widening that identity. An ambiguous create is not
+// nothing at Cloudflare. Every custody container is created bare by the bootstrap
+// (gunbc.auth.gcp_iam_bootstrap, over gunbc.auth.gcp_iam_converge gcp_iam_converge_grant_sets), so a
+// federated run observes it present; the create arm is the refusal for an identity without the
+// project-level permission, which no recurring identity holds (operator decision 2026-10-04, B'). An ambiguous create is not
 // retried (gunbc.secret_provision_actuator SecretCreationOutcome: a later GET cannot establish
 // absence).
 data r2_mint_container_create_permission: NonEmptyStr = "secretmanager.secrets.create"
@@ -364,7 +364,7 @@ fn ensure_r2_mint_custody_container(
                 cause as String,
                 "); creating a secret needs the PROJECT-level permission ",
                 r2_mint_container_create_permission as String,
-                ", which the fleet convergence identity deliberately does not hold -- it carries per-secret cells only",
+                ", which no recurring identity holds; the bootstrap creates custody containers (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply), so declare this secret in a gcp_iam_converge grant set and re-run it",
               ], "") as NonEmptyStr,
             ),
           }

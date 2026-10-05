@@ -1,0 +1,54 @@
+module test.claim.long.site_style_ownership_witness_test
+import gunbc.site.document { site_document_over, site_styles, site_styles_rules, site_styles_css, ApprovalShell }
+import std.list { distinct_by_key }
+import gunbc.site.layout { site_layout_rules }
+import gunbc.roadmap_surface_style { roadmap_surface_rules }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, decl }
+import gunbc.design.theme_transition { rule_decls, unthemed_color_decls, untokened_length_decls }
+import extdeps.languages.css.selectors { RawSelector, selector_subject_wire }
+import extdeps.languages.css.properties { Color, Padding, BoxShadow, css_property_wire }
+import extdeps.languages.html { serialize_html_source }
+
+fn static_selectors(rules: List<BuildRule>) -> List<String> {
+  flat_map(rules, r => match r {
+    StaticRule { selector, decls: _ } => [selector_subject_wire(s: selector)]
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => []
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => []
+  })
+}
+fn distinct_names(names: List<String>) -> Bool {
+  count(distinct_by_key(xs: names, key: n => n)) == count(names)
+}
+fn surface_rules() -> List<BuildRule> {
+  site_styles_rules(styles: site_styles(rules: roadmap_surface_rules()))
+}
+test fn emitted_shared_and_surface_rules_have_one_owner() -> Bool {
+  let rules = surface_rules()
+  distinct_names(names: static_selectors(rules: rules))
+    && all(rules, r => distinct_names(names: map(rule_decls(rule: r), d => css_property_wire(p: d.prop))))
+    && all(static_selectors(rules: rules), s => !string_contains(s: s, pattern: ":root ") && !string_contains(s: s, pattern: ":focus-visible") && !string_contains(s: s, pattern: ":hover"))
+}
+test fn duplicate_authoring_is_detected() -> Bool {
+  let row = StaticRule { selector: RawSelector { text: ".duplicate" }, decls: [] }
+  !distinct_names(names: static_selectors(rules: [row, row]))
+}
+test fn shared_and_surface_rules_are_censused_at_the_emitted_boundary() -> Bool {
+  let rules = surface_rules()
+  count(unthemed_color_decls(rules: rules)) == 0
+    && count(untokened_length_decls(rules: rules)) == 0
+}
+test fn emitted_rogue_shadow_and_length_are_rejected_by_censuses() -> Bool {
+  let rogue = StaticRule { selector: RawSelector { text: ".rogue" }, decls: [decl(prop: BoxShadow, value: "0 var(--space-8) 0 #0002"), decl(prop: Padding, value: "19px")] }
+  let styles = site_styles(rules: [rogue])
+  let rules = site_styles_rules(styles: styles)
+  string_contains(s: site_styles_css(styles: styles), pattern: "19px")
+    && count(unthemed_color_decls(rules: rules)) == 1
+    && count(untokened_length_decls(rules: rules)) == 1
+}
+test fn approval_shell_has_no_application_runtime_or_session_controls() -> Bool {
+  let page = serialize_html_source(node: site_document_over(title: "Approval", heading: "approval", styles: site_styles(rules: []), content: [], navigation: [], shell: ApprovalShell))
+  !string_contains(s: page, pattern: "<script")
+    && !string_contains(s: page, pattern: "data-account-session")
+    && !string_contains(s: page, pattern: "<button")
+    && string_contains(s: page, pattern: "href=\"/favicon-gunb.svg\"")
+}

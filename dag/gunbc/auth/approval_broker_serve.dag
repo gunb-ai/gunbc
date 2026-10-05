@@ -1,4 +1,7 @@
 module gunbc.auth.approval_broker_serve
+import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
+import extdeps.http.server { text_javascript_utf8 }
+import gunbc.site.document { site_document_over, site_styles, ApprovalShell }
 
 import extdeps.tailscale.identity { tailnet_identity_login }
 import extdeps.tailscale.serve { ServeStatusUnreadable }
@@ -119,6 +122,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
 type ApprovalBrokerHandler
   = ApprovalConfirmPageHandler
+  | ApprovalSiteFaviconHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
@@ -143,6 +147,7 @@ type ApprovalBrokerHandler
 // spelled once per reader agrees until one of them moves.
 fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
   [
+    ServedRouteSpec { method: GET, raw: site_favicon_path, handler: ApprovalSiteFaviconHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_confirm_path_template as String, handler: ApprovalConfirmPageHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
@@ -239,22 +244,26 @@ fn approval_confirm_page_response(
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   let segment = path_param_value(params: params, name: "capability")
-  let decision_word = match parse_capability_segment(segment: segment) {
+  let parsed = parse_capability_segment(segment: segment)
+  let decision_word = match parsed {
     CapabilitySegmentParsed { escalation_id: _, decision: ProposeApprove, tag_hex: _ } => "APPROVE"
     CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: _ } => "DENY"
     CapabilitySegmentMalformed { detail: _ } => "(malformed capability)"
   }
-  broker_page_response(page: el("html", [
-    el("head", [ el("title", [ txt("gunbc approval") ]), el_attrs("meta", [ attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1") ], []) ]),
-    el("body", [
-      el("h1", [ txt(join(["Confirm: ", decision_word], "")) ]),
-      el("p", [ txt("This page does not decide anything. Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never spend an approval, so this route renders and stops. The button below POSTs to the same path, and that request is the one that commits.") ]),
-      el("p", [ txt(join(["capability: ", segment], "")) ]),
-      el_attrs("form", [ attr(name: "method", value: "post"), attr(name: "action", value: join([approval_broker_confirm_path_prefix as String, segment], "")) ], [
-        el_attrs("button", [ attr(name: "type", value: "submit") ], [ txt(decision_word) ]),
-      ]),
-    ]),
+  let available = match parsed { CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } => true CapabilitySegmentMalformed { detail: _ } => false }
+  broker_page_response(page: site_document_over(shell: ApprovalShell, title: "gunbc approval", heading: "approval", navigation: [], styles: site_styles(rules: []), content: [
+    el("main", if !available {
+      [el("h1", [txt("Approval link unavailable")]), el("p", [txt("This link is invalid or incomplete. Open the original approval request to continue.")])]
+    } else {
+      [el("h1", [txt(concat("Confirm: ", decision_word))]),
+       el("p", [txt("Review the request before confirming your decision. Opening this page does not record a decision.")]),
+       el("details", [el("summary", [txt("Request identifier")]), el("code", [txt(segment)])]),
+       el_attrs("form", [attr(name: "method", value: "post"), attr(name: "action", value: join([approval_broker_confirm_path_prefix as String, segment], ""))], [
+         el_attrs("button", [attr(name: "type", value: "submit")], [txt(decision_word)]),
+       ])]
+    }),
   ]), marker: ConfirmHandlerObserved, process: process)
+
 }
 
 // THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or
@@ -515,6 +524,7 @@ fn approval_broker_invoke(
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
+    ApprovalSiteFaviconHandler => broker_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source(), marker: BrokerStaticRouteServed, process: process)
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params, process: process)
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
