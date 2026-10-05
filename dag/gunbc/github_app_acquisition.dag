@@ -93,16 +93,17 @@ import extdeps.github.app {
 }
 import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, page_fold_refusal_key }
 import extdeps.transports.rest {
-  RestOutcome,
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestReadExchange,
   RestMutationExchange,
-  RestExchangePerformance,
-  RestExchangeSucceeded,
+  RestExchangeRefusal,
   RestExchangeStatusRefused,
   RestExchangeCommitAmbiguous,
   RestExchangeUnreached,
   RestExchangeUndecodable,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 
 // WHAT THIS MODULE IS FOR. Creating a GitHub App by hand is a form with a name, a URL, a webhook
@@ -785,11 +786,9 @@ type CensusAppObservation
   | AppNotYetAddressable
 
 fn app_observation_from_exchange(
-  performance: RestExchangePerformance,
-  record: GitHubAppPublicRecord,
+  performance: RestExchangeRefusal,
 ) -> CensusAppObservation {
   match performance {
-    RestExchangeSucceeded => AppRecordObserved { record: record }
     RestExchangeStatusRefused { status: status, body: body } =>
       if status == 404 {
         AppRecordAbsent
@@ -808,13 +807,14 @@ fn app_observation_from_exchange(
 }
 
 fn observe_census_app(
-  record: GitHubAppPublicRecord,
-  outcome: RestOutcome,
+  outcome: RestResult<GitHubAppPublicRecord>,
 ) -> CensusAppObservation {
-  app_observation_from_exchange(
-    performance: classify_rest_outcome(standing: RestReadExchange { rest: outcome }),
-    record: record,
-  )
+  match outcome {
+    RestAnswered { answer } => AppRecordObserved { record: answer }
+    RestRefused { refusal } => app_observation_from_exchange(
+      performance: classify_rest_refusal(standing: RestReadExchange { refusal: refusal }),
+    )
+  }
 }
 
 // AGREEMENT IS PER-AXIS AND DIRECTIONAL. The declared set is what we asked for; the observed set is
@@ -1089,11 +1089,11 @@ fn census_app_not_acquired_classification(
 // because the two readings prescribe opposite actions: re-run the exchange, or go back to the human
 // step and get a fresh code.
 //
-// WHICH PERFORMANCE ARMS A MUTATION CAN ACTUALLY REACH, STATED SO THE MATCH BELOW IS NOT MISREAD AS
-// FIVE LIVE OUTCOMES. classify_rest_outcome folds a mutation's transport refusal AND its undecodable
+// WHICH REFUSAL ARMS A MUTATION CAN ACTUALLY REACH, STATED SO THE MATCH BELOW IS NOT MISREAD AS
+// FOUR LIVE REFUSALS. classify_rest_refusal folds a mutation's transport refusal AND its undecodable
 // body into RestExchangeCommitAmbiguous - only a READ exchange surfaces RestExchangeUnreached or
-// RestExchangeUndecodable - so for this POST the reachable arms are Succeeded, StatusRefused and
-// CommitAmbiguous. The other two are matched for totality and route to the same unknown-outcome
+// RestExchangeUndecodable - so for this POST the reachable arms are the answered one, StatusRefused
+// and CommitAmbiguous. The other two are matched for totality and route to the same unknown-outcome
 // carrier rather than carrying prose that describes a red they cannot produce (DESIGN 4b).
 //
 // AND UNKNOWN IS THE ARM THAT CANNOT BE RE-RUN BLIND. A mutation whose outcome we could not read may
@@ -1119,30 +1119,32 @@ fn exchange_outcome_unknown(detail: String) -> CensusAppExchangeOutcome {
 }
 
 fn classify_census_app_exchange(
-  conversion: GitHubAppManifestConversion,
-  outcome: RestOutcome,
+  outcome: RestResult<GitHubAppManifestConversion>,
 ) -> CensusAppExchangeOutcome {
-  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
-    RestExchangeSucceeded =>
-      match conversion_issuance(c: conversion) {
+  match outcome {
+    RestAnswered { answer } =>
+      match conversion_issuance(c: answer) {
         IssuanceRead { issuance: i } => ExchangeIssued { issuance: i }
         IssuanceSlugEmpty => ExchangeReplyIncomplete { issuance: IssuanceSlugEmpty }
         IssuanceClientIdEmpty => ExchangeReplyIncomplete { issuance: IssuanceClientIdEmpty }
       }
-    RestExchangeStatusRefused { status: status, body: body } =>
-      if status == 404 {
-        ExchangeCodeNotLive { body: body }
-      } else {
-        ExchangeRefused {
-          reason: join(["manifest conversion refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-        }
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status: status, body: body } =>
+          if status == 404 {
+            ExchangeCodeNotLive { body: body }
+          } else {
+            ExchangeRefused {
+              reason: join(["manifest conversion refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+            }
+          }
+        RestExchangeCommitAmbiguous { detail: detail } =>
+          exchange_outcome_unknown(detail: detail as String)
+        RestExchangeUnreached { cause: cause } =>
+          exchange_outcome_unknown(detail: cause as String)
+        RestExchangeUndecodable { status: _, cause: cause } =>
+          exchange_outcome_unknown(detail: cause as String)
       }
-    RestExchangeCommitAmbiguous { detail: detail } =>
-      exchange_outcome_unknown(detail: detail as String)
-    RestExchangeUnreached { cause: cause } =>
-      exchange_outcome_unknown(detail: cause as String)
-    RestExchangeUndecodable { status: _, cause: cause } =>
-      exchange_outcome_unknown(detail: cause as String)
   }
 }
 
@@ -1553,7 +1555,7 @@ fn installation_admission_disposition(
 
 // THE SUCCESSFUL ARM IS NAMED FOR WHAT IT IS: THE FIRST PAGE. GitHub states whether another page
 // exists only in the RFC 8288 Link response header (extdeps.github.pagination), and the REST
-// transport github.AppInstallations is declared on returns the decoded body and its outcome and
+// transport github.AppInstallations is declared on returns a RestResult over the decoded body and
 // no response header at all. So this read cannot know whether the listing continues, and the arm
 // may not be called the population: an earlier cut named it InstallationsRead and the acquisition
 // receipt treated it as the complete set, which let an intended installation on page two read as
@@ -1567,7 +1569,7 @@ type CensusAppInstallationReading
 // ONE PRODUCER FOR "WHAT DID /app/installations SAY", AND THE TWO CONSUMERS ONLY RENDER IT. Two
 // entry points need that fact -- the installations report and the acquisition receipt -- and an
 // earlier cut of this PR authored the whole ladder twice: the same call, the same five
-// classify_rest_outcome arms, the same three decode arms, in two functions. They had already drifted
+// exchange-classification arms, the same three decode arms, in two functions. They had already drifted
 // inside the same commit, with two different sentences for the identical 401 condition (review
 // 69482). Two sources for one semantic fact is the parallel authority DESIGN 6 names as a tell and
 // DESIGN 2 prices, and it undercuts this PR's own thesis: one fact, one establishment.
@@ -1578,19 +1580,21 @@ type CensusAppInstallationReading
 // unreadable into EMPTY, and that stays two arms: "the JWT was stale" and "the App has no
 // installation" prescribe opposite acts.
 fn read_census_app_installations() -> CensusAppInstallationReading uses net: Network {
-  let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
-  match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
-    RestExchangeStatusRefused { status: status, body: body } =>
-      InstallationsUnreadable {
-        reason: join([
-          "GET /app/installations refused with status ", to_string(status),
-          ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
-        ], "") as NonEmptyStr
+  match github.AppInstallations.ListInstallations(auth_token: "" as Secret) {
+    RestAnswered { answer } => decode_installation_records(records: answer.result)
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status: status, body: body } =>
+          InstallationsUnreadable {
+            reason: join([
+              "GET /app/installations refused with status ", to_string(status),
+              ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
+            ], "") as NonEmptyStr
+          }
+        RestExchangeUnreached { cause: c } => InstallationsUnreadable { reason: c }
+        RestExchangeUndecodable { status: _, cause: c } => InstallationsUnreadable { reason: c }
+        RestExchangeCommitAmbiguous { detail: d } => InstallationsUnreadable { reason: d }
       }
-    RestExchangeUnreached { cause: c } => InstallationsUnreadable { reason: c }
-    RestExchangeUndecodable { status: _, cause: c } => InstallationsUnreadable { reason: c }
-    RestExchangeCommitAmbiguous { detail: d } => InstallationsUnreadable { reason: d }
-    RestExchangeSucceeded => decode_installation_records(records: result.result)
   }
 }
 
@@ -1641,7 +1645,7 @@ fn live_installation_population() -> InstallationPopulation uses net: Network {
 data census_app_installation_population_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "live_installation_population"),
-    reason: "the live installation read cannot be walked to exhaustion: github.AppInstallations.ListInstallations is declared on the REST transport, whose result carries the decoded body and a RestOutcome and no response header, and GitHub states whether another page exists only in the RFC 8288 Link header (extdeps.github.pagination). A short or empty page is not closure (std.page_fold PageContinuation), so every live read is refused as unreadable and the acquisition receipt cannot admit an installation until this lands",
+    reason: "the live installation read cannot be walked to exhaustion: github.AppInstallations.ListInstallations is declared on the REST transport, whose result is a RestResult over the decoded body and carries no response header, and GitHub states whether another page exists only in the RFC 8288 Link header (extdeps.github.pagination). A short or empty page is not closure (std.page_fold PageContinuation), so every live read is refused as unreadable and the acquisition receipt cannot admit an installation until this lands",
     dissolution: unbound_dissolution(
       description: "NAMED CAPABILITY: a REST operation result carries the response's Link header field value, so live_installation_population can drive std.page_fold page_fold_live over ListInstallations with github_continuation_from_link_header and return PopulationWalked. SUFFICIENT FOR admitting an installation over a population the authority itself closed. NOT satisfied by a larger per_page, by stopping at a short or empty page, or by routing the read through a CLI whose credential a PAT could satisfy"
     )
@@ -1767,13 +1771,14 @@ fn census_app_acquisition_judgment(
 fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservation uses net: Network {
   match address {
     ReadNotAddressable => AppNotYetAddressable
-    ReadAddressedAt { slug: slug } => {
-      let result = github.AppPublicRegistry.GetApp(
+    ReadAddressedAt { slug: slug } =>
+      observe_census_app(outcome: match github.AppPublicRegistry.GetApp(
         auth_token: "" as Secret,
         app_slug: slug as String,
-      )
-      observe_census_app(record: result.result, outcome: result.outcome)
-    }
+      ) {
+        RestAnswered { answer } => RestAnswered { answer: answer.result }
+        RestRefused { refusal } => RestRefused { refusal: refusal }
+      })
   }
 }
 
