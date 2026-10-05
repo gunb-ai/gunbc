@@ -405,7 +405,7 @@ fn chassis_end_landmark(end: ChassisEnd, figure: BaseboardDimmFigure) -> NonEmpt
 // frame the anchors resolved in; the anchors, not this bet, decide the J numbers.
 fn figure_viewpoint_bet(figure: BaseboardDimmFigure) -> DimmPhysicalFactStanding {
   match figure {
-    MtCollinsGettingStartedGuideFigures => VendorFigureFact {
+    MtCollinsGettingStartedGuideFigures { guide: _ } => VendorFigureFact {
       figure: chassis_orientation_figure,
       standing: TranscribedUncited {
         read_obligation: "Collins GSG Issue 1.05 does not state that Figure 9 (page 11) is drawn from Figure 10's (page 13) top-down, front-at-top viewpoint. A firmware anchor on a reported viewpoint, or a vendor statement, grounds it.",
@@ -506,7 +506,7 @@ type DimmSlotMap
 
 // The diagram identity of a population on the figure's own board model.
 fn figure_population_identity(figure: BaseboardDimmFigure, population: MtCollinsDimmPopulationRow) -> MtCollinsDimmPopulationIdentity {
-  match figure { MtCollinsGettingStartedGuideFigures => population_diagram_identity(population: population) }
+  match figure { MtCollinsGettingStartedGuideFigures { guide: _ } => population_diagram_identity(population: population) }
 }
 
 // Colour comes from the unit's own operator observation, supplied as the connectors it reported

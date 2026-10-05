@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // have no figure modeled in this repository, so each refuses on its own name.
 test fn w_only_a_board_with_a_cited_figure_selects_one() -> Bool {
   let collins = match baseboard_dimm_figure(board: AmpereMtCollins) {
-    BaseboardDimmFigureOf { board: b, figure: f } => b == AmpereMtCollins && f == MtCollinsGettingStartedGuideFigures
+    BaseboardDimmFigureOf { board: b, figure: f } => b == AmpereMtCollins && match f { MtCollinsGettingStartedGuideFigures { guide: _ } => true }
     BoardFigureUnmodeled { board: _ } => false
   }
   let jade = match baseboard_dimm_figure(board: GigabyteMp72Hb0) {
