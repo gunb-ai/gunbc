@@ -13,7 +13,8 @@ import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest }
 import gunbc.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
-import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment }
+import test.claim.runner.workspace_owner_access_witness_test { witness_single_owner_policy }
+import gunbc.workspace_allocation_http { workspace_http_reason }
 import gunbc.workspace_allocation_routes { workspace_route_release_over }
 import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceRetired, WorkspaceWanted }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
@@ -50,10 +51,13 @@ test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
               && a.request.expires_at == "2026-09-25T01:00:00Z"
               && a.desired == WorkspaceWanted)
         }
-        let released = workspace_route_release_over(
-          request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}", security: good_path },
-          store: store, policy: WorkspaceAuthorizationPolicy { enrollments: [WorkspaceOwnerEnrollment { principal: session.principal, public_key_ref: "witness-key" }] },
-          observed_at: seam_decided_at, allocation_id: "seam-request-1")
+        let released = match witness_single_owner_policy(owner: session.principal) {
+          Absent => workspace_http_reason(status: 500, reason: "witness policy refused at admission")
+          Present { value: policy } => workspace_route_release_over(
+            request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}", security: good_path },
+            store: store, policy: policy,
+            observed_at: seam_decided_at, allocation_id: "seam-request-1")
+        }
         let retired = match workspace_read_owner(store: store, owner: session.principal) {
           WorkspaceStoreUnreadable { reason: _ } => false
           WorkspaceStoreReadOk { snapshot } => count(snapshot.allocations) == 1 && all(snapshot.allocations, a => a.desired == WorkspaceRetired)

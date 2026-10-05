@@ -6,7 +6,9 @@ import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceAllocationId, wor
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
 import extdeps.http.server { RequestSecurityContext }
-import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
+import std.list { distinct_by_key }
+import std.algebra { trim }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
   ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeRouteAction,
@@ -15,10 +17,39 @@ import gunbc.auth.request_authentication { RequestAccessPath,
 
 // Enrollment is stable-principal policy supplied by the administrator, never email comparison.
 // Each enrolled owner carries the server-side reference of the one guest public key enrolled for
-// it. The reference resolves through gunbc.workspace_allocation_policy's catalog; a request names
-// no key, path or OpenSSH option, so a customer cannot redirect guest access to other key bytes.
+// it. The roster and catalog are administrator-authored and unadmitted; only workspace_policy_admit
+// mints the policy every consumer reads, so a request names no key, path or OpenSSH option and a
+// shared, duplicated or dangling enrollment cannot reach any consumer.
 type WorkspaceOwnerEnrollment { principal: PrincipalRef, public_key_ref: NonEmptyStr }
-type WorkspaceAuthorizationPolicy { enrollments: List<WorkspaceOwnerEnrollment> }
+type WorkspaceEnrollmentRoster { enrollments: List<WorkspaceOwnerEnrollment> }
+type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, line: String }
+type WorkspaceAuthorizationPolicy sole_constructor { enrollments: List<WorkspaceOwnerEnrollment>, catalog: List<WorkspacePublicKeyCatalogRow> }
+type WorkspacePolicyAdmission
+  = WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy }
+  | WorkspacePolicyRefused { reason: String }
+
+// The join is one-to-one at identity grain: each principal once, each reference owned by one
+// principal, each reference naming exactly one catalog line, every catalog line serving exactly one
+// enrollment, and no key bytes shared between references. Duplicate identical rows refuse; nothing
+// is deduplicated, and list order never chooses between enrollments.
+fn workspace_policy_admit(roster: WorkspaceEnrollmentRoster, catalog: List<WorkspacePublicKeyCatalogRow>) -> WorkspacePolicyAdmission {
+  let enrolled = count(roster.enrollments)
+  let refs = map(roster.enrollments, e => e.public_key_ref as String)
+  let catalog_refs = map(catalog, r => r.reference as String)
+  if count(distinct_by_key(roster.enrollments, e => principal_ref_label(p: e.principal))) != enrolled {
+    WorkspacePolicyRefused { reason: "a workspace principal is enrolled more than once" }
+  } else if count(distinct_by_key(refs, r => r)) != enrolled {
+    WorkspacePolicyRefused { reason: "a workspace public key reference is enrolled for more than one principal" }
+  } else if count(distinct_by_key(catalog_refs, r => r)) != count(catalog) {
+    WorkspacePolicyRefused { reason: "a workspace public key reference names more than one catalog line" }
+  } else if count(catalog) != enrolled || count(distinct_by_key(concat(refs, catalog_refs), r => r)) != enrolled {
+    WorkspacePolicyRefused { reason: "enrolled key references and catalog lines are not one-to-one" }
+  } else if count(distinct_by_key(catalog, r => trim(s: r.line))) != count(catalog) {
+    WorkspacePolicyRefused { reason: "two workspace key references carry the same key line" }
+  } else {
+    WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy { enrollments: roster.enrollments, catalog: catalog } }
+  }
+}
 
 fn workspace_owner_enrollment(policy: WorkspaceAuthorizationPolicy, owner: PrincipalRef) -> Optional<WorkspaceOwnerEnrollment> {
   first(filter(policy.enrollments, e => principal_ref_eq(a: e.principal, b: owner)))

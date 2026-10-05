@@ -36,8 +36,8 @@ import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
 import gunbc.runner_attempt_launch { LaunchWithdrawn }
 import gunbc.workspace_microvm { workspace_retirement_identity }
-import gunbc.workspace_allocation_policy { workspace_authorization_policy, workspace_public_key_catalog }
-import gunbc.workspace_allocation_admission { workspace_owner_enrollment }
+import gunbc.workspace_allocation_policy { workspace_installed_policy }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased, WorkspaceWanted, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable }
 import gunbc.workspace_reservation_record { workspace_reservation_plan_reservation }
@@ -829,7 +829,9 @@ fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: S
         MicrovmHostBindingRefused { cause: c } => SlotControllerRefused { refusal: SlotHostBindingRefused { cause: c } }
         MicrovmHostBound { spec: _, host: _ } => {
           let store = fabric_state_storage_binding()
-          match workspace_owner_enrollment(policy: workspace_authorization_policy(), owner: directive.allocation.request.owner) {
+          match workspace_installed_policy() {
+          WorkspacePolicyRefused { reason } => workspace_slot_refused(reason: reason)
+          WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: directive.allocation.request.owner) {
             Absent => workspace_slot_refused(reason: "workspace directive owner is not enrolled by the installed allocation policy")
             Present { value: enrollment } => match workspace_read_owner(store: store, owner: enrollment.principal) {
               WorkspaceStoreUnreadable { reason } => workspace_slot_refused(reason: reason)
@@ -839,6 +841,7 @@ fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: S
                   workspace_slot_apply_if_needed(allocation: directive.allocation, slot: slot, store: store, release_dir: release_dir, invocation_id: invocation_id)
                 } else { workspace_slot_refused(reason: "workspace invocation contradicts its planned owner revision, allocation, host, slot or installed artifact") }
             }
+          }
           }
         }
       }
@@ -950,8 +953,10 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
     WorkspaceImageRefused { reason } => workspace_slot_refused(reason: reason)
     WorkspaceImageVerified { image } => match microvm_attempt(slot: reservation.slot, attempt_id: reservation.grant.attempt.key as String) {
       MicroVmAttemptRefused { refusal } => workspace_slot_refused(reason: attempt_segment_refusal_text(r: refusal))
-      MicroVmAttemptAccepted { attempt } => match workspace_owner_public_key(policy: workspace_authorization_policy(),
-        catalog: workspace_public_key_catalog(), owner: reservation.request.owner, reference: reservation.request.public_key_ref) {
+      MicroVmAttemptAccepted { attempt } => match workspace_installed_policy() {
+      WorkspacePolicyRefused { reason } => workspace_slot_refused(reason: reason)
+      WorkspacePolicyAdmitted { policy } => match workspace_owner_public_key(policy: policy,
+        owner: reservation.request.owner, reference: reservation.request.public_key_ref) {
       WorkspacePublicKeyNotAdmitted { reason } => workspace_slot_refused(reason: reason)
       WorkspacePublicKeyAdmitted { key: owner_key } => match clock_unix_millis_read() {
         ClockUnixMillisObserved { millis } => match bind_workspace_launch(reservation: reservation, snapshot: live, attempt: attempt,
@@ -965,6 +970,7 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
           }
         }
         ClockUnixMillisRefused { detail: _ } => workspace_slot_refused(reason: "workspace launch clock is unreadable")
+      }
       }
       }
     }

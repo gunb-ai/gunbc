@@ -4,8 +4,7 @@ import std.types { NonEmptyStr, List }
 import extdeps.ssh { ssh_public_key_line }
 import gunbc.fleet_ssh_access { operator_ssh_principal }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment }
-import gunbc.workspace_microvm { WorkspacePublicKeyCatalogRow }
+import gunbc.workspace_allocation_admission { WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow, WorkspacePolicyAdmission, workspace_policy_admit }
 
 // Enrollment is administrator-authored and lands as a reviewed row; the installed release is the
 // root-owned authority the controller reads, so no request, browser or guest can add a row.
@@ -21,8 +20,8 @@ fn workspace_operator_principal() -> PrincipalRef {
 
 data workspace_operator_public_key_ref: NonEmptyStr = "gunbc.fleet_ssh_access.operator_ssh_principal"
 
-fn workspace_authorization_policy() -> WorkspaceAuthorizationPolicy {
-  WorkspaceAuthorizationPolicy { enrollments: [
+fn workspace_enrollment_roster() -> WorkspaceEnrollmentRoster {
+  WorkspaceEnrollmentRoster { enrollments: [
     WorkspaceOwnerEnrollment { principal: workspace_operator_principal(), public_key_ref: workspace_operator_public_key_ref },
   ] }
 }
@@ -37,4 +36,10 @@ fn workspace_public_key_catalog() -> List<WorkspacePublicKeyCatalogRow> {
       line: ssh_public_key_line(k: operator_ssh_principal.public_key),
     },
   ]
+}
+
+// The one policy every consumer reads: the shipped roster joined to the shipped catalog. A refused
+// join stops each consumer with its typed reason; no consumer falls back to the raw roster.
+fn workspace_installed_policy() -> WorkspacePolicyAdmission {
+  workspace_policy_admit(roster: workspace_enrollment_roster(), catalog: workspace_public_key_catalog())
 }

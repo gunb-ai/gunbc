@@ -47,23 +47,21 @@ type WorkspacePublicKeyTextAdmission = WorkspacePublicKeyTextAdmitted { key: Wor
 
 type WorkspacePublicKey sole_constructor { reference: NonEmptyStr, line: NonEmptyStr }
 
-// An administrator-authored catalog row is unadmitted text; only workspace_owner_public_key
-// turns a row into a WorkspacePublicKey, after the owner, reference and line checks.
-type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, line: String }
 type WorkspacePublicKeyAdmission = WorkspacePublicKeyAdmitted { key: WorkspacePublicKey } | WorkspacePublicKeyNotAdmitted { reason: String }
 
 // Guest access is the request owner's enrolled key and nothing else: the request's server-supplied
 // reference must be the one the policy enrolls for that owner, and it must name exactly one catalog
-// line, revalidated here. A reference enrolled for another owner -- including the one the previous
+// line of the admitted policy, revalidated here (admission already refused shared references). A
+// reference enrolled for another owner -- including the one the previous
 // incarnation of a reused slot carried -- is refused before any bootstrap record is written.
-fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy, catalog: List<WorkspacePublicKeyCatalogRow>,
+fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy,
   owner: PrincipalRef, reference: NonEmptyStr) -> WorkspacePublicKeyAdmission {
   match workspace_owner_enrollment(policy: policy, owner: owner) {
     Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace owner is not enrolled for guest access" }
     Present { value: enrollment } => if (enrollment.public_key_ref as String) != (reference as String) {
       WorkspacePublicKeyNotAdmitted { reason: "workspace key reference is not the one enrolled for this owner" }
     } else {
-      let rows = filter(catalog, k => (k.reference as String) == (reference as String))
+      let rows = filter(policy.catalog, k => (k.reference as String) == (reference as String))
       if count(rows) != 1 { WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" } }
       else { match rows.first() {
         Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" }
