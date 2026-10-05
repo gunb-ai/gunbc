@@ -72,6 +72,7 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: UnitSettingValueMultiline { property: p } } => systemd_unit_property_wire(property: p) == "WorkingDirectory"
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: _ } => false
   }
 }
@@ -160,6 +161,7 @@ test fn a_unit_name_the_wire_cannot_carry_is_refused() -> Bool {
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: UnitNameContainsSlash } => true
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: _ } => false
   }
 }
@@ -174,6 +176,7 @@ test fn a_setenv_name_with_an_equals_is_refused() -> Bool {
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: SetenvNameContainsEquals } => true
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: _ } => false
   }
 }
@@ -181,6 +184,7 @@ test fn a_setenv_name_with_an_equals_is_refused() -> Bool {
 test fn a_setenv_binding_with_an_equals_in_the_name_is_refused() -> Bool {
   match systemd_run_option_words(options: [SetEnv { binding: SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr } }]) {
     SystemdRunOptionWordsRefused { cause: SetenvNameContainsEquals } => true
+    SystemdRunOptionWordsRefused { cause: _ } => false
     SystemdRunOptionWordsProjected { words: _ } => false
   }
 }
