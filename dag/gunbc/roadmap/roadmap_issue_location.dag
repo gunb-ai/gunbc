@@ -15,3 +15,19 @@ fn issue_assign_path(node_id: String) -> String { concat(issue_page_path(node_id
 fn issue_comment_path(node_id: String) -> String { concat(issue_page_path(node_id: node_id), "/comment") }
 
 fn issue_anchor_path(node_id: String, anchor: String) -> String { join([issue_page_path(node_id: node_id), "#", anchor], "") }
+
+// THE WORK TAB AND ITS FAILURE EVENTS. The Work tab's panel carries the tab's own anchor, and each
+// failure event an attempt records is anchored by its workflow obligation identity (the workflow
+// id and obligation id of gunbc.workflow_reconcile WorkflowFactKey), so a link to an event and the
+// row that shows it are spelled by these two functions and nowhere else.
+data issue_work_tab_anchor: String = "work"
+
+fn issue_work_path(node_id: String) -> String { issue_anchor_path(node_id: node_id, anchor: issue_work_tab_anchor) }
+
+fn issue_work_event_anchor(workflow_id: String, obligation_id: String) -> String {
+  join([issue_work_tab_anchor, "-", workflow_id, "-", obligation_id], "")
+}
+
+fn issue_work_event_path(node_id: String, workflow_id: String, obligation_id: String) -> String {
+  issue_anchor_path(node_id: node_id, anchor: issue_work_event_anchor(workflow_id: workflow_id, obligation_id: obligation_id))
+}
