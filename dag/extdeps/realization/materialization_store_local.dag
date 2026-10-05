@@ -313,7 +313,11 @@ fn store_marker_decode(root: MaterializationStoreRoot, content: String) -> Store
           StoreMarkerDecoded { catalog: catalog }
         }
       }
-      _ => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
+      StoreMarkerReadingCount { digits: _, spans: _ } => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
+      StoreMarkerReadingName { start: _, remaining: _, spans: _ } => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
+      StoreMarkerExpectingEquals { start: _, length: _, spans: _ } => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
+      StoreMarkerReadingBytes { start: _, length: _, digits: _, spans: _ } => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
+      StoreMarkerScanRefused => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
     }
   }
 }
