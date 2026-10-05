@@ -1062,9 +1062,11 @@ pub fn is_host_optional_carrier_type(
             _ => false,
         },
         std::option::Option::None => {
-            let is_declaration_node =
-                (n.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration);
-            if is_declaration_node.clone() {
+            let is_declaration_structure = (((n.module_item_kind.clone()
+                == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                || (n.connective.clone() == Connective::Disj))
+                && (n.ident_span.clone() != std::option::Option::None));
+            if is_declaration_structure.clone() {
                 match kernel_optional_mint_declaration_node(symbols.clone()) {
                     Some(mint) => same_declaring_span(n.clone(), mint.clone()),
                     std::option::Option::None => {
