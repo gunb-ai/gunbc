@@ -63,7 +63,7 @@ import gunbc.spark.serving_relaunch_transaction {
   field_comparison_text, relaunch_delta_text,
 }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_field_string, json_field_string_list, json_field_value }
-import extdeps.nvidia.nccl { NcclTransportReading, NcclTransportIbVerbs, NcclTransportSocket }
+import extdeps.nvidia.nccl { NcclTransportReading, NcclTransportIbVerbs, NcclTransportSocket, nccl_using_network_marker, nccl_channel_via_marker }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli, spark_remote_run, SparkRemoteRun, RemoteRan, RemoteUnreachable }
 import gunbc.spark.serving_arm { glm_native_concurrent_profile, ServingLaunchProfile }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines, glm_native_master_endpoint }
@@ -741,21 +741,58 @@ fn spark_native_metadata_cleanup_script(unit_name: NonEmptyStr, transaction_id: 
 // is no longer the SAME running incarnation (id changed, stopped, or restarted), so a crashed engine is
 // not waited out; every refusal names the elapsed time and the last front-door observation.
 // This is the one front-door link for every native arm (Group B's relaunch reaches it too), fixed here once.
+// THE ONE BOUNDED WAIT ON AN INCARNATION. Every readback fact that appears only after the engine has
+// progressed far enough -- the NCCL announcement on each rank, the front door on the head -- is waited
+// for by THIS loop and no other: it polls `probe` until it succeeds, refuses the moment the container
+// is no longer the same running incarnation, and refuses at the engine's own deadline
+// (VLLM_ENGINE_READY_TIMEOUT_S via engine_ready_timeout_for). There is no second timeout number: the
+// transport wait and the front-door wait are both bounded by ready_within_seconds from the caller.
+// `waited_for` names the fact in every refusal; `last` is the probe's last observation.
+fn spark_native_incarnation_wait(container: NonEmptyStr, ready_within_seconds: Nat, probe: String, last: String, waited_for: NonEmptyStr) -> String {
+  join([
+    "start=$(date +%s); deadline=$(( start + ", to_string(ready_within_seconds), " ))\n",
+    "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
+    "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-container-absent-before-", waited_for as String, "; exit 1; fi\n",
+    "last=not-yet-probed\n",
+    "until ", probe, "; do\n",
+    "  last=$(", last, ")\n",
+    "  now=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", shell_quote(arg: container as String), " 2>/dev/null || echo absent)\n",
+    "  if [ \"$now\" != \"$incarnation true 0\" ]; then echo \"READBACK-REFUSED-incarnation-changed-before-", waited_for as String, "-after-$(( $(date +%s) - start ))s: was $incarnation running, now $now; last observation: $last\"; exit 1; fi\n",
+    "  if [ $(date +%s) -ge $deadline ]; then echo \"READBACK-REFUSED-", waited_for as String, "-unobserved-within-", to_string(ready_within_seconds), "s (VLLM_ENGINE_READY_TIMEOUT_S): elapsed $(( $(date +%s) - start ))s; last observation: $last\"; exit 1; fi\n",
+    "  sleep 15\n",
+    "done\n",
+    "echo \"", waited_for as String, "-observed-after-$(( $(date +%s) - start ))s\"\n",
+  ], "")
+}
+
+// THE TRANSPORT VERDICT IS READ ONLY AFTER ITS ANNOUNCEMENT EXISTS. A single read of the rank's log
+// refused a correctly launching NVFP4 head (run 37241423753: ranks 1-3 verified IB, the head's
+// `Using network` line appeared at 22:57:44, after the capture) and the refusal rolled the arm back.
+// Each rank therefore waits, through the one incarnation wait above, until its own log carries both
+// the network announcement and at least one channel `via NET/` line -- the two facts
+// extdeps.nvidia.nccl nccl_transport_verdict folds -- and only then does the readback read the verdict.
+fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_within_seconds: Nat) -> String {
+  let ctr = shell_quote(arg: container as String)
+  join([
+    "set -e\n",
+    spark_native_incarnation_wait(
+      container: container,
+      ready_within_seconds: ready_within_seconds,
+      probe: join(["docker logs ", ctr, " 2>&1 | grep -Fq ", shell_quote(arg: nccl_using_network_marker), " && docker logs ", ctr, " 2>&1 | grep -Fq ", shell_quote(arg: nccl_channel_via_marker)], ""),
+      last: join(["docker logs --tail 1 ", ctr, " 2>&1 | tr -d '\\n' | cut -c1-200"], ""),
+      waited_for: "nccl-transport-announcement" as NonEmptyStr),
+  ], "")
+}
+
 fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, ready_within_seconds: Nat, container: NonEmptyStr) -> String {
   join([
     "set -e\n",
-    "start=$(date +%s); deadline=$(( start + ", to_string(ready_within_seconds), " ))\n",
-    "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
-    "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-head-container-absent-before-readiness; exit 1; fi\n",
-    "last=not-yet-probed\n",
-    "until curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>", spark_native_readback_dir, "/models.err; do\n",
-    "  last=$(tr '\\n' ' ' < ", spark_native_readback_dir, "/models.err | cut -c1-200)\n",
-    "  now=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", shell_quote(arg: container as String), " 2>/dev/null || echo absent)\n",
-    "  if [ \"$now\" != \"$incarnation true 0\" ]; then echo \"READBACK-REFUSED-head-incarnation-changed-after-$(( $(date +%s) - start ))s: was $incarnation running, now $now; last front-door observation: $last\"; exit 1; fi\n",
-    "  if [ $(date +%s) -ge $deadline ]; then echo \"READBACK-REFUSED-front-door-unanswered-within-", to_string(ready_within_seconds), "s (VLLM_ENGINE_READY_TIMEOUT_S): elapsed $(( $(date +%s) - start ))s; last observation: $last\"; exit 1; fi\n",
-    "  sleep 15\n",
-    "done\n",
-    "echo \"front-door-ready-after-$(( $(date +%s) - start ))s\"\n",
+    spark_native_incarnation_wait(
+      container: container,
+      ready_within_seconds: ready_within_seconds,
+      probe: join(["curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>", spark_native_readback_dir, "/models.err"], ""),
+      last: join(["tr '\\n' ' ' < ", spark_native_readback_dir, "/models.err | cut -c1-200"], ""),
+      waited_for: "front-door" as NonEmptyStr),
     "tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
     "if ! grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo READBACK-REFUSED-front-door-serves-another-model; exit 1; fi\n",
     "echo front-door-serves-", served_alias as String, "\n",
@@ -1240,6 +1277,14 @@ fn spark_native_apply_stage_plans(steps: List<SparkNativeHostStep>) -> List<Spar
 // because only rank 0 hosts an API server -- the other three are `--headless`, so asking them would
 // refuse a healthy arm. The container-shaped half of the readback is the canonical observation pass
 // below and is not a script at all.
+// EVERY rank waits for its own announcement (the workers are headless but still join NCCL).
+fn spark_native_transport_announcement_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: match engine_ready_timeout_for(env: st.launch.container.env) {
+    EngineReadyTimeoutUnreadable { cause: c } => join(["echo ", shell_quote(arg: join(["READBACK-REFUSED-engine-ready-timeout-unreadable: ", c as String], "")), "; exit 1\n"], "")
+    EngineReadyTimeoutResolved { timeout: t } => spark_native_transport_announcement_script(container: st.launch.container.name, ready_within_seconds: second_count(s: t))
+  }))
+}
+
 fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
   flat_map(steps, st =>
     if spark_native_step_is_head(st: st) {
@@ -1951,6 +1996,24 @@ fn spark_native_recovery_readback(
   steps: List<SparkNativeHostStep>, holder: String, so_far: String,
 ) -> SparkNativeArmTransaction
 {
+  match spark_native_run_stage(trust: trust, path: path, administrator: administrator, credential_file_name: "gunbc-spark-native-transport-wait-admin-password" as NonEmptyStr, plans: spark_native_transport_announcement_plans(steps: steps)) {
+    NativeStageCredentialRefused { cause: c } => spark_native_recovery_refused(so_far: so_far, cause: join(["the transport-announcement wait's credential was refused: ", c as String], ""))
+    NativeStageRan { legs: wl } => {
+      let after_wait = join([so_far, spark_native_stage_body(st: NativeStageReadback, legs: wl)], "")
+      if !spark_pair_apply_all_applied(outcomes: spark_native_leg_outcomes(legs: wl)) {
+        spark_native_recovery_refused(so_far: after_wait, cause: "not every rank of the restored arm announced its NCCL transport within the engine's ready timeout")
+      } else {
+        spark_native_recovery_readback_after_announcement(trust: trust, path: path, administrator: administrator, steps: steps, holder: holder, so_far: after_wait)
+      }
+    }
+  }
+}
+
+fn spark_native_recovery_readback_after_announcement(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, holder: String, so_far: String,
+) -> SparkNativeArmTransaction
+{
   match spark_native_readback_arm(trust: trust, path: path, administrator: administrator, steps: steps) {
     NativeArmReadbackCredentialRefused { cause: c } => spark_native_recovery_refused(so_far: so_far, cause: join(["the readback's credential was refused: ", c as String], ""))
     NativeArmReadbackRan { readbacks: rs } => {
@@ -1983,6 +2046,21 @@ fn spark_native_recovery_readback(
 
 // THE READBACK AND THE VERDICT, shared by a fresh apply and an adopted transaction.
 fn spark_native_readback_then_verdict(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, transaction_id: String, so_far: String,
+) -> SparkNativeArmTransaction
+{
+  spark_native_stage_then(
+    trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id,
+    stage: NativeStageReadback,
+    credential_file_name: "gunbc-spark-native-transport-wait-admin-password" as NonEmptyStr,
+    plans: spark_native_transport_announcement_plans(steps: steps), so_far: so_far,
+    next: fn(after_announcement) {
+      spark_native_readback_after_announcement(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id, so_far: after_announcement)
+    })
+}
+
+fn spark_native_readback_after_announcement(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>, transaction_id: String, so_far: String,
 ) -> SparkNativeArmTransaction
