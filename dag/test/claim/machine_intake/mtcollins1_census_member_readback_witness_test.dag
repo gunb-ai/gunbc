@@ -287,16 +287,13 @@ fn member_exporter_unsupported_naming(r: CensusMemberReadback, endpoint: String,
   }
 }
 
-// REDS: THE PIN GATE AND THE PRODUCTION ENTRY REFUSE A CENSUS MEDIUM NAMING ANOTHER EXPORTER, by endpoint
-// and by principal at the same endpoint, even when both ISOs measure exactly at their pins. The
-// production entry qualifies before any leg is dispatched, so it requests no workspace and reads nothing.
-test fn a_census_medium_naming_another_exporter_has_no_member_readback() -> Bool {
+// REDS: THE PIN GATE REFUSES A CENSUS MEDIUM NAMING ANOTHER EXPORTER, by endpoint and by principal at the
+// same endpoint, even when both ISOs measure exactly at their pins; the unchanged export is admitted.
+test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
   let e = census_at_other_endpoint()
   let p = census_as_other_principal()
   let pe = census.export.target.principal as String
   let ee = census.export.target.endpoint as String
-  let ae = census_member_readback(medium: e)
-  let ap = census_member_readback(medium: p)
   (match census_pin_gate(medium: e, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
     PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: "fixture-other-exporter", principal: pe)
     PinsAdmitted { stock_iso: _, census_iso: _ } => false
@@ -305,10 +302,17 @@ test fn a_census_medium_naming_another_exporter_has_no_member_readback() -> Bool
       PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: ee, principal: "fixture-other-principal")
       PinsAdmitted { stock_iso: _, census_iso: _ } => false
     })
-    && member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: pe) && !census_member_attempt_holds(attempt: ae)
-    && member_exporter_unsupported_naming(r: ap.readback, endpoint: ee, principal: "fixture-other-principal")
     && (match census_pin_gate(medium: census_at(endpoint: ee, principal: pe), stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
       PinsAdmitted { stock_iso: _, census_iso: _ } => true
       PinsRefused { readback: _ } => false
     })
+}
+
+// THE PRODUCTION ENTRY QUALIFIES BEFORE ANY LEG IS DISPATCHED: for either changed exporter it requests
+// no workspace and reads nothing, and the attempt does not hold.
+test fn the_member_readback_refuses_another_exporter_before_any_leg() -> Bool {
+  let ae = census_member_readback(medium: census_at_other_endpoint())
+  let ap = census_member_readback(medium: census_as_other_principal())
+  member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: census.export.target.principal as String) && !census_member_attempt_holds(attempt: ae)
+    && member_exporter_unsupported_naming(r: ap.readback, endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
 }

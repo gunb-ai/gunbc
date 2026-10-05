@@ -234,7 +234,6 @@ fn exporter_unsupported_naming(r: CensusMediumReadback, endpoint: String, princi
 test fn a_census_medium_naming_another_exporter_endpoint_is_refused_not_read_back() -> Bool {
   let m = census_at_other_endpoint()
   exporter_unsupported_naming(r: mtcollins1_census_medium_readback(medium: m), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
-    && exporter_unsupported_naming(r: mtcollins1_census_medium_readback_from_answers(medium: m, host: srv2, record: record_ok(), measure: measure_ok()), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
     && (match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: m)) { Present { value: w } => string_contains(s: w, pattern: "fixture-other-exporter") && string_contains(s: w, pattern: "controller untouched")  Absent => false })
 }
 
@@ -243,7 +242,15 @@ test fn a_census_medium_naming_another_exporter_endpoint_is_refused_not_read_bac
 test fn a_census_medium_naming_another_principal_at_the_same_endpoint_is_refused_not_read_back() -> Bool {
   let m = census_as_other_principal()
   exporter_unsupported_naming(r: mtcollins1_census_medium_readback(medium: m), endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
-    && exporter_unsupported_naming(r: mtcollins1_census_medium_readback_from_answers(medium: m, host: srv2, record: record_ok(), measure: measure_ok()), endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}
+
+// THE SAME TWO REDS OVER THE PURE COMPOSITION: the record and the image answer exactly as the supported
+// exporter would, and the readback still refuses for both changed exporters. These carry no effect, so
+// they discriminate on the qualification alone (the production-entry claims above additionally pin
+// that no leg is dispatched).
+test fn healthy_answers_cannot_buy_agreement_for_a_medium_naming_another_exporter() -> Bool {
+  exporter_unsupported_naming(r: mtcollins1_census_medium_readback_from_answers(medium: census_at_other_endpoint(), host: srv2, record: record_ok(), measure: measure_ok()), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+    && exporter_unsupported_naming(r: mtcollins1_census_medium_readback_from_answers(medium: census_as_other_principal(), host: srv2, record: record_ok(), measure: measure_ok()), endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
 }
 
 // CONTROL: THE UNCHANGED EXPORT IS ADMITTED. The same constructor with the supported endpoint and
