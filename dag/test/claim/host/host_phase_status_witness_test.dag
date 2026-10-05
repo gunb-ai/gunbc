@@ -1,5 +1,9 @@
 module test.claim.host_phase_status
 
+import gunbc.host_standup { PhaseDisposition }
+import v2.std.live_tree { LiveTreeDisposition }
+import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import std.upsert_decision { Conflict, Inaccessible, UnknownRefused }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.fleet_reach_endpoint { fleet_reach_probe_targets }
 import gunbc.host_assimilation_program {

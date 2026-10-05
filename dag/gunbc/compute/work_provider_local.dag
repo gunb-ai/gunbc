@@ -561,16 +561,21 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
                 " and ", pd,
               ], ""),
             }
-          _ =>
-            UnitTerminationUnavailable {
-              detail: join([
-                "the attempt completed, but the population could not be read (",
-                match population { PopulationUnknown { detail: pd } => pd  PopulationEmpty { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-                ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait",
-              ], ""),
-            }
+          PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
+          PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
         }
       }
+  }
+}
+
+// A completed wait whose population is not a confirmed-empty cgroup: the termination is not established.
+fn unit_termination_completed_unread(population: UnitPopulation) -> UnitTermination {
+  UnitTerminationUnavailable {
+    detail: join([
+      "the attempt completed, but the population could not be read (",
+      match population { PopulationUnknown { detail: pd } => pd  PopulationEmpty { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
+      ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait",
+    ], ""),
   }
 }
 

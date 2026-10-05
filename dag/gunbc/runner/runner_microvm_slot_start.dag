@@ -202,20 +202,24 @@ fn microvm_unit_start_on_its_host(subject: MicrovmUnitStartSubject) -> MicrovmSl
         match run_shell_command_capture(command: executor_privileged_operation_command(op: SystemdStartUnit { unit: unit }), transport: LocalExec) {
           ProcessRefused { exit_code: c, stderr: e } =>
             SlotStartRefused { unit: unit, detail: join(["systemctl start exited ", to_string(c), ": ", trim(s: e)], "") }
-          _ =>
-            match invocation_property(unit: unit) {
-              UnitPropertyUnread { property: _, detail: d } => SlotStartInvocationUnread { unit: unit, detail: join(["after the start: ", d], "") }
-              UnitPropertyRead { value: after } =>
-                if after == "" {
-                  SlotStartInvocationUnread { unit: unit, detail: "after the start systemd reported an empty InvocationID" }
-                } else if after == before {
-                  SlotStartInvocationUnchanged { unit: unit, invocation_id: after as NonEmptyStr }
-                } else {
-                  microvm_unit_start_observed(subject: subject, invocation: after as NonEmptyStr)
-                }
-            }
+          ProcessOutputPresent { text: _ } => microvm_unit_start_invocation_verdict(subject: subject, unit: unit, before: before)
+          ProcessOutputAbsent => microvm_unit_start_invocation_verdict(subject: subject, unit: unit, before: before)
         }
     }
+  }
+}
+
+fn microvm_unit_start_invocation_verdict(subject: MicrovmUnitStartSubject, unit: NonEmptyStr, before: String) -> MicrovmSlotStartRun {
+  match invocation_property(unit: unit) {
+    UnitPropertyUnread { property: _, detail: d } => SlotStartInvocationUnread { unit: unit, detail: join(["after the start: ", d], "") }
+    UnitPropertyRead { value: after } =>
+      if after == "" {
+        SlotStartInvocationUnread { unit: unit, detail: "after the start systemd reported an empty InvocationID" }
+      } else if after == before {
+        SlotStartInvocationUnchanged { unit: unit, invocation_id: after as NonEmptyStr }
+      } else {
+        microvm_unit_start_observed(subject: subject, invocation: after as NonEmptyStr)
+      }
   }
 }
 
