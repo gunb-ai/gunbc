@@ -2625,8 +2625,12 @@ fn reach_baseline_ran_at_merge_base_line(main_sha: String, cause: String) -> Str
 // verdict: the verdict and whether it blocks are claim_differential and claim_differential_blocks,
 // here and nowhere else. A name this module does not know refuses through StandingNotParsed rather
 // than defaulting to a standing that could hide a regression.
+// NOT MEASURED IS A DECLARED ARM OF THE WIRE, NOT A STRING THE PREDICATES EACH TEST FOR (review
+// 76416): a side that produced no verdict (an interruption, a panic, an unresolved host tool) is
+// parsed here, once, into StandingNotMeasured, and every reader matches the arm.
 type ParsedClaimStanding
   = StandingParsed { standing: ClaimStanding }
+  | StandingNotMeasured
   | StandingNotParsed { name: String }
 
 fn claim_standing_named(name: String) -> ParsedClaimStanding {
@@ -2636,6 +2640,8 @@ fn claim_standing_named(name: String) -> ParsedClaimStanding {
     StandingParsed { standing: StandingFailed }
   } else if name == "not_declared" {
     StandingParsed { standing: StandingNotDeclared }
+  } else if name == "not_measured" {
+    StandingNotMeasured
   } else {
     StandingNotParsed { name: name }
   }
@@ -2656,6 +2662,14 @@ fn claim_differential_name(d: ClaimDifferential) -> String {
 type ReachClaimVerdict
   = ReachVerdict { differential: String, blocks: Bool }
   | ReachVerdictRefused { reason: String }
+
+// ONE DIFFERENTIAL, BOTH FIELDS (review 76416). The name and blocks are read from the SAME
+// ClaimDifferential value, through this one constructor, so they cannot disagree. The record keeps
+// its two flat fields because they are the host wire the seed's floor runner reads
+// (v1_compiler.cli_run.required_floor_runner, reach_base_standings); the agreement is held here.
+fn reach_verdict_of(d: ClaimDifferential) -> ReachClaimVerdict {
+  ReachVerdict { differential: claim_differential_name(d: d), blocks: claim_differential_blocks(d: d) }
+}
 
 // A BASE OUTCOME THAT WAS NOT A VERDICT (a budget interruption, a panic, an unresolved host tool or
 // effect, a claim not attempted) is reported for THAT claim alone and never read as failed: failed
@@ -2707,23 +2721,16 @@ fn reach_claim_verdict(
   base: String,
   head: String,
 ) -> ReachClaimVerdict {
-  if head == "not_measured" {
-    ReachVerdictRefused { reason: concat("head not measured: a reached claim has no verdict at head ", identity) }
-  } else if base == "not_measured" {
-    base_not_measured_verdict(identity: identity, entry: entry, function: function)
-  } else {
-  match claim_standing_named(name: base) {
-    StandingNotParsed { name: b } => ReachVerdictRefused { reason: concat("unknown base standing ", b) }
-    StandingParsed { standing: bs } =>
-      match claim_standing_named(name: head) {
-        StandingNotParsed { name: h } => ReachVerdictRefused { reason: concat("unknown head standing ", h) }
-        StandingParsed { standing: hs } =>
-          ReachVerdict {
-            differential: claim_differential_name(d: claim_differential(base: bs, head: hs)),
-            blocks: claim_differential_blocks(d: claim_differential(base: bs, head: hs))
-          }
+  match claim_standing_named(name: head) {
+    StandingNotMeasured =>
+      ReachVerdictRefused { reason: concat("head not measured: a reached claim has no verdict at head ", identity) }
+    StandingNotParsed { name: h } => ReachVerdictRefused { reason: concat("unknown head standing ", h) }
+    StandingParsed { standing: hs } =>
+      match claim_standing_named(name: base) {
+        StandingNotMeasured => base_not_measured_verdict(identity: identity, entry: entry, function: function)
+        StandingNotParsed { name: b } => ReachVerdictRefused { reason: concat("unknown base standing ", b) }
+        StandingParsed { standing: bs } => reach_verdict_of(d: claim_differential(base: bs, head: hs))
       }
-  }
   }
 }
 
@@ -2746,13 +2753,10 @@ fn head_cannot_block(head: ClaimStanding) -> Bool {
 // typed and located (review 76405; DESIGN section 5, a failure arm refuses, never widens), rather than
 // reporting it as a non-blocking answer and leaning on the interruption rule elsewhere to refuse.
 fn reach_head_cannot_block(head: String) -> Bool {
-  if head == "not_measured" {
-    true
-  } else {
   match claim_standing_named(name: head) {
     StandingParsed { standing: h } => head_cannot_block(head: h)
+    StandingNotMeasured => true
     StandingNotParsed { name: _ } => false
-  }
   }
 }
 
