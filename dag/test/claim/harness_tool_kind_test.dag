@@ -3,7 +3,8 @@ module test.claim.harness_tool_kind_test
 import std.types { Bool, String }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
-  HarnessToolRecognized, HarnessToolUnrecognized,
+  HarnessToolRead, HarnessToolRecognized, HarnessToolUnrecognized,
+  harness_tool_wire_name, harness_tool_of_wire_name,
   harness_tool_item_type, harness_tool_read_item_type, harness_unrecognized_tool_item_type,
   ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
   harness_tool_item_read,
@@ -49,4 +50,35 @@ test fn a_recognized_tool_is_written_as_its_own_kind() -> Bool {
 test fn an_item_type_the_harness_does_not_own_is_left_to_its_owner() -> Bool {
   item_read_tag(item_type: "file_change") == "not-a-tool-use"
     && item_read_tag(item_type: "agent_message") == "not-a-tool-use"
+}
+
+// THE WIRE NAME IS ONE SPELLING READ IN BOTH DIRECTIONS: each tool's forward name reads back as
+// that tool, and a name no tool spells is a refusal that keeps the name it was given.
+fn wire_read_tag(read: HarnessToolRead) -> String {
+  match read {
+    HarnessToolRecognized { tool: t } =>
+      match t {
+        RunCommandTool => "run"
+        ReadFileTool => "read"
+        WriteFileTool => "write"
+        EditFileTool => "edit"
+      }
+    HarnessToolUnrecognized { name: n } => "refused:" + n
+  }
+}
+
+fn wire_round_trip_tag(tool: HarnessTool) -> String {
+  wire_read_tag(read: harness_tool_of_wire_name(name: harness_tool_wire_name(tool: tool)))
+}
+
+test fn each_harness_tool_wire_name_reads_back_as_its_own_tool() -> Bool {
+  wire_round_trip_tag(tool: RunCommandTool) == "run"
+    && wire_round_trip_tag(tool: ReadFileTool) == "read"
+    && wire_round_trip_tag(tool: WriteFileTool) == "write"
+    && wire_round_trip_tag(tool: EditFileTool) == "edit"
+}
+
+test fn a_wire_name_no_tool_spells_is_refused_with_that_name() -> Bool {
+  wire_read_tag(read: harness_tool_of_wire_name(name: "delete_everything")) == "refused:delete_everything"
+    && wire_read_tag(read: harness_tool_of_wire_name(name: "command_execution")) == "refused:command_execution"
 }

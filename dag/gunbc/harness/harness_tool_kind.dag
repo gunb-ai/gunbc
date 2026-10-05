@@ -1,6 +1,6 @@
 module gunbc.harness.harness_tool_kind
 
-import std.types { String }
+import std.types { List, String }
 
 // A LEAF, AND DELIBERATELY ONE. The harness turn WRITES the item kind of each tool use into the
 // attempt's event stream and gunbc.roadmap_provider_events READS it back. The reader sits beneath
@@ -26,22 +26,26 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
   }
 }
 
+// THE CLOSED VARIANT LIST, the one place the four tools are enumerated as values. Both inverses
+// below fold over it and compare against the forward function, so a spelling lives only in the
+// forward match and adding a tool is one variant, one match arm, and one entry here.
+fn all_harness_tools() -> List<HarnessTool> {
+  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool]
+}
+
 type HarnessToolRead
   = HarnessToolRecognized { tool: HarnessTool }
   | HarnessToolUnrecognized { name: String }
 
+// THE INVERSE OF harness_tool_wire_name, derived rather than respelled. A name no tool's forward
+// spelling equals stays a REFUSAL carrying that name.
 fn harness_tool_of_wire_name(name: String) -> HarnessToolRead {
-  if name == "run_command" {
-    HarnessToolRecognized { tool: RunCommandTool }
-  } else if name == "read_file" {
-    HarnessToolRecognized { tool: ReadFileTool }
-  } else if name == "write_file" {
-    HarnessToolRecognized { tool: WriteFileTool }
-  } else if name == "edit_file" {
-    HarnessToolRecognized { tool: EditFileTool }
-  } else {
-    HarnessToolUnrecognized { name: name }
-  }
+  fold(all_harness_tools(), init: HarnessToolUnrecognized { name: name }, f: (acc, t) =>
+    if harness_tool_wire_name(tool: t) == name {
+      HarnessToolRecognized { tool: t }
+    } else {
+      acc
+    })
 }
 
 // THE ITEM KIND A TOOL USE IS WRITTEN AS IN THE EVENT STREAM, spelled once and read in both
@@ -83,17 +87,15 @@ type HarnessToolItemRead
   | ItemIsNotAHarnessToolUse
 
 fn harness_tool_item_read(item_type: String) -> HarnessToolItemRead {
-  if item_type == harness_tool_item_type(tool: RunCommandTool) {
-    ItemIsHarnessToolUse { tool: RunCommandTool }
-  } else if item_type == harness_tool_item_type(tool: ReadFileTool) {
-    ItemIsHarnessToolUse { tool: ReadFileTool }
-  } else if item_type == harness_tool_item_type(tool: WriteFileTool) {
-    ItemIsHarnessToolUse { tool: WriteFileTool }
-  } else if item_type == harness_tool_item_type(tool: EditFileTool) {
-    ItemIsHarnessToolUse { tool: EditFileTool }
-  } else if item_type == harness_unrecognized_tool_item_type {
+  let unowned = if item_type == harness_unrecognized_tool_item_type {
     ItemIsUnrecognizedToolUse
   } else {
     ItemIsNotAHarnessToolUse
   }
+  fold(all_harness_tools(), init: unowned, f: (acc, t) =>
+    if harness_tool_item_type(tool: t) == item_type {
+      ItemIsHarnessToolUse { tool: t }
+    } else {
+      acc
+    })
 }
