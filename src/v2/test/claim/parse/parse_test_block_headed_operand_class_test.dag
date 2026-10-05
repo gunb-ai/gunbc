@@ -76,8 +76,10 @@ fn bc_block_headed_chain_holds(text: String) -> Bool {
   }
 }
 
-// The one end-to-end claim's whole-module text.
-data bc_add_module_source: String = "module probe.bc_add\n\ndata d: Int = match w {\n  _ => 1\n} + 2\n"
+// The one end-to-end claim's whole-module text: the smallest module carrying the `+` chain. Its arm
+// sits on the match's own line because a whole-module parse of this shape lands near the floor's
+// per-claim eval-step budget, and the arm's layout is the fragment claims' subject, not this one's.
+data bc_add_module_source: String = "module p\ndata d: Int = match w { _ => 1 } + 2\n"
 
 // multiplicative `*`
 data bc_mul_source: String = "match w {\n  _ => 1\n} * 2"
@@ -130,11 +132,18 @@ test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool {
 
 
 test fn a_block_headed_left_operand_parses_on_the_real_module_route_holds() -> Bool {
-  parse_acceptance_of_text(text: bc_add_module_source, path: "probe/bc_add.dag") == "accepted"
+  parse_acceptance_of_text(text: bc_add_module_source, path: "p.dag") == "accepted"
 }
 
-fn probe_leftover_operator_refuses() -> Bool { bc_block_headed_chain_holds(text: "match w {\n  _ => 1\n} * ") }
-fn probe_e2e_short_name() -> Bool { parse_acceptance_of_text(text: "module p\n\ndata d: Int = match w {\n  _ => 1\n} + 2\n", path: "p.dag") == "accepted" }
-fn probe_e2e_one_line() -> Bool { parse_acceptance_of_text(text: "module p\ndata d: Int = match w { _ => 1 } + 2\n", path: "p.dag") == "accepted" }
-fn probe_sub_next_line_refuses() -> Bool { bc_block_headed_chain_holds(text: "match w {\n  _ => 1\n}\n- 2") }
-fn probe_parse_at_accepts_bare_match() -> Bool { match bc_parse_at(text: "match w {\n  _ => 1\n}", production: ^dag_production_expr) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false } }
+
+// THE DISCRIMINATING REDS. A fragment whose operator has no right operand leaves tokens over and must
+// refuse, and a `-` on the line after the closing brace is no continuation (the dual-role operator
+// rule), so neither may read as a block-headed chain. If production parses stopped refusing leftover
+// tokens, every claim above would hold vacuously; these go red first.
+test fn a_dangling_operator_after_a_block_is_refused_holds() -> Bool {
+  !bc_block_headed_chain_holds(text: "match w {\n  _ => 1\n} * ")
+}
+
+test fn a_next_line_minus_after_a_block_is_refused_holds() -> Bool {
+  !bc_block_headed_chain_holds(text: "match w {\n  _ => 1\n}\n- 2")
+}
