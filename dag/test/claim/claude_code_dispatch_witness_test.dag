@@ -16,6 +16,7 @@ import extdeps.llm.claude_code_stream_json {
   StreamLineMemberMalformed,
   claude_code_stream_line,
 }
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import gunbc.claude_code_limit_standing {
   ClaudeCodeStandingReading,
   ClaudeCodeStandingRead,
@@ -188,6 +189,33 @@ test fn a_string_utilization_refuses_naming_the_member() -> Bool {
     ClaudeCodeResultLine { result: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
   }
+}
+
+// A malformed OPTIONAL member refuses naming the member; it is never read as absent (review 76293).
+data planted_result_status_string: String = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":\"401\"}"
+data planted_result_terminal_reason_number: String = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"terminal_reason\":7}"
+data planted_rate_limit_negative_reset: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":-1,\"unifiedWindows\":{}}}"
+data planted_rate_limit_empty_type: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"rateLimitType\":\"\",\"unifiedWindows\":{}}}"
+
+fn refuses_naming(line: String, member: String) -> Bool {
+  match claude_code_stream_line(line: line) {
+    ClaudeCodeLineUnreadable { gap } =>
+      match gap {
+        StreamLineMemberMalformed { member: m } => m == member
+        StreamLineMemberMissing { member: _ } => false
+        StreamLineNotJson => false
+      }
+    ClaudeCodeRateLimitEventLine { info: _ } => false
+    ClaudeCodeResultLine { result: _ } => false
+    ClaudeCodeOtherLine { event_type: _ } => false
+  }
+}
+
+test fn malformed_optional_members_refuse_naming_the_member() -> Bool {
+  refuses_naming(line: planted_result_status_string, member: "api_error_status")
+    && refuses_naming(line: planted_result_terminal_reason_number, member: "terminal_reason")
+    && refuses_naming(line: planted_rate_limit_negative_reset, member: "rate_limit_info.resetsAt")
+    && refuses_naming(line: planted_rate_limit_empty_type, member: "rate_limit_info.rateLimitType")
 }
 
 // ── Standing (gunbc.claude_code_limit_standing) ─────────────────────────────────────────────────
@@ -381,6 +409,23 @@ test fn an_ambient_profile_tree_is_not_a_bindable_credential() -> Bool {
     CodexProviderOffCustodyHost { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
+}
+
+// The env-var name reaches the sh script only as an admitted POSIX name (review 76372).
+fn name_refused(spelling: String) -> Bool {
+  match admit_posix_shell_name(spelling: spelling) {
+    PosixShellNameRefused { spelling: _ } => true
+    PosixShellNameAdmitted { name: _ } => false
+  }
+}
+
+test fn only_a_posix_name_is_admitted_into_the_env_wrapper() -> Bool {
+  !name_refused(spelling: "CLAUDE_CODE_OAUTH_TOKEN")
+    && name_refused(spelling: "A;B")
+    && name_refused(spelling: "$(x)")
+    && name_refused(spelling: "A B")
+    && name_refused(spelling: "9A")
+    && name_refused(spelling: "")
 }
 
 // ── Inventory and selection (gunbc.dispatch_selection) ──────────────────────────────────────────

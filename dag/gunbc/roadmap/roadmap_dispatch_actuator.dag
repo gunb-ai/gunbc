@@ -103,14 +103,15 @@ import gunbc.harness.harness_backend {
   harness_observe_roster, harness_declines_detail,
 }
 import gunbc.claude_code_credential {
-  claude_code_custody_path, claude_code_oauth_env_wrapped_argv, claude_code_oauth_env_wrapped_command,
+  claude_code_custody_path, claude_code_oauth_env_wrapped_command,
+  ClaudeCodeEnvWrapping, ClaudeCodeEnvWrapped, ClaudeCodeEnvNameRefused,
   claude_code_harness_credential_label, claude_code_standing_trip_prompt,
 }
 import gunbc.claude_code_limit_standing { claude_code_standing_from_trip, ClaudeCodeStandingRead, ClaudeCodeStandingUnreadable }
 import extdeps.llm.claude_code_stream_json { claude_code_stream_json_print_args }
 import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved, ToolEnvironmentReady, provider_standing_from_observed_bundle }
 import std.claim_evidence { RecordedFactId }
-import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.exec.command { ArgvCommand, LocalExec, argv_words }
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit }
 import gunbc.dispatch_selection {
@@ -492,7 +493,7 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
 // not observe the worktree.
 data claude_code_standing_trip_fact_id: RecordedFactId = "claude-code-standing-trip" as RecordedFactId
 
-fn claude_standing_trip_command(path: NonEmptyStr) -> ArgvCommand {
+fn claude_standing_trip_command(path: NonEmptyStr) -> ClaudeCodeEnvWrapping {
   claude_code_oauth_env_wrapped_command(
     token_path: path,
     argv: concat(
@@ -510,8 +511,14 @@ fn claude_observed_standing_for_instance(instance: HostDashboardInstance) -> Pro
           ProviderStandingUnobserved {
             reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody"], "") as NonEmptyStr,
           }
-        Present { value: path } => {
-          let run = run_shell_command_observe(command: claude_standing_trip_command(path: path), transport: LocalExec)
+        Present { value: path } =>
+          match claude_standing_trip_command(path: path) {
+            ClaudeCodeEnvNameRefused { spelling } =>
+              ProviderStandingUnobserved {
+                reason: join(["the claude credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr,
+              }
+            ClaudeCodeEnvWrapped { command } => {
+          let run = run_shell_command_observe(command: command, transport: LocalExec)
               if run.exit_code == posix_sh_export_from_file_unreadable_exit {
                 ProviderStandingUnobserved {
                   reason: join(["the claude credential custody file ", path as String, " is unreadable on this host: ", run.stderr], "") as NonEmptyStr,
@@ -534,7 +541,8 @@ fn claude_observed_standing_for_instance(instance: HostDashboardInstance) -> Pro
                     )
                 }
               }
-        }
+            }
+          }
       }
     ClaudeApiKeySecretRef { secret_ref: _ } =>
       ProviderStandingUnobserved { reason: "an API-key Claude credential has no standing trip" as NonEmptyStr }
@@ -2273,7 +2281,13 @@ fn claude_inner_argv_for_credential(credential: ClaudeCredentialRef, argv: List<
     ClaudeOAuthTokenSecretRef { secret_ref } =>
       match claude_code_custody_path(secret_ref: secret_ref) {
         Present { value: path } =>
-          DispatchProviderInnerArgvReady { argv: claude_code_oauth_env_wrapped_argv(token_path: path, argv: argv) }
+          match claude_code_oauth_env_wrapped_command(token_path: path, argv: argv) {
+            ClaudeCodeEnvWrapped { command } => DispatchProviderInnerArgvReady { argv: argv_words(command: command) }
+            ClaudeCodeEnvNameRefused { spelling } =>
+              ClaudeProviderCredentialUnbound {
+                reason: join(["the claude credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr,
+              }
+          }
         Absent =>
           ClaudeProviderCredentialUnbound {
             reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody in gunbc.claude_code_credential"], "") as NonEmptyStr,

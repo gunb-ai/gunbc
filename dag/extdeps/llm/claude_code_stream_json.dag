@@ -274,12 +274,32 @@ fn claude_rate_limit_windows(members: List<JsonKeyValue>) -> ClaudeWindowsFold {
   )
 }
 
-fn claude_optional_nonempty(m: ClaudeStringMember) -> NonEmptyStr? {
+// AN OPTIONAL MEMBER HAS THREE READINGS, NOT TWO: present, absent (or null), and present but not
+// the declared kind. The third is a refusal naming the member, never folded into absent -- a
+// malformed api_error_status read as absent would erase the numeric cause of an authentication
+// failure (review 76293), and the per-window members already refuse this way.
+type ClaudeOptionalText
+  = OptionalTextRead { value: String? }
+  | OptionalTextMalformed
+
+type ClaudeOptionalInt
+  = OptionalIntRead { value: Int? }
+  | OptionalIntMalformed
+
+fn claude_optional_text(m: ClaudeStringMember) -> ClaudeOptionalText {
   match m {
-    StringMemberRead { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
-    StringMemberNull => Absent
-    StringMemberAbsent => Absent
-    StringMemberMalformed => Absent
+    StringMemberRead { value: s } => OptionalTextRead { value: Present { value: s } }
+    StringMemberNull => OptionalTextRead { value: Absent }
+    StringMemberAbsent => OptionalTextRead { value: Absent }
+    StringMemberMalformed => OptionalTextMalformed
+  }
+}
+
+fn claude_optional_int(m: ClaudeIntMember) -> ClaudeOptionalInt {
+  match m {
+    IntMemberRead { value: n } => OptionalIntRead { value: Present { value: n } }
+    IntMemberAbsent => OptionalIntRead { value: Absent }
+    IntMemberMalformed => OptionalIntMalformed
   }
 }
 
@@ -289,35 +309,13 @@ fn claude_rate_limit_info_line(info: JsonValue) -> ClaudeCodeStreamLine {
       if status == "" {
         ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.status" } }
       } else {
-        let resets = match claude_int_member(v: info, key: "resetsAt") {
-          IntMemberRead { value: at } => claude_epoch_secs(n: at)
-          IntMemberAbsent => Absent
-          IntMemberMalformed => Absent
-        }
-        let windows = match json_object_unique_member(v: info, key: "unifiedWindows") {
-          JsonMemberFound { value: w } =>
-            match w {
-              JsonObject { members: ms } => claude_rate_limit_windows(members: ms)
-              JsonNull => ClaudeWindowsFold { windows: [], gap: Absent }
-              JsonString { value: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
-              JsonBool { value: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
-              JsonNumber { lexeme: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
-              JsonArray { elements: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
-            }
-          JsonMemberAbsent => ClaudeWindowsFold { windows: [], gap: Absent }
-          JsonMemberDuplicated { count: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
-          JsonMemberNotAnObject => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
-        }
-        match windows.gap {
-          Present { value: g } => ClaudeCodeLineUnreadable { gap: g }
-          Absent =>
-            ClaudeCodeRateLimitEventLine {
-              info: ClaudeCodeRateLimitInfo {
-                status: status as NonEmptyStr,
-                rate_limit_type: claude_optional_nonempty(m: claude_string_member(v: info, key: "rateLimitType")),
-                resets_at: resets,
-                windows: windows.windows,
-              },
+        match claude_optional_int(m: claude_int_member(v: info, key: "resetsAt")) {
+          OptionalIntMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.resetsAt" } }
+          OptionalIntRead { value: resets_raw } =>
+            match claude_optional_text(m: claude_string_member(v: info, key: "rateLimitType")) {
+              OptionalTextMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.rateLimitType" } }
+              OptionalTextRead { value: type_raw } =>
+                claude_rate_limit_info_line_read(info: info, status: status as NonEmptyStr, resets_raw: resets_raw, type_raw: type_raw)
             }
         }
       }
@@ -327,12 +325,59 @@ fn claude_rate_limit_info_line(info: JsonValue) -> ClaudeCodeStreamLine {
   }
 }
 
-fn claude_optional_string(m: ClaudeStringMember) -> String? {
-  match m {
-    StringMemberRead { value: s } => Present { value: s }
-    StringMemberNull => Absent
-    StringMemberAbsent => Absent
-    StringMemberMalformed => Absent
+fn claude_rate_limit_info_line_read(
+  info: JsonValue,
+  status: NonEmptyStr,
+  resets_raw: Int?,
+  type_raw: String?,
+) -> ClaudeCodeStreamLine {
+  let resets_bad = match resets_raw {
+    Present { value: n } => n < 0
+    Absent => false
+  }
+  let type_bad = match type_raw {
+    Present { value: t } => t == ""
+    Absent => false
+  }
+  if resets_bad {
+    ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.resetsAt" } }
+  } else {
+    if type_bad {
+      ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.rateLimitType" } }
+    } else {
+      let windows = match json_object_unique_member(v: info, key: "unifiedWindows") {
+        JsonMemberFound { value: w } =>
+          match w {
+            JsonObject { members: ms } => claude_rate_limit_windows(members: ms)
+            JsonNull => ClaudeWindowsFold { windows: [], gap: Absent }
+            JsonString { value: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+            JsonBool { value: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+            JsonNumber { lexeme: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+            JsonArray { elements: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+          }
+        JsonMemberAbsent => ClaudeWindowsFold { windows: [], gap: Absent }
+        JsonMemberDuplicated { count: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+        JsonMemberNotAnObject => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+      }
+      match windows.gap {
+        Present { value: g } => ClaudeCodeLineUnreadable { gap: g }
+        Absent =>
+          ClaudeCodeRateLimitEventLine {
+            info: ClaudeCodeRateLimitInfo {
+              status: status,
+              rate_limit_type: match type_raw {
+                Present { value: t } => Present { value: t as NonEmptyStr }
+                Absent => Absent
+              },
+              resets_at: match resets_raw {
+                Present { value: n } => claude_epoch_secs(n: n)
+                Absent => Absent
+              },
+              windows: windows.windows,
+            },
+          }
+      }
+    }
   }
 }
 
@@ -346,17 +391,21 @@ fn claude_result_line(doc: JsonValue) -> ClaudeCodeStreamLine {
           JsonMemberFound { value: found } =>
             match found {
               JsonBool { value: is_error } =>
-                ClaudeCodeResultLine {
-                  result: ClaudeCodeTurnResult {
-                    subtype: subtype as NonEmptyStr,
-                    is_error: is_error,
-                    terminal_reason: claude_optional_string(m: claude_string_member(v: doc, key: "terminal_reason")),
-                    api_error_status: match claude_int_member(v: doc, key: "api_error_status") {
-                      IntMemberRead { value: code } => Present { value: code }
-                      IntMemberAbsent => Absent
-                      IntMemberMalformed => Absent
-                    },
-                  },
+                match claude_optional_text(m: claude_string_member(v: doc, key: "terminal_reason")) {
+                  OptionalTextMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "terminal_reason" } }
+                  OptionalTextRead { value: terminal_reason } =>
+                    match claude_optional_int(m: claude_int_member(v: doc, key: "api_error_status")) {
+                      OptionalIntMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "api_error_status" } }
+                      OptionalIntRead { value: api_error_status } =>
+                        ClaudeCodeResultLine {
+                          result: ClaudeCodeTurnResult {
+                            subtype: subtype as NonEmptyStr,
+                            is_error: is_error,
+                            terminal_reason: terminal_reason,
+                            api_error_status: api_error_status,
+                          },
+                        }
+                    }
                 }
               JsonNull => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "is_error" } }
               JsonString { value: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
