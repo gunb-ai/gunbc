@@ -47,9 +47,13 @@ type AwaitedTrace {
   served: String?
 }
 
+// A WAIT LEG THAT OUTLIVED ITS BOUND IS ITS OWN ARM (valiant-crab-775, after run 37304585650): the leg runs
+// under a client bound derived from the awaited deadline, and one the bound killed is a typed refusal
+// naming the bound, never an open session the step timeout ends 87 minutes later.
 type AwaitedVerdict
   = AwaitedObserved { awaited: AwaitedIncarnation }
   | AwaitedRefused { host: HostIdentity, cause: String }
+  | AwaitedLegOutlivedBound { host: HostIdentity, bound_seconds: Int }
 
 // THE WORDS THE LOOP PRINTS, one datum each, read by the parser below and by the script renderer.
 data awaited_header_word: String = "awaited"
@@ -156,7 +160,7 @@ fn awaited_verdict(host: HostIdentity, trace: AwaitedTrace, expected: AwaitedInc
 }
 
 fn awaited_of(verdicts: List<AwaitedVerdict>) -> List<AwaitedIncarnation> {
-  flat_map(verdicts, v => match v { AwaitedObserved { awaited: a } => [a]  AwaitedRefused { host: _, cause: _ } => [] as List<AwaitedIncarnation> })
+  flat_map(verdicts, v => match v { AwaitedObserved { awaited: a } => [a]  AwaitedRefused { host: _, cause: _ } => [] as List<AwaitedIncarnation>  AwaitedLegOutlivedBound { host: _, bound_seconds: _ } => [] as List<AwaitedIncarnation> })
 }
 
 fn awaited_for_host(awaited: List<AwaitedIncarnation>, host: HostIdentity) -> AwaitedIncarnation? {
