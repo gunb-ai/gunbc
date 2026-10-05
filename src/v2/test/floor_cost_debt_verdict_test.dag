@@ -1,7 +1,6 @@
 module v2.test.floor_cost_debt_verdict
 
 import std.types { List }
-import v2.std.text { String }
 import v2.workflow.floor_cost_debt_verdict {
   CostDebtAdmissionReading, CostDebtAdmittedIdentities, CostDebtRosterUnreadableAtBase, CostDebtRosterUntokenizableAtBase,
   cost_debt_admitted_identities,
