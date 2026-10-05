@@ -7,6 +7,7 @@ import std.source_annotation {
   advance_line_prefix_indent_only_text, placement_from_line_prefix
 }
 import std.unicode.types { unicode_scalar }
+import std.unicode.scalar { char_text }
 
 import v1.std.core {
   make_file_span,
@@ -93,7 +94,7 @@ fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
 }
 
 fn source_char(source: SourceRef, pos: Int) -> String {
-  from_code_point(cp: source.source_chars[pos])
+  char_text(c: source.source_chars[pos])
 }
 
 fn source_code_point(source: SourceRef, pos: Int) -> Int {
