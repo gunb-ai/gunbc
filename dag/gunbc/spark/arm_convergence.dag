@@ -5,7 +5,19 @@ import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
 import product.host_identity { HostIdentity }
-import extdeps.exec.command { shell_quote }
+import extdeps.exec.command { argv_words }
+import std.measure { ByteSize, byte_size }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.systemd { ActiveState }
+import extdeps.tools.stat { StatFileKind, RegularFileKind, DirectoryKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_word }
+import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_names_no_such_container }
+import extdeps.docker.container_inspect { container_inspect_from_stdout, ContainerInspectDecoded, ContainerInspectUnreadable }
+import gunbc.host_operation_exec { Sha256SumFile, SystemctlShowProperty }
+import gunbc.compute.host_occupancy { host_operation_ran, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
+import gunbc.host.path_observation { host_path_kind, HostPathPresent, HostPathAbsent, HostPathUnread, small_file_read, SmallFileText, SmallFileAbsent, SmallFileUnread }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
   assess_by_deviations_and_unknowns,
@@ -91,75 +103,132 @@ type ArmRankObservation
   = ArmRankRead { observed: ArmRankObserved }
   | ArmRankUnread { host: HostIdentity, cause: String }
 
-data arm_observe_complete_word: String = "arm-observe-complete"
-data arm_fact_unread_prefix: String = "unread:"
-data arm_retired_file_key: String = "retired_file="
-data arm_observe_error_path: String = "/run/gunbc-arm-observe.err"
+// ── THE PER-RANK OBSERVATION, AS TYPED LEGS (review 76640; valiant-crab-775) ─────────────────
+//
+// THE OBSERVATION IS THE CONVERGE'S WHOLE INPUT, so it is built from modeled operations rather than a
+// string-assembled shell body: each fact is one typed read through the caller's privileged ArgvRun
+// (the seam gunbc.spark.deliberate_unit_start already uses), decided here in .dag. No completion word
+// is needed: a read that did not finish is that fact's own Unread, never a missing line.
+//
+// The planned unit's hash is computed HERE, over the exact octets the unit file is written with, by
+// extdeps.crypto.sha2 sha256_hex, and compared with the installed file's sha256sum (extdeps.crypto.hash),
+// two realizations of one FIPS 180-4 digest over the same bytes.
+data arm_committed_record_read_limit: ByteSize = byte_size(count: 300)
 
-// ── THE PER-RANK OBSERVATION LEG ──────────────────────────────────────────────────────────────
-//
-// feature:remote-shell-body-emission — dissolve-on: the bounded remote operation sequence capability
-// stated once above gunbc.spark.native_serving_apply spark_native_host_apply_script (an ordered list of
-// typed steps against one host, each a modeled operation, so a script body becomes a projection of that
-// sequence). This leg is the same class of string-assembled body as that module's stage scripts and is
-// covered by that marker and that trigger, not admitted by its own; restating the condition here would
-// be a second authority for it. Until it dissolves, every word the parser keys on is a named datum below
-// (the key prefixes, the unread prefix, the completion word), so a script and its parser cannot drift
-// on a spelling or an offset.
-//
-// It only reads. Each fact prints as key=value, key=absent, or key=unread:<cause>, and the leg ends
-// with a completion word, so a leg cut off part way through reads as unread rather than as a host
-// missing its later facts. The planned unit's hash is computed ON THE HOST with the same sha256sum
-// that hashes the installed file, so the two are compared as like with like.
-fn arm_rank_observe_script(unit_name: NonEmptyStr, container_name: NonEmptyStr, planned_unit_text: String) -> String {
-  let u = arm_unit_path(unit_name: unit_name)
-  let r = arm_committed_record_path(unit_name: unit_name)
-  let ctr = shell_quote(arg: container_name as String)
-  join([
-    "echo \"desired_unit_sha=$(printf '%s' ", shell_quote(arg: planned_unit_text), " | sha256sum | cut -c1-64)\"\n",
-    "if [ -f ", u, " ]; then if s=$(sha256sum < ", u, " | cut -c1-64) && [ -n \"$s\" ]; then echo \"unit_sha=$s\"; else echo 'unit_sha=", arm_fact_unread_prefix, "sha256sum of the unit file failed'; fi\n",
-    "elif [ -e ", u, " ]; then echo 'unit_sha=", arm_fact_unread_prefix, "the unit path is not a regular file'\n",
-    "else echo unit_sha=absent; fi\n",
-    "if a=$(systemctl show -p ActiveState --value ", unit_name as String, " 2>&1); then echo \"active_state=$a\"; else echo \"active_state=", arm_fact_unread_prefix, "$(printf '%s' \"$a\" | tr '\\n' ' ' | cut -c1-200)\"; fi\n",
-    "if c=$(docker container inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", ctr, " 2>", arm_observe_error_path, "); then echo \"container=$c\"\n",
-    "elif grep -q 'No such container' ", arm_observe_error_path, "; then echo container=absent\n",
-    "else echo \"container=", arm_fact_unread_prefix, "$(tr '\\n' ' ' < ", arm_observe_error_path, " | cut -c1-200)\"; fi\n",
-    "if [ -f ", r, " ]; then echo \"committed=$(head -c 300 ", r, " | tr '\\n' ' ')\"\n",
-    "elif [ -e ", r, " ]; then echo 'committed=", arm_fact_unread_prefix, "the record path is not a regular file'\n",
-    "else echo committed=absent; fi\n",
-    join(map(arm_retired_transaction_suffixes, sfx => join(["if [ -e ", u, sfx, " ]; then echo ", arm_retired_file_key, u, sfx, "; fi\n"], "")), ""),
-    "echo ", arm_observe_complete_word, "\n",
-  ], "")
+fn arm_planned_unit_sha(planned_unit_text: String) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: planned_unit_text)))
 }
 
-fn arm_line_value(lines: List<String>, key: String) -> String? {
-  first(flat_map(lines, l => if starts_with(s: l, prefix: join([key, "="], "")) { [trim(s: substring(s: l, start: length(key) + 1, end: length(l)))] } else { [] as List<String> }))
-}
-
-fn arm_fact_of(lines: List<String>, key: String) -> ArmFact {
-  match arm_line_value(lines: lines, key: key) {
-    Absent => FactUnread { cause: join(["the observation printed no ", key, " line"], "") }
-    Present { value: v } =>
-      if v == "absent" { FactAbsent }
-      else if starts_with(s: v, prefix: arm_fact_unread_prefix) { FactUnread { cause: substring(s: v, start: length(arm_fact_unread_prefix), end: length(v)) } }
-      else if v == "" { FactUnread { cause: join(["the observation printed an empty ", key], "") } }
-      else { FactRead { value: v } }
+fn arm_unit_sha_fact(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> ArmFact {
+  match host_path_kind(run: run, path: path) {
+    HostPathAbsent => FactAbsent
+    HostPathUnread { cause: c } => FactUnread { cause: c }
+    HostPathPresent { kind: k } =>
+      match k {
+        RegularFileKind => {
+          let operation = Sha256SumFile { path: path }
+          match host_operation_ran(run: run, operation: operation) {
+            HostOperationNotRun { cause: c } => FactUnread { cause: c }
+            HostOperationResultUnreceived { cause: c } => FactUnread { cause: c }
+            HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
+              if code != 0 { FactUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+              else {
+                match sha256sum_line_digest(line: out) {
+                  Present { value: d } => FactRead { value: d.hex as String }
+                  Absent => FactUnread { cause: "sha256sum printed no digest" }
+                }
+              }
+          }
+        }
+        DirectoryKind => arm_not_a_unit_file(kind: k)
+        SymbolicLinkKind => arm_not_a_unit_file(kind: k)
+        SocketKind => arm_not_a_unit_file(kind: k)
+        FifoKind => arm_not_a_unit_file(kind: k)
+        CharacterDeviceKind => arm_not_a_unit_file(kind: k)
+        BlockDeviceKind => arm_not_a_unit_file(kind: k)
+        UnknownKind { word: _ } => arm_not_a_unit_file(kind: k)
+      }
   }
 }
 
-fn arm_rank_observation_of(host: HostIdentity, stdout: String) -> ArmRankObservation {
-  let lines = map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
-  if !any(lines, l => l == arm_observe_complete_word) {
-    ArmRankUnread { host: host, cause: "the observation leg did not print its completion word, so its facts are not a whole reading" }
+fn arm_not_a_unit_file(kind: StatFileKind) -> ArmFact {
+  FactUnread { cause: join(["the unit path is a ", stat_file_kind_word(kind: kind), ", not a regular file"], "") }
+}
+
+fn arm_active_state_fact(run: fn(List<String>) -> ArgvRun, unit_name: NonEmptyStr) -> ArmFact {
+  let operation = SystemctlShowProperty { unit: unit_name, property: ActiveState }
+  match host_operation_ran(run: run, operation: operation) {
+    HostOperationNotRun { cause: c } => FactUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => FactUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { FactUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+      else if trim(s: out) == "" { FactUnread { cause: "systemctl printed no ActiveState" } }
+      else { FactRead { value: trim(s: out) } }
+  }
+}
+
+// THE CONTAINER IS READ BY THE DOCKER CLI's OWN DOCUMENT, decoded by extdeps.docker.container_inspect
+// (the route gunbc.spark.serving_rank_observe runs). Its reading keeps the shape the assessment compares:
+// "<id> <running> <restart count>". An unreported restart count is unread, never zero.
+fn arm_container_fact(run: fn(List<String>) -> ArgvRun, container_name: NonEmptyStr) -> ArmFact {
+  match run(argv_words(command: docker_container_inspect_command(name: container_name))) {
+    ArgvLegDidNotRun { cause: c } => FactUnread { cause: join(["docker container inspect did not run: ", c], "") }
+    ArgvLegMayHaveRun { cause: c } => FactUnread { cause: join(["docker container inspect may have run, no result received: ", c], "") }
+    ArgvRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        if docker_container_inspect_names_no_such_container(stderr: err) { FactAbsent }
+        else { FactUnread { cause: join(["docker container inspect exited ", to_string(code), ": ", trim(s: err)], "") } }
+      } else {
+        match container_inspect_from_stdout(stdout: out) {
+          ContainerInspectUnreadable { cause: c } => FactUnread { cause: c }
+          ContainerInspectDecoded { container: ci } =>
+            match ci.restart_count {
+              Absent => FactUnread { cause: "docker reported no RestartCount" }
+              Present { value: n } => FactRead { value: join([ci.id, " ", if ci.state.running { "true" } else { "false" }, " ", to_string(n)], "") }
+            }
+        }
+      }
+  }
+}
+
+fn arm_committed_fact(run: fn(List<String>) -> ArgvRun, unit_name: NonEmptyStr) -> ArmFact {
+  match small_file_read(run: run, path: arm_committed_record_path(unit_name: unit_name) as NonEmptyStr, limit: arm_committed_record_read_limit) {
+    SmallFileAbsent => FactAbsent
+    SmallFileUnread { cause: c } => FactUnread { cause: c }
+    SmallFileText { text: t } =>
+      if trim(s: t) == "" { FactUnread { cause: "the committed record is empty" } }
+      else { FactRead { value: trim(s: join(split(s: t, delimiter: "\n"), " ")) } }
+  }
+}
+
+type ArmRetiredRead
+  = RetiredPresent { path: String }
+  | RetiredAbsent
+  | RetiredUnread { cause: String }
+
+fn arm_retired_read(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> ArmRetiredRead {
+  match host_path_kind(run: run, path: path) {
+    HostPathAbsent => RetiredAbsent
+    HostPathUnread { cause: c } => RetiredUnread { cause: c }
+    HostPathPresent { kind: _ } => RetiredPresent { path: path as String }
+  }
+}
+
+fn arm_rank_observe(run: fn(List<String>) -> ArgvRun, host: HostIdentity, unit_name: NonEmptyStr, container_name: NonEmptyStr, planned_unit_text: String) -> ArmRankObservation {
+  let u = arm_unit_path(unit_name: unit_name)
+  let retired = map(arm_retired_transaction_suffixes, sfx => arm_retired_read(run: run, path: join([u, sfx], "") as NonEmptyStr))
+  let retired_unread = flat_map(retired, r => match r { RetiredUnread { cause: c } => [c]  RetiredPresent { path: _ } => [] as List<String>  RetiredAbsent => [] as List<String> })
+  if count(retired_unread) > 0 {
+    ArmRankUnread { host: host, cause: join(["a retired transaction file could not be read: ", join(retired_unread, "; ")], "") }
   } else {
     ArmRankRead { observed: ArmRankObserved {
       host: host,
-      desired_unit_sha: arm_fact_of(lines: lines, key: "desired_unit_sha"),
-      unit_sha: arm_fact_of(lines: lines, key: "unit_sha"),
-      active_state: arm_fact_of(lines: lines, key: "active_state"),
-      container: arm_fact_of(lines: lines, key: "container"),
-      committed: arm_fact_of(lines: lines, key: "committed"),
-      retired_files: flat_map(lines, l => if starts_with(s: l, prefix: arm_retired_file_key) { [substring(s: l, start: length(arm_retired_file_key), end: length(l))] } else { [] as List<String> }),
+      desired_unit_sha: FactRead { value: arm_planned_unit_sha(planned_unit_text: planned_unit_text) },
+      unit_sha: arm_unit_sha_fact(run: run, path: u as NonEmptyStr),
+      active_state: arm_active_state_fact(run: run, unit_name: unit_name),
+      container: arm_container_fact(run: run, container_name: container_name),
+      committed: arm_committed_fact(run: run, unit_name: unit_name),
+      retired_files: flat_map(retired, r => match r { RetiredPresent { path: f } => [f]  RetiredAbsent => [] as List<String>  RetiredUnread { cause: _ } => [] as List<String> }),
     } }
   }
 }

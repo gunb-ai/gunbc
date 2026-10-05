@@ -14,7 +14,6 @@ import gunbc.spark.pair_serving_apply { SparkPairHostApplied, SparkPairHostApply
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import product.host_identity { HostIdentity }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
-import gunbc.spark.arm_convergence { arm_rank_observe_script }
 
 // ── A DELIBERATE START IS ONE OPERATION, AT EVERY SITE (side-chat ruling on #13319, finding 4) ───
 //
@@ -80,7 +79,6 @@ test fn w_no_stage_script_spells_a_start() -> Bool {
     spark_native_stop_script(unit_name: w_unit, container_name: glm_native_container_name),
     spark_native_commit_record_script(unit_name: w_unit, label: "fp8-16" as NonEmptyStr),
     spark_native_remove_retired_script(unit_name: w_unit),
-    arm_rank_observe_script(unit_name: w_unit, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n"),
   ]
   all(scripts, t => !string_contains(s: t, pattern: "systemctl restart") && !string_contains(s: t, pattern: "systemctl start") && !string_contains(s: t, pattern: "reset-failed"))
 }

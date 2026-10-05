@@ -3,13 +3,14 @@ module test.claim.spark.arm_convergence_witness_test
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import v2.std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.spark.arm_convergence {
   ArmRankDesired, ArmRankObservation, ArmRankRead, ArmRankUnread, ArmRankObserved, ArmFact, FactRead, FactAbsent, FactUnread,
   ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal, ArmRankReadbackRefusal, ArmConvergeApply,
   ArmCommittedReading, ArmCommitted, ArmNotCommitted,
-  arm_rank_observation_of, arm_rank_observe_script, arm_observe_complete_word,
+  arm_rank_observe, arm_planned_unit_sha,
   arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, ArmRestart, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval,
   arm_committed_reading, arm_committed_reproduced,
 }
@@ -17,11 +18,10 @@ import gunbc.spark.arm_convergence {
 // ── ARM RECOVERY AS CONVERGENCE: THE DECISION, OVER SUPPLIED OBSERVATIONS ─────────────────────
 //
 // Every observation below is SUPPLIED at the assessment's interface (DESIGN section 3: a witness
-// discriminates at one interface), shaped as the observation leg prints it and parsed by the real
-// parser, so the route from the leg's words to the decision is the production one. The inhabitance of
-// the leg itself -- that the real script prints these keys on a real host -- is first established by the
-// first converge under the arm launch mode; w_the_observe_script_prints_every_key_the_parser_reads pins
-// the shape half here and is not that evidence.
+// discriminates at one interface), written in a compact key=value form this file reads into
+// ArmRankObserved. The producer's route -- the typed legs of arm_rank_observe building those facts from
+// real operation results -- is its own claim, w_the_typed_observe_reads_each_fact_from_its_own_operation,
+// over a supplied host that answers each operation's argv.
 
 data w_hosts: List<String> = ["srv6", "srv5", "srv8", "srv7"]
 
@@ -37,7 +37,7 @@ fn w_desired() -> List<ArmRankDesired> {
 data w_sha_planned: String = "1111111111111111111111111111111111111111111111111111111111111111"
 data w_sha_other: String = "2222222222222222222222222222222222222222222222222222222222222222"
 
-// One rank's observation leg stdout, exactly as arm_rank_observe_script prints it.
+// One rank's facts in key=value form, read by w_obs below into the observation the assessment consumes.
 fn w_leg(unit_sha: String, active: String, container: String, committed: String) -> String {
   w_leg_retired(unit_sha: unit_sha, active: active, container: container, committed: committed, retired: [] as List<String>)
 }
@@ -50,12 +50,36 @@ fn w_leg_retired(unit_sha: String, active: String, container: String, committed:
     "container=", container, "\n",
     "committed=", committed, "\n",
     join(map(retired, f => join(["retired_file=", f, "\n"], "")), ""),
-    arm_observe_complete_word, "\n",
+    w_end, "\n",
   ], "")
 }
 
+data w_end: String = "end"
+
+fn w_fact(lines: List<String>, key: String) -> ArmFact {
+  match first(flat_map(lines, l => if starts_with(s: l, prefix: join([key, "="], "")) { [substring(s: l, start: length(key) + 1, end: length(l))] } else { [] as List<String> })) {
+    Absent => FactUnread { cause: join(["no ", key], "") }
+    Present { value: v } =>
+      if v == "absent" { FactAbsent }
+      else if starts_with(s: v, prefix: "unread:") { FactUnread { cause: substring(s: v, start: 7, end: length(v)) } }
+      else { FactRead { value: v } }
+  }
+}
+
 fn w_obs(host: String, stdout: String) -> ArmRankObservation {
-  arm_rank_observation_of(host: host as HostIdentity, stdout: stdout)
+  let lines = split(s: stdout, delimiter: "\n")
+  if !any(lines, l => l == w_end) { ArmRankUnread { host: host as HostIdentity, cause: "the observation did not complete" } }
+  else {
+    ArmRankRead { observed: ArmRankObserved {
+      host: host as HostIdentity,
+      desired_unit_sha: w_fact(lines: lines, key: "desired_unit_sha"),
+      unit_sha: w_fact(lines: lines, key: "unit_sha"),
+      active_state: w_fact(lines: lines, key: "active_state"),
+      container: w_fact(lines: lines, key: "container"),
+      committed: w_fact(lines: lines, key: "committed"),
+      retired_files: flat_map(lines, l => if starts_with(s: l, prefix: "retired_file=") { [substring(s: l, start: 13, end: length(l))] } else { [] as List<String> }),
+    } }
+  }
 }
 
 fn w_running(host: String) -> ArmRankObservation {
@@ -215,21 +239,76 @@ test fn w_a_return_is_admitted_only_when_the_rerender_reproduces_the_record() ->
   let committed = arm_committed_reading(observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")])
   let same = map(w_hosts, h => w_obs(host: h, stdout: w_leg(unit_sha: w_sha_other, active: "inactive", container: "absent", committed: "absent")))
   let drifted = concat(map(["srv6", "srv5", "srv8"], h => w_obs(host: h, stdout: w_leg(unit_sha: w_sha_other, active: "inactive", container: "absent", committed: "absent"))),
-    [w_obs(host: "srv7", stdout: join(["desired_unit_sha=", w_sha_other, "\nunit_sha=absent\nactive_state=inactive\ncontainer=absent\ncommitted=absent\n", arm_observe_complete_word, "\n"], ""))])
+    [w_obs(host: "srv7", stdout: join(["desired_unit_sha=", w_sha_other, "\nunit_sha=absent\nactive_state=inactive\ncontainer=absent\ncommitted=absent\n", w_end, "\n"], ""))])
   arm_committed_reproduced(reading: committed, rerendered: same)
     && !arm_committed_reproduced(reading: committed, rerendered: drifted)
     && !arm_committed_reproduced(reading: ArmNotCommitted { cause: "none" }, rerendered: same)
 }
 
-// ── THE OBSERVATION LEG'S SHAPE, AND WHAT IT IS NOT ─────────────────────────────────────────────
+// ── THE TYPED OBSERVE: EACH FACT FROM ITS OWN OPERATION (review 76640; valiant-crab-775) ──────
 //
-// The real script prints every key the parser reads and the completion word. This is SHAPE: the
-// execution evidence is the first converge's receipt.
-test fn w_the_observe_script_prints_every_key_the_parser_reads() -> Bool {
-  let o = arm_rank_observe_script(unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr, container_name: "glm53-stair" as NonEmptyStr, planned_unit_text: "[Unit]\n")
-  all(["desired_unit_sha=", "unit_sha=", "active_state=", "container=", "committed=", "retired_file="], k => string_contains(s: o, pattern: k))
-    && string_contains(s: o, pattern: join(["echo ", arm_observe_complete_word], ""))
-    && string_contains(s: o, pattern: "/var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service")
+// A supplied host answers each typed leg BY THE ARGV IT RECEIVES -- so the route is asserted, not only
+// the answer: a leg that ran a different operation gets "unexpected argv" and its fact reads unread.
+// The planned unit's hash is computed by the real sha256_hex; the host's sha256sum line is supplied as
+// that same digest, so "as planned" holds only if the two realizations agree on the same octets.
+data w_unit_text: String = "[Unit]\n"
+data w_unit_path: String = "/etc/systemd/system/gunbc-glm53-stair-head.service"
+data w_record_path: String = "/var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service"
+data w_inspect_json: String = "[{\"Id\":\"f7b22cace2ab\",\"Created\":\"2026-10-05T15:28:00Z\",\"Image\":\"sha256:6ef8\",\"State\":{\"Status\":\"running\",\"Running\":true,\"Paused\":false,\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false,\"Pid\":380,\"ExitCode\":0,\"Error\":\"\",\"StartedAt\":\"2026-10-05T15:28:01Z\",\"FinishedAt\":\"0001-01-01T00:00:00Z\"},\"RestartCount\":0}]"
+
+fn w_host_answers(unit_file: ArgvRun, record: ArgvRun) -> fn(List<String>) -> ArgvRun {
+  fn(argv) {
+    let a = join(argv, " ")
+    if a == join(["/usr/bin/stat -c %F -- ", w_unit_path], "") { unit_file }
+    else if a == join(["sha256sum -- ", w_unit_path], "") { ArgvRan { exit_code: 0, stdout: join([arm_planned_unit_sha(planned_unit_text: w_unit_text), "  ", w_unit_path, "\n"], ""), stderr: "" } }
+    else if a == "systemctl show gunbc-glm53-stair-head.service --property=ActiveState --value" { ArgvRan { exit_code: 0, stdout: "active\n", stderr: "" } }
+    else if a == "docker container inspect glm53-stair" { ArgvRan { exit_code: 0, stdout: w_inspect_json, stderr: "" } }
+    else if a == join(["/usr/bin/stat -c %F -- ", w_record_path], "") { record }
+    else if a == join(["head -c 300 -- ", w_record_path], "") { ArgvRan { exit_code: 0, stdout: "fp8-16 abcd\n", stderr: "" } }
+    else if starts_with(s: a, prefix: join(["/usr/bin/stat -c %F -- ", w_unit_path, ".gunbc-"], "")) { ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cannot statx: No such file or directory\n" } }
+    else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", a], "") } }
+  }
+}
+
+data w_regular: ArgvRun = ArgvRan { exit_code: 0, stdout: "regular file\n", stderr: "" }
+data w_enoent: ArgvRun = ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cannot statx: No such file or directory\n" }
+
+fn w_typed(unit_file: ArgvRun, record: ArgvRun) -> ArmRankObservation {
+  arm_rank_observe(run: w_host_answers(unit_file: unit_file, record: record), host: "srv6" as HostIdentity,
+    unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr, container_name: "glm53-stair" as NonEmptyStr, planned_unit_text: w_unit_text)
+}
+
+fn w_read_fact(f: ArmFact, value: String) -> Bool {
+  match f { FactRead { value: v } => v == value  FactAbsent => false  FactUnread { cause: _ } => false }
+}
+
+// THE POSITIVE ROUTE: every fact read from its own operation, the hashes agreeing, the container in the
+// "<id> <running> <restarts>" shape the assessment compares, the record's text, no retired file.
+test fn w_the_typed_observe_reads_each_fact_from_its_own_operation() -> Bool {
+  match w_typed(unit_file: w_regular, record: w_regular) {
+    ArmRankUnread { host: _, cause: _ } => false
+    ArmRankRead { observed: o } =>
+      w_read_fact(f: o.unit_sha, value: arm_planned_unit_sha(planned_unit_text: w_unit_text))
+        && w_read_fact(f: o.desired_unit_sha, value: arm_planned_unit_sha(planned_unit_text: w_unit_text))
+        && w_read_fact(f: o.active_state, value: "active")
+        && w_read_fact(f: o.container, value: "f7b22cace2ab true 0")
+        && w_read_fact(f: o.committed, value: "fp8-16 abcd")
+        && count(o.retired_files) == 0
+  }
+}
+
+// RED: an absent unit file and an absent record read ABSENT; a unit path stat could not examine reads
+// UNREAD, never absent; and the planned hash is the real digest of the planned text (sha256 of
+// "[Unit]\n"), so a renderer that hashed anything else would not equal it.
+test fn w_the_typed_observe_separates_absent_from_unread() -> Bool {
+  let absent = w_typed(unit_file: w_enoent, record: w_enoent)
+  let refused = w_typed(unit_file: ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cannot statx: Permission denied\n" }, record: w_enoent)
+  (match absent { ArmRankUnread { host: _, cause: _ } => false  ArmRankRead { observed: o } =>
+      (match o.unit_sha { FactAbsent => true  FactRead { value: _ } => false  FactUnread { cause: _ } => false })
+        && (match o.committed { FactAbsent => true  FactRead { value: _ } => false  FactUnread { cause: _ } => false }) })
+    && (match refused { ArmRankUnread { host: _, cause: _ } => false  ArmRankRead { observed: o } =>
+      match o.unit_sha { FactUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")  FactAbsent => false  FactRead { value: _ } => false } })
+    && arm_planned_unit_sha(planned_unit_text: w_unit_text) == "ae6c63cff33bcfa3b6a2d6d0c9dd19521dedaa351146b1a642d2bfc9cf5a1e1f"
 }
 
 // ── THE SMALLEST ACTION PER DIVERGED COMPONENT (valiant-crab-775, 2026-10-05) ──────────────────

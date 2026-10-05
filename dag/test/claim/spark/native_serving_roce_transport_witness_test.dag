@@ -17,7 +17,6 @@ import gunbc.spark.native_serving_apply {
   spark_native_preflight_script, spark_native_front_door_script, spark_native_stop_script, spark_native_commit_record_script,
   spark_native_readback_disagreements, spark_native_image_readback_gap, spark_native_unplanned_assignments, ImageFactsRead, ImageFactsUnread,
 }
-import gunbc.spark.arm_convergence { arm_rank_observe_script }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.pair_serving_apply { SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
@@ -152,7 +151,6 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
         Present { value: st } => {
           let scripts = join([
             spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path),
-            arm_rank_observe_script(unit_name: st.unit_name, container_name: st.launch.container.name, planned_unit_text: st.unit_text),
             spark_native_stop_script(unit_name: st.unit_name, container_name: st.launch.container.name),
             spark_native_commit_record_script(unit_name: st.unit_name, label: "t" as NonEmptyStr),
             spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr),
@@ -699,7 +697,6 @@ test fn w_no_apply_or_convergence_script_echoes_shell_syntax() -> Bool {
       spark_native_stop_script(unit_name: u, container_name: c),
       spark_native_remove_retired_script(unit_name: u),
       spark_native_commit_record_script(unit_name: u, label: "t" as NonEmptyStr),
-      arm_rank_observe_script(unit_name: u, container_name: c, planned_unit_text: st.unit_text),
     ]
   }, at_least: 6)
 }

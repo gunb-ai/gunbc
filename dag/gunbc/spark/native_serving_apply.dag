@@ -85,7 +85,7 @@ import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.arm_convergence {
   ArmRankDesired, ArmRankObservation, ArmRankRead, ArmRankUnread, ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal,
   ArmRankReadbackRefusal, ArmCommittedReading, ArmCommitted, ArmNotCommitted,
-  arm_rank_observe_script, arm_rank_observation_of, arm_rank_observation_line, arm_retired_files, arm_retired_transaction_suffixes,
+  arm_rank_observe, arm_rank_observation_line, arm_retired_files, arm_retired_transaction_suffixes,
   arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, arm_converge_apply_text, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval, arm_assessment_text,
   arm_committed_reading, arm_committed_reproduced, arm_unit_path, arm_committed_record_path, arm_committed_record_dir,
 }
@@ -780,8 +780,15 @@ fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>, awaited: List
 }
 
 
-fn spark_native_observe_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
-  map(steps, st => spark_native_plan_of(step: st, script: arm_rank_observe_script(unit_name: st.unit_name, container_name: st.launch.container.name, planned_unit_text: st.unit_text)))
+
+// WHAT A DRY PLAN SHOWS FOR ONE HOST'S OBSERVE: the typed reads by their operations (there is no script).
+fn spark_native_observe_step_wire(st: SparkNativeHostStep) -> String {
+  join([
+    "typed legs (gunbc.spark.arm_convergence arm_rank_observe): stat -c %F + sha256sum ", arm_unit_path(unit_name: st.unit_name),
+    " against the planned unit's sha256; systemctl show ", st.unit_name as String, " --property=ActiveState --value; docker container inspect ",
+    st.launch.container.name as String, "; stat -c %F + head -c 300 ", arm_committed_record_path(unit_name: st.unit_name),
+    "; stat -c %F of each retired transaction file",
+  ], "")
 }
 
 fn spark_native_stop_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
@@ -1420,26 +1427,26 @@ type SparkNativeObservation
   = NativeObserved { ranks: List<ArmRankObservation>, receipt: String }
   | NativeObserveCredentialRefused { cause: NonEmptyStr }
 
-fn spark_native_observation_of_leg(o: SparkPairHostApplyOutcome) -> ArmRankObservation {
-  match o {
-    SparkPairHostApplied { host: h, wire: _, stdout: out, standing: _ } => arm_rank_observation_of(host: h, stdout: out)
-    SparkPairHostApplyFailed { host: h, cause: c } => ArmRankUnread { host: h, cause: join(["the observation leg failed: ", c], "") }
-    SparkPairHostUnreached { host: h, cause: c } => ArmRankUnread { host: h, cause: join(["the observation leg never reached the host within its attempt budget: ", c], "") }
-  }
-}
 
+// EACH RANK IS OBSERVED BY TYPED LEGS (gunbc.spark.arm_convergence arm_rank_observe) through the same
+// privileged per-host ArgvRun the deliberate start uses, inside one materialized-credential bracket.
 fn spark_native_observe(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret, steps: List<SparkNativeHostStep>) -> SparkNativeObservation {
-  match spark_native_run_stage(trust: trust, path: path, administrator: administrator,
-    credential_file_name: "gunbc-spark-native-observe-admin-password" as NonEmptyStr, plans: spark_native_observe_plans(steps: steps)) {
-    NativeStageCredentialRefused { cause: c } => NativeObserveCredentialRefused { cause: c }
-    NativeStageRan { legs: legs } => {
-      let ranks = map(spark_native_leg_outcomes(legs: legs), o => spark_native_observation_of_leg(o: o))
+  match with_materialized_ssh_key_file(
+    identity_file_name: "gunbc-spark-native-observe-admin-password" as NonEmptyStr,
+    secret_bytes: administrator,
+    use: fn(file) {
+      map(steps, st => arm_rank_observe(
+        run: spark_ctx_argv_run(ctx: spark_native_materialize_context(host: st.host, trust: trust, path: path, administrator: administrator, credential_file: file)),
+        host: st.host, unit_name: st.unit_name, container_name: st.launch.container.name, planned_unit_text: st.unit_text))
+    },
+  ) {
+    MaterializedSshKeyFileBracketRefused { cause: c } => NativeObserveCredentialRefused { cause: c }
+    MaterializedSshKeyFileBracketCompleted { value: ranks } =>
       NativeObserved { ranks: ranks, receipt: join([
-        "  stage: ", spark_native_stage_wire(st: NativeStageObserve) as String, "\n",
+        "  stage: ", spark_native_stage_wire(st: NativeStageObserve) as String, " (typed legs)\n",
         join(map(ranks, r => arm_rank_observation_line(o: r)), ""),
         if count(arm_retired_files(observed: ranks)) == 0 { "" } else { join(["  retired transaction files present (unread; the stop step deletes them): ", join(arm_retired_files(observed: ranks), ", "), "\n"], "") },
       ], "") }
-    }
   }
 }
 

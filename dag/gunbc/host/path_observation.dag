@@ -9,12 +9,9 @@ import gunbc.spark.host_effect_quiescence { ArgvRun }
 
 // ── WHAT IS AT A PATH ON A HOST, AND A BOUNDED READ OF IT, AS TYPED LEGS ─────────────────────
 //
-// DECLARED FRONTIER (DESIGN section 3c): host_path_kind and small_file_read have no executing consumer
-// on main in this change. Their consumer is gunbc.spark.arm_convergence, whose rank observe reads the
-// committed-arm record and the retired transaction files through them and deletes
-// arm_rank_observe_script; it lands in gunbc#13365. Trigger: #13365's next head after this change
-// lands consumes both and drops that script. The stat-word decoding these read is not new: it is
-// extdeps.tools.stat stat_file_type_reading, executed today by gunbc.fabric.fabric_cell_acquire.
+// CONSUMED BY gunbc.spark.arm_convergence arm_rank_observe: the converge's rank observe reads the
+// committed-arm record and the retired transaction files through these. The stat-word decoding they read
+// is extdeps.tools.stat stat_file_type_reading, shared with gunbc.fabric.fabric_cell_acquire.
 //
 // THE CONSUMER THIS EXISTS FOR (valiant-crab-775, after review 76640 on #13365): the arm convergence
 // observe reads, on each rank, whether a record file is present and what it says, and whether retired

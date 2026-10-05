@@ -5,13 +5,12 @@ import product.host_identity { HostIdentity }
 
 import std.measure { second }
 import std.types { Bool, String, NonEmptyStr, Int }
-import std.algebra { trim }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,
   spark_pair_host_applied, spark_pair_host_unreached, spark_pair_leg_outcome_of, spark_pair_leg_payload,
-  spark_pair_leg_exit_prefix, spark_pair_host_apply_outcome_line,
+  spark_pair_leg_exit_prefix, 
 }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.native_serving_apply {
@@ -20,11 +19,10 @@ import gunbc.spark.native_serving_apply {
   spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_transport_announcement_script, spark_native_front_door_script,
   spark_native_transport_verdicts, spark_native_satisfied_check_question, spark_native_after_start_question, spark_native_wait_leg_of, spark_native_front_door_refusals,
   SparkNativeWaitLeg, WaitLegReturned, WaitLegOutlivedBound,
-  spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg, spark_native_remove_retired_script,
+  spark_native_stop_script, spark_native_commit_record_script, spark_native_remove_retired_script,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.awaited_incarnation { AwaitedIncarnation, ReadinessFromStart, awaited_readiness_from_start_word, awaited_observed_now_word, awaited_of, awaited_binding_refusal, awaited_header_word, awaited_poll_word, awaited_field_separator, awaited_probe_ok_word }
-import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_rank_observation_of, arm_observe_complete_word, ArmRankObservation, ArmRankRead, ArmRankUnread, FactRead, FactAbsent, FactUnread }
 
 // THE INCIDENT THESE ARE THE REDS FOR: fleet-converge run 36918167575 (2026-10-01). One ssh leg to srv7
 // timed out over Wi-Fi, the four-host arm aborted, the rollback leg to srv7 timed out too, and the next
@@ -157,17 +155,6 @@ test fn w_the_commit_record_names_the_label_and_the_installed_units_hash() -> Bo
     && !string_contains(s: commit, pattern: "systemctl")
 }
 
-// THE OBSERVATION ONLY READS: no unit verb that changes state, no removal, no write outside its own
-// error file under /run.
-test fn w_the_observation_leg_only_reads() -> Bool {
-  let o = arm_rank_observe_script(unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n")
-  !string_contains(s: o, pattern: "rm ")
-    && !string_contains(s: o, pattern: "systemctl stop")
-    && !string_contains(s: o, pattern: "systemctl start")
-    && !string_contains(s: o, pattern: "systemctl restart")
-    && !string_contains(s: o, pattern: "docker rm")
-    && !string_contains(s: o, pattern: "mv ")
-}
 
 // ── THE TRANSACTION'S OWN START IS NOT REFUSED BY THE START LIMIT; NOTHING ELSE IS EXEMPTED ─────
 //
@@ -187,7 +174,6 @@ test fn w_the_observation_leg_only_reads() -> Bool {
 test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
   let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
   let others = [
-    arm_rank_observe_script(unit_name: unit, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n"),
     spark_native_stop_script(unit_name: unit, container_name: glm_native_container_name),
     spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr),
     spark_native_remove_retired_script(unit_name: unit),
@@ -197,37 +183,6 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
   all(others, t => !string_contains(s: t, pattern: "reset-failed"))
 }
 
-// ── THE OBSERVATION READS THE LEG'S STDOUT AS DATA, THROUGH THE REAL LEG READING ──────────────
-//
-// fleet-converge run 37270222679 refused on every rank: the observation parsed the applied leg's
-// RENDERED detail, "<wire> <stdout>", as if it were stdout, so the first fact arrived behind the wire
-// and read unread. The earliest unjustified boundary was the outcome carrying only that rendering, so
-// SparkPairHostApplied now carries the wire and the script's stdout as separate fields, and every
-// consumer reads stdout there; the line is rendered only for the receipt. This claim runs wrapped stdout
-// through the real leg reading (spark_pair_leg_outcome_of) and the real parse. The RED is the defect
-// itself: the same outcome's RENDERED line handed to the parser reads the first fact unread.
-fn w_observe_stdout() -> String {
-  join([
-    remote_leg_began_word, "\n",
-    "desired_unit_sha=aaaa\nunit_sha=aaaa\nactive_state=active\ncontainer=0123456789ab true 0\ncommitted=absent\n",
-    arm_observe_complete_word, "\n",
-    spark_pair_leg_exit_prefix, "0\n",
-  ], "")
-}
-
-fn w_planned_hash(o: ArmRankObservation) -> Bool {
-  match o {
-    ArmRankUnread { host: _, cause: _ } => false
-    ArmRankRead { observed: r } => match r.desired_unit_sha { FactRead { value: v } => v == "aaaa"  FactAbsent => false  FactUnread { cause: _ } => false }
-  }
-}
-
-test fn w_the_observation_reads_the_legs_stdout_as_data() -> Bool {
-  let outcome = spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult { exit_code: 0, success: true, stdout: w_observe_stdout(), stderr: "" })
-  let rendered = trim(s: spark_pair_host_apply_outcome_line(o: outcome))
-  w_planned_hash(o: spark_native_observation_of_leg(o: outcome))
-    && !w_planned_hash(o: arm_rank_observation_of(host: operator_host_srv9, stdout: rendered))
-}
 
 // THE REMOVE-ONLY REMEDY TOUCHES NO UNIT AND NO CONTAINER, removes exactly this unit's retired paths
 // (from the model, never from host output) and reads each absent.
