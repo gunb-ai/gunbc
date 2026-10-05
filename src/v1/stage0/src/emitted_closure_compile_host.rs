@@ -1683,8 +1683,14 @@ pub(crate) fn fixture_closure_rustc_verdict(
     };
     eprintln!("fixture-closure: {rust_module} emitting");
     let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
-    let sources =
-        crate::cli_run::resolve_virtual_source_with_imports("fixture.dag", source, &module_index);
+    let sources = match crate::cli_run::resolve_virtual_source_with_imports(
+        "fixture.dag",
+        source,
+        &module_index,
+    ) {
+        Ok(sources) => sources,
+        Err(cause) => return FixtureClosureOutcome::CrateNotWritten { cause },
+    };
     let result = crate::v1_compiler_compile::compile_sources(
         std::rc::Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,

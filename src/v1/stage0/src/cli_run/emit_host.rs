@@ -202,7 +202,8 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
             let sources =
-                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
+                    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
             record_fixture_closure(&sources);
             compile_fixture_rendering_only_what_is_read(sources, None)
         })
@@ -2059,7 +2060,8 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
     excludes: &[String],
 ) -> Result<bool, FixtureRenderRefusal> {
     let module_index = build_module_path_index_from_witness_roots();
-    let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+    let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
+        .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     record_fixture_closure(&sources);
     let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
     let hard_diagnostics = result
@@ -2216,7 +2218,8 @@ pub(crate) fn render_selection_agreement_receipt(
         };
         let module_index = build_module_path_index_from_witness_roots();
         let sources =
-            resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, fx.source, &module_index);
+            resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, fx.source, &module_index)
+                .map_err(&refuse)?;
         let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
         let selection = fixture_render_selection(&resolved, Some(fx.read_path))
             .map_err(|r| refuse(r.to_string()))?;
@@ -2319,6 +2322,9 @@ pub enum FixtureRenderRefusal {
         read_path: String,
         emitted: Vec<String>,
     },
+    /// The closure authority refused to close the fixture's imported modules
+    /// (`resolve_virtual_source_with_imports`), so there is no program to compile.
+    ClosureUnresolvable { cause: String },
 }
 
 impl std::fmt::Display for FixtureRenderRefusal {
@@ -2340,6 +2346,12 @@ impl std::fmt::Display for FixtureRenderRefusal {
                 emitted.len(),
                 emitted.join(", ")
             ),
+            FixtureRenderRefusal::ClosureUnresolvable { cause } => {
+                write!(
+                    f,
+                    "fixture closure refused by the closure authority: {cause}"
+                )
+            }
         }
     }
 }
@@ -3240,19 +3252,21 @@ const FIXTURE_CLOSURE_UNION_CONTROL_PATH: &str = "dag/fixture_closure_union_cont
 
 /// A union built the way a fixture compile builds its closure: the member's imports resolved over
 /// the live module index, the member itself given a corpus path so it is a union MEMBER.
-pub(crate) fn fixture_closure_union_control_union(content: &str) -> FixtureClosureUnion {
+pub(crate) fn fixture_closure_union_control_union(
+    content: &str,
+) -> Result<FixtureClosureUnion, String> {
     let module_index = build_module_path_index_from_witness_roots();
     let mut union = FixtureClosureUnion::default();
     for source in resolve_virtual_source_with_imports(
         FIXTURE_CLOSURE_UNION_CONTROL_PATH,
         content,
         &module_index,
-    ) {
+    )? {
         union
             .members
             .insert(source.path.clone(), source.content.clone());
     }
-    union
+    Ok(union)
 }
 
 /// THE ENROLLED CONTROLS FOR [`fixture_closure_union_emit_receipt`], run by the required floor on
@@ -3270,9 +3284,9 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
         )
     };
     let red_started = std::time::Instant::now();
-    match fixture_closure_union_emit_receipt(&fixture_closure_union_control_union(
-        FIXTURE_CLOSURE_UNION_RED_MEMBER,
-    )) {
+    match fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_RED_MEMBER).map_err(&refuse)?,
+    ) {
         Err(refusal)
             if refusal.contains("cause=FixtureClosureUnionEmitRefused")
                 && refusal.contains("module=efr_member") => {}
@@ -3289,9 +3303,10 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
     }
     let red_ms = red_started.elapsed().as_millis();
     let clean_started = std::time::Instant::now();
-    fixture_closure_union_emit_receipt(&fixture_closure_union_control_union(
-        FIXTURE_CLOSURE_UNION_CLEAN_MEMBER,
-    ))
+    fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_CLEAN_MEMBER)
+            .map_err(&refuse)?,
+    )
     .map_err(|refusal| refuse(format!("the clean member did not hold: {refusal}")))?;
     Ok((red_ms, clean_started.elapsed().as_millis()))
 }
@@ -3307,7 +3322,7 @@ mod fixture_closure_union_tests {
     /// refuses the receipt, typed and located at that member's module.
     #[test]
     fn a_union_member_with_an_emit_refusal_refuses_the_floor() {
-        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_RED_MEMBER);
+        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_RED_MEMBER).unwrap();
         let refusal = fixture_closure_union_emit_receipt(&union)
             .expect_err("an emit refusal in a union member must refuse the floor");
         assert!(
@@ -3320,12 +3335,65 @@ mod fixture_closure_union_tests {
     /// THE POSITIVE CONTROL: the tail form renders clean and every member owes a file.
     #[test]
     fn a_clean_union_renders_and_holds() {
-        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_CLEAN_MEMBER);
+        let union =
+            fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_CLEAN_MEMBER).unwrap();
         let members = union.members.len();
         let observed = fixture_closure_union_emit_receipt(&union)
             .unwrap_or_else(|refusal| panic!("a clean union must hold: {refusal}"));
         assert_eq!(observed.members, members);
         assert!(observed.files >= members, "{observed:?}");
+    }
+
+    /// THE CLOSURE A FIXTURE COMPILES IS THE CORPUS CLOSURE OF WHAT IT IMPORTS (#13420's refusal).
+    /// `std.syllogism` imports nothing and names `GraphEdge` / `CallGraph` bare; `v2.std.artifact`
+    /// names `v2.std.refinement` only by qualified reference. The import-only walk dropped both
+    /// providers, so a fixture reaching either refused the union with `unresolved type` and
+    /// `undefined variable 'v2'` in modules that resolve in every closure the corpus authority
+    /// builds. RED on the import-only walker: neither provider is in the closure and the union is
+    /// `FixtureClosureUnionUncompilable` at `module=std.syllogism` / `module=v2.std.artifact`.
+    #[test]
+    fn a_provider_reached_only_by_reference_is_in_the_fixture_closure() {
+        let _guard = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let fixture = "module fx_reference_reach\nimport std.syllogism { Argument }\nimport v2.std.artifact { Artifact }\n";
+        let module_index = build_module_path_index_from_witness_roots();
+        let sources =
+            resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, fixture, &module_index)
+                .unwrap_or_else(|cause| panic!("closure authority refused: {cause}"));
+        let paths: Vec<&str> = sources.iter().map(|s| s.path.as_str()).collect();
+        for provider in ["dag/std/graph.dag", "src/v2/std/refinement.dag"] {
+            assert!(
+                paths.contains(&provider),
+                "{provider} is reached by reference and must be in the closure: {paths:?}"
+            );
+        }
+        let mut union = FixtureClosureUnion::default();
+        for source in sources.iter().filter(|s| s.path != FIXTURE_SOURCE_PATH) {
+            union
+                .members
+                .insert(source.path.clone(), source.content.clone());
+        }
+        fixture_closure_union_emit_receipt(&union)
+            .unwrap_or_else(|refusal| panic!("the corpus closure must render clean: {refusal}"));
+    }
+
+    /// THE CONTROL: a real resolution error inside a fixture's own closure still refuses the
+    /// union, typed and located at that member. The closure fix closes providers; it does not
+    /// narrow what the union compiles.
+    #[test]
+    fn a_real_error_in_the_fixture_closure_still_refuses() {
+        let _guard = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let union = fixture_closure_union_control_union(
+            "module efr_member\nimport std.syllogism { Argument }\nfn broken(a: Argument) -> Int {\n  no_such_function_anywhere(a)\n}\n",
+        )
+        .unwrap();
+        let refusal = fixture_closure_union_emit_receipt(&union)
+            .expect_err("a real error in the closure must refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionUncompilable")
+                && refusal.contains("module=efr_member")
+                && !refusal.contains("module=std.syllogism"),
+            "refusal must be located at the member, not at its providers: {refusal}"
+        );
     }
 
     /// The enrolled pair the required floor runs holds at this revision.
