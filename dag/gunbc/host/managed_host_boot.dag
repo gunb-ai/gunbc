@@ -1,0 +1,117 @@
+module gunbc.managed_host_boot
+
+import std.types { List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_virtual_media_boot_selection }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.boot_medium { BootMedium }
+import gunbc.managed_host {
+  ManagedHost,
+  ManagedHostBinding,
+  ManagedHostBindingStanding,
+  ManagedHostAccessUnobserved,
+  ManagedHostBound,
+  ManagedHostEndpointMismatch,
+  ManagedHostNotSecured,
+  managed_host_binding,
+  managed_hosts,
+}
+
+// THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
+// never passed in: gunbc.host_reset_boot_selection decides the reset arm's own, and neither admission
+// accepts the other's value. A host with no selection here is not bootable however capable its
+// controller.
+fn boot_selection(host: ManagedHost) -> IpmiBootSelection? {
+  if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
+    Present { value: mtcollins1_virtual_media_boot_selection }
+  } else {
+    none
+  }
+}
+
+// THE ONE RECORD A BOOT ATTACHES, SELECTS, POWER-CYCLES AND JUDGES. sole_constructor, so admit_boot_subject
+// is its only mint: the binding is the managed host's join (the account and endpoint every write reads),
+// the selection is the boot arm's policy for that host, and the medium is the value the boot was
+// admitted with. Nothing downstream takes a second copy of any of them, so an attach cannot present
+// one medium while the verdict judges another.
+type AdmittedBootSubject sole_constructor {
+  binding: ManagedHostBinding
+  medium: BootMedium
+  selection: IpmiBootSelection
+  execution_revision: NonEmptyStr
+}
+
+type BootSubjectRefusalCause
+  = BootSubjectHostNotManaged
+  | BootSubjectHostUnbound { standing: ManagedHostBindingStanding }
+  | BootSubjectNoSelection
+
+type BootSubjectAdmission
+  = BootSubjectAdmitted { subject: AdmittedBootSubject }
+  | BootSubjectRefused { host: HostIdentity, cause: BootSubjectRefusalCause }
+
+fn admit_boot_subject(host: ManagedHost, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+  match managed_host_binding(host: host) {
+    ManagedHostBound { binding: b } =>
+      match boot_selection(host: host) {
+        Absent => BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection }
+        Present { value: s } =>
+          BootSubjectAdmitted { subject: AdmittedBootSubject { binding: b, medium: medium, selection: s, execution_revision: execution_revision } }
+      }
+    ManagedHostAccessUnobserved { endpoint: e } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
+    ManagedHostNotSecured { cause: c } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: ManagedHostNotSecured { cause: c } } }
+    ManagedHostEndpointMismatch { observed: o, secured: s } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
+  }
+}
+
+// THE SAME ADMISSION FOR A HOST NAME, over the rows it is given: a host that is not a managed host is
+// refused by that cause, never booted with defaults.
+fn boot_subject_admission_in(hosts: List<ManagedHost>, host: HostIdentity, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+  fold(
+    hosts,
+    init: BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged },
+    f: (acc, h) => if host_identity_eq(a: h.host, b: host) { admit_boot_subject(host: h, medium: medium, execution_revision: execution_revision) } else { acc },
+  )
+}
+
+fn boot_subject_admission_for(host: HostIdentity, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
+  boot_subject_admission_in(hosts: managed_hosts(), host: host, medium: medium, execution_revision: execution_revision)
+}
+
+fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
+  match cause {
+    BootSubjectHostNotManaged => "it is not a managed host (gunbc.managed_host managed_hosts has no row for it)"
+    BootSubjectNoSelection => "no boot selection is decided for it (gunbc.managed_host_boot boot_selection)"
+    BootSubjectHostUnbound { standing: s } =>
+      match s {
+        ManagedHostBound { binding: _ } => "it is bound"
+        ManagedHostAccessUnobserved { endpoint: e } => concat("its controller access is unobserved at ", e.host as String)
+        ManagedHostNotSecured { cause: _ } => "its controller is not BmcSecured"
+        ManagedHostEndpointMismatch { observed: o, secured: x } => concat("its observed controller ", concat(o.host as String, concat(" is not the secured controller ", x.host as String)))
+      }
+  }
+}
+
+// Absent means the boot was admitted; the text is what a refused caller prints.
+fn boot_subject_admission_refusal(admission: BootSubjectAdmission) -> NonEmptyStr? {
+  match admission {
+    BootSubjectAdmitted { subject: _ } => none
+    BootSubjectRefused { host: h, cause: c } =>
+      Present { value: join(["boot of '", h as String, "' refused before any controller write: ", boot_subject_refusal_cause_text(cause: c)], "") as NonEmptyStr }
+  }
+}
+
+// THE NAME THE HOST'S CAPTURE ENVELOPE BINDS TO, and the controller the subject drives, read off the
+// admitted binding rather than restated.
+fn boot_subject_machine(subject: AdmittedBootSubject) -> NonEmptyStr {
+  subject.binding.host.host as NonEmptyStr
+}
+
+fn boot_subject_host(subject: AdmittedBootSubject) -> HostIdentity {
+  subject.binding.host.host
+}

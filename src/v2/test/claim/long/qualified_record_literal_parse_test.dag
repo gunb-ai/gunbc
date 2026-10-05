@@ -1,9 +1,11 @@
 module v2.test.long.qualified_record_literal_parse
 
+import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.filesystem.filesystem_io
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

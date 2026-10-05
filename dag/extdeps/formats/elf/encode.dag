@@ -195,6 +195,6 @@ fn witness_encode_decode_roundtrip_ehdr(hdr_bytes: List<Int>) -> Bool {
     ElfDecoded { value: hdr } =>
       let out = encode_elf64_ehdr(hdr)
       count(out) == elf64_ehdr_size && int_lists_equal(hdr_bytes, out)
-    _ => false
+    ElfRejected { reason: _ } => false
   }
 }
