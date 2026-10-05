@@ -4,7 +4,8 @@ import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import extdeps.transports.rest {
-  RestExchangePerformance, RestExchangeSucceeded, RestExchangeStatusRefused,
+  RestResult, RestAnswered, RestRefused, RestReadExchange, RestMutationExchange, classify_rest_refusal,
+  RestRefusal, RestExchangeRefusal, RestExchangeStatusRefused,
   RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
 import gunbc.repository { gunbc_repository }
@@ -18,6 +19,7 @@ import gunbc.github_effect_perform {
   ControllerInstallationToken, GitRefRead, read_git_ref_with, create_git_ref_with, delete_git_ref_with,
   read_runner_groups_with, update_runner_group_workflows_with,
 }
+import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
 
 // THE QUALIFICATION REF PIN: ONE CREATE-ONCE BRANCH PER ATTEMPT, AND THE DEDICATED GROUP PINNED TO IT.
 //
@@ -164,22 +166,22 @@ type QualificationRefPin sole_constructor {
 type QualificationRefPinRefusal
   = PinBranchNameRefused { cause: NonEmptyStr }
   | PinBranchPreexisting { observed_sha: String }
-  | PinBranchReadUnreadable { performance: RestExchangePerformance }
+  | PinBranchReadUnreadable { refusal: RestExchangeRefusal }
   | PinBranchCreateRefused { status: Int, body: String }
   | PinBranchCreateAmbiguous { detail: NonEmptyStr }
   | PinBranchReadbackMismatch { pinned: CommitSha, observed: String }
   | PinGroupNotTargetable { cause: NonEmptyStr }
-  | PinGroupWriteNotSucceeded { performance: RestExchangePerformance }
+  | PinGroupWriteNotSucceeded { refusal: RestExchangeRefusal }
   | PinGroupReadbackRefused { standing: MicrovmRunnerGroupStanding }
 
 type QualificationRefPinStanding
   = QualificationRefPinned { pin: QualificationRefPin }
   | QualificationRefPinRefused { attempt: NonEmptyStr, refusal: QualificationRefPinRefusal }
 
-fn branch_absent(performance: RestExchangePerformance) -> Bool {
-  match performance {
+// A REFUSED READ OF THE REF IS ABSENCE ONLY WHEN GITHUB DECIDED 404; every other refusal is unreadable.
+fn branch_absent(refusal: RestExchangeRefusal) -> Bool {
+  match refusal {
     RestExchangeStatusRefused { status: s, body: _ } => (s as Int) == 404
-    RestExchangeSucceeded => false
     RestExchangeCommitAmbiguous { detail: _ } => false
     RestExchangeUnreached { cause: _ } => false
     RestExchangeUndecodable { status: _, cause: _ } => false
@@ -189,16 +191,23 @@ fn branch_absent(performance: RestExchangePerformance) -> Bool {
 // THE CREATE'S STANDING, decided from the mutation classifier: only a created ref proceeds to
 // readback; a 422 is the create-once refusal (the ref exists); an ambiguous answer is its own arm --
 // the ref may exist, so removal is still owed.
-fn branch_create_refusal(performance: RestExchangePerformance) -> QualificationRefPinRefusal? {
-  match performance {
-    RestExchangeSucceeded => none
-    RestExchangeStatusRefused { status: s, body: b } =>
-      if (s as Int) == 422 { Present { value: PinBranchPreexisting { observed_sha: "(422 Reference already exists)" } } }
-      else { Present { value: PinBranchCreateRefused { status: s as Int, body: b } } }
-    RestExchangeCommitAmbiguous { detail: d } => Present { value: PinBranchCreateAmbiguous { detail: d } }
-    RestExchangeUnreached { cause: c } => Present { value: PinBranchCreateAmbiguous { detail: c } }
-    RestExchangeUndecodable { status: _, cause: c } => Present { value: PinBranchCreateAmbiguous { detail: c } }
+fn branch_create_refusal(created: RestResult<GitRefWire>) -> QualificationRefPinRefusal? {
+  match created {
+    RestAnswered { answer: _ } => none
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status: s, body: b } =>
+          if (s as Int) == 422 { Present { value: PinBranchPreexisting { observed_sha: "(422 Reference already exists)" } } }
+          else { Present { value: PinBranchCreateRefused { status: s as Int, body: b } } }
+        RestExchangeCommitAmbiguous { detail: d } => Present { value: PinBranchCreateAmbiguous { detail: d } }
+        RestExchangeUnreached { cause: c } => Present { value: PinBranchCreateAmbiguous { detail: c } }
+        RestExchangeUndecodable { status: _, cause: c } => Present { value: PinBranchCreateAmbiguous { detail: c } }
+      }
   }
+}
+
+fn ref_read_refusal(refusal: RestRefusal) -> RestExchangeRefusal {
+  classify_rest_refusal(standing: RestReadExchange { refusal: refusal })
 }
 
 // THE PIN'S ONLY MINT, over values read back. Callers are admitted by name: the effectful ensure, and
@@ -206,8 +215,7 @@ fn branch_create_refusal(performance: RestExchangePerformance) -> QualificationR
 fn qualification_ref_pin_of(
   name: QualificationBranchName,
   revision: CommitSha,
-  readback: RestExchangePerformance,
-  readback_sha: String,
+  readback: RestResult<GitRefWire>,
   group: MicrovmRunnerGroupStanding,
 ) -> QualificationRefPinStanding
   admit_callers: [
@@ -219,9 +227,9 @@ fn qualification_ref_pin_of(
   ]
 {
   match readback {
-    RestExchangeSucceeded =>
-      if readback_sha != (revision as String) {
-        QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadbackMismatch { pinned: revision, observed: readback_sha } }
+    RestAnswered { answer: observed } =>
+      if observed.object.sha != (revision as String) {
+        QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadbackMismatch { pinned: revision, observed: observed.object.sha } }
       } else {
         match group {
           RunnerGroupRestrictedToWorkflow { restriction: r } =>
@@ -229,7 +237,7 @@ fn qualification_ref_pin_of(
           other => QualificationRefPinRefused { attempt: name.attempt, refusal: PinGroupReadbackRefused { standing: other } }
         }
       }
-    other => QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadUnreadable { performance: other } }
+    RestRefused { refusal } => QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadUnreadable { refusal: ref_read_refusal(refusal: refusal) } }
   }
 }
 
@@ -249,13 +257,13 @@ fn ensure_qualification_ref_pin(
     QualificationBranchNameRefused { attempt: _, cause: c } => pin_refused(attempt: attempt, refusal: PinBranchNameRefused { cause: c })
     QualificationBranchNamed { name: name } => {
       let before = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
-      match before.performance {
-        RestExchangeSucceeded => pin_refused(attempt: attempt, refusal: PinBranchPreexisting { observed_sha: before.reference.object.sha })
-        other =>
-          if !branch_absent(performance: other) {
-            pin_refused(attempt: attempt, refusal: PinBranchReadUnreadable { performance: other })
+      match before.reference {
+        RestAnswered { answer: existing } => pin_refused(attempt: attempt, refusal: PinBranchPreexisting { observed_sha: existing.object.sha })
+        RestRefused { refusal: read_refusal } =>
+          if !branch_absent(refusal: ref_read_refusal(refusal: read_refusal)) {
+            pin_refused(attempt: attempt, refusal: PinBranchReadUnreadable { refusal: ref_read_refusal(refusal: read_refusal) })
           } else {
-            match branch_create_refusal(performance: create_git_ref_with(token: token, owner: owner, repo: repo, full_ref: branch_full_ref(name: name), sha: revision as String)) {
+            match branch_create_refusal(created: create_git_ref_with(token: token, owner: owner, repo: repo, full_ref: branch_full_ref(name: name), sha: revision as String)) {
               Present { value: r } => pin_refused(attempt: attempt, refusal: r)
               Absent => {
                 let after = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
@@ -264,15 +272,14 @@ fn ensure_qualification_ref_pin(
                   QualificationGroupNotTargetable { cause: c } => pin_refused(attempt: attempt, refusal: PinGroupNotTargetable { cause: c })
                   QualificationGroupTargeted { target: t } =>
                     match update_runner_group_workflows_with(token: token, organization: organization, runner_group_id: t.group_id, selected_workflows: [selected as String]) {
-                      RestExchangeSucceeded =>
+                      RestAnswered { answer: _ } =>
                         qualification_ref_pin_of(
                           name: name,
                           revision: revision,
-                          readback: after.performance,
-                          readback_sha: after.reference.object.sha,
+                          readback: after.reference,
                           group: observe_runner_group_restriction(name: qualification_runner_group_name, selected_workflow: selected, listed: read_runner_groups_with(token: token, organization: organization)),
                         )
-                      other_write => pin_refused(attempt: attempt, refusal: PinGroupWriteNotSucceeded { performance: other_write })
+                      RestRefused { refusal: w } => pin_refused(attempt: attempt, refusal: PinGroupWriteNotSucceeded { refusal: classify_rest_refusal(standing: RestMutationExchange { refusal: w }) })
                     }
                 }
               }
@@ -290,19 +297,28 @@ type QualificationRefPinRemoval
   | QualificationBranchRemovalRefused { name: QualificationBranchName, cause: QualificationBranchRemovalRefusal }
 
 type QualificationBranchRemovalRefusal
-  = BranchStillPresent { observed_sha: String, delete: RestExchangePerformance }
-  | BranchReadUnreadable { performance: RestExchangePerformance }
+  = BranchStillPresent { observed_sha: String, delete_refusal: RestExchangeRefusal? }
+  | BranchReadUnreadable { refusal: RestExchangeRefusal }
 
 // THE VERDICT READS THE READBACK AND NOTHING ELSE: a branch is removed when a read finds it absent.
-fn classify_branch_removal(name: QualificationBranchName, readback: RestExchangePerformance, readback_sha: String, deleted: Bool, delete: RestExchangePerformance) -> QualificationRefPinRemoval {
+// delete_refusal is the delete's own refusal when one was sent and refused, carried only to explain a
+// branch still present; it never decides the verdict.
+fn classify_branch_removal(name: QualificationBranchName, readback: RestResult<GitRefWire>, deleted: Bool, delete_refusal: RestExchangeRefusal?) -> QualificationRefPinRemoval {
   match readback {
-    RestExchangeSucceeded => QualificationBranchRemovalRefused { name: name, cause: BranchStillPresent { observed_sha: readback_sha, delete: delete } }
-    other =>
-      if branch_absent(performance: other) {
+    RestAnswered { answer: present } => QualificationBranchRemovalRefused { name: name, cause: BranchStillPresent { observed_sha: present.object.sha, delete_refusal: delete_refusal } }
+    RestRefused { refusal } =>
+      if branch_absent(refusal: ref_read_refusal(refusal: refusal)) {
         QualificationBranchRemoved { name: name, deleted: deleted }
       } else {
-        QualificationBranchRemovalRefused { name: name, cause: BranchReadUnreadable { performance: other } }
+        QualificationBranchRemovalRefused { name: name, cause: BranchReadUnreadable { refusal: ref_read_refusal(refusal: refusal) } }
       }
+  }
+}
+
+fn delete_refusal_of(deleted: RestResult<GitRefDeletedBody>) -> RestExchangeRefusal? {
+  match deleted {
+    RestAnswered { answer: _ } => none
+    RestRefused { refusal } => Present { value: classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) }
   }
 }
 
@@ -310,12 +326,12 @@ fn remove_qualification_ref_pin(token: ControllerInstallationToken, name: Qualif
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
   let before = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
-  match before.performance {
-    RestExchangeSucceeded => {
+  match before.reference {
+    RestAnswered { answer: _ } => {
       let delete = delete_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
       let after = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
-      classify_branch_removal(name: name, readback: after.performance, readback_sha: after.reference.object.sha, deleted: true, delete: delete)
+      classify_branch_removal(name: name, readback: after.reference, deleted: true, delete_refusal: delete_refusal_of(deleted: delete))
     }
-    other => classify_branch_removal(name: name, readback: other, readback_sha: "", deleted: false, delete: other)
+    RestRefused { refusal } => classify_branch_removal(name: name, readback: RestRefused { refusal: refusal }, deleted: false, delete_refusal: none)
   }
 }

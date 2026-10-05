@@ -5,11 +5,11 @@ module test.probe.qualification_generate_answer_rewrap_probe
 // function, whose body is GitHub's answer to dispatch.request, is admitted. Reached only through
 // test.claim.runner_qualification_delivery_rewrap_witness.
 
-import extdeps.transports.rest { RestOk }
+import extdeps.transports.rest { RestAnswered }
 import extdeps.github.actions_jit_runner { JitConfigCreatedBody }
 import gunbc.runner.runner_jit_perform { JitMintDispatch }
 import gunbc.github_effect_perform { JitMintPerformance, jit_mint_performance_of_generate }
 
 fn mint_from_a_supplied_body(a: JitMintDispatch, body: JitConfigCreatedBody) -> JitMintPerformance {
-  jit_mint_performance_of_generate(dispatch: a, outcome: RestOk, created: body)
+  jit_mint_performance_of_generate(dispatch: a, outcome: RestAnswered { answer: body })
 }

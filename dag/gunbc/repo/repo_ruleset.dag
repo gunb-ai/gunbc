@@ -88,8 +88,10 @@ import extdeps.github.rulesets {
   default_branch_ref_alias,
 }
 import extdeps.transports.rest {
-  RestOutcome,
-  RestOk,
+  RestResult,
+  RestAnswered,
+  RestRefused,
+  RestRefusal,
   RestStatusRefused,
   RestTransportRefused,
   RestBodyUndecodable,
@@ -477,15 +479,14 @@ type RulesetObservation
     }
   | RulesetUnreadable { cause: RulesetReadRefusal }
 
-fn read_refusal_of_outcome(outcome: RestOutcome) -> RulesetReadRefusal? {
+fn read_refusal_of_outcome(outcome: RestRefusal) -> RulesetReadRefusal {
   match outcome {
-    RestOk => none
     RestStatusRefused { status: s, body: b } =>
-      Present { value: RulesetReadStatusRefused { status: s, body: b } }
+      RulesetReadStatusRefused { status: s, body: b }
     RestTransportRefused { cause: c } =>
-      Present { value: RulesetReadTransportRefused { cause: c } }
+      RulesetReadTransportRefused { cause: c }
     RestBodyUndecodable { status: s, cause: c } =>
-      Present { value: RulesetReadBodyUndecodable { status: s, cause: c } }
+      RulesetReadBodyUndecodable { status: s, cause: c }
   }
 }
 
@@ -501,15 +502,15 @@ fn render_read_refusal(cause: RulesetReadRefusal) -> String {
 }
 
 fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetObservation {
-  let r = github.Rulesets.Get(
+  let read = github.Rulesets.Get(
     auth_token: "",
     owner: owner,
     repo: repo,
     ruleset_id: ruleset_id,
   )
-  match read_refusal_of_outcome(outcome: r.outcome) {
-    Present { value: cause } => RulesetUnreadable { cause: cause }
-    Absent => RulesetObserved {
+  match read {
+    RestRefused { refusal } => RulesetUnreadable { cause: read_refusal_of_outcome(outcome: refusal) }
+    RestAnswered { answer: r } => RulesetObserved {
       name: r.name,
       enforcement: parse_ruleset_enforcement(raw: r.enforcement),
       target: parse_ruleset_target(raw: r.target),
@@ -1688,7 +1689,7 @@ fn repo_ruleset_ensure_decision_for(
 }
 
 fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
-  let r = github.Rulesets.Update(
+  match github.Rulesets.Update(
     auth_token: "",
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
@@ -1699,8 +1700,10 @@ fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
     conditions: desired_ruleset_conditions(),
     rules: plan.rules,
     bypass_actors: plan.bypass_actors,
-  )
-  read_refusal_of_outcome(outcome: r.outcome)
+  ) {
+    RestAnswered { answer: _ } => none
+    RestRefused { refusal } => Present { value: read_refusal_of_outcome(outcome: refusal) }
+  }
 }
 
 // Operator ceremony: GITHUB_TOKEN must hold admin:repo until a federated identity

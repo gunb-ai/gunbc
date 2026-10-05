@@ -3,11 +3,11 @@ module extdeps.github.workflows
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { NonEmptyStr, Secret, String }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -67,10 +67,7 @@ service github.Workflows {
       inputs: Map<String, String>
     }
     output {
-      workflow_run_id: Int
-      run_url: NonEmptyStr
-      html_url: NonEmptyStr
-      outcome: RestOutcome
+      result: WorkflowDispatchReceipt
     }
     transport rest {
       method: POST,
