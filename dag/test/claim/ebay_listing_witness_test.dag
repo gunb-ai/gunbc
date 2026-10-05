@@ -1,6 +1,18 @@
 module test.claim.ebay_listing_witness
 
 import gunbc.tools.ebay_listing { default_marketplace }
+import extdeps.ebay.ebay { EbayUs, marketplace_wire_label, parse_marketplace }
+import extdeps.ebay.errors { parse_error_category }
+import extdeps.ebay.inventory {
+  FixedPrice,
+  ForPartsOrNotWorking,
+  condition_wire_label,
+  format_type_wire_label,
+  parse_condition,
+  parse_format_type,
+}
+import extdeps.ebay.oauth { parse_ebay_token_type }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

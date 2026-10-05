@@ -38,6 +38,7 @@ import gunbc.spark.pair_serving_capacity_floor {
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env, glm_group_b_sparse_indexer_max_logits }
 import gunbc.spark.arm_memory_fit {
+  glm_5_3_flash_expected_kv_roster,
   ArmMemoryComponent, ArmComponentBound, ArmRankDemand, ArmSupplyDeductions,
   ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded,
   ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseIdleServing, ArmPhaseLoaderTransform, ArmPhasePeakServing,
@@ -101,7 +102,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   glm_checkpoint_index_mtp_layer_indices, glm_checkpoint_index_routed_experts_per_layer,
   glm_checkpoint_index_census_holds, glm_checkpoint_projection_pending_obligation,
   glm_checkpoint_projection_census_holds, glm_checkpoint_projection_per_rank_bytes,
-  glm_checkpoint_projection_visual_bytes, glm_checkpoint_config_architectures,
+  glm_checkpoint_projection_visual_bytes,
   arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
   arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
   arm_experiment_kvplan_v2_2026_09_26_loader_runbook,
@@ -118,7 +119,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   ArmPlacementExpertSplit, ArmPlacementReplicated,
   arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
 }
-import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest }
+import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest, glm_5_3_flash_architecture_class }
 import extdeps.vllm.kv_layout { MambaState, KPoolIndex }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_prefill_logits_cap_bytes, flashinfer_sparse_workspace_bytes,
@@ -1748,7 +1749,7 @@ test fn w_same_inventory_different_roster_different_capacity() -> Bool {
   }
   (blocks_a == 184355 && blocks_d == 364579 && blocks_a != blocks_d)
     && (match cache_fit_verdict(
-      layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+      layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 10683000000), rank_count: 4) {
       CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } =>
@@ -1756,7 +1757,7 @@ test fn w_same_inventory_different_roster_different_capacity() -> Bool {
       _ => false
     })
     && (match cache_fit_verdict(
-      layout: roster_d, shape: glm_5_3_flash_hybrid_shape,
+      layout: roster_d, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 10683000000), rank_count: 4) {
       CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: bu, supply_allocator_blocks: sb, cause: c } =>
@@ -1787,7 +1788,7 @@ test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
     && demand_e == 1779437568
     && demand_a != demand_e
     && (match cache_fit_verdict(
-      layout: fx_roster_e(), shape: glm_5_3_flash_hybrid_shape,
+      layout: fx_roster_e(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
       CacheFitUnestablished { obligations: os } =>
@@ -1795,7 +1796,7 @@ test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
       _ => false
     })
     && (match cache_fit_verdict(
-      layout: fx_roster_e(), shape: fx_shape_kda33(),
+      layout: fx_roster_e(), roster: glm_5_3_flash_expected_kv_roster(shape: fx_shape_kda33()),
       seats: 6, at: token_count(count: 262144),
       supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
       CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
@@ -1813,7 +1814,7 @@ test fn w_same_printed_tokens_changed_kda_count_no_proof_reuse() -> Bool {
 // not charge the omission as a free cache and prove.
 test fn w_missing_tail_group_is_unestablished() -> Bool {
   match cache_fit_verdict(
-    layout: fx_roster_no_tail(), shape: glm_5_3_flash_hybrid_shape,
+    layout: fx_roster_no_tail(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
     CacheFitUnestablished { obligations: os } =>
@@ -2069,7 +2070,7 @@ test fn w_negative_observation_cannot_improve_headroom() -> Bool {
 // cache never promotes a verdict whose other subproofs are open.
 test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Bool {
   let cache = cache_fit_verdict(
-    layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
   let arm = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
@@ -2129,7 +2130,7 @@ test fn w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its
     established_at_revision: vllm_source_revision_read,
   )
   (match cache_fit_verdict(
-    layout: empty_roster, shape: glm_5_3_flash_hybrid_shape,
+    layout: empty_roster, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4) {
     CacheFitUnestablished { obligations: _ } => true
@@ -2347,7 +2348,7 @@ test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() ->
     pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
   let arm = ArmMemoryFitUnestablished { obligations: ["rank 3 fragmentation-allowance has no defensible bound: fixture arm obligation standing in for the launch wall's own" as NonEmptyStr] }
   let cache = cache_fit_verdict(
-    layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
   (match prefill {
@@ -2635,7 +2636,7 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
     ranks: fx_prefill_v2_ranks(),
     pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
   let cache = cache_fit_verdict(
-    layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
   (match prefill {
@@ -2822,7 +2823,7 @@ test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread
 }
 
 test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
-  glm_checkpoint_config_architectures == "Glm5NextForConditionalGeneration"
+  glm_5_3_flash_architecture_class == "Glm5NextForConditionalGeneration"
     && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) < byte_size_count(b: glm_checkpoint_projection_replicated_bytes())
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
 }
@@ -2940,7 +2941,7 @@ test fn w_the_churn_run_finding_is_pinned() -> Bool {
 
 test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool {
   let cache = cache_fit_verdict(
-    layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+    layout: fx_roster_a(), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
   let prefill = prefill_transient_fit_verdict(

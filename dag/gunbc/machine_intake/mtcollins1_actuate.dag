@@ -4,14 +4,15 @@ import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import v2.std.optional { Present, Absent }
 import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
 }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_oob_boot_handoff {
   BootControlIssued,
   BootHandoffNotAdmitted,
@@ -49,11 +50,11 @@ import extdeps.bmc.ipmi_boot_selection {
 // operation. The one argument is the credential path, for the reason given on mtcollins1_password_file.
 data mtcollins1_cdrom_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
 
-// THE USERNAME IS THE MANAGED ACCOUNT ON BmcSecured, never the published factory literal
+// THE USERNAME IS THE MANAGED ACCOUNT OF THE BOUND HOST (gunbc.managed_host ManagedHostBinding account), never the published factory literal
 // "admin" and never a second spelling of "gunbc". Password remains a caller file-path argument
 // on mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff (CLI names unchanged). Absent means
-// derive_bmc_secure did not mint BmcSecured; the wrappers refuse before any controller write.
-data mtcollins1_bmc_username: NonEmptyStr? = mtcollins1_secured_account()
+// the host is not a bound managed host (no BmcSecured, or access names another controller); the wrappers refuse before any controller write.
+data mtcollins1_bmc_username: NonEmptyStr? = managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint)
 
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
 // read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
@@ -150,7 +151,7 @@ fn mtcollins1_drive_handoff(
   }
   match mtcollins1_bmc_username {
     Absent =>
-      handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": BMC is not BmcSecured; refusing before any controller write")))
+      handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": the managed host does not bind (not BmcSecured, or its observed controller is not the secured one); refusing before any controller write")))
     Present { value: username } =>
       match mtcollins1_password_file(raw: password_file_raw) {
         CredentialPathMissing =>

@@ -1,0 +1,46 @@
+module gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-10-04 by operator ruling C (eager-gull-22, relayed by warm-crane-577) on the cut O1b
+// change, which builds the state-shaped BmcSecure in shadow and HOLDS mtcollins1's cut-over.
+//
+// WHAT IS STALE. gunbc.machine_intake_mtcollins1_bmc_secure_observation derives mtcollins1's
+// BmcSecured from the 2026-09-13 readbacks on BMC 0.32 (artifacts/bmc/mtcollins1-bmc-user3-route-
+// 2026-09-13.txt and artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). The 2026-10-02 reflash to
+// 0.45.3 changed the subject's firmware and, per gunbc.fleet.mtcollins_firmware_converge
+// credential_effect_of, erased user 3 and re-enabled factory admin/admin at ADMINISTRATOR; the hand
+// re-provision afterwards closed admin on LAN channel 1 only. No post-reflash readback is committed,
+// and the unit's BMC is unreachable while the operator adds DIMMs, so it cannot be taken now.
+//
+// WHY THE PREVIOUS RUNG WAS MECHANICALLY PREVENTABLE AND NOT HIGHER: the event-path fold refuses a
+// published credential still accepted on any census LAN member, but only over the readings it is
+// handed; it never asked whether those readings were of the unit's current firmware. The temporary
+// rung is MITIGATABLE: every admission that reads the standing now rests on a reading of a subject
+// that no longer exists, and the containment is that the unit is hands-on with the operator and every
+// live credential write needs its own go-ahead.
+
+data mtcollins1_bmc_secure_standing_predates_reflash: RungDrop = RungDrop {
+  identity: "mtcollins1_bmc_secure_standing_predates_reflash" as NonEmptyStr,
+
+  subject: "mtcollins1's committed BmcSecured standing is derived from the 2026-09-13 readback on BMC 0.32, while the unit now runs 0.45.3 and the reflash re-enabled the factory administrator, so every admission reading that standing admits on a superseded subject",
+
+  declared: "2026-10-04",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.machine_intake_bmc_secure state-shaped BmcSecure (inspect_bmc_secure_state, plan_bmc_account_action, bmc_secure_phase_noop, bmc_secure_phase_applied), landed in shadow and exercised by its dry realization over gunbc.bmc_model BmcWorld",
+    },
+    population: [
+      "mtcollins1 (gunbc.machine_intake_mtcollins1_bmc_secure_observation mtcollins1_bmc_secure_standing and mtcollins1_secured_account)",
+      "the managed-host population and every admission that reads its secure standing: gunbc.managed_host managed_hosts, the reset roster gunbc.host.host_reset_subject_roster, the unit-hold admission of gunbc.managed_host_unit_hold, the boot federation gunbc.auth.managed_host_boot_federation, and the mtcollins1 boot run and the fleet-converge workflow mode it backs",
+    ],
+    restoration_trigger: "THE CAPABILITY: mtcollins1's BmcSecure standing is derived by the state-shaped fold in gunbc.machine_intake_bmc_secure from a committed read-only post-reflash readback of the unit's CURRENT subject (its current BMC firmware), and the rotation-event path (derive_bmc_secure and BmcCredentialRotationObservation with every consumer) is deleted in the same change. SUFFICIENT FOR: managed_hosts() admitting or dropping mtcollins1 on a reading of the controller as it is now. Nothing smaller retires this row: not re-expressing the 2026-09-13 readback in the new shape, not a readback of another firmware build, not the wet Apply alone without the committed readback, and not this row's replacement merely landing in shadow.",
+  }
+}

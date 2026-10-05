@@ -1,0 +1,83 @@
+module test.claim.kernel_optional_mint_shape_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import tools.multi_module_compile_fixture {
+  FixtureSource, MultiModuleCompileFixture, MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused, FixtureCompileRefused, FixtureCompileCompleted,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE KERNEL OPTIONAL'S DECLARATION, MUTATED AND HANDED TO THE COMPILER. The fixture compile is
+// isolated from the corpus, so a fixture module may take the bound declaration's own module path
+// and declare it differently; the binding row is compiled into the seed and names that path, so
+// the shape judgment (v1.compiler.infer kernel_mint_shape_diagnostics) runs on the fixture's
+// declaration. Each refusal is read by its diagnostic CLASS and SUBJECT, never by a count of
+// diagnostics, so a fixture refusing for an unrelated reason does not satisfy a red.
+
+fn optional_fixture_path() -> NonEmptyStr { "v2/std/optional.dag" as NonEmptyStr }
+
+fn shape_mismatch_count(source: String) -> Int {
+  match compile_fixture(fixture: MultiModuleCompileFixture { sources: [FixtureSource { path: optional_fixture_path(), content: source }], entry: optional_fixture_path() }) {
+    FixtureInstrumentRefused { cause: _ } => 0 - 1
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => shape_mismatch_rows(rows: rows)
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => shape_mismatch_rows(rows: rows)
+  }
+}
+
+fn shape_mismatch_rows(rows: List<CompileDiagnosticCensusRow>) -> Int {
+  count(rows |> filter(r => (r.diagnostic_class as String) == "KernelMintShapeMismatch" && r.subject_name == "Optional" && r.blocking))
+}
+
+data conforming_optional_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
+
+data payload_is_a_concrete_type_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: Int \}\n"
+
+data payload_is_a_second_parameter_source: String = "module v2.std.optional\n\ntype Optional<A, B>\n  = Absent\n  | Present \{ value: B \}\n"
+
+data payload_field_is_renamed_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ held: T \}\n"
+
+data third_arm_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n  | Unknown\n"
+
+// THE POSITIVE CONTROL: the declaration as the corpus writes it raises no shape mismatch. Without
+// it the reds below would also pass on a check that refuses everything.
+test fn the_conforming_declaration_is_admitted() -> Bool {
+  shape_mismatch_count(source: conforming_optional_source) == 0
+}
+
+// Same arm names, same field name, different type. A name-level comparison admits this.
+test fn a_concrete_payload_type_is_refused() -> Bool {
+  shape_mismatch_count(source: payload_is_a_concrete_type_source) >= 1
+}
+
+// The payload is a type variable, but the declaration has two parameters: it is not the optional
+// of ONE type.
+test fn a_second_type_parameter_is_refused() -> Bool {
+  shape_mismatch_count(source: payload_is_a_second_parameter_source) >= 1
+}
+
+test fn a_renamed_payload_field_is_refused() -> Bool {
+  shape_mismatch_count(source: payload_field_is_renamed_source) >= 1
+}
+
+test fn a_third_arm_is_refused() -> Bool {
+  shape_mismatch_count(source: third_arm_source) >= 1
+}
+
+// THE CONSUMER. An arm reached through the `T?` sugar carries the bound declaration's identity,
+// and the emitter lowers it to the host option BECAUSE of that identity
+// (v1.compiler.emit_rust host_option_arm_reading). Inference names the pattern's parent as the
+// kernel optional in the same branch that stamps the identity, and the emitter refuses that name
+// when no identity came with it -- so if inference stops stamping the identity, this source emits
+// a refusal instead of Some/None and both assertions fail.
+test fn a_sugared_optional_match_lowers_to_the_host_option_by_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_kernel_optional_arm\n\nimport std.types \{ Int \}\n\nfn probe_arm(o: Int?) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n",
+    "src/probe_kernel_optional_arm.rs",
+    ["Some(v)", "None"],
+    ["compile_error", "no declaration identity came with that reading"]
+  )
+}

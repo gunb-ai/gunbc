@@ -2861,6 +2861,99 @@ fn unmodeled_file_transport_diagnostics(typed: ResolvedGraph, target: RenderTarg
   }
 }
 
+// WHICH TARGETS REALIZE A REST OPERATION'S RESULT. A REST operation yields extdeps.transports.rest
+// RestResult over its declared output, and the rust renderer (v1.compiler.emit_rust
+// emit_rust_rest_result_lowering) is the one handler that lowers every exchange observation into
+// an arm of that coproduct. The python and go renderers never did: they posted to the operation's
+// name, ignored the declared method and path, and returned the decoded body with no status read at
+// all -- a value that is not a RestResult, handed to a caller whose match is over RestResult. So
+// they refuse by target, per operation, through the same counted diagnostic the file and shell
+// walls use, and emit no artifact. NEXT-RUNG TRIGGER (DESIGN 4b(2)): a consumer needs a REST
+// operation emitted for python or go; the work is then one realization handler producing the same
+// three refusal arms and the answered arm, never a renderer that returns the bare body.
+fn target_realizes_rest_result(target: RenderTarget) -> Bool {
+  match target {
+    Rust   => true
+    Python => false
+    Go     => false
+    Dag    => false
+  }
+}
+
+fn rest_result_not_realized_fact(target: RenderTarget) -> String {
+  concat("the ", render_target_name(target: target), " target has no realization of extdeps.transports.rest RestResult: a rest operation's answered and refused arms are lowered only by the rust renderer")
+}
+
+// THE EMITTED OPERATION NAMES THE RESULT COPRODUCT BY ITS MODULE, SO THAT MODULE MUST BE EMITTED.
+// The rust lowering spells extdeps.transports.rest RestResult and RestRefusal by path. A closure
+// that carries a rest service and not that module would emit a path into a file that is not
+// there, and the first reader to notice would be rustc. The declaring module therefore imports
+// RestResult -- the import is the dependency edge, stated where the operations are declared -- and
+// a closure without the module refuses here, per operation, before any artifact is written.
+fn rest_result_module_in_closure(typed: ResolvedGraph) -> Bool {
+  typed.modules |> any(tm => authored_name(env: tm.type_env, node: tm.module) == "extdeps.transports.rest")
+}
+
+fn rest_emission_refusal_fact(target: RenderTarget, result_module_in_closure: Bool) -> String? {
+  if !target_realizes_rest_result(target: target) {
+    Present { value: rest_result_not_realized_fact(target: target) }
+  } else if !result_module_in_closure {
+    Present { value: "extdeps.transports.rest is not in the emitted closure, so the operation's RestResult has no emitted declaration: import RestResult from extdeps.transports.rest in the module that declares this service" }
+  } else {
+    none
+  }
+}
+
+fn unmodeled_rest_transport_operation_diagnostics(tm: TypedModule, item: Node, target: RenderTarget, result_module_in_closure: Bool) -> List<ErrorNode> {
+  let env = tm.type_env
+  let si = env.source_indices
+  let module_name = authored_name(env: env, node: tm.module)
+  let service_name = authored_name(env: env, node: item)
+  let fallback = service_fallback_transport(item: item)
+  item.children |> flat_map(op_node => {
+    let t = effective_operation_transport(op_node: op_node, fallback: fallback)
+    match classify_transport(t: t, source_indices: si) {
+      Present { value: RestTransport } =>
+        match rest_emission_refusal_fact(target: target, result_module_in_closure: result_module_in_closure) {
+          Present { value: fact } => [make_error_node(
+            diagnostic: TransportEmissionNotModeled {
+              transport_kind: "rest",
+              service: service_name,
+              operation: authored_name(env: env, node: op_node),
+              declaring_module: module_name,
+              target: render_target_name(target: target),
+              missing_realization_fact: fact,
+              span: op_node.span
+            },
+            module_name: module_name)]
+          Absent => []
+        }
+      _ => []
+    }
+  })
+}
+
+fn unmodeled_rest_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  match target_emission_mode(target: target) {
+    SerializesSubstrate => []
+    RealizesTransports =>
+      let in_closure = rest_result_module_in_closure(typed: typed)
+      typed.modules |> flat_map(tm =>
+        tm.items
+          |> filter(item => item.module_item_kind == ModuleItemService)
+          |> flat_map(item => unmodeled_rest_transport_operation_diagnostics(tm: tm, item: item, target: target, result_module_in_closure: in_closure))
+      )
+  }
+}
+
+// The floor beneath unmodeled_rest_transport_diagnostics, in a non-rust renderer's rest arm. It is
+// unreachable while that wall stands, and it is what the arm answers instead of a fabricated call.
+fn emit_unrealized_rest_result_refusal(op_name: String, target: RenderTarget) -> String {
+  emit_error_expr(
+    message: concat("rest transport emission is not modeled for operation '", op_name, "' -- ", rest_result_not_realized_fact(target: target)),
+    target: target)
+}
+
 fn emit_unmodeled_file_transport_refusal_with_cause(op_name: String, target: RenderTarget, refusal: FileEmissionRefusal) -> String {
   emit_error_expr(
     message: concat(

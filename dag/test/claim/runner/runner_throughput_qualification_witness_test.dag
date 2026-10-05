@@ -12,7 +12,7 @@ import std.measure {
 import std.decl_ref { decl_ref }
 import extdeps.currency.currency { Usd }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity, Shape, HardRequirements }
 import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.identity { FabricIdentity }
@@ -58,7 +58,7 @@ import gunbc.runner_throughput_qualification {
   SlotWidthDerived, SlotWidthUnderivable,
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
-  qualification_run_producer_frontier, leg_is_bound,
+  qualification_run_producer_frontier, leg_is_wired, RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority,
   AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings, ConcurrentCohortAtWidth,
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
@@ -162,7 +162,7 @@ fn expected_width() -> Int {
 
 fn owned_route() -> ProviderRoute {
   ProviderRoute {
-    provider: decl_ref(module_path: "gunbc.fleet_intent_network", decl_name: "operator_host_mtcollins1"),
+    provider: decl_ref(module_path: "gunbc.fleet_host_identity", decl_name: "operator_host_mtcollins1"),
     service: decl_ref(module_path: "gunbc.floor_demand", decl_name: "floor_execution_requirements"),
     region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
   }
@@ -747,16 +747,40 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
     ))
 }
 
-// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: every effectful leg is a declared
-// frontier. This flips to the regression control that the bindings stay when they land.
+// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the boot and dispatch legs are still
+// declared frontiers. This flips to the regression control that the bindings stay when they land.
 test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
-  !route_is_executable(route: route()) && !leg_is_bound(leg: qualification_run_producer_frontier)
+  !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
 }
 
-// THE IMAGE LEG IS BOUND AND THE BOOT LEG IS NOT, and the claim tells the two apart: binding the
-// boot leg to the census-only boot run, or unbinding the image leg, turns this red.
-test fn the_image_leg_is_bound_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
-  leg_is_bound(leg: mtcollins1_route_legs.image) && !leg_is_bound(leg: mtcollins1_route_legs.boot)
+// THE IMAGE LEG HAS AN IMPLEMENTED AUTHORITY AND IS NOT WIRED; THE BOOT LEG HAS NO AUTHORITY. The
+// claim tells the two apart: wiring the image leg before a production caller builds the runner
+// image, pointing it at another declaration, or binding the boot leg to the census-only boot run,
+// turns this red.
+test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
+  leg_names(leg: mtcollins1_route_legs.image, module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput")
+    && !leg_is_wired(leg: mtcollins1_route_legs.image)
+    && match mtcollins1_route_legs.boot { LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => true _ => false }
+}
+
+// REGISTRATION AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by declaration
+// identity, so pointing either leg at some other declaration, or promoting either to LegWired while
+// nothing on the route calls it, turns this red -- and the route stays unexecutable.
+fn leg_names(leg: RouteLegStanding, module_path: String, decl_name: String) -> Bool {
+  match leg {
+    LegAuthorityImplemented { authority: a, wiring_owed: _ } => (a.module_path as String) == module_path && (a.decl_name as String) == decl_name
+    _ => false
+  }
+}
+
+test fn the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() -> Bool {
+  leg_names(leg: mtcollins1_route_legs.registration, module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint")
+    && leg_names(leg: mtcollins1_route_legs.deregistration, module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered")
+    && !leg_is_wired(leg: mtcollins1_route_legs.registration)
+    && !leg_is_wired(leg: mtcollins1_route_legs.deregistration)
+    && !leg_is_wired(leg: mtcollins1_route_legs.boot)
+    && !leg_is_wired(leg: mtcollins1_route_legs.dispatch)
+    && !route_is_executable(route: route())
 }
 
 test fn the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt() -> Bool {
@@ -790,7 +814,7 @@ test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool 
 // windows and cites product.capacity.cohort_observation seal_cohort as their producer, and the one
 // collect-stage frontier stays unbound until the stage that seals a real cohort lands.
 test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
-  !leg_is_bound(leg: qualification_run_producer_frontier)
+  !leg_is_wired(leg: qualification_run_producer_frontier)
     && (route() |> any(s =>
       match s {
         CollectInstruments { instruments: is } =>

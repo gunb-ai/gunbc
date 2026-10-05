@@ -1,5 +1,12 @@
 module gunbc.tools.ebay_listing
 
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestExchangeRefusal, RestMutationExchange, classify_rest_refusal }
+import extdeps.ebay.ebay { EbayUs, MarketplaceEnum }
+import extdeps.ebay.inventory { ConditionEnum, EbayAmount, EbayOfferDetailsWithKeys, FixedPrice, FormatTypeEnum, InventoryItem, InventoryItemAvailability, InventoryItemProduct, ListingPolicies, PricingSummary, ShipToLocationAvailability }
+import extdeps.ebay.inventory
+import extdeps.ebay.oauth { sell_inventory_scope }
+import extdeps.ebay.oauth
+import std.credentials { CredentialSource }
 
 data ebay_client_id_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_ID" }
 
@@ -69,20 +76,55 @@ fn build_offer(draft: EbayListingDraft) -> EbayOfferDetailsWithKeys {
   }
 }
 
+type EbayStep
+  = EbayStepMintUserToken
+  | EbayStepCreateOrReplaceInventoryItem
+  | EbayStepCreateOffer
+  | EbayStepPublishOffer
+  | EbayStepGetInventoryItems
+
+type EbayCommittedStep
+  = EbayInventoryItemCommitted { sku: NonEmptyStr }
+  | EbayOfferCommitted { offer_id: NonEmptyStr }
+
+type EbaySellerToken
+  = EbaySellerTokenMinted { access_token: Secret }
+  | EbaySellerTokenRefused { step: EbayStep, refusal: RestRefusal }
+
+type EbayItemListing
+  = EbayItemListed { offer_id: String, listing_id: String }
+  | EbayItemListingRefused { step: EbayStep, refusal: RestRefusal, exchange: RestExchangeRefusal, committed: List<EbayCommittedStep> }
+
+type EbayInventoryView
+  = EbayInventoryShown { total: Int, size: Int }
+  | EbayInventoryShowRefused { step: EbayStep, refusal: RestRefusal }
+
+fn ebay_list_item_refused(step: EbayStep, refusal: RestRefusal, committed: List<EbayCommittedStep>) -> EbayItemListing {
+  EbayItemListingRefused {
+    step: step,
+    refusal: refusal,
+    exchange: classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }),
+    committed: committed
+  }
+}
+
 fn mint_seller_token(
   client_id: String,
   client_secret: Secret,
   refresh_token: Secret
-) -> { access_token: Secret } {
+) -> EbaySellerToken {
 
-  token = ebay.OAuth.MintUserToken(
+  match ebay.OAuth.MintUserToken(
     client_id: client_id,
     client_secret: client_secret,
     refresh_token: refresh_token,
     scope: sell_inventory_scope
-  )
-
-  return { access_token: token.access_token }
+  ) {
+    RestRefused { refusal } =>
+      return EbaySellerTokenRefused { step: EbayStepMintUserToken, refusal: refusal }
+    RestAnswered { answer: token } =>
+      return EbaySellerTokenMinted { access_token: token.access_token }
+  }
 }
 
 fn list_item(
@@ -90,33 +132,53 @@ fn list_item(
   client_id: String,
   client_secret: Secret,
   refresh_token: Secret
-) -> { offer_id: String, listing_id: String } {
+) -> EbayItemListing {
 
-  seller = mint_seller_token(
+  match mint_seller_token(
     client_id: client_id,
     client_secret: client_secret,
     refresh_token: refresh_token
-  )
-
-  ebay.Inventory.CreateOrReplaceInventoryItem(
-    access_token: seller.access_token,
-    sku: draft.sku,
-    content_language: default_content_language,
-    item: build_inventory_item(draft: draft)
-  )
-
-  offer = ebay.Inventory.CreateOffer(
-    access_token: seller.access_token,
-    content_language: default_content_language,
-    offer: build_offer(draft: draft)
-  )
-
-  published = ebay.Inventory.PublishOffer(
-    access_token: seller.access_token,
-    offer_id: offer.offer_id
-  )
-
-  return { offer_id: offer.offer_id, listing_id: published.listing_id }
+  ) {
+    EbaySellerTokenRefused { step: step, refusal: refusal } =>
+      return ebay_list_item_refused(step: step, refusal: refusal, committed: [])
+    EbaySellerTokenMinted { access_token: access_token } =>
+      match ebay.Inventory.CreateOrReplaceInventoryItem(
+        access_token: access_token,
+        sku: draft.sku,
+        content_language: default_content_language,
+        item: build_inventory_item(draft: draft)
+      ) {
+        RestRefused { refusal } =>
+          return ebay_list_item_refused(step: EbayStepCreateOrReplaceInventoryItem, refusal: refusal, committed: [])
+        RestAnswered { answer: _ } =>
+          match ebay.Inventory.CreateOffer(
+            access_token: access_token,
+            content_language: default_content_language,
+            offer: build_offer(draft: draft)
+          ) {
+            RestRefused { refusal } =>
+              return ebay_list_item_refused(
+                step: EbayStepCreateOffer,
+                refusal: refusal,
+                committed: [EbayInventoryItemCommitted { sku: draft.sku }]
+              )
+            RestAnswered { answer: offer } =>
+              match ebay.Inventory.PublishOffer(
+                access_token: access_token,
+                offer_id: offer.offer_id
+              ) {
+                RestRefused { refusal } =>
+                  return ebay_list_item_refused(
+                    step: EbayStepPublishOffer,
+                    refusal: refusal,
+                    committed: [EbayInventoryItemCommitted { sku: draft.sku }, EbayOfferCommitted { offer_id: offer.offer_id }]
+                  )
+                RestAnswered { answer: published } =>
+                  return EbayItemListed { offer_id: offer.offer_id, listing_id: published.listing_id }
+              }
+          }
+      }
+  }
 }
 
 fn show_inventory(
@@ -124,19 +186,25 @@ fn show_inventory(
   client_secret: Secret,
   refresh_token: Secret,
   limit: Int = default_inventory_items_limit
-) -> { total: Int, size: Int } {
+) -> EbayInventoryView {
 
-  seller = mint_seller_token(
+  match mint_seller_token(
     client_id: client_id,
     client_secret: client_secret,
     refresh_token: refresh_token
-  )
-
-  page = ebay.Inventory.GetInventoryItems(
-    access_token: seller.access_token,
-    limit: limit,
-    offset: 0
-  )
-
-  return { total: page.total, size: page.size }
+  ) {
+    EbaySellerTokenRefused { step: step, refusal: refusal } =>
+      return EbayInventoryShowRefused { step: step, refusal: refusal }
+    EbaySellerTokenMinted { access_token: access_token } =>
+      match ebay.Inventory.GetInventoryItems(
+        access_token: access_token,
+        limit: limit,
+        offset: 0
+      ) {
+        RestRefused { refusal } =>
+          return EbayInventoryShowRefused { step: EbayStepGetInventoryItems, refusal: refusal }
+        RestAnswered { answer: page } =>
+          return EbayInventoryShown { total: page.total, size: page.size }
+      }
+  }
 }

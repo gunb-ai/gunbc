@@ -14,10 +14,12 @@ import std.upsert_decision {
 }
 import extdeps.cloudflare.r2 {
   R2Jurisdiction, R2JurisdictionDefault,
+  R2BucketLocation,
+  r2_bucket_location_wire,
   r2_jurisdiction_wire,
   parse_r2_jurisdiction,
 }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.r2_buckets
 import extdeps.cloudflare.r2_lifecycle
 import extdeps.cloudflare.r2_lifecycle {
@@ -80,10 +82,17 @@ import gunbc.auth.secret_ref_credential {
 // JURISDICTION IS THE STANDING'S, AND A NON-DEFAULT ONE REFUSES BEFORE CREATE. The Create surface
 // carries no jurisdiction header (extdeps.cloudflare.r2_buckets cloudflare.R2Buckets), so a create for a
 // non-default standing would silently make a default bucket under that name -- and a jurisdiction
-// cannot be changed after creation. Both current purposes declare default.
-
+// cannot be changed after creation. Every current purpose declares default.
+//
+// THE LOCATION HINT RIDES ON THE PLAN AND IS NEVER CLASSIFIED. It is the allocation's requested
+// placement (gunbc.cloudflare.r2_origin R2BucketAllocation location_hint), passed to Create and to
+// nothing else: a present bucket converges on name and jurisdiction alone, because a hint is a
+// request and the Get's reported location is an observation (gunbc.product.supplier.cloudflare_r2
+// cloudflare_r2_region_unread_obligation). Refusing a bucket whose reported location differs from
+// its hint would treat the request as a guarantee R2 never made.
 type R2BucketCreatePlan {
   bucket_name: NonEmptyStr
+  location_hint: R2BucketLocation?
 }
 
 data r2_subscription_dashboard_step: NonEmptyStr = "THE ACCOUNT HOLDS NO R2 SUBSCRIPTION (403 NotEntitled): open the Cloudflare dashboard for this account, Storage & databases > R2 > Overview, and complete the checkout flow to add an R2 subscription (a billing purchase an operator makes; Cloudflare's subscription API offers no R2 plan, so this converge cannot perform it). Then run this entry again. NOTHING WAS CREATED."
@@ -146,7 +155,7 @@ fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> U
         R2BucketAbsent =>
           match bucket.jurisdiction {
             R2JurisdictionDefault =>
-              UpsertClassification { verdict: Absent, decision: Apply { plan: R2BucketCreatePlan { bucket_name: bucket.bucket_name } } }
+              UpsertClassification { verdict: Absent, decision: Apply { plan: R2BucketCreatePlan { bucket_name: bucket.bucket_name, location_hint: bucket.location_hint } } }
             _ =>
               r2_ensure_refuse(
                 verdict: Absent,
@@ -225,14 +234,15 @@ fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
 }
 
 fn read_r2_bucket(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2BucketRead uses net: Network {
-  let got = cloudflare.R2Buckets.Get(
-    auth_token: admin,
-    account_id: account_id as String,
-    bucket_name: bucket_name as String,
-  )
   classify_r2_bucket_get(
-    outcome: got.outcome,
-    bucket: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location },
+    outcome: match cloudflare.R2Buckets.Get(
+      auth_token: admin,
+      account_id: account_id as String,
+      bucket_name: bucket_name as String,
+    ) {
+      RestAnswered { answer: got } => RestAnswered { answer: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location } }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
   )
 }
 
@@ -268,17 +278,23 @@ fn apply_r2_bucket_create(
     auth_token: admin,
     account_id: account_id as String,
     name: plan.bucket_name as String,
+    location_hint: plan.location_hint,
   )
   let readback = classify_r2_bucket_ensure(
     desired: desired,
     read: read_r2_bucket(admin: admin, account_id: account_id, bucket_name: plan.bucket_name),
   )
-  let create_status = match created.outcome {
-    RestOk => "create ok"
-    RestStatusRefused { status: status, body: _ } => join(["create refused with status ", to_string(status)], "")
-    RestTransportRefused { cause: _ } => "create got no response"
-    RestBodyUndecodable { status: status, cause: _ } => join(["create status ", to_string(status), " body undecodable"], "")
+  let requested = match plan.location_hint {
+    Present { value: l } => concat(" (locationHint requested ", concat(r2_bucket_location_wire(location: l), ")"))
+    Absent => " (no locationHint)"
   }
+  let create_outcome = match created {
+    RestAnswered { answer: _ } => "create ok"
+    RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["create refused with status ", to_string(status)], "")
+    RestRefused { refusal: RestTransportRefused { cause: _ } } => "create got no response"
+    RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["create status ", to_string(status), " body undecodable"], "")
+  }
+  let create_status = concat(create_outcome, requested)
   match readback.decision {
     Noop =>
       R2PurposeEnsureOutcome {
@@ -328,12 +344,14 @@ fn classify_r2_lifecycle(desired: List<R2LifecycleRule>, read: R2LifecycleRead) 
 }
 
 fn read_r2_lifecycle(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2LifecycleRead uses net: Network {
-  let got = cloudflare.R2BucketLifecycle.GetRaw(
+  r2_lifecycle_read(outcome: match cloudflare.R2BucketLifecycle.GetRaw(
     auth_token: admin,
     account_id: account_id as String,
     bucket_name: bucket_name as String,
-  )
-  r2_lifecycle_read(outcome: got.outcome, body: got.body)
+  ) {
+    RestAnswered { answer } => RestAnswered { answer: answer.body }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  })
 }
 
 fn ensure_r2_purpose_lifecycle(
@@ -356,11 +374,11 @@ fn ensure_r2_purpose_lifecycle(
         rules: r2_lifecycle_rules_wire(rules: plan.rules),
       )
       let readback = classify_r2_lifecycle(desired: desired, read: read_r2_lifecycle(admin: admin, account_id: account_id, bucket_name: bucket_name))
-      let put_status = match put.outcome {
-        RestOk => "put ok"
-        RestStatusRefused { status: status, body: _ } => join(["put refused with status ", to_string(status)], "")
-        RestTransportRefused { cause: _ } => "put got no response"
-        RestBodyUndecodable { status: status, cause: _ } => join(["put status ", to_string(status), " body undecodable"], "")
+      let put_status = match put {
+        RestAnswered { answer: _ } => "put ok"
+        RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["put refused with status ", to_string(status)], "")
+        RestRefused { refusal: RestTransportRefused { cause: _ } } => "put got no response"
+        RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["put status ", to_string(status), " body undecodable"], "")
       }
       match readback.decision {
         Noop => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: concat(put_status, "; readback converged")), held: true }

@@ -26,7 +26,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthR
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.systemd {
   MemoryMax,
   MemoryHigh,

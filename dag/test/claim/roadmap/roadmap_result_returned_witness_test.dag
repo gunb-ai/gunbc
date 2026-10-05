@@ -1,0 +1,704 @@
+module test.claim.roadmap.roadmap_result_returned_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal }
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.roadmap.roadmap_submission {
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
+  HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished,
+  SubmissionBlocked, candidate_handoff_state_key,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated,
+  Claimed, Released, Progress, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
+  event_principal_label, roadmap_event_envelope, roadmap_event_wire_text, RoadmapResultBinding, roadmap_result_returned_event,
+  roadmap_event_admitted_after, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  EventFileContent, roadmap_events_decode_reads, roadmap_all_events_of_reads,
+  RoadmapEventsRead, EventsRead, EventsReadRefused, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+  RoadmapResultAuthority, ResultAuthorityEstablished, ResultAuthorityRefused, roadmap_result_authority_of_record,
+  RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused, roadmap_result_append_of,
+  EventAppended, EventAlreadyPresent, EventAppendRefused,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemPermissionDenied,
+}
+import gunbc.roadmap.roadmap_attempt_request_record {
+  AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
+  attempt_request_binding_json, attempt_request_binding_decode, RequestBindingDecoded, RequestBindingUndecodable,
+  AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused, attempt_request_binding_commit_of,
+  attempt_request_binding_read_of,
+  AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
+}
+import gunbc.roadmap.roadmap_attempt_request_binding {
+  AttemptLaunchRequest, LaunchForClaim, LaunchContinuing, LaunchAutonomous, attempt_launch_request_for_origin,
+  AttemptRequestBindingAdmission, RequestBindingAdmitted, RequestBindingNotAdmitted, attempt_request_binding_admission,
+}
+import gunbc.roadmap.roadmap_result_returned {
+  AttemptResultStanding, AttemptResultTerminal, AttemptResultPending, AttemptResultUnstatable, attempt_result_standing,
+  ResultRequestJoin, ResultRequestJoined, ResultRequestNone, ResultRequestUnjoinable, ResultRequestUnreadable, result_request_join,
+  ResultReturnDecision, ResultReturnAppend, ResultAlreadyReturned, ResultReturnRefused, result_return_decision,
+  ResultReturnPrecheck, ResultPrecheckSettled, ResultPrecheckOwed, result_return_precheck, result_return_keyed_attempts,
+  ResultReturnOutcome, ResultReturnRecorded, ResultReturnAlreadyRecorded, ResultReturnNotTerminal, ResultReturnNoRequest, ResultReturnFailed,
+  ResultReturnPass, ResultReturnPassRan, ResultReturnPassWithheld, ResultReturnPassRefused,
+  result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
+  ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
+  result_returned_observation_of,
+}
+import gunbc.roadmap_belt_tick_cli { belt_tick_result_tail_exit, belt_tick_exit_with_snapshot_closes }
+import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
+import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
+
+data rr_attempt: String = "feedfacefeedface"
+
+fn rr_node() -> RoadmapNodeId { "result-returned-node" as RoadmapNodeId }
+
+fn rr_principal(subject: String) -> EventPrincipal {
+  EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: subject as NonEmptyStr } }
+}
+
+fn rr_alice() -> EventPrincipal { rr_principal(subject: "sub-alice") }
+
+fn rr_bob() -> EventPrincipal { rr_principal(subject: "sub-bob") }
+
+fn rr_fabric() -> EventPrincipal {
+  EventPrincipalAuthenticated { ref: fabric_workflow_principal }
+}
+
+fn rr_ev(node: RoadmapNodeId, kind: RoadmapEventKind, parent: RoadmapEventId?, author: EventPrincipal, at: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent { node: node, author: author, parent: parent, kind: kind, recorded_at: at })
+}
+
+fn rr_claim_by(node: RoadmapNodeId, requester: EventPrincipal, parent: RoadmapEventId?, at: String) -> RoadmapEventEnvelope {
+  rr_ev(node: node, kind: Claimed { assignee: rr_fabric(), return_to: requester }, parent: parent, author: requester, at: at)
+}
+
+fn rr_claim(node: RoadmapNodeId) -> RoadmapEventEnvelope {
+  rr_claim_by(node: node, requester: rr_alice(), parent: none, at: "t1")
+}
+
+fn rr_result(node: RoadmapNodeId, attempt: String, claim: RoadmapEventId, outcome: AttemptResultOutcome, parent: RoadmapEventId, at: String) -> RoadmapEventEnvelope {
+  rr_ev(node: node, kind: ResultReturned { attempt: attempt as NonEmptyStr, claim: claim, outcome: outcome }, parent: Present { value: parent }, author: rr_fabric(), at: at)
+}
+
+fn rr_published() -> AttemptResultOutcome {
+  ResultPublished { pr: "https://github.com/gunb-ai/gunbc/pull/12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr }
+}
+
+fn rr_failed() -> AttemptResultOutcome {
+  ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr }
+}
+
+fn rr_binding(claim: RoadmapEventId) -> RoadmapResultBinding {
+  RoadmapResultBinding { node: rr_node(), attempt: rr_attempt as NonEmptyStr, claim: claim }
+}
+
+fn rr_bound(claim: RoadmapEventId) -> AttemptRequestBindingRead {
+  RequestBindingRead { binding: RequestClaimBound { claim: claim } }
+}
+
+fn rr_standing_is_pending(handoff: CandidateHandoffState) -> Bool {
+  match attempt_result_standing(handoff: handoff) {
+    AttemptResultPending { handoff: key } => key == candidate_handoff_state_key(state: handoff)
+    AttemptResultTerminal { outcome: _ } => false
+    AttemptResultUnstatable { reason: _ } => false
+  }
+}
+
+fn rr_joined_to(join: ResultRequestJoin, claim: RoadmapEventId, principal: EventPrincipal) -> Bool {
+  match join {
+    ResultRequestJoined { claim: c, return_to } => (c as String) == (claim as String) && return_to == principal
+    ResultRequestNone { reason: _ } => false
+    ResultRequestUnjoinable { reason: _ } => false
+    ResultRequestUnreadable { reason: _ } => false
+  }
+}
+
+// THE FINAL ANSWERS: published, a read verification verdict, and the worker's own captured
+// declaration are each exactly one outcome arm carrying the facts the state carried.
+test fn each_final_handoff_state_is_returned_as_its_own_outcome() -> Bool {
+  let published = match attempt_result_standing(handoff: HandoffPublished { head_sha: "52c56a8", pr_number: 12210, url: "https://github.com/gunb-ai/gunbc/pull/12210" }) {
+    AttemptResultTerminal { outcome } => outcome == rr_published()
+    AttemptResultPending { handoff: _ } => false
+    AttemptResultUnstatable { reason: _ } => false
+  }
+  let failed = match attempt_result_standing(handoff: HandoffVerificationFailed { head_sha: "52c56a8", verdict_key: "validation-failed" }) {
+    AttemptResultTerminal { outcome } => outcome == rr_failed()
+    AttemptResultPending { handoff: _ } => false
+    AttemptResultUnstatable { reason: _ } => false
+  }
+  let handed_back = match attempt_result_standing(handoff: HandoffDeclaredBlocked { head_sha: "52c56a8", readiness: SubmissionBlocked, explanation: "needs the fixture authority" }) {
+    AttemptResultTerminal { outcome: ResultHandedBack { reason } } => string_contains(s: reason as String, pattern: "needs the fixture authority") && string_contains(s: reason as String, pattern: "52c56a8")
+    AttemptResultTerminal { outcome: _ } => false
+    AttemptResultPending { handoff: _ } => false
+    AttemptResultUnstatable { reason: _ } => false
+  }
+  published && failed && handed_back
+}
+
+// THE RED: NOTHING THAT CAN STILL CHANGE IS RETURNED. A running worker, a submitted candidate, a
+// candidate awaiting integration and an owed publication are in motion; evidence the belt could not
+// read, a blocked integration and a blocked publication are retryable; a yielded worker may not have
+// been captured yet. Each is Pending naming the state -- never a result -- and in particular an
+// unreadable verdict is not a failed verification.
+test fn a_state_that_can_still_change_returns_no_result() -> Bool {
+  rr_standing_is_pending(handoff: HandoffAwaitingWorker)
+    && rr_standing_is_pending(handoff: HandoffSubmitted { head_sha: "52c56a8" })
+    && rr_standing_is_pending(handoff: HandoffAwaitingIntegration { head_sha: "52c56a8" })
+    && rr_standing_is_pending(handoff: HandoffPublicationOwed { head_sha: "52c56a8" })
+    && rr_standing_is_pending(handoff: HandoffEvidenceRefused { reason: "the verification receipt for this head is unreadable" })
+    && rr_standing_is_pending(handoff: HandoffBlockedOnIntegration { head_sha: "52c56a8", cause: "conflict in a.dag" })
+    && rr_standing_is_pending(handoff: HandoffBlockedOnPublication { head_sha: "52c56a8", cause: "the publication observation was refused" })
+    && rr_standing_is_pending(handoff: HandoffYielded { reason: "terminal without a captured submission" })
+}
+
+// A REFUSED OBSERVATION THAT LATER RESOLVES PRODUCES ONLY THE FINAL RESULT. While the publication
+// observation is refused the attempt returns nothing, so the history carries no result for it; when
+// the same attempt is later observed published, the decision over that unchanged history appends
+// the published result as the attempt's first and only one. The same holds for a verdict that could
+// not be read and is later read as failed.
+test fn a_retryable_state_that_resolves_yields_exactly_the_final_result() -> Bool {
+  let claim = rr_claim(node: rr_node())
+  let early_publication = rr_standing_is_pending(handoff: HandoffBlockedOnPublication { head_sha: "52c56a8", cause: "the publication observation was refused" })
+  let early_verdict = rr_standing_is_pending(handoff: HandoffEvidenceRefused { reason: "the verification receipt for this head is unreadable" })
+  let later_published = match attempt_result_standing(handoff: HandoffPublished { head_sha: "52c56a8", pr_number: 12210, url: "https://github.com/gunb-ai/gunbc/pull/12210" }) {
+    AttemptResultTerminal { outcome } => match result_return_decision(binding: rr_binding(claim: claim.id), outcome: outcome, envelopes: [claim]) {
+      ResultReturnAppend { binding, outcome: final } => binding == rr_binding(claim: claim.id) && final == rr_published()
+      ResultAlreadyReturned { id: _ } => false
+      ResultReturnRefused { step: _, reason: _ } => false
+    }
+    AttemptResultPending { handoff: _ } => false
+    AttemptResultUnstatable { reason: _ } => false
+  }
+  let later_failed = match attempt_result_standing(handoff: HandoffVerificationFailed { head_sha: "52c56a8", verdict_key: "validation-failed" }) {
+    AttemptResultTerminal { outcome } => outcome == rr_failed()
+    AttemptResultPending { handoff: _ } => false
+    AttemptResultUnstatable { reason: _ } => false
+  }
+  early_publication && early_verdict && later_published && later_failed
+}
+
+// THE REAL PROGRESS FOLD INHABITS THE FIELD THE PASS READS. An attempt row built by
+// gunbc.roadmap_workflow_progress workflow_attempt_progress from attempt evidence -- a worker that
+// ended with no captured submission -- carries the yielded handoff state on the row, and the pass
+// classifies THAT value as pending: a row that lost the field, or a classifier that returned a
+// yielded worker as handed back before its capture concluded, turns this red.
+test fn the_real_attempt_row_carries_its_handoff_state_and_a_yielded_row_is_pending() -> Bool {
+  let progress = completed_attempt_progress(node_id: "result-returned-node")
+  candidate_handoff_state_key(state: progress.handoff) == "yielded"
+    && (match attempt_result_standing(handoff: progress.handoff) {
+      AttemptResultPending { handoff } => handoff == "yielded"
+      AttemptResultTerminal { outcome: _ } => false
+      AttemptResultUnstatable { reason: _ } => false
+    })
+}
+
+// A published state with nothing to name is refused, not spelled with a blank.
+test fn a_published_state_without_a_pull_request_or_head_is_unstatable() -> Bool {
+  all([
+    HandoffPublished { head_sha: "52c56a8", pr_number: 1, url: "" },
+    HandoffPublished { head_sha: "", pr_number: 1, url: "https://github.com/gunb-ai/gunbc/pull/1" },
+    HandoffVerificationFailed { head_sha: "", verdict_key: "validation-failed" },
+  ], h => match attempt_result_standing(handoff: h) {
+    AttemptResultUnstatable { reason } => string_length(s: reason) > 0
+    AttemptResultTerminal { outcome: _ } => false
+    AttemptResultPending { handoff: _ } => false
+  })
+}
+
+// CONTROL 1 AND 3 OF THE LAUNCH BINDING: THE ATTEMPT IS BOUND TO THE CLAIM ITS DISPATCH DECISION
+// CARRIED. The decision for claim C1 reaches initialization after a second claim C2 has become the
+// issue's current one; the binding is C1, because the log is read to ESTABLISH the carried claim,
+// never to choose the current one. A request made for another issue cannot bind this attempt. A
+// claim id the issue's history does not carry as a claim -- absent, another issue's, or an event of
+// another kind -- cannot bind. An autonomous launch binds as autonomous without consulting the log
+// at all (it is admitted over a log that could not even be read).
+test fn a_launch_binds_the_claim_its_dispatch_decision_carried() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let log = EventsRead { node: rr_node(), envelopes: [c1, c2] }
+  let bound_to_c1 = attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: log, predecessor: RequestBindingAbsent) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
+  let other_issue = rr_binding_refused_at(a: attempt_request_binding_admission(request: LaunchForClaim { node: "result-returned-other-node" as RoadmapNodeId, claim: c1.id }, node_id: rr_node(), read: log, predecessor: RequestBindingAbsent), step: "request-node")
+  let foreign = rr_claim(node: "result-returned-other-node" as RoadmapNodeId)
+  let note = rr_ev(node: rr_node(), kind: Progress { note: "started" as NonEmptyStr }, parent: Present { value: c2.id }, author: rr_fabric(), at: "t3")
+  let no_such_claim = all(["0000000000000000" as RoadmapEventId, foreign.id, note.id], id =>
+    rr_binding_refused_at(a: attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2, note] }, predecessor: RequestBindingAbsent), step: "request-claim"))
+  let autonomous = attempt_request_binding_admission(request: LaunchAutonomous, node_id: rr_node(), read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }, predecessor: RequestBindingAbsent) == RequestBindingAdmitted { binding: RequestAutonomous }
+  bound_to_c1 && other_issue && no_such_claim && autonomous
+}
+
+fn rr_binding_refused_at(a: AttemptRequestBindingAdmission, step: String) -> Bool {
+  match a {
+    RequestBindingNotAdmitted { step: s, detail } => s == step && string_length(s: detail) > 0
+    RequestBindingAdmitted { binding: _ } => false
+  }
+}
+
+// A REQUEST-BOUND LAUNCH WHOSE CLAIM CANNOT BE ESTABLISHED DOES NOT LAUNCH. An issue log that could
+// not be read, and a history that forks, each refuse the binding -- there is no "unobserved" binding
+// to record and run under -- so the attempt that would have finished unable to answer anyone is
+// never started. The positive control is the same request over a readable log.
+test fn a_request_bound_launch_refuses_when_its_claim_cannot_be_read() -> Bool {
+  let c1 = rr_claim(node: rr_node())
+  let request = LaunchForClaim { node: rr_node(), claim: c1.id }
+  let unread = rr_binding_refused_at(a: attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }, predecessor: RequestBindingAbsent), step: "request-log")
+  let left = rr_ev(node: rr_node(), kind: Progress { note: "left" as NonEmptyStr }, parent: Present { value: c1.id }, author: rr_fabric(), at: "t2")
+  let right = rr_ev(node: rr_node(), kind: Progress { note: "right" as NonEmptyStr }, parent: Present { value: c1.id }, author: rr_fabric(), at: "t2")
+  let forked = rr_binding_refused_at(a: attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, left, right] }, predecessor: RequestBindingAbsent), step: "request-history")
+  let readable = attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, left] }, predecessor: RequestBindingAbsent) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
+  unread && forked && readable
+}
+
+// A CONTINUATION ANSWERS ITS LINEAGE'S REQUEST, BY COPYING A RECORDED FACT. A dispatch nobody's
+// claim caused that continues attempt K is Continuing, not Autonomous; one that starts a lineage is
+// Autonomous; a dispatch for a claim stays for that claim even when it continues a lineage. The
+// continuing attempt takes exactly the binding K recorded -- C1 -- although a later claim C2 is on
+// the issue's log, which the admission is not even handed (it is given a log that could not be
+// read and still binds C1). A predecessor that was autonomous continues autonomous. A predecessor
+// with no binding record, or an unreadable one, REFUSES the launch: the red is a continuation that
+// would run as autonomous and never answer its requester.
+test fn a_continuation_copies_its_predecessors_recorded_binding_or_refuses() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let class_continuing = attempt_launch_request_for_origin(request: LaunchAutonomous, predecessor_attempt_key: Present { value: rr_attempt }) == LaunchContinuing { predecessor_attempt_key: rr_attempt }
+  let class_fresh = attempt_launch_request_for_origin(request: LaunchAutonomous, predecessor_attempt_key: none) == LaunchAutonomous
+  let class_reassigned = attempt_launch_request_for_origin(request: LaunchForClaim { node: rr_node(), claim: c1.id }, predecessor_attempt_key: Present { value: rr_attempt }) == LaunchForClaim { node: rr_node(), claim: c1.id }
+  let unread_log = EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }
+  let continuing = LaunchContinuing { predecessor_attempt_key: rr_attempt }
+  let copies_c1 = attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: rr_bound(claim: c1.id)) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
+  let copies_autonomous = attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: RequestBindingRead { binding: RequestAutonomous }) == RequestBindingAdmitted { binding: RequestAutonomous }
+  let missing_refuses = rr_binding_refused_at(a: attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: RequestBindingAbsent), step: "request-predecessor")
+  let unreadable_refuses = rr_binding_refused_at(a: attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: RequestBindingUnreadable { reason: "denied" }), step: "request-predecessor")
+  class_continuing && class_fresh && class_reassigned && copies_c1 && copies_autonomous && missing_refuses && unreadable_refuses
+}
+
+// CONTROL 2 OF THE LAUNCH BINDING: THE COMMIT IS CREATE-ONLY. The first commit is a create. A
+// repeated initialization that finds the SAME binding is an idempotent success. One that finds a
+// DIFFERENT binding -- the attempt re-initialized under a later claim, or as autonomous -- refuses
+// and the first stands. A binding already there that cannot be read is not replaced, and a create
+// the host refused fails the launch.
+test fn a_committed_binding_is_created_once_and_cannot_be_replaced() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let first = attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) == RequestBindingCommitted { binding: RequestClaimBound { claim: c1.id } }
+  let again = attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreateTargetOccupied { path: "p" }, existing: RequestBindingRead { binding: RequestClaimBound { claim: c1.id } }) == RequestBindingCommitted { binding: RequestClaimBound { claim: c1.id } }
+  let rebind = all([RequestClaimBound { claim: c2.id }, RequestAutonomous], b => rr_commit_refused_at(c: attempt_request_binding_commit_of(binding: b, created: FilesystemCreateTargetOccupied { path: "p" }, existing: RequestBindingRead { binding: RequestClaimBound { claim: c1.id } }), step: "attempt-request-binding-conflict"))
+  let unreadable_kept = rr_commit_refused_at(c: attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreateTargetOccupied { path: "p" }, existing: RequestBindingUnreadable { reason: "not json" }), step: "attempt-request-binding-conflict")
+  let host_refused = rr_commit_refused_at(c: attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreateRefused { path: "p", kind: FilesystemPermissionDenied, error: "denied" }, existing: RequestBindingAbsent), step: "attempt-request-binding-persist")
+  first && again && rebind && unreadable_kept && host_refused
+}
+
+fn rr_commit_refused_at(c: AttemptRequestBindingCommit, step: String) -> Bool {
+  match c {
+    RequestBindingCommitRefused { step: s, detail } => s == step && string_length(s: detail) > 0
+    RequestBindingCommitted { binding: _ } => false
+  }
+}
+
+// THE BINDING RECORD'S CODEC IS STRICT: both states round-trip; a bound record with no claim or an
+// empty one, an unknown status, another schema and a non-document are undecodable, never
+// autonomous; and the file read keeps absent, unreadable and decoded apart.
+test fn the_binding_record_round_trips_and_a_malformed_one_is_unreadable() -> Bool {
+  let c1 = rr_claim(node: rr_node())
+  let codec = all([RequestClaimBound { claim: c1.id }, RequestAutonomous], b => match attempt_request_binding_decode(text: attempt_request_binding_json(binding: b)) {
+    RequestBindingDecoded { binding } => binding == b
+    RequestBindingUndecodable { reason: _ } => false
+  })
+  let strict = all([
+    "{\"schema\": \"roadmap-attempt-request-binding/v1\", \"status\": \"bound\"}",
+    "{\"schema\": \"roadmap-attempt-request-binding/v1\", \"status\": \"bound\", \"claim\": \"\"}",
+    "{\"schema\": \"roadmap-attempt-request-binding/v1\", \"status\": \"unobserved\", \"reason\": \"x\"}",
+    "{\"schema\": \"roadmap-attempt-request-binding/v0\", \"status\": \"autonomous\"}",
+    "not json",
+  ], text => match attempt_request_binding_decode(text: text) {
+    RequestBindingUndecodable { reason } => string_length(s: reason) > 0
+    RequestBindingDecoded { binding: _ } => false
+  })
+  let file_arms = attempt_request_binding_read_of(success: false, error_kind: "not_found", error: "no such file", content: "") == RequestBindingAbsent
+    && (match attempt_request_binding_read_of(success: false, error_kind: "permission_denied", error: "denied", content: "") { RequestBindingUnreadable { reason } => reason == "denied"  RequestBindingRead { binding: _ } => false  RequestBindingAbsent => false })
+    && (match attempt_request_binding_read_of(success: true, error_kind: "", error: "", content: "not json") { RequestBindingUnreadable { reason: _ } => true  RequestBindingRead { binding: _ } => false  RequestBindingAbsent => false })
+  codec && strict && file_arms
+}
+
+// THE RECIPIENT IS THE BOUND CLAIM'S, WHATEVER THE ISSUE SAYS NOW. Alice's claim C1 launched the
+// attempt. A second claim by Bob made while the attempt runs does not take its result; a release
+// does not erase its requester. The red is the join the first version made: reading the issue's
+// current assignment would answer Bob, or nobody.
+test fn a_later_claim_or_release_does_not_change_the_attempts_requester() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let released = rr_ev(node: rr_node(), kind: Released, parent: Present { value: c1.id }, author: rr_alice(), at: "t2")
+  rr_joined_to(join: result_request_join(binding: rr_bound(claim: c1.id), node_envelopes: [c1, c2]), claim: c1.id, principal: rr_alice())
+    && rr_joined_to(join: result_request_join(binding: rr_bound(claim: c1.id), node_envelopes: [c1, released]), claim: c1.id, principal: rr_alice())
+}
+
+// AN ATTEMPT WITH NO REQUEST HAS NO REQUESTER, AND A BOUND CLAIM THE LOG NO LONGER CARRIES IS NOT
+// QUIET. An autonomous attempt and one with no binding record are no-request. A binding naming an
+// event the history does not carry, another issue's claim, or an event that is not a claim is
+// unjoinable -- the launch established that claim, so this is a log that lost it. An unreadable
+// binding file is its own arm.
+test fn an_attempt_without_a_request_or_with_a_lost_claim_is_told_apart() -> Bool {
+  let claim = rr_claim(node: rr_node())
+  let note = rr_ev(node: rr_node(), kind: Progress { note: "started" as NonEmptyStr }, parent: Present { value: claim.id }, author: rr_fabric(), at: "t2")
+  let foreign = rr_claim(node: "result-returned-other-node" as RoadmapNodeId)
+  let unjoinable = all([rr_bound(claim: "0000000000000000" as RoadmapEventId), rr_bound(claim: foreign.id), rr_bound(claim: note.id)], b => match result_request_join(binding: b, node_envelopes: [claim, note]) {
+    ResultRequestUnjoinable { reason } => string_length(s: reason) > 0
+    ResultRequestJoined { claim: _, return_to: _ } => false
+    ResultRequestNone { reason: _ } => false
+    ResultRequestUnreadable { reason: _ } => false
+  })
+  let no_request = all([RequestBindingAbsent, RequestBindingRead { binding: RequestAutonomous }], b => match result_request_join(binding: b, node_envelopes: [claim, note]) {
+    ResultRequestNone { reason } => string_length(s: reason) > 0
+    ResultRequestJoined { claim: _, return_to: _ } => false
+    ResultRequestUnjoinable { reason: _ } => false
+    ResultRequestUnreadable { reason: _ } => false
+  })
+  let unreadable = match result_request_join(binding: RequestBindingUnreadable { reason: "denied" }, node_envelopes: [claim, note]) {
+    ResultRequestUnreadable { reason } => string_contains(s: reason, pattern: "denied")
+    ResultRequestJoined { claim: _, return_to: _ } => false
+    ResultRequestNone { reason: _ } => false
+    ResultRequestUnjoinable { reason: _ } => false
+  }
+  let lost_claim_fails_the_pass = match result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: rr_bound(claim: "0000000000000000" as RoadmapEventId), envelopes: [claim, note]) {
+    ResultPrecheckSettled { outcome: ResultReturnFailed { node_id: _, attempt_key: _, step, reason: _ } } => step == "claim"
+    ResultPrecheckSettled { outcome: _ } => false
+    ResultPrecheckOwed { binding: _ } => false
+  }
+  let autonomous_is_quiet = match result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: RequestBindingRead { binding: RequestAutonomous }, envelopes: [claim, note]) {
+    ResultPrecheckSettled { outcome: ResultReturnNoRequest { node_id: _, attempt_key: _, reason: _ } } => true
+    ResultPrecheckSettled { outcome: _ } => false
+    ResultPrecheckOwed { binding: _ } => false
+  }
+  unjoinable && no_request && unreadable && lost_claim_fails_the_pass && autonomous_is_quiet
+}
+
+fn rr_decision_refused_at(d: ResultReturnDecision, step: String) -> Bool {
+  match d {
+    ResultReturnRefused { step: s, reason } => s == step && string_length(s: reason) > 0
+    ResultReturnAppend { binding: _, outcome: _ } => false
+    ResultAlreadyReturned { id: _ } => false
+  }
+}
+
+// THE WRITE DECISION COMPARES THE WHOLE IDENTITY. The identical result already on the log is already
+// returned and names its event. A different outcome under the same binding, and the same outcome
+// under another claim, are each refused as a second result. A first result for another attempt of
+// the same issue is appended, carrying its own binding and no event of the caller's making.
+test fn an_answered_attempt_is_already_returned_only_for_the_same_binding_and_outcome() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let failed = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_failed(), parent: c2.id, at: "t3")
+  let history = [c1, c2, failed]
+  let same = match result_return_decision(binding: rr_binding(claim: c1.id), outcome: rr_failed(), envelopes: history) {
+    ResultAlreadyReturned { id } => (id as String) == (failed.id as String)
+    ResultReturnAppend { binding: _, outcome: _ } => false
+    ResultReturnRefused { step: _, reason: _ } => false
+  }
+  let other_outcome = rr_decision_refused_at(d: result_return_decision(binding: rr_binding(claim: c1.id), outcome: rr_published(), envelopes: history), step: "result-duplicate")
+  let other_claim = rr_decision_refused_at(d: result_return_decision(binding: rr_binding(claim: c2.id), outcome: rr_failed(), envelopes: history), step: "result-duplicate")
+  let other = RoadmapResultBinding { node: rr_node(), attempt: "0ther0ther0ther00" as NonEmptyStr, claim: c2.id }
+  let another_attempt_appends = match result_return_decision(binding: other, outcome: rr_failed(), envelopes: history) {
+    ResultReturnAppend { binding, outcome } => binding == other && outcome == rr_failed()
+    ResultAlreadyReturned { id: _ } => false
+    ResultReturnRefused { step: _, reason: _ } => false
+  }
+  same && other_outcome && other_claim && another_attempt_appends
+}
+
+fn rr_authority_refused_at(a: RoadmapResultAuthority, step: String) -> Bool {
+  match a {
+    ResultAuthorityRefused { step: s, reason } => s == step && string_length(s: reason) > 0
+    ResultAuthorityEstablished { binding: _ } => false
+  }
+}
+
+// THE WRITER'S CLAIM COMES FROM THE ATTEMPT'S OWN RECORD, SO C2 CANNOT POISON K. Attempt K is durably
+// bound to claim C1; C2 is a later, perfectly valid claim on the same issue. The append authority
+// is a function of the issue, the attempt and K's request record -- it has no claim parameter -- and
+// it establishes C1. The only remaining way to offer K/C2 is a raw ResultReturned handed to the
+// generic append, and that is refused, so K's result slot is NOT occupied: the log still holds only
+// the two claims. The correct K/C1 result is then admitted on the head. An attempt with no record,
+// an autonomous one, an unreadable record and a keyless attempt establish no authority and refuse.
+test fn the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let log = [c1, c2]
+  let established = roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: rr_bound(claim: c1.id))
+  let derives_c1 = established == ResultAuthorityEstablished { binding: rr_binding(claim: c1.id) }
+  let poison = RoadmapEvent { node: rr_node(), author: rr_fabric(), parent: Present { value: c2.id }, kind: ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: c2.id, outcome: rr_published() }, recorded_at: "t3" }
+  let c2_refused = !roadmap_event_admitted_after(envs: log, event: poison)
+  let c1_still_appendable = match established {
+    ResultAuthorityRefused { step: _, reason: _ } => false
+    ResultAuthorityEstablished { binding } =>
+      match roadmap_bound_result_admission(envs: log, binding: binding, outcome: rr_published()) {
+        ResultAdmitted { parent } => match parent { Present { value: p } => (p as String) == (c2.id as String)  Absent => false }
+        ResultAlreadyOnLog { id: _ } => false
+        ResultNotAdmitted { step: _, reason: _ } => false
+      }
+  }
+  let no_authority = rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingAbsent), step: "result-binding")
+    && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingRead { binding: RequestAutonomous }), step: "result-binding")
+    && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingUnreadable { reason: "denied" }), step: "result-binding")
+    && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: "", record: rr_bound(claim: c1.id)), step: "result-attempt")
+  let outcome_maps = roadmap_result_append_of(append: EventAppended { id: c1.id }) == ResultAppended { id: c1.id }
+    && roadmap_result_append_of(append: EventAlreadyPresent { id: c1.id }) == ResultAppendAlreadyPresent { id: c1.id }
+    && roadmap_result_append_of(append: EventAppendRefused { id: c1.id, step: "revision-conflict", reason: "moved" }) == ResultAppendRefused { step: "revision-conflict", reason: "moved" }
+  derives_c1 && c2_refused && c1_still_appendable && no_authority && outcome_maps
+}
+
+fn rr_precheck_owed(p: ResultReturnPrecheck, claim: RoadmapEventId) -> Bool {
+  match p {
+    ResultPrecheckOwed { binding } => binding == rr_binding(claim: claim)
+    ResultPrecheckSettled { outcome: _ } => false
+  }
+}
+
+// ANTI-ENTROPY IS OVER THE HISTORY AND IS NOT DISCHARGED BY A MISADDRESSED RESULT. K finished and
+// its result was never appended; K2 of the same node is now current: K is still considered. K is
+// bound to issue A and claim C1. A result planted on A for K naming the later claim C2 does NOT
+// answer K: K is still owed, and the decision refuses to write a second result rather than treating
+// the plant as K's. A result planted on another issue B under K's key does NOT answer K either: K
+// is still owed, and the decision refuses because the attempt has a result elsewhere. Only the
+// result on A naming C1 settles K.
+test fn a_superseded_attempt_stays_owed_and_a_misaddressed_result_does_not_answer_it() -> Bool {
+  let k = DispatchAttemptRef { node_id: "result-returned-node" as NonEmptyStr, branch: "dispatch/result-returned-node-afeedfacefeedface" as NonEmptyStr, attempt_key: rr_attempt }
+  let k2 = DispatchAttemptRef { node_id: "result-returned-node" as NonEmptyStr, branch: "dispatch/result-returned-node-a0ther0ther0ther00" as NonEmptyStr, attempt_key: "0ther0ther0ther00" }
+  let keyless = DispatchAttemptRef { node_id: "result-returned-node" as NonEmptyStr, branch: "dispatch/result-returned-node" as NonEmptyStr, attempt_key: "" }
+  let considered = result_return_keyed_attempts(attempts: [k2, k, keyless])
+  let history_population = count(considered) == 2 && any(considered, a => a.attempt_key == rr_attempt) && any(considered, a => a.attempt_key == "0ther0ther0ther00")
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let unanswered = rr_precheck_owed(p: result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: rr_bound(claim: c1.id), envelopes: [c1, c2]), claim: c1.id)
+  let wrong_claim = rr_result(node: rr_node(), attempt: rr_attempt, claim: c2.id, outcome: rr_published(), parent: c2.id, at: "t3")
+  let still_owed_after_wrong_claim = rr_precheck_owed(p: result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: rr_bound(claim: c1.id), envelopes: [c1, c2, wrong_claim]), claim: c1.id)
+    && rr_decision_refused_at(d: result_return_decision(binding: rr_binding(claim: c1.id), outcome: rr_published(), envelopes: [c1, c2, wrong_claim]), step: "result-duplicate")
+  let other_issue = "result-returned-other-node" as RoadmapNodeId
+  let b1 = rr_claim(node: other_issue)
+  let on_other_issue = rr_result(node: other_issue, attempt: rr_attempt, claim: b1.id, outcome: rr_published(), parent: b1.id, at: "t2")
+  let still_owed_after_other_issue = rr_precheck_owed(p: result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: rr_bound(claim: c1.id), envelopes: [c1, c2, b1, on_other_issue]), claim: c1.id)
+    && rr_decision_refused_at(d: result_return_decision(binding: rr_binding(claim: c1.id), outcome: rr_published(), envelopes: [c1, c2, b1, on_other_issue]), step: "result-elsewhere")
+  let correct = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_published(), parent: c2.id, at: "t3")
+  let settled = match result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: rr_bound(claim: c1.id), envelopes: [c1, c2, correct]) {
+    ResultPrecheckSettled { outcome: ResultReturnAlreadyRecorded { node_id: _, attempt_key: _, event } } => event == (correct.id as String)
+    ResultPrecheckSettled { outcome: _ } => false
+    ResultPrecheckOwed { binding: _ } => false
+  }
+  history_population && unanswered && still_owed_after_wrong_claim && still_owed_after_other_issue && settled
+}
+
+// THE READER'S POSITIVE CONTROL: the attempt named by its issue and key, its launch binding, and its
+// issue's history give the one result naming the bound claim -- the event, the claim, the principal
+// that claim returns to, and the outcome. A later claim by someone else is on the history and does
+// not change the answer.
+test fn the_reader_observes_the_result_for_the_attempts_exact_identity() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let published = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_published(), parent: c2.id, at: "2026-10-03T08:00:00Z")
+  match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c2, published, c1] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
+    ResultReturnedObserved { node, attempt: _, event, claim, return_to, outcome, recorded_at } =>
+      (node as String) == (rr_node() as String)
+        && (event as String) == (published.id as String)
+        && (claim as String) == (c1.id as String)
+        && event_principal_label(p: return_to) == "principal:google-oidc/accounts/sub-alice"
+        && outcome == rr_published()
+        && recorded_at == "2026-10-03T08:00:00Z"
+    ResultNotReturned { attempt_key: _ } => false
+    ResultNotOwed { reason: _ } => false
+    ResultReturnedUnobserved { step: _, reason: _ } => false
+  }
+}
+
+// ABSENCE AND NOT-OWED ARE THEIR OWN ARMS. A readable issue history with only the claim, or with
+// another attempt's result, answers not-returned for this attempt. An attempt launched autonomously
+// or with no binding record is not owed a result at all -- which is not the same as not yet
+// returned.
+test fn an_unanswered_attempt_reads_as_not_returned_and_an_unrequested_one_as_not_owed() -> Bool {
+  let claim = rr_claim(node: rr_node())
+  let other = rr_result(node: rr_node(), attempt: "0ther0ther0ther00", claim: claim.id, outcome: rr_published(), parent: claim.id, at: "t2")
+  let not_returned = all([[claim, other], [claim]], envelopes => match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: envelopes }, binding: rr_bound(claim: claim.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
+    ResultNotReturned { attempt_key } => attempt_key == rr_attempt
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultNotOwed { reason: _ } => false
+    ResultReturnedUnobserved { step: _, reason: _ } => false
+  })
+  let not_owed = all([RequestBindingAbsent, RequestBindingRead { binding: RequestAutonomous }], b => match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [claim] }, binding: b, node_id: "result-returned-node", attempt_key: rr_attempt) {
+    ResultNotOwed { reason } => string_length(s: reason) > 0
+    ResultNotReturned { attempt_key: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedUnobserved { step: _, reason: _ } => false
+  })
+  not_returned && not_owed
+}
+
+fn rr_unobserved_at(o: ResultReturnedObservation, step: String) -> Bool {
+  match o {
+    ResultReturnedUnobserved { step: s, reason } => s == step && string_length(s: reason) > 0
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultNotReturned { attempt_key: _ } => false
+    ResultNotOwed { reason: _ } => false
+  }
+}
+
+// THE READER'S REDS. K is bound to issue A and claim C1. A result on A for K naming the later claim
+// C2 is NOT read as K's answer: it refuses at the binding. A result on another issue under K's key
+// is never consulted, so K reads as not returned. And each remaining refusal is its own step: an
+// unreadable log, an unreadable binding, a forked history, two results for the attempt, a bound
+// claim the history does not carry, and an empty identity.
+test fn a_misaddressed_unreadable_forked_or_duplicated_result_is_not_the_attempts_answer() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let wrong_claim = rr_result(node: rr_node(), attempt: rr_attempt, claim: c2.id, outcome: rr_published(), parent: c2.id, at: "t3")
+  let later_claim_is_not_the_answer = rr_unobserved_at(o: result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, wrong_claim] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt), step: "binding")
+  let other_issue = "result-returned-other-node" as RoadmapNodeId
+  let b1 = rr_claim(node: other_issue)
+  let on_other_issue = rr_result(node: other_issue, attempt: rr_attempt, claim: b1.id, outcome: rr_published(), parent: b1.id, at: "t2")
+  let other_issue_is_not_the_answer = match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, b1, on_other_issue] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
+    ResultNotReturned { attempt_key } => attempt_key == rr_attempt
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultNotOwed { reason: _ } => false
+    ResultReturnedUnobserved { step: _, reason: _ } => false
+  }
+  let result = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_published(), parent: c2.id, at: "t3")
+  let unreadable_log = rr_unobserved_at(o: result_returned_observation_of(read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt), step: "events/sync/fetch")
+  let unreadable_binding = rr_unobserved_at(o: result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, result] }, binding: RequestBindingUnreadable { reason: "denied" }, node_id: "result-returned-node", attempt_key: rr_attempt), step: "request-binding")
+  let sibling = rr_ev(node: rr_node(), kind: Progress { note: "a writer who never saw the result" as NonEmptyStr }, parent: Present { value: c2.id }, author: rr_alice(), at: "t3")
+  let forked = rr_unobserved_at(o: result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, result, sibling] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt), step: "history")
+  let second = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_failed(), parent: result.id, at: "t4")
+  let duplicated = rr_unobserved_at(o: result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, result, second] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt), step: "result-duplicate")
+  let orphan = rr_result(node: rr_node(), attempt: rr_attempt, claim: "0000000000000000" as RoadmapEventId, outcome: rr_published(), parent: c2.id, at: "t3")
+  let lost_claim = rr_unobserved_at(o: result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, orphan] }, binding: rr_bound(claim: "0000000000000000" as RoadmapEventId), node_id: "result-returned-node", attempt_key: rr_attempt), step: "claim")
+  let keyless = rr_unobserved_at(o: result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, result] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: ""), step: "attempt-identity")
+  later_claim_is_not_the_answer && other_issue_is_not_the_answer && unreadable_log && unreadable_binding && forked && duplicated && lost_claim && keyless
+}
+
+// THE ROUTE OVER ITS PURE LINKS, WITH THE REAL CODECS IN THE MIDDLE. The dispatch decision carries
+// claim C1; a second claim lands before the attempt initializes; the binding is admitted for C1,
+// written and read back through its own codec, and committed create-only. The request is joined
+// from it; the outcome is classified from a handoff state; the decision asks for an append; the
+// result event is built FROM THE BINDING, goes to the wire and comes back through the carrier's
+// decode; and the reader, given the attempt's issue, key and binding, answers with claim C1, its
+// requester and the outcome the route started from.
+test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  match attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2] }, predecessor: RequestBindingAbsent) {
+    RequestBindingNotAdmitted { step: _, detail: _ } => false
+    RequestBindingAdmitted { binding: launch } =>
+      match attempt_request_binding_commit_of(binding: launch, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) {
+        RequestBindingCommitRefused { step: _, detail: _ } => false
+        RequestBindingCommitted { binding: committed } => {
+          let recorded = attempt_request_binding_read_of(success: true, error_kind: "", error: "", content: attempt_request_binding_json(binding: committed))
+          match result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: recorded, envelopes: [c1, c2]) {
+            ResultPrecheckSettled { outcome: _ } => false
+            ResultPrecheckOwed { binding: bound } =>
+              match attempt_result_standing(handoff: HandoffVerificationFailed { head_sha: "52c56a8", verdict_key: "validation-failed" }) {
+                AttemptResultPending { handoff: _ } => false
+                AttemptResultUnstatable { reason: _ } => false
+                AttemptResultTerminal { outcome } =>
+                  match result_return_decision(binding: bound, outcome: outcome, envelopes: [c1, c2]) {
+                    ResultAlreadyReturned { id: _ } => false
+                    ResultReturnRefused { step: _, reason: _ } => false
+                    ResultReturnAppend { binding: to_write, outcome: final } => {
+                      let appended = roadmap_event_envelope(e: roadmap_result_returned_event(binding: to_write, outcome: final, author: rr_fabric(), parent: Present { value: c2.id }, recorded_at: "2026-10-03T10:00:00Z"))
+                      let read = roadmap_events_decode_reads(node: rr_node(), reads: [
+                        EventFileContent { content: roadmap_event_wire_text(env: c1) },
+                        EventFileContent { content: roadmap_event_wire_text(env: c2) },
+                        EventFileContent { content: roadmap_event_wire_text(env: appended) },
+                      ])
+                      match result_returned_observation_of(read: read, binding: recorded, node_id: "result-returned-node", attempt_key: rr_attempt) {
+                        ResultReturnedObserved { node, attempt: returned_for, event: id, claim: answered, return_to: to, outcome: returned, recorded_at: _ } =>
+                          (node as String) == "result-returned-node"
+                            && (returned_for as String) == rr_attempt
+                            && (id as String) == (appended.id as String)
+                            && (answered as String) == (c1.id as String)
+                            && event_principal_label(p: to) == "principal:google-oidc/accounts/sub-alice"
+                            && returned == rr_failed()
+                        ResultNotReturned { attempt_key: _ } => false
+                        ResultNotOwed { reason: _ } => false
+                        ResultReturnedUnobserved { step: _, reason: _ } => false
+                      }
+                    }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE PASS'S OWN ENTRY ON AN OBSERVE-ONLY INSTANCE WRITES NOTHING AND SAYS SO: the real
+// result_return_attempts_for_instance is driven against srv2 preview and withholds on the posture
+// before it reads the log or observes an attempt.
+test fn the_result_return_pass_withholds_on_an_observe_only_instance() -> Bool {
+  let run = result_return_attempts_for_instance(instance: srv2_preview_dashboard_instance(), recorded_at: "2026-10-03T10:00:00Z")
+  count(run.closes) == 0 && match run.pass {
+    ResultReturnPassWithheld { reason } => string_contains(s: reason, pattern: "observe-only")
+    ResultReturnPassRan { outcomes: _ } => false
+    ResultReturnPassRefused { step: _, reason: _ } => false
+  }
+}
+
+// THE TICK'S EXIT OVER THE PASS, AND BOTH TAIL CAUSES WHEN BOTH FAIL. An undelivered result is a
+// failure naming the attempt and the step; a pass that could not read its inputs names the step; an
+// attempt still in motion and one with no request are counted outcomes and exit clean. When the served observation fails too, the exit carries BOTH reasons -- the red is
+// an exit that reports the observation's failure and drops the undelivered result.
+test fn an_undelivered_result_fails_the_tick_and_is_named_beside_an_observation_failure() -> Bool {
+  let undelivered_pass = ResultReturnPassRan { outcomes: [
+    ResultReturnRecorded { node_id: "a", attempt_key: "k1", event: "e1", outcome_word: "published" },
+    ResultReturnFailed { node_id: "b", attempt_key: "k2", step: "publication-refused", reason: "conditional publication refused" },
+  ] }
+  let undelivered = match result_return_pass_exit(pass: undelivered_pass) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "b attempt k2 (publication-refused): conditional publication refused") && string_contains(s: reason, pattern: "1 attempt result(s)")
+    ExitSuccess => false
+  }
+  let unreadable = match result_return_pass_exit(pass: ResultReturnPassRefused { step: "events/sync/fetch", reason: "exit 128" }) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "events/sync/fetch")
+    ExitSuccess => false
+  }
+  let clean_pass = ResultReturnPassRan { outcomes: [
+    ResultReturnNotTerminal { node_id: "a", attempt_key: "k1", handoff: "submitted" },
+    ResultReturnNoRequest { node_id: "b", attempt_key: "k2", reason: "launched unclaimed" },
+  ] }
+  let clean = all([clean_pass, ResultReturnPassRan { outcomes: [] }, ResultReturnPassWithheld { reason: "observe-only" }], p => match result_return_pass_exit(pass: p) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+  let both = match belt_tick_result_tail_exit(returned: undelivered_pass, tail: ExitFailure { code: 1, reason: "served observation write failed" }) {
+    ExitFailure { code, reason } => code == 1 && string_contains(s: reason, pattern: "served observation write failed") && string_contains(s: reason, pattern: "b attempt k2 (publication-refused)")
+    ExitSuccess => false
+  }
+  let observation_only = match belt_tick_result_tail_exit(returned: clean_pass, tail: ExitFailure { code: 1, reason: "served observation write failed" }) {
+    ExitFailure { code: _, reason } => reason == "served observation write failed"
+    ExitSuccess => false
+  }
+  let result_only = match belt_tick_result_tail_exit(returned: undelivered_pass, tail: ExitSuccess) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "b attempt k2")
+    ExitSuccess => false
+  }
+  let neither = match belt_tick_result_tail_exit(returned: clean_pass, tail: ExitSuccess) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  undelivered && unreadable && clean && both && observation_only && result_only && neither
+}
+
+// A SNAPSHOT THE RESULT RETURN LEFT BEHIND FAILS THE TICK AND IS NAMED, AND REPLACES NOTHING. A
+// clean tick whose pass left one worktree behind exits nonzero naming that worktree and what the
+// removal answered; a tick that already failed keeps its code and its own reason and gains the
+// leak after it; a tick whose snapshots all closed, or that opened none, exits exactly as it would
+// have. The red is an exit that is unchanged by a failed removal.
+test fn a_snapshot_left_behind_by_the_result_return_fails_the_tick_beside_its_own_exit() -> Bool {
+  let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.rrleak" as FilePath, exit_code: 128, stderr: "fatal: cannot remove a locked working tree\n" }
+  let alone = match belt_tick_exit_with_snapshot_closes(exit: ExitSuccess, closes: [SnapshotClosed, leaked, SnapshotNotOpened]) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "1 roadmap event snapshot(s)") && string_contains(s: reason, pattern: "/tmp/tmp.rrleak") && string_contains(s: reason, pattern: "exit 128") && string_contains(s: reason, pattern: "locked working tree")
+    ExitSuccess => false
+  }
+  let beside = match belt_tick_exit_with_snapshot_closes(exit: ExitFailure { code: 3, reason: "served observation write failed" }, closes: [leaked]) {
+    ExitFailure { code, reason } => code == 3 && starts_with(s: reason, prefix: "served observation write failed") && string_contains(s: reason, pattern: "/tmp/tmp.rrleak")
+    ExitSuccess => false
+  }
+  let closed = match belt_tick_exit_with_snapshot_closes(exit: ExitSuccess, closes: [SnapshotClosed, SnapshotNotOpened]) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  let untouched = match belt_tick_exit_with_snapshot_closes(exit: ExitFailure { code: 3, reason: "served observation write failed" }, closes: [SnapshotClosed]) {
+    ExitFailure { code, reason } => code == 3 && reason == "served observation write failed"
+    ExitSuccess => false
+  }
+  alone && beside && closed && untouched
+}

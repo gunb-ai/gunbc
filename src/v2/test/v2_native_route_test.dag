@@ -7,7 +7,7 @@ import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
 }
 import gunbc.witness_v2_native_route {
-  native_route_admission_with, native_route_head_advisories_attributed, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
+  native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
   native_route_universe_member,
@@ -66,13 +66,15 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_located, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
-  NativeTestFileRefusal
+  NativeTestFileRefusal,
+  FileRefusalLink,
+  FileRefusalAtWholeFile
 }
 import v2.std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import std.algebra { Cons }
+import std.algebra { Cons, FreeSemigroup }
 import v2.std.algebra { fold_list, length }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
@@ -128,8 +130,16 @@ fn refused_row(
   }
 }
 
+// A refusal whose chain heads with `head` and ends at `fatal`; one link when they are the same.
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal, chain: [] }
+  NativeTestFileRefusal {
+    path: path,
+    module: optional_absent(),
+    chain: FreeSemigroup {
+      head: FileRefusalLink { reason: head, at: FileRefusalAtWholeFile },
+      tail: if head == fatal { [] } else { [FileRefusalLink { reason: fatal, at: FileRefusalAtWholeFile }] }
+    }
+  }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
@@ -961,49 +971,6 @@ test fn the_infer_match_scrutinee_cause_is_owned_and_an_unowned_one_still_counts
     route_gap: []
   )
   census.excluded_compiler_frontier == 1 && census.excluded_unattributed == 1
-}
-
-test fn an_unattributed_head_advisory_is_refused() -> Bool {
-  native_route_admission_refused_with(
-    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
-      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
-      module_source_index: [],
-      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
-      file_refusals: [file_refusal_row(
-        path: ^some_path,
-        head: ^some_unowned_advisory,
-        fatal: ^parse_g0_tokens_remain
-      )]
-    )),
-    cause_name: "unattributed_head_advisories_present"
-  )
-}
-
-// A HEAD THAT IS ITS OWN FATAL CAUSE IS NOT AN ADVISORY. The refusal below carries one diagnostic,
-// a body-lowering cause owned at FatalGrain only; reading the head as an advisory demanded a
-// HeadGrain row for it and refused. The clause now asks only about heads that differ from the
-// fatal cause, so this holds -- and the unowned advisory above still refuses.
-test fn a_bare_fatal_head_needs_no_advisory_ownership_holds() -> Bool {
-  native_route_head_advisories_attributed(receipt: receipt_over(
-    universe: [],
-    module_source_index: [],
-    population: [],
-    file_refusals: [file_refusal_row(
-      path: ^bare_fatal_path,
-      head: ^body_lowering_reason_call_argument_unread,
-      fatal: ^body_lowering_reason_call_argument_unread
-    )]
-  ))
-    && !native_route_head_advisories_attributed(receipt: receipt_over(
-      universe: [],
-      module_source_index: [],
-      population: [],
-      file_refusals: [file_refusal_row(
-        path: ^bare_fatal_path,
-        head: ^some_unowned_advisory,
-        fatal: ^body_lowering_reason_call_argument_unread
-      )]
-    ))
 }
 
 // ── admission: context refusals are bound to their observation ─────────────────────────────
