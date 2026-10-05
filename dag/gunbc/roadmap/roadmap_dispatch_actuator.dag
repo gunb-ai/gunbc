@@ -112,12 +112,15 @@ import extdeps.llm.claude_code_stream_json { claude_code_stream_json_print_args 
 import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved, ToolEnvironmentReady, provider_standing_from_observed_bundle }
 import std.claim_evidence { RecordedFactId }
 import extdeps.exec.command { ArgvCommand, LocalExec, argv_words }
+import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
-import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit }
+import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile, PosixShRemoveFileAfterRead }
 import gunbc.dispatch_selection {
   ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
-  claude_dispatch_credential, inventory_with_claude_standing, claude_offer_for_instance,
-  inventory_with_codex_standing, inventory_with_cursor_standing, OfferCodex, OfferClaude, OfferCursor,
+  claude_dispatch_credential, inventory_with_observed_standing, claude_offer_for_instance,
+  inventory_with_codex_state_root, OfferCodex, OfferClaude, OfferCursor,
   ExecutionProfile,
   ProfileAutomatic,
   ProviderSelectionRequest,
@@ -201,8 +204,8 @@ import gunbc.roadmap_provider_events {
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
-import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_for_instance }
-import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
+import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_from_snapshot }
+import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path, cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
@@ -403,6 +406,21 @@ fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
+  dispatch_actuator_selection_for_provider_on(
+    instance: srv1_live_dashboard_instance(),
+    provider: provider,
+    sizing_expectation: sizing_expectation,
+  )
+}
+
+// THE SELECTION IS JUDGED ON THE INSTANCE BEING DISPATCHED ON (side-chat finding, 2026-10-05). The
+// srv1-pinned form above survives only for callers that carry no instance; a dispatch that has one
+// passes it here, so a srv2 request sees srv2's offers rather than refusing against srv1's.
+fn dispatch_actuator_selection_for_provider_on(
+  instance: HostDashboardInstance,
+  provider: DispatchCliProvider,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
   match dispatch_cli_to_provider_kind(provider: provider) {
     DispatchExecutorHasNoVendorKind { executor: e } =>
       DispatchActuatorSelectionRefused {
@@ -413,7 +431,7 @@ fn dispatch_actuator_selection_for_provider(
       }
     DispatchProviderKindIs { kind: vendor_kind } =>
   match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: instance,
     request: provider_selection_request_for_kind(
       kind: vendor_kind,
     ),
@@ -482,13 +500,61 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
   }
 }
 
+// ONE CREDENTIAL SNAPSHOT PER ATTEMPT, FROM ADMISSION TO CHILD LOAD (side-chat finding, 2026-10-05).
+// The custody file is mutable: a custody converge can replace version A with B at any moment. If the
+// standing trip read the custody file and the spawn read it again, a replacement between the two
+// would run B under A's admission. So the attempt copies the custody bytes ONCE, owner-only, to a path
+// derived from the attempt identity (instance, node, attempt key, provider); the standing trip reads
+// that snapshot and keeps it, and the spawned child reads the SAME snapshot and the shell removes it
+// before exec. A replacement after the copy cannot reach the child, and a missing snapshot exits 78
+// before the provider starts -- the launch refuses; it never falls back to the custody file. The path
+// is a function of the attempt identity, so the binding is carried by construction: selection and
+// spawn derive the same path and no field can carry a different one.
+fn dispatch_credential_snapshot_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  provider: DispatchCliProvider,
+) -> NonEmptyStr {
+  join([
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
+    "/", node_id as String, "-a", attempt_key, ".", dispatch_provider_label(provider: provider), "-credential",
+  ], "") as NonEmptyStr
+}
+
+type DispatchCredentialSnapshot
+  = CredentialSnapshotTaken { path: NonEmptyStr }
+  | CredentialSnapshotRefused { reason: NonEmptyStr }
+
+fn dispatch_credential_snapshot_take(source: NonEmptyStr, snapshot: NonEmptyStr) -> DispatchCredentialSnapshot {
+  let read = Filesystem.Read(path: source as String)
+  if !read.success {
+    CredentialSnapshotRefused { reason: join(["the credential custody file ", source as String, " is unreadable on this host: ", read.error], "") as NonEmptyStr }
+  } else {
+    if trim(s: read.content) == "" {
+      CredentialSnapshotRefused { reason: join(["the credential custody file ", source as String, " is empty"], "") as NonEmptyStr }
+    } else {
+      let write = Filesystem.WriteOwnerOnly(path: snapshot as String, content: read.content)
+      if !write.success {
+        CredentialSnapshotRefused { reason: join(["the credential snapshot ", snapshot as String, " could not be written owner-only: ", write.error], "") as NonEmptyStr }
+      } else {
+        CredentialSnapshotTaken { path: snapshot }
+      }
+    }
+  }
+}
+
+fn dispatch_credential_snapshot_discard(snapshot: NonEmptyStr) -> Bool {
+  shell.Remove.FileForce(path: snapshot as FilePath).success
+}
+
 // THE EXPLICIT CLAUDE DRAW OBSERVES BEFORE IT SELECTS. The declared Claude row's standing admits no
-// draw, so selection over it would always refuse; this runs the standing trip under the very
-// credential the spawn will bind, projects the CLI's own report (gunbc.claude_code_limit_standing),
-// substitutes it into the declared row, and selects. An exhausted usage window, a rejected token or
-// an unreadable trip therefore refuses the dispatch typed, naming why -- it never falls back to the
-// harness and never spawns a turn that would fail for a reason already known. The trip runs only
-// here, on an operator's explicit request; no observation or projection path performs it.
+// draw, so selection over it would always refuse; this snapshots the credential, runs the standing
+// trip under that snapshot, projects the CLI's own report (gunbc.claude_code_limit_standing),
+// substitutes it into the declared row of THIS instance's inventory, and selects. An exhausted usage
+// window, a rejected token or an unreadable trip refuses the dispatch typed, naming why -- it never
+// falls back to the harness, never spawns a turn that would fail for a reason already known, and
+// discards the snapshot it took. The trip runs only here, on an operator's explicit request.
 //
 // The tool environment is supplied as Ready because this is reached only after the spawn's
 // environment admission (belt_actuate_spawn_for_instance EnvironmentAdmitted); the trip itself does
@@ -502,73 +568,99 @@ fn claude_standing_trip_command(path: NonEmptyStr) -> ClaudeCodeEnvWrapping {
       [claude_cli_program],
       concat(claude_code_stream_json_print_args, ["--max-turns", "1", claude_code_standing_trip_prompt]),
     ),
+    disposition: PosixShKeepFile,
   )
 }
 
-fn claude_observed_standing_for_instance(instance: HostDashboardInstance) -> ProviderStanding {
-  match claude_dispatch_credential() {
-    ClaudeOAuthTokenSecretRef { secret_ref } =>
-      match claude_code_custody_path(secret_ref: secret_ref) {
-        Absent =>
-          ProviderStandingUnobserved {
-            reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody"], "") as NonEmptyStr,
-          }
-        Present { value: path } =>
-          match claude_standing_trip_command(path: path) {
-            ClaudeCodeEnvWrapRefused { reason } => ProviderStandingUnobserved { reason: reason }
-            ClaudeCodeEnvWrapped { command } => {
-          let run = run_shell_command_observe(command: command, transport: LocalExec)
-              if run.exit_code == posix_sh_export_from_file_unreadable_exit {
-                ProviderStandingUnobserved {
-                  reason: join(["the claude credential custody file ", path as String, " is unreadable on this host: ", run.stderr], "") as NonEmptyStr,
-                }
-              } else {
-                match claude_code_standing_from_trip(
-                  credential_label: claude_code_harness_credential_label,
-                  stdout: run.stdout,
-                  tool_environment: ToolEnvironmentReady,
-                ) {
-                  ClaudeCodeStandingUnreadable { line_index, gap: _ } =>
-                    ProviderStandingUnobserved {
-                      reason: join(["the claude standing trip wrote an unreadable stream-json line at index ", to_string(value: line_index)], "") as NonEmptyStr,
-                    }
-                  ClaudeCodeStandingRead { bundle } =>
-                    provider_standing_from_observed_bundle(
-                      fact_id: claude_code_standing_trip_fact_id,
-                      provider: claude_offer_for_instance(instance: instance).instance,
-                      bundle: bundle,
-                    )
-                }
-              }
+fn claude_observed_standing_from_snapshot(instance: HostDashboardInstance, snapshot: NonEmptyStr) -> ProviderStanding {
+  match claude_standing_trip_command(path: snapshot) {
+    ClaudeCodeEnvWrapRefused { reason } => ProviderStandingUnobserved { reason: reason }
+    ClaudeCodeEnvWrapped { command } => {
+      let run = run_shell_command_observe(command: command, transport: LocalExec)
+      if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+        ProviderStandingUnobserved {
+          reason: join(["the claude credential snapshot ", snapshot as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
+        }
+      } else {
+        match claude_code_standing_from_trip(
+          credential_label: claude_code_harness_credential_label,
+          stdout: run.stdout,
+          tool_environment: ToolEnvironmentReady,
+        ) {
+          ClaudeCodeStandingUnreadable { line_index, gap: _ } =>
+            ProviderStandingUnobserved {
+              reason: join(["the claude standing trip wrote an unreadable stream-json line at index ", to_string(value: line_index)], "") as NonEmptyStr,
             }
-          }
+          ClaudeCodeStandingRead { bundle } =>
+            provider_standing_from_observed_bundle(
+              fact_id: claude_code_standing_trip_fact_id,
+              provider: claude_offer_for_instance(instance: instance).instance,
+              bundle: bundle,
+            )
+        }
       }
-    ClaudeApiKeySecretRef { secret_ref: _ } =>
-      ProviderStandingUnobserved { reason: "an API-key Claude credential has no standing trip" as NonEmptyStr }
-    ClaudeStateRootRef { root: _ } =>
-      ProviderStandingUnobserved { reason: "a Claude state root is a profile tree, not a credential a trip can observe" as NonEmptyStr }
+    }
   }
 }
 
-fn dispatch_actuator_claude_selection_observed(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
-  let instance = srv1_live_dashboard_instance()
-  match resolve_dispatch_selection(
-    inventory: inventory_with_claude_standing(
-      inventory: provider_inventory_for_instance(instance: instance),
-      standing: claude_observed_standing_for_instance(instance: instance),
-    ),
-    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
-    sizing_expectation: sizing_expectation,
-  ) {
-    DispatchSelectionResolved { receipt } =>
-      DispatchActuatorSelectionOk {
-        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
-        effort: receipt.applied_effort,
-        model: resolved_model_selection(resolved: receipt.resolved_selection),
-        process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+fn claude_credential_custody_source() -> DispatchCredentialSnapshot {
+  match claude_dispatch_credential() {
+    ClaudeOAuthTokenSecretRef { secret_ref } =>
+      match claude_code_custody_path(secret_ref: secret_ref) {
+        Present { value: path } => CredentialSnapshotTaken { path: path }
+        Absent =>
+          CredentialSnapshotRefused {
+            reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody"], "") as NonEmptyStr,
+          }
       }
-    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
-      DispatchActuatorSelectionRefused { reason: reason }
+    ClaudeApiKeySecretRef { secret_ref: _ } =>
+      CredentialSnapshotRefused { reason: "an API-key Claude credential has no dispatch spawn binding" as NonEmptyStr }
+    ClaudeStateRootRef { root: _ } =>
+      CredentialSnapshotRefused { reason: "a Claude state root is a profile tree, not a credential the spawn can bind" as NonEmptyStr }
+  }
+}
+
+fn dispatch_actuator_claude_selection_observed(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  let snapshot_path = dispatch_credential_snapshot_path_for_instance(
+    instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
+  )
+  match claude_credential_custody_source() {
+    CredentialSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
+    CredentialSnapshotTaken { path: custody } =>
+      match dispatch_credential_snapshot_take(source: custody, snapshot: snapshot_path) {
+        CredentialSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
+        CredentialSnapshotTaken { path: snapshot } =>
+          match resolve_dispatch_selection(
+            inventory: inventory_with_observed_standing(
+              inventory: provider_inventory_for_instance(instance: instance),
+              kind: ClaudeCliProvider,
+              standing: claude_observed_standing_from_snapshot(instance: instance, snapshot: snapshot),
+            ),
+            request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+            sizing_expectation: sizing_expectation,
+          ) {
+            DispatchSelectionResolved { receipt } =>
+              DispatchActuatorSelectionOk {
+                provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+                effort: receipt.applied_effort,
+                model: resolved_model_selection(resolved: receipt.resolved_selection),
+                process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+              }
+            DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+              if dispatch_credential_snapshot_discard(snapshot: snapshot) {
+                DispatchActuatorSelectionRefused { reason: reason }
+              } else {
+                DispatchActuatorSelectionRefused {
+                  reason: join([reason as String, "; and the credential snapshot ", snapshot as String, " could not be removed"], "") as NonEmptyStr,
+                }
+              }
+          }
+      }
   }
 }
 
@@ -591,67 +683,129 @@ fn codex_offer_provider_instance(inventory: ProviderInventory) -> ProviderInstan
   )
 }
 
-fn worker_turn_observed_inventory(instance: HostDashboardInstance, provider: DispatchCliProvider) -> ProviderInventory {
+// THE CODEX DRAW binds the custody CODEX_HOME directory itself, not a copy: a copied auth.json would
+// fork the refresh token, and the issuer refuses a reused one. So the shared one-snapshot rule
+// (dispatch_credential_snapshot_path_for_instance) is met by the directory and its flock instead --
+// admission observes it under the lock, the turn runs in it under the lock, and nothing else ever
+// writes it but codex under that lock. A turn that runs between admission and this attempt's spawn
+// may move the bucket the admission read; the spawn still binds the same credential, and a bucket
+// exhausted in that window fails the turn as the CLI reports it.
+fn codex_observed_inventory(instance: HostDashboardInstance) -> ProviderInventory {
   let inventory = provider_inventory_for_instance(instance: instance)
-  match provider {
-    CodexDispatchProvider =>
-      inventory_with_codex_standing(
-        inventory: inventory,
-        standing: match codex_offer_provider_instance(inventory: inventory) {
-          Absent => ProviderStandingUnobserved { reason: "this instance's inventory declares no codex offer" as NonEmptyStr }
-          Present { value: provider_instance } => codex_observed_standing_for_instance(instance: instance, provider: provider_instance)
-        },
-        account_state_root: codex_worker_turn_codex_home as FilePath,
-      )
-    CursorDispatchProvider =>
-      inventory_with_cursor_standing(inventory: inventory, standing: cursor_observed_standing_for_instance(instance: instance))
-    ClaudeCodeProvider => inventory
-    GunbcHarnessProvider => inventory
+  inventory_with_codex_state_root(
+    inventory: inventory_with_observed_standing(
+      inventory: inventory,
+      kind: CodexCliProvider,
+      standing: match codex_offer_provider_instance(inventory: inventory) {
+        Absent => ProviderStandingUnobserved { reason: "this instance's inventory declares no codex offer" as NonEmptyStr }
+        Present { value: provider_instance } => codex_observed_standing_for_instance(instance: instance, provider: provider_instance)
+      },
+    ),
+    account_state_root: codex_worker_turn_codex_home as FilePath,
+  )
+}
+
+fn worker_turn_selection_of(inventory: ProviderInventory, kind: ProviderKind, sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: provider_selection_request_for_kind(kind: kind),
+    sizing_expectation: sizing_expectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      DispatchActuatorSelectionOk {
+        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+        effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
+        process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+      DispatchActuatorSelectionRefused { reason: reason }
+  }
+}
+
+// THE CURSOR DRAW takes the attempt's credential snapshot first (shared rule above): the status probe
+// reads that snapshot and keeps it, and the spawn loads the same snapshot and removes it before exec. A
+// refused draw discards the snapshot it took.
+fn cursor_selection_observed(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  if (instance.host_identity as String) != (cursor_worker_turn_custody_host as String) {
+    DispatchActuatorSelectionRefused {
+      reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: cursor_worker_turn_custody_host, instance_host: instance.host_identity),
+    }
+  } else {
+    let snapshot_path = dispatch_credential_snapshot_path_for_instance(
+      instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
+    )
+    match dispatch_credential_snapshot_take(source: cursor_worker_turn_api_key_host_path, snapshot: snapshot_path) {
+      CredentialSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
+      CredentialSnapshotTaken { path: snapshot } => {
+        let selection = worker_turn_selection_of(
+          inventory: inventory_with_observed_standing(
+            inventory: provider_inventory_for_instance(instance: instance),
+            kind: CursorCliProvider,
+            standing: cursor_observed_standing_from_snapshot(snapshot: snapshot),
+          ),
+          kind: CursorCliProvider,
+          sizing_expectation: sizing_expectation,
+        )
+        match selection {
+          DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => selection
+          DispatchActuatorSelectionRefused { reason: _ } => {
+            let _ = dispatch_credential_snapshot_discard(snapshot: snapshot)
+            selection
+          }
+        }
+      }
+    }
   }
 }
 
 fn dispatch_actuator_worker_turn_selection_observed(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
-  match dispatch_cli_to_provider_kind(provider: provider) {
-    DispatchExecutorHasNoVendorKind { executor: e } =>
-      DispatchActuatorSelectionRefused {
-        reason: join(["worker-turn selection was asked for a non-vendor executor (", e, ")"], "") as NonEmptyStr,
-      }
-    DispatchProviderKindIs { kind: vendor_kind } =>
-      match resolve_dispatch_selection(
-        inventory: worker_turn_observed_inventory(instance: instance, provider: provider),
-        request: provider_selection_request_for_kind(kind: vendor_kind),
-        sizing_expectation: sizing_expectation,
-      ) {
-        DispatchSelectionResolved { receipt } =>
-          DispatchActuatorSelectionOk {
-            provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
-            effort: receipt.applied_effort,
-            model: resolved_model_selection(resolved: receipt.resolved_selection),
-            process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
-          }
-        DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
-          DispatchActuatorSelectionRefused { reason: reason }
-      }
+  match provider {
+    CodexDispatchProvider =>
+      worker_turn_selection_of(inventory: codex_observed_inventory(instance: instance), kind: CodexCliProvider, sizing_expectation: sizing_expectation)
+    CursorDispatchProvider =>
+      cursor_selection_observed(instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation)
+    ClaudeCodeProvider =>
+      DispatchActuatorSelectionRefused { reason: "the claude draw is observed by dispatch_actuator_claude_selection_observed" as NonEmptyStr }
+    GunbcHarnessProvider =>
+      DispatchActuatorSelectionRefused { reason: "worker-turn selection was asked for the gunbc harness, which has no vendor credential" as NonEmptyStr }
   }
 }
 
 fn dispatch_actuator_selection_for_request(
+  instance: HostDashboardInstance,
   request: DispatchExecutorRequest,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
   match request {
     ExecutorDefault => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
     ExecutorVendor { provider } =>
       match provider {
-        ClaudeCodeProvider => dispatch_actuator_claude_selection_observed(sizing_expectation: sizing_expectation)
+        ClaudeCodeProvider =>
+          dispatch_actuator_claude_selection_observed(
+            instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+          )
         CodexDispatchProvider =>
-          dispatch_actuator_worker_turn_selection_observed(instance: srv1_live_dashboard_instance(), provider: provider, sizing_expectation: sizing_expectation)
+          dispatch_actuator_worker_turn_selection_observed(
+            instance: instance, provider: provider, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+          )
         CursorDispatchProvider =>
-          dispatch_actuator_worker_turn_selection_observed(instance: srv1_live_dashboard_instance(), provider: provider, sizing_expectation: sizing_expectation)
+          dispatch_actuator_worker_turn_selection_observed(
+            instance: instance, provider: provider, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+          )
         GunbcHarnessProvider => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
       }
   }
@@ -2339,18 +2493,22 @@ fn dispatch_provider_inner_argv(
   }
 }
 
-// THE CLAUDE PROCESS RECEIVES THE CREDENTIAL THE SELECTION JUDGED (gunbc.dispatch_selection
-// claude_dispatch_credential). A setup-token secret is read from its srv1 custody file into the
-// child's environment by the fixed wrapper of gunbc.claude_code_credential -- never into argv, which
-// the process table exposes. A secret the credential roster names no custody for, and an API-key
-// credential (no dispatch path consumes one), refuse typed rather than falling back to the ambient
-// ~/.claude profile, which is a profile on disk and not the authority to act.
-fn claude_inner_argv_for_credential(credential: ClaudeCredentialRef, argv: List<String>) -> DispatchProviderInnerArgv {
+// THE CLAUDE PROCESS RECEIVES THE CREDENTIAL THE SELECTION JUDGED: the attempt's snapshot
+// (dispatch_credential_snapshot_path_for_instance), read into the child's environment by the
+// grammar-emitted wrapper of gunbc.claude_code_credential and removed before exec -- never argv, which
+// the process table exposes, and never the mutable custody file. A credential the roster names no
+// custody for, and an API-key or profile-tree credential, refuse typed rather than falling back to the
+// ambient ~/.claude profile, which is a profile on disk and not the authority to act.
+fn claude_inner_argv_for_credential(
+  credential: ClaudeCredentialRef,
+  snapshot: NonEmptyStr,
+  argv: List<String>,
+) -> DispatchProviderInnerArgv {
   match credential {
     ClaudeOAuthTokenSecretRef { secret_ref } =>
       match claude_code_custody_path(secret_ref: secret_ref) {
-        Present { value: path } =>
-          match claude_code_oauth_env_wrapped_command(token_path: path, argv: argv) {
+        Present { value: _ } =>
+          match claude_code_oauth_env_wrapped_command(token_path: snapshot, argv: argv, disposition: PosixShRemoveFileAfterRead) {
             ClaudeCodeEnvWrapped { command } => DispatchProviderInnerArgvReady { argv: argv_words(command: command) }
             ClaudeCodeEnvWrapRefused { reason } => ClaudeProviderCredentialUnbound { reason: reason }
           }
@@ -2382,6 +2540,9 @@ fn dispatch_provider_inner_argv_for_instance(
     ClaudeCodeProvider =>
       claude_inner_argv_for_credential(
         credential: claude_dispatch_credential(),
+        snapshot: dispatch_credential_snapshot_path_for_instance(
+          instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
+        ),
         argv: concat(
           [
             dispatch_capability_program(
@@ -2436,7 +2597,13 @@ fn dispatch_provider_inner_argv_for_instance(
           reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: cursor_worker_turn_custody_host, instance_host: instance.host_identity),
         }
       } else {
-        match cursor_worker_turn_argv(worktree_path: worktree_path, prompt: brief as NonEmptyStr) {
+        match cursor_worker_turn_argv(
+          key_path: dispatch_credential_snapshot_path_for_instance(
+            instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
+          ),
+          worktree_path: worktree_path,
+          prompt: brief as NonEmptyStr,
+        ) {
           CursorWorkerTurnArgvReady { argv } => DispatchProviderInnerArgvReady { argv: argv }
           CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
         }

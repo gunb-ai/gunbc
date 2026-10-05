@@ -18,6 +18,7 @@ import gunbc.roadmap_dispatch_actuator {
   CodexDispatchProvider,
   DispatchCliProvider,
   dispatch_provider_inner_argv_for_instance,
+  dispatch_credential_snapshot_path_for_instance,
 }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
@@ -68,15 +69,22 @@ fn has_pair(argv: List<String>, flag: String, value: String) -> Bool {
   string_contains(s: join(argv, separator: "\0"), pattern: join(["\0", flag, "\0", value], ""))
 }
 
-// THE CURSOR ROUTE on the custody host: the key is exported from the custody file inside the child
-// (the shared sh wrapper is the first word and the custody path is its argument), the agent runs
+// THE CURSOR ROUTE on the custody host: the key is exported inside the child from the attempt's
+// credential snapshot, never the mutable custody file (the shared sh wrapper is the first word and the
+// snapshot path is its argument), the agent runs
 // unattended in print mode against the attempt worktree, and no word of the argv is --api-key.
 test fn a_cursor_turn_on_srv2_binds_the_custody_key_through_the_env_wrapper() -> Bool {
   match ready_argv(inner: inner_for(instance: srv2_lab_dashboard_instance(), provider: CursorDispatchProvider)) {
     Absent => false
     Present { value: argv } =>
       first_word_is(argv: argv, word: "sh")
-        && any(argv, a => a == cursor_worker_turn_api_key_host_path as String)
+        && any(argv, a => a == dispatch_credential_snapshot_path_for_instance(
+             instance: srv2_lab_dashboard_instance(),
+             node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+             attempt_key: "0123456789abcdef",
+             provider: CursorDispatchProvider,
+           ) as String)
+        && !any(argv, a => a == cursor_worker_turn_api_key_host_path as String)
         && any(argv, a => a == "cursor-agent")
         && any(argv, a => a == "--print")
         && any(argv, a => a == "--force")

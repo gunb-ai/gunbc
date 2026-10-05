@@ -13,6 +13,7 @@ import extdeps.posix.sh_invocation {
   posix_sh_export_from_file_then_exec_command,
   PosixShExportExecReady,
   PosixShExportExecEmitRefused,
+  PosixShKeepFile,
   posix_sh_export_from_file_unreadable_exit,
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
@@ -44,8 +45,6 @@ import gunbc.codex_harness_credential {
   codex_harness_credential_context,
 }
 import gunbc.cursor_harness_credential {
-  cursor_worker_turn_custody_host,
-  cursor_worker_turn_api_key_host_path,
   cursor_status_reading,
   CursorStatusReading,
   CursorStatusAuthenticated,
@@ -159,34 +158,31 @@ fn cursor_standing_from_status(reading: CursorStatusReading) -> ProviderStanding
   }
 }
 
-fn cursor_observed_standing_for_instance(instance: HostDashboardInstance) -> ProviderStanding {
-  if (instance.host_identity as String) != (cursor_worker_turn_custody_host as String) {
-    ProviderStandingUnobserved {
-      reason: join(["the cursor worker-turn credential is held only on ", cursor_worker_turn_custody_host as String, "; this instance runs on ", instance.host_identity as String], "") as NonEmptyStr,
-    }
-  } else {
-    match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
-      PosixShellNameRefused { spelling } =>
-        ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
-      PosixShellNameAdmitted { name } =>
-        match posix_sh_export_from_file_then_exec_command(
-          name: name,
-          path: cursor_worker_turn_api_key_host_path,
-          command: [cursor_cli_program, "status", "--format", "json"],
-        ) {
-          PosixShExportExecEmitRefused { name: n } =>
-            ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
-          PosixShExportExecReady { command } => {
-            let run = run_shell_command_observe(command: command, transport: LocalExec)
-            if run.exit_code == posix_sh_export_from_file_unreadable_exit {
-              ProviderStandingUnobserved {
-                reason: join(["the cursor custody key ", cursor_worker_turn_api_key_host_path as String, " is unreadable on this host: ", run.stderr], "") as NonEmptyStr,
-              }
-            } else {
-              cursor_standing_from_status(reading: cursor_status_reading(stdout: run.stdout))
+// The status probe reads the attempt's credential snapshot and keeps it for the spawn
+// (PosixShKeepFile); the snapshot is taken by the caller (gunbc.roadmap_dispatch_actuator).
+fn cursor_observed_standing_from_snapshot(snapshot: NonEmptyStr) -> ProviderStanding {
+  match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
+    PosixShellNameRefused { spelling } =>
+      ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
+    PosixShellNameAdmitted { name } =>
+      match posix_sh_export_from_file_then_exec_command(
+        name: name,
+        path: snapshot,
+        command: [cursor_cli_program, "status", "--format", "json"],
+        disposition: PosixShKeepFile,
+      ) {
+        PosixShExportExecEmitRefused { name: n } =>
+          ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
+        PosixShExportExecReady { command } => {
+          let run = run_shell_command_observe(command: command, transport: LocalExec)
+          if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+            ProviderStandingUnobserved {
+              reason: join(["the cursor credential snapshot ", snapshot as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
             }
+          } else {
+            cursor_standing_from_status(reading: cursor_status_reading(stdout: run.stdout))
           }
         }
-    }
+      }
   }
 }

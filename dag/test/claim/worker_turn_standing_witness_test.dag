@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import std.claim_evidence { RecordedFactId }
+import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
 import gunbc.codex_app_server_press { parse_account_trip_stdout_for_tests, CodexAccountStandingEvidence }
 import gunbc.provider_standing_probe_bridge { provider_standing_bundle_from_codex_account_evidence }
@@ -23,7 +24,8 @@ import gunbc.dispatch_selection {
   OfferClaude,
   OfferCursor,
   provider_inventory_for_instance,
-  inventory_with_codex_standing,
+  inventory_with_observed_standing,
+  inventory_with_codex_state_root,
   resolve_dispatch_selection,
   provider_selection_request_for_kind,
   DispatchSelectionResolved,
@@ -92,9 +94,8 @@ fn first_codex_instance(inventory: ProviderInventory) -> ProviderInstance? {
 
 fn codex_selection_reason(standing: ProviderStanding) -> String {
   match resolve_dispatch_selection(
-    inventory: inventory_with_codex_standing(
-      inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance()),
-      standing: standing,
+    inventory: inventory_with_codex_state_root(
+      inventory: inventory_with_observed_standing(inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance()), kind: CodexCliProvider, standing: standing),
       account_state_root: codex_worker_turn_codex_home as FilePath,
     ),
     request: provider_selection_request_for_kind(kind: CodexCliProvider),
@@ -132,9 +133,8 @@ test fn the_exhausted_custody_trip_is_not_selection_eligible_and_the_healthy_one
 // THE CODEX OFFER IS JUDGED ON THE CUSTODY CODEX_HOME, not the instance's ambient account state root,
 // so changing the ambient login cannot change the verdict or the root the spawn binds.
 test fn the_observed_codex_offer_names_the_custody_codex_home() -> Bool {
-  let inventory = inventory_with_codex_standing(
-    inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance()),
-    standing: observed_codex_standing(rate_limits_line: rate_limits_capacity_line),
+  let inventory = inventory_with_codex_state_root(
+    inventory: inventory_with_observed_standing(inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance()), kind: CodexCliProvider, standing: observed_codex_standing(rate_limits_line: rate_limits_capacity_line)),
     account_state_root: codex_worker_turn_codex_home as FilePath,
   )
   any(inventory.offers, offer =>
@@ -171,6 +171,8 @@ test fn worker_turn_draws_on_a_non_custody_instance_refuse() -> Bool {
   let codex = match dispatch_actuator_worker_turn_selection_observed(
     instance: srv1_live_dashboard_instance(),
     provider: CodexDispatchProvider,
+    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    attempt_key: "0123456789abcdef",
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
@@ -179,6 +181,8 @@ test fn worker_turn_draws_on_a_non_custody_instance_refuse() -> Bool {
   let cursor = match dispatch_actuator_worker_turn_selection_observed(
     instance: srv1_live_dashboard_instance(),
     provider: CursorDispatchProvider,
+    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    attempt_key: "0123456789abcdef",
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
