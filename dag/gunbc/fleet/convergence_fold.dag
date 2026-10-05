@@ -430,10 +430,29 @@ fn precondition_refusal<M, R, C, I>(
   }
 }
 
+// WHERE THE LINE IS: still open, stopped at a refused (or unreached) instance, or stopped at an
+// INCOMPLETE one. One sum, so a stop without a key, or a key without its kind, has no constructor.
+type LineState
+  = LineOpen
+  | LineStoppedAt { at: StepInstanceKey }
+  | LineIncompleteAt { at: StepInstanceKey }
+
 type LedgerWalk<R, C, I> {
-  stopped_at: StepInstanceKey?
-  stopped_incomplete: Bool
+  line: LineState
   instances: List<StepInstanceStanding<R, C, I>>
+}
+
+fn line_after<R, C, I>(standing: StepInstanceStanding<R, C, I>) -> LineState {
+  match standing {
+    InstanceConverged { key: _, receipt: _ } => LineOpen
+    InstanceRefused { key: k, cause: _ } => LineStoppedAt { at: k }
+    InstanceIncomplete { key: k, cause: _ } => LineIncompleteAt { at: k }
+    InstanceNotReached { key: k, blocked_by: _ } => LineStoppedAt { at: k }
+  }
+}
+
+fn not_reached_after<R, C, I>(acc: LedgerWalk<R, C, I>, key: StepInstanceKey, blocker: StepInstanceKey) -> LedgerWalk<R, C, I> {
+  LedgerWalk { line: acc.line, instances: concat(acc.instances, [InstanceNotReached { key: key, blocked_by: blocker }]) }
 }
 
 fn instance_outcome<R, C, I>(outcomes: List<StepOutcome<R, C, I>>, key: StepInstanceKey, projection: ConvergenceReceiptProjection<R>) -> StepOutcome<R, C, I>? {
@@ -445,7 +464,7 @@ fn instance_outcome<R, C, I>(outcomes: List<StepOutcome<R, C, I>>, key: StepInst
 // NotReached, each naming the instance that blocked it. When instances span several subjects, an
 // independent instance is not a dependent and is not stopped by this rule. An instance with no outcome refuses as StepOutcomeAbsent; it is never read as converged.
 // An INCOMPLETE instance stops the line the same way, because in a single-subject run every later
-// instance depends on it, and the walk remembers which kind of stop it was.
+// instance depends on it, and the line state records which kind of stop it was.
 fn walk_instance<M, R, C, I>(
   acc: LedgerWalk<R, C, I>,
   ranked: RankedStep<M>,
@@ -455,9 +474,10 @@ fn walk_instance<M, R, C, I>(
   projection: ConvergenceReceiptProjection<R>,
 ) -> LedgerWalk<R, C, I> {
   let key = step_instance_key(run: run, step: ranked.step.identity, subject: subject)
-  match acc.stopped_at {
-    Present { value: blocker } => LedgerWalk { stopped_at: acc.stopped_at, stopped_incomplete: acc.stopped_incomplete, instances: concat(acc.instances, [InstanceNotReached { key: key, blocked_by: blocker }]) }
-    Absent => {
+  match acc.line {
+    LineStoppedAt { at: blocker } => not_reached_after(acc: acc, key: key, blocker: blocker)
+    LineIncompleteAt { at: blocker } => not_reached_after(acc: acc, key: key, blocker: blocker)
+    LineOpen => {
       let standing = match instance_outcome(outcomes: outcomes, key: key, projection: projection) {
         Absent => InstanceRefused { key: key, cause: StepOutcomeAbsent }
         Present { value: o } =>
@@ -471,24 +491,12 @@ fn walk_instance<M, R, C, I>(
               }
           }
       }
-      let stop = match standing {
-        InstanceConverged { key: _, receipt: _ } => none
-        InstanceRefused { key: k, cause: _ } => Present { value: k }
-        InstanceIncomplete { key: k, cause: _ } => Present { value: k }
-        InstanceNotReached { key: k, blocked_by: _ } => Present { value: k }
-      }
-      let incomplete = match standing {
-        InstanceIncomplete { key: _, cause: _ } => true
-        InstanceConverged { key: _, receipt: _ } => false
-        InstanceRefused { key: _, cause: _ } => false
-        InstanceNotReached { key: _, blocked_by: _ } => false
-      }
-      LedgerWalk { stopped_at: stop, stopped_incomplete: incomplete, instances: concat(acc.instances, [standing]) }
+      LedgerWalk { line: line_after(standing: standing), instances: concat(acc.instances, [standing]) }
     }
   }
 }
 
-// THE RUN FOLD: one ledger per run, each instance converged, refused or not reached, in the admitted
+// THE RUN FOLD: one ledger per run, each instance converged, refused, incomplete or not reached, in the admitted
 // order. The verdict is derived from the ledger and names the instance the line stopped at.
 fn fold_convergence_run<M, R, C, I>(
   plan: AdmittedConvergencePlan<M>,
@@ -500,12 +508,13 @@ fn fold_convergence_run<M, R, C, I>(
   match first_outcome_refusal(run: run, subject: subject, plan: plan, keys: map(outcomes, o => outcome_key(outcome: o, projection: projection))) {
     Present { value: r } => RunOutcomesRefused { cause: r }
     Absent => {
-      let walked = fold(plan.steps, init: LedgerWalk { stopped_at: none, stopped_incomplete: false, instances: [] }, f: (acc, s) =>
+      let walked = fold(plan.steps, init: LedgerWalk { line: LineOpen, instances: [] }, f: (acc, s) =>
         walk_instance(acc: acc, ranked: s, run: run, subject: subject, outcomes: outcomes, projection: projection))
       let ledger = ConvergenceRunLedger { run: run, subject: subject, order_authority: plan.authority, instances: walked.instances }
-      match walked.stopped_at {
-        Absent => RunConverged { run: ConvergedRun { ledger: ledger } }
-        Present { value: k } => if walked.stopped_incomplete { RunIncomplete { ledger: ledger, at: k } } else { RunStopped { ledger: ledger, at: k } }
+      match walked.line {
+        LineOpen => RunConverged { run: ConvergedRun { ledger: ledger } }
+        LineStoppedAt { at: k } => RunStopped { ledger: ledger, at: k }
+        LineIncompleteAt { at: k } => RunIncomplete { ledger: ledger, at: k }
       }
     }
   }
