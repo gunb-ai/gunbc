@@ -282,3 +282,15 @@ test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bo
     && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "bbbb2222", awaited: awaited) { Absent => false  Present { value: why } => string_contains(s: why, pattern: "replaced between the wait and the readback") })
     && (match awaited_binding_refusal(host: "srv5" as HostIdentity, verified_id: "aaaa1111", awaited: awaited) { Absent => false  Present { value: _ } => true })
 }
+
+// THE SERVED WORDS ARE QUOTED (fleet-converge run 37304585650): the line rendered unquoted as
+// `echo served|yes`, which the shell reads as a pipe into the `yes` command -- an endless writer that kept
+// the front-door leg's ssh channel open for 87 minutes after a successful probe, until the step timeout.
+// The field separator is a shell metacharacter, so every line that prints it must quote it. RED: the
+// unquoted spelling, or any separator outside quotes in the post-probe report.
+test fn w_the_front_door_report_quotes_the_field_separator() -> Bool {
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name)
+  string_contains(s: d, pattern: "echo \"served|yes\"")
+    && string_contains(s: d, pattern: "echo \"served|no\"")
+    && !string_contains(s: d, pattern: "echo served|")
+}
