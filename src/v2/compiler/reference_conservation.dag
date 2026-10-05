@@ -30,8 +30,10 @@ import v2.std.diagnostic {
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
+  None,
   Outcome,
   Rejected,
+  Some,
   Textual,
   WholeFile,
   bind_outcome,
@@ -166,6 +168,10 @@ type ReferenceConservationNormalizeRefusal {
   located: String
 }
 
+// `advisories` IS THE ACCEPTED SUBJECT'S ADVISORIES, KEPT RATHER THAN MATCHED AWAY. A parse or
+// normalization that accepts may still attach non-fatal diagnostics; they used to be dropped at
+// reference_conservation_of_subject_admitted, so the census could not say an accepted module
+// carried any. They do not enter holds/accepted: an advisory is not a conservation fact.
 type ReferenceConservationReport {
   path: String
   authored: Int
@@ -180,6 +186,28 @@ type ReferenceConservationReport {
   dropped: FreeMonoid<DroppedReference>
   unmeasured: FreeMonoid<ReferenceConservationUnmeasured>
   normalize_refusal: Optional<ReferenceConservationNormalizeRefusal>
+  advisories: Diagnostics
+}
+
+// The normalized subject's diagnostics already carry the parse's (normalization binds on the parse
+// outcome), so the accepted arm reads them once, from the normalized outcome.
+fn report_with_advisories(report: ReferenceConservationReport, advisories: Diagnostics) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal,
+    advisories: advisories
+  }
 }
 
 fn reference_conservation_holds(report: ReferenceConservationReport) -> Bool {
@@ -584,7 +612,8 @@ fn report_from_population(path: String, population: AuthoredAtomPopulation) -> R
     import_channel: population.import_channel,
     dropped: Empty,
     unmeasured: population.unreadable,
-    normalize_refusal: optional_absent()
+    normalize_refusal: optional_absent(),
+    advisories: None
   }
 }
 
@@ -602,7 +631,8 @@ fn report_snoc_drop(report: ReferenceConservationReport, atom: AuthoredAtom, cau
     import_channel: report.import_channel,
     dropped: list_snoc_item(xs: report.dropped, item: DroppedReference { atom: atom, cause: cause }),
     unmeasured: report.unmeasured,
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -620,7 +650,8 @@ fn report_count_conserved(report: ReferenceConservationReport) -> ReferenceConse
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -638,7 +669,8 @@ fn report_count_refused(report: ReferenceConservationReport) -> ReferenceConserv
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -656,7 +688,8 @@ fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceCo
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -939,7 +972,8 @@ fn report_with_channels(report: ReferenceConservationReport, role_excluded: Int,
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -968,7 +1002,8 @@ fn report_with_role_gaps(report: ReferenceConservationReport, roles: OccurrenceR
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -1067,7 +1102,8 @@ fn reference_conservation_unmeasured(path: String, diagnostics: NonEmptyDiagnost
     import_channel: 0,
     dropped: Empty,
     unmeasured: Cons { head: TokenizeOrParseRefused { diagnostics: diagnostics }, tail: Empty },
-    normalize_refusal: optional_absent()
+    normalize_refusal: optional_absent(),
+    advisories: None
   }
 }
 
@@ -1128,7 +1164,8 @@ fn reference_conservation_role_table_unadmitted(path: String, unlisted: List<Sym
     import_channel: 0,
     dropped: Empty,
     unmeasured: Cons { head: OccurrenceRoleTableUnadmitted { unlisted: unlisted, unknown: unknown, unkeyed: unkeyed }, tail: Empty },
-    normalize_refusal: optional_absent()
+    normalize_refusal: optional_absent(),
+    advisories: None
   }
 }
 
@@ -1152,13 +1189,16 @@ fn reference_conservation_of_subject_admitted(
       let population = authored_atom_population(artifact: artifact, token_classes: token_classes)
       let roles = occurrence_roles_of_admitted(tree: artifact.tree, admission: admission)
       match subject.normalized {
-        Accepted { value: tree, diagnostics: _ } =>
-          match roles {
-            OccurrenceRolesRead { roles: r } =>
-              conservation_against_tree(path: subject.path, population: population, tree: tree, roles: r)
-            OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
-              reference_conservation_role_table_unadmitted(path: subject.path, unlisted: u, unknown: k, unkeyed: x)
-          }
+        Accepted { value: tree, diagnostics: advisories } =>
+          report_with_advisories(
+            report: match roles {
+              OccurrenceRolesRead { roles: r } =>
+                conservation_against_tree(path: subject.path, population: population, tree: tree, roles: r)
+              OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
+                reference_conservation_role_table_unadmitted(path: subject.path, unlisted: u, unknown: k, unkeyed: x)
+            },
+            advisories: advisories
+          )
         Rejected { diagnostics: d } =>
           let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: artifact.span_index)
           match roles {
@@ -1184,7 +1224,8 @@ fn report_with_normalize_refusal(report: ReferenceConservationReport, refusal: R
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
-    normalize_refusal: optional_present(value: refusal)
+    normalize_refusal: optional_present(value: refusal),
+    advisories: report.advisories
   }
 }
 
@@ -1202,7 +1243,8 @@ fn report_snoc_unmeasured(report: ReferenceConservationReport, item: ReferenceCo
     import_channel: report.import_channel,
     dropped: report.dropped,
     unmeasured: list_snoc_item(xs: report.unmeasured, item: item),
-    normalize_refusal: report.normalize_refusal
+    normalize_refusal: report.normalize_refusal,
+    advisories: report.advisories
   }
 }
 
@@ -1300,11 +1342,23 @@ fn reference_conservation_refusal_text(report: ReferenceConservationReport) -> S
   }
 }
 
+// After the summary and dropped-reference lines, one `advisory <path> <reason>` line per advisory
+// the accepted subject carried, in chain order: the census's per-path record of what an accepted
+// module's front end attached without refusing.
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
   let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured)) + " refusal=" + reference_conservation_refusal_text(report: report)
-  fold_list(
+  let with_dropped = fold_list(
     xs: report.dropped,
     empty: Cons { head: summary, tail: Empty },
     cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_line(path: report.path, row: row)) }
   )
+  match report.advisories {
+    None => with_dropped
+    Some { diagnostics: d } =>
+      fold_list(
+        xs: d.tail,
+        empty: list_snoc_item(xs: with_dropped, item: "advisory " + report.path + " " + symbol_lexeme(sym: d.head.reason)),
+        cons: fn(acc, x) { list_snoc_item(xs: acc, item: "advisory " + report.path + " " + symbol_lexeme(sym: x.reason)) }
+      )
+  }
 }
