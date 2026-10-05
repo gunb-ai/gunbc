@@ -12,19 +12,27 @@ import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_service_evidence {
   AttemptBinding, AttemptBindingOutcome, AttemptBound, AttemptUnlaunched, AttemptBindingRefused,
   ServiceEvidenceReader, MeteringReader, SessionPlacementReader, SharedComputationReader, ResultReturnedReader,
-  ServiceEvidenceReading, EvidenceObserved, EvidenceRecordAbsent, EvidenceRefused,
+  ServiceEvidenceReading, EvidenceObserved, EvidenceRecordAbsent, EvidenceNotOwed, EvidenceRefused,
   ServiceEvidenceOwed, OwedToPendingReader, OwedToUnbuiltProducer,
-  PendingServiceReader, PendingMetering, PendingSharedComputation, PendingResultReturned,
-  ServiceEvidenceStanding, StandingObserved, StandingOwed, StandingRefused, PendingReader, ReaderRecordAbsent, UnbuiltProducer,
+  PendingServiceReader, PendingSharedComputation,
+  ServiceEvidenceStanding, StandingObserved, StandingOwed, StandingNotOwed, StandingRefused, PendingReader, ReaderRecordAbsent, UnbuiltProducer,
   PlacementObserved, WorkloadClassObserved,
   ServiceEvidenceReadings, ServiceEvidenceReceipt, ServiceEvidenceEntry, ServiceEvidenceInputs,
-  SessionPlacementRead,
+  SessionPlacementRead, MeteringRead, ResultReturnedRead, MeteredTokenUsage,
   service_evidence_bind_attempt, service_evidence_readings, service_evidence_entries,
   service_evidence_unsourced_fields, service_evidence_closing_probe, service_evidence_receipt_wire, service_evidence_receipt_digest,
   ServiceEvidenceSnapshotDecode, SnapshotDecoded, SnapshotInvalid,
   service_evidence_snapshot_decode, service_evidence_binding_defect,
 }
-import std.measure { kibibyte, kibibyte_count }
+import std.measure { kibibyte, kibibyte_count, second_count, token_count, token_count_value }
+import gunbc.roadmap_attempt_metering {
+  AttemptMeteringObservation, AttemptMeteringRecord, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
+  MeteredRoleUsage, MeteredWorker, TokensObserved, SeatReleased, SeatStillHeld, ComputeNotAttributable, compute_not_attributable_reason,
+}
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
+import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved }
+import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, ResultVerificationFailed, LegacyEmailPrincipal, RoadmapEventId }
+import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
@@ -96,9 +104,16 @@ fn bound(o: AttemptBindingOutcome) -> Bool {
 // The node's list, in its order: the oracle the product's ordered view is checked against.
 data node_field_list: String = "workload_class,resource_request,wait_time,execution_time,completion_time,cache_hits,cache_misses,cache_shared_misses,cache_corrupt_hit_refusals,placement,seat_utilization,artifact_bytes,egress,failure_attribution,recovery_action,operator_intervention_time,hardware_health,billable_usage,billable_credits,workspace_recovery_point,workspace_recovery_time"
 
-fn inputs_with(o: SessionPlacementObservation) -> ServiceEvidenceInputs {
+// The G3 and G4 inputs default to their readers' record-absent arms for the bound attempt.
+fn inputs_with(attempt: String, o: SessionPlacementObservation) -> ServiceEvidenceInputs {
+  inputs_of(o: o, m: MeteringNotYetWritten, rr: ResultNotReturned { attempt_key: attempt }, close: SnapshotNotOpened)
+}
+
+fn inputs_of(o: SessionPlacementObservation, m: AttemptMeteringObservation, rr: ResultReturnedObservation, close: CarrierSnapshotClose) -> ServiceEvidenceInputs {
   ServiceEvidenceInputs {
     session_placement: SessionPlacementRead { observation: o },
+    metering: MeteringRead { observation: m },
+    result_returned: ResultReturnedRead { observation: rr, close: close },
   }
 }
 
@@ -107,7 +122,7 @@ fn binding_for(node: String, attempt: String) -> AttemptBinding {
 }
 
 fn readings_with(node: String, attempt: String, o: SessionPlacementObservation) -> ServiceEvidenceReadings {
-  service_evidence_readings(r: ServiceEvidenceReceipt { binding: binding_for(node: node, attempt: attempt), inputs: inputs_with(o: o) })
+  service_evidence_readings(r: ServiceEvidenceReceipt { binding: binding_for(node: node, attempt: attempt), inputs: inputs_with(attempt: attempt, o: o) })
 }
 
 fn readings_on_main() -> ServiceEvidenceReadings {
@@ -125,9 +140,7 @@ fn reader_is(a: ServiceEvidenceReader, b: ServiceEvidenceReader) -> Bool {
 
 fn pending_is(a: PendingServiceReader, b: PendingServiceReader) -> Bool {
   match a {
-    PendingMetering => match b { PendingMetering => true  _ => false }
-    PendingSharedComputation => match b { PendingSharedComputation => true  _ => false }
-    PendingResultReturned => match b { PendingResultReturned => true  _ => false }
+    PendingSharedComputation => match b { PendingSharedComputation => true }
   }
 }
 
@@ -140,23 +153,27 @@ fn owed_unbuilt(o: ServiceEvidenceOwed, owner: String) -> Bool {
 }
 
 fn is_refused<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceRefused { reason: _ } => true  EvidenceObserved { value: _ } => false  EvidenceRecordAbsent => false }
+  match r { EvidenceRefused { reason: _ } => true  EvidenceObserved { value: _ } => false  EvidenceRecordAbsent => false  EvidenceNotOwed { reason: _ } => false }
 }
 
 fn not_observed<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => true  EvidenceRecordAbsent => true }
+  match r { EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => true  EvidenceRecordAbsent => true  EvidenceNotOwed { reason: _ } => true }
 }
 
 fn record_absent<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceRecordAbsent => true  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false }
+  match r { EvidenceRecordAbsent => true  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false  EvidenceNotOwed { reason: _ } => false }
+}
+
+fn is_not_owed<T>(r: ServiceEvidenceReading<T>) -> Bool {
+  match r { EvidenceNotOwed { reason: _ } => true  EvidenceRecordAbsent => false  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false }
 }
 
 fn standing_owed(x: ServiceEvidenceEntry) -> Bool {
-  match x.standing { StandingOwed { producer: _ } => true  StandingObserved { value: _, source: _ } => false  StandingRefused { reason: _ } => false }
+  match x.standing { StandingOwed { producer: _ } => true  StandingObserved { value: _, source: _ } => false  StandingNotOwed { source: _, reason: _ } => false  StandingRefused { reason: _ } => false }
 }
 
 fn standing_observed_by_g5(x: ServiceEvidenceEntry) -> Bool {
-  match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: SessionPlacementReader)  StandingOwed { producer: _ } => false  StandingRefused { reason: _ } => false }
+  match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: SessionPlacementReader)  StandingOwed { producer: _ } => false  StandingNotOwed { source: _, reason: _ } => false  StandingRefused { reason: _ } => false }
 }
 
 // ── the binding: one discriminating red per refusal ──
@@ -220,27 +237,29 @@ test fn the_ordered_view_is_exactly_the_nodes_twenty_one_fields_in_order() -> Bo
   join(map(service_evidence_entries(r: readings_on_main()), x => x.field), ",") == node_field_list
 }
 
-// With no placement record yet and every other reader not on main, every field is owed to its
-// named producer and none is observed; the closing contract is red on the 18 unsourced fields.
+// With no placement, metering or result record yet and the shared-computation reader not on main,
+// every field is owed to its named producer and none is observed; the closing contract is red on the
+// 14 unsourced fields.
 test fn with_no_placement_record_every_field_is_owed_to_its_named_producer() -> Bool {
   let r = readings_on_main()
   all(service_evidence_entries(r: r), x => standing_owed(x: x))
     && record_absent(r: r.placement) && record_absent(r: r.workload_class) && record_absent(r: r.resource_request)
     && owed_pending(o: r.cache_corrupt_hit_refusals, reader: PendingSharedComputation)
-    && owed_pending(o: r.billable_usage, reader: PendingMetering)
-    && owed_pending(o: r.failure_attribution, reader: PendingResultReturned)
+    && record_absent(r: r.execution_time) && record_absent(r: r.billable_usage)
+    && record_absent(r: r.completion_time) && record_absent(r: r.failure_attribution)
     && owed_unbuilt(o: r.hardware_health, owner: "fleet-health-0-live-receipt")
     && owed_unbuilt(o: r.egress, owner: "service-evidence-capture")
     && owed_unbuilt(o: r.wait_time, owner: "service-evidence-capture")
     && owed_unbuilt(o: r.seat_utilization, owner: "service-evidence-capture")
-    && count(service_evidence_unsourced_fields(r: r)) == 18
+    && count(service_evidence_unsourced_fields(r: r)) == 14
 }
 
-// The pending PR is derived from the reader, so the canonical wire names #13073 for metering
-// without any receipt carrying the number.
-test fn the_wire_names_each_pending_readers_pull_request() -> Bool {
+// The pending PR is derived from the reader, so the canonical wire names #13097 for shared
+// computation without any receipt carrying the number; the landed G3 and G4 readers are named by no
+// pull request at all.
+test fn the_wire_names_only_the_pending_readers_pull_request() -> Bool {
   let w = service_evidence_receipt_wire(r: service_evidence_closing_probe())
-  string_contains(s: w, pattern: "13073") && string_contains(s: w, pattern: "13097") && string_contains(s: w, pattern: "13075")
+  string_contains(s: w, pattern: "13097") && !string_contains(s: w, pattern: "13073") && !string_contains(s: w, pattern: "13075")
     && string_contains(s: w, pattern: "reader_record_absent")
 }
 
@@ -322,8 +341,8 @@ test fn a_bound_placement_observes_placement_workload_class_and_granted_resource
     && all(filter(service_evidence_entries(r: r), x => x.field == "placement" || x.field == "workload_class" || x.field == "resource_request"), x => standing_observed_by_g5(x: x))
     && owed_unbuilt(o: r.wait_time, owner: "service-evidence-capture")
     && owed_unbuilt(o: r.seat_utilization, owner: "service-evidence-capture")
-    && count(service_evidence_unsourced_fields(r: r)) == 18
-    && string_contains(s: service_evidence_receipt_wire(r: ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: g5_observe(slot: g5_held(), record_node: node_a, record_key: key_a)) }), pattern: "\"kib\": 8388608")
+    && count(service_evidence_unsourced_fields(r: r)) == 14
+    && string_contains(s: service_evidence_receipt_wire(r: ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(attempt: key_a, o: g5_observe(slot: g5_held(), record_node: node_a, record_key: key_a)) }), pattern: "\"kib\": 8388608")
 }
 
 // DISCRIMINATING REDS: no foreign, unreadable or mis-bound placement yields an observed field.
@@ -371,7 +390,7 @@ test fn the_pinned_digest_follows_the_binding() -> Bool {
 // requires the whole wire to re-encode to the persisted bytes. canonical_wire is the exact wire the
 // encoder writes for the probe-shaped receipt below; the first claim holds that inhabitance, and every
 // other claim derives its subject from that literal by one targeted edit, so each pays one decode.
-data canonical_wire: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"g5-node-a\", \"attempt_key\": \"feedfacefeedface\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"pr\": 13073}}, {\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"pr\": 13075}}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"pr\": 13075}}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"pr\": 13073}}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+data canonical_wire: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"g5-node-a\", \"attempt_key\": \"feedfacefeedface\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}, {\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
 
 data placement_owed: String = "{\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}"
 
@@ -384,7 +403,7 @@ fn snapshot_admits(wire: String) -> Bool {
 fn edited(from: String, to: String) -> String { replace(s: canonical_wire, from: from, to: to) }
 
 test fn the_encoder_writes_the_canonical_wire_literal() -> Bool {
-  service_evidence_receipt_wire(r: ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: SessionPlacementAbsent { unit: "gunbc-session-g5-node-a" }) }) == canonical_wire
+  service_evidence_receipt_wire(r: ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(attempt: key_a, o: SessionPlacementAbsent { unit: "gunbc-session-g5-node-a" }) }) == canonical_wire
 }
 
 test fn the_canonical_wire_decodes_with_its_binding_and_revision() -> Bool {
@@ -419,7 +438,7 @@ test fn a_malformed_producer_does_not_decode() -> Bool {
 }
 
 test fn a_pending_reader_with_the_wrong_pull_request_does_not_decode() -> Bool {
-  !snapshot_admits(wire: edited(from: "\"pr\": 13073", to: "\"pr\": 1"))
+  !snapshot_admits(wire: edited(from: "\"pr\": 13097", to: "\"pr\": 1"))
 }
 
 test fn a_missing_or_malformed_launch_revision_does_not_decode() -> Bool {
@@ -483,3 +502,161 @@ test fn another_instance_or_an_unlaunched_attempt_is_a_binding_defect() -> Bool 
     && (match service_evidence_binding_defect(instance_id: "i1", node_id: node_a, attempt_key: key_a, launch_revision: "0000000000000000000000000000000000000000", binding: AttemptUnlaunched) { Present { value: _ } => true  Absent => false })
 }
 
+// ── G3 BOUND (gunbc.roadmap_attempt_metering, landed): the reader's observation supplied at the
+// interface. Only a FINAL record is observed; the record's (node, attempt) is re-checked. ──
+
+fn g3_record(node: String, attempt: String) -> AttemptMeteringRecord {
+  AttemptMeteringRecord {
+    node_id: node,
+    attempt_key: attempt,
+    metered_at: 2000,
+    sealed_roster: Present { value: "roster-digest" },
+    roles: [MeteredRoleUsage {
+      role: MeteredWorker,
+      tokens: TokensObserved { rounds: 3, input_tokens: token_count(count: 1200), output_tokens: token_count(count: 340), terminal: true },
+      seat: SeatReleased { pointer: HarnessSeatPointer { partition: "session-memory-srv2" as NonEmptyStr as PartitionId, reference: "seat-1" as NonEmptyStr, owner: "worker" as NonEmptyStr }, granted_at: 1000, released_at: 1600 },
+    }],
+    compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
+  }
+}
+
+fn g3_readings(attempt: String, m: AttemptMeteringObservation) -> ServiceEvidenceReadings {
+  service_evidence_readings(r: ServiceEvidenceReceipt {
+    binding: binding_for(node: node_a, attempt: key_a),
+    inputs: inputs_of(o: SessionPlacementAbsent { unit: "u" }, m: m, rr: ResultNotReturned { attempt_key: key_a }, close: SnapshotNotOpened),
+  })
+}
+
+// POSITIVE CONTROL: a final meter of the bound attempt observes execution_time as the seat time held
+// (1600 - 1000 = 600 s) and billable_usage as the input and output tokens, attributed to G3.
+test fn a_final_meter_observes_execution_time_and_billable_usage_from_g3() -> Bool {
+  let r = g3_readings(attempt: key_a, m: MeteringObserved { record: g3_record(node: node_a, attempt: key_a) })
+  (match r.execution_time { EvidenceObserved { value } => second_count(s: value) == 600  _ => false })
+    && (match r.billable_usage { EvidenceObserved { value } => token_count_value(t: value.input_tokens) == 1200 && token_count_value(t: value.output_tokens) == 340  _ => false })
+    && all(filter(service_evidence_entries(r: r), x => x.field == "execution_time" || x.field == "billable_usage"), x => match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: MeteringReader)  _ => false })
+}
+
+// A provisional record can still change and a record not yet written is nothing: both are a record
+// not yet written, never an observed meter. A refused reading is refused.
+test fn a_provisional_or_unwritten_meter_is_record_absent_and_a_refused_meter_is_refused() -> Bool {
+  let p = g3_readings(attempt: key_a, m: MeteringProvisional { record: g3_record(node: node_a, attempt: key_a) })
+  let n = g3_readings(attempt: key_a, m: MeteringNotYetWritten)
+  let x = g3_readings(attempt: key_a, m: MeteringRefused { cause: "the launch roster is unreadable" })
+  record_absent(r: p.execution_time) && record_absent(r: p.billable_usage)
+    && record_absent(r: n.execution_time) && record_absent(r: n.billable_usage)
+    && is_refused(r: x.execution_time) && is_refused(r: x.billable_usage)
+}
+
+// DISCRIMINATING RED, FOREIGN ATTEMPT: a final record naming another attempt of the node is refused,
+// and so is a provisional one -- it never reads as this attempt's absence.
+test fn a_meter_for_another_attempt_than_the_binding_is_refused() -> Bool {
+  is_refused(r: g3_readings(attempt: key_a, m: MeteringObserved { record: g3_record(node: node_a, attempt: key_b) }).execution_time)
+    && is_refused(r: g3_readings(attempt: key_a, m: MeteringObserved { record: g3_record(node: node_b, attempt: key_a) }).billable_usage)
+    && is_refused(r: g3_readings(attempt: key_a, m: MeteringProvisional { record: g3_record(node: node_a, attempt: key_b) }).execution_time)
+}
+
+// ── G4 BOUND (gunbc.roadmap.roadmap_result_returned, landed) ──
+
+fn g4_outcome() -> AttemptResultOutcome {
+  ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr }
+}
+
+fn g4_observed(node: String, attempt: String) -> ResultReturnedObservation {
+  ResultReturnedObserved {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    attempt: attempt as NonEmptyStr,
+    event: "evt-result" as NonEmptyStr as RoadmapEventId,
+    claim: "evt-claim" as NonEmptyStr as RoadmapEventId,
+    return_to: LegacyEmailPrincipal { email: "requester@example.invalid" as NonEmptyStr, authentication_unestablished: true },
+    outcome: g4_outcome(),
+    recorded_at: "2026-10-03T10:00:00Z",
+  }
+}
+
+fn g4_readings(rr: ResultReturnedObservation, close: CarrierSnapshotClose) -> ServiceEvidenceReadings {
+  service_evidence_readings(r: ServiceEvidenceReceipt {
+    binding: binding_for(node: node_a, attempt: key_a),
+    inputs: inputs_of(o: SessionPlacementAbsent { unit: "u" }, m: MeteringNotYetWritten, rr: rr, close: close),
+  })
+}
+
+// POSITIVE CONTROL: a returned result of the bound attempt observes completion_time as its recorded
+// instant and failure_attribution as its outcome arm, attributed to G4.
+test fn a_returned_result_observes_completion_time_and_failure_attribution_from_g4() -> Bool {
+  let r = g4_readings(rr: g4_observed(node: node_a, attempt: key_a), close: SnapshotClosed)
+  (match r.completion_time { EvidenceObserved { value } => (value.recorded_at as String) == "2026-10-03T10:00:00Z"  _ => false })
+    && (match r.failure_attribution { EvidenceObserved { value } => value == g4_outcome()  _ => false })
+    && all(filter(service_evidence_entries(r: r), x => x.field == "completion_time" || x.field == "failure_attribution"), x => match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: ResultReturnedReader)  _ => false })
+}
+
+// NOT OWED IS ITS OWN STANDING: an attempt with no requester owes no result. It is neither a record
+// not yet written nor observed, the wire writes it as not_owed from G4, and it is sourced.
+test fn a_result_not_owed_is_its_own_standing_not_record_absent() -> Bool {
+  let r = g4_readings(rr: ResultNotOwed { reason: "the attempt was launched autonomously, so there is no requester" }, close: SnapshotNotOpened)
+  is_not_owed(r: r.completion_time) && is_not_owed(r: r.failure_attribution)
+    && !record_absent(r: r.completion_time)
+    && all(filter(service_evidence_entries(r: r), x => x.field == "completion_time" || x.field == "failure_attribution"), x => match x.standing { StandingNotOwed { source, reason: _ } => reader_is(a: source, b: ResultReturnedReader)  _ => false })
+    && count(service_evidence_unsourced_fields(r: r)) == 14
+}
+
+// DISCRIMINATING REDS, FOREIGN ATTEMPT: a result naming another attempt or node, an absence reported
+// for another attempt, an unreadable result, and a leaked event-log snapshot are refused.
+test fn a_result_for_another_attempt_or_an_unclosed_snapshot_is_refused() -> Bool {
+  is_refused(r: g4_readings(rr: g4_observed(node: node_a, attempt: key_b), close: SnapshotClosed).completion_time)
+    && is_refused(r: g4_readings(rr: g4_observed(node: node_b, attempt: key_a), close: SnapshotClosed).failure_attribution)
+    && is_refused(r: g4_readings(rr: ResultNotReturned { attempt_key: key_b }, close: SnapshotNotOpened).completion_time)
+    && is_refused(r: g4_readings(rr: ResultReturnedUnobserved { step: "history", reason: "unordered" }, close: SnapshotNotOpened).failure_attribution)
+    && is_refused(r: g4_readings(rr: g4_observed(node: node_a, attempt: key_a), close: SnapshotCloseFailed { worktree: "/tmp/w", exit_code: 1, stderr: "busy" }).completion_time)
+}
+
+// INHABITANCE: the encoder's own wire for observed G3 and G4 values decodes through the snapshot
+// decoder, so the decoder accepts exactly the typed carriers these readers produce.
+test fn the_encoders_wire_with_observed_g3_and_g4_values_decodes() -> Bool {
+  match service_evidence_snapshot_decode(wire: service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
+    binding: binding_for(node: node_a, attempt: key_a),
+    inputs: inputs_of(o: SessionPlacementAbsent { unit: "u" }, m: MeteringObserved { record: g3_record(node: node_a, attempt: key_a) }, rr: g4_observed(node: node_a, attempt: key_a), close: SnapshotClosed),
+  })) {
+    SnapshotDecoded { snapshot } => length(snapshot.fields) == 21
+    SnapshotInvalid { reason: _ } => false
+  }
+}
+
+// ── THE SNAPSHOT for the G3 and G4 fields: each claim is one targeted edit of canonical_wire ──
+data execution_owed: String = "{\"field\": \"execution_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}"
+data execution_observed: String = "{\"field\": \"execution_time\", \"standing\": \"observed\", \"value\": {\"seconds\": 600}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}"
+data billable_owed: String = "{\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}"
+data completion_owed: String = "{\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}"
+data failure_owed: String = "{\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}"
+data failure_observed: String = "{\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"verification_failed\", \"head\": \"52c56a8\", \"cause\": \"verdict\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"
+data completion_not_owed: String = "{\"field\": \"completion_time\", \"standing\": \"not_owed\", \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"reason\": \"autonomous\"}"
+
+test fn an_observed_execution_time_from_g3_decodes() -> Bool {
+  snapshot_admits(wire: edited(from: execution_owed, to: execution_observed))
+}
+
+test fn an_observed_failure_attribution_from_g4_decodes() -> Bool {
+  snapshot_admits(wire: edited(from: failure_owed, to: failure_observed))
+}
+
+test fn a_not_owed_completion_time_from_g4_decodes() -> Bool {
+  snapshot_admits(wire: edited(from: completion_owed, to: completion_not_owed))
+}
+
+// WRONG READER: a valid execution_time carrier attributed to the placement reader.
+test fn an_observed_execution_time_from_the_wrong_reader_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: execution_owed, to: replace(s: execution_observed, from: "gunbc.roadmap_attempt_metering metering_observe_for_attempt", to: "gunbc.roadmap_session_placement session_placement_observe_for_attempt")))
+}
+
+// WRONG PRODUCER FOR THE FIELD: completion_time owed to the metering reader's absent record.
+test fn a_g4_field_owed_to_the_g3_reader_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: completion_owed, to: replace(s: completion_owed, from: "gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt", to: "gunbc.roadmap_attempt_metering metering_observe_for_attempt")))
+}
+
+// NOT OWED ONLY FROM A READER THAT CAN ESTABLISH IT: G3 has no not-owed arm.
+test fn a_not_owed_standing_from_the_metering_reader_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: billable_owed, to: "{\"field\": \"billable_usage\", \"standing\": \"not_owed\", \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"reason\": \"autonomous\"}"))
+}
+
+test fn a_failure_attribution_with_an_unknown_outcome_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: failure_owed, to: replace(s: failure_observed, from: "verification_failed", to: "maybe")))
+}
