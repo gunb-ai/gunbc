@@ -1,0 +1,78 @@
+module test.claim.workspace_transcript_rate_real_execution
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.measure { measure_count }
+import std.algebra { Cons, Empty }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.fabric.workspace_source { WorkspaceSourceRoot }
+import gunbc.fabric.workspace_transcript_rate {
+  workspace_transcript_rate_sample_wet, workspace_transcript_rate_interval, TranscriptAppendInterval,
+  TranscriptRateSampled, TranscriptRateSampleRefused, TranscriptRateSample,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE OF THE PURE BOUNDARIES IN test.claim.workspace_transcript_rate (DESIGN 3: supplied
+// inputs never remove the last execution of the real path). A real agent-state tree is planted in a
+// directory the witness mints and removes, and the production sampler -- the real find walk, the
+// pack's real matcher -- reads it, is written to, and reads it again. The route is asserted, not only
+// the answer: the transcript grows by exactly the bytes written, a new transcript appears at its
+// whole size, a file outside the transcript class is never observed however much it grows, and a
+// transcript rewritten shorter is a truncation. A root that does not exist refuses through find's
+// own status.
+
+fn with_temp_dir(scenario: fn(String) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path as String)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn root_at(dir: String) -> WorkspaceSourceRoot {
+  WorkspaceSourceRoot { label: "claude-agent-state-witness", path: join([dir, "/.claude"], "") as NonEmptyStr, build_output: [] }
+}
+
+fn interval_of(before: TranscriptRateSample, after: TranscriptRateSample) -> List<TranscriptAppendInterval> {
+  match before {
+    TranscriptRateSampleRefused { refusals: _ } => []
+    TranscriptRateSampled { at: a, files: fa } =>
+      match after {
+        TranscriptRateSampleRefused { refusals: _ } => []
+        TranscriptRateSampled { at: b, files: fb } => [workspace_transcript_rate_interval(before: fa, before_at: a, after: fb, after_at: b)]
+      }
+  }
+}
+
+test fn a_real_tree_grows_gains_a_transcript_and_truncates_one_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let projects = join([dir, "/.claude/projects/p"], "")
+    let planted = shell.Mkdir.Parents(path: projects as FilePath).success
+      && Filesystem.Write(path: join([projects, "/s.jsonl"], ""), content: "0123456789").success
+      && Filesystem.Write(path: join([projects, "/t.jsonl"], ""), content: "0123456789").success
+      && Filesystem.Write(path: join([dir, "/.claude/settings.json"], ""), content: "{}").success
+    let first = workspace_transcript_rate_sample_wet(roots: [root_at(dir: dir)], label: "transcript-rate-witness-first")
+    let written = Filesystem.Write(path: join([projects, "/s.jsonl"], ""), content: "0123456789abcdefghij").success
+      && Filesystem.Write(path: join([projects, "/t.jsonl"], ""), content: "0123").success
+      && Filesystem.Write(path: join([projects, "/u.jsonl"], ""), content: "01234").success
+      && Filesystem.Write(path: join([dir, "/.claude/settings.json"], ""), content: "{\"a\":\"a much longer settings file\"}").success
+    let second = workspace_transcript_rate_sample_wet(roots: [root_at(dir: dir)], label: "transcript-rate-witness-second")
+    planted && written && (match interval_of(before: first, after: second) {
+      Cons { head: row, tail: Empty } =>
+        measure_count(m: row.bytes_appended) == 15
+          && row.files_grown == 1 && row.files_created == 1 && length(row.truncations) == 1 && row.active_writers == 3
+      Cons { head: _, tail: Cons { head: _, tail: _ } } => false
+      Empty => false
+    })
+  })
+}
+
+test fn a_root_that_does_not_exist_refuses_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    match workspace_transcript_rate_sample_wet(roots: [root_at(dir: dir)], label: "transcript-rate-witness-absent") {
+      TranscriptRateSampleRefused { refusals: rs } => length(rs) == 1
+      TranscriptRateSampled { at: _, files: _ } => false
+    }
+  })
+}
