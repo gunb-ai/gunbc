@@ -1,6 +1,10 @@
 module v2.test.long.cwc_resolution_probe
 
 import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalize { normalize }
+import v2.compiler.tokenize { tokenize }
+import v2.std.diagnostic { diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -99,13 +103,12 @@ test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
   }
 }
 
+// A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
+// This claim is RED today: normalize and resolve both accept the source. It is the one claim over
+// this shape; its negation used to stand beside it as a second test fn, so one of the pair was red
+// whatever normalize did, and neither discriminated.
 test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
-
   cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
-}
-
-test fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
-  !cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
 }
 
 test fn cwc_norm_review_event_accepts() -> Bool {
@@ -126,6 +129,44 @@ fn cwc_resolve_accepts(src: String) -> Bool {
 
 test fn cwc_cwc_module_resolve_accepts() -> Bool {
   cwc_resolve_accepts(src: cwc_src_cwc_module)
+}
+
+// The single-tree door (v2.compiler.resolve build_program_namespace) binds a module's own variants
+// and record declarations. Each was refused on that door before it carried the module's path and
+// record names: a variant in value position as resolve_reason_unbound_symbol, a headless record
+// literal as resolve_anonymous_record_expected_type_not_record.
+data cwc_src_variant_value: String = "module probe\ntype U = U1 | U2\ndata u: U = U1\n"
+data cwc_src_record_headless: String = "module probe\ntype U = U1 | U2\ntype W { a: U, b: U }\ndata w: W = { a: U1, b: U2 }\n"
+data cwc_src_variant_absent: String = "module probe\ntype U = U1 | U2\ndata u: U = U3\n"
+data cwc_src_headless_at_coproduct: String = "module probe\ntype U = U1 | U2\ndata u: U = { a: U1 }\n"
+
+fn cwc_resolve_refuses_with(src: String, reason: Symbol) -> Bool {
+  let lm = dag_language_model()
+  match cwc_norm_of(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.resolve.resolve(tree: tree, lm: lm) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_single_tree_variant_value_resolves() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_variant_value)
+}
+
+test fn cwc_single_tree_headless_record_resolves() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_record_headless)
+}
+
+// Controls: the door still refuses what it should, at the same reasons.
+test fn cwc_single_tree_undeclared_variant_refuses() -> Bool {
+  cwc_resolve_refuses_with(src: cwc_src_variant_absent, reason: ^resolve_reason_unbound_symbol)
+}
+
+test fn cwc_single_tree_headless_at_coproduct_refuses() -> Bool {
+  cwc_resolve_refuses_with(src: cwc_src_headless_at_coproduct, reason: ^resolve_anonymous_record_expected_type_not_record)
 }
 
 test fn cwc_review_normalized_has_disj() -> Bool {
