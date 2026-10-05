@@ -52,9 +52,16 @@ type WorkspaceSourceRoot {
   build_output: List<NonEmptyStr>
 }
 
+// THE SRV1 HOST PATHS, pinned rather than guessed (warm-badger-442, 2026-10-05, read from a session's
+// mountinfo on node srv1). Agent state is per auth slot on the host -- /home/briansrls/.claude@<slot>,
+// mounted at /session-home/.claude inside session containers -- so the slot is part of the declared
+// input: @gmail3 is the slot whose state the 2026-10-02 figures measured. Codex keeps its sessions
+// beside its auth file, so the root is the sessions directory, and auth.json is excluded by name
+// regardless.
 data workspace_source_roots: List<WorkspaceSourceRoot> = [
   WorkspaceSourceRoot { label: "gunbc-clone", path: "/home/briansrls/gunbc", build_output: ["target/"] },
-  WorkspaceSourceRoot { label: "claude-session-home", path: "/session-home/.claude", build_output: [] },
+  WorkspaceSourceRoot { label: "claude-agent-state-gmail3", path: "/home/briansrls/.claude@gmail3", build_output: [] },
+  WorkspaceSourceRoot { label: "codex-sessions", path: "/home/briansrls/.codex/sessions", build_output: [] },
 ]
 
 data workspace_source_pack_host: NonEmptyStr = "srv1"
@@ -63,11 +70,24 @@ data workspace_source_pack_host: NonEmptyStr = "srv1"
 //
 // Each rule tests ONE PATH SEGMENT, and a path is excluded when any of its segments matches -- so a
 // rule naming a directory (.ssh, .aws) excludes everything beneath it, and a rule naming a file
-// pattern excludes that file wherever it sits. The pair rule names a directory by its parent, as
-// .config/gh does. Matching is case-sensitive, as the glob spellings it transcribes are.
+// excludes that file wherever it sits. The pair rule names a directory by its parent, as .config/gh
+// does. Matching is case-sensitive.
+//
+// EXACT NAMES, NOT SUBSTRINGS. An earlier row excluded every segment CONTAINING "token" or
+// "credentials", which dropped 48 and 3 tracked source files of the gunbc clone (every module whose
+// name mentions a token, such as dag/gunbc/auth/access_token_source.dag), so a stage-0 measurement
+// would have described a smaller workspace than the operator's and the stage-1 byte-equality would
+// have covered less of it. Each rule below names a credential file or directory that a tool writes
+// under that exact name (the Claude login, Codex's auth file, netrc and git/npm/pypi credential
+// files, SSH and GnuPG homes, cloud CLI configs, key and certificate files by suffix, dotenv files),
+// and no tracked file of the clone bears any of them (checked at this change).
+//
+// WHAT A NAME RULE CANNOT DO, stated rather than implied: a secret stored under some other name, or
+// pasted into an agent transcript's CONTENT, is not caught by any path rule. The pack's guarantee is
+// that every file the receipt lists as excluded was excluded, never that the carried bytes hold no
+// secret.
 type WorkspaceExclusionRule
   = SegmentEquals { text: NonEmptyStr }
-  | SegmentContains { text: NonEmptyStr }
   | SegmentPrefix { text: NonEmptyStr }
   | SegmentSuffix { text: NonEmptyStr }
   | SegmentPair { parent: NonEmptyStr, child: NonEmptyStr }
@@ -79,17 +99,23 @@ type WorkspaceExclusion {
 
 data workspace_credential_exclusions: List<WorkspaceExclusion> = [
   WorkspaceExclusion { spelling: "~/.claude/.credentials.json", rule: SegmentEquals { text: ".credentials.json" } },
-  WorkspaceExclusion { spelling: "*credentials*", rule: SegmentContains { text: "credentials" } },
+  WorkspaceExclusion { spelling: "~/.codex/auth.json", rule: SegmentEquals { text: "auth.json" } },
   WorkspaceExclusion { spelling: ".netrc", rule: SegmentEquals { text: ".netrc" } },
-  WorkspaceExclusion { spelling: "*token*", rule: SegmentContains { text: "token" } },
+  WorkspaceExclusion { spelling: ".git-credentials", rule: SegmentEquals { text: ".git-credentials" } },
+  WorkspaceExclusion { spelling: ".npmrc", rule: SegmentEquals { text: ".npmrc" } },
+  WorkspaceExclusion { spelling: ".pypirc", rule: SegmentEquals { text: ".pypirc" } },
   WorkspaceExclusion { spelling: "*.pem", rule: SegmentSuffix { text: ".pem" } },
   WorkspaceExclusion { spelling: "*.key", rule: SegmentSuffix { text: ".key" } },
-  WorkspaceExclusion { spelling: "id_*", rule: SegmentPrefix { text: "id_" } },
-  WorkspaceExclusion { spelling: ".config/gh", rule: SegmentPair { parent: ".config", child: "gh" } },
+  WorkspaceExclusion { spelling: "id_rsa", rule: SegmentEquals { text: "id_rsa" } },
+  WorkspaceExclusion { spelling: "id_ecdsa", rule: SegmentEquals { text: "id_ecdsa" } },
+  WorkspaceExclusion { spelling: "id_ed25519", rule: SegmentEquals { text: "id_ed25519" } },
+  WorkspaceExclusion { spelling: "id_dsa", rule: SegmentEquals { text: "id_dsa" } },
   WorkspaceExclusion { spelling: ".ssh", rule: SegmentEquals { text: ".ssh" } },
   WorkspaceExclusion { spelling: ".gnupg", rule: SegmentEquals { text: ".gnupg" } },
   WorkspaceExclusion { spelling: ".aws", rule: SegmentEquals { text: ".aws" } },
+  WorkspaceExclusion { spelling: ".config/gh", rule: SegmentPair { parent: ".config", child: "gh" } },
   WorkspaceExclusion { spelling: ".config/gcloud", rule: SegmentPair { parent: ".config", child: "gcloud" } },
+  WorkspaceExclusion { spelling: ".docker/config.json", rule: SegmentPair { parent: ".docker", child: "config.json" } },
   WorkspaceExclusion { spelling: ".env", rule: SegmentEquals { text: ".env" } },
   WorkspaceExclusion { spelling: ".env.*", rule: SegmentPrefix { text: ".env." } },
 ]
@@ -101,7 +127,6 @@ fn workspace_exclusion_spellings(exclusions: List<WorkspaceExclusion>) -> String
 fn workspace_rule_matches_segment(rule: WorkspaceExclusionRule, segment: String, parent: String?) -> Bool {
   match rule {
     SegmentEquals { text: t } => segment == (t as String)
-    SegmentContains { text: t } => string_contains(s: segment, pattern: t as String)
     SegmentPrefix { text: t } => starts_with(s: segment, prefix: t as String)
     SegmentSuffix { text: t } => ends_with(s: segment, suffix: t as String)
     SegmentPair { parent: p, child: c } =>

@@ -100,10 +100,13 @@ test fn the_session_credentials_file_is_refused() -> Bool {
 
 test fn every_listed_credential_shape_is_refused() -> Bool {
   excluded_by(path: "home/u/.netrc") == ".netrc"
-    && excluded_by(path: "home/u/gh_token.txt") == "*token*"
+    && excluded_by(path: "home/briansrls/.codex/auth.json") == "~/.codex/auth.json"
+    && excluded_by(path: "home/u/.git-credentials") == ".git-credentials"
+    && excluded_by(path: "home/u/.npmrc") == ".npmrc"
+    && excluded_by(path: "home/u/.docker/config.json") == ".docker/config.json"
     && excluded_by(path: "home/u/tls/server.pem") == "*.pem"
     && excluded_by(path: "home/u/tls/server.key") == "*.key"
-    && excluded_by(path: "home/u/keys/id_ed25519") == "id_*"
+    && excluded_by(path: "home/u/keys/id_ed25519") == "id_ed25519"
     && excluded_by(path: "home/u/.config/gh/hosts.yml") == ".config/gh"
     && excluded_by(path: "home/u/.ssh/known_hosts") == ".ssh"
     && excluded_by(path: "home/u/.gnupg/pubring.kbx") == ".gnupg"
@@ -111,7 +114,6 @@ test fn every_listed_credential_shape_is_refused() -> Bool {
     && excluded_by(path: "home/u/.config/gcloud/configurations/config_default") == ".config/gcloud"
     && excluded_by(path: "home/u/repo/.env") == ".env"
     && excluded_by(path: "home/u/repo/.env.local") == ".env.*"
-    && excluded_by(path: "home/u/repo/service_credentials.json") == "*credentials*"
 }
 
 test fn ordinary_workspace_paths_are_not_excluded() -> Bool {
@@ -119,6 +121,17 @@ test fn ordinary_workspace_paths_are_not_excluded() -> Bool {
     && excluded_by(path: "home/u/.configx/gh/hosts.yml") == ""
     && excluded_by(path: "home/u/repo/environment.dag") == ""
     && excluded_by(path: "home/u/repo/keyboard.md") == ""
+}
+
+// THE EXCLUSION IS BY EXACT NAME: source files whose names merely MENTION a credential are carried.
+// Red for the substring rule this replaced -- every one of these was dropped by "*token*" or
+// "*credentials*", which made the measured workspace smaller than the operator's.
+test fn source_files_that_mention_credentials_are_carried() -> Bool {
+  excluded_by(path: "home/briansrls/gunbc/dag/gunbc/auth/access_token_source.dag") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/extdeps/cloudflare/account_api_tokens.dag") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/std/credentials.dag") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/extdeps/bmc/pid_control_decode.dag") == ""
+    && excluded_by(path: "home/u/.docker/daemon.json") == ""
 }
 
 data tally_root: WorkspaceSourceRoot = WorkspaceSourceRoot { label: "clone", path: "/home/u/gunbc", build_output: ["target/"] }
