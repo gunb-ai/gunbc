@@ -671,6 +671,9 @@ import v2.std.algebra { any }
 // iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Unshared,
 // each claim frame paid its own tokenize -> parse -> normalize, over the required floor's new-witness
 // enrolment margin (v2.workflow.required_floor claim_eval_step_budget_for_identity).
+// THE CWC RESOLUTION PROBE ROW IS THE SAME GROUND AT TWELVE SPECIMENS: v2.test.long.cwc_resolution_probe
+// cwc_verdicts tokenizes, parses and normalizes (and for six, resolves) inline modules and stores twelve
+// Bools. Unshared, each claim frame paid its own front end, over the new-witness enrolment margin.
 // THE IF-ARM READER DIFFERENTIAL ROW IS THE SAME GROUND AT FOUR SPECIMENS:
 // v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses four inline
 // modules and stores three censuses (counts and rendered rows, no Node), portable for the same reason.
@@ -957,6 +960,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.else_arm_nested_if.eam_outcomes",
   "v2.test.claim.body_lowering.if_arm_position.iap_verdicts",
   "v2.test.claim.cli.if_arm_reader_differential.iard_fixture_censuses",
+  "v2.test.long.cwc_resolution_probe.cwc_verdicts",
   "v2.test.claim.body_lowering.arrow_lambda_block_body.alb_verdicts",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",

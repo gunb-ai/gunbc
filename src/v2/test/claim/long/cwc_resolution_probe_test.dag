@@ -38,11 +38,11 @@ fn cwc_norm_accepts(src: String) -> Bool {
 }
 
 test fn cwc_norm_two_variant_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_two)
+  cwc_verdicts().norm_two_variant_accepts
 }
 
 test fn cwc_norm_three_variant_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_three)
+  cwc_verdicts().norm_three_variant_accepts
 }
 
 fn cwc_tree_has_disj_algebra() -> NodeFold<Bool> {
@@ -97,10 +97,7 @@ fn cwc_norm_rejects(src: String) -> Bool {
 }
 
 test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_scalar) {
-    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
-    Rejected { diagnostics: _ } => false
-  }
+  cwc_verdicts().non_coproduct_rhs_passes_through
 }
 
 // A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
@@ -108,11 +105,11 @@ test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
 // this shape; its negation used to stand beside it as a second test fn, so one of the pair was red
 // whatever normalize did, and neither discriminated.
 test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
-  cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
+  cwc_verdicts().malformed_nary_coproduct_normalize_rejects
 }
 
 test fn cwc_norm_review_event_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_review)
+  cwc_verdicts().norm_review_event_accepts
 }
 
 fn cwc_resolve_accepts(src: String) -> Bool {
@@ -128,7 +125,7 @@ fn cwc_resolve_accepts(src: String) -> Bool {
 }
 
 test fn cwc_cwc_module_resolve_accepts() -> Bool {
-  cwc_resolve_accepts(src: cwc_src_cwc_module)
+  cwc_verdicts().cwc_module_resolve_accepts
 }
 
 // The single-tree door (v2.compiler.resolve build_program_namespace) binds a module's own variants
@@ -153,30 +150,118 @@ fn cwc_resolve_refuses_with(src: String, reason: Symbol) -> Bool {
 }
 
 test fn cwc_single_tree_variant_value_resolves() -> Bool {
-  cwc_resolve_accepts(src: cwc_src_variant_value)
+  cwc_verdicts().single_tree_variant_value_resolves
 }
 
 test fn cwc_single_tree_headless_record_resolves() -> Bool {
-  cwc_resolve_accepts(src: cwc_src_record_headless)
+  cwc_verdicts().single_tree_headless_record_resolves
 }
 
 // Controls: the door still refuses what it should, at the same reasons.
 test fn cwc_single_tree_undeclared_variant_refuses() -> Bool {
-  cwc_resolve_refuses_with(src: cwc_src_variant_absent, reason: ^resolve_reason_unbound_symbol)
+  cwc_verdicts().single_tree_undeclared_variant_refuses
 }
 
 test fn cwc_single_tree_headless_at_coproduct_refuses() -> Bool {
-  cwc_resolve_refuses_with(src: cwc_src_headless_at_coproduct, reason: ^resolve_anonymous_record_expected_type_not_record)
+  cwc_verdicts().single_tree_headless_at_coproduct_refuses
 }
 
 test fn cwc_review_normalized_has_disj() -> Bool {
+  cwc_verdicts().review_normalized_has_disj
+}
+
+test fn cwc_review_disj_has_four_arms() -> Bool {
+  cwc_verdicts().review_disj_has_four_arms
+}
+
+// EVERY VERDICT IS COMPUTED ONCE. Each source pays a full tokenize -> parse -> normalize (and
+// resolve, for the resolve claims); computed per claim frame, each claim ran over the required
+// floor's new-witness margin (v2.workflow.required_floor claim_eval_step_budget_for_identity).
+// The stored value is Bools only (no Node, no closure), so it is portable, and cwc_verdicts is
+// enrolled warm in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm.
+type CwcVerdicts {
+  norm_two_variant_accepts: Bool,
+  norm_three_variant_accepts: Bool,
+  non_coproduct_rhs_passes_through: Bool,
+  malformed_nary_coproduct_normalize_rejects: Bool,
+  norm_review_event_accepts: Bool,
+  cwc_module_resolve_accepts: Bool,
+  single_tree_variant_value_resolves: Bool,
+  single_tree_headless_record_resolves: Bool,
+  single_tree_undeclared_variant_refuses: Bool,
+  single_tree_headless_at_coproduct_refuses: Bool,
+  review_normalized_has_disj: Bool,
+  review_disj_has_four_arms: Bool,
+}
+
+fn cwc_verdicts() -> CwcVerdicts {
+  CwcVerdicts {
+    norm_two_variant_accepts: cwc_verdict_norm_two_variant_accepts(),
+    norm_three_variant_accepts: cwc_verdict_norm_three_variant_accepts(),
+    non_coproduct_rhs_passes_through: cwc_verdict_non_coproduct_rhs_passes_through(),
+    malformed_nary_coproduct_normalize_rejects: cwc_verdict_malformed_nary_coproduct_normalize_rejects(),
+    norm_review_event_accepts: cwc_verdict_norm_review_event_accepts(),
+    cwc_module_resolve_accepts: cwc_verdict_cwc_module_resolve_accepts(),
+    single_tree_variant_value_resolves: cwc_verdict_single_tree_variant_value_resolves(),
+    single_tree_headless_record_resolves: cwc_verdict_single_tree_headless_record_resolves(),
+    single_tree_undeclared_variant_refuses: cwc_verdict_single_tree_undeclared_variant_refuses(),
+    single_tree_headless_at_coproduct_refuses: cwc_verdict_single_tree_headless_at_coproduct_refuses(),
+    review_normalized_has_disj: cwc_verdict_review_normalized_has_disj(),
+    review_disj_has_four_arms: cwc_verdict_review_disj_has_four_arms(),
+  }
+}
+
+fn cwc_verdict_norm_two_variant_accepts() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_two)
+}
+
+fn cwc_verdict_norm_three_variant_accepts() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_three)
+}
+
+fn cwc_verdict_non_coproduct_rhs_passes_through() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_scalar) {
+    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cwc_verdict_malformed_nary_coproduct_normalize_rejects() -> Bool {
+  cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
+}
+
+fn cwc_verdict_norm_review_event_accepts() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_review)
+}
+
+fn cwc_verdict_cwc_module_resolve_accepts() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_cwc_module)
+}
+
+fn cwc_verdict_single_tree_variant_value_resolves() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_variant_value)
+}
+
+fn cwc_verdict_single_tree_headless_record_resolves() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_record_headless)
+}
+
+fn cwc_verdict_single_tree_undeclared_variant_refuses() -> Bool {
+  cwc_resolve_refuses_with(src: cwc_src_variant_absent, reason: ^resolve_reason_unbound_symbol)
+}
+
+fn cwc_verdict_single_tree_headless_at_coproduct_refuses() -> Bool {
+  cwc_resolve_refuses_with(src: cwc_src_headless_at_coproduct, reason: ^resolve_anonymous_record_expected_type_not_record)
+}
+
+fn cwc_verdict_review_normalized_has_disj() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
     Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn cwc_review_disj_has_four_arms() -> Bool {
+fn cwc_verdict_review_disj_has_four_arms() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
     Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
     Rejected { diagnostics: _ } => false
