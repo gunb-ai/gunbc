@@ -1,0 +1,30 @@
+module test.claim.parse_test_python_grammar
+
+data python_extended_fn_source: String = "def choose(x):\n    y = x + 1\n    if y > 0:\n        return y\n    return 0"
+
+fn python_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn python_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: python_extended_fn_source,
+    file: ^python_parse_file,
+    rules: python_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: stream, diagnostics: _ } =>
+      parse(tokens: stream, grammar: python_grammar())
+  }
+}
+
+// Python lex/grammar accepts an extended function with assignment, if, and indented returns.
+// Formerly the data row `claim_python_extended_function_parses: TestClaim = EqualsClaim`, which no runner executes (the
+// required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
+// v2.test.parse census (gunbc#13372).
+test fn claim_python_extended_function_parses_holds() -> Bool {
+  (python_parse_accepted(out: python_tokenize_and_parse())) == true
+}
