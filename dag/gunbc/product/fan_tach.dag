@@ -2,7 +2,7 @@ module product.fan_tach
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { RevolutionsPerMinute, rpm, rpm_count }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // GENERIC FAN-TACH VOCABULARY, OWNED ABOVE ANY PARTICULAR FLEET. It lives here rather than in
 // gunbc.* because the judgement that consumes it must not take its input types from one fleet's

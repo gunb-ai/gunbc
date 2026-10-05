@@ -3,7 +3,7 @@ module test.claim.fan_tach_assessment_witness
 import std.types { Bool, Int, List, NonEmptyStr }
 import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
 import std.measure { rpm }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet_fan_tach_expectation {
   HostFanTachExpectation,
   chassis_tach_expected,

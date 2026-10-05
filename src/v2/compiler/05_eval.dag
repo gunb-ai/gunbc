@@ -1,5 +1,6 @@
 module v2.compiler.eval
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
   DerivedGrounding,
@@ -28,7 +29,6 @@ import v2.std.arrow_signature {
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -1822,7 +1822,16 @@ fn eval_value_node(
   match interpreter {
     ValueRuntimeInterpreter { interpreter: value } =>
       value.allocate_literal(node, environment)
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -1907,7 +1916,61 @@ fn eval_transform_node(
                             interpretation: interpretation,
                             environment: call_environment
                           )
-                        _ =>
+                        RecordConstructBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        DeclarationReferenceBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        ParameterReferenceBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        LexicalReferenceBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        ComputationBody { behavior: _ } =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        FunctionValueBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        UnsupportedArrowBody =>
                           eval_runtime_node(
                             node: body,
                             tree: tree,
@@ -1953,7 +2016,16 @@ fn eval_transform_node(
       } else {
         transform.call_primitive(node, args, environment)
       }
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -1998,7 +2070,16 @@ fn eval_branch_node_eval(
           )
         }
       )
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -2046,7 +2127,16 @@ fn eval_loop_node(
           )
         }
       )
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BindRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -2185,7 +2275,23 @@ fn eval_match_node_eval(
           )
         }
       )
-    _ =>
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+    BindRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(
         eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
       )
@@ -3173,7 +3279,7 @@ fn run_test_claim_assert_decided(
           } else {
             verdict_fail(actual: actual)
           }
-        _ => verdict_fail(actual: actual)
+        Accepted { value: _, diagnostics: _ } => verdict_fail(actual: actual)
       }
   }
 }
@@ -3274,7 +3380,7 @@ fn run_test_claim_runtime_assert(
             actual: actual,
             at: at
           )
-        _ => verdict_fail(actual: actual)
+        Accepted { value: _, diagnostics: _ } => verdict_fail(actual: actual)
       }
   }
 }

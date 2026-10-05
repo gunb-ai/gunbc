@@ -31,7 +31,7 @@ import extdeps.crypto.hash { sha256_digest_content_hash }
 import std.effect_grant { Write, NamespacePosition, CodeNameTree }
 import product.capacity.lease { LeaseGrant, LeasePolicy, ReleaseLaw, QuiescenceRequired, lease_grant, lease_fence_of }
 import product.capacity.event_chain { EventId, HeadExpectation, HeadAbsent, HeadAt }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
@@ -548,31 +548,67 @@ fn parse_d0_intent_over(text: String, lines: List<String>, framed: D0FramedOpera
 // compatible with every pending lifecycle" is not an implicit fallback.
 data d0_frozen_revision_field: String = "execution_revision"
 
+// THE APPROVED GRANT ROW, FROZEN WITH THE FILING (side-chat review of #13102). Whether the operator merged
+// the standing grant is a FRESH-START admission fact: the first run reads the grant row it executes against
+// origin/main and, when they are byte-identical and the request is one the grant covers, freezes the row's
+// digest as one more line of the filing. A rerun of that lifecycle resumes from this frozen proof -- its own
+// executed row must still digest to it -- and never consults current main, so a later edit to the row on main
+// cannot strand a lifecycle that has claimed, written pending, or released. A filing with no proof is
+// byte-identical to before (the broker path's filings are unchanged).
+type D0GrantRowProof
+  = D0GrantRowUnproven
+  | D0GrantRowApproved { row_digest: NonEmptyStr }
+
+data d0_frozen_grant_row_field: String = "standing_grant_row_digest"
+
 type D0FrozenFiling {
   intent_text: String
   execution_revision: NonEmptyStr
+  grant_proof: D0GrantRowProof
 }
 
 fn d0_frozen_filing_text(intent_text: String, execution_revision: NonEmptyStr) -> String {
-  join([intent_text, d0_frozen_revision_field, "=", execution_revision as String, "\n"], "")
+  d0_frozen_filing_text_with(intent_text: intent_text, execution_revision: execution_revision, proof: D0GrantRowUnproven)
+}
+
+fn d0_frozen_filing_text_with(intent_text: String, execution_revision: NonEmptyStr, proof: D0GrantRowProof) -> String {
+  join([intent_text, d0_frozen_revision_field, "=", execution_revision as String, "\n", d0_frozen_grant_line(proof: proof)], "")
+}
+
+fn d0_frozen_grant_line(proof: D0GrantRowProof) -> String {
+  match proof {
+    D0GrantRowUnproven => ""
+    D0GrantRowApproved { row_digest: d } => join([d0_frozen_grant_row_field, "=", d as String, "\n"], "")
+  }
+}
+
+fn d0_frozen_filing_of(text: String, intent_lines_count: Int, rev: String, proof: D0GrantRowProof, lines: List<String>) -> D0FrozenFiling? {
+  if rev == "" { none } else {
+    let intent = join(lines |> take(n: intent_lines_count), "\n")
+    let intent_text = join([intent, "\n"], "")
+    if d0_frozen_filing_text_with(intent_text: intent_text, execution_revision: rev as NonEmptyStr, proof: proof) == text {
+      Present { value: D0FrozenFiling { intent_text: intent_text, execution_revision: rev as NonEmptyStr, grant_proof: proof } }
+    } else { none }
+  }
 }
 
 fn parse_d0_frozen_filing(text: String) -> D0FrozenFiling? {
   let lines = intent_lines(text: text)
   let n = length(lines)
-  if n < 2 { none } else {
-    let last = line_at(lines: lines, i: n - 2)
-    if line_at(lines: lines, i: n - 1) != "" { none }
-    else {
-      match intent_field(line: last, key: d0_frozen_revision_field) {
-        Absent => none
-        Present { value: rev } =>
-          if rev == "" { none } else {
-            let intent = join(lines |> take(n: n - 2), "\n")
-            let intent_text = join([intent, "\n"], "")
-            if d0_frozen_filing_text(intent_text: intent_text, execution_revision: rev as NonEmptyStr) == text { Present { value: D0FrozenFiling { intent_text: intent_text, execution_revision: rev as NonEmptyStr } } } else { none }
+  if n < 2 { none } else if line_at(lines: lines, i: n - 1) != "" { none } else {
+    match intent_field(line: line_at(lines: lines, i: n - 2), key: d0_frozen_grant_row_field) {
+      Present { value: digest } =>
+        if digest == "" || n < 3 { none } else {
+          match intent_field(line: line_at(lines: lines, i: n - 3), key: d0_frozen_revision_field) {
+            Absent => none
+            Present { value: rev } => d0_frozen_filing_of(text: text, intent_lines_count: n - 3, rev: rev, proof: D0GrantRowApproved { row_digest: digest as NonEmptyStr }, lines: lines)
           }
-      }
+        }
+      Absent =>
+        match intent_field(line: line_at(lines: lines, i: n - 2), key: d0_frozen_revision_field) {
+          Absent => none
+          Present { value: rev } => d0_frozen_filing_of(text: text, intent_lines_count: n - 2, rev: rev, proof: D0GrantRowUnproven, lines: lines)
+        }
     }
   }
 }
@@ -583,7 +619,11 @@ type D0FilingFreeze
   | D0FilingFreezeRefused { reason: NonEmptyStr }
 
 fn d0_freeze_filing(store: FabricStorageBinding, escalation_id: NonEmptyStr, intent_text: String, execution_revision: NonEmptyStr) -> D0FilingFreeze {
-  match admit_cas_attempt_for_derived_payload(key: d0_filing_key(escalation_id: escalation_id), expected: ExpectSlotAbsent, proposed: d0_frozen_filing_text(intent_text: intent_text, execution_revision: execution_revision) as NonEmptyStr) {
+  d0_freeze_filing_with(store: store, escalation_id: escalation_id, intent_text: intent_text, execution_revision: execution_revision, proof: D0GrantRowUnproven)
+}
+
+fn d0_freeze_filing_with(store: FabricStorageBinding, escalation_id: NonEmptyStr, intent_text: String, execution_revision: NonEmptyStr, proof: D0GrantRowProof) -> D0FilingFreeze {
+  match admit_cas_attempt_for_derived_payload(key: d0_filing_key(escalation_id: escalation_id), expected: ExpectSlotAbsent, proposed: d0_frozen_filing_text_with(intent_text: intent_text, execution_revision: execution_revision, proof: proof) as NonEmptyStr) {
     DerivedPayloadKeyNotSlotAddressable { key: k } => D0FilingFreezeRefused { reason: join(["filing key is not slot-addressable: ", k as String], "") as NonEmptyStr }
     DerivedPayloadAdmitted { verified: v } =>
       match fabric_storage_compare_and_set(store: store, verified: v) {
@@ -757,20 +797,34 @@ fn d0_standing_grant_for_subject(subject: D0Subject) -> StandingOperatorGrant? {
 // completes) could never be resumed. Its lifecycle is the grant's identity, which every run of the
 // request derives the same way. The run's window still bounds the run (authorize checks it); it is only
 // kept out of the identity. A broker grant's binding text is byte-identical to before.
-fn d0_binding_lifecycle_term(grant: OperatorGrant<D0Subject>) -> String {
-  match d0_standing_grant_for_subject(subject: grant.subject) {
-    Present { value: g } => join(["\nstanding_grant=", g.identity as String], "")
-    Absent => join(["\nexpires_at=", grant.expires_at], "")
+// THE TERM FOLLOWS THE AUTHORIZATION'S PROVENANCE, NOT THE SUBJECT'S COVERAGE (side-chat review of #13102).
+// A covered release the BROKER approved (the row was not on main at its fresh start) keeps broker lifecycle
+// identity and expiry; only an authorization actually ISSUED from the standing grant carries the grant's
+// identity. The door states which it issued, and every run of one lifecycle states the same: a fresh start
+// issues from the grant exactly when it froze the grant proof, and a rerun issues from it exactly when that
+// frozen proof is present.
+type D0AuthorizationBasis
+  = D0BasisBroker
+  | D0BasisStandingGrant { identity: NonEmptyStr }
+
+fn d0_binding_lifecycle_term(grant: OperatorGrant<D0Subject>, basis: D0AuthorizationBasis) -> String {
+  match basis {
+    D0BasisStandingGrant { identity: id } => join(["\nstanding_grant=", id as String], "")
+    D0BasisBroker => join(["\nexpires_at=", grant.expires_at], "")
   }
 }
 
 fn d0_binding_text(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration) -> String {
+  d0_binding_text_with(grant: grant, claim_generation: claim_generation, basis: D0BasisBroker)
+}
+
+fn d0_binding_text_with(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration, basis: D0AuthorizationBasis) -> String {
   join([
     "escalation=", grant.escalation_id as String,
     "\nattempt=", grant.attempt as String,
     "\nintent=", serialize_content_hash(hash: grant.intent_hash) as String,
     "\n", d0_subject_wire(subject: grant.subject),
-    d0_binding_lifecycle_term(grant: grant),
+    d0_binding_lifecycle_term(grant: grant, basis: basis),
     "\nclaim_generation=", to_string(cas_generation_count(g: claim_generation)),
     "\n",
   ], "")
@@ -786,8 +840,8 @@ type D0GrantAdmission
   | D0GrantClaimUndecided { reason: NonEmptyStr }
   | D0GrantBindingUnavailable { claim: D0ClaimTerminal }
 
-fn admitted_with_binding(grant: OperatorGrant<D0Subject>, generation: CasGeneration) -> AdmittedD0Grant? {
-  match sha256_of_text(text: d0_binding_text(grant: grant, claim_generation: generation)) {
+fn admitted_with_binding(grant: OperatorGrant<D0Subject>, generation: CasGeneration, basis: D0AuthorizationBasis) -> AdmittedD0Grant? {
+  match sha256_of_text(text: d0_binding_text_with(grant: grant, claim_generation: generation, basis: basis)) {
     Absent => none
     Present { value: b } => Present { value: AdmittedD0Grant { grant: grant, claim_generation: generation, binding: b } }
   }
@@ -833,6 +887,10 @@ fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: Fab
 // START: the subject checks, the intent, the permission decision, then the claim; a binding that
 // cannot be digested AFTER the claim landed aborts the claim rather than stranding it.
 fn admit_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp) -> D0GrantAdmission {
+  admit_d0_grant_with(store: store, authorization: authorization, escalation_id: escalation_id, group: group, current_hosts: current_hosts, transaction: transaction, executor: executor, at: at, now: now, basis: D0BasisBroker)
+}
+
+fn admit_d0_grant_with(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, basis: D0AuthorizationBasis) -> D0GrantAdmission {
   match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationAgainst { current: current_hosts }) {
     D0SubjectNotGranted => D0GrantRefused { cause: d0_not_granted_cause(authorization: authorization, escalation_id: escalation_id, group: group) }
     D0SubjectDisagrees { admission: a } => a
@@ -847,7 +905,7 @@ fn admit_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorizatio
                 D0ClaimLost { holder: h } => D0GrantClaimLost { holder: h }
                 D0ClaimUndecided { reason: r } => D0GrantClaimUndecided { reason: r }
                 D0ClaimHeld { generation: gen } =>
-                  match admitted_with_binding(grant: permitted, generation: gen) {
+                  match admitted_with_binding(grant: permitted, generation: gen, basis: basis) {
                     Present { value: admitted } => D0GrantAdmitted { admitted: admitted }
                     Absent => D0GrantBindingUnavailable { claim: d0_terminate_claim(store: store, escalation_id: escalation_id, transaction: transaction, held: gen, completed: false, cause: "the authorization binding could not be digested after the claim landed", now: now) }
                   }
@@ -872,6 +930,10 @@ fn d0_not_granted_cause(authorization: ScopedAuthorization<D0Subject>, escalatio
 // re-decided, so an expired grant can still finish what it started. The binding is recomputed and
 // compared to the pending state's by the transaction.
 fn resume_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
+  resume_d0_grant_with(store: store, authorization: authorization, escalation_id: escalation_id, group: group, transaction: transaction, executor: executor, basis: D0BasisBroker)
+}
+
+fn resume_d0_grant_with(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr, basis: D0AuthorizationBasis) -> D0GrantAdmission {
   match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationNotChecked) {
     D0SubjectNotGranted => D0GrantClaimLost { holder: "the authorization is not granted, so no claim of it can be resumed" as NonEmptyStr }
     D0SubjectDisagrees { admission: a } => a
@@ -880,7 +942,7 @@ fn resume_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorizati
         D0ClaimLost { holder: h } => D0GrantClaimLost { holder: h }
         D0ClaimUndecided { reason: r } => D0GrantClaimUndecided { reason: r }
         D0ClaimHeld { generation: gen } =>
-          match admitted_with_binding(grant: g, generation: gen) {
+          match admitted_with_binding(grant: g, generation: gen, basis: basis) {
             Present { value: admitted } => D0GrantAdmitted { admitted: admitted }
             Absent => D0GrantBindingUnavailable { claim: D0ClaimUnterminated { detail: "the claim stays held: a resume that cannot digest its binding leaves the transaction to a later rerun" } }
           }
@@ -1832,20 +1894,55 @@ fn claim_terminal_text(t: D0ClaimTerminal) -> String {
 //   Complete    → the claim's terminal only; the authority is not touched
 //   Abort       → the claim's terminal only
 fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, current: CurrentAuthority) -> ProcessExit {
+  d0_dispatch_with(store: store, g: g, group: group, current_hosts: current_hosts, scoped: scoped, tx: tx, esc: esc, executor: executor, at: at, now: now, current: current, basis: D0BasisBroker)
+}
+
+// THE TWO QUESTIONS THE DISPATCH ASKS, EACH ANSWERED EXHAUSTIVELY ONCE: is this admission admitted, and is
+// the consent claimed by this transaction. A new arm of either type is a compile error here, never a
+// silent "no".
+fn d0_admitted_of(a: D0GrantAdmission) -> AdmittedD0Grant? {
+  match a {
+    D0GrantAdmitted { admitted: x } => Present { value: x }
+    D0GrantForAnotherGroup { granted: _ } => none
+    D0GrantForAnotherPopulation { granted: _, current: _ } => none
+    D0GrantIntentUnavailable => none
+    D0GrantRefused { cause: _ } => none
+    D0GrantClaimLost { holder: _ } => none
+    D0GrantClaimUndecided { reason: _ } => none
+    D0GrantBindingUnavailable { claim: _ } => none
+  }
+}
+
+fn d0_claim_held_by(claim: D0ClaimReading, transaction: NonEmptyStr) -> Bool {
+  match claim {
+    D0ClaimAbsent => false
+    D0ClaimUnreadable { reason: _ } => false
+    D0ClaimAt { state: st, generation: _ } =>
+      match st {
+        ClaimedBy { attempt: who, claimed_at: _ } => (who as String) == (transaction as String)
+        Unclaimed => false
+        CompletedBy { attempt: _, completed_at: _ } => false
+        AbortedBy { attempt: _, aborted_at: _, cause: _ } => false
+      }
+  }
+}
+
+fn d0_not_moved_by_this_run(recovery: D0Recovery) -> ProcessExit {
+  exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
+}
+
+fn d0_dispatch_with(store: FabricStorageBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, current: CurrentAuthority, basis: D0AuthorizationBasis) -> ProcessExit {
   match current {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => refuse(reason: join(["authority unread at ", st, ": ", why], ""))
     CurrentAuthorityRead { authority: cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } => {
       let claim = d0_read_claim(store: store, escalation_id: esc)
-      let held_here = match claim {
-        D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } => (who as String) == (tx as String)
-        _ => false
+      let held_here = d0_claim_held_by(claim: claim, transaction: tx)
+      let resumed = if held_here { resume_d0_grant_with(basis: basis, store: store, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor) } else { D0GrantClaimLost { holder: "no claim held by this transaction" as NonEmptyStr } }
+      let lifecycle = match d0_admitted_of(a: resumed) {
+        Present { value: a } => Present { value: a.binding }
+        Absent => none
       }
-      let resumed = if held_here { resume_d0_grant(store: store, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor) } else { D0GrantClaimLost { holder: "no claim held by this transaction" as NonEmptyStr } }
-      let lifecycle = match resumed {
-        D0GrantAdmitted { admitted: a } => Present { value: a.binding }
-        _ => none
-      }
-      let resume_refusal = if held_here { (match resumed { D0GrantAdmitted { admitted: _ } => none  _ => Present { value: d0_admission_text(a: resumed, group: group) } }) } else { none }
+      let resume_refusal = if held_here { (match d0_admitted_of(a: resumed) { Present { value: _ } => none  Absent => Present { value: d0_admission_text(a: resumed, group: group) } }) } else { none }
       match resume_refusal {
         Present { value: why } => refuse(reason: join(["the claim is held by this transaction but its grant is not admitted on this resume: ", why], ""))
         Absent => {
@@ -1853,31 +1950,32 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
       match recovery {
         D0RecoveryRefused { cause: c } => refuse(reason: c)
         D0RecoverStart => {
-          let admission = admit_d0_grant(store: store, authorization: scoped, escalation_id: esc, group: g, current_hosts: current_hosts, transaction: tx, executor: executor, at: at, now: now)
-          match admission {
-            D0GrantAdmitted { admitted: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
-            _ => refuse(reason: d0_admission_text(a: admission, group: group))
+          let admission = admit_d0_grant_with(basis: basis, store: store, authorization: scoped, escalation_id: esc, group: g, current_hosts: current_hosts, transaction: tx, executor: executor, at: at, now: now)
+          match d0_admitted_of(a: admission) {
+            Present { value: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
+            Absent => refuse(reason: d0_admission_text(a: admission, group: group))
           }
         }
         D0RecoverFirstWrite { claim_generation: cg } =>
-          match resumed {
-            D0GrantAdmitted { admitted: admitted } =>
+          match d0_admitted_of(a: resumed) {
+            Present { value: admitted } =>
               match d0_population(subject: admitted.grant.subject, current: current_hosts) {
                 D0PopulationAgrees => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
                 D0PopulationDiffers { granted: gr, current: cu } => {
                   let cause = join(["the group's host population changed after the claim and before any write: authorized [", hosts_wire(hs: gr), "], current [", hosts_wire(hs: cu), "]"], "")
                   match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: false, cause: cause, now: now) {
                     D0ClaimTerminated => refuse(reason: join([cause, "; the claim is aborted and the authority was not moved"], ""))
-                    other => refuse(reason: join([cause, claim_terminal_text(t: other)], ""))
+                    D0ClaimNotAttempted { still_held_by: h } => refuse(reason: join([cause, claim_terminal_text(t: D0ClaimNotAttempted { still_held_by: h })], ""))
+                    D0ClaimUnterminated { detail: d } => refuse(reason: join([cause, claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
                   }
                 }
               }
-            _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
+            Absent => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
           }
         D0RecoverResume { claim_generation: _ } =>
-          match resumed {
-            D0GrantAdmitted { admitted: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
-            _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
+          match d0_admitted_of(a: resumed) {
+            Present { value: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
+            Absent => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
           }
         D0RecoverComplete { claim_generation: cg, settled: st } =>
           match placement_finalize(store: store, consumed: preparation_consumption(store: store, preparation: st.placement.id), actor: executor, at: at) {
@@ -1888,17 +1986,21 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
           match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: true, cause: "", now: now) {
             D0ClaimTerminated =>
               match st.next {
-                SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => ExitSuccess
+                SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => ExitSuccess
                 ReleasedToFleet { group: _, release_receipt: _ } => ExitSuccess
-                _ => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
+                PairServingActive { group: _, exact_realization: _ } => d0_not_moved_by_this_run(recovery: recovery)
+                SuspensionPendingReconciliation { group: _, hosts: _, transaction: _, authorization_binding: _, lease: _ } => d0_not_moved_by_this_run(recovery: recovery)
+                FencedRefusal { group: _, hosts: _, cause: _, disposition_authority: _ } => d0_not_moved_by_this_run(recovery: recovery)
               }
-            other => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: other)], ""))
+            D0ClaimNotAttempted { still_held_by: h } => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimNotAttempted { still_held_by: h })], ""))
+            D0ClaimUnterminated { detail: d } => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
           }
           }
         D0RecoverAbort { claim_generation: cg, cause: c } =>
           match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: false, cause: c, now: now) {
             D0ClaimTerminated => refuse(reason: join([d0_recovery_text(r: recovery), "; the claim is aborted"], ""))
-            other => refuse(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: other)], ""))
+            D0ClaimNotAttempted { still_held_by: h } => refuse(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimNotAttempted { still_held_by: h })], ""))
+            D0ClaimUnterminated { detail: d } => refuse(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
           }
       }
       }

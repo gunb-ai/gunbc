@@ -8,7 +8,6 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   FindingNotEstablished
 }
 import v2.lens.common.source_analysis_standing { SourceTokenizationRejected }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 

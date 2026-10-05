@@ -1,6 +1,5 @@
 module test.fixture.fn_index_subject.alpha
 
-import v2.std.logic { Bool }
 
 // One declared function under the ALPHA root and nowhere else. Its whole purpose is to be
 // findable by naming this root and unfindable by naming the sibling root — see

@@ -12,7 +12,7 @@ import extdeps.node
 import extdeps.typescript
 import extdeps.gunbc
 import extdeps.communication.medium { Lossless, Medium }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, second }
 import std.render_repeat_string_bootstrap { repeat_string }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -32,7 +32,6 @@ import v2.std.host_transport {
   HostRuntimeRowAbsent,
   HostRuntimeRowPresent
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode }
 import tools.emit_host_fixtures {
   rust_stdout_fixture_source,
@@ -44,7 +43,13 @@ import tools.emit_host_fixtures {
   ts_signed_i32_le_byte_count
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
-import gunbc.retained_shell_script { retained_foreign }
+import extdeps.posix.process
+import extdeps.posix.signal
+import extdeps.http.client
+import extdeps.tools.sleep
+import extdeps.numeric.base16
+import std.content_hash { content_hash_atom }
+import v2.std.collection { list_at_optional }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
@@ -82,15 +87,7 @@ data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nvers
 // must refuse even when tsc has emitted JavaScript. run_node_http_serve_smoke still
 // owns the shared bootstrap carrier's remaining use and its separate lifecycle gap.
 
-data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: hermetic TypeScript compilation — run_ts_smoke now routes through typed Filesystem.Write, shell.Mktemp/Remove, typescript.Compiler.Compile and node.Runtime.RunFile; its concatenated heredoc and conditional node provisioning are dissolved. typescript.Compiler.Compile still uses npx to fetch typescript@5.9.2 at runtime: typing the operation does not discharge this compile hermeticity gap. DISSOLVES WHEN a hermetic TypeScript compilation authority compiles the fixture without runtime package fetch and run_ts_smoke consumes it. The emit_host_node_bootstrap_script carrier remains used by run_node_http_serve_smoke; its retirement belongs to emit_host_node_serve_process_lifecycle_trigger, not this TypeScript cutover.")
-
-data emit_host_node_serve_process_lifecycle_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_node_http_serve_smoke — concat-interpolated bash fragment splices emit_host_node_bootstrap_script (node provision = section 5 widen) and a background server lifecycle ($!, $, trap, kill, rm) into one heredoc body. Unlike the other smokes, this is not a single-run-then-capture operation: it starts a server process, computes a port, installs signal handlers, probes with an HTTP retry loop, and cleans up. Process lifecycle is a genuinely larger concept than a language runner and cannot be modeled inside this lane. The provision widen was decided against (section 5, precedent: run_rust_smoke and run_python_smoke; run_go_smoke joins them in this commit). DISSOLVES WHEN process lifecycle management (background start, liveness probe, resource cleanup) is available as typed extdeps ops and run_node_http_serve_smoke routes through them (shell.Mktemp/Mkdir, Filesystem.Write, Node.RunFile, http.Client.Probe, process management, shell.Remove) and the emit_host_node_bootstrap_script carrier retires.")
-
-data emit_host_node_bootstrap_script: String = "if ! command -v node >/dev/null 2>&1; then\n  NODEBOOT=\"$WORKDIR/nodeboot\"\n  mkdir -p \"$NODEBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) NODEARCH=arm64 ;; x86_64|amd64) NODEARCH=x64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-$NODEARCH.tar.xz\" | tar -xJ -C \"$NODEBOOT\" --strip-components=1\n  PATH=\"$NODEBOOT/bin:$PATH\"\n  export PATH\nfi\n"
-
-data emit_host_node_http_probe_marker: String = "http-probe: 200"
-
-data emit_host_node_http_probe_script: String = "cat > \"$WORKDIR/probe.js\" <<'PROBE_EOF'\nconst http = require('http');\nconst port = process.env.PORT;\nconst deadline = Date.now() + 5000;\nfunction probe(cb) {\n  http.get('http://127.0.0.1:' + port + '/', (res) => {\n    res.resume();\n    cb(res.statusCode === 200);\n  }).on('error', () => cb(false));\n}\n(function wait() {\n  probe((ok) => {\n    if (ok) { process.stdout.write('{emit_host_node_http_probe_marker}'); process.exit(0); }\n    if (Date.now() >= deadline) process.exit(1);\n    setTimeout(wait, 300);\n  });\n})();\nPROBE_EOF\nPORT=$PORT node \"$WORKDIR/probe.js\"\n"
+data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: hermetic TypeScript compilation — run_ts_smoke now routes through typed Filesystem.Write, shell.Mktemp/Remove, typescript.Compiler.Compile and node.Runtime.RunFile; its concatenated heredoc and conditional node provisioning are dissolved. typescript.Compiler.Compile still uses npx to fetch typescript@5.9.2 at runtime: typing the operation does not discharge this compile hermeticity gap. DISSOLVES WHEN a hermetic TypeScript compilation authority compiles the fixture without runtime package fetch and run_ts_smoke consumes it.")
 
 fn expected_stdout_nul_run() -> String {
   repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
@@ -186,20 +183,140 @@ fn run_ts_smoke() -> Bool {
     && (run.stdout == expected)
 }
 
+// PORT BUDGET, and where the entropy went. The retired heredoc picked 19000 + ($ % 1000): the
+// shell's own pid as per-run entropy so concurrent runs did not collide. The typed route has no
+// pid in scope at fold time, but the host already gave this run its entropy: mktemp -d guarantees
+// the workdir path is unique per execution. The last 3 lower-hex code points of the path's FNV-1a
+// 64 structural digest (12 bits) are a stable seed per run and distinct across runs, mapping into
+// [19000, 23096) -- the same budget the heredoc had, with a citable entropy source instead of a
+// side effect of the harness.
+// One lower-hex code point of the digest, as its numeric value. The index is Optional (the digest
+// is always 16 code points, but the type does not know that) and the digit may be absent (a
+// non-hex code point); both absences answer none here: no seed.
+fn node_http_hex_digit_at(cps: List<Int>, index: Int) -> Int? {
+  match list_at_optional(xs: cps, index: index) {
+    Absent => none
+    Present { value: cp } => base16_digit_value_at(cp: cp)
+  }
+}
+
+fn node_http_serve_port_seed(workdir: NonEmptyStr) -> Int? {
+  let cps = content_hash_atom(value: workdir).digest as String |> chars
+  let n = length(xs: cps)
+  if n < 3 { none } else {
+    match node_http_hex_digit_at(cps: cps, index: n - 3) {
+      Absent => none
+      Present { value: h2 } =>
+        match node_http_hex_digit_at(cps: cps, index: n - 2) {
+          Absent => none
+          Present { value: h1 } =>
+            match node_http_hex_digit_at(cps: cps, index: n - 1) {
+              Absent => none
+              Present { value: h0 } => Present { value: 19000 + h2 * 256 + h1 * 16 + h0 }
+            }
+        }
+    }
+  }
+}
+
+// READINESS POLL, in the substrate. The retired heredoc's probe.js looped until a 5s deadline
+// with sleeps between attempts; the typed poll is the same iterate-never-concatenate shape with
+// the budget NAMED at the call site: bounded attempts, one bounded connection attempt each
+// (http.Client.Probe answers "nothing answered yet" as DATA mid-warmup instead of refusing, which
+// is why the poll composes Probe rather than StatusWithin), one bounded pause between attempts.
+// Every answer is kept so the timeout refusal can say what the server last looked like.
+type NodeServeReadiness
+  = ServeReady
+  | ServeNotReady { attempts_used: Int, last_status: String, last_exit_code: Int }
+
+fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: Int, last_status: String, last_exit_code: Int) -> NodeServeReadiness {
+  if attempts_left <= 0 { ServeNotReady { attempts_used: attempts_used, last_status: last_status, last_exit_code: last_exit_code } } else {
+    let probe = http.Client.Probe(url: url, connect_time: second(count: 1), max_time: second(count: 2))
+    if probe.answered && probe.status == "200" { ServeReady } else {
+      let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
+      node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: probe.status, last_exit_code: probe.exit_code)
+    }
+  }
+}
+
+// KILL CONFIRMATION. The retired heredoc swallowed kill failures (`kill $SERVER_PID 2>/dev/null`
+// inside the trap), so a server that outlived the smoke left nothing behind but a lie. The typed
+// route does not swallow: TerminateProcess refuses loudly when the kill fails, and the kill is
+// CONFIRMED by reaping -- a process that answered readiness is alive, so after SIGTERM it either
+// dies by the signal (Reap reports Signaled { signal }) or the poll exhausts and the smoke is
+// red. Reap is parent-only (waitpid ECHILD otherwise), which is exactly the confirmation the
+// trap could never give; the closed ProcessReapOutcome keeps a signal death distinct from an
+// ordinary exit, so a smoke that passes on 128+15 would have to actually say so.
+fn node_http_await_reaped(pid: Int, attempts_left: Int) -> ProcessReapOutcome? {
+  if attempts_left <= 0 { none } else {
+    let reaped = posix.Process.Reap(pid: pid)
+    match reaped.reaped {
+      StillRunning => {
+        let _pause = sleep.Delay.Seconds(seconds: "0.1" as NonEmptyStr)
+        node_http_await_reaped(pid: pid, attempts_left: attempts_left - 1)
+      }
+      Exited { code: code } => Present { value: Exited { code: code } }
+      Signaled { signal: signal } => Present { value: Signaled { signal: signal } }
+      ReapRefused { cause: cause } => Present { value: ReapRefused { cause: cause } }
+    }
+  }
+}
+
+// A process that answered readiness is alive, so after SIGTERM the only honest outcome is a
+// confirmed SIGNAL death -- Signaled { signal: 15 }, not a folded exit code; anything else is a
+// red smoke, never a swallowed cleanup.
 fn run_node_http_serve_smoke() -> Bool {
-  let server_source = gunbhub_node_http_server_source()
-  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=$((19000 + ($$ % 1000)))\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" >\"$WORKDIR/server.log\" 2>&1 &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\n{emit_host_node_http_probe_script}"
-  let reported = shell.Exec.Run(
-    script: retained_foreign(
-      body: script,
-      reason: "emit_host node http smoke: provision toolchain, serve the emitted server, report the probe status"
-    )
-  )
-  emit_host_smoke_holds(
-    harness_ok: reported.success,
-    reported_stdout: reported.stdout,
-    expected_text: emit_host_node_http_probe_marker
-  )
+  let dir = shell.Mktemp.Dir()
+  match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let server_js = Filesystem.Write(path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source())
+      let spawn = posix.Process.StartDetached(
+        program: "env" as NonEmptyStr,
+        arguments: [
+          "-C", dir.path,
+          "HOST=127.0.0.1",
+          concat("PORT=", to_string(port)),
+          "node",
+          concat(dir.path, "/server.js")
+        ],
+        stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
+      )
+      match spawn.spawn {
+        Spawned { pid: pid } => {
+          let readiness = node_http_await_ready(
+            url: concat("http://127.0.0.1:", to_string(port), "/") as NonEmptyStr,
+            attempts_left: 40,
+            attempts_used: 0,
+            last_status: "",
+            last_exit_code: 0
+          )
+          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
+          let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+          let harness_ok = dir.success && server_js.success && cleanup.success
+          let lifecycle_ok = kill.success
+            && (match reaped {
+              Absent => false
+              Present { value: outcome } =>
+                match outcome {
+                  Signaled { signal: signal } => signal == 15
+                  StillRunning => false
+                  Exited { code: _ } => false
+                  ReapRefused { cause: _ } => false
+                }
+            })
+          harness_ok && lifecycle_ok
+            && (match readiness {
+              ServeReady => true
+              ServeNotReady { attempts_used: _, last_status: _, last_exit_code: _ } => false
+            })
+        }
+        SpawnRefused { program: _, cause: _ } => false
+      }
+    }
+  }
 }
 
 fn c_run_probe_node() -> Node {

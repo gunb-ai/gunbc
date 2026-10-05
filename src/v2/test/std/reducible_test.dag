@@ -1,7 +1,6 @@
 module v2.test.std.reducible
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
 import std.reducible {
   Irreducible,
   Reduced,

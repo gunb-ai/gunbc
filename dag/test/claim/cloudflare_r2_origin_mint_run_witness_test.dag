@@ -1,6 +1,7 @@
 module test.claim.cloudflare_r2_origin_mint_run
 
 import std.types { String, NonEmptyStr, Bool, Secret }
+import v2.std.collection { map_lookup }
 import extdeps.cloudflare.account_api_tokens {
   CreatedAccountToken, CreateAccountTokenRequest, TokenActive,
 }
@@ -48,6 +49,11 @@ import gunbc.cloudflare.r2_origin {
   R2OriginStanding,
   R2OriginBucket,
   FabricDurableOrigin,
+  FabricBootOrigin,
+  FabricCacheBlobs,
+  bucket_purpose_origin_standing,
+  fabric_boot_origin_read_secret_id,
+  fabric_cache_blobs_write_secret_id,
   BucketPurpose,
   R2BucketAllocation,
   bucket_purpose_key,
@@ -63,6 +69,14 @@ import gunbc.cloudflare.r2_origin {
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
   DigestKeyedBootArtifacts,
+  KeyAddressedCacheBlobs,
+  ContentAddressedWorkspaceHistory,
+  FabricWorkspace,
+  fabric_workspace_standing,
+  fabric_workspace_read_secret_id,
+  fabric_workspace_write_secret_id,
+  origin_admission_is_create_only,
+  bucket_purpose_admits_public_read,
   bucket_purpose_admission,
   OriginCredentialStanding,
   OriginCredentialPinned,
@@ -101,6 +115,8 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintReceiptAttemptScoped, R2MintReceiptUnscoped,
   bootstrap_burden_text,
   origin_read_pin_is_exact,
+  r2_origin_token_secret_id,
+  R2OriginTokenProfile,
 }
 
 // THE CUSTODY RED, NOW BORNE BY A FIXTURE RATHER THAN BY THE DECLARATIONS -- AND THE MOVE IS
@@ -228,7 +244,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
         && all(request.policies, p =>
              any(p.permission_groups, g =>
                (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
@@ -352,7 +368,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
-        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialUnminted { mint_entry: _, secret_id: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
           (locus.secret as String) == (fabric_durable_origin_read_secret_id as String)
@@ -365,6 +381,8 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
         && match bucket_purpose_admission(purpose: bucket.purpose) {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
              DigestKeyedBootArtifacts {} => false
+             KeyAddressedCacheBlobs {} => false
+             ContentAddressedWorkspaceHistory {} => false
            }
   }
 }
@@ -378,7 +396,7 @@ test fn r2_origin_bucket_write_credential_is_the_minted_container() -> Bool {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
       match bucket.write_credential {
-        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialUnminted { mint_entry: _, secret_id: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
           (locus.secret as String) == (fabric_durable_origin_write_secret_id as String)
@@ -412,7 +430,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
                (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String))
              && !any(p.permission_groups, g =>
                (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
@@ -445,7 +463,7 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
-        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialUnminted { mint_entry: _, secret_id: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: _, token_value: locus } =>
           match resolve_returned_version(
@@ -470,7 +488,7 @@ test fn r2_origin_read_pin_refuses_a_foreign_project_answer() -> Bool {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
-        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialUnminted { mint_entry: _, secret_id: _ } => false
         OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
         OriginCredentialPinned { access_key_id: _, token_value: locus } =>
           match resolve_returned_version(
@@ -491,6 +509,7 @@ fn origin_with_latest_read_pin() -> R2OriginStanding {
     bucket: R2OriginBucket {
       bucket_name: "gunbai-fabric-origin",
       jurisdiction: R2JurisdictionDefault,
+      location_hint: none,
       purpose: FabricDurableOrigin {},
       read_credential: OriginCredentialPinned {
         access_key_id: fabric_durable_origin_read_access_key_id,
@@ -771,11 +790,11 @@ test fn r2_bucket_admin_mint_is_account_scoped_with_only_the_storage_write_group
              all(p.permission_groups, g =>
                (g.id as String) == (cloudflare_r2_storage_write_observed_permission_group_id as String))
              && p.permission_groups.length() == 1
-             && match map_get(p.resources, r2_account_resource_name(account_id: fleet_cloudflare_account_id as String)) {
+             && match map_lookup(m: p.resources, key: r2_account_resource_name(account_id: fleet_cloudflare_account_id as String)) {
                   Present { value: scope } => scope == "*"
                   Absent => false
                 }
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
@@ -788,4 +807,162 @@ test fn r2_bucket_admin_mint_is_account_scoped_with_only_the_storage_write_group
     R2MintAdmissionRefused { standing: _ } => false
     R2MintCustodyContainerAbsent { intervention: _ } => false
   }
+}
+
+// ── PER-PURPOSE MINTS: THE CACHE AND BOOT CASES DISCRIMINATE THE PURPOSE PARAMETER ─────────────
+// Each case is red if the mint ignored its purpose and fell back to the durable origin: the token
+// name, the policy's bucket resource and the custody secret all have to be the PURPOSE's, derived
+// from gunbc.cloudflare.r2_origin bucket_purpose_origin_standing, and none may be the durable one.
+fn purpose_bucket_name(purpose: BucketPurpose) -> String {
+  match allocated_bucket_name(purpose: purpose) {
+    Present { value: name } => name as String
+    Absent => "<unallocated>"
+  }
+}
+
+fn purpose_mint_is_scoped_to_its_bucket(profile: R2OriginTokenProfileArg, purpose: BucketPurpose) -> Bool {
+  match classify_r2_mint(
+    profile: profile.profile,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: bucket_purpose_origin_standing(purpose: purpose),
+    container: ContainerAdmitted,
+  ) {
+    R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
+      request.name == concat(purpose_bucket_name(purpose: purpose), profile.suffix)
+        && purpose_bucket_name(purpose: purpose) != declared_bucket_name()
+        && all(request.policies, p =>
+             match map_lookup(m: p.resources, key: r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: purpose_bucket_name(purpose: purpose))) {
+                  Present { value: scope } => scope == "*"
+                  Absent => false
+                }
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: _ } => false
+                  Absent => true
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
+  }
+}
+
+type R2OriginTokenProfileArg {
+  profile: R2OriginTokenProfile
+  suffix: String
+}
+
+test fn r2_cache_blobs_write_mint_is_scoped_to_the_cache_bucket() -> Bool {
+  purpose_mint_is_scoped_to_its_bucket(
+    profile: R2OriginTokenProfileArg { profile: R2OriginObjectWrite, suffix: "-object-write" },
+    purpose: FabricCacheBlobs {},
+  )
+    && match classify_r2_mint(
+      profile: R2OriginObjectWrite,
+      account: fleet_cloudflare_account_standing(),
+      custody: fleet_cloudflare_bootstrap_custody(),
+      origin: bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}),
+      container: ContainerAdmitted,
+    ) {
+      R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
+        all(request.policies, p =>
+          any(p.permission_groups, g =>
+            (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String)))
+      R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+      R2MintAccountUnallocated { intervention: _ } => false
+      R2MintOriginUnallocated { purpose: _ } => false
+      R2MintAdmissionRefused { standing: _ } => false
+      R2MintCustodyContainerAbsent { intervention: _ } => false
+    }
+}
+
+test fn r2_boot_origin_read_mint_is_scoped_to_the_boot_bucket() -> Bool {
+  purpose_mint_is_scoped_to_its_bucket(
+    profile: R2OriginTokenProfileArg { profile: R2OriginObjectRead, suffix: "-object-read" },
+    purpose: FabricBootOrigin {},
+  )
+}
+
+// THE WORKSPACE PLACEMENT: both mints are scoped to gunbai-fabric-workspace (never the durable
+// origin), store into the containers fabric_workspace_standing declares, and the standing names the
+// two run_workspace_* entries the fleet-converge modes dispatch. Its admission is create-only and
+// private, like the durable origin's, and it is a distinct bucket.
+test fn r2_workspace_mints_are_scoped_to_the_workspace_bucket() -> Bool {
+  purpose_mint_is_scoped_to_its_bucket(
+    profile: R2OriginTokenProfileArg { profile: R2OriginObjectRead, suffix: "-object-read" },
+    purpose: FabricWorkspace {},
+  )
+    && purpose_mint_is_scoped_to_its_bucket(
+      profile: R2OriginTokenProfileArg { profile: R2OriginObjectWrite, suffix: "-object-write" },
+      purpose: FabricWorkspace {},
+    )
+    && purpose_bucket_name(purpose: FabricWorkspace {}) == "gunbai-fabric-workspace"
+    && purpose_bucket_name(purpose: FabricWorkspace {}) != purpose_bucket_name(purpose: FabricCacheBlobs {})
+}
+
+test fn r2_workspace_standing_names_its_mint_entries_and_custody() -> Bool {
+  let read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: fabric_workspace_standing())
+  let write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: fabric_workspace_standing())
+  let entries = match fabric_workspace_standing() {
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: b } =>
+      match b.read_credential {
+        OriginCredentialUnminted { mint_entry: e, secret_id: _ } => e.decl_name == "run_workspace_object_read"
+        _ => false
+      }
+        && match b.write_credential {
+          OriginCredentialUnminted { mint_entry: e, secret_id: _ } => e.decl_name == "run_workspace_object_write"
+          _ => false
+        }
+  }
+  entries
+    && match read {
+      Present { value: a } => (a as String) == (fabric_workspace_read_secret_id as String) && (a as String) == "cloudflare-r2-workspace-read-token"
+      Absent => false
+    }
+    && match write {
+      Present { value: a } => (a as String) == (fabric_workspace_write_secret_id as String) && (a as String) == "cloudflare-r2-workspace-write-token"
+      Absent => false
+    }
+    && bucket_purpose_key(purpose: FabricWorkspace {}) == "fabric-workspace"
+    && origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: FabricWorkspace {}))
+    && !bucket_purpose_admits_public_read(purpose: FabricWorkspace {})
+}
+
+// THE CUSTODY SECRET IS THE ONE THE PURPOSE'S STANDING DECLARES. The durable rows keep their ids
+// byte-identical (read through their pinned loci); the cache and boot rows read their Unminted
+// standings; an unallocated origin yields none rather than a borrowed id.
+test fn r2_mint_custody_secret_is_derived_from_the_purpose_standing() -> Bool {
+  let durable_read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: fabric_durable_origin_standing())
+  let durable_write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: fabric_durable_origin_standing())
+  let cache_write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}))
+  let boot_read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: bucket_purpose_origin_standing(purpose: FabricBootOrigin {}))
+  let unallocated = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: R2OriginUnallocated { purpose: FabricCacheBlobs {} })
+  match durable_read {
+    Present { value: a } => (a as String) == (fabric_durable_origin_read_secret_id as String)
+    Absent => false
+  }
+    && match durable_write {
+      Present { value: a } => (a as String) == (fabric_durable_origin_write_secret_id as String)
+      Absent => false
+    }
+    && match cache_write {
+      Present { value: a } => (a as String) == (fabric_cache_blobs_write_secret_id as String)
+      Absent => false
+    }
+    && match boot_read {
+      Present { value: a } => (a as String) == (fabric_boot_origin_read_secret_id as String)
+      Absent => false
+    }
+    && match unallocated {
+      Present { value: _ } => false
+      Absent => true
+    }
 }

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.collection_callback_operation_unrealized_in_v2_lowering
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data collection_callback_operation_unrealized_in_v2_lowering: RecurringFailureMode = RecurringFailureMode {
+  identity: "collection_callback_operation_unrealized_in_v2_lowering" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: std.algebra models collection callback operations as template rows with callback_element_position Present (map, filter, flat_map, any, all, sort_by), but v2 body lowering realized only the fold family. A call of an unrealized row reaches v2.compiler.resolve as a bare name and refuses resolve_reason_unbound_symbol. HARM: v2.std.node calls `map(node.children, e => Edge { .. })`, so on the native route it refused its own resolve and dropped out of the closure index; about twenty other v2 modules call bare `map(`. The refusal is typed and located, so this is a capability gap on the loud side of the ladder, never a silent wrong answer.",
+    "DISTINGUISHING FACTS: the earliest unjustified boundary was the MODEL, not lowering. A realized roster call binds its head to the row's declaration (v2.compiler.resolve resolve_realized_declaration), and map / flat_map / any / all / sort_by were inline list elements in std.algebra free_monoid_collection_templates and finite_power_set_templates, copied once per list, with no declaration to bind to. They are now named shapes (collection_map_shape and siblings) referenced from both lists, as fold and filter already were.",
+    "CLIMB (N7-1b): map and all are realized through the one fold encoding, keyed on their rows in v2.compiler.fold_lowering collection_roster_rows. Each step is synthesized around the callback's own binder (CallbackRealization), and is O(1) per member: map conses one cell onto the carrier, and all joins one Bool. Controls: v2.test.claim.compiler.collection_callback_realization. all's body types through &&, which infer does not yet join (a separate frontier), so its control asserts the head binding and lowering, not infer acceptance.",
+    "COUNTED FRONTIER, 4 rows, by name. filter and any: v2.std.algebra DECLARES ordinary fns `filter` and `any`, and 41 modules each import and call them positionally or piped (measured at N7-1b's base, 2dae714bf4). Lowering classifies a head by its spelling without a binding, so a realized row would lower those calls to a Loop that v2.compiler.resolve resolve_realized_declaration refuses as realized_declaration_shadowed. That is a section 3 fork, the roster row and the corpus fn being one operation under two authorities. TRIGGER: the fork is consolidated (v2.std.algebra any/filter retired onto the roster operation, or a binding-aware realization under which a head bound to a corpus declaration stays an ordinary call), SUFFICIENT FOR an unbound `filter(xs, e => ..)` / `any(xs, e => ..)` to lower and bind its row while every imported call keeps binding. Its guard is ccr_declared_any_stays_an_ordinary_call. flat_map: its step is itself a fold over the callback's result (v2.std.algebra list_flat_map's nested fold_list_right), which the synthesized-step table cannot express as one cell. TRIGGER: a nested-fold step, i.e. a CallbackRealization arm whose step body is a fold encoding over the callback body with the outer accumulator as its init, SUFFICIENT FOR `flat_map(xs, e => f(e))` to lower and its head to bind collection_flat_map_shape. sort_by: cost_shape ShapeSortBody, which is not an iterate body, so it has no fold realization at all. TRIGGER: a sort realization the template's ShapeSortBody names, SUFFICIENT FOR `sort_by(xs, e => k(e))` to lower and its head to bind collection_sort_by_shape. RUNG: mitigatable (typed refusal at resolve). CEILING: structurally guaranteed: every fact is decidable from the row.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.algebra", decl_name: "collection_map_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "collection_flat_map_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "collection_sort_by_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "collection_roster_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "CallbackRealization", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_callback_encoding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.collection_callback_realization", decl_name: "ccr_map_over_records_reads_a_field", field: WholeDeclaration },
+  ],
+}

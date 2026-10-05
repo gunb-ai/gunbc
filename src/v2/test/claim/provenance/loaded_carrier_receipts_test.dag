@@ -1,5 +1,6 @@
 module v2.test.claim.provenance.loaded_carrier_receipts
 
+import std.types { List }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.normalized_tree { NormalizedTree, no_import_bindings, normalized_tree_record_declarations, normalized_tree_resource_declarations, normalized_tree_confinements }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -15,13 +16,11 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, StructuralLabel }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.lens.module_graph { LocatedModuleRoot, located_roots_from_source_root_ingest, reference_derived_pool_from_located_roots }
 import v2.std.namespace_alias { ModuleBindingSource }
-import v2.std.collection { List }
 import v2.std.symbol_index {
   DeclaredPayloadKind,
   GlobalBareHit,

@@ -1,9 +1,7 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains }
-import v2.std.collection { List }
+import v2.std.algebra { Cons, Empty, contains, list_reverse }
 import v2.std.optional { Optional, Present, Absent }
-import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
@@ -44,7 +42,7 @@ import std.measure {
   eval_step_count,
   eval_step_count_value,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { yaml_entry_count }
 import std.algebra { Cons, Empty }
@@ -220,7 +218,7 @@ fn changed_selections_outside_discovery(
   changed: List<String>,
   declared: List<String>,
 ) -> List<ChangedSelectionDispositionRow> {
-  reverse(fold(changed, init: [], f: fn(acc, identity) {
+  list_reverse(xs: fold(changed, init: [], f: fn(acc, identity) {
     if contains(xs: declared, item: identity, eq: fn(a, b) { a == b }) {
       acc
     } else {
@@ -750,6 +748,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.coproduct_payload_soundness_witness_test",
     "test.claim.action_use_admission_witness",
     "test.claim.host_budget_source_witness",
+    "test.claim.text_boundary_identity_wall_witness_test",
   ]
 }
 
@@ -899,6 +898,11 @@ fn required_gate_prefixes() -> List<String> {
 // in today but would silently widen if a sibling is ever planted. Its claims run through the census
 // probe over planted fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the
 // fixture sources are supplied strings), priced at NewWitnessTier.
+// THE SEED-GROWTH ADMISSION WITNESS (operator ruling, escalation msg_341a9785, approved
+// 2026-10-03). `test.claim.seed_growth_admission_witness` carries the seed-growth roster's
+// duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
+// so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
+// test-reference wall: a family prefix would silently widen to any future sibling.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -916,6 +920,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.discovery_census_witness",
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
     "test.claim.test_reference_wall_witness",
+    "test.claim.seed_growth_admission_witness",
   ]
 }
 

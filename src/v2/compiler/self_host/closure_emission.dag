@@ -1,5 +1,6 @@
 module v2.compiler.self_host.closure_emission
 
+import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
@@ -68,7 +69,6 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
@@ -192,13 +192,13 @@ fn closure_ingest_refused(
 fn closure_ingest_step(
   state: ClosureIngestState,
   read: DagSourceReadWitness,
-  lm: LanguageModel,
+  lex: PreparedLexRules,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ClosureIngestState {
   let acc = state.ingest
   match bind_outcome(
-    o: program_assembly_phase_tokenize(read: read, lm: lm),
+    o: program_assembly_phase_tokenize(read: read, lex: lex),
     f: fn(tokens) {
       parse_module_prepared_seeded(
         tokens: tokens,
@@ -259,6 +259,7 @@ fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureCensus 
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => ClosureGrammarUnprepared { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
+      let lex = prepare_lex_rules(rules: lm.lex)
       ClosureCensusRead {
         state: fold_list(
           xs: ingest,
@@ -269,7 +270,7 @@ fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureCensus 
             spans: span_index_empty()
           },
           cons: fn(state, read) {
-            closure_ingest_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
+            closure_ingest_step(state: state, read: read, lex: lex, prepared: prepared, residue: residue)
           }
         )
       }
@@ -348,7 +349,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index())
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [])
     }
   )
 }

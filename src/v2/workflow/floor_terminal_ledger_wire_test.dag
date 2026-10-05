@@ -1,7 +1,6 @@
 module v2.workflow.floor_terminal_ledger_wire_test
 
 import std.content_hash { structural_content_hash }
-import v2.std.logic { Bool }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_route_gap {
   FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval

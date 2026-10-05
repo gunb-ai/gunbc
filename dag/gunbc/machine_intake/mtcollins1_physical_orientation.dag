@@ -826,9 +826,9 @@ fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
   match outcome {
     SecondaryJoined { inter_socket_links_reported: l } => concat("SecondaryJoined { inter_socket_links_reported: ", bool_text(b: l), " }")
     SecondaryJoinUnclassified { reason: why } => concat("SecondaryJoinUnclassified: ", why)
-    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l, secondary_host_checkpoints: cps } =>
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l } =>
       concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), ", socket 0 continued alone"),
-        concat(concat(", inter_socket_links_reported: ", bool_text(b: l)), concat(", secondary_host_checkpoints: ", if list_length(items: cps) == 0 { "none }" } else { concat(join(cps, ", "), " }") })))
+        concat(", inter_socket_links_reported: ", concat(bool_text(b: l), " }")))
   }
 }
 

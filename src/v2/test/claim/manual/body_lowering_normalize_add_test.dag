@@ -1,5 +1,6 @@
 module v2.test.manual.body_lowering_normalize_add
 
+import std.types { List }
 import v2.compiler.body_lowering_fold {
   body_lower_body_from_fn_captured,
   body_lower_domain_from_param_list,
@@ -23,7 +24,6 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty }
 import v2.std.collection {
-  List,
   list_at_optional
 }
 import v2.std.optional {
@@ -32,7 +32,6 @@ import v2.std.optional {
   Present
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   ComputationNode,

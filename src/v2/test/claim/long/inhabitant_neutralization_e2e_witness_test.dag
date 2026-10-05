@@ -14,7 +14,6 @@ import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 

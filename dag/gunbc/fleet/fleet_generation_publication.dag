@@ -1,0 +1,145 @@
+module gunbc.fleet_generation_publication
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.algebra { trim }
+import std.content_hash { ContentHash, parse_content_hash, serialize_content_hash }
+
+// A number alone cannot attribute a lost commit response to an apply. Existing numeric records
+// remain readable for migration, but are explicitly weaker evidence than a plan-bound publication.
+// New writers retain the existing generation path and flock; there is no second counter or lock.
+type FleetGenerationPublication
+  = FleetGenerationLegacy { generation: Int }
+  | FleetGenerationPublished { generation: Int, plan_hash: ContentHash }
+  | FleetGenerationUnreadable
+
+fn fleet_generation_publication_decode(content: String) -> FleetGenerationPublication {
+  let text = trim(s: content)
+  let fields = split(s: text, delimiter: " ")
+  if fields.count() == 1 {
+    match parse_int(s: text) {
+      Present { value: generation } => if generation >= 0 { FleetGenerationLegacy { generation: generation } }
+        else { FleetGenerationUnreadable }
+      Absent => FleetGenerationUnreadable
+    }
+  } else if fields.count() == 2 {
+    match fields.first() {
+      Present { value: number } => match parse_int(s: number) {
+        Present { value: generation } => if generation < 1 || number != to_string(generation) { FleetGenerationUnreadable }
+          else { match fields.get(index: 1) {
+            Present { value: identity } => match parse_content_hash(wire: identity) {
+              Present { value: plan_hash } => FleetGenerationPublished { generation: generation, plan_hash: plan_hash }
+              Absent => FleetGenerationUnreadable
+            }
+            Absent => FleetGenerationUnreadable
+          } }
+        Absent => FleetGenerationUnreadable
+      }
+      Absent => FleetGenerationUnreadable
+    }
+  } else { FleetGenerationUnreadable }
+}
+
+fn fleet_generation_publication_text(generation: Int, plan_hash: ContentHash) -> NonEmptyStr {
+  join([to_string(generation), serialize_content_hash(hash: plan_hash) as String], " ") as NonEmptyStr
+}
+
+// Native parser used inside the existing flock, not another interpreter invocation. It returns
+// only the counter for stale-plan comparison after validating the WHOLE record. Malformed suffixes
+// cannot be ignored. Legacy spelling is retained, so an old noncanonical counter still refuses
+// the existing exact comparison rather than being silently normalized at apply time.
+data fleet_generation_native_read_script: String = join([
+  "set -euo pipefail",
+  "[[ $# == 1 ]] || exit 64",
+  "publication=$(cat -- \"$1\")",
+  "if [[ $publication =~ ^[0-9]+$ ]]; then printf '%s\\n' \"$publication\"; exit 0; fi",
+  "pattern='^([1-9][0-9]*) (([a-f0-9]\{16})|([a-f0-9]\{40})|(sha256:[a-f0-9]\{64})|(sha512:[a-f0-9]\{128}))$'",
+  "[[ $publication =~ $pattern ]] || exit 65",
+  "printf '%s\\n' \"$\{BASH_REMATCH[1]}\"",
+], "\n")
+
+fn fleet_generation_publication_owned(observed: FleetGenerationPublication, generation: Int,
+  plan_hash: ContentHash) -> Bool {
+  match observed {
+    FleetGenerationPublished { generation: recorded, plan_hash: owner } => recorded == generation
+      && serialize_content_hash(hash: owner) == serialize_content_hash(hash: plan_hash)
+    FleetGenerationLegacy { generation: _ } => false
+    FleetGenerationUnreadable => false
+  }
+}
+
+
+// Shared publication protocol, invoked only while the existing fleet lock is held, as the
+// existing lease owner. An immutable receipt is linked AFTER apply succeeds and BEFORE the
+// head is atomically replaced. A retry with that receipt resumes publication without effects.
+// A foreign pending receipt refuses before apply. Historical receipts attribute completion
+// after another apply advances the head. This is one generation authority, not a second counter.
+// argv: admit|publish|observe, generation path, prior, planned, reviewed bundle digest.
+// The root executor must use the existing lease-owner impersonation edge for this writer.
+data fleet_generation_native_publication_script: String = join([
+  "set -euo pipefail",
+  "umask 077",
+  "[[ $# == 5 ]] || exit 64",
+  "publication_action=$1; publication_head=$2; publication_prior=$3; publication_next=$4; publication_hash=$5",
+  "[[ $publication_action == admit || $publication_action == publish || $publication_action == observe ]] || exit 64",
+  "[[ $publication_head == /* ]] || exit 64",
+  "publication_number() \{",
+  "  [[ $1 =~ ^(0|[1-9][0-9]*)$ ]] || return 1",
+  "  [[ $\{#1} -lt 19 || ( $\{#1} -eq 19 && ! $1 > 9223372036854775807 ) ]]",
+  "}",
+  "publication_number \"$publication_prior\" && publication_number \"$publication_next\" || exit 64",
+  "(( publication_next > 0 && publication_prior == publication_next - 1 )) || exit 64",
+  "publication_hash_pattern='^(([a-f0-9]\{16})|([a-f0-9]\{40})|(sha256:[a-f0-9]\{64})|(sha512:[a-f0-9]\{128}))$'",
+  "[[ $publication_hash =~ $publication_hash_pattern ]] || exit 64",
+  "publication_receipts=$publication_head.receipts",
+  "publication_receipt=$publication_receipts/$publication_next",
+  "publication_expected=\"$publication_next $publication_hash\"",
+  "publication_current=0; publication_owner=",
+  "if [[ -e $publication_head || -L $publication_head ]]; then",
+  "  publication_wire=$(cat -- \"$publication_head\") || exit 65",
+  "  if publication_number \"$publication_wire\"; then publication_current=$publication_wire; else",
+  "    publication_current=$\{publication_wire%% *}; publication_owner=$\{publication_wire#* }",
+  "    publication_number \"$publication_current\" && [[ $publication_owner =~ $publication_hash_pattern && $publication_wire == \"$publication_current $publication_owner\" ]] || exit 65",
+  "    (( publication_current > 0 )) || exit 65",
+  "  fi",
+  "fi",
+  "publication_recorded=false",
+  "if [[ -e $publication_receipt ]]; then",
+  "  [[ $(cat -- \"$publication_receipt\") == \"$publication_expected\" ]] || exit 66",
+  "  publication_recorded=true",
+  "fi",
+  "if (( publication_current >= publication_next )); then",
+  "  [[ $publication_recorded == true && -n $publication_owner ]] || exit 67",
+  "  [[ $(cat -- \"$publication_receipts/$publication_current\") == \"$publication_current $publication_owner\" ]] || exit 67",
+  "  if [[ $publication_action == publish ]]; then sync -- \"$publication_head\"; sync -- \"$\{publication_head%/*}\"; fi",
+  "  if [[ $publication_action == admit ]]; then printf 'recover\\n'; else printf 'committed\\n'; fi",
+  "  exit 0",
+  "fi",
+  "[[ $publication_current == \"$publication_prior\" ]] || exit 67",
+  "if [[ $publication_action == observe ]]; then exit 67; fi",
+  "if [[ $publication_action == admit ]]; then",
+  "  if [[ $publication_recorded == true ]]; then printf 'recover\\n'; else printf 'apply\\n'; fi",
+  "  exit 0",
+  "fi",
+  "mkdir -p -- \"$publication_receipts\"",
+  "sync -- \"$\{publication_head%/*}\"",
+  "publication_temp=",
+  "trap '[[ -z $publication_temp ]] || rm -f -- \"$publication_temp\"' EXIT",
+  "if [[ $publication_recorded == false ]]; then",
+  "  publication_temp=$(mktemp \"$publication_receipts/.pending.XXXXXXXX\")",
+  "  printf '%s\\n' \"$publication_expected\" > \"$publication_temp\"",
+  "  chmod 444 -- \"$publication_temp\"",
+  "  sync -- \"$publication_temp\"",
+  "  ln -T -- \"$publication_temp\" \"$publication_receipt\"",
+  "  rm -- \"$publication_temp\"; publication_temp=",
+  "fi",
+  "sync -- \"$publication_receipt\"",
+  "sync -- \"$publication_receipts\"",
+  "publication_temp=$(mktemp \"$publication_head.pending.XXXXXXXX\")",
+  "printf '%s\\n' \"$publication_expected\" > \"$publication_temp\"",
+  "chmod 644 -- \"$publication_temp\"",
+  "sync -- \"$publication_temp\"",
+  "mv -T -- \"$publication_temp\" \"$publication_head\"; publication_temp=",
+  "sync -- \"$\{publication_head%/*}\"",
+  "[[ $(cat -- \"$publication_head\") == \"$publication_expected\" ]] || exit 68",
+  "printf 'committed\\n'",
+], "\n")

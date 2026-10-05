@@ -517,6 +517,118 @@ pub fn collection_fold_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
+pub fn collection_map_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "map".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                    id: "MappedElement".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+            source: Rc::new(ContainerSource::SameAsReceiver),
+            element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                id: "MappedElement".to_string(),
+            }),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(0),
+    })
+}
+
+pub fn collection_flat_map_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "flat_map".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+                    source: Rc::new(ContainerSource::SameAsReceiver),
+                    element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                        id: "MappedElement".to_string(),
+                    }),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
+            source: Rc::new(ContainerSource::SameAsReceiver),
+            element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                id: "MappedElement".to_string(),
+            }),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(0),
+    })
+}
+
+pub fn collection_any_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "any".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "Bool".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+            name: "Bool".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(0),
+    })
+}
+
+pub fn collection_all_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "all".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "Bool".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+            name: "Bool".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(0),
+    })
+}
+
+pub fn collection_sort_by_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "sort_by".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
+                return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                    id: "SortKey".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+        size_effect: Some(CollectionSizeEffect::IdentityEffect),
+        cost_shape: Some(CostShape::ShapeSortBody),
+        callback_element_position: Some(0),
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StepPositionScan {
     pub next: i64,
@@ -629,17 +741,6 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
                 }
             }
         }
-    }
-}
-
-pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
-    {
-        let proto = collection_filter_shape();
-        (((((t.return_type.clone() == proto.return_type.clone())
-            && (t.size_effect.clone() == proto.size_effect.clone()))
-            && (t.cost_shape.clone() == proto.cost_shape.clone()))
-            && (t.callback_element_position.clone() == proto.callback_element_position.clone()))
-            && (t.param_types.clone() == proto.param_types.clone()))
     }
 }
 
@@ -1447,88 +1548,11 @@ pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: std::option::Option::None,
         }),
         collection_filter_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "map".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "MappedElement".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                source: Rc::new(ContainerSource::SameAsReceiver),
-                element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "MappedElement".to_string(),
-                }),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "flat_map".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                        source: Rc::new(ContainerSource::SameAsReceiver),
-                        element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                            id: "MappedElement".to_string(),
-                        }),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                source: Rc::new(ContainerSource::SameAsReceiver),
-                element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "MappedElement".to_string(),
-                }),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_map_shape(),
+        collection_flat_map_shape(),
         collection_fold_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "any".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Bool".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Bool".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "all".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Bool".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Bool".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_any_shape(),
+        collection_all_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -1802,89 +1826,12 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
 
 pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
-        Rc::new(AlgebraFieldTemplate {
-            name: "map".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "MappedElement".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                source: Rc::new(ContainerSource::SameAsReceiver),
-                element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "MappedElement".to_string(),
-                }),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_map_shape(),
         collection_filter_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "flat_map".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                        source: Rc::new(ContainerSource::SameAsReceiver),
-                        element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                            id: "MappedElement".to_string(),
-                        }),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                source: Rc::new(ContainerSource::SameAsReceiver),
-                element: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "MappedElement".to_string(),
-                }),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_flat_map_shape(),
         collection_fold_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "any".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Bool".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Bool".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "all".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Bool".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Bool".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(0),
-        }),
+        collection_any_shape(),
+        collection_all_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "count".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -1956,22 +1903,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeIterateBody),
             callback_element_position: std::option::Option::None,
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "sort_by".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "SortKey".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: Some(CollectionSizeEffect::IdentityEffect),
-            cost_shape: Some(CostShape::ShapeSortBody),
-            callback_element_position: Some(0),
-        }),
+        collection_sort_by_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "append".to_string(),
             param_types: Rc::new(vec![

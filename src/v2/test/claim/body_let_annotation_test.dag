@@ -1,5 +1,6 @@
 module v2.test.claim.body_let_annotation
 
+import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
@@ -17,7 +18,7 @@ import v2.std.integer { integer_decimal_digit_type_node }
 import std.types { Int }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic {
   None,
   Some,
@@ -33,7 +34,6 @@ import v2.std.diagnostic {
   Suggested
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }

@@ -1,0 +1,201 @@
+module gunbc.workspace_commissioning_dispatch
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import std.decl_ref { decl_ref }
+import std.algebra { trim }
+import v2.std.algebra { any }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import std.process { ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.systemd.systemctl
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.workspace_allocation { workspace_request_from_json }
+import gunbc.workspace_host_offer_observe { workspace_observe_host_offers }
+import gunbc.workspace_offer_producer { workspace_host_offer_text }
+import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_decode, workspace_commissioning_input_read, workspace_commissioning_input_publish, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputAbsent, WorkspaceCommissioningInputRefused }
+import gunbc.workspace_commissioning_executor_input { workspace_executor_input_from_plan, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
+import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
+import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, workspace_commissioning_candidate, workspace_commissioning_basis_rows, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetRefused }
+import gunbc.workspace_commissioning_start_observe { workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartSnapshot, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartUnreadable }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+
+fn workspace_dispatch_refused(reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
+}
+
+// The reviewed caller sends its already captured bundle through stdin, not a mutable job path.
+// The first line is its admitted hash; the remaining canonical JSON carries all four artifacts.
+// This entry is granted only at the exact root-owned installed release and takes no CLI args.
+fn workspace_dispatch_stage_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  if !input.success || string_length(s: input.content) < 18 { workspace_dispatch_refused(reason: "dispatch envelope is unreadable") }
+  else {
+    let expected = substring(s: input.content, start: 0, end: 16)
+    if !content_hash_validate_lower_hex_length(text: expected, expected_hex_digits: 16)
+      || substring(s: input.content, start: 16, end: 17) != "\n" {
+      workspace_dispatch_refused(reason: "dispatch hash envelope is malformed")
+    } else { match workspace_commissioning_input_decode(text: substring(s: input.content, start: 17, end: string_length(s: input.content))) {
+      WorkspaceCommissioningInputPresent { bytes, plan } => if (plan.bundle as String) != expected {
+        workspace_dispatch_refused(reason: "dispatch input differs from the caller's admitted bundle")
+      } else { workspace_dispatch_stage(bytes: bytes) }
+      WorkspaceCommissioningInputAbsent => workspace_dispatch_refused(reason: "dispatch reviewed input refused")
+      WorkspaceCommissioningInputRefused { reason: _ } => workspace_dispatch_refused(reason: "dispatch reviewed input refused")
+    } }
+  }
+}
+
+fn workspace_dispatch_stage(bytes: WorkspaceCommissioningInputBytes) -> CliWireResponse
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_dispatch", decl_name: "workspace_dispatch_stage_cli")]
+{
+  match workspace_commissioning_input_decode(text: gunbc.workspace_commissioning_input_store.workspace_commissioning_input_text(bytes: bytes)) {
+    WorkspaceCommissioningInputPresent { bytes: _, plan } => match workspace_executor_input_from_plan(plan: plan) {
+      WorkspaceExecutorInputObserved { input: _ } => {
+        let slot = runner_slot_instance_name(slot: plan.provenance.slot)
+        let prestate = match workspace_commissioning_input_read(slot: slot) {
+          WorkspaceCommissioningInputPresent { bytes: stored, plan: _ } => stored == bytes
+          WorkspaceCommissioningInputAbsent => match workspace_commissioning_basis_observe(provenance: plan.provenance) {
+            WorkspaceCommissioningFleetObserved { basis } => !basis.already_committed && basis.prestate == plan.prestate
+            WorkspaceCommissioningFleetRefused { reason: _ } => false
+          }
+          WorkspaceCommissioningInputRefused { reason: _ } => false
+        }
+        if !prestate { workspace_dispatch_refused(reason: "dispatch input is foreign or initial prestate drifted") }
+        else { match workspace_commissioning_input_publish(bytes: bytes) {
+          WorkspaceCommissioningInputPresent { bytes: stored, plan: recorded } => if stored != bytes || recorded.bundle != plan.bundle {
+            workspace_dispatch_refused(reason: "dispatch lost protected input publication")
+          } else {
+            let unit = workspace_executor_unit_instance_name(slot: slot)
+            match workspace_commissioning_start_observe(unit: unit) {
+              WorkspaceCommissioningStartObserved { snapshot: before } => if before.load != "loaded" || before.job != "" {
+                workspace_dispatch_refused(reason: "executor is unloaded or has queued work; retry observation")
+              } else if before.active == "active" || before.active == "activating" || before.active == "deactivating" {
+                workspace_dispatch_invocation(snapshot: before)
+              } else if workspace_commissioning_start_quiescent(snapshot: before) {
+                let started = systemd.Systemctl.Start(unit: unit)
+                if !started.success { workspace_dispatch_refused(reason: "executor start uncertain; retry the recorded transaction") }
+                else { match workspace_commissioning_start_observe(unit: unit) {
+                  WorkspaceCommissioningStartObserved { snapshot: after } => if after.invocation == before.invocation {
+                    workspace_dispatch_refused(reason: "executor start did not establish a new invocation")
+                  } else { workspace_dispatch_invocation(snapshot: after) }
+                  WorkspaceCommissioningStartUnreadable { reason: _ } => workspace_dispatch_refused(reason: "executor started but its invocation is unreadable")
+                } }
+              } else { workspace_dispatch_refused(reason: "executor state does not admit a start or reattachment") }
+              WorkspaceCommissioningStartUnreadable { reason: _ } => workspace_dispatch_refused(reason: "executor prestate is unreadable")
+            }
+          }
+          WorkspaceCommissioningInputAbsent => workspace_dispatch_refused(reason: "protected dispatch publication refused")
+          WorkspaceCommissioningInputRefused { reason: _ } => workspace_dispatch_refused(reason: "protected dispatch publication refused")
+        } }
+      }
+      WorkspaceExecutorInputRefused { reason: _ } => workspace_dispatch_refused(reason: "installed dispatch subject is not established")
+    }
+    WorkspaceCommissioningInputAbsent => workspace_dispatch_refused(reason: "dispatch bytes are invalid")
+    WorkspaceCommissioningInputRefused { reason: _ } => workspace_dispatch_refused(reason: "dispatch bytes are invalid")
+  }
+}
+
+fn workspace_dispatch_invocation(snapshot: WorkspaceCommissioningStartSnapshot) -> CliWireResponse {
+  if snapshot.load == "loaded" && content_hash_validate_lower_hex_length(text: snapshot.invocation, expected_hex_digits: 32) {
+    CliWirePrintable { bytes: concat(snapshot.invocation, "\n"), exit: ExitSuccess }
+  } else { workspace_dispatch_refused(reason: "executor invocation is missing or invalid") }
+}
+
+// The caller supplies only bundle + slot as data. Completion requires protected input/journal,
+// the existing durable generation publisher's readback, and the exact successful unit terminal.
+fn workspace_dispatch_complete_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  let text = trim(s: input.content)
+  if !input.success || string_length(s: text) < 18 { workspace_dispatch_refused(reason: "completion subject is unreadable") }
+  else {
+    let expected = substring(s: text, start: 0, end: 16)
+    let slot = substring(s: text, start: 17, end: string_length(s: text))
+    if !content_hash_validate_lower_hex_length(text: expected, expected_hex_digits: 16)
+      || substring(s: text, start: 16, end: 17) != "\n"
+      || !any(workspace_execution_slot_identities(), identity => (runner_slot_instance_name(slot: identity) as String) == slot) {
+      workspace_dispatch_refused(reason: "completion subject is malformed")
+    } else { match workspace_commissioning_input_read(slot: slot as NonEmptyStr) {
+      WorkspaceCommissioningInputPresent { bytes: _, plan } => if (plan.bundle as String) != expected {
+        workspace_dispatch_refused(reason: "completion belongs to another bundle")
+      } else { match workspace_executor_input_from_plan(plan: plan) {
+        WorkspaceExecutorInputObserved { input: _ } => match workspace_executor_journal_observe(slot_key: slot as NonEmptyStr) {
+          WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+            Present { value: record } => if record.subject.fleet_bundle_hash != plan.bundle || record.subject.plan_hash != plan.provenance.plan_hash || (record.phase != ExecutorGenerationCommitted) {
+              workspace_dispatch_refused(reason: "commissioning has no protected completed generation")
+            } else { match run_shell_command_capture(command: fleet_generation_publication_as_owner(action: "observe", host: plan.provenance.slot.host as NonEmptyStr,
+              prior: record.subject.prior_fleet_generation, planned: record.subject.planned_fleet_generation, bundle: plan.bundle), transport: LocalExec) {
+              ProcessOutputPresent { text: verdict } => if trim(s: verdict) != "committed" { workspace_dispatch_refused(reason: "fleet generation readback is not committed") }
+                else { workspace_dispatch_completed_unit(slot: slot as NonEmptyStr, bundle: expected) }
+              ProcessOutputAbsent => workspace_dispatch_refused(reason: "fleet generation receipt is unreadable")
+              ProcessRefused { exit_code: _, stderr: _ } => workspace_dispatch_refused(reason: "fleet generation receipt is unreadable")
+            } }
+            Absent => workspace_dispatch_refused(reason: "executor journal is absent")
+          }
+          WorkspaceExecutorJournalUnreadable { reason: _ } => workspace_dispatch_refused(reason: "executor journal is unreadable")
+        }
+        WorkspaceExecutorInputRefused { reason: _ } => workspace_dispatch_refused(reason: "installed completion subject is not established")
+      } }
+      WorkspaceCommissioningInputAbsent => workspace_dispatch_refused(reason: "protected completion input is unavailable")
+      WorkspaceCommissioningInputRefused { reason: _ } => workspace_dispatch_refused(reason: "protected completion input is unavailable")
+    } }
+  }
+}
+
+fn workspace_dispatch_completed_unit(slot: NonEmptyStr, bundle: String) -> CliWireResponse {
+  let unit = workspace_executor_unit_instance_name(slot: slot)
+  match workspace_commissioning_start_observe(unit: unit) {
+    WorkspaceCommissioningStartObserved { snapshot: before } => {
+      let result = systemd.Systemctl.ShowProperty(unit: unit, property: "Result")
+      let status = systemd.Systemctl.ShowProperty(unit: unit, property: "ExecMainStatus")
+      match workspace_commissioning_start_observe(unit: unit) {
+        WorkspaceCommissioningStartObserved { snapshot: after } => if before != after || before.load != "loaded"
+          || before.main_pid != "0" || before.job != "" || (before.active != "active" && before.active != "inactive")
+          || !result.success || trim(s: result.value) != "success" || !status.success || trim(s: status.value) != "0"
+          || !content_hash_validate_lower_hex_length(text: before.invocation, expected_hex_digits: 32) {
+          workspace_dispatch_refused(reason: "executor has not reached a stable successful terminal")
+        } else { CliWirePrintable { bytes: join(["commissioning-fleet-generation-committed:", bundle, ":", before.invocation], ""), exit: ExitSuccess } }
+        WorkspaceCommissioningStartUnreadable { reason: _ } => workspace_dispatch_refused(reason: "executor completion changed or became unreadable")
+      }
+    }
+    WorkspaceCommissioningStartUnreadable { reason: _ } => workspace_dispatch_refused(reason: "executor completion unit is unreadable")
+  }
+}
+
+fn workspace_dispatch_plan_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  if !input.success || string_length(s: input.content) < 42 { workspace_dispatch_refused(reason: "plan subject is unreadable") }
+  else {
+    let revision = substring(s: input.content, start: 0, end: 40)
+    let host = substring(s: input.content, start: 41, end: string_length(s: input.content))
+    if !content_hash_validate_lower_hex_length(text: revision, expected_hex_digits: 40) || substring(s: input.content, start: 40, end: 41) != "\n" {
+      workspace_dispatch_refused(reason: "plan revision is malformed")
+    } else { match workspace_commissioning_candidate(host: host as NonEmptyStr, revision: revision as CommitSha) {
+      WorkspaceCommissioningFleetObserved { basis } => CliWirePrintable { bytes: workspace_commissioning_basis_rows(basis: basis), exit: ExitSuccess }
+      WorkspaceCommissioningFleetRefused { reason: _ } => workspace_dispatch_refused(reason: "privileged commissioning observation refused")
+    } }
+  }
+}
+
+// Read-only preparation observer. stdin is the admitted request the coordinator is preparing;
+// stdout is one canonical host-offer line per designated slot on this host. It writes nothing.
+fn workspace_dispatch_offer_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  if !input.success { workspace_dispatch_refused(reason: "offer request is unreadable") }
+  else { match parse_json_document(s: trim(s: input.content)) {
+    JsonDocumentUnreadable { gap: _ } => workspace_dispatch_refused(reason: "offer request is not one JSON document")
+    JsonDocumentParsed { value: doc } => match workspace_request_from_json(value: doc) {
+      Absent => workspace_dispatch_refused(reason: "offer request is not an admitted workspace request")
+      Present { value: request } => CliWirePrintable {
+        bytes: concat(join(map(workspace_observe_host_offers(request: request), read => workspace_host_offer_text(read: read)), "\n"), "\n"),
+        exit: ExitSuccess,
+      }
+    }
+  } }
+}

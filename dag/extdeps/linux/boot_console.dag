@@ -1,0 +1,41 @@
+module extdeps.linux.boot_console
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+
+// THE KERNEL'S OWN CONSOLE LINES THE BOOT MODEL READS. Its panic line, Linux v6.8 kernel/panic.c: panic() prints
+// pr_emerg("Kernel panic - not syncing: %s\n", buf) once, and its end marker
+// "---[ end Kernel panic - not syncing: %s ]---". The reason after the prefix is the caller's text.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/v6.8/kernel/panic.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.boot_console",
+      decl_name: "linux_kernel_panic_prefix",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/v6.8/init/version-timestamp.c" },
+    },
+  ],
+}
+
+// init/version-timestamp.c linux_banner: "Linux version " UTS_RELEASE ..., the first line the
+// kernel proper prints, so its presence establishes that the stub handed off to the kernel.
+data linux_banner_prefix: NonEmptyStr = "Linux version "
+
+data linux_kernel_panic_prefix: NonEmptyStr = "Kernel panic - not syncing: "
+
+// The end marker repeats the prefix; a reader that took it as a second panic would count one twice.
+data linux_kernel_panic_end_marker: NonEmptyStr = "---[ end Kernel panic - not syncing: "

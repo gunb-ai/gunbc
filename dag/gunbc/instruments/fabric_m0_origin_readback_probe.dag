@@ -43,7 +43,6 @@ import gunbc.fabric_m0_origin_readback {
   OriginReadingTaken,
   OriginReadingUnavailable,
   origin_reading_digest,
-  origin_reading_path,
   read_origin_staged_file,
 }
 
@@ -111,13 +110,14 @@ fn digest_of(staged: NonEmptyStr, expected: Sha256Digest) -> Bool {
   match read_origin_staged_file(staged_path: staged) {
     OriginReadingTaken { reading: r } =>
       content_hash_eq_cryptographic(left: origin_reading_digest(reading: r), right: expected)
-        && (origin_reading_path(reading: r) == staged)
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
   }
 }
 
-// THE POSITIVE CONTROL: the reading carries the digest of the bytes at the path it names, and it
-// names the path it was told to read.
+// THE POSITIVE CONTROL: the reading carries the digest of the bytes at the path it was told to read.
+// The reading no longer names that path -- the origin fetch releases its staging directory once the
+// digest is taken, so a carried path would name a deleted file -- and the digest is what identifies
+// the read.
 fn the_reading_carries_the_digest_of_the_file_it_names() -> Bool {
   digest_of(staged: staged_manifest_path, expected: expected_staged_manifest_digest())
 }

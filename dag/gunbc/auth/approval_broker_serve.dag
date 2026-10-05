@@ -1,11 +1,15 @@
 module gunbc.auth.approval_broker_serve
+import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
+import extdeps.http.server { text_javascript_utf8 }
+import gunbc.site.document { site_document_over, site_styles, ApprovalShell }
 
 import extdeps.tailscale.identity { tailnet_identity_login }
 import extdeps.tailscale.serve { ServeStatusUnreadable }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
-import gunbc.auth.request_authentication {
+import gunbc.auth.request_authentication { IngressUnattested,
   RequestAuthenticationEvidence, AuthAbsent,
   request_access_path_of, tailnet_transport_observation,
+  RequestAccessPath,
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
@@ -117,6 +121,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
 type ApprovalBrokerHandler
   = ApprovalConfirmPageHandler
+  | ApprovalSiteFaviconHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
@@ -141,6 +146,7 @@ type ApprovalBrokerHandler
 // spelled once per reader agrees until one of them moves.
 fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>> {
   [
+    ServedRouteSpec { method: GET, raw: site_favicon_path, handler: ApprovalSiteFaviconHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_confirm_path_template as String, handler: ApprovalConfirmPageHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
@@ -191,6 +197,7 @@ fn broker_text_response(status: HttpStatus, content_type: MediaType, body: Strin
     status: status,
     content_type: content_type,
     body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
+    headers: [],
   }
 }
 
@@ -231,27 +238,31 @@ fn broker_page_response(page: Fragment, marker: ApprovalBrokerMarker, process: A
 // this very fold until stage 6, so a response that named only the route was emitted identically by
 // both processes and the cutover probe could not tell them apart.
 fn approval_confirm_page_response(
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   let segment = path_param_value(params: params, name: "capability")
-  let decision_word = match parse_capability_segment(segment: segment) {
+  let parsed = parse_capability_segment(segment: segment)
+  let decision_word = match parsed {
     CapabilitySegmentParsed { escalation_id: _, decision: ProposeApprove, tag_hex: _ } => "APPROVE"
     CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: _ } => "DENY"
     CapabilitySegmentMalformed { detail: _ } => "(malformed capability)"
   }
-  broker_page_response(page: el("html", [
-    el("head", [ el("title", [ txt("gunbc approval") ]), el_attrs("meta", [ attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1") ], []) ]),
-    el("body", [
-      el("h1", [ txt(join(["Confirm: ", decision_word], "")) ]),
-      el("p", [ txt("This page does not decide anything. Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never spend an approval, so this route renders and stops. The button below POSTs to the same path, and that request is the one that commits.") ]),
-      el("p", [ txt(join(["capability: ", segment], "")) ]),
-      el_attrs("form", [ attr(name: "method", value: "post"), attr(name: "action", value: join([approval_broker_confirm_path_prefix as String, segment], "")) ], [
-        el_attrs("button", [ attr(name: "type", value: "submit") ], [ txt(decision_word) ]),
-      ]),
-    ]),
+  let available = match parsed { CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } => true CapabilitySegmentMalformed { detail: _ } => false }
+  broker_page_response(page: site_document_over(shell: ApprovalShell, title: "gunbc approval", heading: "approval", navigation: [], styles: site_styles(rules: []), content: [
+    el("main", if !available {
+      [el("h1", [txt("Approval link unavailable")]), el("p", [txt("This link is invalid or incomplete. Open the original approval request to continue.")])]
+    } else {
+      [el("h1", [txt(concat("Confirm: ", decision_word))]),
+       el("p", [txt("Review the request before confirming your decision. Opening this page does not record a decision.")]),
+       el("details", [el("summary", [txt("Request identifier")]), el("code", [txt(segment)])]),
+       el_attrs("form", [attr(name: "method", value: "post"), attr(name: "action", value: join([approval_broker_confirm_path_prefix as String, segment], ""))], [
+         el_attrs("button", [attr(name: "type", value: "submit")], [txt(decision_word)]),
+       ])]
+    }),
   ]), marker: ConfirmHandlerObserved, process: process)
+
 }
 
 // THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or
@@ -278,7 +289,7 @@ fn approval_confirm_page_response(
 // store untouched -- which is also what keeps the hermetic witness able to reach this handler
 // whether or not the trust standing is established, since Clock.Now has no hermetic arm.
 fn approval_decide_response(
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -308,7 +319,7 @@ fn approval_decide_response(
   }
 }
 
-fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
@@ -361,7 +372,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAuthenticati
 // key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
 // the body and renders the outcome, and the response never carries a link -- links go only to the
 // operator's phone.
-fn approval_submit_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
   match approval_write_admission(asker: process) {
     ApprovalWriteRefused { holder: h, asker: a } =>
       broker_text_response(
@@ -391,7 +402,7 @@ fn approval_submit_response(request: ServeHttpRequest<RequestAuthenticationEvide
 // the server for it. Copying a body once is an extraction; keeping the copy while its authority
 // moves is a reimplementation that drifts silently -- and the tell is exactly this, a merge where
 // the other side changed a fold I had duplicated rather than consumed.
-fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
@@ -443,7 +454,7 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
 // THE STORE RECEIPT ROUTE (gunbc.auth.approval_store_receipt). It reads the store and mints, and
 // writes nothing, so like the status route it takes no writer admission; the asker's authentication
 // is the submission-key MAC the fold checks before it reads the escalation at all.
-fn approval_store_receipt_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_store_receipt_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body)
   broker_text_response(status: answer.status, content_type: text_plain_utf8, body: answer.body, marker: StoreReceiptHandlerObserved, process: process)
 }
@@ -464,7 +475,7 @@ fn approval_store_receipt_response(request: ServeHttpRequest<RequestAuthenticati
 
 fn approval_broker_selection_response(
   sel: RouteSelection<ApprovalBrokerHandler>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match sel {
@@ -506,10 +517,11 @@ fn approval_broker_selection_response(
 fn approval_broker_invoke(
   handler: ApprovalBrokerHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
+    ApprovalSiteFaviconHandler => broker_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source(), marker: BrokerStaticRouteServed, process: process)
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params, process: process)
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
@@ -596,11 +608,12 @@ fn approval_broker_respond_as(
 // behind a serve-status readback this entry does not perform, so it reaches the handlers as an
 // unattributed observation. The broker reads no session cookie -- the signed capability and the
 // submission MAC are its authentication -- so the evidence is AuthAbsent.
-fn approval_broker_request_security(tailscale_identity: String) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+fn approval_broker_request_security(tailscale_identity: String) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: request_access_path_of(
       listen_host: approval_broker_listen_host,
       tailscale_header: tailscale_identity,
+      ingress: IngressUnattested,
       serve_status: ServeStatusUnreadable,
       serve_route: none,
       acl_policy: operator_tailscale_acl_policy,

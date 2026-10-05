@@ -18,7 +18,8 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, literal_homomorphism_rows,
+    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
+    literal_homomorphism_rows,
 };
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{carrier_container_equality_rows, kernel_carrier_admits_numeral};
@@ -70,20 +71,21 @@ use crate::std_kernel_type_name::KernelTypeNameAdmission::{
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
+    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+};
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-use crate::std_literal_elaboration::LiteralUnfolding::{
-    BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
+use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
+pub use crate::std_literal_elaboration::{
+    elaborate_literal_at, kernel_grounding_for, kernel_mint_declaration_for,
+    literal_elaboration_refusal_message, literal_source_kind_of,
 };
 pub use crate::std_literal_elaboration::{
-    elaborate_literal_at, kernel_grounding_for, literal_elaboration_refusal_message,
-    literal_source_kind_of,
-};
-pub use crate::std_literal_elaboration::{
-    KernelGrounding, KernelGroundingLookup, LiteralElaboration, LiteralElaborationOutcome,
-    LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
+    KernelGrounding, KernelGroundingLookup, KernelMintDeclarationLookup, LiteralElaboration,
+    LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -136,15 +138,16 @@ pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
     declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
     empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
-    global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_with_children, node_with_inferred, put_inductive_field, put_inductive_field_cross,
-    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
+    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
+    lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
+    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
@@ -188,7 +191,8 @@ pub use crate::v1_compiler_infer_lookup::{
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
-    infer_builtin_call_type, resolve_builtin_call_type,
+    infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor,
+    resolve_builtin_call_type,
 };
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
@@ -282,12 +286,13 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
+    FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
     SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
-    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
+    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -345,8 +350,9 @@ pub use crate::v1_std_core::{
     record_lit_named_field_value_optional, record_lit_type_name_at,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
-    variant_node_fields, with_optional_cardinality, with_required_cardinality,
+    string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
+    unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -1166,6 +1172,46 @@ pub fn variant_reference_inferred_node(
     }
 }
 
+pub fn kernel_mint_parent_identity(minted_name: String) -> Rc<VariantParentIdentity> {
+    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+        kernel_mint_declaration_rows(),
+        minted_name.clone(),
+    ))
+    .clone()
+    {
+        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+            Rc::new(VariantParentIdentity::VariantParentIdentified {
+                key: Rc::new(VariantParentKey::VariantParentDeclaration {
+                    declaration: d.clone(),
+                }),
+            })
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
+            Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+                cause: "the owning kernel mint is bound to more than one declaration".to_string(),
+            })
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
+            match (*crate::std_kernel_type_name::kernel_type_name(minted_name.clone())).clone() {
+                KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => {
+                    Rc::new(VariantParentIdentity::VariantParentIdentified {
+                        key: Rc::new(VariantParentKey::VariantParentKernelType {
+                            kernel_name: k.clone(),
+                        }),
+                    })
+                }
+                KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => {
+                    Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+                        cause:
+                            "the owning coproduct is a kernel mint whose name is not a kernel type"
+                                .to_string(),
+                    })
+                }
+            }
+        }
+    }
+}
+
 pub fn variant_parent_identity_of(
     owner: Option<Rc<Node>>,
     scope: Rc<InferScope>,
@@ -1181,16 +1227,7 @@ pub fn variant_parent_identity_of(
 }),
 }),
     std::option::Option::None => match (*crate::v1_std_core::declaration_provenance_of(o.clone())).clone() {
-    TypeDeclarationProvenance::KernelMinted { minted_name: m, .. } => match (*crate::std_kernel_type_name::kernel_type_name(m.clone())).clone() {
-    KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => Rc::new(VariantParentIdentity::VariantParentIdentified {
-    key: Rc::new(VariantParentKey::VariantParentKernelType {
-    kernel_name: k.clone(),
-}),
-}),
-    KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-    cause: "the owning coproduct is a kernel mint whose name is not a kernel type".to_string(),
-}),
-},
+    TypeDeclarationProvenance::KernelMinted { minted_name: m, .. } => kernel_mint_parent_identity(m.clone()),
     _ => Rc::new(VariantParentIdentity::VariantParentUnrecovered {
     cause: "the owning coproduct is neither an identified corpus declaration nor a kernel type (alias or unresolved)".to_string(),
 }),
@@ -1865,6 +1902,74 @@ pub fn constructor_reference_admission_early_refusal(
     }
 }
 
+pub fn text_crossing_or_type_mismatch_error(
+    expected: Rc<Node>,
+    got: Rc<Node>,
+    env: Rc<TypeEnv>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<ErrorNode> {
+    {
+        let si = env.source_indices.clone();
+        let plain = type_mismatch_error(
+            crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
+            crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
+            span.clone(),
+            module_name.clone(),
+        );
+        if crate::v1_compiler_infer_env::text_crossing_by_identity(
+            expected.clone(),
+            got.clone(),
+            env.clone(),
+        ) {
+            match crate::v1_compiler_infer_env::text_representation_by_identity(
+                got.clone(),
+                env.clone(),
+            ) {
+                TextRepresentation::HostText => text_crossing_route_error(
+                    expected.clone(),
+                    got.clone(),
+                    "unicode_scalar_unfold".to_string(),
+                    si.clone(),
+                    span.clone(),
+                    module_name.clone(),
+                ),
+                TextRepresentation::CodePointSequence => text_crossing_route_error(
+                    expected.clone(),
+                    got.clone(),
+                    "unicode_scalar_fold".to_string(),
+                    si.clone(),
+                    span.clone(),
+                    module_name.clone(),
+                ),
+                TextRepresentation::NotText => plain,
+                TextRepresentation::TextRepresentationUnidentified => plain,
+            }
+        } else {
+            plain
+        }
+    }
+}
+
+pub fn text_crossing_route_error(
+    expected: Rc<Node>,
+    got: Rc<Node>,
+    route: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<ErrorNode> {
+    crate::v1_std_core::make_error_node(
+        Rc::new(CompilerDiagnostic::TextCrossingHasNoImplicitRoute {
+            expected: crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
+            got: crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
+            route: route.clone(),
+            span: span.clone(),
+        }),
+        module_name.clone(),
+    )
+}
+
 pub fn type_mismatch_error(
     expected: String,
     got: String,
@@ -2209,9 +2314,10 @@ pub fn declared_type_conformance_diags_core(
                 produced.clone(),
                 scope.type_env.clone(),
             ) {
-                Rc::new(vec![type_mismatch_error(
-                    crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()),
-                    crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()),
+                Rc::new(vec![text_crossing_or_type_mismatch_error(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.type_env.clone(),
                     span.clone(),
                     scope.module_name.clone(),
                 )])
@@ -7836,14 +7942,19 @@ match app.matched_argument_index.clone() {
     Some(arg_index) => match typed_args.clone().iter().cloned().skip(arg_index.clone() as usize).next() {
     Some(ta) => {
                 let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-if (!direct_call_formal_has_unbound_type_variable(app.formal.clone().substitution_basis.clone()) && ((literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone()) || structured_application_site_type_mismatch_with_peeled(formal_subst.clone(), formal.clone(), carried_structural_type_name(formal.clone(), source_indices.clone(), 0), actual_expr.clone(), scope.clone())) || direct_call_structured_record_literal_resolved_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()))) {
-                    {
-                        let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
-let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone()), actual_expr.span.clone(), module_name.clone())])
-}
+let host_into_sequence = (!type_node_is_callable(formal.clone()) && crate::v1_compiler_infer_env::host_text_into_structural_sequence(formal.clone(), crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone(), module_name.clone()), crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), type_env.clone()));
+if host_into_sequence.clone() {
+                    Rc::new(vec![text_crossing_route_error(formal.clone(), crate::v1_compiler_infer_types::resolved_type(actual_expr.clone()), "unicode_scalar_unfold".to_string(), source_indices.clone(), actual_expr.span.clone(), module_name.clone())])
                 } else {
-                    Rc::new(vec![])
+                    if (!direct_call_formal_has_unbound_type_variable(app.formal.clone().substitution_basis.clone()) && ((literal_introduction_type_mismatch(formal.clone(), actual_expr.clone(), scope.clone()) || structured_application_site_type_mismatch_with_peeled(formal_subst.clone(), formal.clone(), carried_structural_type_name(formal.clone(), source_indices.clone(), 0), actual_expr.clone(), scope.clone())) || direct_call_structured_record_literal_resolved_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()))) {
+                        {
+                            let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
+let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
+Rc::new(vec![text_crossing_or_type_mismatch_error(formal.clone(), actual.clone(), type_env.clone(), actual_expr.span.clone(), module_name.clone())])
+}
+                    } else {
+                        Rc::new(vec![])
+                    }
                 }
 },
     std::option::Option::None => Rc::new(vec![]),
@@ -10498,11 +10609,9 @@ pub fn annotate_pattern_parent_enums(
                                 || (variant_name.clone() == "Absent".to_string())))
                         {
                             Rc::new(PatternParentReading {
-    parent_enum: Some("Optional".to_string()),
-    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-    cause: "the arm belongs to the optional wrapper, not to the scrutinee's declared coproduct".to_string(),
-}),
-})
+                                parent_enum: Some("Optional".to_string()),
+                                identity: kernel_mint_parent_identity(kernel_optional_mint_name()),
+                            })
                         } else {
                             if witness_container_subject.clone() {
                                 Rc::new(PatternParentReading {
@@ -12185,23 +12294,6 @@ pub fn unfold_literal_image(
 }), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)".to_string(), span.clone()),
 },
-    LiteralUnfolding::BooleanUnfold { true_variant: t, false_variant: f, .. } => match (*lit.clone()).clone() {
-    LiteralValue::LitBool { value: b, .. } => elaborated_expr_node(if b.clone() {
-        t.decl_name.clone()
-    } else {
-        f.decl_name.clone()
-    }, Rc::new(ExprData::ExprVar {
-    binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
-    parent_enum: elaboration.destination.clone().decl_name.clone(),
-    parent_identity: Rc::new(VariantParentIdentity::VariantParentIdentified {
-    key: Rc::new(VariantParentKey::VariantParentDeclaration {
-    declaration: elaboration.destination.clone(),
-}),
-}),
-})),
-}), Rc::new(vec![]), destination_type.clone(), span.clone()),
-    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)".to_string(), span.clone()),
-},
 }
 }
 
@@ -13476,13 +13568,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         })
                                     }
                                 } else {
-                                    if (!callee_is_body_binding.clone()
-                                        && (func_name.clone() == "empty_map".to_string()))
-                                    {
-                                        {
-                                            let bare_m =
-                                                crate::v1_compiler_infer_types::bare_map_node();
-                                            match expected.clone() {
+                                    if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_map_constructor(func_name.clone())) {
+                            {
+                                let bare_m = crate::v1_compiler_infer_types::bare_map_node();
+match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13566,15 +13655,12 @@ match bare_m.clone() {
 }),
 },
 }
-                                        }
-                                    } else {
-                                        if (!callee_is_body_binding.clone()
-                                            && (func_name.clone() == "empty_set".to_string()))
-                                        {
-                                            {
-                                                let bare_s =
-                                                    crate::v1_compiler_infer_types::bare_set_node();
-                                                match expected.clone() {
+}
+                        } else {
+                            if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_set_constructor(func_name.clone())) {
+                                {
+                                    let bare_s = crate::v1_compiler_infer_types::bare_set_node();
+match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13643,9 +13729,9 @@ match bare_s.clone() {
 }),
 },
 }
-                                            }
-                                        } else {
-                                            if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
+}
+                            } else {
+                                if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
 let bt = tier2b.bt.clone();
@@ -13778,8 +13864,8 @@ Rc::new(InferResult {
                                         }
 }
                                 }
-                                        }
-                                    }
+                            }
+                        }
                                 }
                             }
                         }
@@ -17351,10 +17437,19 @@ if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clon
                                             if structured_application_site_type_mismatch(expected_node.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone()) {
                                                 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                                             } else {
-                                                if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
-                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                                if (nominal_product_inhabitance_refusal(crate::v1_std_core::with_required_cardinality(expected_node.clone()), got_node.clone(), scope.clone()) != std::option::Option::None) {
+                                                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+    position: declared_type_position_label(DeclaredTypePosition::PositionRecordLiteralField, fi_name.clone()),
+    expected: obligation_type_shape(expected_node.clone(), scope.type_env.clone().source_indices.clone()),
+    got: obligation_type_shape(got_node.clone(), scope.type_env.clone().source_indices.clone()),
+    span: ar_typed.span.clone(),
+}), scope.module_name.clone())])
                                                 } else {
-                                                    Rc::new(vec![])
+                                                    if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
+                                                        Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                                    } else {
+                                                        Rc::new(vec![])
+                                                    }
                                                 }
                                             }
                                         }
@@ -26333,6 +26428,110 @@ pub fn build_ancestry_precedence(
     }
 }
 
+pub fn kernel_optional_type_node() -> Rc<Node> {
+    {
+        let present_value_field = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "value".to_string(),
+            span: kernel_span("value".to_string()),
+            ident_span: Some(kernel_span("value".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::TypeVariable {
+                id: "present_value".to_string(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let present_variant = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Present".to_string(),
+            span: kernel_span("Present".to_string()),
+            ident_span: Some(kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field.clone()]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Absent".to_string(),
+            span: kernel_span("Absent".to_string()),
+            ident_span: Some(kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let kernel_optional = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Optional".to_string(),
+            span: kernel_span("Optional".to_string()),
+            ident_span: Some(kernel_span("Optional".to_string())),
+            children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
+            connective: Connective::Disj,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        kernel_optional
+    }
+}
+
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -26475,104 +26674,7 @@ pub fn build_type_env(
                 alias_rhs: std::option::Option::None,
             }),
         );
-        let present_value_field = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "value".to_string(),
-            span: kernel_span("value".to_string()),
-            ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let present_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Present".to_string(),
-            span: kernel_span("Present".to_string()),
-            ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![present_value_field.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let absent_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Absent".to_string(),
-            span: kernel_span("Absent".to_string()),
-            ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kernel_optional = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Optional".to_string(),
-            span: kernel_span("Optional".to_string()),
-            ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Connective::Disj,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
+        let kernel_optional = kernel_optional_type_node();
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),
             crate::v1_std_core::intern(intern_table.clone(), "Optional".to_string())
@@ -27218,104 +27320,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let present_value_field = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "value".to_string(),
-            span: kernel_span("value".to_string()),
-            ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let present_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Present".to_string(),
-            span: kernel_span("Present".to_string()),
-            ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![present_value_field.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let absent_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Absent".to_string(),
-            span: kernel_span("Absent".to_string()),
-            ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kernel_optional = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Optional".to_string(),
-            span: kernel_span("Optional".to_string()),
-            ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Connective::Disj,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
+        let kernel_optional = kernel_optional_type_node();
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),
             crate::v1_std_core::intern(intern_table.clone(), "Optional".to_string())
@@ -30070,6 +30075,254 @@ pub fn ground_node(n: Rc<Node>, ctx: Rc<GroundCtx>) -> Rc<GroundOut> {
     })
 }
 
+pub fn payload_field_type_binder(
+    f: Rc<Node>,
+    env: Rc<TypeEnv>,
+    generic_names: Rc<Vec<String>>,
+) -> Option<String> {
+    match crate::v1_std_core::type_variable_binder_name(f.clone()) {
+        Some(tv) => Some(tv.clone()),
+        std::option::Option::None => {
+            if (f.inferred.clone() == std::option::Option::None) {
+                {
+                    let label = type_node_label(f.clone(), env.source_indices.clone());
+                    if {
+                        let mut __found = false;
+                        for g in generic_names.iter().cloned() {
+                            if (g.clone() == label.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        Some(label.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            } else {
+                crate::v1_std_core::type_variable_binder_name(
+                    crate::v1_compiler_infer_env::declaration_substitution_basis(
+                        crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                        env.clone(),
+                        generic_names.clone(),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+pub fn kernel_optional_shape_refusal(decl: Rc<Node>, env: Rc<TypeEnv>) -> Option<String> {
+    {
+        let si = env.source_indices.clone();
+        let mint = kernel_optional_type_node();
+        let mint_payload_field = match Rc::new({
+            let mut __result = Vec::new();
+            for v in mint.children.clone().iter().cloned() {
+                __result.extend(
+                    (*crate::v1_std_core::variant_node_fields(v.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(f) => f.name.clone(),
+            std::option::Option::None => "".to_string(),
+        };
+        let is_coproduct = (decl.connective.clone() == Connective::Disj);
+        if !is_coproduct.clone() {
+            Some("it is not a coproduct".to_string())
+        } else {
+            if ((decl.params.clone().len() as i64) != 1) {
+                Some(v1_rt::concat(
+                    v1_rt::concat(
+                        "it declares ".to_string(),
+                        (decl.params.clone().len() as i64).to_string(),
+                    ),
+                    " type parameters where the optional of T has exactly one".to_string(),
+                ))
+            } else {
+                if ((decl.children.clone().len() as i64) != 2) {
+                    Some(v1_rt::concat(
+                        v1_rt::concat(
+                            "it declares ".to_string(),
+                            (decl.children.clone().len() as i64).to_string(),
+                        ),
+                        " arms where the optional of T has exactly two".to_string(),
+                    ))
+                } else {
+                    {
+                        let nullary = Rc::new({
+                            let mut __result = Vec::new();
+                            for v in decl.children.clone().iter().cloned() {
+                                if ((crate::v1_std_core::variant_node_fields(v.clone()).len()
+                                    as i64)
+                                    == 0)
+                                {
+                                    __result.push(v);
+                                }
+                            }
+                            __result
+                        });
+                        let unary = Rc::new({
+                            let mut __result = Vec::new();
+                            for v in decl.children.clone().iter().cloned() {
+                                if ((crate::v1_std_core::variant_node_fields(v.clone()).len()
+                                    as i64)
+                                    == 1)
+                                {
+                                    __result.push(v);
+                                }
+                            }
+                            __result
+                        });
+                        let param_name = match decl.params.clone().first().cloned() {
+                            Some(p) => {
+                                crate::v1_std_core::generic_param_name_at(p.clone(), si.clone())
+                            }
+                            std::option::Option::None => "".to_string(),
+                        };
+                        if (((nullary.clone().len() as i64) != 1)
+                            || ((unary.clone().len() as i64) != 1))
+                        {
+                            Some("its arms are not one arm with no payload and one arm with a single field".to_string())
+                        } else {
+                            match Rc::new({
+                                let mut __result = Vec::new();
+                                for v in unary.iter().cloned() {
+                                    __result.extend(
+                                        (*crate::v1_std_core::variant_node_fields(v.clone()))
+                                            .iter()
+                                            .cloned(),
+                                    );
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned()
+                            {
+                                std::option::Option::None => {
+                                    Some("its payload arm has no field".to_string())
+                                }
+                                Some(f) => {
+                                    if (crate::v1_std_core::authored_name_at(si.clone(), f.clone())
+                                        != mint_payload_field.clone())
+                                    {
+                                        Some(v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "its payload field is named '".to_string(),
+                                                        crate::v1_std_core::authored_name_at(
+                                                            si.clone(),
+                                                            f.clone(),
+                                                        ),
+                                                    ),
+                                                    "' where the kernel mint names it '"
+                                                        .to_string(),
+                                                ),
+                                                mint_payload_field.clone(),
+                                            ),
+                                            "'".to_string(),
+                                        ))
+                                    } else {
+                                        match payload_field_type_binder(f.clone(), env.clone(), Rc::new({ let mut __result = Vec::new(); for p in decl.params.clone().iter().cloned() { __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), si.clone())); } __result })) {
+    Some(tv) => if (tv.clone() == param_name.clone()) {
+                                    std::option::Option::None
+                                } else {
+                                    Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("its payload field's type is the type variable '".to_string(), tv.clone()), "', which is not its type parameter '".to_string()), param_name.clone()), "'".to_string()))
+                                },
+    std::option::Option::None => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("its payload field's type, '".to_string(), crate::v1_std_core::authored_name_at(si.clone(), crate::v1_compiler_infer_types::child_type_node(f.clone()))), "', is not its type parameter '".to_string()), param_name.clone()), "'".to_string())),
+}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn kernel_mint_shape_diagnostics(
+    env: Rc<TypeEnv>,
+    module_name: String,
+    module_span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in kernel_mint_declaration_rows().iter().cloned() {
+            __result.extend(
+                (*if (row.declaration.clone().module_path.clone() != module_name.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    if (row.minted_name.clone() != kernel_optional_mint_name()) {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                declaration_name: row.declaration.clone().decl_name.clone(),
+                                cause: v1_rt::concat(
+                                    v1_rt::concat(
+                                        "the seed mints no kernel type named '".to_string(),
+                                        row.minted_name.clone(),
+                                    ),
+                                    "'".to_string(),
+                                ),
+                                span: module_span.clone(),
+                            }),
+                            module_name.clone(),
+                        )])
+                    } else {
+                        match crate::v1_compiler_infer_env::declaration_node_of_ref(
+                            row.declaration.clone(),
+                            env.clone(),
+                        ) {
+                            std::option::Option::None => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                        declaration_name: row.declaration.clone().decl_name.clone(),
+                                        cause: "this module does not declare it".to_string(),
+                                        span: module_span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )])
+                            }
+                            Some(decl) => {
+                                match kernel_optional_shape_refusal(decl.clone(), env.clone()) {
+                                    std::option::Option::None => Rc::new(vec![]),
+                                    Some(cause) => {
+                                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                                declaration_name: row
+                                                    .declaration
+                                                    .clone()
+                                                    .decl_name
+                                                    .clone(),
+                                                cause: cause.clone(),
+                                                span: decl.span.clone(),
+                                            }),
+                                            module_name.clone(),
+                                        )])
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn ground_kernel_views(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
@@ -30418,10 +30671,17 @@ pub fn typecheck_module(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
-                            infer_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
+                                infer_diags.clone(),
+                            ),
+                            grounded.diagnostics.clone(),
                         ),
-                        grounded.diagnostics.clone(),
+                        kernel_mint_shape_diagnostics(
+                            env.clone(),
+                            resolved_module_name.clone(),
+                            resolved.module.clone().span.clone(),
+                        ),
                     ),
                     seed_diags.clone(),
                 ),
@@ -31504,104 +31764,7 @@ pub fn compiler_kernel_type_env(
                 alias_rhs: std::option::Option::None,
             }),
         );
-        let present_value_field = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "value".to_string(),
-            span: kernel_span("value".to_string()),
-            ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let present_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Present".to_string(),
-            span: kernel_span("Present".to_string()),
-            ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![present_value_field.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let absent_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Absent".to_string(),
-            span: kernel_span("Absent".to_string()),
-            ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kernel_optional = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Optional".to_string(),
-            span: kernel_span("Optional".to_string()),
-            ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Connective::Disj,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
+        let kernel_optional = kernel_optional_type_node();
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),
             crate::v1_std_core::intern(intern_table.clone(), "Optional".to_string())

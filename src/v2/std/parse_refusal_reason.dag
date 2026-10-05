@@ -22,16 +22,30 @@ import v2.std.node { Symbol }
 //                                     so it refuses, as the seed does (v1.compiler.parse
 //                                     is_ambiguous_prefix_infix_newline_boundary): move the operator
 //                                     before the newline, or parenthesize the unary expression.
+//   LetInExpressionDropped         -- a `let NAME = value` continues with `in`. The expression form
+//                                     `let x = e in body` was dropped (statement `let` only, per the
+//                                     2026-10-02 zero-ambiguity decisions): bind with a statement
+//                                     `let` and write the body as the following statement. Located
+//                                     at the `in`.
 //   DeclarationMarkerNotTest       -- an identifier other than `test` stands where the declaration
 //                                     marker goes, before `fn` or `data` (`probe fn ..`); located at
 //                                     the marker and the keyword after it.
+//   TokenStartsNotIncreasing       -- the token stream handed to the parse does not have strictly
+//                                     increasing token starts. A stream position IS its token's
+//                                     start (v2.compiler.parse parse_current_position keys the memo
+//                                     and decides repeat progress), so two tokens at one start would
+//                                     be one position and the parse would silently serve one's
+//                                     answer for the other. Located at the first token whose start
+//                                     does not exceed its predecessor's.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq
   | DataValueMissingAfterEq
   | LayoutUnknownWithoutSource
   | KeywordAsPathSegment
   | NewlineBeforeDualRoleOperator
+  | LetInExpressionDropped
   | DeclarationMarkerNotTest
+  | TokenStartsNotIncreasing
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
@@ -41,6 +55,8 @@ fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
     LayoutUnknownWithoutSource => ^parse_layout_unknown_without_source
     KeywordAsPathSegment => ^parse_keyword_as_path_segment
     NewlineBeforeDualRoleOperator => ^parse_newline_before_dual_role_operator
+    LetInExpressionDropped => ^parse_let_in_expression_dropped
     DeclarationMarkerNotTest => ^parse_declaration_marker_not_test
+    TokenStartsNotIncreasing => ^parse_token_starts_not_increasing
   }
 }

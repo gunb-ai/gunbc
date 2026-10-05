@@ -1,0 +1,59 @@
+module v2.std.source_position
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import v2.std.algebra { fold_list, list_reverse }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+// WHERE A BYTE OFFSET SITS IN ITS SOURCE, AS LINE AND BYTE COLUMN. The one authority for this
+// projection: the native route's file-refusal locus and the text-string importer census both
+// consume it, and a second copy is the fork that let line attribution drift once already --
+// an emitted `substring` indexes CODE POINTS on non-ASCII text, so a helper that walks the string
+// by character answers a different column (and, past a multibyte line, a different line) than the
+// BYTE offsets every span carries.
+//
+// A COLUMN IS A POSITION, NOT A QUANTITY, AND THE CARRIER SAYS SO. `SourceByteColumn` is the
+// 1-based ordinal of a byte within its line: an index, never a measured amount of bytes, so it is
+// deliberately not `std.measure` `ByteSize` (which measures a size, and would admit arithmetic a
+// position does not have -- adding two columns is meaningless). It is a brand over `Int`, the
+// shape `std.occurrence_identity` `AuthoredTokenOrdinal` already uses for a source-order
+// ordinal. Its unit is BYTES, not code points or graphemes; a renderer that wants another unit
+// converts explicitly rather than relabelling this one.
+type SourceByteColumn {
+  value: Int
+}
+
+type SourceLineCol {
+  line: Int
+  byte_column: SourceByteColumn
+}
+
+// The fold's state: the line reached and the byte offset at which it starts.
+type LineStart {
+  line: Int
+  offset: Int
+}
+
+type OctetScan {
+  index: Int
+  found: FreeMonoid<Int>
+}
+
+// The byte offsets of every newline (octet 10), ascending: one sweep over the UTF-8 encoding,
+// never over characters.
+fn source_newline_byte_offsets(text: String) -> FreeMonoid<Int> {
+  list_reverse(xs: fold_list(xs: bytes_octets(b: utf8_encode_bytes(s: text)), empty: OctetScan { index: 0, found: Empty }, cons: fn(acc, o) {
+    OctetScan { index: acc.index + 1, found: if o == 10 { Cons { head: acc.index, tail: acc.found } } else { acc.found } }
+  }).found)
+}
+
+// Line and byte column of `offset`: every newline strictly before it starts a new line, and the
+// column counts bytes from that line's start. A fold over the newline offsets, so its depth is
+// constant in the file's length.
+fn source_line_col_at_byte(text: String, offset: Int) -> SourceLineCol {
+  let start = fold_list(xs: source_newline_byte_offsets(text: text), empty: LineStart { line: 1, offset: 0 }, cons: fn(acc, nl) {
+    if nl < offset { LineStart { line: acc.line + 1, offset: nl + 1 } } else { acc }
+  })
+  SourceLineCol { line: start.line, byte_column: SourceByteColumn { value: offset - start.offset + 1 } }
+}

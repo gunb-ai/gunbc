@@ -1611,19 +1611,13 @@ mod compiler_tests {
     /// `v1.compiler.emit_rust` `emit_shell_return`.
     ///
     /// `gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`: the
-    /// projection wraps a shell operation's value in `Ok(..)` only when the declared output carries
-    /// MORE THAN ONE field, while the same declaration signs the method `Result<.., Box<dyn Error>>`.
-    /// A single-field output answers its channel bare, so the emitted body violates its own emitted
-    /// type -- rustc E0308 over a source gunbc accepts with zero blocking diagnostics.
+    /// projection used to wrap a shell operation's value in `Ok(..)` only when the declared output
+    /// carried MORE THAN ONE field, while the same declaration signs the method
+    /// `Result<.., Box<dyn Error>>`. The convention is now unconditional, so BOTH arms must compile.
     ///
-    /// THE RED ARM IS A KNOWN HOLE, NOT A WALL WORKING, and may not be cited as coverage of
-    /// anything. It is that row's specimen committed as a runnable file. When the class climbs this
-    /// arm flips to compiling and is KEPT as the regression control on the direction it established
-    /// (DESIGN 4b(4)); the expectation below changes then, not the fixtures.
-    ///
-    /// BOTH ARMS ARE THIS PAIR'S OWN, unlike the three emitter-arm pairs beside it, and they differ
-    /// in ONE authored thing: how many fields the output block declares. Borrowing the route's red
-    /// would measure nothing about the arity, which is the whole subject.
+    /// PERMANENT REGRESSION CONTROL (DESIGN 4b(4)). The one-field arm was a known-hole red; when the
+    /// class climbed it FLIPPED to compiling and is KEPT, with the expectation changed and the
+    /// fixtures untouched. A rustc refusal of either arm now means the arity fork came back.
     ///
     /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and
     /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on
@@ -1640,16 +1634,11 @@ mod compiler_tests {
             eprintln!("shell-projection-arity {}", line);
         }
         assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the two-field control must COMPILE and the one-field arm must still be refused by rustc in its own emitted module with the claimed E0308; a green red arm means the class climbed and this pair's expectation is what changes. control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_compiled(&pair.green)
+                && crate::cli_run::fixture_closure_compiled(&pair.red),
+            "the return convention is derived once for every arity, so the two-field control AND the one-field arm must both COMPILE; a refused arm means the arity fork returned. control={} one-field={} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
-            crate::cli_run::fixture_closure_attributed_line(&pair.red),
             crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
         );
     }
@@ -4378,9 +4367,13 @@ mod compiler_tests {
         let no_fields = std::rc::Rc::new(im::Vector::new());
         let no_path = std::rc::Rc::new(im::Vector::new());
         let no_shared = std::rc::Rc::new(im::OrdSet::new());
+        let unread_parent = std::rc::Rc::new(
+            crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+        );
         let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Add".to_string(),
             None,
+            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             no_shared.clone(),
@@ -4396,6 +4389,7 @@ mod compiler_tests {
         let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
             "Add".to_string(),
             None,
+            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
@@ -4423,6 +4417,7 @@ mod compiler_tests {
         let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Add".to_string(),
             Some("BinOp".to_string()),
+            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             no_shared.clone(),
@@ -4434,6 +4429,7 @@ mod compiler_tests {
         let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Absent".to_string(),
             None,
+            unread_parent,
             no_fields,
             no_path,
             no_shared,

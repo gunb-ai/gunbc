@@ -1,7 +1,7 @@
 module v2.workflow.floor_route_gap
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty, list_flat_map }
-import v2.std.collection { List }
 
 // THE EXPECTATION IS TYPED AT THE TWO FACTS THE INTERPRETER OBSERVES. An identity-only row
 // says merely that some route gap once existed; it cannot object when the witness reaches a
@@ -930,6 +930,8 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.devboot_text_blob_real_execution.a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.an_unclaimed_group_is_refused_at_the_claim_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
@@ -939,6 +941,8 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_authorization_witness.a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction", operation: "DigestStdin", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
@@ -998,6 +1002,8 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.devboot_text_blob_real_execution.a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
   }
   }
   }
@@ -1123,7 +1129,10 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The five test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
+// The test.claim.host_boot_attempt_admission_wet_witness identity (the create-once attempt slot over
+// the same file CAS; first effect the same Mktemp) and its digest identity (first effect sha256sum
+// DigestStdin, no mock_response), then the five
+// test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
 // sequential loser naming the winner, generation-two advance, a non-contention store refusal, and the
 // head search reaching the Int maximum without overflowing -- plus the five
 // test.claim.approval_assertion_counter_wet_witness_test identities (replay refused, per-enrolment
@@ -1137,6 +1146,10 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
 // DirWithTemplate / NoMockResponse gap on each identity.
 fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
   Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_boot_attempt_admission_wet_witness.one_changed_byte_changes_the_receipt_digest_by_real_execution", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_boot_attempt_admission_wet_witness.an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.commit_then_independent_read_back_agrees_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1160,7 +1173,21 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.an_established_empty_root_reads_the_slot_absent_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.a_missing_source_refuses_as_not_found_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.a_link_across_filesystems_refuses_as_cross_device_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+    }
+    }
+    }
+    }
+  }
+  }
   }
   }
   }
@@ -1974,8 +2001,160 @@ fn floor_route_gap_expectation_chunk_29() -> List<FloorRouteGapExpectation> {
     tail: Empty {} } } } } } } } } } } } } } }
 }
 
+// test.claim.roadmap.session_placement_wet_witness (dogfood G5, gunbc#13074): all five reach
+// shell.Mktemp.DirWithTemplate first, which declares no mock_response, so the nominal floor refuses
+// there and each identity is held; the local-repo wet schedule carries every one of them (all five
+// observed=passed on the wet lane at df5f85a4959). OBSERVED, not predicted: the floor at df5f85a4959
+// reported the first five as unenrolled ROUTE-GAPs. The two post-gate controls (ruling at c6d50f1)
+// are added BY PREDICTION, the chunk-22 departure stated rather than hidden: each one's first effect is
+// fresh_dir, which is DirWithTemplate unconditionally, so neither can reach its subject hermetically. As with chunk 22, the discovery exclusion
+// does not cover a run that CHANGES the file, so this roster plus the wet terminal is what holds for
+// such a run; an identity that stops gapping arrives as STALE-ROUTE-GAP and wants its row deleted.
+fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_foreign_placement_record_cannot_release_another_attempts_grant", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_launched_session_is_kept_while_running_and_released_when_ended", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_grant", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_slot_with_no_placement_record_is_kept_in_window_and_released_after", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.an_unreadable_slot_keeps_its_seat_and_writes_a_note", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }  }  }  }  }  }  }
+}
+
+// THE ALLOCATION AUTH REAL-FILE CLAIMS (gunbc#13004): the login transaction's create-new consume,
+// the callback hold over a real transaction store, and the private fabric-state namespace. Each
+// first effect is shell.Mktemp.Dir / DirWithTemplate, which declares no mock_response; each is
+// executed by the local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)
+// and its file carries a gunbc.ci_layer_roots LocalRepoWetLane row. So does the grant row's real blob-id
+// claim (gunbc#13176): its first effect is git.Plumbing HashObjectStdinNoWrite, which has no mock_response
+// because one would be input-blind; THE WET LANE EXECUTES IT against real git, and this row is only the
+// hermetic route's bookkeeping for that pairing, not a deferral.
+fn floor_route_gap_expectation_chunk_33() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.login_transaction_consume_wet_witness.transaction_consume_has_one_winner_over_real_files", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.login_transaction_consume_wet_witness.a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.login_callback_hold_wet_witness.foreign_browser_cannot_consume_and_cached_replay_cannot_exchange", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_state_namespace_wet_witness.witness_public_head_cannot_alias_private_state_object", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_grant_row_wet_witness.the_captured_row_is_hashed_as_its_exact_bytes_by_real_execution", operation: "HashObjectStdinNoWrite", ground: NoMockResponse {} },
+    tail: Empty {} } } } } }
+}
+
+// test.claim.roadmap.roadmap_dogfood_route_wet_witness (gunbc#13077): every claim builds a fresh
+// instance layout under shell.Mktemp.DirWithTemplate, which declares no mock_response, so the nominal
+// floor refuses there and each identity is held; the local-repo wet schedule carries all four.
+fn floor_route_gap_expectation_chunk_34() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_unconverged_store_root_refuses_the_start_record", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.a_receipt_pinning_another_instances_evidence_is_not_a_start_here", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }  }  }  }  }
+}
+
+// The #12505 workspace lifecycle storage witnesses: their first effect is shell.Mktemp.Dir with no
+// mock_response. Each file carries a gunbc.ci_layer_roots LocalRepoWetLane row and every function in
+// it is on local_repo_wet_schedule, so each identity executes in the required floor's wet lane.
+fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.elected_actor_cannot_be_cancelled_from_absent_hold_assumption", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.legacy_acquiring_without_actor_journal_retains_quota", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.marked_unelected_actor_cancellation_releases_owner_quota", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_allocation_storage_wet_witness_test.workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_gateway_refresh_witness_test.refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_prelaunch_expiry_hold_witness_test.expired_reserved_controller_retires_even_when_cleanup_is_uncertain", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness_test.persisted_expired_request_settles_after_reader_restart_without_offers", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness_test.waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_allocation_write_seam_wet_witness_test.seam_admitted_create_and_release_land_in_the_store", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.tailnet_door_cutover_journal_wet_witness_test.the_cutover_journal_survives_its_writer_and_fences_a_stale_write", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.terminal_elected_actor_without_hold_settles_retirement", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.running_elected_actor_retains_quota", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.concurrent_actor_replacement_admits_exactly_one", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } } } } } } 
+}
+
+// THE PROCESS-LIFECYCLE WET EVIDENCE (the emit-host node serve smoke), the third member of its
+// enrollment triple beside the WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule and the LocalRepoWetLane row in gunbc.ci_layer_roots
+// witness_exclusion_frontier. Each identity's first hermetically unmockable host effect was
+// measured by required-floor run 37161219971: Mktemp.Dir for the three witnesses that stage a
+// fixture directory, posix.Process.StartDetached for the one that goes straight at the spawn
+// refusal. That run also executed the first three wet on the local-repo lane, expected=passed
+// observed=passed, including a real node serve process spawned, readied, killed and reaped;
+// readiness_stalled_listener_witness was added afterward and runs the same staged-fixture shape
+// (its measured boundary is likewise Mktemp.Dir). The enrollment records the measured hermetic
+// boundary; it does not treat the wet receipt as a hermetic route.
+fn floor_route_gap_expectation_chunk_36() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.process_lifecycle_wet_witness.kill_confirmed_by_reap_witness", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.process_lifecycle_wet_witness.readiness_timeout_witness", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.process_lifecycle_wet_witness.readiness_stalled_listener_witness", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.process_lifecycle_wet_witness.start_refused_missing_binary_witness", operation: "StartDetached", ground: NoMockResponse {} },
+    tail: Empty {}
+  }  }  }  }
+}
+
+
+// test.claim.roadmap.allocation_client_execution_wet_witness (gunbc#13272): each control's first
+// effect is shell.Mktemp.Dir, which declares no mock_response, so the nominal floor holds it; the
+// local-repo wet schedule executes every one under the runner's node (premise
+// RunnerBrowserToolchainReadyForJobUser). Observed: required-floor run 37219149856 held each at Dir and
+// the wet lane reported observed=passed for all seven. The eighth (typed_unavailable_disables_create)
+// is added by prediction from the same first effect.
+fn floor_route_gap_expectation_chunk_37() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_json_reject_keeps_intent", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_foreign_snapshot_keeps_intent", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_malformed_snapshot_keeps_intent", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_lost_large_then_reload_repeats_large", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_valid_match_clears_once", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_fetch_reject_is_retryable", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_list_reconciles_recorded_intent", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_typed_unavailable_disables_create", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Cons { head: floor_route_gap_expectation_chunk_32(), tail: Cons { head: floor_route_gap_expectation_chunk_33(), tail: Cons { head: floor_route_gap_expectation_chunk_34(), tail: Cons { head: floor_route_gap_expectation_chunk_35(), tail: Cons { head: floor_route_gap_expectation_chunk_36(), tail: Cons { head: floor_route_gap_expectation_chunk_37(), tail: Cons { head: floor_route_gap_expectation_chunk_38(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
@@ -2026,4 +2205,16 @@ fn floor_route_gap_roster() -> List<String> {
   let legacy = list_flat_map(xs: floor_route_gap_chunks(), f: fn(chunk) { chunk })
   let located = floor_route_gap_expectations() |> map(row => row.identity)
   list_flat_map(xs: [legacy, located], f: fn(chunk) { chunk })
+}
+
+// The test.claim.workspace_network_real_reader_witness_test identity: the TUN descriptor census's real
+// reader (extdeps.linux.tun_fdinfo tun_descriptor_census_observe). Its first effect is Filesystem.Read
+// of /proc/self/status, which the hermetic route has no arm for. Triple enrollment as for chunk_31:
+// this expectation, a WetScheduledClaim row in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// LocalRepoWetLane row for workspace_network_real_reader_witness_test.dag.
+fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_network_real_reader_witness_test.real_reader_takes_the_route_the_reader_identity_dictates", operation: "Read", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
 }

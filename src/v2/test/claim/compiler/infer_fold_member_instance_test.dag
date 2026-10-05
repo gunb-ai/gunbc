@@ -1,0 +1,244 @@
+module v2.test.claim.compiler.infer_fold_member_instance
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
+import v2.std.node_query { BinderTypeEdge, declared_field_from_edge, field_projection_optional }
+import v2.std.qualified_name { lexical_reference_label_optional }
+import std.algebra { list_snoc_item }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Authored, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, node_subtree_nodes, node_with_occurrence_id }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a collection fold's step member formal is typed by the Loop DOMAIN's element type, through
+// v2.compiler.infer's dependent-child walk (v2.std.node fold_node_dependent), and a lambda binder used as
+// a projection base reaches infer as the lexical reference a bare use of it is (v2.compiler.resolve
+// resolve_projection_base). BOUNDARY: source text in, through the production assembly route, then
+// v2.compiler.infer infer -- except control (3), whose input is supplied (see its header).
+// gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result.
+
+// THE PEERS RESTATE THE REAL DECLARATIONS, as v2.test.claim.body_let_annotation
+// bla_structural_string_peers does: v2.std.collection List<T> is std.algebra FreeMonoid<T>, and the
+// one-module ingest cannot otherwise bind List.
+fn fmi_list_peers() -> List<DagSourceReadWitness> {
+  [
+    bla_source(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+  ]
+}
+
+fn fmi_assemble(src: String) -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(p_src: src, peers: fmi_list_peers())
+}
+
+fn fmi_infer(src: String) -> Outcome<Bool> {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => fmi_infer_tree(tree: tree)
+  }
+}
+
+fn fmi_infer_tree(tree: ResolvedTree) -> Outcome<Bool> {
+  match infer(tree: tree) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+  }
+}
+
+data fmi_record_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.target == 0 })\n}\n"
+
+data fmi_undeclared_field_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.nope == 0 })\n}\n"
+
+fn fmi_reason(o: Outcome<Bool>) -> Symbol {
+  match o {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) admits where two or more declared
+// claims read it; the claims read the decided,
+// portable value. The record fold's one assembly serves three claims, including the supplied-tree control (3).
+type FmiRecordFoldReading {
+  no_projection_refusal: Bool
+  base_is_lexical_reference: Bool
+  authored_member_formal_reason: Symbol
+}
+
+fn fmi_record_fold_reading() -> FmiRecordFoldReading {
+  match fmi_assemble(src: fmi_record_fold) {
+    Rejected { diagnostics: d } =>
+      FmiRecordFoldReading { no_projection_refusal: false, base_is_lexical_reference: false, authored_member_formal_reason: diagnostics_fatal_reason(d: d) }
+    Accepted { value: tree, diagnostics: _ } =>
+      FmiRecordFoldReading {
+        no_projection_refusal: fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree)),
+        base_is_lexical_reference: fmi_base_is_lexical_reference(tree: tree),
+        authored_member_formal_reason: fmi_reason(o: fmi_infer_with_member_formal_authored(tree: tree))
+      }
+  }
+}
+
+fn fmi_undeclared_field_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_undeclared_field_fold)) }
+fn fmi_sum_fold_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_sum_fold)) }
+fn fmi_body_not_carrier_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_body_not_carrier_fold)) }
+
+test fn fmi_fold_member_projects_a_declared_field() -> Bool {
+  fmi_record_fold_reading().no_projection_refusal
+}
+
+fn fmi_no_projection_refusal(o: Outcome<Bool>) -> Bool {
+  !fmi_has_reason(o: o, reason: ^infer_reason_projection_receiver_declares_no_fields)
+    && !fmi_has_reason(o: o, reason: ^infer_reason_field_not_declared_on_receiver)
+    && !fmi_has_reason(o: o, reason: ^infer_reason_projection_receiver_declaration_unavailable)
+}
+
+fn fmi_has_reason(o: Outcome<Bool>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: reason)
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: reason)
+  }
+}
+
+// (r) A LAMBDA BINDER PROJECTED THROUGH IS THE SAME LEXICAL REFERENCE A BARE USE OF IT IS: resolve mints
+// the `e` of `e.target` through v2.compiler.resolve resolve_frame_bound_reference, so its binding is
+// recorded and infer can type it. RED ON THE BASE: the base was the bare canonical atom `e`, which nothing
+// typed, so the projection landed in the non-refusing ReceiverTypeUnderived arm.
+test fn fmi_lambda_binder_projection_base_is_a_lexical_reference() -> Bool {
+  fmi_record_fold_reading().base_is_lexical_reference
+}
+
+fn fmi_base_is_lexical_reference(tree: ResolvedTree) -> Bool {
+  fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+    acc || match field_projection_optional(n: n) {
+      Present { value: projection } =>
+        match lexical_reference_label_optional(node: projection.base) {
+          Present { value: label } => label == ^e
+          Absent => false
+        }
+      Absent => false
+    }
+  })
+}
+
+// (2) THE SAME FOLD WITH AN UNDECLARED FIELD REFUSES AT THAT FIELD.
+test fn fmi_fold_member_undeclared_field_refuses() -> Bool {
+  fmi_undeclared_field_reason() == ^infer_reason_field_not_declared_on_receiver
+}
+
+// (3) A STEP FORMAL INCOMPATIBLE WITH THE DOMAIN ELEMENT REFUSES.
+test fn fmi_fold_member_incompatible_formal_refuses() -> Bool {
+  fmi_record_fold_reading().authored_member_formal_reason == ^application_argument_does_not_inhabit
+}
+
+// (3) IS SUPPLIED AT THE RESOLVE -> INFER BOUNDARY, because its red is not authorable in source: a typed
+// lambda formal (`fn(found: Bool, e: Int)`, `(found: Bool, e: Int) =>`) refuses at parse with
+// parse_g0_tokens_remain. The supplied tree is the REAL producer's output for fmi_record_fold -- the
+// inhabitance claim for this boundary is control (1), which runs it -- with the member formal's declared
+// type rewritten from its fresh variable to the record field's own `Int`, i.e. an authored formal the
+// member Pair does not inhabit. The refusal is charged at the step root, before any use of `e` is read.
+fn fmi_member_formal_type(root: Node, name: Symbol) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        fold(n.children, init: optional_absent(), f: fn(inner, e) {
+          match inner {
+            Present { value: _ } => inner
+            Absent =>
+              match e.label {
+                Authored { name: label } =>
+                  if label == name {
+                    match declared_field_from_edge(e: e) {
+                      Present { value: field } => optional_present(value: field.type_node)
+                      Absent => optional_absent()
+                    }
+                  } else {
+                    optional_absent()
+                  }
+                StructuralLabel { label: _ } => optional_absent()
+                Positional => optional_absent()
+              }
+          }
+        })
+    }
+  })
+}
+
+fn fmi_replace_atom(n: Node, from: Symbol, to: Node) -> Node {
+  Node {
+    kind: n.kind,
+    children: fold(n.children, init: [], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to) })
+    }),
+    occurrence_id: n.occurrence_id
+  }
+}
+
+// Only a <binder-type> member is rewritten: the variable's own entry in <type-parameters> stays, so the
+// tree stays well-formed and the formal simply stops being declared as that variable.
+fn fmi_replace_binder_type(e: Edge, from: Symbol, to: Node) -> Node {
+  if edge_is_core(e: e, marker: BinderTypeEdge) {
+    match e.target.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == from { node_with_occurrence_id(kind: to.kind, children: to.children, occurrence_id: e.target.occurrence_id) } else { e.target }
+      _ => fmi_replace_atom(n: e.target, from: from, to: to)
+    }
+  } else {
+    fmi_replace_atom(n: e.target, from: from, to: to)
+  }
+}
+
+fn fmi_infer_with_member_formal_authored(tree: ResolvedTree) -> Outcome<Bool> {
+      match fmi_member_formal_type(root: tree.root, name: ^e) {
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: fmi_fixture_shape_diagnostic(at: tree.root)) }
+        Present { value: fresh } =>
+          match fmi_member_formal_type(root: tree.root, name: ^target) {
+            Absent => Rejected { diagnostics: diagnostics_singleton(d: fmi_fixture_shape_diagnostic(at: tree.root)) }
+            Present { value: int_type } =>
+              match fresh.kind {
+                TypeNode { connective: Atom { identity: variable } } =>
+                  match infer(tree: ResolvedTree {
+                    root: fmi_replace_atom(n: tree.root, from: variable, to: int_type),
+                    symbol_index: tree.symbol_index,
+                    resolved_declarations: tree.resolved_declarations,
+                    lexical_bindings: tree.lexical_bindings,
+                    unavailable_providers: tree.unavailable_providers
+                  }) {
+                    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+                  }
+                _ => Rejected { diagnostics: diagnostics_singleton(d: fmi_fixture_shape_diagnostic(at: fresh)) }
+              }
+          }
+      }
+}
+
+fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic { reason: ^fmi_fixture_shape_unexpected, at: node_locus(node: at), correction: Unavailable { reason: CorrectionNotModeled } }
+}
+
+// (a) THE FOLD ITERATES ITS STEP'S BODY, AND THE CARRIER IS INIT'S TYPE: a fold whose body adds the carrier
+// to the member's field is ACCEPTED end to end. The body derives only if BOTH formals are instantiated --
+// `found` from init (Int), `e` from the domain (Pair) -- so this control holds the carrier frame and the member
+// frame together. RED ON THE BASE: the Loop row read the step callable's own type as the carrier and refused
+// infer_grounding_not_derived at the step Arrow for every fold. (fmi_record_fold's `found || ..` body is not
+// used here: infer derives no Bool join, a separate frontier.)
+data fmi_sum_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  fold(xs, init: 0, f: fn(found, e) { found + e.target })\n}\n"
+
+test fn fmi_fold_over_records_is_accepted() -> Bool {
+  fmi_sum_fold_reason() == ^accepted
+}
+
+data fmi_body_not_carrier_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { e.target })\n}\n"
+
+// (a) A STEP WHOSE BODY DOES NOT INHABIT THE CARRIER REFUSES AT THE BODY: init is Bool, the body is Int.
+test fn fmi_fold_step_body_not_the_carrier_refuses() -> Bool {
+  fmi_body_not_carrier_reason() == ^arrow_body_does_not_inhabit_declared_return
+}
+

@@ -1,0 +1,210 @@
+module test.claim.fabric_storage_r2_head
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import v2.std.optional { Present, Absent }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_eq,
+  FabricHeadReading, FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt,
+  FabricHeadObserved, FabricHeadReadRefused, FabricStoreUnreachable, FabricStoreRefused,
+}
+import extdeps.object_storage { ObjectEntityTag, PutIfAbsent, PutIfMatch }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url }
+import gunbc.secret_provision { fleet_secret_ref }
+import extdeps.shell.exec { process_observation }
+import gunbc.cloudflare.r2_staged_transfer {
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  R2StagingRemoved, R2StagingResidue, R2StagingNotCreated,
+  classify_s3_transfer, classify_r2_fetch, r2_fetch_of_verdict, r2_fetch_retains_staging,
+  R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
+  WriteCredentialShredded, WriteCredentialResidueRemains,
+}
+import gunbc.fabric_storage_r2_head {
+  r2_head_body, r2_head_body_reading,
+  R2HeadObserved, R2HeadObservedAbsent, R2HeadObservedAt, R2HeadObservedRefused, r2_head_observed_of,
+  R2HeadAdvanceSettledUnwritten, R2HeadAdvancePut, r2_head_advance_plan,
+  R2HeadAdvancedTo, R2HeadMovedFrom, R2HeadStoreRefused,
+  R2HeadAdvanceKnown, R2HeadAdvanceOutcomeUnknown, r2_head_result_of,
+  R2HeadStagingCustody, r2_head_staging_of, r2_head_staging_join,
+  R2HeadCredential, r2_head_binding, r2_head_read_target, r2_head_write_target,
+  r2_head_cas_ground, r2_head_cas_ground_headers, r2_head_cas_ground_linearizability,
+  r2_head_cas_admission, R2HeadCasAdmittedArm, R2HeadCasNotGrounded,
+}
+
+// Supplied values at the head realization's own interface: what R2 answered (the fetch, the body,
+// the put verdict, the readback) is constructed here. The live path is r2_head_advance against the
+// durable fabric-workspace bucket, whose discriminating run is the concurrent If-Match probe that
+// extdeps.cloudflare.r2 r2_conditional_put_linearizability names.
+
+fn obj(body: NonEmptyStr) -> FabricObjectRef { fabric_object_ref_of(object: FabricObject { links: [], body: body }) }
+fn tag(v: NonEmptyStr) -> ObjectEntityTag { ObjectEntityTag { value: v } }
+fn none_left() -> R2HeadStagingCustody { R2HeadStagingCustody { residue_paths: [] } }
+
+fn paths_are(st: R2HeadStagingCustody, expected: List<String>) -> Bool {
+  length(st.residue_paths) == length(expected)
+    && fold(st.residue_paths, init: "", f: (acc, p) => join([acc, p as String, "|"], "")) == fold(expected, init: "", f: (acc, p) => join([acc, p, "|"], ""))
+}
+
+fn at(o: NonEmptyStr, g: Int) -> FabricHeadReading { FabricHeadAt { object: obj(body: o), generation: g } }
+
+test fn the_head_body_round_trips_in_the_fabric_wire_words() -> Bool {
+  let back = match r2_head_body_reading(text: concat(r2_head_body(reading: at(o: "a", g: 3)) as String, "\n")) {
+    Present { value: FabricHeadAt { object: o, generation: g } } => fabric_object_ref_eq(a: o, b: obj(body: "a")) && g == 3
+    other => false
+  }
+  let foreign = match r2_head_body_reading(text: "something else at x 1") { Absent => true  Present { value: _ } => false }
+  back && foreign
+}
+
+test fn a_present_head_needs_its_tag_and_a_well_formed_body() -> Bool {
+  let body = r2_head_body(reading: at(o: "a", g: 1)) as String
+  let ok = match r2_head_observed_of(fetch: R2FetchStaged { staged_path: "/s/object", staging_dir: "/s", tag: Present { value: tag(v: "\"e1\"") } }, body: Present { value: body }) {
+    R2HeadObservedAt { reading: _, tag: t } => (t.value as String) == "\"e1\""
+    other => false
+  }
+  let untagged = match r2_head_observed_of(fetch: R2FetchStaged { staged_path: "/s/object", staging_dir: "/s", tag: none }, body: Present { value: body }) { R2HeadObservedRefused { read: _ } => true  other => false }
+  let garbled = match r2_head_observed_of(fetch: R2FetchStaged { staged_path: "/s/object", staging_dir: "/s", tag: Present { value: tag(v: "\"e1\"") } }, body: Present { value: "garbage" }) { R2HeadObservedRefused { read: _ } => true  other => false }
+  let absent = match r2_head_observed_of(fetch: R2FetchObjectAbsent { staging: R2StagingRemoved }, body: none) { R2HeadObservedAbsent => true  other => false }
+  let down = match r2_head_observed_of(fetch: R2FetchTransportUnanswered { cause: "no route", staging: R2StagingRemoved }, body: none) { R2HeadObservedRefused { read: _ } => true  other => false }
+  ok && untagged && garbled && absent && down
+}
+
+test fn the_plan_creates_if_absent_replaces_by_tag_and_writes_nothing_on_a_mismatch() -> Bool {
+  let observed_a = R2HeadObservedAt { reading: at(o: "a", g: 4), tag: tag(v: "\"t4\"") }
+  let create = match r2_head_advance_plan(expected: ExpectHeadAbsent, observed: R2HeadObservedAbsent, to: obj(body: "a")) {
+    R2HeadAdvancePut { successor: FabricHeadAt { object: _, generation: g }, precondition: PutIfAbsent } => g == 1
+    other => false
+  }
+  let replace = match r2_head_advance_plan(expected: ExpectHeadAt { object: obj(body: "a") }, observed: observed_a, to: obj(body: "b")) {
+    R2HeadAdvancePut { successor: FabricHeadAt { object: o, generation: g }, precondition: PutIfMatch { tag: t } } =>
+      fabric_object_ref_eq(a: o, b: obj(body: "b")) && g == 5 && (t.value as String) == "\"t4\""
+    other => false
+  }
+  let stale = match r2_head_advance_plan(expected: ExpectHeadAt { object: obj(body: "b") }, observed: observed_a, to: obj(body: "b")) {
+    R2HeadAdvanceSettledUnwritten { settled: R2HeadMovedFrom { expected: _, observed: _ } } => true
+    other => false
+  }
+  create && replace && stale
+}
+
+// THE AMBIGUOUS PUT, per warm-badger-442's controls: an outcome-unknown put is never "unreachable";
+// a readback showing the attempted successor confirms the advance; another object at the successor's
+// own generation is a move; the head unchanged, a LATER generation (A/g4 -> B/g5 committed, then
+// B -> C/g6), or no readback stays unknown; and a store that answered and refused a PUT (an HTTP 403)
+// is store-refused, not unknown.
+test fn an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head() -> Bool {
+  let expected = ExpectHeadAt { object: obj(body: "a") }
+  let succ = at(o: "b", g: 5)
+  let unknown = R2PutOutcomeUnknown { cause: "502 from the store" }
+  let confirmed = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: succ } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: o, generation: g }, credential: _, staging: _ } => fabric_object_ref_eq(a: o, b: obj(body: "b")) && g == 5
+    other => false
+  }
+  let unchanged = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "a", g: 4) } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => true
+    other => false
+  }
+  let unread = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: "down" } } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => true
+    other => false
+  }
+  let moved = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 5) } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: _, observed: _ }, credential: _, staging: _ } => true
+    other => false
+  }
+  let refused = match r2_head_result_of(expected: expected, successor: succ, verdict: R2PutRefused { cause: "403 from the store" }, readback: none, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: _ } }, credential: _, staging: _ } => true
+    other => false
+  }
+  let later = match r2_head_result_of(expected: ExpectHeadAt { object: obj(body: "a") }, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 6) } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => true
+    other => false
+  }
+  confirmed && unchanged && unread && moved && refused && later
+}
+
+fn get_of(stdout: String) -> R2HeadObserved {
+  let verdict = classify_r2_fetch(answer: classify_s3_transfer(observation: process_observation(exit_code: 22, stdout: stdout, stderr: "denied")), staged_path: "/tmp/d/object", stderr: "denied")
+  r2_head_observed_of(fetch: r2_fetch_of_verdict(verdict: verdict, staging_dir: "/tmp/d", released: R2StagingRemoved), body: none)
+}
+
+// THE GET BOUNDARY, through the real transport classification: a received 403 is the store refusing
+// (investigate the store), no answer is unreachable (retry the transport), and a 404 is absence.
+// Every verdict that does not hand bytes to the caller releases its directory in the transport;
+// only a staged fetch retains it, for the caller to release.
+test fn a_get_403_is_store_refused_and_no_answer_is_unreachable() -> Bool {
+  let refused = match get_of(stdout: "403\n") { R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: _ } } } => true  other => false }
+  let unanswered = match get_of(stdout: "000") { R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: _ } } } => true  other => false }
+  let absent = match get_of(stdout: "404\n") { R2HeadObservedAbsent => true  other => false }
+  let v403 = classify_r2_fetch(answer: classify_s3_transfer(observation: process_observation(exit_code: 22, stdout: "403\n", stderr: "")), staged_path: "/tmp/d/object", stderr: "")
+  let v404 = classify_r2_fetch(answer: classify_s3_transfer(observation: process_observation(exit_code: 22, stdout: "404\n", stderr: "")), staged_path: "/tmp/d/object", stderr: "")
+  let v000 = classify_r2_fetch(answer: classify_s3_transfer(observation: process_observation(exit_code: 7, stdout: "000", stderr: "")), staged_path: "/tmp/d/object", stderr: "")
+  let v200 = classify_r2_fetch(answer: classify_s3_transfer(observation: process_observation(exit_code: 0, stdout: "200\n\"e\"\n", stderr: "")), staged_path: "/tmp/d/object", stderr: "")
+  let released = !r2_fetch_retains_staging(verdict: v403) && !r2_fetch_retains_staging(verdict: v404) && !r2_fetch_retains_staging(verdict: v000) && r2_fetch_retains_staging(verdict: v200)
+  let custody_carried = match r2_fetch_of_verdict(verdict: v404, staging_dir: "/tmp/d", released: R2StagingResidue { path: "/tmp/d" }) {
+    R2FetchObjectAbsent { staging: R2StagingResidue { path: p } } => (p as String) == "/tmp/d"
+    other => false
+  }
+  refused && unanswered && absent && released && custody_carried
+}
+
+test fn a_412_is_the_lost_race_answered_with_the_readback() -> Bool {
+  let expected = ExpectHeadAt { object: obj(body: "a") }
+  let moved = match r2_head_result_of(expected: expected, successor: at(o: "b", g: 5), verdict: R2ObjectTagMoved, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 5) } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: _, observed: FabricHeadAt { object: o, generation: _ } }, credential: _, staging: _ } => fabric_object_ref_eq(a: o, b: obj(body: "c"))
+    other => false
+  }
+  let created_lost = match r2_head_result_of(expected: ExpectHeadAbsent, successor: at(o: "b", g: 1), verdict: R2ObjectAlreadyPresent, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 1) } }, credential: WriteCredentialShredded, staging: none_left()) {
+    R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: _, observed: _ }, credential: _, staging: _ } => true
+    other => false
+  }
+  moved && created_lost
+}
+
+// CUSTODY NEVER CHANGES THE OUTCOME: a stored head with a leaked credential and a staging residue is
+// still advanced, with both residues reported beside it.
+test fn residues_ride_beside_a_commit_and_never_erase_it() -> Bool {
+  let r = r2_head_result_of(expected: ExpectHeadAbsent, successor: at(o: "b", g: 1), verdict: R2ObjectStored { tag: none }, readback: none,
+    credential: WriteCredentialResidueRemains { cause: "left" }, staging: R2HeadStagingCustody { residue_paths: ["/tmp/stage"] })
+  let kept = match r {
+    R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: _, generation: g }, credential: WriteCredentialResidueRemains { cause: _ }, staging: st } => g == 1 && paths_are(st: st, expected: ["/tmp/stage"])
+    other => false
+  }
+  kept
+}
+
+// EVERY RESIDUE SURVIVES COMPOSITION: an advance whose first observe and readback both failed to clean
+// up reports BOTH paths, in order, and a clean step adds none.
+test fn two_failed_cleanups_report_both_paths() -> Bool {
+  let joined = r2_head_staging_join(
+    a: r2_head_staging_of(custody: R2StagingResidue { path: "/tmp/read-a" }),
+    b: r2_head_staging_join(a: r2_head_staging_of(custody: R2StagingRemoved), b: r2_head_staging_of(custody: R2StagingResidue { path: "/tmp/read-c" })),
+  )
+  paths_are(st: joined, expected: ["/tmp/read-a", "/tmp/read-c"]) && paths_are(st: r2_head_staging_of(custody: R2StagingNotCreated), expected: [])
+}
+
+// ONE HEAD, ONE LOCATOR: the credentials may differ, the locator may not -- both transfer targets
+// are derived from the binding's single locator.
+test fn a_binding_reads_and_writes_one_locator_with_two_credentials() -> Bool {
+  let loc = R2ObjectLocator { endpoint: R2S3Endpoint { account_id: "acct", jurisdiction: R2JurisdictionDefault }, bucket_name: "gunbai-fabric-workspace", key: "heads/workspace.ops.committed" }
+  let b = r2_head_binding(locator: loc,
+    read: R2HeadCredential { access_key_id: "read-key", token_value: fleet_secret_ref(secret_id: "cloudflare-r2-workspace-read-token") },
+    write: R2HeadCredential { access_key_id: "write-key", token_value: fleet_secret_ref(secret_id: "cloudflare-r2-workspace-write-token") })
+  let rt = r2_head_read_target(binding: b)
+  let wt = r2_head_write_target(binding: b, precondition: PutIfAbsent)
+  r2_object_url(locator: rt.locator) == r2_object_url(locator: wt.locator)
+    && r2_object_url(locator: rt.locator) == r2_object_url(locator: loc)
+    && (rt.access_key_id as String) == "read-key"
+    && (wt.access_key_id as String) == "write-key"
+}
+
+// THE BET GATES THE PROJECTION: the supported-header fact is cited, the concurrency guarantee is a bet,
+// so no sealed admission can be minted and no R2 outcome projects to a std.fabric_storage advance. When
+// the live race probe is receipted and the row is cited, this control is the one to revisit.
+test fn the_r2_cas_is_not_yet_admitted_as_a_linearization_point() -> Bool {
+  let g = r2_head_cas_ground()
+  let headers_cited = match r2_head_cas_ground_headers(ground: g) { CitedToAuthority { authority: _ } => true  TranscribedUncited { read_obligation: _ } => false }
+  let race_a_bet = match r2_head_cas_ground_linearizability(ground: g) { TranscribedUncited { read_obligation: _ } => true  CitedToAuthority { authority: _ } => false }
+  let refused = match r2_head_cas_admission(ground: g) { R2HeadCasNotGrounded { read_obligation: _ } => true  R2HeadCasAdmittedArm { admitted: _ } => false }
+  headers_cited && race_a_bet && refused
+}

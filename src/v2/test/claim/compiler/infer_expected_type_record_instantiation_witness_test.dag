@@ -15,7 +15,6 @@ import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
@@ -46,9 +45,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE ROUTE IS REAL: source text through the production front end into infer, on the harness
 // v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test declares.
-data etr_phantom_source: String = "module v2.test.etr_phantom\n\nimport v2.std.logic { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ndata p: Ph<Bool> = Ph { n: 1 }\n"
+data etr_phantom_source: String = "module v2.test.etr_phantom\n\nimport std.types { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ndata p: Ph<Bool> = Ph { n: 1 }\n"
 
-data etr_two_good_source: String = "module v2.test.etr_two_good\n\nimport v2.std.logic { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ntype Two<T> {\n  a: Ph<T>\n  b: T\n}\n\ndata t: Two<Bool> = Two { a: Ph { n: 1 }, b: true }\n"
+data etr_two_good_source: String = "module v2.test.etr_two_good\n\nimport std.types { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ntype Two<T> {\n  a: Ph<T>\n  b: T\n}\n\ndata t: Two<Bool> = Two { a: Ph { n: 1 }, b: true }\n"
 
 data etr_ingest: SourceRootIngest = [
   rcf_read(source: etr_phantom_source, id: ^etr_phantom_read, unit: ^etr_phantom_cu, path: "src/v2/test/fixture/expected_type_record/phantom.dag"),

@@ -1,6 +1,6 @@
 module test.claim.spark_managed_grant_install_witness
 
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
@@ -576,7 +576,12 @@ test fn a_run_admitted_on_accepted_risk_greens_and_still_reports_the_obligation_
     unobserved: [],
     admitted_on_accepted_risk: [],
   }
-  admitted.length() == 1
+  let inspect_grants = filter(spark_managed_grant_population, g => match g {
+    InspectServingContainer { container: _ } => true
+    _ => false
+  })
+  inspect_grants.length() >= 2
+    && admitted.length() == inspect_grants.length()
     && spark_grant_install_run_succeeded(run: run)
     && spark_grant_install_run_leaves_obligation_outstanding(run: run)
     && !spark_grant_install_run_leaves_obligation_outstanding(run: clean)

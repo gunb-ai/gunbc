@@ -1,7 +1,6 @@
 module test.claim.runner.runner_slot_retirement_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import std.types { NonEmptyStr, String }
 import gunbc.systemctl_show_read {
   systemctl_show_property_value_from_stdout,
@@ -37,7 +36,7 @@ import gunbc.runner_width_transition {
   TransitionPopulationAgrees,
   TransitionPopulationDisagrees,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.host_operation_exec {
   SystemctlMaskNow,
   CgroupReadEvents,

@@ -19,7 +19,9 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   rejected_with_pending,
   bind_outcome,
-  outcome_accepted
+  outcome_accepted,
+  Rejected,
+  Unavailable
 }
 import v2.std.node {
   Edge,
@@ -31,7 +33,8 @@ import v2.std.node {
   node_occurrence_allocator_after,
   node_rebuild,
   node_subtree_nodes,
-  well_formed
+  well_formed,
+  ComputationNode
 }
 import std.occurrence_identity { ScopedOccurrenceAllocator, scoped_occurrence_allocator }
 import v2.std.compilers.sugar {
@@ -87,6 +90,7 @@ import v2.extdeps.languages.dag {
   import_binding_rows_from_decl_node,
   parse_production_emitted_identity_optional
 }
+import std.types { List }
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
