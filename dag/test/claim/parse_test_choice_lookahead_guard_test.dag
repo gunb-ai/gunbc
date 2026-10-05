@@ -1,4 +1,4 @@
-module v2.test.parse.choice_lookahead_guard_test
+module test.claim.parse_test_choice_lookahead_guard
 
 import std.algebra { Cons, Empty }
 import v2.std.grammar {

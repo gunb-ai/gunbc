@@ -1,4 +1,4 @@
-module v2.test.parse.newline_dual_role_operator_mutation
+module test.claim.parse_test_newline_dual_role_operator_mutation
 
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.std.diagnostic { Outcome }
