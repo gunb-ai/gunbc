@@ -216,14 +216,14 @@ fn verifies_false(v: Bool?) -> Bool {
 fn chain_untrusted(got: AttestationRefusal?) -> Bool {
   match got {
     Absent => false
-    Present { value: r } => match r { AttestationChainUntrusted { detail: _ } => true  _ => false }
+    Present { value: r } => match r { AttestationChainUntrusted { detail: _ } => true  AttestationFormatUnexpected { declared: _ } => false  AttestationNonceMismatch => false  AttestationKeyIdMismatch { declared: _ } => false  AttestationAppIdMismatch { expected_app_id: _ } => false  AttestationCounterNonZero { counter: _ } => false  AttestationEnvironmentUnexpected { expected: _ } => false  AttestationCredentialIdMismatch { declared: _ } => false  AttestationValidationCategoryRefused { category: _ } => false  AttestationValidationCategoryAbsent => false  AttestationBundleVersionAbsent => false  AttestationBundleVersionUnexpected { declared: _ } => false  AttestationUndecodable { cause: _ } => false }
   }
 }
 
 fn counter_refusal_is(n: Int, got: AttestationRefusal?) -> Bool {
   match got {
     Absent => false
-    Present { value: r } => match r { AttestationCounterNonZero { counter: c } => c == n  _ => false }
+    Present { value: r } => match r { AttestationCounterNonZero { counter: c } => c == n  AttestationFormatUnexpected { declared: _ } => false  AttestationChainUntrusted { detail: _ } => false  AttestationNonceMismatch => false  AttestationKeyIdMismatch { declared: _ } => false  AttestationAppIdMismatch { expected_app_id: _ } => false  AttestationEnvironmentUnexpected { expected: _ } => false  AttestationCredentialIdMismatch { declared: _ } => false  AttestationValidationCategoryRefused { category: _ } => false  AttestationValidationCategoryAbsent => false  AttestationBundleVersionAbsent => false  AttestationBundleVersionUnexpected { declared: _ } => false  AttestationUndecodable { cause: _ } => false }
   }
 }
 

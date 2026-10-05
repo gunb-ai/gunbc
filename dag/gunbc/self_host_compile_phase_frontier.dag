@@ -866,7 +866,7 @@ fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -
 }
 
 fn diagnostic_identity_file(identity: String) -> String {
-  let location = split(s: split(s: identity, delimiter: "\t")[0], delimiter: ":")
+  let location = split(s: split(s: identity, delimiter: "\t") |> take(n: 1) |> join(separator: ""), delimiter: ":")
   location.take(n: count(location) - 2) |> join(separator: ":")
 }
 

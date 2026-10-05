@@ -30,8 +30,8 @@ fn js_and(left: TsExpr, right: TsExpr) -> TsExpr { ts_binop(left: left, op: "&&"
 fn js_or(left: TsExpr, right: TsExpr) -> TsExpr { ts_binop(left: left, op: "||", right: right) }
 fn js_not(expr: TsExpr) -> TsExpr { ts_prefix(op: "!", expr: expr) }
 fn js_invoke(name: String, args: List<TsExpr>) -> TsExpr { ts_call(callee: js_id(name: name), args: args) }
-fn js_when(cond: TsExpr, stmts: List<TsStmt>) -> TsStmt { ts_if(cond: cond, then: ts_block(stmts: stmts), else_stmt: none) }
-fn js_branch(cond: TsExpr, then: List<TsStmt>, otherwise: List<TsStmt>) -> TsStmt { ts_if(cond: cond, then: ts_block(stmts: then), else_stmt: Present { value: ts_block(stmts: otherwise) }) }
+fn js_when(cond: TsExpr, stmts: List<TsStmt>) -> TsStmt { ts_if(cond: cond, then_stmt: ts_block(stmts: stmts), else_stmt: none) }
+fn js_branch(cond: TsExpr, then_arm: List<TsStmt>, otherwise: List<TsStmt>) -> TsStmt { ts_if(cond: cond, then_stmt: ts_block(stmts: then_arm), else_stmt: Present { value: ts_block(stmts: otherwise) }) }
 fn js_quiet(stmts: List<TsStmt>) -> TsStmt { ts_try(body: ts_block(stmts: stmts), catch_param: "error", handler: ts_block(stmts: [])) }
 fn js_typeof(expr: TsExpr, kind: String) -> TsExpr { js_eq(left: ts_prefix(op: "typeof ", expr: expr), right: js_lit(value: kind)) }
 
@@ -179,7 +179,7 @@ fn allocation_render_statements() -> List<TsStmt> {
         alternate: js_plus(left: ts_lit_str(value: "Stale, last observed "), right: ts_binop(left: js_field(name: "observed_at"), op: "||", right: ts_lit_str(value: "never"))))),
       js_row(term: "Lease ends", value: js_field(name: "expires_at")),
       js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "title"), js_id(name: "list")])),
-      ts_if(cond: js_field(name: "connection"), then: ts_block(stmts: [
+      ts_if(cond: js_field(name: "connection"), then_stmt: ts_block(stmts: [
         ts_const(name: "code", value: js_create(tag: "code")),
         js_text(target: js_id(name: "code"), value: js_field(name: "connection")),
         js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "code")])),
@@ -188,7 +188,7 @@ fn allocation_render_statements() -> List<TsStmt> {
         js_text(target: js_id(name: "waiting"), value: ts_lit_str(value: "No connection is advertised until a fresh observation shows it running.")),
         js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "waiting")])),
       ]) }),
-      ts_if(cond: ts_binop(left: js_field(name: "retired_at"), op: "===", right: ts_lit_str(value: "")), then: ts_block(stmts: [
+      ts_if(cond: ts_binop(left: js_field(name: "retired_at"), op: "===", right: ts_lit_str(value: "")), then_stmt: ts_block(stmts: [
         ts_const(name: "release", value: js_create(tag: "button")),
         js_set(target: js_get(object: js_id(name: "release"), property: "type"), value: ts_lit_str(value: "button")),
         js_do(expr: js_send(object: js_id(name: "release"), method: "setAttribute", args: [ts_lit_str(value: "data-allocation-release"), ts_lit_str(value: "")])),
@@ -201,7 +201,7 @@ fn allocation_render_statements() -> List<TsStmt> {
         js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "release")])),
       ]), else_stmt: none),
       ts_const(name: "prior", value: js_send(object: js_id(name: "allocationCards"), method: "get", args: [js_field(name: "id")])),
-      ts_if(cond: js_id(name: "prior"), then: ts_block(stmts: [js_do(expr: js_send(object: js_id(name: "prior"), method: "replaceWith", args: [js_id(name: "card")]))]),
+      ts_if(cond: js_id(name: "prior"), then_stmt: ts_block(stmts: [js_do(expr: js_send(object: js_id(name: "prior"), method: "replaceWith", args: [js_id(name: "card")]))]),
         else_stmt: Present { value: ts_block(stmts: [js_do(expr: js_send(object: js_id(name: "allocationList"), method: "append", args: [js_id(name: "card")]))]) }),
       js_do(expr: js_send(object: js_id(name: "allocationCards"), method: "set", args: [js_field(name: "id"), js_id(name: "card")])),
     ])),
@@ -231,7 +231,7 @@ fn allocation_flow_statements() -> List<TsStmt> {
       ts_const(name: "pending", value: js_invoke(name: "allocationPending", args: [])),
       js_when(cond: js_not(expr: js_id(name: "pending")), stmts: [ts_return(expr: none)]),
       ts_const(name: "recorded", value: js_send(object: js_id(name: "allocations"), method: "find", args: [js_fn(params: ["a"], stmts: [js_ret(expr: js_and(left: js_and(left: js_id(name: "a"), right: js_typeof(expr: js_id(name: "a"), kind: "object")), right: js_eq(left: js_get(object: js_id(name: "a"), property: "id"), right: js_get(object: js_id(name: "pending"), property: "key"))))])])),
-      js_branch(cond: js_and(left: js_id(name: "recorded"), right: js_eq(left: js_get(object: js_id(name: "recorded"), property: "profile"), right: js_get(object: js_id(name: "pending"), property: "profile"))), then: [
+      js_branch(cond: js_and(left: js_id(name: "recorded"), right: js_eq(left: js_get(object: js_id(name: "recorded"), property: "profile"), right: js_get(object: js_id(name: "pending"), property: "profile"))), then_arm: [
         js_do(expr: js_invoke(name: "allocationSettleIntent", args: [])),
         js_status(value: js_lit(value: "Your earlier request was recorded; it is shown below.")),
       ], otherwise: [
@@ -264,10 +264,10 @@ fn allocation_flow_statements() -> List<TsStmt> {
       js_status(value: js_lit(value: "Requesting release…")),
       js_do(expr: js_then(promise: js_invoke(name: "allocationFetch", args: [js_plus(left: js_item_path(id: js_id(name: "id")), right: js_lit(value: allocation_release_suffix)),
         ts_object(fields: [ts_field(key: "csrf_token", value: js_id(name: "allocationCsrf")), ts_field(key: "generation", value: js_id(name: "generation"))])]), handler: js_fn(params: ["result"], stmts: [
-        js_branch(cond: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_id(name: "id")]), then: [
+        js_branch(cond: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_id(name: "id")]), then_arm: [
           js_do(expr: js_invoke(name: "allocationRender", args: [js_result(property: "body")])),
           js_status(value: js_lit(value: "Release recorded; the controller retires the workspace.")),
-        ], otherwise: [js_branch(cond: js_and(left: js_result(property: "readable"), right: js_result(property: "body")), then: [js_do(expr: js_invoke(name: "allocationRefused", args: [js_result(property: "body")]))],
+        ], otherwise: [js_branch(cond: js_and(left: js_result(property: "readable"), right: js_result(property: "body")), then_arm: [js_do(expr: js_invoke(name: "allocationRefused", args: [js_result(property: "body")]))],
           otherwise: [js_status(value: js_plus(left: js_body(property: "reason"), right: js_lit(value: " Reload to see whether the release was recorded.")))])]),
       ]))),
     ])),
@@ -289,12 +289,12 @@ fn allocation_flow_statements() -> List<TsStmt> {
           ts_field(key: "profile", value: js_get(object: js_id(name: "intent"), property: "profile")),
         ])]), handler: js_fn(params: ["result"], stmts: [
         js_set(target: js_get(object: js_id(name: "allocationCreate"), property: "disabled"), value: js_not(expr: js_invoke(name: "allocationWritable", args: []))),
-        js_branch(cond: js_and(left: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_get(object: js_id(name: "intent"), property: "key")]), right: js_eq(left: js_body(property: "profile"), right: js_get(object: js_id(name: "intent"), property: "profile"))), then: [
+        js_branch(cond: js_and(left: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_get(object: js_id(name: "intent"), property: "key")]), right: js_eq(left: js_body(property: "profile"), right: js_get(object: js_id(name: "intent"), property: "profile"))), then_arm: [
           js_do(expr: js_invoke(name: "allocationSettleIntent", args: [])),
           js_do(expr: js_invoke(name: "allocationRender", args: [js_result(property: "body")])),
           js_status(value: js_lit(value: "Request recorded; placement and boot are reported below.")),
         ], otherwise: [js_branch(cond: js_and(left: js_and(left: js_result(property: "readable"), right: js_result(property: "body")), right: ts_binop(left: js_result(property: "status"), op: "!==", right: ts_lit_num(text: "200"))),
-          then: [js_do(expr: js_invoke(name: "allocationRefused", args: [js_result(property: "body")]))],
+          then_arm: [js_do(expr: js_invoke(name: "allocationRefused", args: [js_result(property: "body")]))],
           otherwise: [js_status(value: js_plus(left: js_or(left: js_and(left: js_result(property: "body"), right: js_body(property: "reason")), right: js_lit(value: "The answer did not name this request.")), right: js_lit(value: " Your request is kept; Request workspace repeats it.")))])]),
       ]))),
     ])),
@@ -311,7 +311,7 @@ fn allocation_live_statements() -> List<TsStmt> {
     ts_const(name: "allocationList", value: js_element(id: "allocation-list")),
     ts_const(name: "allocationCsrf", value: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "csrf")),
   ], concat(allocation_key_statements(), concat(allocation_request_statements(), concat(allocation_render_statements(), concat(allocation_flow_statements(), [
-    ts_if(cond: js_id(name: "allocationCsrf"), then: ts_block(stmts: [
+    ts_if(cond: js_id(name: "allocationCsrf"), then_stmt: ts_block(stmts: [
       js_do(expr: js_send(object: js_id(name: "allocationForm"), method: "addEventListener", args: [ts_lit_str(value: "submit"), js_id(name: "allocationSubmit")])),
       js_do(expr: js_invoke(name: "allocationLoad", args: [])),
       js_do(expr: ts_call(callee: js_id(name: "setInterval"), args: [js_id(name: "allocationPoll"), ts_lit_num(text: "5000")])),
