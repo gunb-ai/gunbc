@@ -270,7 +270,7 @@ type TranscriptAppendInterval {
 
 type TranscriptFileChange
   = TranscriptFileCreated { size: ByteSize }
-  | TranscriptFileGrown { by: Int }
+  | TranscriptFileGrown { by: ByteSize }
   | TranscriptFileShrank { truncation: TranscriptTruncation }
   | TranscriptFileRewritten
   | TranscriptFileUnchanged
@@ -281,7 +281,7 @@ fn workspace_transcript_file_change(before: TranscriptFileStat?, after: Transcri
     Present { value: b } => {
       let delta = measure_count(m: after.size) - measure_count(m: b.size)
       if delta > 0 {
-        TranscriptFileGrown { by: delta }
+        TranscriptFileGrown { by: byte_size(count: delta) }
       } else if delta < 0 {
         TranscriptFileShrank { truncation: TranscriptTruncation { member: after.member, from: b.size, to: after.size } }
       } else if nanosecond_count(n: after.mtime) != nanosecond_count(n: b.mtime) {
@@ -332,7 +332,7 @@ fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, before_a
   })
   let appended = fold(changes, init: 0, f: (acc, c) => match c {
     TranscriptFileCreated { size: s } => acc + measure_count(m: s)
-    TranscriptFileGrown { by: d } => acc + d
+    TranscriptFileGrown { by: d } => acc + measure_count(m: d)
     TranscriptFileShrank { truncation: _ } => acc
     TranscriptFileRewritten => acc
     TranscriptFileUnchanged => acc
