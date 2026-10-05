@@ -89,19 +89,20 @@ data oci_a1_flex_processor: DeclarationRef = decl_ref(module_path: "extdeps.cpu.
 // kept as the page writes them, as Gigabyte counts, and are not converted to bytes. A byte figure
 // would assert a basis the vendor never stated.
 //
-// The hour figures: "All tenancies get the first 1,500 OCPU hours and 9,000 GB hours per month for
-// free for VM instances using the VM.Standard.A1.Flex shape". The always_free figures: "For Always
-// Free tenancies, this is equivalent to 2 OCPUs and 12 GB of memory."
+// The page states the allowance as a monthly meter, "the first 1,500 OCPU hours and 9,000 GB hours per
+// month for free for VM instances using the VM.Standard.A1.Flex shape", and then gives its steady-state
+// equivalent: "For Always Free tenancies, this is equivalent to 2 OCPUs and 12 GB of memory." Only the
+// equivalent is carried as a field, because it is the only one anything here consumes (the allowance
+// fit in product.supplier.oracle_oci). The monthly meter enters as typed fields together with its
+// consumer, an observation of the tenancy's month-to-date A1 consumption, which
+// product.supplier.oracle_oci oci_tenancy_allocation_unread_obligation names as unread. Carrying it
+// before then would be a declaration nothing reads.
 type OciA1FlexAllowance {
-  ocpu_hours_per_month: Nat
-  gb_hours_per_month: Nat
   always_free_ocpus: Nat
   always_free_memory: Gigabyte
 }
 
 data oci_a1_flex_allowance: OciA1FlexAllowance = OciA1FlexAllowance {
-  ocpu_hours_per_month: 1500,
-  gb_hours_per_month: 9000,
   always_free_ocpus: 2,
   always_free_memory: gigabyte(count: 12),
 }

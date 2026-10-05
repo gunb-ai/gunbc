@@ -135,7 +135,7 @@ fn measured() -> ReadinessObservation {
 
 fn observed_other(block_gb: Nat) -> OciTenancyAllocation {
   TenancyAllocationObserved {
-    other: OciOtherUsage { a1_ocpus: 0, a1_memory_gb: 0, micros: 0, block_gb: block_gb },
+    other: OciOtherUsage { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 0, block: gigabyte(count: block_gb) },
     receipt: "gunbc.observation.oci-witness-allocation",
   }
 }
