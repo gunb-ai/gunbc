@@ -14,7 +14,7 @@ import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
 import gunbc.scm.repository_envelope { RepositoryEnvelope }
-import gunbc.scm.squash_merge { squash_merge, SquashMerged }
+import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged }
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message, belt_candidate_commit_subject, CandidateCommitSubject }
 import gunbc.roadmap_belt_actuate {
   belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
@@ -58,7 +58,14 @@ fn typed_line(r0: IntakeRevision) -> PlantedLine? {
             Present { value: source } =>
               match squash_merge(repository: repository, target: root, source: source, message: "integrate") {
                 SquashMerged { repository: merged, reference } => Present { value: PlantedLine { repository: merged, head: reference } }
-                _ => none
+                SquashMergeBaseRefused { refusal: _ } => none
+                SquashMergeConflicted { conflicts: _ } => none
+                SquashMergeRootMissing { side: _, root: _ } => none
+                SquashMergeRootIsAuthoredSource { side: _, root: _ } => none
+                SquashMergeRootIsSemanticNode { side: _, root: _ } => none
+                SquashMergeResultLocatorCollision { identity: _ } => none
+                SquashMergeAllocatorInvalid => none
+                SquashMergeSourceUnrecoverable { cause: _ } => none
               }
           }
       }
@@ -117,7 +124,14 @@ test fn the_publish_base_is_the_deepest_intake_the_heads_tree_contains() -> Bool
                                   repository_commit_ref_eq(left: b.commit.reference, right: advance_ref) && b.sha == stale_line_captured_base
                                 PublishBaseUnderivable { detail: _ } => false
                               }
-                            _ => false
+                            SquashMergeBaseRefused { refusal: _ } => false
+                            SquashMergeConflicted { conflicts: _ } => false
+                            SquashMergeRootMissing { side: _, root: _ } => false
+                            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+                            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+                            SquashMergeResultLocatorCollision { identity: _ } => false
+                            SquashMergeAllocatorInvalid => false
+                            SquashMergeSourceUnrecoverable { cause: _ } => false
                           }
                       }
                   }

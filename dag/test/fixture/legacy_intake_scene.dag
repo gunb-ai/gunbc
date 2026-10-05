@@ -28,7 +28,7 @@ import gunbc.scm.repository_envelope {
   ShardedIndexDecoded, ShardedIndexRefused, RepositoryDecoded, RepositoryDecodeRefused,
   record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
 }
-import gunbc.scm.squash_merge { squash_merge, SquashMerged }
+import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged }
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message }
 import gunbc.roadmap_belt_actuate {
   belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
@@ -77,7 +77,14 @@ fn legacy_unconverted() -> RepositoryEnvelope? {
             MbSetupFailed => none
             MbBuilt { repository: with_c3, at: _ } => aged_through_v8(repository: with_c3)
           }
-        _ => none
+        SquashMergeBaseRefused { refusal: _ } => none
+        SquashMergeConflicted { conflicts: _ } => none
+        SquashMergeRootMissing { side: _, root: _ } => none
+        SquashMergeRootIsAuthoredSource { side: _, root: _ } => none
+        SquashMergeRootIsSemanticNode { side: _, root: _ } => none
+        SquashMergeResultLocatorCollision { identity: _ } => none
+        SquashMergeAllocatorInvalid => none
+        SquashMergeSourceUnrecoverable { cause: _ } => none
       }
   }
 }

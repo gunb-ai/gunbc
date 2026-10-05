@@ -23,7 +23,7 @@ import gunbc.scm.repository_envelope {
   SupersessionRefusal, SupersessionNotOnLine, SupersessionNotAnIntegration, SupersessionNotStale,
   SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionLineUnreadable,
 }
-import gunbc.scm.squash_merge { squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused }
+import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused }
 import gunbc.roadmap_belt_actuate {
   belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
   belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
@@ -116,7 +116,14 @@ test fn a_superseded_stale_line_is_clean_and_publishes_from_the_correction() -> 
                   IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
                   LineStandingUnderivable { detail: _ } => false
                 }
-              _ => false
+              SquashMergeBaseRefused { refusal: _ } => false
+              SquashMergeConflicted { conflicts: _ } => false
+              SquashMergeRootMissing { side: _, root: _ } => false
+              SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+              SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+              SquashMergeResultLocatorCollision { identity: _ } => false
+              SquashMergeAllocatorInvalid => false
+              SquashMergeSourceUnrecoverable { cause: _ } => false
             }
         }
   }
@@ -165,7 +172,14 @@ test fn a_supersession_of_a_fresh_or_already_superseded_integration_refuses() ->
       let not_stale = match squash_merge(repository: scene, target: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), message: "plain") {
         SquashMerged { repository: plain, reference: head } =>
           supersession_refusal(scene: plain, target: minted_ordinal_of(r: head), source: 6, supersedes: minted_ordinal_of(r: head)) == "not_stale"
-        _ => false
+        SquashMergeBaseRefused { refusal: _ } => false
+        SquashMergeConflicted { conflicts: _ } => false
+        SquashMergeRootMissing { side: _, root: _ } => false
+        SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+        SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+        SquashMergeResultLocatorCollision { identity: _ } => false
+        SquashMergeAllocatorInvalid => false
+        SquashMergeSourceUnrecoverable { cause: _ } => false
       }
       let twice = match squash_merge_superseding(repository: scene, target: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), supersedes: legacy_ref(ordinal: 2), message: "correct 2") {
         SupersedingSquashRefused { cause: _ } => false
@@ -173,7 +187,14 @@ test fn a_supersession_of_a_fresh_or_already_superseded_integration_refuses() ->
           match outcome {
             SquashMerged { repository: corrected, reference: head } =>
               supersession_refusal(scene: corrected, target: minted_ordinal_of(r: head), source: 6, supersedes: 2) == "already_superseded"
-            _ => false
+            SquashMergeBaseRefused { refusal: _ } => false
+            SquashMergeConflicted { conflicts: _ } => false
+            SquashMergeRootMissing { side: _, root: _ } => false
+            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
+            SquashMergeAllocatorInvalid => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
           }
       }
       not_stale && twice
