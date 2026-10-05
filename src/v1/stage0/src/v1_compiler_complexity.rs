@@ -710,14 +710,10 @@ pub fn parser_block_state_progress(
     match stmts.clone().last().cloned() {
         std::option::Option::None => DescentEvidence::DescentUnknown,
         Some(last_stmt) => {
-            let leading = Rc::new(
-                stmts
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
-                    .collect::<Vec<_>>(),
-            );
+            let leading = Rc::new(v1_rt::list_take(
+                &stmts.clone(),
+                v1_rt::int_sub((stmts.clone().len() as i64), 1),
+            ));
             let final_env = leading.iter().cloned().fold(
                 env.clone(),
                 |acc_env: Rc<ParserProgressEnv>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
@@ -1364,13 +1360,10 @@ pub fn parser_success_progress(
                 }
             }
             ExprData::ExprBlock => {
-                let prefix = v1_rt::reverse(Rc::new(
-                    v1_rt::reverse(expr.children.clone())
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                ));
+                let prefix = v1_rt::reverse(Rc::new(v1_rt::list_skip(
+                    &v1_rt::reverse(expr.children.clone()),
+                    1,
+                )));
                 let acc = prefix.iter().cloned().fold(
                     Rc::new(ParserProgressAcc {
                         edges: Rc::new(vec![]),
@@ -1486,14 +1479,7 @@ pub fn infer_parser_always_advancing_members_worklist(
         let mut si = __tco_loop_si;
         match queue.clone().first().cloned() {
             Some(name) => {
-                let rest = Rc::new(
-                    queue
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let rest = Rc::new(v1_rt::list_skip(&queue.clone(), 1));
                 if set_has(proven.clone(), name.clone()) {
                     {
                         let __tco_0 = rest.clone();

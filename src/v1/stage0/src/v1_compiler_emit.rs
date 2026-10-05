@@ -3474,14 +3474,10 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     if ((stmts.clone().len() as i64) <= 1) {
         Rc::new(vec![])
     } else {
-        Rc::new(
-            stmts
-                .clone()
-                .iter()
-                .cloned()
-                .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
-                .collect::<Vec<_>>(),
-        )
+        Rc::new(v1_rt::list_take(
+            &stmts.clone(),
+            v1_rt::int_sub((stmts.clone().len() as i64), 1),
+        ))
     }
 }
 
@@ -6816,13 +6812,7 @@ pub fn emit_block_stmts_shared(
                 };
                 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = depth;
@@ -6870,14 +6860,7 @@ pub fn emit_init_block_stmts_shared(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(
-                    remaining
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {

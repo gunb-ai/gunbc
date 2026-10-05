@@ -75,8 +75,10 @@ pub fn generic_use_slot_bindings(
                 match scrut_node
                     .children
                     .clone()
-                    .get((pair.0.clone()) as usize)
+                    .iter()
                     .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next()
                 {
                     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), arg.clone()),
                     std::option::Option::None => acc.clone(),
@@ -1134,8 +1136,10 @@ pub fn render_constructor_witness(
             Rc::new(vec![]),
             |acc: _, pair: (i64, Rc<ConstructorField>)| match cells
                 .clone()
-                .get((pair.0.clone()) as usize)
+                .iter()
                 .cloned()
+                .skip(pair.0.clone() as usize)
+                .next()
             {
                 Some(cell) => {
                     if (cell.clone() == "_".to_string()) {

@@ -3437,15 +3437,7 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprLambda => {
-                let lam_param_nodes = Rc::new(
-                    texpr
-                        .children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let lam_param_nodes = Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1));
                 let r = match texpr.children.clone().first().cloned() {
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(ExprResolveResult {
@@ -3775,14 +3767,10 @@ pub fn first_duplicate_type_param_name(names: Rc<Vec<String>>) -> Option<String>
             {
                 if {
                     let mut __found = false;
-                    for other in Rc::new(
-                        names
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .skip(v1_rt::int_add(pair.0.clone(), 1) as usize)
-                            .collect::<Vec<_>>(),
-                    )
+                    for other in Rc::new(v1_rt::list_skip(
+                        &names.clone(),
+                        v1_rt::int_add(pair.0.clone(), 1),
+                    ))
                     .iter()
                     .cloned()
                     {
@@ -3968,15 +3956,7 @@ pub fn reference_param_with_declaration(
                     binders.clone(),
                     env.clone(),
                 )]),
-                Rc::new(
-                    param
-                        .children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                ),
+                Rc::new(v1_rt::list_skip(&param.children.clone(), 1)),
             ),
             param.params.clone(),
             param.inferred.clone(),
@@ -4150,15 +4130,7 @@ pub fn binder_marked_param(
                     binders.clone(),
                     env.clone(),
                 )]),
-                Rc::new(
-                    param
-                        .children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                ),
+                Rc::new(v1_rt::list_skip(&param.children.clone(), 1)),
             ),
             param.params.clone(),
             param.inferred.clone(),

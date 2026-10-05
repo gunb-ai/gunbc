@@ -176,7 +176,13 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                     })
                 }
             };
-            let after_open = match before_and_rest.clone().get((1) as usize).cloned() {
+            let after_open = match before_and_rest
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+            {
                 Some(r) => r.clone(),
                 std::option::Option::None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
@@ -210,7 +216,13 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                     })
                 }
             };
-            let suffix = match name_and_suffix.clone().get((1) as usize).cloned() {
+            let suffix = match name_and_suffix
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+            {
                 Some(s) => s.clone(),
                 std::option::Option::None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
@@ -485,8 +497,10 @@ pub fn uri_query_string(path: String) -> String {
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
-    .get((1) as usize)
+    .iter()
     .cloned()
+    .skip(1 as usize)
+    .next()
     {
         Some(q) => q.clone(),
         std::option::Option::None => "".to_string(),
@@ -523,8 +537,10 @@ pub fn uri_query_param(path: String, key: String) -> String {
                         .map(|s| s.to_string())
                         .collect::<Vec<_>>(),
                 )
-                .get((1) as usize)
+                .iter()
                 .cloned()
+                .skip(1 as usize)
+                .next()
                 {
                     Some(x) => x.clone(),
                     std::option::Option::None => "".to_string(),

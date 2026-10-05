@@ -5951,13 +5951,7 @@ pub fn emit_rust_block_stmts(
                 let next_scope =
                     crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = registry;
@@ -6010,14 +6004,7 @@ pub fn emit_rust_init_block_stmts(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(
-                    remaining
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -10589,16 +10576,10 @@ pub fn qualified_type_reference_rows(
                                     .map(|s| s.to_string())
                                     .collect::<Vec<_>>(),
                             );
-                            let qualifier = Rc::new(
-                                segments
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .take(
-                                        v1_rt::int_sub((segments.clone().len() as i64), 1) as usize
-                                    )
-                                    .collect::<Vec<_>>(),
-                            )
+                            let qualifier = Rc::new(v1_rt::list_take(
+                                &segments.clone(),
+                                v1_rt::int_sub((segments.clone().len() as i64), 1),
+                            ))
                             .join(&".".to_string());
                             if ((((qualifier.clone() == this_module_name.clone())
                                 || crate::v1_compiler_infer_types::emit_map_has(
@@ -10796,8 +10777,8 @@ pub fn qualified_type_reference_use_lines(
             .cloned()
             {
                 __result.extend(
-                    (*Rc::new(
-                        Rc::new({
+                    (*Rc::new(v1_rt::list_take(
+                        &Rc::new({
                             let mut __result = Vec::new();
                             for l in typed.iter().cloned() {
                                 if (l.text.clone() == text.clone()) {
@@ -10805,12 +10786,9 @@ pub fn qualified_type_reference_use_lines(
                                 }
                             }
                             __result
-                        })
-                        .iter()
-                        .cloned()
-                        .take(1 as usize)
-                        .collect::<Vec<_>>(),
-                    ))
+                        }),
+                        1,
+                    )))
                     .iter()
                     .cloned(),
                 );
@@ -19013,20 +18991,8 @@ pub fn v1_record_decl_slot_arg_name(
                         );
                     } else {
                         {
-                            let __tco_0 = Rc::new(
-                                decl_params
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
-                            let __tco_1 = Rc::new(
-                                type_args
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
+                            let __tco_0 = Rc::new(v1_rt::list_skip(&decl_params, 1));
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&type_args, 1));
                             let __tco_2 = slot_name;
                             let __tco_3 = source_indices;
                             __tco_loop_decl_params = __tco_0;
@@ -19100,22 +19066,8 @@ pub fn v1_positional_bound_forwarded_names(
                     v1_rt::concat(
                         here.clone(),
                         v1_positional_bound_forwarded_names(
-                            Rc::new(
-                                callee_names
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            Rc::new(
-                                wrapper_names
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(&callee_names.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&wrapper_names.clone(), 1)),
                             callee_bound_param_names.clone(),
                             wrapper_generic_param_names.clone(),
                         ),
@@ -26677,14 +26629,7 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
                 arg.clone(),
                 scope.type_env.clone().source_indices.clone(),
             ),
-            Rc::new(
-                arg.children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            ),
+            Rc::new(v1_rt::list_skip(&arg.children.clone(), 1)),
         ),
         _ => scope.clone(),
     }
@@ -27486,13 +27431,7 @@ pub fn emit_nested_rt_concat(
                     )
                 };
                 {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                     let __tco_1 = next_acc.clone();
                     let __tco_2 = shared_types;
                     __tco_loop_remaining = __tco_0;
@@ -28032,15 +27971,7 @@ pub fn emit_typed_collection_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = crate::v1_std_core::lambda_body(lambda_expr.clone());
-            let pn = Rc::new(
-                lambda_expr
-                    .children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            );
+            let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
             let param_strs = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
@@ -28111,15 +28042,7 @@ pub fn emit_typed_fold_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = crate::v1_std_core::lambda_body(lambda_expr.clone());
-            let pn = Rc::new(
-                lambda_expr
-                    .children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            );
+            let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
             let safe_acc_type = rust_fold_safe_acc_type(acc_type_str.clone());
             let fallback_types = Rc::new({
                 let mut __result = Vec::new();
@@ -28766,7 +28689,7 @@ pub fn emit_rust_effectful_fold_loop(
     ExprData::ExprLambda => {
         let si = scope.type_env.clone().source_indices.clone();
 let ps = crate::v1_std_core::lambda_param_names_at(lambda_expr.clone(), si.clone());
-let pn = Rc::new(lambda_expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
 let acc_param_type = rust_fold_safe_acc_type(acc_type_str.clone());
 let acc_name = match ps.clone().first().cloned() {
     Some(n) => n.clone(),
@@ -29086,15 +29009,10 @@ pub fn emit_rust_map_method_call(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(
-                                crate::v1_std_core::arg_value(a.clone())
-                                    .children
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(
+                                &crate::v1_std_core::arg_value(a.clone()).children.clone(),
+                                1,
+                            )),
                         );
                         let body_str = emit_typed_expr(
                             bd.clone(),
@@ -29185,15 +29103,10 @@ pub fn emit_rust_map_method_call(
                             let lambda_scope = lambda_scope_from_children(
                                 scope.clone(),
                                 ps.clone(),
-                                Rc::new(
-                                    crate::v1_std_core::arg_value(a.clone())
-                                        .children
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .skip(1 as usize)
-                                        .collect::<Vec<_>>(),
-                                ),
+                                Rc::new(v1_rt::list_skip(
+                                    &crate::v1_std_core::arg_value(a.clone()).children.clone(),
+                                    1,
+                                )),
                             );
                             let body_str = emit_typed_expr(
                                 bd.clone(),
@@ -29309,15 +29222,10 @@ pub fn emit_rust_higher_order_method(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(
-                                crate::v1_std_core::arg_value(a.clone())
-                                    .children
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(
+                                &crate::v1_std_core::arg_value(a.clone()).children.clone(),
+                                1,
+                            )),
                         );
                         let body_str = emit_typed_expr(
                             bd.clone(),
@@ -29629,10 +29537,10 @@ pub fn emit_rust_first_method_call(
                     );
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(recv_str.clone(), ".iter().cloned().skip(".to_string()),
+                            v1_rt::concat(recv_str.clone(), ".get((".to_string()),
                             n_str.clone(),
                         ),
-                        " as usize).next()".to_string(),
+                        ") as usize).cloned()".to_string(),
                     )
                 }
             } else {
@@ -35462,14 +35370,7 @@ pub fn emit_tco_init_block_stmts(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(
-                    remaining
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -38978,16 +38879,7 @@ pub fn emit_shell_call(
         let arg_lines = if ((argv.clone().len() as i64) > 1) {
             Rc::new({
                 let mut __result = Vec::new();
-                for arg in Rc::new(
-                    argv.clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
+                for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
                     __result.push(
                         if shell_argv_element_is_word_list(
                             arg.clone(),

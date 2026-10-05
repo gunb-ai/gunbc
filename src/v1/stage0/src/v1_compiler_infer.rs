@@ -481,13 +481,7 @@ pub fn infer_block_stmts(
                 let next_scope =
                     scope_after_stmt_node(stmt.clone(), stmt_rt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                     let __tco_1 = v1_rt::int_sub(remaining_count, 1);
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = v1_rt::rc_list_push(typed_stmts, stmt_typed.clone());
@@ -638,13 +632,7 @@ Rc::new(InferScopeComponents {
             }
         });
                         {
-                            let __tco_0 = Rc::new(
-                                remaining
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
+                            let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                             let __tco_1 = parent_index;
                             let __tco_2 = env;
                             let __tco_3 = parent_result.svc_registry.clone();
@@ -658,13 +646,7 @@ Rc::new(InferScopeComponents {
                         }
                     }
                     std::option::Option::None => {
-                        let __tco_0 = Rc::new(
-                            remaining
-                                .iter()
-                                .cloned()
-                                .skip(1 as usize)
-                                .collect::<Vec<_>>(),
-                        );
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                         let __tco_1 = parent_index;
                         let __tco_2 = env;
                         let __tco_3 = svc_registry;
@@ -4322,16 +4304,9 @@ pub fn list_literal_optional_member_diags(
             let head_type = crate::v1_compiler_infer_types::resolved_type(head.clone());
             Rc::new({
                 let mut __result = Vec::new();
-                for te in Rc::new(
-                    typed_elements
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
+                for te in Rc::new(v1_rt::list_skip(&typed_elements.clone(), 1))
+                    .iter()
+                    .cloned()
                 {
                     __result.extend(
                         (*optional_at_required_obligation_diags(
@@ -6645,20 +6620,8 @@ pub fn coproduct_applied_type_arguments_conflict_scan(
                         break true;
                     } else {
                         {
-                            let __tco_0 = Rc::new(
-                                declared_args
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
-                            let __tco_1 = Rc::new(
-                                produced_args
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
+                            let __tco_0 = Rc::new(v1_rt::list_skip(&declared_args, 1));
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&produced_args, 1));
                             let __tco_2 = scope;
                             __tco_loop_declared_args = __tco_0;
                             __tco_loop_produced_args = __tco_1;
@@ -6798,20 +6761,8 @@ pub fn applied_type_arguments_conflict_scan(
                         break true;
                     } else {
                         {
-                            let __tco_0 = Rc::new(
-                                declared_args
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
-                            let __tco_1 = Rc::new(
-                                produced_args
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            );
+                            let __tco_0 = Rc::new(v1_rt::list_skip(&declared_args, 1));
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&produced_args, 1));
                             let __tco_2 = scope;
                             __tco_loop_declared_args = __tco_0;
                             __tco_loop_produced_args = __tco_1;
@@ -8531,16 +8482,9 @@ pub fn expression_value_type(e: Rc<Node>) -> Rc<Node> {
         resolved_callable_type(
             Rc::new({
                 let mut __result = Vec::new();
-                for lp in Rc::new(
-                    e.children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
+                for lp in Rc::new(v1_rt::list_skip(&e.children.clone(), 1))
+                    .iter()
+                    .cloned()
                 {
                     __result.push(lambda_arrow_param(lp.clone()));
                 }
@@ -8859,14 +8803,10 @@ pub fn call_arg_bound_param_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     positionally_eligible_names: Rc<Vec<String>>,
 ) -> Option<String> {
-    Rc::new(
-        typed_args
-            .clone()
-            .iter()
-            .cloned()
-            .take(v1_rt::int_add(idx.clone(), 1) as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_take(
+        &typed_args.clone(),
+        v1_rt::int_add(idx.clone(), 1),
+    ))
     .iter()
     .cloned()
     .fold(
@@ -12989,14 +12929,7 @@ Rc::new(InferResult {
                             }
                             __found
                         };
-                        let call_method_args = Rc::new(
-                            call_args
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .skip(1 as usize)
-                                .collect::<Vec<_>>(),
-                        );
+                        let call_method_args = Rc::new(v1_rt::list_skip(&call_args.clone(), 1));
                         let call_method_name = Some(func_name.clone());
                         let call_fold_info = extract_fold_init_info(
                             call_method_name.clone(),
@@ -13424,14 +13357,8 @@ Rc::new(InferResult {
                                 {
                                     {
                                         let receiver = method_receiver.clone();
-                                        let remaining = Rc::new(
-                                            typed_args
-                                                .clone()
-                                                .iter()
-                                                .cloned()
-                                                .skip(1 as usize)
-                                                .collect::<Vec<_>>(),
-                                        );
+                                        let remaining =
+                                            Rc::new(v1_rt::list_skip(&typed_args.clone(), 1));
                                         let rest_result = rest_operation_result_type(
                                             method_resolution.clone(),
                                             texpr.span.clone(),
@@ -14298,23 +14225,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 },
             };
             let unified_arm_type = match arm_body_types.clone().first().cloned() {
-                Some(first_type) => Rc::new(
-                    arm_body_types
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
-                    crate::v1_compiler_infer_types::prefer_specific_type(
-                        acc,
-                        t.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    )
-                }),
+                Some(first_type) => Rc::new(v1_rt::list_skip(&arm_body_types.clone(), 1))
+                    .iter()
+                    .cloned()
+                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
+                        crate::v1_compiler_infer_types::prefer_specific_type(
+                            acc,
+                            t.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        )
+                    }),
                 std::option::Option::None => scrut_rt.clone(),
             };
             let arm_infer_results = if crate::v1_compiler_infer_types::is_fully_resolved(
@@ -15096,15 +15016,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 texpr.clone(),
                 scope.type_env.clone().source_indices.clone(),
             );
-            let lam_param_nodes = Rc::new(
-                texpr
-                    .children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            );
+            let lam_param_nodes = Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1));
             let elem_prov =
                 match v1_rt::map_get(&scope.lambda_param_provenance.clone(), "elem".to_string()) {
                     Some(p) => p.clone(),
@@ -19234,21 +19146,15 @@ pub fn classify_call_arg_provenance(
 pub fn merge_argument_relations(rels: Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {
     match rels.clone().first().cloned() {
         std::option::Option::None => Rc::new(SubValueRelation::SubValueUnknown),
-        Some(first_rel) => Rc::new(
-            rels.clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            first_rel.clone(),
-            |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| {
-                crate::std_induction::meet_sub_value(acc, rel.clone())
-            },
-        ),
+        Some(first_rel) => Rc::new(v1_rt::list_skip(&rels.clone(), 1))
+            .iter()
+            .cloned()
+            .fold(
+                first_rel.clone(),
+                |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| {
+                    crate::std_induction::meet_sub_value(acc, rel.clone())
+                },
+            ),
     }
 }
 
@@ -21838,23 +21744,16 @@ pub fn meet_body_provenance_maps(
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match provs.clone().first().cloned() {
         std::option::Option::None => empty_prov_map(),
-        Some(first_prov) => Rc::new(
-            provs
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            first_prov.clone(),
-            |acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
-             prov: Rc<HashMap<String, Rc<SubValueRelation>>>| {
-                intersect_prov_maps(acc, prov.clone())
-            },
-        ),
+        Some(first_prov) => Rc::new(v1_rt::list_skip(&provs.clone(), 1))
+            .iter()
+            .cloned()
+            .fold(
+                first_prov.clone(),
+                |acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
+                 prov: Rc<HashMap<String, Rc<SubValueRelation>>>| {
+                    intersect_prov_maps(acc, prov.clone())
+                },
+            ),
     }
 }
 
@@ -22340,14 +22239,10 @@ if ((Rc::new(v1_rt::map_keys(&composed_field_map)).len() as i64) > 0) {
                     acc.clone()
                 } else {
                     {
-                        let final_lp = Rc::new(
-                            stmts
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .take(v1_rt::int_sub(stmt_count.clone(), 1) as usize)
-                                .collect::<Vec<_>>(),
-                        )
+                        let final_lp = Rc::new(v1_rt::list_take(
+                            &stmts.clone(),
+                            v1_rt::int_sub(stmt_count.clone(), 1),
+                        ))
                         .iter()
                         .cloned()
                         .fold(
@@ -24065,30 +23960,23 @@ pub fn union_parent_type_env_caches(
                 cache: crate::v1_compiler_infer_env::empty_type_env_cache(),
                 conflicts: Rc::new(vec![]),
             }),
-            Some(head) => Rc::new(
-                parent_caches
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            .fold(
-                Rc::new(GuardedTypeEnvCacheMerge {
-                    cache: head.cache.clone(),
-                    conflicts: Rc::new(vec![]),
-                }),
-                |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
-                    crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
-                        acc.cache.clone(),
-                        row.cache.clone(),
-                        row.import_path.clone(),
-                        acc.conflicts.clone(),
-                    )
-                },
-            ),
+            Some(head) => Rc::new(v1_rt::list_skip(&parent_caches.clone(), 1))
+                .iter()
+                .cloned()
+                .fold(
+                    Rc::new(GuardedTypeEnvCacheMerge {
+                        cache: head.cache.clone(),
+                        conflicts: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
+                        crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
+                            acc.cache.clone(),
+                            row.cache.clone(),
+                            row.import_path.clone(),
+                            acc.conflicts.clone(),
+                        )
+                    },
+                ),
         }
     }
 }
@@ -27064,25 +26952,18 @@ pub fn build_type_env(
             source_indices.clone(),
         );
         let parent_inductive_fields = match scope_parents.clone().first().cloned() {
-            Some(head_parent) => Rc::new(
-                scope_parents
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            .fold(
-                head_parent.inductive_fields.clone(),
-                |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
-                    crate::v1_compiler_infer_env::merge_inductive_fields(
-                        acc,
-                        parent.inductive_fields.clone(),
-                    )
-                },
-            ),
+            Some(head_parent) => Rc::new(v1_rt::list_skip(&scope_parents.clone(), 1))
+                .iter()
+                .cloned()
+                .fold(
+                    head_parent.inductive_fields.clone(),
+                    |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
+                        crate::v1_compiler_infer_env::merge_inductive_fields(
+                            acc,
+                            parent.inductive_fields.clone(),
+                        )
+                    },
+                ),
             std::option::Option::None => {
                 v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>()
             }
@@ -27678,25 +27559,18 @@ pub fn build_type_env_unresolved(
             source_indices.clone(),
         );
         let parent_inductive_fields = match scope_parents.clone().first().cloned() {
-            Some(head_parent) => Rc::new(
-                scope_parents
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            .fold(
-                head_parent.inductive_fields.clone(),
-                |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
-                    crate::v1_compiler_infer_env::merge_inductive_fields(
-                        acc,
-                        parent.inductive_fields.clone(),
-                    )
-                },
-            ),
+            Some(head_parent) => Rc::new(v1_rt::list_skip(&scope_parents.clone(), 1))
+                .iter()
+                .cloned()
+                .fold(
+                    head_parent.inductive_fields.clone(),
+                    |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
+                        crate::v1_compiler_infer_env::merge_inductive_fields(
+                            acc,
+                            parent.inductive_fields.clone(),
+                        )
+                    },
+                ),
             std::option::Option::None => {
                 v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>()
             }
@@ -28028,13 +27902,7 @@ pub fn fold_module_contributions(
                     std::option::Option::None => svc_locals.clone(),
                 };
                 {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                     let __tco_1 =
                         v1_rt::rc_list_push(resolved_items, contribution.resolved_item.clone());
                     let __tco_2 = next_func_sigs.clone();
