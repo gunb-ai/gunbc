@@ -185,7 +185,7 @@ fn node_http_request_handler_block() -> TsStmt {
             args: [ts_ident(name: "path")]
           )
         ),
-        then: node_http_match_handler_body(),
+        then_stmt: node_http_match_handler_body(),
         else_stmt: none
       )
     ),
@@ -213,7 +213,7 @@ fn node_http_request_handler_block() -> TsStmt {
         op: ">",
         right: ts_lit_num(text: "0")
       ),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_const(
           name: "allow",
           value: ts_call(
