@@ -336,6 +336,8 @@ test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -
 // is TERM-able until its shell runs the trap, and with publication failing at once the launch's TERM
 // can land first -- the child then exits 143 and the 137 this claim reads is never written
 // (merge-group run 37120556276, observed failed with no change touching this path).
+// Scope discovery and cleanup to this scratch directory's argv[0]. A fixed sleep duration
+// matched children from concurrent runner slots, and cleanup could kill another witness's child.
 test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child() -> Bool {
   let dir = scratch_dir()
   let bin = concat(dir, "/bin")
@@ -344,12 +346,14 @@ test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child
   let _x = shell.Exec.RunArgv(program: "chmod", arguments: ["+x", concat(bin, "/cat")])
   let pid_path = concat(dir, "/child.pid")
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
-  let marker = "37.0417"
-  let _l = shell.Exec.RunArgv(program: "env", arguments: ["--ignore-signal=TERM", concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, "sleep", marker])
+  let marker = concat(dir, "/unpublished-child")
+  let literal = fold(["\\", ".", "[", "]", "(", ")", "\{", "}", "*", "+", "?", "^", "$", "|"], init: marker, f: fn(acc, c) { replace(acc, c, concat("\\", c)) })
+  let pattern = concat("^", concat(literal, " 37[.]0417$"))
+  let _l = shell.Exec.RunArgv(program: "env", arguments: ["--ignore-signal=TERM", concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, "bash", "-c", "exec -a \"$1\" sleep 37.0417", "fixture-child", marker])
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
-  let survivor = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", concat("^sleep ", concat(marker, "$"))]).exit_code == 0
-  let _clean = shell.Exec.RunArgv(program: "pkill", arguments: ["-KILL", "-f", concat("^sleep ", concat(marker, "$"))])
+  let survivor = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", pattern]).exit_code == 0
+  let _clean = shell.Exec.RunArgv(program: "pkill", arguments: ["-KILL", "-f", pattern])
   let _gone = shell.Remove.RecursiveForce(path: dir)
   string_contains(s: log, pattern: concat(owned_process_exit_prefix, "137")) && !survivor
 }
