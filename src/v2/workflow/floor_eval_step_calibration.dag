@@ -6,7 +6,7 @@ import std.measure {
   EvalStepCount, eval_step_count, eval_step_count_value,
   EvalStepsPerMillisecond, eval_steps_per_millisecond, eval_steps_per_millisecond_count,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILINGS.
 //
@@ -127,6 +127,28 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // or per-tier adjustment reachable through this row; per-runner normalisation is refused by name in
 // the brief this lane was built under, and the shape of this constant is what makes it unreachable
 // rather than merely unwritten.
+//
+// THAT BAN IS OVERTURNED, NARROWLY, FOR ONE CONSUMER (sharp-raven-357 with the operator's go-ahead,
+// 2026-10-05, deciding escalation msg_decc213d on node adhoc-c9504740-637). The ban's own purpose is
+// the sentence above: NO CLAIM'S VERDICT MAY VARY BETWEEN RUNS OF THE SAME TREE. A pinned constant
+// does not deliver that for a gate that compares a CPU READING to a budget, because the reading
+// carries the runner's speed and the pin does not. Measured on gunbc#13168 at b72b994: fifteen parse
+// claims refused with eval steps identical to their green run (48,811 vs 48,755), while a same-step
+// peer already on main (test.claim.parse_test_fn_decl_return_clause nfbcp_eq_body_specimen_parses_holds,
+// about 48,760 steps) went 240 -> 426 ms between runs on a runner about 1.75x slower. Runner speed
+// flipped the verdict; the pin let it. So the ban's purpose is now better served by a SAME-RUN
+// factor than by the pin, and the overturn is bounded by the conditions of that decision:
+// (1) the factor comes ONLY from this file's source-fixed specimen, measured in the same run on the
+//     same runner -- never from the live claim-time distribution, so the original ban's target (a
+//     budget drawn from the per-claim distribution) stays refused;
+// (2) one factor scales EVERY claim in the run uniformly, with no per-claim or per-tier adjustment;
+// (3) its sole consumer is the enrolment margin (`v2.workflow.floor_enrolment_margin`), judged in
+//     calibrated CPU ms with the raw ms still reported, and the step budgets above are NOT rescaled
+//     -- they stay a pinned conversion of work, which this row still serves unchanged;
+// (4) a missing, censored, moved or out-of-range specimen reading refuses the run, typed and
+//     located, and never defaults (`HostSpeedCalibration` below);
+// (5) the factor's plausible range is a declared policy bound with its reason
+//     (`host_speed_factor_lower_permille`, `host_speed_factor_upper_permille`).
 //
 // THE RE-PIN PROTOCOL, so the act is repeatable and its inputs are named: run `instrument` on the
 // specimen named by `specimen`, on the machine that runs the floor, enough times to see the spread;
@@ -326,4 +348,158 @@ fn eval_step_rate_grounding_holds(grounding: EvalStepRateGrounding) -> Bool {
     RateAboveMeasuredRatio { rate_work: _, measured_steps: _ } => false
     RateBelowMeasuredRatio { rate_work: _, measured_steps: _ } => false
   }
+}
+
+// THE SAME-RUN HOST-SPEED FACTOR (the narrow overturn recorded at the pin's ruling above).
+//
+// WHAT IT MEASURES. The specimen's work is fixed by source and its eval_steps are deterministic, so
+// its CPU in THIS run, on THIS runner, set against what the pinned rate says that work costs, is the
+// runner's speed relative to the calibration runner and nothing else. The reference is DERIVED, never
+// a new figure: `specimen_eval_steps / steps_per_ms` is what the specimen costs at the pinned rate,
+// so the factor in permille is `specimen_cpu * steps_per_ms * 1000 / specimen_eval_steps`. A factor
+// of 1000 is a runner as fast as the pin's; above 1000 is slower.
+//
+// CALIBRATED UNITS ARE CPU MILLISECONDS ON THE CALIBRATION RUNNER: `raw * 1000 / factor`. The pinned
+// rate was taken at the SLOW end of its sample (see the pin), so calibrated ms read as what a claim
+// would cost on a slow floor runner, which is the fail-closed direction.
+//
+// WHY THE SPECIMEN STEPS ARE CHECKED IN THE SAME CLASSIFICATION. A factor computed from a specimen
+// that moved is a ratio of two different workloads. `specimen_steps_grounding` already decides that
+// with no tolerance band; this is now its first gating consumer, which also discharges the
+// next-rung trigger named in this module's header for the enrolment margin: the floor consumes the
+// specimen's per-claim observation by identity in the same run.
+//
+// THE KNOWN RESIDUAL, stated rather than hidden: one specimen reading carries ordinary CPU-timing
+// noise (the rate sample's ~10% spread at a larger depth), and the specimen's workload (a tight
+// interpreted recursion) is not every claim's workload. A claim whose cost is native moves with the
+// host differently from the specimen. Neither is hidden by the factor -- a native-heavy claim still
+// reads its full native CPU, only rescaled uniformly. Timing noise is reduced by taking the fastest
+// of three replicates and priced by the margin's residual same-host envelope; the native-cost
+// mismatch is NOT priced by anything yet. Both, and that envelope's re-derivation trigger, are stated
+// at `v2.workflow.floor_enrolment_margin` `floor_enrolment_same_host_spread_permille`.
+type HostSpeedFactor {
+  factor_permille: Int
+}
+
+type HostSpeedCalibration =
+    HostSpeedCalibrated { specimen_cpu_ms: Millisecond, factor: HostSpeedFactor }
+  | HostSpeedSpecimenNotMeasured { specimen: NonEmptyStr, cause: String }
+  | HostSpeedSpecimenCensored { specimen: NonEmptyStr, cpu_lower_bound_ms: Millisecond }
+  | HostSpeedSpecimenMoved { specimen: NonEmptyStr, declared_steps: Int, observed_steps: Int }
+  | HostSpeedFactorOutOfRange { specimen: NonEmptyStr, factor_permille: Int, lower_permille: Int, upper_permille: Int }
+
+// THE PLAUSIBLE RANGE, AS POLICY WITH ITS REASON. `tools.floor_cost_distribution_instrument`
+// `floor_cost_envelope_report` measures the spread of IDENTICAL work across runners (the envelope
+// `v2.workflow.floor_enrolment_margin` consumes); its worst case over the sample it was taken on was
+// a little over 2.2x. The pin sits near the slow end of the fleet, so a healthy runner's factor
+// lies well inside [1/2.5, 2.5] of it. A factor outside that band is not a fast or slow runner but a
+// broken one -- throttled, oversubscribed, or timing the specimen wrongly -- and rescaling every
+// claim by it would turn a broken clock into a verdict. So it refuses. Widening the band is a policy
+// edit here with a new reason, never an automatic adoption of whatever a run reported.
+fn host_speed_factor_lower_permille() -> Int {
+  400
+}
+
+fn host_speed_factor_upper_permille() -> Int {
+  2500
+}
+
+// The reference factor: a runner exactly as fast as the pin's. Exists for fixtures and controls,
+// which must state the speed they judge at rather than borrow a run's.
+fn host_speed_reference_factor() -> HostSpeedFactor {
+  HostSpeedFactor { factor_permille: 1000 }
+}
+
+fn host_speed_factor_permille_of(calibration: EvalStepCalibration, specimen_cpu_ms: Millisecond) -> Int {
+  (millisecond_count(m: specimen_cpu_ms) * calibration_rate(calibration: calibration) * 1000)
+    / eval_step_count_value(s: calibration_specimen_eval_steps(calibration: calibration))
+}
+
+// THE CLASSIFICATION OF AN EXACT SPECIMEN READING. The censored and absent arms are minted by the
+// consumer that holds the reading coproduct (`v2.workflow.floor_enrolment_margin`
+// `enrolment_host_speed_calibration`), because that coproduct's authority is a module this one must
+// not import (see that module's note on `gunbc.floor_cost_distribution`).
+fn host_speed_calibration_of(
+  calibration: EvalStepCalibration,
+  specimen_cpu_ms: Millisecond,
+  specimen_eval_steps: Int,
+) -> HostSpeedCalibration {
+  let specimen = calibration_specimen_identity(calibration: calibration)
+  match specimen_steps_grounding(calibration: calibration, observed_eval_steps: specimen_eval_steps) {
+    SpecimenStepsDiffer { declared_steps: d, observed_steps: o } =>
+      HostSpeedSpecimenMoved { specimen: specimen, declared_steps: d, observed_steps: o }
+    SpecimenStepsMatchThePin => {
+      let f = host_speed_factor_permille_of(calibration: calibration, specimen_cpu_ms: specimen_cpu_ms)
+      let lo = host_speed_factor_lower_permille()
+      let hi = host_speed_factor_upper_permille()
+      if f < lo || f > hi {
+        HostSpeedFactorOutOfRange { specimen: specimen, factor_permille: f, lower_permille: lo, upper_permille: hi }
+      } else {
+        HostSpeedCalibrated { specimen_cpu_ms: specimen_cpu_ms, factor: HostSpeedFactor { factor_permille: f } }
+      }
+    }
+  }
+}
+
+// THE REPLICATES THE RUN MEASURES. The first is the pinned specimen itself; the other two perform the
+// same work at the same depth with distinct accumulator seeds (see their module). One reading is not
+// enough: measured on one runner, the specimen's first reading was 1.74x its steady state (75ms
+// against 43-47ms), and a slow reading loosens the margin. The FASTEST replicate is the reading, so
+// a slow outlier errs strict, never lenient.
+fn host_speed_specimen_replicates(calibration: EvalStepCalibration) -> List<NonEmptyStr> {
+  [
+    calibration_specimen_identity(calibration: calibration),
+    "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_replicate_two_performs_its_declared_work" as NonEmptyStr,
+    "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_replicate_three_performs_its_declared_work" as NonEmptyStr,
+  ]
+}
+
+// COMBINE PER-REPLICATE CLASSIFICATIONS. Any refusing replicate refuses the run (the first such, in
+// replicate order); otherwise the replicate with the SMALLEST factor stands, which is the fastest
+// reading. An empty list is a refusal, never a default.
+fn host_speed_fastest_of(calibrations: List<HostSpeedCalibration>, specimen: NonEmptyStr) -> HostSpeedCalibration {
+  fold(calibrations, init: HostSpeedSpecimenNotMeasured { specimen: specimen, cause: "no_replicate_readings" }, f: fn(acc, c) {
+    match acc {
+      HostSpeedCalibrated { specimen_cpu_ms: _, factor: best } =>
+        match c {
+          HostSpeedCalibrated { specimen_cpu_ms: _, factor: f } =>
+            if f.factor_permille < best.factor_permille { c } else { acc }
+          HostSpeedSpecimenNotMeasured { specimen: _, cause: _ } => c
+          HostSpeedSpecimenCensored { specimen: _, cpu_lower_bound_ms: _ } => c
+          HostSpeedSpecimenMoved { specimen: _, declared_steps: _, observed_steps: _ } => c
+          HostSpeedFactorOutOfRange { specimen: _, factor_permille: _, lower_permille: _, upper_permille: _ } => c
+        }
+      HostSpeedSpecimenNotMeasured { specimen: _, cause: k } =>
+        if k == "no_replicate_readings" { c } else { acc }
+      HostSpeedSpecimenCensored { specimen: _, cpu_lower_bound_ms: _ } => acc
+      HostSpeedSpecimenMoved { specimen: _, declared_steps: _, observed_steps: _ } => acc
+      HostSpeedFactorOutOfRange { specimen: _, factor_permille: _, lower_permille: _, upper_permille: _ } => acc
+    }
+  })
+}
+
+// ONLY THE CALIBRATED ARM ADMITS. Every other arm refuses the run; there is no default factor.
+fn host_speed_calibration_holds(c: HostSpeedCalibration) -> Bool {
+  match c {
+    HostSpeedCalibrated { specimen_cpu_ms: _, factor: _ } => true
+    HostSpeedSpecimenNotMeasured { specimen: _, cause: _ } => false
+    HostSpeedSpecimenCensored { specimen: _, cpu_lower_bound_ms: _ } => false
+    HostSpeedSpecimenMoved { specimen: _, declared_steps: _, observed_steps: _ } => false
+    HostSpeedFactorOutOfRange { specimen: _, factor_permille: _, lower_permille: _, upper_permille: _ } => false
+  }
+}
+
+fn host_speed_calibration_name(c: HostSpeedCalibration) -> String {
+  match c {
+    HostSpeedCalibrated { specimen_cpu_ms: _, factor: _ } => "calibrated"
+    HostSpeedSpecimenNotMeasured { specimen: _, cause: _ } => "host_speed_specimen_not_measured"
+    HostSpeedSpecimenCensored { specimen: _, cpu_lower_bound_ms: _ } => "host_speed_specimen_censored"
+    HostSpeedSpecimenMoved { specimen: _, declared_steps: _, observed_steps: _ } => "host_speed_specimen_moved"
+    HostSpeedFactorOutOfRange { specimen: _, factor_permille: _, lower_permille: _, upper_permille: _ } => "host_speed_factor_out_of_range"
+  }
+}
+
+// RAW CPU TO CALIBRATED CPU. Uniform: the same factor for every reading in the run.
+fn calibrated_cpu_ms(raw: Millisecond, factor: HostSpeedFactor) -> Millisecond {
+  millisecond(count: (millisecond_count(m: raw) * 1000) / factor.factor_permille)
 }

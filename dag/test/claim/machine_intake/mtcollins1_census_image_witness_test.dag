@@ -10,7 +10,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   seeded_install_media_build_key,
   ubuntu_seeded_install_media_built,
 }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
+import gunbc.boot_medium { stock_installer_boot_medium }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
   BoundHostCaptureEnvelope,
@@ -424,7 +424,7 @@ test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
   a.image_name == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0123456789abcdef.iso"
     && a.image_name != b.image_name
     && a.build_key == b.build_key
-    && a.image_name != mtcollins1_diskless_image_name
+    && a.image_name != stock_installer_boot_medium.image_name
 }
 
 // TWO DERIVATIONS, TWO KEYS. The pinned derivation is the one the boot medium row pins (its key is the

@@ -17,11 +17,16 @@ export GUNBC_GCP_ACCESS_TOKEN_FILE=/path/to/private/operator-token
 export GUNBC_IAM_BOOTSTRAP_RECEIPT=operator-bootstrap-unique-attempt
 export GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID=stable-authority-operation
 export GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT=2026-09-28T23:00:00Z # illustrative; set once for the intended operation
+export GUNBC_IAM_BOOTSTRAP_PROBE_ID=stable-probe-operation
+export GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT=2026-09-28T23:00:00Z # illustrative; set once, at most one hour away
 systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
-  ./target/release/gunbc run --source-root target/iam-bootstrap-controls \
-  --entry target/iam-bootstrap-controls/gunbc.auth.gcp_iam_bootstrap.dag \
+  ./target/release/gunbc run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/auth/gcp_iam_bootstrap.dag \
   --function iam_bootstrap_apply
 ```
+
+`iam_bootstrap_plan` (same roots and entry, `--function iam_bootstrap_plan`) prints the
+operator-supplied intent variables the run reads; this block illustrates them.
 
 The token file must be private and short-lived. No token belongs in a command
 argument, source file, receipt, or GitHub variable. The ongoing workflow never
@@ -262,3 +267,14 @@ The first probe lease was removed after 30 token-mint refusals over roughly one
 minute. That did not establish a permission-design defect: Google documents policy
 propagation as typically two minutes, potentially seven or longer. The bounded
 retry now permits seven minutes within the original lease; no role is widened.
+
+### Re-running after an interrupted probe-authority stage
+
+The probe stage first reads back the operator identity, and only then does
+`iam_bootstrap_cell_authority_reconcile` pin an intent or elect a publication. A run that
+stops inside that readback therefore leaves no `gcp-iam-probe-*` journal and no grant.
+Re-run with a fresh `GUNBC_IAM_BOOTSTRAP_RECEIPT` (the started receipt is create-only):
+earlier stages read back and adopt what exists (the deny stage elects no temporary
+authority when its policy already reads back), and the probe stage elects fresh under
+the same or a new probe intent. Any `gcp-iam-probe-*` or `gcp-iam-authority-*` journal
+that does exist must be kept with its original environment, as above.
