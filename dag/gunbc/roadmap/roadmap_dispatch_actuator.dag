@@ -1172,6 +1172,14 @@ fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: Str
   join([head_sha, ".", criterion_key, ".json"], "")
 }
 
+fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
+}
+
+fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
+  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
+}
+
 fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String, head_sha: String) -> String {
   join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, "@", head_sha, ".provider-events.jsonl"], "")
 }
