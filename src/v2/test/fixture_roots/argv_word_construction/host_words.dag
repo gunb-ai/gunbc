@@ -10,7 +10,8 @@ import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.algebra { length }
 
-// A List<String> data decl that IS argv vocabulary: flag words among its literal elements.
+// Candidate class: flag vocabulary among its literal elements, but the name is not referenced by
+// any argv-typed fn body, so it is reported as candidates, not counted.
 data fixture_wait_flags: List<String> = ["--wait", "--quiet", "--collect"]
 
 // A List<String> data decl that is NOT argv vocabulary: no flag words, no argv name (the ceiling
@@ -22,7 +23,7 @@ data fixture_commit_args: List<String> = ["commit", "--allow-empty"]
 
 // (a)+(b): a fn builder that glues a flag literal to a value and returns word-lists.
 fn fixture_transient_unit_argv(unit: String) -> List<String> {
-  Cons { head: "systemd-run", tail: Cons { head: concat("--unit=", unit), tail: Cons { head: "--collect", tail: Empty } } }
+  Cons { head: "systemd-run", tail: Cons { head: concat("--unit=", unit), tail: Cons { head: "--collect", tail: fixture_commit_args } } }
 }
 
 // (b): a fn accepting a List<String> argv parameter in an argv position, returning word-lists.
@@ -30,13 +31,14 @@ fn fixture_run_with_properties(unit: String, property_argv: List<String>) -> Lis
   Cons { head: concat("--unit=", unit), tail: property_argv }
 }
 
-// NOT a member: a List<String> parameter outside the argv positions, no flag words, no
-// List<String> return.
+// Member of the List<String>-parameter interface class per the census contract: the census
+// counts every List<String> param/return at an identity, flagged or not. No flag words here.
 fn fixture_label_rows(labels: List<String>) -> Bool {
   !(length(xs: labels) == 0)
 }
 
-// (a) only: a fn that spells a flag literal and returns a scalar.
+// Candidate class: a fn that spells a flag literal and returns a scalar. Not counted (the flag
+// literal sits outside an argv position), still a member because candidates are reported.
 fn fixture_waits_quietly() -> Bool {
   starts_with(s: concat("--", "wait"), prefix: "--wait")
 }

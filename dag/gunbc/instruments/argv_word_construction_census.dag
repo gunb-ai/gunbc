@@ -26,7 +26,8 @@ import v2.lens.argv_word_construction {
   ArgvWordsModuleEstablished,
   ArgvWordsModuleRefused,
   argv_word_construction_gates,
-  argv_word_construction_module_sites
+  argv_word_construction_module_sites,
+  argv_word_construction_for_paths
 }
 import v2.std.algebra { fold_list, list_reverse }
 import v2.std.collection { List }
@@ -78,16 +79,44 @@ fn argv_word_construction_census_check_sites(sites: List<ArgvWordsSite>) -> Proc
 // The recount entry: discover the roots' module files by the declaration index (never a text
 // search), walk each with the lens, and hold the contract.
 fn argv_word_construction_census_recount() -> ProcessExit {
+  argv_word_construction_census_check_paths(paths: argv_word_construction_census_root_paths())
+}
+
+// The discovered modeled roots' module files, in declaration-index order. Shared by the gated
+// recount above and the roster emitter below so both see the same population.
+fn argv_word_construction_census_root_paths() -> List<String> {
   let decls = module_declaration_facts_live(pool_roots: argv_word_construction_census_roots)
   let paths_reversed = fold_list(xs: decls, empty: Empty, cons: fn(acc, d) {
     let p = declared_module_path(d: d)
     if p == "" { acc } else { Cons { head: p, tail: acc } }
   })
-  argv_word_construction_census_check_paths(paths: list_reverse(xs: paths_reversed))
+  list_reverse(xs: paths_reversed)
+}
+
+// The roster emitter for a wet-lane run (claim_batch --wet): the same discovered population, each
+// module walked by the lens, rows written as TSV to the scratch path. The committed roster data
+// decl above is filled FROM this output, never by hand from a text search. Hermetic lanes refuse
+// the write by design -- the emitter exists for the recount, not for CI.
+fn argv_word_construction_census_recount_emit() -> ProcessExit {
+  argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths(), out: "target/argv_word_construction_census_recount.tsv")
 }
 
 fn declared_module_path(d: ModuleDeclarationFact) -> String {
   d.path
+}
+
+// The distinct module files named by the committed roster, in first-appearance order: exactly the
+// population the bounded-contract claim re-walks, so CI executes the gates at roster size without
+// ever walking the whole corpus.
+fn argv_word_construction_census_roster_modules() -> List<String> {
+  let reversed = fold_list(xs: argv_word_construction_census_roster, empty: Empty, cons: fn(acc, r) {
+    if contains_string(xs: acc, x: r.module_file) { acc } else { Cons { head: r.module_file, tail: acc } }
+  })
+  list_reverse(xs: reversed)
+}
+
+fn contains_string(xs: List<String>, x: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, y) { acc || (y == x) })
 }
 
 type ArgvWordsCollected {
