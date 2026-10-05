@@ -1,7 +1,6 @@
 module gunbc.workspace_allocation_policy
 
 import std.types { NonEmptyStr, List }
-import extdeps.ssh { ssh_public_key_line }
 import gunbc.fleet_ssh_access { operator_ssh_principal }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_admission { WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow, WorkspacePolicyAdmission, workspace_policy_admit }
@@ -26,14 +25,14 @@ fn workspace_enrollment_roster() -> WorkspaceEnrollmentRoster {
   ] }
 }
 
-// Each reference names exactly one enrolled ed25519 line. The operator's guest key reuses the
+// Each reference names exactly one enrolled ed25519 key, carried in the extdeps.ssh key model. The operator's guest key reuses the
 // existing fleet SSH principal's public key; a customer's row carries that customer's own key,
 // and a reference is never shared between owners.
 fn workspace_public_key_catalog() -> List<WorkspacePublicKeyCatalogRow> {
   [
     WorkspacePublicKeyCatalogRow {
       reference: workspace_operator_public_key_ref,
-      line: ssh_public_key_line(k: operator_ssh_principal.public_key),
+      key: operator_ssh_principal.public_key,
     },
   ]
 }

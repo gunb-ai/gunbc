@@ -8,7 +8,7 @@ import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decisi
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.list { distinct_by_key }
-import std.algebra { trim }
+import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_material_well_formed }
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
@@ -23,16 +23,17 @@ import gunbc.auth.request_authentication { RequestAccessPath,
 // shared, duplicated or dangling enrollment cannot reach any consumer.
 type WorkspaceOwnerEnrollment { principal: PrincipalRef, public_key_ref: NonEmptyStr }
 type WorkspaceEnrollmentRoster { enrollments: List<WorkspaceOwnerEnrollment> }
-type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, line: String }
+type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, key: SshPublicKey }
 type WorkspaceAuthorizationPolicy sole_constructor { enrollments: List<WorkspaceOwnerEnrollment>, catalog: List<WorkspacePublicKeyCatalogRow> }
 type WorkspacePolicyAdmission
   = WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy }
   | WorkspacePolicyRefused { reason: String }
 
 // The join is one-to-one at identity grain: each principal once, each reference owned by one
-// principal, each reference naming exactly one catalog line, every catalog line serving exactly one
-// enrollment, and no key bytes shared between references. Duplicate identical rows refuse; nothing
-// is deduplicated, and list order never chooses between enrollments.
+// principal, each reference naming exactly one catalog key, every catalog key serving exactly one
+// enrollment, and no key identity (algorithm plus canonical material; the comment is presentation
+// only) shared between references. Every key must be one well-formed ssh-ed25519 blob whose comment
+// cannot open another authorized_keys record. Nothing is deduplicated or reordered.
 fn workspace_policy_admit(roster: WorkspaceEnrollmentRoster, catalog: List<WorkspacePublicKeyCatalogRow>) -> WorkspacePolicyAdmission {
   let enrolled = count(roster.enrollments)
   let refs = map(roster.enrollments, e => e.public_key_ref as String)
@@ -45,8 +46,14 @@ fn workspace_policy_admit(roster: WorkspaceEnrollmentRoster, catalog: List<Works
     WorkspacePolicyRefused { reason: "a workspace public key reference names more than one catalog line" }
   } else if count(catalog) != enrolled || count(distinct_by_key(concat(refs, catalog_refs), r => r)) != enrolled {
     WorkspacePolicyRefused { reason: "enrolled key references and catalog lines are not one-to-one" }
-  } else if count(distinct_by_key(catalog, r => trim(s: r.line))) != count(catalog) {
-    WorkspacePolicyRefused { reason: "two workspace key references carry the same key line" }
+  } else if !all(catalog, r => r.key.algorithm == Ed25519) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key uses an unsupported algorithm" }
+  } else if !all(catalog, r => ssh_ed25519_material_well_formed(material: r.key.material as String)) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key is not one well-formed ssh-ed25519 public key" }
+  } else if any(catalog, r => string_contains(s: r.key.comment, pattern: "\n") || string_contains(s: r.key.comment, pattern: "\r")) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key comment contains a record separator" }
+  } else if count(distinct_by_key(catalog, r => r.key.material as String)) != count(catalog) {
+    WorkspacePolicyRefused { reason: "two workspace key references carry the same key material" }
   } else {
     WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy { enrollments: roster.enrollments, catalog: catalog } }
   }

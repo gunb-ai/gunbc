@@ -3,6 +3,7 @@ module extdeps.ssh
 import std.types { NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.encoding { base64_decode_canonical, Standard }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -76,4 +77,16 @@ fn ssh_public_key_line(k: SshPublicKey) -> String {
     concat(ssh_key_algorithm_token(a: k.algorithm) as String, " "),
     concat(k.material as String, concat(" ", k.comment)),
   )
+}
+
+// RFC 8709 section 4: an ssh-ed25519 public key blob is string "ssh-ed25519" then string of the
+// 32-byte key, so it is exactly 51 octets and its canonical base64 begins with the fixed encoding
+// of that header. Canonical decoding admits one spelling per blob, so the material string is a
+// faithful key identity; a comment never participates in it.
+fn ssh_ed25519_material_well_formed(material: String) -> Bool {
+  starts_with(s: material, prefix: "AAAAC3NzaC1lZDI1NTE5AAAAI")
+    && (match base64_decode_canonical(s: material, variant: Standard) {
+      Present { value: octets } => count(octets) == 51
+      Absent => false
+    })
 }

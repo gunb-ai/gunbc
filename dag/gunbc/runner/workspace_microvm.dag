@@ -1,6 +1,7 @@
 module gunbc.workspace_microvm
 
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_owner_enrollment }
+import extdeps.ssh { ssh_public_key_line }
 import v2.std.optional { Absent, Present }
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.algebra { trim }
@@ -51,7 +52,7 @@ type WorkspacePublicKeyAdmission = WorkspacePublicKeyAdmitted { key: WorkspacePu
 
 // Guest access is the request owner's enrolled key and nothing else: the request's server-supplied
 // reference must be the one the policy enrolls for that owner, and it must name exactly one catalog
-// line of the admitted policy, revalidated here (admission already refused shared references). A
+// key of the admitted policy, whose algorithm, material and comment admission already checked. A
 // reference enrolled for another owner -- including the one the previous
 // incarnation of a reused slot carried -- is refused before any bootstrap record is written.
 fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy,
@@ -65,10 +66,7 @@ fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy,
       if count(rows) != 1 { WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" } }
       else { match rows.first() {
         Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" }
-        Present { value: row } => match workspace_public_key(reference: reference, text: row.line) {
-          WorkspacePublicKeyRefused => WorkspacePublicKeyNotAdmitted { reason: "workspace catalog key contains options, extra records or an unsupported algorithm" }
-          WorkspacePublicKeyTextAdmitted { key: text } => WorkspacePublicKeyAdmitted { key: WorkspacePublicKey { reference: reference, line: text.line } }
-        }
+        Present { value: row } => WorkspacePublicKeyAdmitted { key: WorkspacePublicKey { reference: reference, line: ssh_public_key_line(k: row.key) as NonEmptyStr } }
       } }
     }
   }
