@@ -2275,7 +2275,8 @@ fn issue_breadcrumb_compact_labels(ancestors: List<NodePresentation>) -> List<St
 }
 
 fn issue_breadcrumb_tree(ancestors: List<NodePresentation>, self_node: NodePresentation) -> List<Fragment> {
-  let leaf_first = fold(ancestors, init: [issue_breadcrumb_self_node(node: self_node)] as List<Fragment>, f: (levels, node) => concat([issue_breadcrumb_ancestor_node(node: node)], levels))
+  let root_first = concat(map(ancestors, node => issue_breadcrumb_ancestor_node(node: node)), [issue_breadcrumb_self_node(node: self_node)])
+  let leaf_first = fold(root_first, init: [] as List<Fragment>, f: (levels, level) => concat([level], levels))
   fold(leaf_first, init: [] as List<Fragment>, f: (children, level) =>
     [el("li", concat([level], if count(children) == 0 { [] } else { [el("ol", children)] }))])
 }

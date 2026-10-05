@@ -1815,6 +1815,21 @@ fn fx_aln_rooted_memberships() -> List<gunbc.roadmap_nesting.RoadmapMembership> 
   ]
 }
 
+// The tree is the markup after the issue-path-tree list opens (the collapsed summary before it
+// repeats two of the titles). `outer` nests `inner` when outer's text precedes inner's there, which
+// in a list nested one level per chain level is the nesting order. The red this pins is real: the
+// first rendering of the chain put the current node outermost with the root inside it, and every
+// other conjunct of the witness below still held.
+fn fx_tree_nests_in_order(html: String, outer: String, inner: String) -> Bool {
+  match split(s: html, delimiter: "<ol class=\"issue-path-tree\">").last() {
+    Absent => false
+    Present { value: tree } => match split(s: tree, delimiter: inner).first() {
+      Absent => false
+      Present { value: before_inner } => string_contains(s: before_inner, pattern: outer) && string_contains(s: tree, pattern: inner)
+    }
+  }
+}
+
 // THE ROOTED ARM, ROOT-TO-LEAF: a rooted node's breadcrumb lists the root first and the node itself
 // last; every ancestor carries a link to its canonical /issue/ route and its slug rides the title
 // attribute; the current node is the page and renders as PLAIN TEXT (no /issue/ self-link anywhere
@@ -1837,6 +1852,8 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_canonical_links() -> 
         && string_contains(s: h, pattern: "Mid headline")
         && string_contains(s: h, pattern: "Task headline")
         && string_contains(s: h, pattern: "issue-path-tree")
+        && fx_tree_nests_in_order(html: h, outer: "Root headline", inner: "Mid headline")
+        && fx_tree_nests_in_order(html: h, outer: "Mid headline", inner: "Task headline")
         && string_contains(s: h, pattern: "aria-current=\"page\"")
         && string_contains(s: h, pattern: "title=\"gunbc-project-root\"")
         && !string_contains(s: h, pattern: "href=\"/issue/hier-aln-task\"")
