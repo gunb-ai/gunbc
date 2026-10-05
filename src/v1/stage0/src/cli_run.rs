@@ -19303,10 +19303,14 @@ fn module_emit_repr_fingerprint(
 ) -> Result<String, String> {
     use crate::v1_compiler_infer_emit_info::TypeSummary;
 
+    // Summaries are keyed by declaration identity (`<module>.<name>`), so a module's own types are
+    // read under its own path and never under a same-leaf declaration elsewhere in the closure.
+    let module_path = authored_name_at(source_indices.clone(), module.module.clone());
     let type_names = module_defined_type_names(module, source_indices);
     let mut type_summaries = BTreeMap::<String, TypeSummary>::new();
     for name in type_names {
-        if let Some(summary) = emit_info.type_summaries.get(&name) {
+        let key = format!("{module_path}.{name}");
+        if let Some(summary) = emit_info.type_summaries.by_key.get(&key) {
             type_summaries.insert(name, summary.as_ref().clone());
         }
     }
@@ -23212,6 +23216,10 @@ fn defining_module_for_resolved_type(
         }
     }
     let parent_enum = variant_to_enum.get(type_name).cloned()?;
+    // variant_to_enum names the owning enum by its declaration identity, `<module>.<name>`.
+    if let Some((module, _)) = parent_enum.rsplit_once('.') {
+        return Some(module.to_string());
+    }
     for tm in graph.modules.iter() {
         let mod_name = authored_name_at(si.clone(), tm.module.clone());
         if lookup_type_by_name(tm.type_env.clone(), parent_enum.clone()).is_some() {
