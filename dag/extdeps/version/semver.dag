@@ -1,6 +1,6 @@
 module extdeps.version.semver
 
-import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -139,17 +139,17 @@ fn semver_to_version_identity(v: SemVerVersion) -> VersionIdentity {
 //
 // The label is a VersionScheme's only handle, so the comparison parses the label back into the
 // typed form and routes through `semver_compare` — the ONE implementation of the cited rule.
-// §11 defines precedence over VALID versions, so a label outside the §2 grammar yields none: a
-// typed refusal of the precedence question (pinned by
+// §11 defines precedence over VALID versions, so a label outside the §2 grammar is a located
+// refusal: the carrier names the failing side, the label, and the cause (pinned by
 // w_semver_scheme_out_of_grammar_label_refuses_precedence), never a fabricated order.
-fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> Ordering? {
+fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
   match semver_identity_parse(label: a) {
     Present { value: av } =>
       match semver_identity_parse(label: b) {
-        Present { value: bv } => Present { value: semver_compare(a: av, b: bv) }
-        Absent => none
+        Present { value: bv } => VersionCompared { ordering: semver_compare(a: av, b: bv) }
+        Absent => VersionComparisonRefused { side: "b", identity: b as String, cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it" }
       }
-    Absent => none
+    Absent => VersionComparisonRefused { side: "a", identity: a as String, cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it" }
   }
 }
 
@@ -366,7 +366,13 @@ fn semver_identity_head_parse(cps: List<Int>, build: List<SemVerIdentifier>) -> 
 }
 
 fn semver_identity_parse(label: VersionIdentity) -> SemVerVersion? {
-  let cps = semver_identity_code_points(label: label)
+  semver_version_parse(cps: semver_identity_code_points(label: label))
+}
+
+// Code-point entry for sibling schemes whose labels carry a scheme-specific prefix (go's "v"):
+// the grammar and the precedence stay HERE — the one implementation — and the sibling keeps only
+// its own prefix and acceptance rules.
+fn semver_version_parse(cps: List<Int>) -> SemVerVersion? {
   match semver_index_of(cp: 43, cps: cps) {
     Present { value: bi } =>
       match semver_build_parse(cps: cps.skip(n: bi + 1)) {

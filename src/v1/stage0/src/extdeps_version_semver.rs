@@ -5,7 +5,10 @@ use self::SemVerIdentifier::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
+use crate::extdeps_version::VersionComparison::{VersionCompared, VersionComparisonRefused};
+pub use crate::extdeps_version::{
+    VersionComparison, VersionConstraint, VersionIdentity, VersionScheme,
+};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_checked_arithmetic::checked_int_to_nat;
@@ -228,14 +231,24 @@ pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
     semver_version_label(v.clone())
 }
 
-pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Option<Ordering> {
+pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComparison> {
     match semver_identity_parse(a.clone()) {
-        Some(av) => match semver_identity_parse(b.clone()) {
-            Some(bv) => Some(semver_compare(av.clone(), bv.clone())),
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => std::option::Option::None,
-    }
+    Some(av) => match semver_identity_parse(b.clone()) {
+    Some(bv) => Rc::new(VersionComparison::VersionCompared {
+    ordering: semver_compare(av.clone(), bv.clone()),
+}),
+    std::option::Option::None => Rc::new(VersionComparison::VersionComparisonRefused {
+    side: "b".to_string(),
+    identity: b.clone(),
+    cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it".to_string(),
+}),
+},
+    std::option::Option::None => Rc::new(VersionComparison::VersionComparisonRefused {
+    side: "a".to_string(),
+    identity: a.clone(),
+    cause: "label is not a SemVer 2.0.0 version: the §2 grammar rejects it (a numeric identifier with a leading zero is neither numeric, §9, nor alphanumeric), so §11 precedence is undefined for it".to_string(),
+}),
+}
 }
 
 pub fn semver_identity_code_points(label: NonEmptyStr) -> Rc<Vec<i64>> {
@@ -590,30 +603,31 @@ pub fn semver_identity_head_parse(
 }
 
 pub fn semver_identity_parse(label: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
-    {
-        let cps = semver_identity_code_points(label.clone());
-        match semver_index_of(43, cps.clone()) {
-            Some(bi) => match semver_build_parse(Rc::new(
-                cps.clone()
-                    .iter()
-                    .cloned()
-                    .skip(v1_rt::int_add(bi.clone(), 1) as usize)
-                    .collect::<Vec<_>>(),
-            )) {
-                std::option::Option::None => std::option::Option::None,
-                Some(build) => semver_identity_head_parse(
-                    Rc::new(
-                        cps.clone()
-                            .iter()
-                            .cloned()
-                            .take(bi.clone() as usize)
-                            .collect::<Vec<_>>(),
-                    ),
-                    build.clone(),
+    semver_version_parse(semver_identity_code_points(label.clone()))
+}
+
+pub fn semver_version_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {
+    match semver_index_of(43, cps.clone()) {
+        Some(bi) => match semver_build_parse(Rc::new(
+            cps.clone()
+                .iter()
+                .cloned()
+                .skip(v1_rt::int_add(bi.clone(), 1) as usize)
+                .collect::<Vec<_>>(),
+        )) {
+            std::option::Option::None => std::option::Option::None,
+            Some(build) => semver_identity_head_parse(
+                Rc::new(
+                    cps.clone()
+                        .iter()
+                        .cloned()
+                        .take(bi.clone() as usize)
+                        .collect::<Vec<_>>(),
                 ),
-            },
-            std::option::Option::None => semver_identity_head_parse(cps.clone(), Rc::new(vec![])),
-        }
+                build.clone(),
+            ),
+        },
+        std::option::Option::None => semver_identity_head_parse(cps.clone(), Rc::new(vec![])),
     }
 }
 

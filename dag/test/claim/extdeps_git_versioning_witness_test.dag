@@ -63,8 +63,8 @@ test fn w_git_release_version_scheme_equal() -> Bool {
     a: git_release_to_version_identity(v: git_2_0_release),
     b: "2.0.0"
   ) {
-    Present { value: v } => v == std.algebra.Equal
-    Absent => false
+    VersionCompared { ordering: v } => v == std.algebra.Equal
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
 
@@ -78,16 +78,16 @@ test fn w_min_git_version_grounded() -> Bool {
 // not a placeholder answer.
 test fn w_git_release_version_scheme_orders_minor_numerically() -> Bool {
   match git_release_version_scheme.compare(a: "2.0.0", b: "2.1.0") {
-    Present { value: v } => v == std.algebra.Less
-    Absent => false
+    VersionCompared { ordering: v } => v == std.algebra.Less
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
 
-// A label outside the bare MAJOR.MINOR.PATCH grammar yields none — a refusal of the precedence
-// question, never a fabricated order.
+// A label outside the bare MAJOR.MINOR.PATCH grammar is a located refusal: the carrier names
+// the failing side, the label, and the cause — never a fabricated order.
 test fn w_git_release_version_scheme_refuses_out_of_grammar_label() -> Bool {
   match git_release_version_scheme.compare(a: "not-a-version", b: "2.0.0") {
-    Absent => true
-    Present { value: _ } => false
+    VersionComparisonRefused { side: s, identity: i, cause: _ } => s == "a" && i == "not-a-version"
+    VersionCompared { ordering: _ } => false
   }
 }
