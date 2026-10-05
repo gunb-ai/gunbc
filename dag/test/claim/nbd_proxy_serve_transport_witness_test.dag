@@ -18,6 +18,7 @@ import gunbc.host_effect_nbd_proxy_serve {
 import gunbc.srv3_nbd_proxy_serve_intent {
   srv3_nbd_proxy_lease_key,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

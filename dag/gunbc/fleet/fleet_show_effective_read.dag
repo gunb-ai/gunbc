@@ -7,6 +7,40 @@ import gunbc.host_identity_adopt {
   srv3_host_identity_ssh_transport,
   srv4_host_identity_ssh_transport,
 }
+import extdeps.systemd {
+  MemoryLimitAbsent,
+  MemorySwapMax,
+  SystemdCgroupMemoryLimit,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+}
+import extdeps.systemd.oomd { parse_managed_oom_pressure_limit_show }
+import gunbc.ci_floor_measurement { CapEffective, RunnerSliceCapEffectiveness }
+import gunbc.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv4_host }
+import gunbc.host_converge { ConvergeTarget, ConvergeVerdict, VerdictConverged }
+import gunbc.host_effect { HostEffectTransport, HostOs, NodeControlPlane }
+import gunbc.runner_unit_live_read {
+  RunnerUnitMemoryLiveRead,
+  converge_target_live_verdict,
+  gunbc_srv1_runner_unit_live_read_fixture,
+  memory_limit_converge_verdict,
+  memory_limit_to_cap_effectiveness,
+  runner_unit_live_read_typed,
+}
+import gunbc.systemctl_show_read {
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+  SystemdPropertyCaptured,
+  systemctl_show_property_read,
+}
+import std.measure { percent_count }
+import std.realization_reconcile { ReadAbsent, ReadObserved, ShowEffectiveRead }
 
 
 type RunnerSliceCapLiveReadRow {

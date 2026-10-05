@@ -224,6 +224,7 @@ mod emitted_closure_compile_host;
 // TEST-ONLY, and wired the same #[path] way as the hosts above rather than through lib.rs: the
 // falsifier exists to be invoked by one #[ignore] test and has no production caller, so declaring
 // it unconditionally would put a module nothing calls into every release build.
+pub(crate) mod claim_call_site_demand;
 #[cfg(test)]
 #[path = "evaluation_budget_consequence_falsifier_host.rs"]
 mod evaluation_budget_consequence_falsifier_host;
@@ -23857,36 +23858,6 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
-/// Why an excluded witness row failed admission. These are the two REFUSING arms of
-/// `std.witness_admission`'s `WitnessExecutionStanding`; they are separate because their remedies
-/// differ. The other two arms are absent because neither refuses: one has an executing consumer,
-/// the other is frozen legacy debt the migration ratchet tolerates without ever counting as covered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeferredAdmissionCause {
-    /// Nothing claims the row — no roster, no path policy. Remedy: name a cadence or delete it.
-    UnexecutedDeferredWitness,
-    /// A broad `OfflineLocalRecipe` path policy claims it, nothing executes it, and it is outside
-    /// the frozen legacy population. Remedy: an exact admission naming an executing cadence.
-    UnclassifiedPathDeferral,
-}
-
-impl DeferredAdmissionCause {
-    fn label(self) -> &'static str {
-        match self {
-            Self::UnexecutedDeferredWitness => "UnexecutedDeferredWitness",
-            Self::UnclassifiedPathDeferral => "UnclassifiedPathDeferral",
-        }
-    }
-}
-
-/// Phase 0(b) admission invariant refusal — an excluded witness row with zero executing consumers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeferredAdmissionRefusal {
-    pub entry: String,
-    pub function: String,
-    pub cause: DeferredAdmissionCause,
-}
-
 #[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
@@ -24842,84 +24813,6 @@ pub enum WitnessExecutionStanding {
     LegacyFrozenPathDeferral,
     UnclassifiedPathDeferral,
     UnexecutedDeferredWitness,
-}
-
-/// One deferred row with its standing, so a caller can ask the coverage question and the floor
-/// question separately instead of receiving one boolean that answers neither honestly.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeferredRowStanding {
-    pub entry: String,
-    pub function: String,
-    pub standing: WitnessExecutionStanding,
-}
-
-pub fn classify_deferred_discovery_rows(
-    deferred_rows: &[DeferredDiscoveryRow],
-) -> Vec<DeferredRowStanding> {
-    classify_deferred_discovery_rows_in(
-        deferred_rows,
-        &witness_admission_explicit_consumer_keys(),
-        &witness_admission_offline_exclusion_substrings(),
-        &witness_admission_fixture_exclusion_substrings(),
-        frozen_path_deferral_keys(),
-    )
-}
-
-/// The same fold over supplied rosters — the grain the fixture controls plant into, so a control
-/// can hold the row fixed and move only freeze membership (the discriminator this wall adds).
-fn classify_deferred_discovery_rows_in(
-    deferred_rows: &[DeferredDiscoveryRow],
-    explicit: &[String],
-    offline: &[String],
-    fixture: &[String],
-    frozen: &[String],
-) -> Vec<DeferredRowStanding> {
-    deferred_rows
-        .iter()
-        .map(|row| {
-            let key = witness_admission_manifest_key(&row.entry, &row.function);
-            let standing = if explicit.iter().any(|k| k == &key) {
-                WitnessExecutionStanding::HasExecutingConsumer
-            } else if path_matches_any_substring(&row.entry, offline) {
-                if frozen.iter().any(|k| k == &key) {
-                    WitnessExecutionStanding::LegacyFrozenPathDeferral
-                } else {
-                    WitnessExecutionStanding::UnclassifiedPathDeferral
-                }
-            } else if path_matches_any_substring(&row.entry, fixture) {
-                WitnessExecutionStanding::HasExecutingConsumer
-            } else {
-                WitnessExecutionStanding::UnexecutedDeferredWitness
-            };
-            DeferredRowStanding {
-                entry: row.entry.clone(),
-                function: row.function.clone(),
-                standing,
-            }
-        })
-        .collect()
-}
-
-fn refusals_from_standings(rows: &[DeferredRowStanding]) -> Vec<DeferredAdmissionRefusal> {
-    rows.iter()
-        .filter_map(|row| {
-            let cause = match row.standing {
-                WitnessExecutionStanding::UnclassifiedPathDeferral => {
-                    DeferredAdmissionCause::UnclassifiedPathDeferral
-                }
-                WitnessExecutionStanding::UnexecutedDeferredWitness => {
-                    DeferredAdmissionCause::UnexecutedDeferredWitness
-                }
-                WitnessExecutionStanding::HasExecutingConsumer
-                | WitnessExecutionStanding::LegacyFrozenPathDeferral => return None,
-            };
-            Some(DeferredAdmissionRefusal {
-                entry: row.entry.clone(),
-                function: row.function.clone(),
-                cause,
-            })
-        })
-        .collect()
 }
 
 /// The second direction of the identity join: a frozen row whose witness the tree no longer
@@ -28066,6 +27959,71 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         );
     }
 
+    // DESIGN §4c: an annotation is not program data, so a `//` edit charges no witness. Lines:
+    // 3 `// note a`, 4-7 `a`, 9 `// note c`, 10-13 `c` (whose body carries a `//` line).
+    const NOTE_HEAD: &str = "module m.note\n\n// note a\ntest fn a() -> Bool {\n  true\n}\n\n// note c new\ntest fn c() -> Bool {\n  // body note new\n  true\n}\n";
+    const NOTE_PATH: &str = "src/v2/test/claim/note_fixture_test.dag";
+
+    fn note_diff(hunks: &str) -> String {
+        let path = NOTE_PATH;
+        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}")
+    }
+
+    #[test]
+    fn a_leading_annotation_edit_charges_no_witness() {
+        let diff = note_diff("@@ -8 +8 @@\n-// note c old\n+// note c new\n@@ -10 +10 @@\n-  // body note old\n+  // body note new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "editing only `//` lines changes no declaration's annotation-erased text"
+        );
+    }
+
+    #[test]
+    fn a_body_edit_beside_an_annotation_still_charges_it() {
+        let diff = note_diff("@@ -11 +11 @@\n-  false\n+  true\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::from(["c".to_string()]),
+            "a non-annotation line edited inside `c` edits `c`"
+        );
+    }
+
+    #[test]
+    fn a_slash_slash_line_inside_a_multi_line_string_still_charges_it() {
+        // Lines: 3-6 `d`, whose string literal spans lines 4-5; line 4 opens with `//`.
+        let path = "src/v2/test/claim/note_string_fixture_test.dag";
+        let head = "module m.note_string\n\ntest fn d() -> Bool {\n  \"a\n// in a string, new\n  b\" == \"\"\n}\n";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +5 @@\n-// in a string, old\n+// in a string, new\n"
+        );
+        assert_eq!(
+            edited_in(&text_attribution_edits(&diff, path, head, &["d"]), path),
+            HashSet::from(["d".to_string()]),
+            "a `//` line inside a string literal is program data, not an annotation"
+        );
+    }
+
+    #[test]
+    fn a_moved_annotation_block_charges_neither_declaration() {
+        // Base: `// note c new` sat inside `a`'s body; the head moved it above `c`.
+        let diff = note_diff("@@ -5 +4,0 @@\n-// note c new\n@@ -8,0 +8 @@\n+// note c new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "moving a `//` block between two declarations charges neither"
+        );
+    }
+
     #[test]
     fn a_genuinely_edited_claim_is_still_charged() {
         let path = GAP_PATH;
@@ -29340,80 +29298,14 @@ mod node_frontier_plumbing_controls {
     // that is what the first shape of this test asserted, and it was false the moment the freeze
     // started tolerating rows. What holds is: no row REFUSES, and the tolerated population is
     // counted as UNCOVERED rather than folded into the green.
-    fn long_lane_row(function: &str) -> super::DeferredDiscoveryRow {
-        super::DeferredDiscoveryRow {
-            entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag".to_string(),
-            function: function.to_string(),
-            exclude_reason: "test/claim/long/".to_string(),
-            reads_live_tree: false,
-        }
-    }
-
     // THE WALL, and its discriminator. The row, the offline path policy and the rosters are held
     // identical across both halves; only freeze membership moves. Before 2026-08-04 the offline
     // pattern alone admitted this row, so the refusing half could not have been written.
     // A sibling function under the same frozen ENTRY is a different identity: the freeze is a
     // join over (entry, function), so adding a test decl to an already-frozen file still refuses.
-    #[test]
-    fn new_function_in_a_frozen_entry_still_refuses() {
-        let offline = vec!["test/claim/long/".to_string()];
-        let frozen_row = long_lane_row("already_frozen_holds");
-        let frozen = vec![super::witness_admission_manifest_key(
-            &frozen_row.entry,
-            &frozen_row.function,
-        )];
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            &[long_lane_row("added_after_the_freeze_holds")],
-            &[],
-            &offline,
-            &[],
-            &frozen,
-        ));
-        assert_eq!(refused.len(), 1);
-        assert_eq!(
-            refused[0].cause,
-            super::DeferredAdmissionCause::UnclassifiedPathDeferral
-        );
-    }
-
     // An exact admission is total for the row it covers and needs no freeze row — the precedence
     // witness_row_excluded_two_kinds_note states, exercised at the grain the wall reads.
-    #[test]
-    fn exact_admission_admits_an_offline_path_row_without_freeze_membership() {
-        let row = long_lane_row("exactly_admitted_holds");
-        let explicit = vec![super::witness_admission_manifest_key(
-            &row.entry,
-            &row.function,
-        )];
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            &[row],
-            &explicit,
-            &["test/claim/long/".to_string()],
-            &[],
-            &[],
-        ));
-        assert!(refused.is_empty(), "{refused:?}");
-    }
-
     // Scope control: FixtureExplicitRoster patterns are deliberately untouched by this wall.
-    #[test]
-    fn fixture_roster_path_rows_are_unaffected_by_the_freeze_wall() {
-        let row = super::DeferredDiscoveryRow {
-            entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag".to_string(),
-            function: "floor_skip_control_holds".to_string(),
-            exclude_reason: "test/fixture/floor_skip/".to_string(),
-            reads_live_tree: false,
-        };
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            &[row],
-            &[],
-            &[],
-            &["test/fixture/floor_skip/".to_string()],
-            &[],
-        ));
-        assert!(refused.is_empty(), "{refused:?}");
-    }
-
     #[test]
     fn frozen_path_deferral_source_scan_parses_inline_and_wrapped_rows() {
         let source = concat!(
@@ -29436,9 +29328,7 @@ mod node_frontier_plumbing_controls {
     }
 
     // The contradictory-intersection wall's file-reading half: an entry path resolves through
-    // its own `module ...` line, not through the path string, and a frozen row naming a file the
-    // tree does not carry is skipped here (that disposition belongs to
-    // `collect_stale_frozen_path_deferrals`) rather than panicking a second authority.
+    // its own `module ...` line, not through the path string.
     #[test]
     fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
         let dir = std::env::temp_dir().join(format!(
@@ -29455,7 +29345,6 @@ mod node_frontier_plumbing_controls {
         let source = concat!(
             "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
             "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
-            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
             "]\n"
         );
         let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
@@ -29465,10 +29354,30 @@ mod node_frontier_plumbing_controls {
                 "test/claim/one_test.dag".to_string(),
                 "test.claim.one.x_holds".to_string()
             )],
-            "the missing entry is skipped, not panicked, and the module line — not the path — \
-             names the qualified identity"
+            "the module line — not the path — names the qualified identity"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // A frozen row naming a file the tree does not carry is STALE, and `run_required_floor`
+    // refuses it before this scan runs. Reaching the scan with one is an ordering bug, so the scan
+    // fails loudly rather than skipping the row (the skip it replaces relied on a refusal no
+    // required run executed).
+    #[test]
+    #[should_panic(expected = "the stale-row refusal must run before the intersection scan")]
+    fn frozen_path_deferral_scan_refuses_a_missing_entry_rather_than_skipping_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_freeze_missing_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir fixture root");
+        let source = concat!(
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
+            "]\n"
+        );
+        super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
     }
 
     // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
@@ -43276,6 +43185,80 @@ pub struct RequiredFloorOutcome {
     /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
     /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
     pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
+    /// COST-DEBT ROWS WHOSE CLAIM DID NOT PASS when this change required its verdict, each with
+    /// its cause. Authority: `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing`.
+    /// The population is the rostered identities this change ADMITS (head roster, not base) or
+    /// RESTORES (touches the witness of), so it cannot red a PR for a row it did not author or
+    /// touch. A cost row may never hide a semantic red: this blocks whatever the expected-red
+    /// roster says, because a withhold suppresses that enrolment.
+    pub cost_debt_verdict_refused: Vec<ChangedWitnessBlocker>,
+}
+
+/// Whether the floor outcome permits a green run.
+///
+/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// caller, because a mode that forgot one of them would green a run the other refused. (The
+/// count is stated because a reader checks it; it was five before main added `route_gap` and
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
+/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// were wired in here directly; that was reverted and the count returned to seven.)
+///
+/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
+/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
+/// an enrolled claim produced no verdict — and gating on them directly would red every lane
+/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
+/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
+/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
+/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
+/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
+/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
+///
+/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
+/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
+/// today and, should it stop producing a verdict again, it is already rostered and the eighth
+/// conjunct admits it. Repayment and deletion are therefore one act, which is what
+/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
+/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
+/// — it requires the fix to be complete, and the diagnostic names every row to delete.
+pub fn required_floor_outcome_is_clean(outcome: &RequiredFloorOutcome) -> bool {
+    outcome.failures.is_empty()
+        && outcome.non_verdict_unenrolled.is_empty()
+        && outcome.stale_non_verdict.is_empty()
+        && outcome.stale_quarantine.is_empty()
+        && outcome.interrupted_before_verdict.is_empty()
+        && outcome.completed_over_cost_requirement.is_empty()
+        && outcome.host_tool_unresolved.is_empty()
+        && outcome.route_gap.is_empty()
+        && outcome.stale_route_gap.is_empty()
+        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
+        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
+        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
+        // roster that has stopped describing the tree, which voids the contract's monotone
+        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
+        && outcome.stale_cost_debt.is_empty()
+        // A CHANGED witness identity that did not execute to a passing verdict — declined,
+        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
+        // required context. The classification authority is
+        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
+        // is only the identities this change's diff touched, never the standing declined
+        // corpus, so this conjunct cannot red a PR for debt it did not author.
+        && outcome.changed_witness_blocking.is_empty()
+        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
+        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
+        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
+        // the line every one of the fifteen incident rows cleared on the run that measured them
+        // and crossed on the run that did not. Three refusing states, deliberately distinct:
+        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
+        // the one that must not be folded into the others — absence of a measurement is not
+        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
+        //
+        // The population is only what this change enrols, so this conjunct cannot red a PR for
+        // debt it did not author. Authority:
+        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
+        && outcome.enrolment_margin_blocking.is_empty()
+        // A COST ROW MAY NEVER HIDE A SEMANTIC RED. A rostered identity this change admits or
+        // restores must pass; authority `v2.workflow.floor_cost_debt_verdict`.
+        && outcome.cost_debt_verdict_refused.is_empty()
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -43298,8 +43281,8 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// (`discover_floor_rows_for_source` / `floor_discovery_finalize_source_outcomes`, qualified —
 /// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
 /// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
-/// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
-/// `..._claim_forced`, via `install_pure_producer_share`), and the opaque-host-call surface
+/// cross-claim pure-producer share (`floor_cross_claim_share_derivation` and the carried-input
+/// rows, via `install_pure_producer_share` / `derive_and_install_cross_claim_share`), and the opaque-host-call surface
 /// (`opaque_host_call_surface`, via `floor_required_opaque_host_call_surface`, which arms the
 /// per-claim preemption-reachability recorder). Every one is a closure seed of the
 /// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
@@ -44933,8 +44916,6 @@ fn witness_eval_verdict_from_claim_outcome(
     })
 }
 
-pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
-
 /// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
 ///
 /// The predicate is here rather than in the test body because a test that pattern-matched the
@@ -44971,13 +44952,6 @@ pub fn run_required_regen_scoped(
     let workspace = workspace_root();
     let scope = required_regen_host::regen_emission_scope_for_diff(&workspace, source_roots)?;
     required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
-}
-
-pub fn run_required_regen_fixed_point(
-    receipt_rel: &str,
-    pass1_digest: Option<String>,
-) -> Result<required_regen_host::RequiredRegenOutcome, String> {
-    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
 /// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
