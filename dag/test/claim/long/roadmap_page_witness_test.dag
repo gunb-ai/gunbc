@@ -2300,15 +2300,15 @@ test fn witness_failure_link_targets_a_row_the_work_tab_renders() -> Bool {
     && string_contains(s: rail, pattern: "data-edge=\"stop-cap\"")
 }
 
-// THE WORKFLOW WIRE NAMES THE SAME REVISION THE RAIL DREW. The belt's own attempt object, built for
-// the same real projection, carries the attempt's view revision, and it is the revision the rail's
-// rendering of that projection carries, so a page compares the two and asks for nothing while
-// nothing has changed. The wire carries no rendering.
+// THE WORKFLOW WIRE NAMES THE SAME REVISION THE RAIL DRAWS. The belt's own attempt object, built
+// for the same real projection, carries the attempt's view revision from the same producer function
+// the rail's rendering carries (witness_issue_rail_renders_the_build_meter_for_a_fabric_attempt),
+// so a page compares the two and asks for nothing while nothing has changed. The wire carries no
+// rendering.
 test fn witness_workflow_wire_carries_the_revision_the_rail_draws() -> Bool {
   let attempt = completed_attempt_progress(node_id: "issue-detail-specimen")
   let wire = serialize_json(v: gunbc.roadmap_belt_actuate.belt_workflow_attempt_presentation_json(progress: attempt))
-  let rail = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
-  let revision = string_at(parts: split(s: string_at(parts: split(s: rail, delimiter: "data-attempt-view-revision=\""), index: 1), delimiter: "\""), index: 0)
+  let revision = gunbc.roadmap.roadmap_build_meter.attempt_view_revision(progress: attempt, stale: false)
   string_length(s: revision) == 16
     && string_contains(s: wire, pattern: join(["\"attempt_view_revision\": \"", revision, "\""], ""))
     && !string_contains(s: wire, pattern: "el-build-meter")
