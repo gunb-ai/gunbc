@@ -425,7 +425,7 @@ data skip_contract: PrimitiveContract = {
   work: "log len",
   output_size: "len - k where k = if n < 0 then len else min(n, len)",
   certainty: Proven,
-  carrier_cost: CarrierSensitive { ephemeral_work: "len - n", persistent_work: "log len" }
+  carrier_cost: CarrierSensitive { ephemeral_work: "len - k where k = if n < 0 then len else min(n, len)", persistent_work: "log len" }
 }
 
 data take_contract: PrimitiveContract = {
@@ -433,7 +433,7 @@ data take_contract: PrimitiveContract = {
   work: "log len",
   output_size: "k where k = if n < 0 then len else min(n, len)",
   certainty: Proven,
-  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log len" }
+  carrier_cost: CarrierSensitive { ephemeral_work: "k where k = if n < 0 then len else min(n, len)", persistent_work: "log len" }
 }
 
 data zip_contract: PrimitiveContract = {
