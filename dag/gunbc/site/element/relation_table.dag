@@ -1,0 +1,152 @@
+module gunbc.site.element.relation_table
+
+import std.types { Int, List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  NodeRelation, RelationRow, RelationKind, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
+  RelationRowChildren, RowChildrenNotCarried, RowChildrenExpandable,
+  RelationCount, RelationCountTotal, RelationCountClosedOfTotal, relation_count,
+  relation_kind_label, relation_empty_text, relation_undeclared_text,
+}
+import gunbc.design.material { BuildRule, StaticRule, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_8 }
+import gunbc.site.element.tokens { height_relation_row, relation_cell_padding, relation_row_line }
+import gunbc.site.element.palette { palette_var, SlotTextDim, SlotBorder }
+import gunbc.site.element.text { element_text_decls, ElementBody }
+import gunbc.site.element.section_heading { SectionHeading, SectionCount, SectionCounted, SectionCountedOfTotal, section_heading }
+import gunbc.site.element.chip { Chip, chip }
+import gunbc.site.element.node_row {
+  NodeRow, NodeRowPlace, NodeRowFlat, NodeRowInTree, NodeRowShape, NodeRowShapeFlat, NodeRowShapeTree,
+  NodeRowDensityTable, node_row, node_row_header, node_row_place_shape, node_row_column_count,
+}
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties {
+  AlignItems, BorderBottom, BorderCollapse, Color, Display, Gap, Height, Margin, Padding, Width,
+}
+
+// RelationTable: one relation of a node (its parent, its sub-issues, what blocks it, what it
+// blocks) as a counted heading over a table of NodeRows. It takes the typed relation
+// (gunbc.roadmap.roadmap_hierarchy_view NodeRelation) and reads the heading's words, its count and
+// the rows from that one value, so a heading cannot count rows the table does not show. A
+// relation with nothing in it says so in a sentence; an id the relation names that no declared
+// node answers to is shown as a named row that says so, never dropped and never drawn as a node.
+//
+// `depth` is the level the relation's own rows sit at. The hierarchy view carries no loaded
+// sub-issues, so every table drawn today is at depth 0; the parameter is where a table of loaded
+// sub-issues of a row will say it is one level down.
+type RelationTable {
+  relation: NodeRelation
+  depth: Int
+}
+
+data relation_table_class: String = "el-relation-table"
+data relation_table_rows_class: String = "el-relation-table-rows"
+data relation_table_empty_class: String = "el-relation-table-empty"
+data relation_table_undeclared_class: String = "el-relation-table-undeclared"
+data relation_table_undeclared_cell_class: String = "el-relation-table-undeclared-cell"
+data relation_table_undeclared_note_class: String = "el-relation-table-undeclared-note"
+data relation_table_kind_attribute: String = "data-relation-kind"
+
+fn relation_table_kind_key(kind: RelationKind) -> String {
+  match kind {
+    RelationParent => "parent"
+    RelationSubIssues => "sub-issues"
+    RelationBlockedBy => "blocked-by"
+    RelationBlocking => "blocking"
+  }
+}
+
+fn relation_table_section_count(c: RelationCount) -> SectionCount {
+  match c {
+    RelationCountTotal { total } => SectionCounted { n: total }
+    RelationCountClosedOfTotal { closed, total } => SectionCountedOfTotal { n: closed, total: total }
+  }
+}
+
+// A row's place is what the view says about its children: a row the view carries no children
+// reference for is flat, and a row it does carry one for is a tree row at the table's depth.
+fn relation_table_row_place(children: RelationRowChildren, depth: Int) -> NodeRowPlace {
+  match children {
+    RowChildrenNotCarried => NodeRowFlat
+    RowChildrenExpandable { count: _ } => NodeRowInTree { depth: depth, children: children }
+  }
+}
+
+fn relation_table_shape(rows: List<RelationRow>, depth: Int) -> NodeRowShape {
+  fold(rows, init: NodeRowShapeFlat, f: (acc, row) => match node_row_place_shape(place: relation_table_row_place(children: row.children, depth: depth)) {
+    NodeRowShapeFlat => acc
+    NodeRowShapeTree => NodeRowShapeTree
+  })
+}
+
+fn relation_table_undeclared_row(kind: RelationKind, id: String) -> Fragment {
+  el_attrs("tr", [attr(name: "class", value: relation_table_undeclared_class)], [
+    el_attrs("td", [
+      attr(name: "class", value: relation_table_undeclared_cell_class),
+      attr(name: "colspan", value: to_string(node_row_column_count())),
+    ], [el_attrs("div", [attr(name: "class", value: relation_table_undeclared_note_class)], [
+      chip(input: Chip { text: id }),
+      el_attrs("span", [], [txt(relation_undeclared_text(kind: kind))]),
+    ])]),
+  ])
+}
+
+fn relation_table_body(input: RelationTable) -> List<Fragment> {
+  let relation = input.relation
+  if count(relation.rows) == 0 && count(relation.undeclared) == 0 {
+    [el_attrs("p", [attr(name: "class", value: relation_table_empty_class)], [txt(relation_empty_text(kind: relation.kind))])]
+  } else {
+    [
+      el_attrs("table", [attr(name: "class", value: relation_table_rows_class)], [
+        el_attrs("thead", [], [node_row_header(shape: relation_table_shape(rows: relation.rows, depth: input.depth), density: NodeRowDensityTable)]),
+        el_attrs("tbody", [], concat(
+          map(relation.rows, row => node_row(input: NodeRow {
+            node: row.node,
+            place: relation_table_row_place(children: row.children, depth: input.depth),
+            density: NodeRowDensityTable,
+          })),
+          map(relation.undeclared, id => relation_table_undeclared_row(kind: relation.kind, id: id)))),
+      ]),
+    ]
+  }
+}
+
+fn relation_table(input: RelationTable) -> Fragment {
+  el_attrs("section", [
+    attr(name: "class", value: relation_table_class),
+    attr(name: relation_table_kind_attribute, value: relation_table_kind_key(kind: input.relation.kind)),
+  ], concat([
+    section_heading(input: SectionHeading {
+      text: relation_kind_label(kind: input.relation.kind),
+      count: relation_table_section_count(c: relation_count(relation: input.relation)),
+    }),
+  ], relation_table_body(input: input)))
+}
+
+fn relation_table_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: relation_table_class }, decls: [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: relation_table_rows_class }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: BorderCollapse, value: "collapse"),
+    ] },
+    StaticRule { selector: ClassSelector { name: relation_table_empty_class }, decls: concat(element_text_decls(role: ElementBody), [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+    ]) },
+    StaticRule { selector: ClassSelector { name: relation_table_undeclared_cell_class }, decls: concat(element_text_decls(role: ElementBody), [
+      decl(prop: Height, value: scale_var(t: height_relation_row)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: relation_cell_padding)),
+      decl(prop: BorderBottom, value: scale_border(w: relation_row_line, color_var: palette_var(slot: SlotBorder))),
+      decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+    ]) },
+    StaticRule { selector: ClassSelector { name: relation_table_undeclared_note_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+    ] },
+  ]
+}

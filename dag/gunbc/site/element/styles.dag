@@ -9,6 +9,11 @@ import gunbc.site.element.card { card_class, card_rules }
 import gunbc.site.element.section_heading { section_heading_class, section_heading_rules }
 import gunbc.site.element.status_chip { status_chip_class, status_chip_rules }
 import gunbc.site.element.button { button_class, button_rules }
+import gunbc.site.element.chip { chip_class, chip_rules }
+import gunbc.site.element.priority_mark { priority_mark_class, priority_mark_rules }
+import gunbc.site.element.node_row { node_row_class, node_row_rules }
+import gunbc.site.element.relation_table { relation_table_class, relation_table_rules }
+import gunbc.site.element.node_chain { node_chain_class, node_chain_rules }
 
 // What a page needs to use the elements: every element's rules, and the :root blocks they read
 // (the palette per scheme, and this frontend's tokens, which do not vary by scheme). Each element
@@ -24,6 +29,11 @@ fn element_styles() -> List<ElementStyle> {
     ElementStyle { class_name: section_heading_class, rules: section_heading_rules() },
     ElementStyle { class_name: status_chip_class, rules: status_chip_rules() },
     ElementStyle { class_name: button_class, rules: button_rules() },
+    ElementStyle { class_name: chip_class, rules: chip_rules() },
+    ElementStyle { class_name: priority_mark_class, rules: priority_mark_rules() },
+    ElementStyle { class_name: node_row_class, rules: node_row_rules() },
+    ElementStyle { class_name: relation_table_class, rules: relation_table_rules() },
+    ElementStyle { class_name: node_chain_class, rules: node_chain_rules() },
   ]
 }
 

@@ -1,0 +1,72 @@
+module gunbc.site.element.priority_mark
+
+import std.types { List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap_priority { RoadmapPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3, roadmap_priority_label }
+import gunbc.design.material { BuildRule, StaticRule, decl }
+import gunbc.design.scale { scale_var, scale_border }
+import gunbc.site.element.tokens { radius_element, height_chip, priority_mark_width, priority_mark_border }
+import gunbc.site.element.palette { palette_var, SlotAction }
+import gunbc.site.element.text { element_text_decls, ElementBody }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Border, BorderColor, BorderRadius, BoxSizing, Display, Height, JustifyContent, Width,
+}
+
+// PriorityMark: a priority as the product draws it, body text centred in a fixed box, with a ring
+// in the action colour on the priorities that ask for attention. It takes the typed priority
+// (gunbc.roadmap_priority) and prints that module's label. The product rings P1; its P0 was not
+// captured, and ringing P0 as well is this frontend's adoption, since a mark that singled out P1
+// and left the more urgent priority plain would read backwards.
+type PriorityMark {
+  priority: RoadmapPriority
+}
+
+type PriorityMarkForm
+  = PriorityMarkRinged
+  | PriorityMarkPlain
+
+fn priority_mark_form(priority: RoadmapPriority) -> PriorityMarkForm {
+  match priority {
+    PriorityP0 => PriorityMarkRinged
+    PriorityP1 => PriorityMarkRinged
+    PriorityP2 => PriorityMarkPlain
+    PriorityP3 => PriorityMarkPlain
+  }
+}
+
+fn priority_mark_form_key(form: PriorityMarkForm) -> String {
+  match form {
+    PriorityMarkRinged => "ringed"
+    PriorityMarkPlain => "plain"
+  }
+}
+
+data priority_mark_class: String = "el-priority-mark"
+data priority_mark_form_attribute: String = "data-priority-form"
+
+fn priority_mark(input: PriorityMark) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: priority_mark_class),
+    attr(name: priority_mark_form_attribute, value: priority_mark_form_key(form: priority_mark_form(priority: input.priority))),
+  ], [txt(roadmap_priority_label(priority: input.priority))])
+}
+
+fn priority_mark_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: priority_mark_class }, decls: concat([
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: BoxSizing, value: "border-box"),
+      decl(prop: Width, value: scale_var(t: priority_mark_width)),
+      decl(prop: Height, value: scale_var(t: height_chip)),
+      decl(prop: Border, value: scale_border(w: priority_mark_border, color_var: "transparent")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+    ], element_text_decls(role: ElementBody)) },
+    StaticRule { selector: RawSelector { text: join([".", priority_mark_class, "[", priority_mark_form_attribute, "=\"", priority_mark_form_key(form: PriorityMarkRinged), "\"]"], "") }, decls: [
+      decl(prop: BorderColor, value: palette_var(slot: SlotAction)),
+    ] },
+  ]
+}

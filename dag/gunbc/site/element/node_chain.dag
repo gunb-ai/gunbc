@@ -1,0 +1,235 @@
+module gunbc.site.element.node_chain
+
+import std.types { Bool, Int, List, String }
+import std.markup { Fragment, Attribute, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  NodePresentation, NodeChain, NodeChainRooted, NodeChainRefused, node_chain_refusal_text,
+}
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_2, space_4, space_24, border_2 }
+import gunbc.site.element.tokens { radius_element }
+import gunbc.site.element.palette { palette_var, SlotText, SlotTextDim, SlotAction, SlotError }
+import gunbc.site.element.chip { chip_surface_decls }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, BorderRadius, Color, Cursor, Display, FlexWrap, Gap, JustifyContent, ListStyle, Margin,
+  MinHeight, MinWidth, Outline, Padding, TextDecoration, WhiteSpace, RawProperty,
+}
+
+// NodeChain: where a node sits, as one chip. It takes the membership lineage the hierarchy view
+// derived (gunbc.roadmap.roadmap_hierarchy_view NodeChain) and lists every level's slug from the
+// root to the node itself (owner ruling R1: the chain shows slugs). Each ancestor is a link to
+// its route that carries its title, as a tooltip and in its accessible name, so the title does
+// not depend on hovering; the last level is the node itself and is marked as the current page.
+//
+// A long chain keeps its first level and its last two and puts the middle behind a control that
+// states how many levels it holds and opens them in place. The omitted levels stay in the
+// document inside that control, so nothing is dropped, only folded. A lineage the view refused
+// renders the view's own reason and no levels: a prefix of a chain is not a chain.
+
+// The most levels shown without folding. At this many or fewer every level is shown.
+data node_chain_unfolded_levels: Int = 4
+
+// How a chain is laid out. `Folded` holds at least two middle levels by construction of
+// node_chain_layout: a control that hid one level would take as much room as the level.
+type NodeChainLayout
+  = NodeChainUnfolded { ancestors: List<NodePresentation> }
+  | NodeChainFolded { first: NodePresentation, middle: List<NodePresentation>, last: NodePresentation }
+
+fn node_chain_layout(ancestors: List<NodePresentation>) -> NodeChainLayout {
+  if count(ancestors) + 1 <= node_chain_unfolded_levels {
+    NodeChainUnfolded { ancestors: ancestors }
+  } else {
+    match ancestors.first() {
+      Absent => NodeChainUnfolded { ancestors: ancestors }
+      Present { value: first } => match ancestors.last() {
+        Absent => NodeChainUnfolded { ancestors: ancestors }
+        Present { value: last } => NodeChainFolded {
+          first: first,
+          middle: ancestors.skip(n: 1).take(n: count(ancestors) - 2),
+          last: last,
+        }
+      }
+    }
+  }
+}
+
+data node_chain_class: String = "el-node-chain"
+data node_chain_levels_class: String = "el-node-chain-levels"
+data node_chain_level_class: String = "el-node-chain-level"
+data node_chain_separator_class: String = "el-node-chain-separator"
+data node_chain_link_class: String = "el-node-chain-link"
+data node_chain_current_class: String = "el-node-chain-current"
+data node_chain_fold_class: String = "el-node-chain-fold"
+data node_chain_fold_count_class: String = "el-node-chain-fold-count"
+data node_chain_refused_class: String = "el-node-chain-refused"
+data node_chain_state_attribute: String = "data-chain-state"
+data node_chain_label: String = "Issue hierarchy"
+data node_chain_separator_text: String = "›"
+
+fn node_chain_level_name(node: NodePresentation) -> String {
+  join([node.slug, ": ", node.title], "")
+}
+
+fn node_chain_separator() -> Fragment {
+  el_attrs("span", [attr(name: "class", value: node_chain_separator_class), attr(name: "aria-hidden", value: "true")], [txt(node_chain_separator_text)])
+}
+
+// A level is preceded by a separator unless it opens the chain.
+fn node_chain_level(opens: Bool, content: Fragment) -> Fragment {
+  el_attrs("li", [attr(name: "class", value: node_chain_level_class)], if opens { [content] } else { [node_chain_separator(), content] })
+}
+
+fn node_chain_ancestor(node: NodePresentation) -> Fragment {
+  el_attrs("a", [
+    attr(name: "class", value: node_chain_link_class),
+    attr(name: "href", value: node.route),
+    attr(name: "title", value: node.title),
+    attr(name: "aria-label", value: node_chain_level_name(node: node)),
+  ], [txt(node.slug)])
+}
+
+fn node_chain_current(node: NodePresentation) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: node_chain_current_class),
+    attr(name: "aria-current", value: "page"),
+    attr(name: "title", value: node.title),
+    attr(name: "aria-label", value: node_chain_level_name(node: node)),
+  ], [txt(node.slug)])
+}
+
+fn node_chain_fold_count_text(n: Int) -> String {
+  join(["… ", to_string(n)], "")
+}
+
+fn node_chain_fold_label(n: Int) -> String {
+  join([to_string(n), " more levels"], "")
+}
+
+// The folded middle: a disclosure whose summary states the count and whose body is the levels
+// themselves, each still a link. It opens without script. The shared shell styles every
+// disclosure summary (gunbc.site.document: a control-height row with an open/closed chevron); the
+// chevron is kept as this control's open state, and the rule below restates the geometry a chip
+// needs.
+fn node_chain_fold(middle: List<NodePresentation>) -> Fragment {
+  el_attrs("details", [attr(name: "class", value: node_chain_fold_class)], [
+    el_attrs("summary", [
+      attr(name: "class", value: node_chain_fold_count_class),
+      attr(name: "aria-label", value: node_chain_fold_label(n: count(middle))),
+      attr(name: "title", value: node_chain_fold_label(n: count(middle))),
+    ], [txt(node_chain_fold_count_text(n: count(middle)))]),
+    el_attrs("ol", [attr(name: "class", value: node_chain_levels_class)], map(middle, node => node_chain_level(opens: false, content: node_chain_ancestor(node: node)))),
+  ])
+}
+
+fn node_chain_ancestor_levels(ancestors: List<NodePresentation>) -> List<Fragment> {
+  match node_chain_layout(ancestors: ancestors) {
+    NodeChainUnfolded { ancestors: shown } =>
+      map(enumerate(shown), pair => node_chain_level(opens: pair.first == 0, content: node_chain_ancestor(node: pair.second)))
+    NodeChainFolded { first, middle, last } => [
+      node_chain_level(opens: true, content: node_chain_ancestor(node: first)),
+      node_chain_level(opens: false, content: node_chain_fold(middle: middle)),
+      node_chain_level(opens: false, content: node_chain_ancestor(node: last)),
+    ]
+  }
+}
+
+fn node_chain_state_key(chain: NodeChain) -> String {
+  match chain {
+    NodeChainRooted { ancestors: _, self_node: _ } => "rooted"
+    NodeChainRefused { refusal: _ } => "refused"
+  }
+}
+
+fn node_chain_nodes(chain: NodeChain) -> List<Fragment> {
+  match chain {
+    NodeChainRefused { refusal } => [
+      el_attrs("span", [attr(name: "class", value: node_chain_refused_class)], [txt(node_chain_refusal_text(refusal: refusal))]),
+    ]
+    NodeChainRooted { ancestors, self_node } => [
+      el_attrs("ol", [attr(name: "class", value: node_chain_levels_class)], concat(
+        node_chain_ancestor_levels(ancestors: ancestors),
+        [node_chain_level(opens: count(ancestors) == 0, content: node_chain_current(node: self_node))])),
+    ]
+  }
+}
+
+fn node_chain(chain: NodeChain) -> Fragment {
+  el_attrs("nav", [
+    attr(name: "class", value: node_chain_class),
+    attr(name: "aria-label", value: node_chain_label),
+    attr(name: node_chain_state_attribute, value: node_chain_state_key(chain: chain)),
+  ], node_chain_nodes(chain: chain))
+}
+
+fn node_chain_row_decls() -> List<CssDecl> {
+  [
+    decl(prop: Display, value: "inline-flex"),
+    decl(prop: FlexWrap, value: "wrap"),
+    decl(prop: AlignItems, value: "center"),
+    decl(prop: Gap, value: scale_pair(a: space_0, b: space_4)),
+  ]
+}
+
+fn node_chain_focus_rule(class_name: String) -> BuildRule {
+  ResponseRule { subject: ClassSelector { name: class_name }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+    decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+    decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
+  ] }
+}
+
+fn node_chain_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: node_chain_class }, decls: concat(chip_surface_decls(), [
+      decl(prop: FlexWrap, value: "wrap"),
+    ]) },
+    StaticRule { selector: ClassSelector { name: node_chain_levels_class }, decls: concat(node_chain_row_decls(), [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+      decl(prop: ListStyle, value: "none"),
+    ]) },
+    StaticRule { selector: ClassSelector { name: node_chain_level_class }, decls: concat(node_chain_row_decls(), [
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ]) },
+    StaticRule { selector: ClassSelector { name: node_chain_separator_class }, decls: [
+      decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+    ] },
+    StaticRule { selector: ClassSelector { name: node_chain_link_class }, decls: [
+      decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+    ] },
+    StaticRule { selector: ClassSelector { name: node_chain_current_class }, decls: [
+      decl(prop: Color, value: palette_var(slot: SlotText)),
+    ] },
+    StaticRule { selector: ClassSelector { name: node_chain_fold_class }, decls: node_chain_row_decls() },
+    StaticRule { selector: ClassSelector { name: node_chain_fold_count_class }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: MinWidth, value: scale_var(t: space_24)),
+      decl(prop: MinHeight, value: scale_var(t: space_0)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_4)),
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
+    StaticRule { selector: ClassSelector { name: node_chain_refused_class }, decls: [
+      decl(prop: Color, value: palette_var(slot: SlotError)),
+    ] },
+    ResponseRule { subject: ClassSelector { name: node_chain_link_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Color, value: palette_var(slot: SlotText)),
+      decl(prop: TextDecoration, value: "underline"),
+    ] },
+    ResponseRule { subject: ClassSelector { name: node_chain_fold_count_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Color, value: palette_var(slot: SlotText)),
+    ] },
+    node_chain_focus_rule(class_name: node_chain_link_class),
+    node_chain_focus_rule(class_name: node_chain_fold_count_class),
+  ]
+}
