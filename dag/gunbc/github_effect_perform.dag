@@ -2,6 +2,7 @@ module gunbc.github_effect_perform
 
 import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs }
 import std.resources { Network }
+import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
@@ -144,11 +145,18 @@ type JitMintAppJwt
 // same jit_config_mint_outcome every status goes through, so an empty blob under 201 is still
 // refused there; a non-2xx the remote DECIDED is a JitConfigMintOutcome refusal; an answer that
 // never arrived is commit-ambiguous and is NOT reported as a refusal.
+//
+// ADMITTED ONLY FROM THE PERFORM FUNCTION AND A CLAIM. This fold takes the dispatch and the answer
+// separately, so an open call would mint a delivery for dispatch A from any 201 body; the perform
+// function is the one caller whose answer is GitHub's response to dispatch.request.
 fn jit_mint_performance_of_generate(
   dispatch: JitMintDispatch,
   outcome: RestOutcome,
   created: JitConfigCreatedBody,
-) -> JitMintPerformance {
+) -> JitMintPerformance admit_callers: [
+  decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "perform_organization_jit_mint"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered"),
+] {
   match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
     RestExchangeSucceeded =>
       JitMintReceived {

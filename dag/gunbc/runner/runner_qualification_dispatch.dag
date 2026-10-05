@@ -683,6 +683,9 @@ fn token_names_registration(token_app: DeclaredGitHubApp, token_installation: Gi
   token_app == subject.registration.app && token_installation == subject.registration.installation
 }
 
+// ONE EFFECTFUL ENTRY. The join is not a wrapper a caller may route around: the reads and the mint of
+// CollectedQualificationRun live in the arm the join admits, so there is no second function that
+// reads under an unchecked token (a split helper was exactly that bypass).
 fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
   if !token_names_registration(token_app: token.app, token_installation: token.installation, subject: dispatched.subject) {
     QualificationRunRefused {
@@ -690,35 +693,31 @@ fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: Cont
       refusal: RunCollectedUnderAnotherInstallation { token_app: token.app, token_installation: token.installation },
     }
   } else {
-    collect_qualification_run_under(dispatched: dispatched, token: token)
-  }
-}
-
-fn collect_qualification_run_under(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
-  let run_id = dispatched.receipt.workflow_run_id
-  let owner = gunbc_repository.owner as NonEmptyStr
-  let repo = gunbc_repository.name as NonEmptyStr
-  let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
-  let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: dispatched_run_attempt)
-  match decide_qualification_run(
-    subject: qualification_run_expectation(subject: dispatched.subject),
-    run_id: run_id,
-    run_performance: read.performance,
-    run: read.run,
-    jobs_performance: jobs.performance,
-    jobs: jobs.jobs,
-  ) {
-    RunVerdictRefused { refusal: r } => QualificationRunRefused { run_id: run_id, refusal: r }
-    RunVerdictCollected { run: run, floor_job: floor, conclusion: conclusion } =>
-      QualificationRunCollected {
-        collected: CollectedQualificationRun {
-          dispatched: dispatched,
-          run: run,
-          floor_job: floor,
-          conclusion: conclusion,
-          instruments_unextracted: qualification_instruments,
-        },
-      }
+    let run_id = dispatched.receipt.workflow_run_id
+    let owner = gunbc_repository.owner as NonEmptyStr
+    let repo = gunbc_repository.name as NonEmptyStr
+    let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
+    let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: dispatched_run_attempt)
+    match decide_qualification_run(
+      subject: qualification_run_expectation(subject: dispatched.subject),
+      run_id: run_id,
+      run_performance: read.performance,
+      run: read.run,
+      jobs_performance: jobs.performance,
+      jobs: jobs.jobs,
+    ) {
+      RunVerdictRefused { refusal: r } => QualificationRunRefused { run_id: run_id, refusal: r }
+      RunVerdictCollected { run: run, floor_job: floor, conclusion: conclusion } =>
+        QualificationRunCollected {
+          collected: CollectedQualificationRun {
+            dispatched: dispatched,
+            run: run,
+            floor_job: floor,
+            conclusion: conclusion,
+            instruments_unextracted: qualification_instruments,
+          },
+        }
+    }
   }
 }
 
