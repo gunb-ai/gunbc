@@ -171,12 +171,12 @@ fn repoint_one_text(path: String, content: String) -> ProcessExit {
   else { repoint_write(path: path, content: next) }
 }
 
+// A file the walk listed but cannot read is reported as pending, so the verdict refuses and
+// names it: an unread file is never counted as already repointed.
 fn repoint_path_is_pending(path: String) -> Bool {
   match source_root_read_file(path: path) {
     FilesystemExactPathRead { path: observed, content: content } =>
       repointed_source_text(path: observed, text: content, repoints: source_reference_repoints) != content
-    // A file the walk listed but cannot read is reported as pending, so the verdict refuses and
-    // names it: an unread file is never counted as already repointed.
     FilesystemExactPathAbsent { path: _ } => true
     FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => true
     FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => true
