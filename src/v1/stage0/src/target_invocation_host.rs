@@ -1695,6 +1695,10 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             Some("refused_stderr".to_string()),
             crate::v1_interpreter::Value::Str(run.refused_stderr.clone().into()),
         ),
+        (
+            Some("served_exit_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(run.served_exit_status.unwrap_or(-1))),
+        ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,

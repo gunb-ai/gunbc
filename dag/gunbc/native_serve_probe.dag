@@ -3,6 +3,7 @@ module gunbc.native_serve_probe
 import std.types { Int, List, String, Bool, CommitSha }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve { native_serve_stuck_exit_code }
 import gunbc.serve_liveness {
   observe_serve_liveness, serve_liveness_read_reason, ServeLivenessRead,
   ServeLivenessObserved, ServeLivenessUnreachable, ServeLivenessBodyUnparseable, ServeLivenessBodyNotAnObject,
@@ -33,13 +34,13 @@ fn native_serve_probe_release_revision() -> String {
   "0123456789abcdef0123456789abcdef01234567"
 }
 
-// The launch the door must refuse BEFORE it binds: a branch name where a revision belongs.
 // The per-request deadline this run launches under (--request-deadline-ms), short so the budget
 // cases cost half a second each. The default deadline is gunbc.native_serve's, not this.
 fn native_serve_probe_request_deadline_ms() -> String {
   "500"
 }
 
+// The launch the door must refuse BEFORE it binds: a branch name where a revision belongs.
 fn native_serve_probe_refused_revision() -> String {
   "main"
 }
@@ -249,7 +250,11 @@ fn no_observation(reason: String) -> ProcessExit {
 
 // announcement: the line the served process printed once bound. responses: one per request, in
 // order. refused_status / refused_stderr: the run launched with native_serve_probe_refused_revision.
-fn native_serve_probe_standing(announcement: String, responses: List<String>, refused_status: Int, refused_stderr: String) -> ProcessExit {
+// served_exit_status: how the served process ended after the last case, as the host observed it
+// within a bounded wait (negative when it was still running and had to be killed). The last budget
+// case drives it past the stuck-worker ceiling, so it must have exited by itself with the code
+// gunbc.native_serve declares -- not merely answered the 503.
+fn native_serve_probe_standing(announcement: String, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     no_observation(reason: concat("the service did not announce a bound address: ", announcement))
   } else if refused_status != 2 || !starts_with(s: refused_stderr, prefix: "REFUSED: ") {
@@ -258,8 +263,11 @@ fn native_serve_probe_standing(announcement: String, responses: List<String>, re
     match native_serve_case_failures(cases: native_serve_probe_cases(), responses: responses, acc: []) {
       Absent => no_observation(reason: "the responses do not join the cases one for one")
       Present { value: failures } =>
-        if (failures |> count) == 0 { ExitSuccess }
-        else { ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", failures |> join(separator: "; ")) } }
+        if (failures |> count) > 0 {
+          ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", failures |> join(separator: "; ")) }
+        } else if served_exit_status != native_serve_stuck_exit_code {
+          ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: past the stuck-worker ceiling the process did not exit with ", concat(to_string(value: native_serve_stuck_exit_code), concat(" (observed ", concat(to_string(value: served_exit_status), ")")))) }
+        } else { ExitSuccess }
     }
   }
 }

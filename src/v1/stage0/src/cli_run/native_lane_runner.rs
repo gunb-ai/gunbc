@@ -2531,6 +2531,7 @@ pub struct NativeServeProgramRun {
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
+    pub served_exit_status: Option<i32>,
     pub stderr: String,
 }
 
@@ -2669,8 +2670,23 @@ pub fn run_native_serve_program(
             .collect(),
         None => Vec::new(),
     };
-    let _ = child.kill();
-    let _ = child.wait();
+    // The last case drives the service past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status.
+    let started = std::time::Instant::now();
+    let served_exit_status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
     let stderr = reader.join().unwrap_or_default();
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
@@ -2681,6 +2697,7 @@ pub fn run_native_serve_program(
         responses,
         refused_status,
         refused_stderr,
+        served_exit_status,
         stderr,
     })
 }
