@@ -117,21 +117,19 @@ fn restriction_of(name: NonEmptyStr, selected_workflow: NonEmptyStr, row: Runner
   }
 }
 
+// Reached only after scope_refusal admitted the row (selected visibility, no public repositories,
+// restricted to workflows), so the one fact left to judge is which workflow it selects.
 fn restriction_of_scoped(name: NonEmptyStr, selected_workflow: NonEmptyStr, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
   let group = JitRunnerGroupId { value: row.id }
-  if !row.restricted_to_workflows {
-    RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupNotRestrictedToWorkflows { group: group } }
+  let expected = selected_workflow as String
+  if count(row.selected_workflows) == 1 && count(filter(row.selected_workflows, w => (w as String) == expected)) == 1 {
+    RunnerGroupRestrictedToWorkflow { restriction: RestrictedRunnerGroup {
+      group: group,
+      name: name,
+      selected_workflow: selected_workflow,
+    } }
   } else {
-    let expected = selected_workflow as String
-    if count(row.selected_workflows) == 1 && count(filter(row.selected_workflows, w => (w as String) == expected)) == 1 {
-      RunnerGroupRestrictedToWorkflow { restriction: RestrictedRunnerGroup {
-        group: group,
-        name: name,
-        selected_workflow: selected_workflow,
-      } }
-    } else {
-      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOtherWorkflows { group: group, selected: row.selected_workflows, expected: selected_workflow } }
-    }
+    RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOtherWorkflows { group: group, selected: row.selected_workflows, expected: selected_workflow } }
   }
 }
 
