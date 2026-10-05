@@ -1,4 +1,4 @@
-module v2.test.parse.grammar_expect
+module test.claim.parse_test_grammar_expect
 
 import std.types { List }
 import v2.compiler.parse { ParseArtifact, parse_module }

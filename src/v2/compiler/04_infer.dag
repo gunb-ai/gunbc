@@ -70,10 +70,18 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
+<<<<<<< HEAD
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup, symbol_index_variant_alias_carrier }
 import v2.compiler.fold_lowering { FoldMemberFormal, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
+=======
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
+>>>>>>> origin/main
 import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
@@ -878,7 +886,8 @@ fn infer_declaration_wrapper_facts_from_entries(
 // already gives a type-denoting binding (the dag_binding_denotation arm of infer_node_facts):
 // TypeDenotationKind. That grants no member, construction or representation-sensitive coercion, and
 // for a generic declaration (`type MachineWidth<bits>`) it says only that the declaration names a type
-// constructor -- a use's arity stays the binder authority's to check. It is not the empty product: an
+// constructor -- a use's arity and kinds are checked at resolve by the binder authority
+// (v2.std.type_binder type_application_conformance). It is not the empty product: an
 // authored empty record is a member, and forms through product introduction.
 fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -1390,6 +1399,43 @@ fn infer_declaration_reference_facts(
     Absent =>
       inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
     Present { value: path } =>
+      match collection_roster_primitive_call_signature_at(path: qualified_name_to_dotted_string(qn: path)) {
+        NotARosterPrimitiveCallRow => infer_declaration_reference_facts_indexed(n: n, resolved: resolved, path: path, descent_proof: descent_proof)
+        RosterPrimitiveCallSignature { arrow: callable } => infer_roster_reference_facts(lookup: RosterPrimitiveCallSignature { arrow: callable }, n: n, descent_proof: descent_proof)
+        RosterPrimitiveCallSignatureUnreadable => infer_roster_reference_facts(lookup: RosterPrimitiveCallSignatureUnreadable, n: n, descent_proof: descent_proof)
+      }
+  }
+}
+
+// THE FACTS OF A REFERENCE THE ROSTER ANSWERED FOR: typed by the row's signature, or -- when the row's template cannot
+// be read -- REFUSED, located at the reference, with infer_reason_roster_row_signature_unreadable (review 76235; never
+// a fall-through to the row's template value). Its own function so that refusal is authorable as a supplied-input RED.
+fn infer_roster_reference_facts(lookup: RosterSignatureLookup, n: Node, descent_proof: TerminationProof) -> Outcome<InferredFacts> {
+  match lookup {
+    RosterPrimitiveCallSignature { arrow: callable } =>
+      infer_reference_facts_or_frontier(
+        o: inferred_facts_from_derived_type(node: n, derived_type: callable, descent: Holds { value: descent_proof }),
+        n: n,
+        descent_proof: descent_proof
+      )
+    RosterPrimitiveCallSignatureUnreadable =>
+      outcome_rejected(Diagnostic { reason: ^infer_reason_roster_row_signature_unreadable, at: node_locus(node: n), correction: Unavailable { reason: CorrectionNotModeled } })
+    NotARosterPrimitiveCallRow =>
+      outcome_rejected(Diagnostic { reason: ^infer_reason_roster_reference_without_a_row, at: node_locus(node: n), correction: Unavailable { reason: CorrectionNotModeled } })
+  }
+}
+
+// A REFERENCE TO A COLLECTION-ROSTER PRIMITIVE-CALL ROW IS TYPED BY THE ROW, never by the declaration the
+// row's path names (std.algebra collection_concat_shape is the row's VALUE, a template, not the operation):
+// v2.compiler.fold_lowering collection_roster_signature_arrow reads the row's param_types/return_type as the
+// callable contract. It records no denotation (infer_facts_denoting): the operation has no .dag body for eval
+// to reach, so a demanding consumer refuses at its own gate rather than executing the template.
+fn infer_declaration_reference_facts_indexed(
+  n: Node,
+  resolved: ResolvedTree,
+  path: QualifiedName,
+  descent_proof: TerminationProof
+) -> Outcome<InferredFacts> {
       match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
         Absent =>
           bind_outcome_accepted(
@@ -1415,7 +1461,6 @@ fn infer_declaration_reference_facts(
               )
           }
       }
-  }
 }
 
 // THE DENOTATION IS RECORDED HERE AND NOWHERE ELSE, because here is where the GUARDED reader answered.
