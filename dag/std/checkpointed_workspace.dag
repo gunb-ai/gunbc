@@ -124,133 +124,177 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
 // decode that misreads is refused there rather than trusted here. Every malformed body is absent.
 // The parent is the object's single link, or none; more than one link is not an entry this module
 // wrote.
-// THE DECODE WALKS THE BODY'S CODE POINTS BY OFFSET. The body is unfolded to its code points once
-// (std.coercion unicode_scalar_unfold); every later read is one member (get), the length (count) or
-// one field's bounded slice (skip then take, folded back with unicode_scalar_fold). std.primitives
-// prices each at log len or better on the persistent carrier in the interpreter and in emitted Rust,
-// so the decode is linear in the body on ASCII and non-ASCII text alike -- the property host-text
-// char_at / substring lack (O(offset) on non-ASCII in the interpreter and on all text in emitted
-// Rust). Length prefixes count code points, matching length() in workspace_head_entry_object.
-// Entries are prepended and reversed once, and the walk is tail-recursive (DESIGN 6, bare minimum
-// cost). The cost control re-runs by name: gunbc.instruments.workspace_entry_decode_scaling
-// decode_scaling (non-ASCII paths at three sizes, judged per 4x step).
-type WorkspaceBodyField {
-  value: String
-  next: Int
+// THE DECODE IS ONE SEQUENTIAL FOLD OVER THE BODY'S CODE POINTS. The body is unfolded once
+// (std.coercion unicode_scalar_unfold) and folded by a state machine: each code point is read exactly
+// once, in order, and nothing is indexed or re-sliced from the start of the body, so the decode is
+// linear in the body on any text and in either realization (a fold visits each member once). A
+// field's code points are prepended as they arrive and reversed once when the field closes, so no
+// accumulator is copied; entries are prepended and reversed once at the end (DESIGN 6, bare minimum
+// cost). Length prefixes count CODE POINTS, matching length() in workspace_head_entry_object, and
+// every number (a length, the epoch, a size) is read by parse_int over its own collected digits.
+// The cost control re-runs by name: gunbc.instruments.workspace_entry_decode_scaling decode_scaling.
+type WorkspaceBodyKind = WorkspaceBodyRevision | WorkspaceBodyFence
+
+type WorkspaceBodyPhase
+  = BodyKindLiteral { rest: List<Int> }
+  | BodyWorkspaceTag
+  | BodyWorkspaceLength
+  | BodyWorkspaceText { remaining: Int }
+  | BodyEpochLiteral { rest: List<Int> }
+  | BodyEpochDigits
+  | BodyEntryStart
+  | BodyPathLength
+  | BodyPathText { remaining: Int }
+  | BodyPathSpace
+  | BodyChunkHex
+  | BodyEntrySize
+  | BodyComplete
+  | BodyMalformed
+
+type WorkspaceBodyScan {
+  kind: WorkspaceBodyKind
+  phase: WorkspaceBodyPhase
+  field: List<Int>
+  workspace: String
+  epoch: Int
+  path: String
+  chunk: FabricBlobAddress?
+  entries: List<WorkspaceEntry>
 }
 
-fn workspace_body_slice(cps: List<Int>, start: Int, end: Int) -> String {
-  unicode_scalar_fold(xs: cps |> skip(n: start) |> take(n: end - start))
-}
-
-fn workspace_body_literal_at(cps: List<Int>, at: Int, literal: String) -> Bool {
-  let n = length(literal)
-  at + n <= count(cps) && workspace_body_slice(cps: cps, start: at, end: at + n) == literal
-}
-
-// The offset of the first `stop` at or after `at`, or absent if the body ends first.
-fn workspace_body_find(cps: List<Int>, at: Int, stop: Int) -> Int? {
-  match get(xs: cps, index: at) {
-    Absent => none
-    Present { value: c } => if c == stop { Present { value: at } } else { workspace_body_find(cps: cps, at: at + 1, stop: stop) }
+fn workspace_body_kind_literal(kind: WorkspaceBodyKind) -> String {
+  match kind {
+    WorkspaceBodyRevision => "workspace.revision;"
+    WorkspaceBodyFence => "workspace.fence;"
   }
 }
 
-// `<tag><decimal length>:<that many code points>` starting at `at`.
-fn workspace_body_prefixed(cps: List<Int>, at: Int, tag: String) -> WorkspaceBodyField? {
-  if !workspace_body_literal_at(cps: cps, at: at, literal: tag) {
-    none
-  } else {
-    let digits_at = at + length(tag)
-    match workspace_body_find(cps: cps, at: digits_at, stop: code_point(c: ":")) {
-      Absent => none
-      Present { value: colon } =>
-        if colon == digits_at {
-          none
-        } else {
-          match parse_int(s: workspace_body_slice(cps: cps, start: digits_at, end: colon)) {
-            Absent => none
-            Present { value: n } =>
-              if n < 0 || colon + 1 + n > count(cps) {
-                none
-              } else {
-                Present { value: WorkspaceBodyField { value: workspace_body_slice(cps: cps, start: colon + 1, end: colon + 1 + n), next: colon + 1 + n } }
-              }
-          }
+// The field's code points, which arrived prepended, as text.
+fn workspace_body_field_text(field: List<Int>) -> String {
+  unicode_scalar_fold(xs: reverse(field))
+}
+
+fn workspace_body_malformed(scan: WorkspaceBodyScan) -> WorkspaceBodyScan {
+  WorkspaceBodyScan { kind: scan.kind, phase: BodyMalformed, field: [], workspace: scan.workspace, epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+}
+
+fn workspace_body_to(scan: WorkspaceBodyScan, phase: WorkspaceBodyPhase, field: List<Int>) -> WorkspaceBodyScan {
+  WorkspaceBodyScan { kind: scan.kind, phase: phase, field: field, workspace: scan.workspace, epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+}
+
+// One literal code point consumed; the phase after the literal is `then`.
+fn workspace_body_literal_step(scan: WorkspaceBodyScan, rest: List<Int>, c: Int, more: fn(List<Int>) -> WorkspaceBodyPhase, then: WorkspaceBodyPhase) -> WorkspaceBodyScan {
+  match rest {
+    Empty => workspace_body_malformed(scan: scan)
+    Cons { head: want, tail: tail } =>
+      if want != c {
+        workspace_body_malformed(scan: scan)
+      } else {
+        match tail {
+          Empty => workspace_body_to(scan: scan, phase: then, field: [])
+          Cons { head: _, tail: _ } => workspace_body_to(scan: scan, phase: more(tail), field: [])
         }
+      }
+  }
+}
+
+// A length prefix's digits up to ':', then a text field of exactly that many code points.
+fn workspace_body_length_closed(scan: WorkspaceBodyScan, text: fn(Int) -> WorkspaceBodyPhase) -> WorkspaceBodyScan {
+  match parse_int(s: workspace_body_field_text(field: scan.field)) {
+    Absent => workspace_body_malformed(scan: scan)
+    Present { value: n } => if n < 1 { workspace_body_malformed(scan: scan) } else { workspace_body_to(scan: scan, phase: text(n), field: []) }
+  }
+}
+
+fn workspace_body_step(scan: WorkspaceBodyScan, c: Int) -> WorkspaceBodyScan {
+  match scan.phase {
+    BodyMalformed => scan
+    BodyComplete => workspace_body_malformed(scan: scan)
+    BodyKindLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyKindLiteral { rest: r }, then: BodyWorkspaceTag)
+    BodyWorkspaceTag => if c == code_point(c: "W") { workspace_body_to(scan: scan, phase: BodyWorkspaceLength, field: []) } else { workspace_body_malformed(scan: scan) }
+    BodyWorkspaceLength =>
+      if c == code_point(c: ":") { workspace_body_length_closed(scan: scan, text: n => BodyWorkspaceText { remaining: n }) } else { workspace_body_to(scan: scan, phase: BodyWorkspaceLength, field: Cons { head: c, tail: scan.field }) }
+    BodyWorkspaceText { remaining: r } => {
+      let field = Cons { head: c, tail: scan.field }
+      if r > 1 {
+        workspace_body_to(scan: scan, phase: BodyWorkspaceText { remaining: r - 1 }, field: field)
+      } else {
+        WorkspaceBodyScan { kind: scan.kind, phase: BodyEpochLiteral { rest: unicode_scalar_unfold(s: ";epoch=") }, field: [], workspace: workspace_body_field_text(field: field), epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+      }
     }
-  }
-}
-
-// The code points from `at` up to the next `stop`, and the offset just past it.
-fn workspace_body_until(cps: List<Int>, at: Int, stop: String) -> WorkspaceBodyField? {
-  match workspace_body_find(cps: cps, at: at, stop: code_point(c: stop)) {
-    Absent => none
-    Present { value: end } => Present { value: WorkspaceBodyField { value: workspace_body_slice(cps: cps, start: at, end: end), next: end + 1 } }
-  }
-}
-
-fn workspace_body_entries(cps: List<Int>, at: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
-  if at == count(cps) {
-    Present { value: reverse(acc) }
-  } else {
-    match workspace_body_prefixed(cps: cps, at: at, tag: "F") {
-      Absent => none
-      Present { value: path } =>
-        if path.value == "" || !workspace_body_literal_at(cps: cps, at: path.next, literal: " ") {
-          none
-        } else {
-          match workspace_body_until(cps: cps, at: path.next + 1, stop: " ") {
-            Absent => none
-            Present { value: hex } =>
-              match sha256_hex_digest(hex: hex.value) {
-                Absent => none
-                Present { value: digest } =>
-                  match workspace_body_until(cps: cps, at: hex.next, stop: ";") {
-                    Absent => none
-                    Present { value: size } =>
-                      match parse_int(s: size.value) {
-                        Absent => none
-                        Present { value: n } =>
-                          if n < 0 {
-                            none
-                          } else {
-                            workspace_body_entries(cps: cps, at: size.next, acc: Cons { head: WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }, tail: acc })
-                          }
-                      }
-                  }
-              }
-          }
+    BodyEpochLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyEpochLiteral { rest: r }, then: BodyEpochDigits)
+    BodyEpochDigits =>
+      if c != code_point(c: ";") {
+        workspace_body_to(scan: scan, phase: BodyEpochDigits, field: Cons { head: c, tail: scan.field })
+      } else {
+        match parse_int(s: workspace_body_field_text(field: scan.field)) {
+          Absent => workspace_body_malformed(scan: scan)
+          Present { value: e } =>
+            WorkspaceBodyScan { kind: scan.kind, phase: match scan.kind { WorkspaceBodyRevision => BodyEntryStart  WorkspaceBodyFence => BodyComplete }, field: [], workspace: scan.workspace, epoch: e, path: scan.path, chunk: scan.chunk, entries: scan.entries }
         }
+      }
+    BodyEntryStart => if c == code_point(c: "F") { workspace_body_to(scan: scan, phase: BodyPathLength, field: []) } else { workspace_body_malformed(scan: scan) }
+    BodyPathLength =>
+      if c == code_point(c: ":") { workspace_body_length_closed(scan: scan, text: n => BodyPathText { remaining: n }) } else { workspace_body_to(scan: scan, phase: BodyPathLength, field: Cons { head: c, tail: scan.field }) }
+    BodyPathText { remaining: r } => {
+      let field = Cons { head: c, tail: scan.field }
+      if r > 1 {
+        workspace_body_to(scan: scan, phase: BodyPathText { remaining: r - 1 }, field: field)
+      } else {
+        WorkspaceBodyScan { kind: scan.kind, phase: BodyPathSpace, field: [], workspace: scan.workspace, epoch: scan.epoch, path: workspace_body_field_text(field: field), chunk: scan.chunk, entries: scan.entries }
+      }
     }
+    BodyPathSpace => if c == code_point(c: " ") { workspace_body_to(scan: scan, phase: BodyChunkHex, field: []) } else { workspace_body_malformed(scan: scan) }
+    BodyChunkHex =>
+      if c != code_point(c: " ") {
+        workspace_body_to(scan: scan, phase: BodyChunkHex, field: Cons { head: c, tail: scan.field })
+      } else {
+        match sha256_hex_digest(hex: workspace_body_field_text(field: scan.field)) {
+          Absent => workspace_body_malformed(scan: scan)
+          Present { value: d } => WorkspaceBodyScan { kind: scan.kind, phase: BodyEntrySize, field: [], workspace: scan.workspace, epoch: scan.epoch, path: scan.path, chunk: Present { value: FabricBlobAddress { key: d } }, entries: scan.entries }
+        }
+      }
+    BodyEntrySize =>
+      if c != code_point(c: ";") {
+        workspace_body_to(scan: scan, phase: BodyEntrySize, field: Cons { head: c, tail: scan.field })
+      } else {
+        match parse_int(s: workspace_body_field_text(field: scan.field)) {
+          Absent => workspace_body_malformed(scan: scan)
+          Present { value: n } =>
+            match scan.chunk {
+              Absent => workspace_body_malformed(scan: scan)
+              Present { value: chunk } =>
+                if n < 0 || scan.path == "" {
+                  workspace_body_malformed(scan: scan)
+                } else {
+                  WorkspaceBodyScan { kind: scan.kind, phase: BodyEntryStart, field: [], workspace: scan.workspace, epoch: scan.epoch, path: "", chunk: none, entries: Cons { head: WorkspaceEntry { path: scan.path as NonEmptyStr, chunk: chunk, size: byte_size(count: n) }, tail: scan.entries } }
+                }
+            }
+        }
+      }
   }
 }
 
-type WorkspaceBodyHeader {
-  writer: WorkspaceWriterEpoch
-  next: Int
-}
-
-fn workspace_body_header(cps: List<Int>, kind: String) -> WorkspaceBodyHeader? {
-  if !workspace_body_literal_at(cps: cps, at: 0, literal: kind) {
-    none
-  } else {
-    match workspace_body_prefixed(cps: cps, at: length(kind), tag: "W") {
-      Absent => none
-      Present { value: ws } =>
-        if ws.value == "" || !workspace_body_literal_at(cps: cps, at: ws.next, literal: ";epoch=") {
-          none
-        } else {
-          match workspace_body_until(cps: cps, at: ws.next + 7, stop: ";") {
-            Absent => none
-            Present { value: e } =>
-              match parse_int(s: e.value) {
-                Absent => none
-                Present { value: epoch } => Present { value: WorkspaceBodyHeader { writer: WorkspaceWriterEpoch { workspace: ws.value as NonEmptyStr, epoch: epoch }, next: e.next } }
-              }
-          }
-        }
-    }
+// The fold for one kind, accepted only at a phase where the body may end: after the last entry of a
+// revision, after the epoch of a fence.
+fn workspace_body_scan(cps: List<Int>, kind: WorkspaceBodyKind) -> WorkspaceBodyScan? {
+  let start = WorkspaceBodyScan { kind: kind, phase: BodyKindLiteral { rest: unicode_scalar_unfold(s: workspace_body_kind_literal(kind: kind)) }, field: [], workspace: "", epoch: 0, path: "", chunk: none, entries: [] }
+  let done = fold(cps, init: start, f: (scan, c) => workspace_body_step(scan: scan, c: c))
+  match done.phase {
+    BodyEntryStart => match kind { WorkspaceBodyRevision => Present { value: done }  WorkspaceBodyFence => none }
+    BodyComplete => match kind { WorkspaceBodyFence => Present { value: done }  WorkspaceBodyRevision => none }
+    BodyKindLiteral { rest: _ } => none
+    BodyWorkspaceTag => none
+    BodyWorkspaceLength => none
+    BodyWorkspaceText { remaining: _ } => none
+    BodyEpochLiteral { rest: _ } => none
+    BodyEpochDigits => none
+    BodyPathLength => none
+    BodyPathText { remaining: _ } => none
+    BodyPathSpace => none
+    BodyChunkHex => none
+    BodyEntrySize => none
+    BodyMalformed => none
   }
 }
 
@@ -264,16 +308,13 @@ fn workspace_head_entry_decode(object: FabricObject) -> WorkspaceHeadEntry? {
     Absent => none
     Present { value: link } => {
       let cps = unicode_scalar_unfold(s: object.body as String)
-      match workspace_body_header(cps: cps, kind: "workspace.revision;") {
-        Present { value: h } =>
-          match workspace_body_entries(cps: cps, at: h.next, acc: []) {
-            Absent => none
-            Present { value: es } => Present { value: WorkspaceRevision { writer: h.writer, parent: link, entries: es } }
-          }
+      match workspace_body_scan(cps: cps, kind: WorkspaceBodyRevision) {
+        Present { value: r } =>
+          if r.workspace == "" { none } else { Present { value: WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: r.workspace as NonEmptyStr, epoch: r.epoch }, parent: link, entries: reverse(r.entries) } } }
         Absent =>
-          match workspace_body_header(cps: cps, kind: "workspace.fence;") {
+          match workspace_body_scan(cps: cps, kind: WorkspaceBodyFence) {
             Absent => none
-            Present { value: h } => if h.next == count(cps) { Present { value: WorkspaceFence { writer: h.writer, parent: link } } } else { none }
+            Present { value: f } => if f.workspace == "" { none } else { Present { value: WorkspaceFence { writer: WorkspaceWriterEpoch { workspace: f.workspace as NonEmptyStr, epoch: f.epoch }, parent: link } } }
           }
       }
     }
