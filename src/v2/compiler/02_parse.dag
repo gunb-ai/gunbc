@@ -353,6 +353,7 @@ type ParseTableRealization {
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
   layout: Optional<StreamLayout>
   refusal: Optional<Diagnostic>
+  retained_alloc: OccurrenceIdAllocator
 }
 
 type ParseTable = ParseTableRealization
@@ -719,7 +720,8 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs,
     layout: table.layout,
-    refusal: table.refusal
+    refusal: table.refusal,
+    retained_alloc: table.retained_alloc
   }
 }
 
@@ -793,7 +795,8 @@ fn parse_table_with_furthest(table: ParseTable, furthest: ParseFurthestFailure) 
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs,
     layout: table.layout,
-    refusal: table.refusal
+    refusal: table.refusal,
+    retained_alloc: table.retained_alloc
   }
 }
 
@@ -831,7 +834,8 @@ fn parse_table_with_refusal(table: ParseTable, refusal: Diagnostic) -> ParseTabl
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs,
     layout: table.layout,
-    refusal: optional_present(value: refusal)
+    refusal: optional_present(value: refusal),
+    retained_alloc: table.retained_alloc
   }
 }
 
@@ -868,14 +872,75 @@ fn parse_table_record_miss(table: ParseTable) -> ParseTable {
 fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
   match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
     true =>
-      parse_table_carry_analysis(
-        table: table,
-        entries: map_insert(m: table.entries, key: key, value: value),
-        hits: table.memo_hits,
-        misses: table.memo_misses,
-        lookups: table.memo_lookup_calls
+      parse_table_retaining(
+        table: parse_table_carry_analysis(
+          table: table,
+          entries: map_insert(m: table.entries, key: key, value: value),
+          hits: table.memo_hits,
+          misses: table.memo_misses,
+          lookups: table.memo_lookup_calls
+        ),
+        entry: value
       )
     false => table
+  }
+}
+
+// A STORED ENTRY RETAINS THE IDS ITS SUBPARSE MINTED, so the allocator may never again hand them out.
+// The provenance state is restored when an attempt is rejected (a rejected result carries no prov),
+// but the memo the attempt filled is kept, and a later hit at that key replays the stored node with
+// its stored ids. If the parse resumed from the pre-attempt allocator, the ids it then minted were
+// the stored ones: the hit's frame replay keeps the base's entry (span_index_adopt), so the replayed
+// atom answered for a derived node's span, and a reader of the span index found no source extent
+// for it. The table survives rejection, so it carries the high-water of every allocator a stored
+// entry was minted from, and every resume after a rejection advances to it
+// (parse_prov_resume_after_rejection). A served entry retains the same ids as a stored one -- the
+// seed serves entries across parses of one token stream (v1_interpreter parse_table_lookup), so a
+// hit need not follow an insert into this table -- so the hit path retains it too. A rejected entry
+// stores no node, so it retains nothing.
+fn parse_table_retaining(table: ParseTable, entry: ParseMemoEntry) -> ParseTable {
+  match entry {
+    ParseMemoRejected { diagnostics: _, furthest: _, refusal: _ } => table
+    ParseMemoAccepted { remaining: _, captured: _, diagnostics: _, prov: stored, furthest: _, refusal: _ } =>
+      ParseTableRealization {
+        artifact_kind: table.artifact_kind,
+        provider_id: table.provider_id,
+        materialization: table.materialization,
+        grammar_digest: table.grammar_digest,
+        token_stream_digest: table.token_stream_digest,
+        entries: table.entries,
+        memo_hits: table.memo_hits,
+        memo_misses: table.memo_misses,
+        memo_lookup_calls: table.memo_lookup_calls,
+        furthest: table.furthest,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        productions_by_name: table.productions_by_name,
+        prepared_exprs: table.prepared_exprs,
+        layout: table.layout,
+        refusal: table.refusal,
+        retained_alloc: occurrence_id_allocator_advance_to(
+          alloc: table.retained_alloc,
+          min_next: authored_token_ordinal_space_from_allocator(alloc: stored.alloc)
+        )
+      }
+  }
+}
+
+// THE ONE RESUME AFTER A REJECTED ATTEMPT. The caller continues from the provenance it held before
+// the attempt -- its index and frame are the right ones, since the rejected attempt returned no
+// node -- except that the allocator does not rewind past ids a stored memo entry retains
+// (parse_table_retaining). Every combinator that resumes from a rejection resumes through here: the
+// ordered choice's next alternative, an absent optional, a repeat's stop, and either arm of the
+// not-predicate.
+fn parse_prov_resume_after_rejection(prov: ParseProvenanceState, table: ParseTable) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: occurrence_id_allocator_advance_to(
+      alloc: prov.alloc,
+      min_next: authored_token_ordinal_space_from_allocator(alloc: table.retained_alloc)
+    ),
+    index: prov.index,
+    frame: prov.frame
   }
 }
 
@@ -976,7 +1041,8 @@ fn parse_table_for_stream_analyzed(
     productions_by_name: analysis.productions_by_name,
     prepared_exprs: analysis.prepared_exprs,
     layout: layout,
-    refusal: optional_absent()
+    refusal: optional_absent(),
+    retained_alloc: occurrence_id_allocator_initial()
   }
 }
 
@@ -1014,7 +1080,8 @@ fn parse_table_empty(materialization: Materialization) -> ParseTable {
     productions_by_name: empty_map(),
     prepared_exprs: empty_map(),
     layout: optional_absent(),
-    refusal: optional_absent()
+    refusal: optional_absent(),
+    retained_alloc: occurrence_id_allocator_initial()
   }
 }
 
@@ -1356,7 +1423,7 @@ fn parse_nonterminal_memoized(
       let table_at_lookup = parse_table_record_lookup_call(table: table)
       match parse_table_lookup(table: table_at_lookup, key: key) {
         Holds { value: inner } =>
-          let table_hit = parse_table_record_hit(table: table_at_lookup)
+          let table_hit = parse_table_retaining(table: parse_table_record_hit(table: table_at_lookup), entry: inner)
           match inner {
             ParseMemoRejected { diagnostics: diags, furthest: served, refusal: served_refusal } =>
               ParseExprRejected {
@@ -4399,7 +4466,7 @@ fn parse_choice_ordered_backtrack(
                 all_tokens: all_tokens,
                 root: root,
                 table: table1,
-                prov: prov
+                prov: parse_prov_resume_after_rejection(prov: prov, table: table1)
               )
           }
       }
@@ -4599,7 +4666,7 @@ fn parse_expr_optional(
         remaining: tokens,
         captured: grammar_empty_node(),
         diagnostics: [],
-        prov: prov,
+        prov: parse_prov_resume_after_rejection(prov: prov, table: table1),
         table: table1
       }
   }
@@ -4635,7 +4702,7 @@ fn parse_expr_repeat_step(
           acc_nodes: acc.acc_nodes,
           acc_diags: acc.acc_diags,
           done: true,
-          prov: acc.prov,
+          prov: parse_prov_resume_after_rejection(prov: acc.prov, table: table1),
           table: table1
         }
       ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
@@ -4753,6 +4820,9 @@ fn parse_expr_refuse_on_match(
 // the attempt was speculative, so the furthest-failure record is returned to what it was before the
 // attempt: a probe reaching past this position is not the place the parse stopped. The memo the
 // attempt filled is kept, and a refusal it raised is kept, since a refusal stops the parse.
+// Because that memo is kept, either arm resumes through parse_prov_resume_after_rejection: the
+// lookahead parses the input the continuing parse reaches only after minting, so a rewound
+// allocator handed the stored entry's ids out again (single_arm_match, gunbc#13056).
 fn parse_expr_not_predicate(
   element: PreparedGrammarExpr,
   first: GrammarExprFirstFold,
@@ -4796,7 +4866,7 @@ fn parse_expr_not_predicate_attempt(
         remaining: tokens,
         captured: grammar_empty_node(),
         diagnostics: [],
-        prov: prov,
+        prov: parse_prov_resume_after_rejection(prov: prov, table: table1),
         table: parse_table_with_furthest(table: table1, furthest: table.furthest)
       }
   }

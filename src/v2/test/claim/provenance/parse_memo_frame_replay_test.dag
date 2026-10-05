@@ -52,7 +52,8 @@ fn parse_memo_frame_replay_run_modeled(
     productions_by_name: base.productions_by_name,
     prepared_exprs: base.prepared_exprs,
     layout: base.layout,
-    refusal: base.refusal
+    refusal: base.refusal,
+    retained_alloc: base.retained_alloc
   }
   match grammar_lookup_production(root: root, name: root.start) {
     Violates { diagnostic: _ } => optional_absent()
@@ -328,6 +329,101 @@ test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool {
   }
 }
 
+// A LOOKAHEAD'S MEMO ENTRY IS SERVED AFTER THE CONTINUING PARSE HAS MINTED.
+//
+//   S = a (!(X y) c)* X y      X = b      tokens: a b y
+//
+// The not-predicate attempts X y at position 1: X misses, is stored with the ids it minted, and the
+// predicate rejects, so the repeat stops and the parse resumes from the provenance it held before
+// the attempt. The sequence then mints its own conjunction before asking X at position 1 again,
+// which hits the stored entry. A resume that rewound the allocator minted the stored entry's ids a
+// second time, and the hit's replay kept the base's entry for them, so the replayed X answered for
+// the conjunction's span (gunbc#13056's match-arm body guard, read as AtomExtentUnreadable by
+// v2.compiler.reference_conservation). The memo-free parse never stores, so it mints fresh ids and
+// is the oracle, exactly as above.
+fn lookahead_memo_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^lookahead_memo_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^lookahead_memo_s,
+        expression: Sequence {
+          left: Sequence {
+            left: abandoned_terminal(token_class: ^lookahead_tok_a),
+            right: Repeat {
+              element: Sequence {
+                left: NotPredicate {
+                  element: Sequence {
+                    left: Nonterminal { production: ^lookahead_memo_x },
+                    right: abandoned_terminal(token_class: ^lookahead_tok_y)
+                  }
+                },
+                right: abandoned_terminal(token_class: ^lookahead_tok_c)
+              }
+            }
+          },
+          right: Sequence {
+            left: Nonterminal { production: ^lookahead_memo_x },
+            right: abandoned_terminal(token_class: ^lookahead_tok_y)
+          }
+        },
+        emitted: grammar_atom(identity: ^lookahead_memo_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^lookahead_memo_x,
+        expression: abandoned_terminal(token_class: ^lookahead_tok_b),
+        emitted: grammar_atom(identity: ^lookahead_memo_x)
+      },
+      tail: std.algebra.Empty }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn lookahead_memo_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^lookahead_tok_a, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^lookahead_tok_b, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^lookahead_tok_y, offset: 2),
+  tail: std.algebra.Empty } } }
+}
+
+fn lookahead_memo_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^lookahead_memo_grammar_contract)
+  match grammar_validate_for_parse(root: lookahead_memo_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_memo_frame_replay_run_modeled(
+        tokens: lookahead_memo_tokens(),
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: validated.root),
+        materialization: materialization
+      )
+  }
+}
+
+test fn parse_memo_hit_after_a_lookahead_resolves_like_a_memo_free_parse() -> Bool {
+  match lookahead_memo_run(materialization: Memoize) {
+    Absent => false
+    Present { value: warm } =>
+      match lookahead_memo_run(materialization: Recompute) {
+        Absent => false
+        Present { value: cold } =>
+          match parse_memo_frame_replay_loci(run: warm) {
+            Absent => false
+            Present { value: warm_loci } =>
+              match parse_memo_frame_replay_loci(run: cold) {
+                Absent => false
+                Present { value: cold_loci } =>
+                  (parse_memo_frame_replay_hits(run: warm) > 0)
+                    && (parse_memo_frame_replay_hits(run: cold) == 0)
+                    && (length(xs: warm_loci) > 0)
+                    && (warm_loci == cold_loci)
+              }
+          }
+      }
+  }
+}
+
 // THE PARSE MEMO'S DEMAND CASE IS DERIVED BY THE REAL PRODUCER, AND THE DIRECT ARM PRESERVES THE
 // WHOLE PARSE. v2.compiler.parse compute_grammar_first_analysis rules each grammar's
 // (nonterminal, position) demand through std.materialization_ladder once, and every table built
@@ -484,7 +580,8 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
         productions_by_name: base.productions_by_name,
         prepared_exprs: base.prepared_exprs,
         layout: base.layout,
-        refusal: base.refusal
+        refusal: base.refusal,
+        retained_alloc: base.retained_alloc
       }
       match grammar_lookup_production(root: root, name: root.start) {
         Violates { diagnostic: _ } => optional_absent()
