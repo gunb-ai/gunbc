@@ -1,6 +1,7 @@
 module extdeps.huggingface.hub
 
 import std.types { String, Bool, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { ByteSize, Gibibyte, gibibyte_ceiling }
 import extdeps.external_authority { ExternalAuthority }
@@ -70,6 +71,49 @@ data hub_default_cache_root: NonEmptyStr = "~/.cache/huggingface/hub" as NonEmpt
 data hub_cache_root_env_var: NonEmptyStr = "HF_HUB_CACHE" as NonEmptyStr
 data hub_home_env_var: NonEmptyStr = "HF_HOME" as NonEmptyStr
 data hub_home_cache_subdirectory: NonEmptyStr = "hub" as NonEmptyStr
+
+// THE CACHE ROOT A COMMAND WRITES TO IS A FUNCTION OF ITS ENVIRONMENT, NOT A CONSTANT (operator ruling,
+// 2026-10-03). Upstream huggingface_hub `constants.py` (huggingface_hub 1.x, the CLI the Spark runtimes ship):
+//   default_home = os.path.join(os.path.expanduser("~"), ".cache")
+//   HF_HOME      = os.path.expanduser(os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", default_home), "huggingface")))
+//   HF_HUB_CACHE = os.path.expanduser(os.getenv("HF_HUB_CACHE", os.path.join(HF_HOME, "hub")))
+// so the default is relative to the EXECUTING process's home: the same command run on the host and inside a
+// container resolves to two different directories. hub_default_cache_root above is that default as spelled
+// for a reader; what a command actually writes to is hub_cache_root_for over its own environment and home.
+type HubCacheEnvironment {
+  hf_hub_cache: NonEmptyStr?
+  hf_home: NonEmptyStr?
+  xdg_cache_home: NonEmptyStr?
+}
+
+data hub_cache_environment_unset: HubCacheEnvironment = HubCacheEnvironment { hf_hub_cache: none, hf_home: none, xdg_cache_home: none }
+
+fn hub_cache_root_for(env: HubCacheEnvironment, executing_home: NonEmptyStr) -> NonEmptyStr {
+  match env.hf_hub_cache {
+    Present { value: c } => c
+    Absent =>
+      match env.hf_home {
+        Present { value: h } => join([h as String, "/", hub_home_cache_subdirectory as String], "") as NonEmptyStr
+        Absent =>
+          match env.xdg_cache_home {
+            Present { value: x } => join([x as String, "/huggingface/", hub_home_cache_subdirectory as String], "") as NonEmptyStr
+            Absent => join([executing_home as String, "/.cache/huggingface/", hub_home_cache_subdirectory as String], "") as NonEmptyStr
+          }
+      }
+  }
+}
+
+// THE VARIABLES AN ENVIRONMENT SETS, as NAME=VALUE words, for a launcher that passes them (docker -e).
+fn hub_env_word(name: String, value: NonEmptyStr?) -> List<String> {
+  match value {
+    Present { value: v } => [join([name, "=", v as String], "")]
+    Absent => [] as List<String>
+  }
+}
+
+fn hub_cache_environment_words(env: HubCacheEnvironment) -> List<String> {
+  concat(concat(hub_env_word(name: hub_cache_root_env_var as String, value: env.hf_hub_cache), hub_env_word(name: hub_home_env_var as String, value: env.hf_home)), hub_env_word(name: "XDG_CACHE_HOME", value: env.xdg_cache_home))
+}
 
 // ── THE CACHE SKELETON ─────────────────────────────────────────────────────────────────────────
 //

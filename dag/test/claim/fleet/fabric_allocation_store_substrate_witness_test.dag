@@ -1,5 +1,7 @@
 module test.claim.fabric_allocation_store_substrate_witness
 
+import gunbc.fleet_converge_scope { FabricAllocationStoreOnly }
+
 import std.types { Bool, String, NonEmptyStr }
 import std.content_hash { serialize_content_hash }
 import v2.std.optional { Optional, Present, Absent }
@@ -26,10 +28,9 @@ import gunbc.fabric_allocation_store_substrate {
   allocation_store_directory_absent,
 }
 import gunbc.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet_converge_plan {
   fleet_converge_allocation_store_plan_artifact,
-  FabricAllocationStoreOnly,
   fleet_converge_scope_matches,
   fleet_converge_scope_wire,
   fleet_converge_apply_artifact_admits,
@@ -41,7 +42,7 @@ import gunbc.fleet_converge_plan {
   ApplyScopeMismatch,
   ApplyMemberSetMismatch,
   ApplyAllocationStorePrestateMismatch,
-  ApplyAwaitingCapability,
+  ApplyAwaitingCapability
 }
 
 fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestate> {

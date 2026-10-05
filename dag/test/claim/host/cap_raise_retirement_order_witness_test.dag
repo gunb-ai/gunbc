@@ -2,7 +2,7 @@ module test.claim.host.cap_raise_retirement_order_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.host_axis_caps {
   CapConvergeAuthorized,
   CapConvergeWithheld,

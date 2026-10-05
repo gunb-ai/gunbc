@@ -19,6 +19,7 @@ import extdeps.vllm.kv_layout {
   PoolConstructionProved, PoolConstructionRefused, PoolConstructionUnestablished, pool_construction_verdict,
 }
 import gunbc.spark.arm_memory_fit {
+  glm_5_3_flash_expected_kv_roster,
   CacheFitVerdict, CacheFitProved, CacheFitRefused, CacheFitUnestablished,
   ArmRankCacheSupply, cache_fit_verdict_from_plan,
   CacheReservePolicy, NoOperationalReserve, ReserveBlocks, ReserveFullLengthSeats, ReserveBasisPoints,
@@ -146,7 +147,7 @@ test fn the_real_plan_roster_binds_the_exact_model() -> Bool {
     Absent => false
     Present { value: p } =>
       (match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
         rank_count: 4, limiting_rank: 0, reserve_policy: NoOperationalReserve) {
@@ -165,7 +166,7 @@ test fn the_real_plan_roster_binds_the_exact_model() -> Bool {
         _ => false
       })
         && (match cache_fit_verdict_from_plan(
-          plan: w_plan_with_thinned_kda(p: p), shape: glm_5_3_flash_hybrid_shape,
+          plan: w_plan_with_thinned_kda(p: p), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
           seats: 6,
           supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
           rank_count: 4, limiting_rank: 0, reserve_policy: NoOperationalReserve) {
@@ -183,7 +184,7 @@ test fn a_pre_patch_revision_plan_refuses_at_the_roster_wall() -> Bool {
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
-        plan: w_plan_at_revision(p: p, rev: vllm_source_revision_1967a5627), shape: glm_5_3_flash_hybrid_shape,
+        plan: w_plan_at_revision(p: p, rev: vllm_source_revision_1967a5627), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
         rank_count: 4, limiting_rank: 0, reserve_policy: NoOperationalReserve) {
@@ -201,7 +202,7 @@ test fn zero_seats_name_no_admission() -> Bool {
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 0,
         supplies: w_uniform_supplies(blocks: 2000000, arena: byte_size(count: 30000000000)),
         rank_count: 4, limiting_rank: 0, reserve_policy: NoOperationalReserve) {
@@ -224,7 +225,7 @@ test fn the_completing_run_evidence_proves_six_seats_at_the_limiting_rank() -> B
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: arm_experiment_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1035)),
         rank_count: 4, limiting_rank: arm_experiment_2026_09_26_limiting_rank, reserve_policy: NoOperationalReserve) {
@@ -270,7 +271,7 @@ test fn dropping_any_one_arena_falls_back_to_unestablished_naming_that_rank() ->
 
 fn w_drop_one_arena_names_that_rank(p: ResolvedKvAllocationPlan, dropped: Nat) -> Bool {
   match cache_fit_verdict_from_plan(
-    plan: p, shape: glm_5_3_flash_hybrid_shape,
+    plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     seats: 6,
     supplies: map(arm_experiment_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1035)), s =>
       match s.rank == dropped {
@@ -294,7 +295,7 @@ test fn the_limiting_rank_is_carried_and_out_of_roster_evidence_refuses() -> Boo
     Absent => false
     Present { value: p } =>
       (match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
         rank_count: 4, limiting_rank: arm_experiment_2026_09_26_limiting_rank, reserve_policy: NoOperationalReserve) {
@@ -307,7 +308,7 @@ test fn the_limiting_rank_is_carried_and_out_of_roster_evidence_refuses() -> Boo
         _ => false
       })
         && (match cache_fit_verdict_from_plan(
-          plan: p, shape: glm_5_3_flash_hybrid_shape,
+          plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
           seats: 6,
           supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
           rank_count: 4, limiting_rank: 4, reserve_policy: NoOperationalReserve) {
@@ -325,7 +326,7 @@ test fn six_seats_prove_at_the_block_wall_on_the_real_plan() -> Bool {
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
         rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
@@ -355,7 +356,7 @@ test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool {
     Absent => false
     Present { value: p } =>
       (match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 8,
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
         rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
@@ -368,7 +369,7 @@ test fn the_block_ceiling_is_eight_and_the_ninth_seat_refuses() -> Bool {
         _ => false
       })
         && (match cache_fit_verdict_from_plan(
-          plan: p, shape: glm_5_3_flash_hybrid_shape,
+          plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
           seats: 9,
           supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
           rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
@@ -440,7 +441,7 @@ test fn the_reserve_policy_is_carried_in_blocks_in_the_verdict() -> Bool {
     Absent => false
     Present { value: p } =>
       (match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
         rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
@@ -453,7 +454,7 @@ test fn the_reserve_policy_is_carried_in_blocks_in_the_verdict() -> Bool {
         _ => false
       })
         && (match cache_fit_verdict_from_plan(
-          plan: p, shape: glm_5_3_flash_hybrid_shape,
+          plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
           seats: 6,
           supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
           rank_count: 4, limiting_rank: 3, reserve_policy: ReserveBlocks { blocks: allocator_block_count(count: 297) }) {
@@ -462,7 +463,7 @@ test fn the_reserve_policy_is_carried_in_blocks_in_the_verdict() -> Bool {
           _ => false
         })
         && (match cache_fit_verdict_from_plan(
-          plan: p, shape: glm_5_3_flash_hybrid_shape,
+          plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
           seats: 6,
           supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
           rank_count: 4, limiting_rank: 3, reserve_policy: ReserveBasisPoints { basis_points: 2870 }) {
@@ -704,7 +705,7 @@ test fn the_proved_verdict_carries_the_block_equivalent_spelling_on_the_v2_plan(
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
-        plan: w_plan_with_carve(p: p), shape: glm_5_3_flash_hybrid_shape,
+        plan: w_plan_with_carve(p: p), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1729)),
         rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
@@ -736,7 +737,7 @@ test fn the_cache_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> B
     Absent => false
     Present { value: p } =>
       match cache_frontier_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703)),
         rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
         CacheFrontier { limiting_rank: lr, length: l, blocks_per_seat: bps, inventory: inv, hard_ceiling: hc, reserve_policy: _, blocks_reserved: br, guaranteed_seats: gs, rungs: rungs, block_equivalent_bytes_per_seat: be } =>
@@ -779,7 +780,7 @@ fn w_rung_proved(rungs: List<CacheFrontierRung>, index: Nat, seats: Nat, used: N
 
 fn w_frontier_guaranteed(p: ResolvedKvAllocationPlan, supplies: List<ArmRankCacheSupply>, policy: CacheReservePolicy) -> Nat {
   match cache_frontier_from_plan(
-    plan: p, shape: glm_5_3_flash_hybrid_shape,
+    plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     supplies: supplies,
     rank_count: 4, limiting_rank: 3, reserve_policy: policy) {
     CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: _, reserve_policy: _, blocks_reserved: _, guaranteed_seats: g, rungs: _, block_equivalent_bytes_per_seat: _ } => g
@@ -789,7 +790,7 @@ fn w_frontier_guaranteed(p: ResolvedKvAllocationPlan, supplies: List<ArmRankCach
 
 fn w_frontier_reserved(p: ResolvedKvAllocationPlan, supplies: List<ArmRankCacheSupply>, policy: CacheReservePolicy) -> Nat {
   match cache_frontier_from_plan(
-    plan: p, shape: glm_5_3_flash_hybrid_shape,
+    plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
     supplies: supplies,
     rank_count: 4, limiting_rank: 3, reserve_policy: policy) {
     CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: _, reserve_policy: _, blocks_reserved: br, guaranteed_seats: _, rungs: _, block_equivalent_bytes_per_seat: _ } => allocator_block_count_value(c: br)
@@ -829,7 +830,7 @@ test fn the_frontier_carries_the_block_equivalent_per_seat_on_the_v2_plan() -> B
     Absent => false
     Present { value: p } =>
       match cache_frontier_from_plan(
-        plan: w_plan_with_carve(p: p), shape: glm_5_3_flash_hybrid_shape,
+        plan: w_plan_with_carve(p: p), roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         supplies: w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1729)),
         rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
         CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: _, reserve_policy: _, blocks_reserved: _, guaranteed_seats: gs, rungs: _, block_equivalent_bytes_per_seat: be } =>
@@ -854,7 +855,7 @@ test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool {
     Present { value: p } =>
       let supplies = w_uniform_supplies(blocks: 1035, arena: arm_experiment_gib_hundredths_floor(hundredths: 1703))
       let frontier_proves_eight = match cache_frontier_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         supplies: supplies,
         rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
         CacheFrontier { limiting_rank: _, length: _, blocks_per_seat: _, inventory: _, hard_ceiling: hc, reserve_policy: _, blocks_reserved: _, guaranteed_seats: _, rungs: rungs, block_equivalent_bytes_per_seat: _ } =>
@@ -865,7 +866,7 @@ test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool {
         CacheFrontierUnestablished { obligations: _ } => false
       }
       let cache = cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: supplies,
         rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve)
@@ -931,7 +932,7 @@ test fn the_v2_plan_roster_binds_the_exact_model() -> Bool {
         RequestBlockCostRefused { cause: _ } => false
       })
         && (match cache_fit_verdict_from_plan(
-          plan: p, shape: glm_5_3_flash_hybrid_shape,
+          plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
           seats: 6,
           supplies: w_uniform_supplies(blocks: 1012, arena: arm_experiment_gib_hundredths_floor(hundredths: 1637)),
           rank_count: 4, limiting_rank: 3, reserve_policy: NoOperationalReserve) {
@@ -965,7 +966,7 @@ test fn the_v2_verdict_proves_six_seats_at_the_limiting_rank_with_the_block_equi
     Absent => false
     Present { value: p } =>
       match cache_fit_verdict_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         seats: 6,
         supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
         rank_count: 4, limiting_rank: arm_experiment_kvplan_v2_2026_09_26_limiting_rank, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
@@ -1005,7 +1006,7 @@ test fn the_v2_frontier_ladder_proves_six_seven_eight_and_refuses_nine() -> Bool
     Absent => false
     Present { value: p } =>
       match cache_frontier_from_plan(
-        plan: p, shape: glm_5_3_flash_hybrid_shape,
+        plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
         supplies: w_uniform_supplies(blocks: 1012, arena: arm_experiment_gib_hundredths_floor(hundredths: 1637)),
         rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 }) {
         CacheFrontier { limiting_rank: lr, length: l, blocks_per_seat: bps, inventory: inv, hard_ceiling: hc, reserve_policy: _, blocks_reserved: br, guaranteed_seats: gs, rungs: rungs, block_equivalent_bytes_per_seat: be } =>
@@ -1350,7 +1351,7 @@ test fn the_v2_verdict_carries_the_slack_standing_beside_it() -> Bool {
         Absent => false
         Present { value: carve } =>
           match cache_fit_with_pool_construction(
-            plan: p, shape: glm_5_3_flash_hybrid_shape,
+            plan: p, roster: glm_5_3_flash_expected_kv_roster(shape: glm_5_3_flash_hybrid_shape),
             seats: 6,
             supplies: arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: allocator_block_count(count: 1012)),
             rank_count: 4, limiting_rank: 3, reserve_policy: ReserveFullLengthSeats { seats: 1 },

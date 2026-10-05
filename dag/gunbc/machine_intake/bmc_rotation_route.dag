@@ -149,6 +149,10 @@ fn rotation_route_from_citation(
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "lockout_verdict"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
   ]
 {
   BmcRotationRouteStanding {
@@ -746,12 +750,12 @@ type RotationApplyAdmission
 // Get User Access, IN THE SAME RUN, which is the attempt the approval names, ON THE SAME CONTROLLER AND
 // BUILD as the route.
 //
-// THE READBACK IS SEALED, so the precondition is not a caller-supplied Boolean in a record. Its only
-// production mint is the Get User Access read performed in the run against the controller, which does
-// not exist in this cut (managed_administrator_readback_live_frontier): until it lands, no production
-// caller can satisfy the precondition, and every privilege-lowering write refuses. The one other mint
-// is admitted only to the exact witness claims that consume the readback they mint and return a Bool,
-// so no admitted caller hands a readback to anyone else.
+// THE READBACK IS SEALED, so the precondition is not a caller-supplied Boolean in a record. Its
+// production mint, managed_administrator_readback_projected, is a projection of the BmcSecure account
+// observation performed inside the BmcSecure plan mint; it is live only once that observation is
+// (managed_administrator_readback_live_frontier). The one other mint is admitted only to the exact
+// witness claims that consume the readback they mint and return a Bool, so no admitted caller hands a
+// readback to anyone else.
 type ManagedAdministratorReadback sole_constructor {
   endpoint: BmcControllerEndpoint
   firmware: BmcFirmwareReleaseIdentity
@@ -779,8 +783,30 @@ fn managed_administrator_readback_fixture(
   ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
 }
 
+// THE PRODUCTION MINT: A PROJECTION OF THE ACCOUNT OBSERVATION THE PLAN ASSESSED. This module sits below
+// gunbc.machine_intake_bmc_secure and cannot name its observation type, so the projection is performed
+// there, by project_managed_administrator_readback, and this mint admits that one function and nothing
+// else. That function runs inside the BmcSecure plan mint, over the very BmcAccountStateObservation the
+// plan assessed: the readback is therefore bound by construction to that observation's machine/intake
+// subject, its goal-bound managed reference, its managed-account authentication (accepted at or after
+// the read floor), its census evidence and its observer time -- all ordered before the plan, which is
+// before any write -- and it is never received from a caller.
+fn managed_administrator_readback_projected(
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  attempt: AttemptIdentity,
+  managed_user: IpmiUserId,
+  access: List<IpmiUserChannelAccess>,
+) -> ManagedAdministratorReadback
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "project_managed_administrator_readback"),
+  ]
+{
+  ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
+}
+
 data managed_administrator_readback_live_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when ManagedAdministratorReadback is minted in this module ONLY from a live read in the same run, against the controller, that establishes ALL of: (1) successful authentication of the GOAL-BOUND managed account (the account the BmcSecure goal names, bound to the machine/intake subject), so the reading is that account's and not a cached or supplied row; (2) the endpoint and the firmware build observed in that run, and the run's attempt; (3) a Get User Access result for every (channel, user) pair it carries, unique per pair, with the response bytes committed as content-addressed evidence; (4) an observer-clock time ordered BEFORE the write the readback admits. Missing, unreadable, duplicated or conflicting, stale, other-controller, other-build or other-account readings refuse. Until then no production caller can satisfy the administrator-retention precondition and every privilege-limit write refuses. NOT satisfied by the witness fixture, by a reading from another run, by a cached access row, or by a reading timed after the write" as NonEmptyStr,
+  description: "dissolves when the BmcAccountStateObservation that managed_administrator_readback_projected is projected from is itself minted ONLY from a live read in the same run (gunbc.machine_intake_bmc_secure bmc_secure_state_live_read_frontier), against the controller, that establishes ALL of: (1) successful authentication of the GOAL-BOUND managed account (the account the BmcSecure goal names, bound to the machine/intake subject), so the reading is that account's and not a cached or supplied row; (2) the endpoint and the firmware build observed in that run, and the run's attempt; (3) a Get User Access result for every (channel, user) pair it carries, unique per pair, with the response bytes committed as content-addressed evidence; (4) an observer-clock time ordered BEFORE the write the readback admits. Missing, unreadable, duplicated or conflicting, stale, other-controller, other-build or other-account readings refuse. Until then the only observations a readback is projected from are the dry realization's, so no live privilege-limit write can be planned. NOT satisfied by the witness fixture, by a reading from another run, by a cached access row, or by a reading timed after the write" as NonEmptyStr,
 )
 
 type AdministratorRetentionRefusal
@@ -937,13 +963,13 @@ fn admit_rotation_apply(
 
 // ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (DESIGN §3c) ────────────────────────────────
 //
-// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. The BmcSecure
-// Apply (cut O1b) imports admit_rotation_apply and refuses on any arm but RotationApplyAdmitted, so
-// the refusal for an ungrounded route is that module's to type; mapping a route onto its rotation-event
-// vocabulary here would make the import graph cyclic the moment O1b lands. The executing consumer
-// today is test.claim.machine_intake_bmc_rotation_route_witness_test.
+// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. Cut O1b supplies
+// the consumer's CODE: gunbc.machine_intake_bmc_secure plan_bmc_account_action computes each write's
+// admission with admit_rotation_apply and refuses on every arm but RotationApplyAdmitted. It does not yet
+// supply the consumer's PRODUCTION ROUTE: that planner is reached only by its dry realization and
+// witness while mtcollins1's cut-over is held (operator ruling C, 2026-10-04), so this frontier stands.
 data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the cut O1b BmcSecure Apply in gunbc.machine_intake_bmc_secure calls admit_rotation_apply on the route standing for the controller and build it writes, and refuses before any account write on every arm other than RotationApplyAdmitted; NOT satisfied by this module typechecking, by the witness exercising the arms, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
+  description: "dissolves when gunbc.machine_intake_bmc_secure plan_bmc_account_action runs on a production path -- the held O1b transition, where a unit's BmcSecure standing is derived by the state-shaped fold and the rotation-event path is deleted -- admitting each account write with admit_rotation_apply over the route standing for the controller and build it read; NOT satisfied by the planner's code existing, by its dry realization or witness, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
 )
 
 // The modeled Redfish account-password operation and action shape, by reference, for a candidate

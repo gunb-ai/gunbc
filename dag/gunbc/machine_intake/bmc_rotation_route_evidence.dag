@@ -1,7 +1,6 @@
 module gunbc.machine_intake_bmc_rotation_route_evidence
 
 import std.types { Int, NonEmptyStr, String }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Hash }
 import std.content_hash { sha256_hex_digest }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
@@ -105,11 +104,11 @@ fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
 // surface at the build it reports, and proves no AccountService write and no IPMI user-management
 // request. So this module states only what the capture is entitled to: a historical route
 // observation naming the observed surface, the address and build it was read at, and the Redfish
-// account write that makes it worth qualifying. NO CURRENT mtjade1 STANDING IS MINTED IN THIS CUT:
-// AccessDiscover (cut O1c-1) mints it from a current read at the current endpoint
-// (mtjade1_current_route_standing_frontier). A capture that does not decode, does not bind to this
-// unit's observed link, or does not discriminate a family yields no observation rather than a
-// stand-in.
+// account write that makes it worth qualifying. mtjade1's CURRENT standing is not minted here: the
+// AccessDiscover step of gunbc.machine_intake_arrival_converge (cut O1c-1) mints it, inside the step,
+// from the 2026-10-04 read at the controller's current endpoint, joined to this unit by its observed
+// BMC link. A capture that does not decode, does not bind to this unit's observed link, or does not
+// discriminate a family yields no observation rather than a stand-in.
 fn mtjade1_observed_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {
   match network {
     BmcNetworkObservedStatic { address: a, prefix: _, gateway: _, link: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
@@ -159,7 +158,3 @@ fn historical_route_observation_from_manager_read(read: RecordedManagerIdentityO
 fn mtjade1_historical_rotation_route_observation() -> HistoricalRotationRouteObservation? uses fs: std.resources.Filesystem {
   historical_route_observation_from_manager_read(read: read_mtjade1_recorded_manager_identity())
 }
-
-data mtjade1_current_route_standing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when cut O1c-1's AccessDiscover phase mints mtjade1's current BmcRotationRouteStanding from a current read at the controller's current endpoint, joined to this unit by its observed BMC link; NOT satisfied by re-keying mtjade1_historical_rotation_route_observation onto a new address, or by any standing whose endpoint was not read in the same run" as NonEmptyStr,
-)

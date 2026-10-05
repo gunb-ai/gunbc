@@ -8,8 +8,8 @@ import gunbc.generated_artifact_emit {
   ArtifactGenerated,
   ArtifactGenerationRefused,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import product.host_identity { HostIdentity }
 import gunbc.runner_host_grants {
   runner_slot_teardown_grant_index_bound,
   runner_slot_grammar_dirs_to_bound,
@@ -21,7 +21,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthR
 import gunbc.runner_slot_desired { gunbc_runner_slot_cpu_quota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
 import gunbc.executor_privileged_operation { sudoers_argument_word }
 

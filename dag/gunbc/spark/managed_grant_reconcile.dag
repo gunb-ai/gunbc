@@ -2,7 +2,7 @@ module gunbc.spark.managed_grant_reconcile
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   EnableLingerForOwnAccount,
@@ -313,12 +313,15 @@ fn spark_managed_grants_converged(outcome: SparkGrantOutcome) -> Bool {
 
 // One drop-in file per grant, named for the grant. Per-grant files rather than one appended file
 // because appending has no idempotent form: re-running would duplicate the line, and a reconcile
-// whose second run differs from its first is not a reconcile.
+// whose second run differs from its first is not a reconcile. A parameterized grant names its
+// parameter in the file: one name for every InspectServingContainer made each install overwrite the
+// previous container's grant (Group A srv5, run 37166203531: the pair, native and staircase inspect
+// grants all wrote /etc/sudoers.d/gunbc-docker-inspect, each readback confirmed only its own).
 fn spark_managed_grant_dropin_name(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as NonEmptyStr
     RebootThisHost => "gunbc-reboot" as NonEmptyStr
-    InspectServingContainer { container: _ } => "gunbc-docker-inspect" as NonEmptyStr
+    InspectServingContainer { container: c } => join(["gunbc-docker-inspect-", c as String], "") as NonEmptyStr
     ReadFabricModuleEeprom { device: _ } => "gunbc-ethtool-module-info" as NonEmptyStr
   }
 }

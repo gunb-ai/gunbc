@@ -1,0 +1,97 @@
+module test.claim.spark.group_arm_serving_load_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { byte_size, microsecond }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.linux.psi { PsiRead }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }
+import gunbc.spark.serving_load_probe { LedgerClosed, LedgerIncomplete, SameExporter, ExporterChanged, ContinuityUnread }
+import gunbc.spark.group_arm_serving_load {
+  RankContainerPressure, RankContainerPressureObserved, RankContainerPressureUnread, GroupRankPressure,
+  rank_stop_reasons, ledger_stop_reasons, continuity_stop_reasons,
+  LoadStepResult, LoadStepHeld, LoadStepStopped, sustained_concurrency, floor_and_ceiling_concurrencies,
+}
+
+// ── THE STOP RULES, AT THEIR OWN INTERFACES ─────────────────────────────────────────────────────────
+//
+// Each rule is a fold over one reading, supplied here; the wet route that produces the readings is the
+// runner's (gunbc.spark.serving_load_runner) and is exercised by the load mode's own run.
+
+fn w_rank(host: String, container: String, oom: Nat) -> RankContainerPressure {
+  RankContainerPressure {
+    host: host as HostIdentity,
+    container_id: container as NonEmptyStr,
+    memory: CgroupMemoryStat { anon: byte_size(count: 0), file: byte_size(count: 0), file_mapped: byte_size(count: 0), workingset_refault_file: 0, pgmajfault: 0 },
+    oom_kill: oom,
+    psi: PsiRead { some_total: microsecond(count: 0), full_total: Present { value: microsecond(count: 0) } },
+  }
+}
+
+fn w_group(ranks: List<RankContainerPressure>) -> GroupRankPressure {
+  GroupRankPressure { ranks: map(ranks, r => RankContainerPressureObserved { pressure: r }) }
+}
+
+data w_roster: List<HostIdentity> = ["srv5" as HostIdentity, "srv6" as HostIdentity]
+
+// THE POSITIVE CONTROL: the same containers, no OOM kills -> no stop reason.
+test fn w_a_quiet_roster_gives_no_stop_reason() -> Bool {
+  length(rank_stop_reasons(roster: w_roster,
+    before: w_group(ranks: [w_rank(host: "srv5", container: "a", oom: 0), w_rank(host: "srv6", container: "b", oom: 0)]),
+    after: w_group(ranks: [w_rank(host: "srv5", container: "a", oom: 0), w_rank(host: "srv6", container: "b", oom: 0)]))) == 0
+}
+
+test fn w_an_oom_kill_on_any_rank_stops_the_step() -> Bool {
+  any(rank_stop_reasons(roster: w_roster,
+    before: w_group(ranks: [w_rank(host: "srv5", container: "a", oom: 0), w_rank(host: "srv6", container: "b", oom: 2)]),
+    after: w_group(ranks: [w_rank(host: "srv5", container: "a", oom: 0), w_rank(host: "srv6", container: "b", oom: 3)])),
+    x => string_contains(s: x, pattern: "srv6") && string_contains(s: x, pattern: "OOM killer"))
+}
+
+test fn w_a_changed_rank_container_is_a_restart() -> Bool {
+  any(rank_stop_reasons(roster: w_roster,
+    before: w_group(ranks: [w_rank(host: "srv5", container: "a", oom: 0), w_rank(host: "srv6", container: "b", oom: 0)]),
+    after: w_group(ranks: [w_rank(host: "srv5", container: "c", oom: 0), w_rank(host: "srv6", container: "b", oom: 0)])),
+    x => string_contains(s: x, pattern: "srv5") && string_contains(s: x, pattern: "engine restarted"))
+}
+
+// AN UNREAD RANK IS A STOP, NEVER A PASS.
+test fn w_an_unread_rank_stops_the_step() -> Bool {
+  any(rank_stop_reasons(roster: w_roster,
+    before: GroupRankPressure { ranks: [RankContainerPressureObserved { pressure: w_rank(host: "srv5", container: "a", oom: 0) }, RankContainerPressureUnread { host: "srv6" as HostIdentity, cause: "witness" }] },
+    after: w_group(ranks: [w_rank(host: "srv5", container: "a", oom: 0), w_rank(host: "srv6", container: "b", oom: 0)])),
+    x => string_contains(s: x, pattern: "before srv6"))
+}
+
+test fn w_a_lost_request_or_an_open_ledger_stops_the_step() -> Bool {
+  length(ledger_stop_reasons(l: LedgerClosed { offered: 16, completed: 16, failed: 0 })) == 0
+    && length(ledger_stop_reasons(l: LedgerIncomplete { because: "witness" as NonEmptyStr })) == 1
+}
+
+test fn w_a_changed_or_unread_exporter_stops_the_step() -> Bool {
+  length(continuity_stop_reasons(c: SameExporter { start_field: "1" as NonEmptyStr })) == 0
+    && length(continuity_stop_reasons(c: ExporterChanged { before: "1" as NonEmptyStr, after: "2" as NonEmptyStr })) == 1
+    && length(continuity_stop_reasons(c: ContinuityUnread { cause: "witness" as NonEmptyStr })) == 1
+}
+
+// ── THE SUSTAINED LEVEL: THE UNBROKEN HELD PREFIX ───────────────────────────────────────────────────
+
+fn w_result(c: Nat, held: Bool) -> LoadStepResult {
+  LoadStepResult {
+    concurrency: c,
+    verdict: if held { LoadStepHeld { preemptions: 0 } } else { LoadStepStopped { reasons: ["witness"], unread: false } },
+    completed: Present { value: c * 2 }, restarts: 0, oom_kills: 0, lost: 0,
+  }
+}
+
+test fn w_a_ceiling_that_held_after_the_floor_stopped_sustains_nothing() -> Bool {
+  sustained_concurrency(results: [w_result(c: 8, held: true), w_result(c: 16, held: true)]) == 16
+    && sustained_concurrency(results: [w_result(c: 8, held: true), w_result(c: 16, held: false)]) == 8
+    && sustained_concurrency(results: [w_result(c: 8, held: false), w_result(c: 16, held: true)]) == 0
+}
+
+test fn w_a_step_loads_its_floor_and_its_ceiling() -> Bool {
+  floor_and_ceiling_concurrencies(cold_floor: 8, ceiling: 24) == [8, 24]
+    && floor_and_ceiling_concurrencies(cold_floor: 8, ceiling: 8) == [8]
+}

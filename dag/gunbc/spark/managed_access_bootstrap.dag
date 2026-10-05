@@ -3,7 +3,7 @@ module gunbc.spark.managed_access_bootstrap
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.content_hash { ContentHash, serialize_content_hash }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_posix_accounts {
   fleet_bootstrap_principal_login,
   FleetPosixAccountKey,
@@ -21,7 +21,7 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-import gunbc.spark.serving_arm_launch { glm_native_container_name }
+import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -398,6 +398,10 @@ type SparkGrantInstallBasis
 // classification receipt joins those declarations to the live
 // inspect object, so the disclosure stays unestablished and the obligation outstanding here too.
 //
+// On 2026-10-03 the operator gave the Group A program standing use of Group A ("use group A however
+// you want"), which accepts the same risk arm for the GLM-5.3 staircase arm's container on srv5-srv8;
+// its launch specification is gunbc.spark.glm53_arm_staircase, and the obligation stays outstanding.
+//
 // The actor is the operator's fleet login, read from the account model rather than spelled here, so
 // the decision is attributed to the same principal every other operator act in this lane names.
 data spark_managed_grant_install_basis: List<SparkGrantInstallBasis> = [
@@ -410,6 +414,11 @@ data spark_managed_grant_install_basis: List<SparkGrantInstallBasis> = [
     actor: fleet_bootstrap_principal_login(),
     decided_on: "2026-09-16" as NonEmptyStr,
     accepted_for: InspectServingContainer { container: glm_native_container_name },
+  },
+  OperatorAcceptedUnresolvedDisclosureRisk {
+    actor: fleet_bootstrap_principal_login(),
+    decided_on: "2026-10-03" as NonEmptyStr,
+    accepted_for: InspectServingContainer { container: glm53_staircase_container_name },
   },
 ]
 
@@ -474,6 +483,7 @@ data spark_managed_grant_population: List<SparkManagedGrant> = [
   RebootThisHost,
   InspectServingContainer { container: spark_pair_container_name },
   InspectServingContainer { container: glm_native_container_name },
+  InspectServingContainer { container: glm53_staircase_container_name },
   ReadFabricModuleEeprom { device: spark_fabric_leg_netdev },
 ]
 

@@ -1,7 +1,70 @@
 module gunbc.machine_intake_bmc_secure
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
-import std.content_hash { ContentHash }
+import v2.std.algebra { filter }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.algebra { FreeSemigroup }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  GoalSatisfied,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalAssessmentRefused,
+  GoalInspected,
+  GoalObservationRefused,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.cloud.gcp.secret_manager {
+  SmResolvedVersionIdentity,
+  SmVersionIdProjected,
+  SmVersionIdNotAVersionResource,
+  SmVersionSecretProjected,
+  SmVersionSecretNotAVersionResource,
+  sm_resolved_version_id,
+  sm_resolved_version_secret_resource,
+}
+import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled, observer_instant_millis, observer_instant_precedes }
+import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
+import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialFetch,
+  SecretCredentialReady,
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused,
+  SecretCredentialFetchRefused,
+  SecretCredentialResolvedVersionMismatch,
+}
+import gunbc.bmc_model { BmcWorld, BmcIpmiSetUserPasswordStep, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding,
+  BmcAccountWriteRequest,
+  IpmiSetUserPassword,
+  RedfishAccountPasswordWrite,
+  RotationApplyAdmission,
+  RotationApplyAdmitted,
+  RotationApplyRouteNotGrounded,
+  RotationApplyRouteForAnotherController,
+  RotationApplyRouteForAnotherBuild,
+  RotationApplyApprovalRefused,
+  RotationApplyApprovalDenied,
+  RotationApplyApprovalForAnotherAuthority,
+  RotationApplyApprovalForAnotherRequest,
+  RotationApplyRouteForAnotherOperation,
+  RotationApplyRouteEffectUnobserved,
+  RotationApplyWouldLeaveNoAdministrator,
+  IpmiSetUserPrivilegeLimit,
+  ManagedAdministratorReadback,
+  managed_administrator_readback_projected,
+  rotation_route_request_identity,
+  account_write_request_text,
+  admit_rotation_apply,
+}
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
@@ -15,9 +78,11 @@ import extdeps.bmc.ipmi_channel {
   IpmiPrivilegeNoAccess,
   IpmiUserChannelAccess,
   IpmiUserId,
+  ipmi_user_channel_access,
 }
 import extdeps.network.ipv4 { Ipv4Address }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_secret }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_phase {
   Arrival,
@@ -1083,3 +1148,1160 @@ fn bmc_secure_phase_receipt(
     previous_receipt: previous_receipt,
   }
 }
+
+// ══ BmcSecure AS A DESIRED STATE (docs/plans/managed-host-untangle.md, cut O1b) ══════════════════
+//
+// THE DEFECT THIS SECTION REPAIRS. derive_bmc_secure above is rotation-EVENT shaped: a rejected
+// bootstrap credential refuses PreviouslyRotatedCredentialRequired, an accepted one with no rotation
+// refuses CredentialRotationNotApplied, and only RotationApplied with an advanced epoch can mint
+// BmcSecured. So a correctly secured controller -- managed credential accepted, published credential
+// refused on every LAN member of the channel census -- cannot be observed as already secured. The
+// phase is decomposed here instead: observe the CURRENT account state (independent of whether this
+// invocation rotated anything), Noop only when the existing conjunction already holds, otherwise
+// Apply a typed account action over an admitted route, then re-read independently and derive the
+// standing from that readback alone.
+//
+// THE CONJUNCTION AND THE CENSUS JOIN ARE NOT RESTATED. adjudicate_published_census above is the one
+// authority for the published half; this section calls it with the observation's read floor where
+// the event path passed applied_at, projecting observer instants to their millis only at that call.
+// The managed half (accepted, read at or after the floor) is the same test adjudicate_managed_probe
+// makes, over the observer clock.
+//
+// SHADOW, NOT YET THE AUTHORITY (operator ruling C, eager-gull-22, 2026-10-04). The event path above
+// stays as the standing mtcollins1 and managed_hosts() read, FROZEN: no new consumer may use it. Its
+// deletion and mtcollins1's re-expression in this shape are one held transition, made together with a
+// committed read-only post-reflash probe and the operator-approved wet Apply on that unit
+// (bmc_secure_state_cutover_frontier). Until then the executing consumers of this section are its dry
+// realization over gunbc.bmc_model BmcWorld and that realization's witness.
+
+// A CONTROLLER'S OWN CLOCK IS AN OBSERVATION OF THE CONTROLLER, NEVER AN ORDERING CLOCK. mtjade1's BMC
+// reports the year 2000. The reading is kept, with its evidence, and it is not an ordering clock: every
+// ordering field below is gunbc.clock_read ObserverClockInstant, which only the observer mints, and the
+// sealed mints refuse this type at their call arguments. Not wider: a non-literal value of this type
+// in a record field typed ObserverClockInstant is accepted today
+// (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value).
+type ControllerClockReading {
+  reported_millis: EpochMs
+  evidence: EvidenceRef
+}
+
+// ONE AUTHENTICATION ATTEMPT, TIMED BY THE OBSERVER. The three arms of CredentialProbeOutcome with an
+// observer instant where it carries a bare EpochMs; the event path's type dies with the event path.
+//
+// EVERY ORDERING FIELD SITS IN A SEALED RECORD WHOSE MINT TAKES THE INSTANT AS A PARAMETER. A field
+// typed ObserverClockInstant does not by itself keep another product out of it: a non-literal value
+// of a distinct product placed in a record or variant field is accepted today
+// (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value), while the same value at
+// a call argument refuses. sole_constructor seals records, not coproduct arms, so the probe arms carry
+// ObservedReading rather than an instant: a literal outside this module refuses SoleConstructorViolation,
+// and the one mint, observed_reading, refuses a ControllerClockReading at its observed_at argument.
+type ObservedReading sole_constructor {
+  evidence: EvidenceRef
+  observed_at: ObserverClockInstant
+}
+
+fn observed_reading(evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedReading {
+  ObservedReading { evidence: evidence, observed_at: observed_at }
+}
+
+type ObservedCredentialProbe
+  = ObservedCredentialAccepted { reading: ObservedReading }
+  | ObservedCredentialRejected { reading: ObservedReading }
+  | ObservedCredentialUnestablished { detail: NonEmptyStr }
+
+type ObservedPublishedLanProbe {
+  channel: IpmiChannelNumber
+  address: Ipv4Address
+  probe: ObservedCredentialProbe
+}
+
+type PublishedAccountKind
+  = PublishedAccountRetired
+  | PublishedAccountDisabledNotRetired { restore_path: PublishedCredentialRestorePath }
+  | PublishedAccountRetainedByPolicy { retention: RetainedCredentialKind }
+
+type ObservedPublishedAccount sole_constructor {
+  kind: PublishedAccountKind
+  evidence: EvidenceRef
+  observed_at: ObserverClockInstant
+}
+
+fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedPublishedAccount {
+  ObservedPublishedAccount { kind: kind, evidence: evidence, observed_at: observed_at }
+}
+
+// THE CURRENT ACCOUNT STATE OF ONE CONTROLLER, AS READ. It carries no rotation and no bootstrap probe:
+// it is the same reading whether or not anything was written. read_floor is the observer instant the
+// read began; every reading in it must be at or after the floor, which is what lets the receipt below
+// order a readback after the write it verifies and refuse the pre-write reading passed twice.
+// firmware is the release the controller reported in the same read. It is the build a route must be
+// grounded for: the plan reads it from here and takes no build argument, so a current reading cannot be
+// admitted over a route for a build the controller no longer runs (O1a's stale-route crossing).
+type BmcAccountStateObservation sole_constructor {
+  subject: MachineIntakeSubject
+  endpoint: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
+  managed: ManagedCredentialReference
+  read_floor: ObserverClockInstant
+  managed_probe: ObservedCredentialProbe
+  channel_census: IpmiControllerChannelCensus
+  census_evidence: EvidenceRef
+  census_observed_at: ObserverClockInstant
+  published_probes: List<ObservedPublishedLanProbe>
+  published_user: IpmiUserId
+  published_account: ObservedPublishedAccount
+  break_glass: ManagedCredentialReference
+  break_glass_probe: ObservedCredentialProbe
+  controller_clock: ControllerClockReading?
+}
+
+fn observed_bmc_account_state(
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  managed: ManagedCredentialReference,
+  read_floor: ObserverClockInstant,
+  managed_probe: ObservedCredentialProbe,
+  channel_census: IpmiControllerChannelCensus,
+  census_evidence: EvidenceRef,
+  census_observed_at: ObserverClockInstant,
+  published_probes: List<ObservedPublishedLanProbe>,
+  published_user: IpmiUserId,
+  published_account: ObservedPublishedAccount,
+  break_glass: ManagedCredentialReference,
+  break_glass_probe: ObservedCredentialProbe,
+  controller_clock: ControllerClockReading?,
+) -> BmcAccountStateObservation {
+  BmcAccountStateObservation {
+    subject: subject,
+    endpoint: endpoint,
+    firmware: firmware,
+    managed: managed,
+    read_floor: read_floor,
+    managed_probe: managed_probe,
+    channel_census: channel_census,
+    census_evidence: census_evidence,
+    census_observed_at: census_observed_at,
+    published_probes: published_probes,
+    published_user: published_user,
+    published_account: published_account,
+    break_glass: break_glass,
+    break_glass_probe: break_glass_probe,
+    controller_clock: controller_clock,
+  }
+}
+
+fn observed_probe_at_join(probe: ObservedCredentialProbe) -> CredentialProbeOutcome {
+  match probe {
+    ObservedCredentialAccepted { reading: r } => CredentialAccepted { evidence: r.evidence, observed_at: observer_instant_millis(instant: r.observed_at) }
+    ObservedCredentialRejected { reading: r } => CredentialRejected { evidence: r.evidence, observed_at: observer_instant_millis(instant: r.observed_at) }
+    ObservedCredentialUnestablished { detail: d } => CredentialProbeUnestablished { detail: d }
+  }
+}
+
+fn observed_published_account_at_join(account: ObservedPublishedAccount) -> PublishedCredentialAccountObservation {
+  let at = observer_instant_millis(instant: account.observed_at)
+  match account.kind {
+    PublishedAccountRetired => PublishedCredentialRetired { evidence: account.evidence, observed_at: at }
+    PublishedAccountDisabledNotRetired { restore_path: r } =>
+      PublishedCredentialDisabledNotRetired { restore_path: r, evidence: account.evidence, observed_at: at }
+    PublishedAccountRetainedByPolicy { retention: k } =>
+      PublishedCredentialRetainedByPolicy { retention: k, evidence: account.evidence, observed_at: at }
+  }
+}
+
+fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialReference) -> Bool {
+  a.account == b.account
+    && a.role == b.role
+    && (a.secret.project as String) == (b.secret.project as String)
+    && a.secret.secret == b.secret.secret
+    && a.secret.version == b.secret.version
+    && a.credential_epoch == b.credential_epoch
+}
+
+// WHAT THE PHASE REQUIRES OF THE CONTROLLER: this managed generation accepted, the published
+// credential closed, under this qualification policy.
+// published_break_glass is the exact generation the published account is retired TO (or, under a
+// break-glass retention policy, the account that must be the one retained): a predeclared secret,
+// version and epoch. It is part of the goal so the replacement is a desired state and never whatever
+// generation a caller hands the planner. Disabling or deleting the published account instead is not an
+// arm here: those are channel and user-table writes no executed evidence grounds on any controller.
+type BmcSecureGoal {
+  managed: ManagedCredentialReference
+  published_break_glass: ManagedCredentialReference
+  policy: IntakeQualificationPolicy
+}
+
+// WHAT AN ASSESSMENT FOUND. The conjunction's own causes, plus the published account's replacement:
+// the published user must authenticate with the goal's exact break-glass generation (break_glass /
+// break_glass_probe on the reading), observed at or after the read floor. Without it, "factory rejected
+// beside an arbitrary replacement" would read as secured, and an Apply could mint a receipt without the
+// goal generation ever authenticating. Disable or delete of the published account is not an admitted
+// goal arm here; it would carry its own observation, not ride on this probe.
+type BmcSecureStateFinding
+  = ConjunctionFinding { cause: BmcSecureRefusalCause }
+  | BreakGlassGenerationRejected
+  | BreakGlassGenerationUnestablished { detail: NonEmptyStr }
+
+fn bmc_secure_state_finding_label(finding: BmcSecureStateFinding) -> NonEmptyStr {
+  match finding {
+    ConjunctionFinding { cause: c } => bmc_secure_refusal_label(cause: c)
+    BreakGlassGenerationRejected => "the published account does not authenticate with the goal's break-glass generation"
+    BreakGlassGenerationUnestablished { detail: _ } => "the probe of the goal's break-glass generation did not establish a credential state"
+  }
+}
+
+// The satisfied evidence: the conjunction's BmcSecured, kept with the observation it was read from.
+type BmcSecureHeld {
+  observation: BmcAccountStateObservation
+  evidence: List<EvidenceRef>
+}
+
+type BmcSecureStateRefusal
+  = AccountStateForOtherSubject { expected: MachineIntakeSubject, found: MachineIntakeSubject }
+  | AccountStateForOtherManagedReference { goal: ManagedCredentialReference, observed: ManagedCredentialReference }
+  | AccountReadingPrecedesReadFloor { floor: ObserverClockInstant }
+  | AccountStateConjunctionRefused { cause: BmcSecureRefusalCause }
+  | AccountDeviationNeedsUngroundedOperation { cause: BmcSecureRefusalCause, operation: MissingAccountOperation }
+  | AccountRetentionNotGoalBound { retained: SecretRef, goal: ManagedCredentialReference }
+  | AccountStateForOtherBreakGlassReference { goal: ManagedCredentialReference, observed: ManagedCredentialReference }
+
+// WHICH CONJUNCTION REFUSALS AN ACCOUNT WRITE CAN REMEDY, WHICH ARE UNKNOWNS, AND WHICH ARE NEITHER.
+// A deviation is a state the account action changes (the managed credential not accepted, the
+// published one still accepted or still holding channel access). An unknown is a reading that did not
+// establish a state; it is never a deviation, because writing on an unread controller is the
+// absorbing fallback DESIGN §5 forbids. Everything else -- an ordering, a duplicated or unmatched
+// reading, a production retention -- refuses the assessment.
+// TWO ADMITTED ACTIONS: a password write (IpmiSetUserPassword) and, since cut O1a-2, a channel-access
+// write (the privilege-limit-only Set User Access, IpmiSetUserPrivilegeLimit). A published account still
+// holding access on a LAN channel -- addressed or not -- is therefore a DEVIATION the plan remedies, and
+// it is admissible ONLY over a GROUNDED channel-access route: the plan mint computes each channel write's
+// admission with admit_rotation_apply and refuses on every other arm, so "no admitted route performs a
+// channel-access write" is now a typed plan refusal rather than an assessment refusal. Putting the
+// factory password back is still not an admitted action, so that deviation still refuses with the
+// missing operation named.
+type MissingAccountOperation
+  = PublishedFactoryCredentialRestore
+
+type ConjunctionCauseClass
+  = CauseRemediableByAccountAction
+  | CauseNeedsUngroundedOperation { operation: MissingAccountOperation }
+  | CauseUnestablishedReading
+  | CauseReadingPrecedesFloor
+  | CauseRefusesAssessment
+
+fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClass {
+  match cause {
+    RotationObservationForOtherAttempt { expected: _, found: _ } => CauseRefusesAssessment
+    CredentialStateUnknown { detail: _ } => CauseUnestablishedReading
+    PreviouslyRotatedCredentialRequired => CauseRefusesAssessment
+    AccountManagementUnreachable { detail: _ } => CauseUnestablishedReading
+    CredentialRotationNotApplied => CauseRefusesAssessment
+    CredentialEpochNotAdvanced { previous: _, observed: _ } => CauseRefusesAssessment
+    ManagedCredentialRejected => CauseRemediableByAccountAction
+    ManagedCredentialUnestablished { detail: _ } => CauseUnestablishedReading
+    ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => CauseReadingPrecedesFloor
+    PublishedCredentialStillAccepted { channel: _ } => CauseRemediableByAccountAction
+    PublishedCredentialRetirementUnestablished { detail: _ } => CauseUnestablishedReading
+    PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => CauseReadingPrecedesFloor
+    PublishedCredentialCensusPrecedesRotation { applied_at: _, observed_at: _ } => CauseReadingPrecedesFloor
+    PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => CauseReadingPrecedesFloor
+    PublishedCredentialCensusNotTaken => CauseUnestablishedReading
+    PublishedCredentialNoAddressableLanMember => CauseUnestablishedReading
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => CauseRemediableByAccountAction
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => CauseRemediableByAccountAction
+    PublishedCredentialUserAccessUnestablished { channel: _ } => CauseUnestablishedReading
+    PublishedCredentialUserAccessDuplicate { channel: _ } => CauseRefusesAssessment
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => CauseUnestablishedReading
+    PublishedCredentialProbeDuplicate { channel: _ } => CauseRefusesAssessment
+    PublishedCredentialProbeUnmatched { channel: _ } => CauseRefusesAssessment
+    PublishedCredentialRetainedNotAdmittedForProduction => CauseRefusesAssessment
+    PublishedCredentialNotRetained { channel: _ } => CauseNeedsUngroundedOperation { operation: PublishedFactoryCredentialRestore }
+  }
+}
+
+fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateObservation) -> BmcSecureOutcome {
+  let floor = observer_instant_millis(instant: observed.read_floor)
+  match observed.managed_probe {
+    ObservedCredentialRejected { reading: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
+    ObservedCredentialUnestablished { detail: d } => BmcSecureRefused { cause: ManagedCredentialUnestablished { detail: d } }
+    ObservedCredentialAccepted { reading: mr } => {
+      let me = mr.evidence
+      let at = mr.observed_at
+      if observer_instant_precedes(earlier: at, later: observed.read_floor) {
+        BmcSecureRefused { cause: ManagedCredentialProbePrecedesRotation { applied_at: floor, probed_at: observer_instant_millis(instant: at) } }
+      } else {
+        adjudicate_published_census(
+          endpoint: observed.endpoint,
+          reference: observed.managed,
+          applied_at: floor,
+          rotation_evidence: me,
+          bootstrap: CredentialProbeUnestablished { detail: "no bootstrap probe: the desired-state reading carries none" as NonEmptyStr },
+          managed_evidence: me,
+          census: observed.channel_census,
+          census_evidence: observed.census_evidence,
+          census_observed_at: observer_instant_millis(instant: observed.census_observed_at),
+          probes: map(observed.published_probes, p => PublishedCredentialLanProbe { channel: p.channel, address: p.address, outcome: observed_probe_at_join(probe: p.probe) }),
+          published_user: observed.published_user,
+          published_account: observed_published_account_at_join(account: observed.published_account),
+          environment: goal.policy.environment,
+        )
+      }
+    }
+  }
+}
+
+// Under a break-glass retention policy the retained account must be the goal's exact generation.
+fn retention_is_goal_bound(kind: PublishedAccountKind, goal: BmcSecureGoal) -> Bool {
+  match kind {
+    PublishedAccountRetired => true
+    PublishedAccountDisabledNotRetired { restore_path: _ } => true
+    PublishedAccountRetainedByPolicy { retention: r } =>
+      match r {
+        PublishedFactoryCredential => true
+        BreakGlassAccount { secret: sec } =>
+          (sec.project as String) == (goal.published_break_glass.secret.project as String)
+            && sec.secret == goal.published_break_glass.secret.secret
+            && sec.version == goal.published_break_glass.secret.version
+      }
+  }
+}
+
+fn retained_secret_or_goal(kind: PublishedAccountKind, goal: BmcSecureGoal) -> SecretRef {
+  match kind {
+    PublishedAccountRetired => goal.published_break_glass.secret
+    PublishedAccountDisabledNotRetired { restore_path: _ } => goal.published_break_glass.secret
+    PublishedAccountRetainedByPolicy { retention: r } =>
+      match r {
+        PublishedFactoryCredential => goal.published_break_glass.secret
+        BreakGlassAccount { secret: sec } => sec
+      }
+  }
+}
+
+fn assess_break_glass_generation(
+  goal: BmcSecureGoal,
+  observed: BmcAccountStateObservation,
+  evidence: List<EvidenceRef>,
+) -> GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal> {
+  if !managed_reference_same(a: goal.published_break_glass, b: observed.break_glass) {
+    GoalAssessmentRefused { cause: AccountStateForOtherBreakGlassReference { goal: goal.published_break_glass, observed: observed.break_glass } }
+  } else {
+    match observed.break_glass_probe {
+      ObservedCredentialUnestablished { detail: d } =>
+        GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: BreakGlassGenerationUnestablished { detail: d }, tail: [] } }
+      ObservedCredentialRejected { reading: r } =>
+        if observer_instant_precedes(earlier: r.observed_at, later: observed.read_floor) {
+          GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
+        } else {
+          GoalDiverged { deviations: FreeSemigroup { head: BreakGlassGenerationRejected, tail: [] } }
+        }
+      ObservedCredentialAccepted { reading: r } =>
+        if observer_instant_precedes(earlier: r.observed_at, later: observed.read_floor) {
+          GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
+        } else {
+          GoalSatisfied { evidence: BmcSecureHeld { observation: observed, evidence: concat(evidence, [r.evidence]) } }
+        }
+    }
+  }
+}
+
+fn assess_bmc_account_state(
+  goal: BmcSecureGoal,
+  observed: BmcAccountStateObservation,
+) -> GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal> {
+  if !managed_reference_same(a: goal.managed, b: observed.managed) {
+    GoalAssessmentRefused { cause: AccountStateForOtherManagedReference { goal: goal.managed, observed: observed.managed } }
+  } else if !retention_is_goal_bound(kind: observed.published_account.kind, goal: goal) {
+    GoalAssessmentRefused { cause: AccountRetentionNotGoalBound { retained: retained_secret_or_goal(kind: observed.published_account.kind, goal: goal), goal: goal.published_break_glass } }
+  } else {
+    match conjunction_over_observation(goal: goal, observed: observed) {
+      BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } =>
+        assess_break_glass_generation(goal: goal, observed: observed, evidence: e)
+      BmcSecureRefused { cause: c } =>
+        match conjunction_cause_class(cause: c) {
+          CauseRemediableByAccountAction => GoalDiverged { deviations: FreeSemigroup { head: ConjunctionFinding { cause: c }, tail: [] } }
+          CauseNeedsUngroundedOperation { operation: op } => GoalAssessmentRefused { cause: AccountDeviationNeedsUngroundedOperation { cause: c, operation: op } }
+          CauseUnestablishedReading => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: ConjunctionFinding { cause: c }, tail: [] } }
+          CauseReadingPrecedesFloor => GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
+          CauseRefusesAssessment => GoalAssessmentRefused { cause: AccountStateConjunctionRefused { cause: c } }
+        }
+    }
+  }
+}
+
+// The observer of this effect is the supplied reading: the read itself is the realization's (dry
+// below; live is bmc_secure_state_live_read_frontier), and the observer refuses a reading of another
+// subject rather than assessing it.
+fn observe_bmc_account_state(
+  subject: MachineIntakeSubject,
+  reading: BmcAccountStateObservation,
+) -> ObservationAttempt<BmcAccountStateObservation, BmcSecureStateRefusal> {
+  if same_intake_subject(left: subject, right: reading.subject) {
+    ObservationEstablished { observed: reading }
+  } else {
+    ObservationRefused { cause: AccountStateForOtherSubject { expected: subject, found: reading.subject } }
+  }
+}
+
+// What a divergence obliges: an account action, not yet admitted. Admission is the plan mint's.
+type BmcAccountActionDue {
+  deviation: BmcSecureStateFinding
+}
+
+fn decide_bmc_account_state(
+  assessment: GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal>,
+) -> UpsertDecision<BmcAccountActionDue> {
+  match assessment {
+    GoalSatisfied { evidence: _ } => Noop
+    GoalDiverged { deviations: d } => Apply { plan: BmcAccountActionDue { deviation: d.head } }
+    GoalIndeterminate { known_deviations: _, unknowns: u } => Refuse { reason: bmc_secure_state_finding_label(finding: u.head) }
+    GoalAssessmentRefused { cause: c } => Refuse { reason: bmc_secure_state_refusal_label(cause: c) }
+  }
+}
+
+fn bmc_secure_state_refusal_label(cause: BmcSecureStateRefusal) -> NonEmptyStr {
+  match cause {
+    AccountStateForOtherSubject { expected: _, found: _ } => "the account-state reading belongs to another intake subject"
+    AccountStateForOtherManagedReference { goal: _, observed: _ } => "the account-state reading probed another managed credential generation than the goal names"
+    AccountReadingPrecedesReadFloor { floor: _ } => "an account-state reading precedes the observer instant its read began"
+    AccountStateConjunctionRefused { cause: c } => bmc_secure_refusal_label(cause: c)
+    AccountDeviationNeedsUngroundedOperation { cause: _, operation: op } =>
+      match op {
+        PublishedFactoryCredentialRestore => "the policy retains the factory credential and it is not accepted; restoring it is not an admitted operation"
+      }
+    AccountRetentionNotGoalBound { retained: _, goal: _ } => "the break-glass account retained by policy is not the generation the goal names"
+    AccountStateForOtherBreakGlassReference { goal: _, observed: _ } => "the account-state reading probed another break-glass generation than the goal names"
+  }
+}
+
+// THE EFFECT'S DOMAIN PROJECTION (gunbc.host_convergence_protocol): observe, assess, decide. Its row is
+// gunbc.host_convergence_census BmcSecureAccountState. The protocol's apply side is an open frontier
+// (host_effect_decide_apply_frontier, CONVERGENCE-ONE C8); the apply and the independent readback
+// below are this domain's own, with its own sealed receipt, and do not discharge C8.
+fn bmc_secure_state_projection() -> HostEffectDomainProjection<MachineIntakeSubject, BmcSecureGoal, BmcAccountStateObservation, BmcAccountStateObservation, BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal, BmcSecureStateRefusal, BmcAccountActionDue> {
+  HostEffectDomainProjection {
+    observe: observe_bmc_account_state,
+    assess: assess_bmc_account_state,
+    decide: decide_bmc_account_state,
+  }
+}
+
+type BmcSecureStateInspection
+  = BmcSecureStateInspected {
+      observed: BmcAccountStateObservation,
+      assessment: GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal>,
+      decision: UpsertDecision<BmcAccountActionDue>,
+    }
+  | BmcSecureStateUnobserved { cause: BmcSecureStateRefusal }
+
+fn inspect_bmc_secure_state(
+  subject: MachineIntakeSubject,
+  goal: BmcSecureGoal,
+  reading: BmcAccountStateObservation,
+) -> BmcSecureStateInspection {
+  let projection = bmc_secure_state_projection()
+  match inspect_via_host_effect_projection(subject: subject, goal: goal, request: reading, projection: projection) {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => BmcSecureStateUnobserved { cause: c }
+    GoalInspected { subject: _, goal: _, request: _, observed: o, assessment: a } =>
+      BmcSecureStateInspected { observed: o, assessment: a, decision: projection.decide(a) }
+  }
+}
+
+// ── THE SECRET ORDER, AS CARRIERS THE APPLY REQUIRES ─────────────────────────────────────────────
+//
+// The new credential generation is generated and STORED under the unit's SecretRef, and its EXACT
+// resolved version is FETCHED, before any account write and before the managed probe. The earlier
+// plan row that materialized the managed secret after BmcSecure was wrong: a rotation cannot first
+// obtain its secret after it has completed. So the write's plan takes a Fetched generation, a Fetched
+// generation can only be minted from a Stored one and a fetch that resolved to exactly the stored
+// version, and every later consumer materializes that same generation through
+// gunbc.auth.secret_ref_credential fetch_secret_ref_credential over the pinned reference the carrier
+// holds. None of these carriers holds the secret bytes.
+
+type ManagedCredentialGenerationStored sole_constructor {
+  reference: ManagedCredentialReference
+  stored_version: SmResolvedVersionIdentity
+  stored_at: ObserverClockInstant
+}
+
+type GenerationStoreRefusal
+  = GenerationStoreForAnotherSecret { expected: NonEmptyStr, stored: SmResolvedVersionIdentity }
+  | GenerationStoreNotAVersionResource { supplied: String }
+
+type GenerationStoreAdmission
+  = GenerationStored { stored: ManagedCredentialGenerationStored }
+  | GenerationStoreRefused { cause: GenerationStoreRefusal }
+
+// current is the generation in force; the stored generation is the next epoch of the same account,
+// role and secret, pinned to the exact version Secret Manager answered for the write (AddVersion's
+// returned name), never an alias.
+fn admit_stored_generation(
+  current: ManagedCredentialReference,
+  added: SmResolvedVersionIdentity,
+  stored_at: ObserverClockInstant,
+) -> GenerationStoreAdmission {
+  match sm_resolved_version_secret_resource(identity: added) {
+    SmVersionSecretNotAVersionResource { supplied: s } => GenerationStoreRefused { cause: GenerationStoreNotAVersionResource { supplied: s } }
+    SmVersionSecretProjected { secret_resource: sec } =>
+      if !gcp_resource_names_this_secret(returned: sec as String, project: current.secret.project, project_number: fleet_secrets_project_number, secret: current.secret.secret) {
+        GenerationStoreRefused { cause: GenerationStoreForAnotherSecret { expected: current.secret.secret, stored: added } }
+      } else {
+        match sm_resolved_version_id(identity: added) {
+          SmVersionIdNotAVersionResource { supplied: s } => GenerationStoreRefused { cause: GenerationStoreNotAVersionResource { supplied: s } }
+          SmVersionIdProjected { version: v } =>
+            GenerationStored {
+              stored: ManagedCredentialGenerationStored {
+                reference: ManagedCredentialReference {
+                  account: current.account,
+                  role: current.role,
+                  secret: SecretRef { project: current.secret.project, secret: current.secret.secret, version: v, hash_state: HashPending },
+                  credential_epoch: current.credential_epoch + 1,
+                },
+                stored_version: added,
+                stored_at: stored_at,
+              },
+            }
+        }
+      }
+  }
+}
+
+type ManagedCredentialGenerationFetched sole_constructor {
+  stored: ManagedCredentialGenerationStored
+  fetched_at: ObserverClockInstant
+}
+
+type GenerationFetchRefusal
+  = GenerationFetchNotReady { detail: NonEmptyStr }
+  | GenerationFetchResolvedAnotherVersion { stored: SmResolvedVersionIdentity, resolved: SmResolvedVersionIdentity }
+  | GenerationFetchPrecedesStore { stored_at: ObserverClockInstant, fetched_at: ObserverClockInstant }
+
+type GenerationFetchAdmission
+  = GenerationFetched { fetched: ManagedCredentialGenerationFetched }
+  | GenerationFetchRefused { cause: GenerationFetchRefusal }
+
+fn admit_fetched_generation(
+  stored: ManagedCredentialGenerationStored,
+  fetch: SecretCredentialFetch,
+  fetched_at: ObserverClockInstant,
+) -> GenerationFetchAdmission {
+  if observer_instant_precedes(earlier: fetched_at, later: stored.stored_at) {
+    GenerationFetchRefused { cause: GenerationFetchPrecedesStore { stored_at: stored.stored_at, fetched_at: fetched_at } }
+  } else {
+    match fetch {
+      SecretCredentialReady { credential: _, resolved_version: r } =>
+        if (r as String) != (stored.stored_version as String) {
+          GenerationFetchRefused { cause: GenerationFetchResolvedAnotherVersion { stored: stored.stored_version, resolved: r } }
+        } else {
+          GenerationFetched { fetched: ManagedCredentialGenerationFetched { stored: stored, fetched_at: fetched_at } }
+        }
+      SecretCredentialAccessUpsertRequired { plan: _ } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "secret access needs an access upsert first" as NonEmptyStr } }
+      SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "secret access response did not decode" as NonEmptyStr } }
+      SecretCredentialFetchRefused { reason: why } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: why } }
+      SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "secret access resolved another version than requested" as NonEmptyStr } }
+    }
+  }
+}
+
+// The pinned reference a later consumer passes to fetch_secret_ref_credential: the exact version, never
+// the alias the generation was stored under.
+fn fetched_generation_reference(fetched: ManagedCredentialGenerationFetched) -> ManagedCredentialReference {
+  fetched.stored.reference
+}
+
+// ── THE ACCOUNT ACTION, ADMITTED OVER A GROUNDED ROUTE ───────────────────────────────────────────
+//
+// Two writes, each over its own admitted route: the managed account set to the fetched managed
+// generation, and the published account retired by setting it to a fetched break-glass generation the
+// fleet owns (the user-2 retirement mtcollins1 executed on 2026-09-13). Each admission is COMPUTED here
+// by gunbc.machine_intake_bmc_rotation_route admit_rotation_apply from the route standing, the
+// controller and build being written and the operator's approval; an admission is never received.
+// Every arm other than RotationApplyAdmitted refuses before any write is planned, which is what
+// is that module's rotation_route_consumption_frontier consumer in code; the frontier stands until this
+// planner runs on a production path (the held cut-over).
+
+type AccountWriteTarget
+  = ManagedAccountTarget
+  | PublishedAccountTarget
+
+type PlannedAccountWrite {
+  target: AccountWriteTarget
+  user: IpmiUserId
+  route: BmcRotationRouteStanding
+  request: BmcAccountWriteRequest
+  decided_by: NonEmptyStr
+  generation: ManagedCredentialGenerationFetched
+}
+
+type BmcAccountActionPlan sole_constructor {
+  subject: MachineIntakeSubject
+  endpoint: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
+  goal: BmcSecureGoal
+  diverged: BmcAccountStateObservation
+  due: BmcAccountActionDue
+  managed_write: PlannedAccountWrite
+  published_write: PlannedAccountWrite
+  channel_writes: List<PlannedChannelAccessWrite>
+  planned_at: ObserverClockInstant
+}
+
+type BmcAccountPlanRefusal
+  = AccountPlanNotDue { decision: UpsertDecision<BmcAccountActionDue> }
+  | AccountPlanUnobserved { cause: BmcSecureStateRefusal }
+  | AccountWriteNotAdmitted { target: AccountWriteTarget, admission: RotationApplyAdmission }
+  | AccountWriteRequestNotIpmiUser { target: AccountWriteTarget, request: BmcAccountWriteRequest }
+  | AccountWriteRequestForAnotherUser { target: AccountWriteTarget, admitted: IpmiUserId, required: IpmiUserId }
+  | ManagedGenerationForAnotherAccount { generation: ManagedCredentialReference, in_force: ManagedCredentialReference }
+  | ManagedGenerationNotAdvanced { in_force: Int, generation: Int }
+  | PublishedGenerationNotGoalBound { generation: ManagedCredentialReference, goal: ManagedCredentialReference }
+  | GenerationFetchedAfterPlan { target: AccountWriteTarget, fetched_at: ObserverClockInstant, planned_at: ObserverClockInstant }
+  | PlanPrecedesDivergedReading { read_floor: ObserverClockInstant, planned_at: ObserverClockInstant }
+  | ChannelCloseRouteNotSupplied { channels: List<IpmiChannelNumber> }
+  | ChannelCloseApprovalAbsent { channel: IpmiChannelNumber }
+  | ChannelWriteNotAdmitted { channel: IpmiChannelNumber, admission: RotationApplyAdmission }
+
+type BmcAccountPlanOutcome
+  = BmcAccountPlanned { plan: BmcAccountActionPlan }
+  | BmcAccountPlanRefused { cause: BmcAccountPlanRefusal }
+
+fn admitted_account_write(
+  target: AccountWriteTarget,
+  user: IpmiUserId,
+  route: BmcRotationRouteStanding,
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  approval: Redemption,
+  generation: ManagedCredentialGenerationFetched,
+  planned_at: ObserverClockInstant,
+) -> PlannedAccountWriteAdmission {
+  let admission = admit_rotation_apply(standing: route, target_endpoint: endpoint, target_firmware: firmware, request: IpmiSetUserPassword { user: user }, managed_readback: none, approval: approval)
+  match admission {
+    RotationApplyAdmitted { standing: s, request: req, decided_by: by } =>
+      match req {
+        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } =>
+          PlannedAccountWriteRefused { cause: AccountWriteRequestNotIpmiUser { target: target, request: req } }
+        IpmiSetUserPrivilegeLimit { access: _ } =>
+          PlannedAccountWriteRefused { cause: AccountWriteRequestNotIpmiUser { target: target, request: req } }
+        IpmiSetUserPassword { user: u } =>
+          if (u as Int) != (user as Int) {
+            PlannedAccountWriteRefused { cause: AccountWriteRequestForAnotherUser { target: target, admitted: u, required: user } }
+          } else if observer_instant_precedes(earlier: planned_at, later: generation.fetched_at) {
+            PlannedAccountWriteRefused { cause: GenerationFetchedAfterPlan { target: target, fetched_at: generation.fetched_at, planned_at: planned_at } }
+          } else {
+            PlannedAccountWriteAdmitted {
+              write: PlannedAccountWrite { target: target, user: user, route: s, request: req, decided_by: by, generation: generation },
+            }
+          }
+      }
+    RotationApplyRouteNotGrounded { standing: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyApprovalRefused { cause: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyApprovalDenied => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyApprovalForAnotherAuthority { authority: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyRouteEffectUnobserved { standing: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
+  }
+}
+
+// ── THE CHANNEL-ACCESS WRITES (cut O1a-2) ────────────────────────────────────────────────────────
+//
+// Every census member on which the published account still holds access (its unique Get User Access
+// row is not NO ACCESS) gets one privilege-limit-only Set User Access write setting it to NO
+// ACCESS, over the supplied channel-access route. Each write's admission is COMPUTED by
+// admit_rotation_apply: the route must be grounded with its effect observed for this controller and
+// build, the approval must name this exact write, and the administrator-retention readback is
+// PROJECTED here from the very observation the plan assessed -- the managed account authenticated in
+// that read, and its own unique Get User Access row on the channel at ADMINISTRATOR -- never received.
+type PlannedChannelAccessWrite {
+  channel: IpmiChannelNumber
+  route: BmcRotationRouteStanding
+  request: BmcAccountWriteRequest
+  decided_by: NonEmptyStr
+}
+
+type ChannelCloseInput {
+  route: BmcRotationRouteStanding
+  approvals: List<Redemption>
+}
+
+fn census_member_channel(m: IpmiChannelCensusMember) -> IpmiChannelNumber {
+  match m {
+    IpmiNonLanChannelMember { channel: ch, medium: _ } => ch
+    IpmiLanChannelMember { channel: ch, medium: _, ipv4: _ } => ch
+  }
+}
+
+// Every census member -- LAN, addressed or not, and non-LAN such as a serial channel -- on which the
+// published account's unique Get User Access row is not NO ACCESS. A missing or duplicated row is not
+// listed here: the conjunction already refuses those readings before any plan.
+fn published_channels_left_open(observed: BmcAccountStateObservation) -> List<IpmiChannelNumber> {
+  let index = index_published_user_access(rows: observed.channel_census.user_access)
+  fold(observed.channel_census.members, init: [], f: (acc, m) =>
+    match map_get(index, published_user_access_key(channel: census_member_channel(m: m), user: observed.published_user)) {
+      Absent => acc
+      Present { value: slot } =>
+        match slot {
+          SeveralUserAccess => acc
+          OneUserAccess { access: row } => if row.privilege == IpmiPrivilegeNoAccess { acc } else { concat(acc, [census_member_channel(m: m)]) }
+        }
+    })
+}
+
+// THE PROJECTION. Present only when the observation established the managed account's authentication
+// at or after its read floor and took its census at or after that floor; the access rows are the
+// census's Get User Access rows for the managed user, and the readback carries the observation's own
+// endpoint and build. The attempt is the approval's, so the admission's same-run check binds the
+// approval to this read.
+fn project_managed_administrator_readback(observed: BmcAccountStateObservation, managed_user: IpmiUserId, attempt: AttemptIdentity) -> ManagedAdministratorReadback? {
+  match observed.managed_probe {
+    ObservedCredentialAccepted { reading: r } =>
+      if observer_instant_precedes(earlier: r.observed_at, later: observed.read_floor) || observer_instant_precedes(earlier: observed.census_observed_at, later: observed.read_floor) {
+        none
+      } else {
+        Present {
+          value: managed_administrator_readback_projected(
+            endpoint: observed.endpoint,
+            firmware: observed.firmware,
+            attempt: attempt,
+            managed_user: managed_user,
+            access: filter(observed.channel_census.user_access, a => (a.user as Int) == (managed_user as Int)),
+          ),
+        }
+      }
+    ObservedCredentialRejected { reading: _ } => none
+    ObservedCredentialUnestablished { detail: _ } => none
+  }
+}
+
+fn approval_for_request(route: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approvals: List<Redemption>) -> Redemption? {
+  let wanted = rotation_route_request_identity(standing: route, request: request)
+  let none_yet: Redemption? = none
+  fold(approvals, init: none_yet, f: (acc, a) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match a {
+          RedemptionAdmitted { claims: cl, decided_by: _ } => if cl.request_revision == wanted { Present { value: a } } else { acc }
+          RedemptionRefused { cause: _ } => acc
+        }
+    })
+}
+
+type ChannelWritesAdmission
+  = ChannelWritesAdmitted { writes: List<PlannedChannelAccessWrite> }
+  | ChannelWritesRefused { cause: BmcAccountPlanRefusal }
+
+fn admitted_channel_writes(observed: BmcAccountStateObservation, managed_user: IpmiUserId, input: ChannelCloseInput?) -> ChannelWritesAdmission {
+  let open = published_channels_left_open(observed: observed)
+  if list_length(items: open) == 0 {
+    ChannelWritesAdmitted { writes: [] }
+  } else {
+    match input {
+      Absent => ChannelWritesRefused { cause: ChannelCloseRouteNotSupplied { channels: open } }
+      Present { value: inp } =>
+        fold(open, init: ChannelWritesAdmitted { writes: [] }, f: (acc, ch) =>
+          match acc {
+            ChannelWritesRefused { cause: _ } => acc
+            ChannelWritesAdmitted { writes: done } => {
+              let request = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: ch, user: observed.published_user, privilege: IpmiPrivilegeNoAccess) }
+              match approval_for_request(route: inp.route, request: request, approvals: inp.approvals) {
+                Absent => ChannelWritesRefused { cause: ChannelCloseApprovalAbsent { channel: ch } }
+                Present { value: approval } => {
+                  let readback = match approval {
+                    RedemptionAdmitted { claims: cl, decided_by: _ } => project_managed_administrator_readback(observed: observed, managed_user: managed_user, attempt: cl.attempt)
+                    RedemptionRefused { cause: _ } => none
+                  }
+                  let admission = admit_rotation_apply(
+                    standing: inp.route,
+                    target_endpoint: observed.endpoint,
+                    target_firmware: observed.firmware,
+                    request: request,
+                    managed_readback: readback,
+                    approval: approval,
+                  )
+                  match admission {
+                    RotationApplyAdmitted { standing: st, request: req, decided_by: by } =>
+                      ChannelWritesAdmitted { writes: concat(done, [PlannedChannelAccessWrite { channel: ch, route: st, request: req, decided_by: by }]) }
+                    _ => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
+                  }
+                }
+              }
+            }
+          })
+    }
+  }
+}
+
+type PlannedAccountWriteAdmission
+  = PlannedAccountWriteAdmitted { write: PlannedAccountWrite }
+  | PlannedAccountWriteRefused { cause: BmcAccountPlanRefusal }
+
+// THE PLAN MINT RUNS THE DECISION ITSELF. A caller supplies the reading, the goal and the route
+// inputs; it does not supply a decision, so an Apply cannot be planned over a Noop or a refusal.
+fn plan_bmc_account_action(
+  subject: MachineIntakeSubject,
+  goal: BmcSecureGoal,
+  reading: BmcAccountStateObservation,
+  managed_user: IpmiUserId,
+  managed_route: BmcRotationRouteStanding,
+  managed_approval: Redemption,
+  managed_generation: ManagedCredentialGenerationFetched,
+  published_route: BmcRotationRouteStanding,
+  published_approval: Redemption,
+  published_generation: ManagedCredentialGenerationFetched,
+  channel_close: ChannelCloseInput?,
+  planned_at: ObserverClockInstant,
+) -> BmcAccountPlanOutcome {
+  match inspect_bmc_secure_state(subject: subject, goal: goal, reading: reading) {
+    BmcSecureStateUnobserved { cause: c } => BmcAccountPlanRefused { cause: AccountPlanUnobserved { cause: c } }
+    BmcSecureStateInspected { observed: o, assessment: _, decision: d } =>
+      match d {
+        Noop => BmcAccountPlanRefused { cause: AccountPlanNotDue { decision: d } }
+        Refuse { reason: _ } => BmcAccountPlanRefused { cause: AccountPlanNotDue { decision: d } }
+        Apply { plan: due } =>
+          if observer_instant_precedes(earlier: planned_at, later: o.read_floor) {
+            BmcAccountPlanRefused { cause: PlanPrecedesDivergedReading { read_floor: o.read_floor, planned_at: planned_at } }
+          } else {
+            let next = fetched_generation_reference(fetched: managed_generation)
+            let in_force = goal.managed
+            if !(next.account == in_force.account && next.role == in_force.role && (next.secret.project as String) == (in_force.secret.project as String) && next.secret.secret == in_force.secret.secret) {
+              BmcAccountPlanRefused { cause: ManagedGenerationForAnotherAccount { generation: next, in_force: in_force } }
+            } else if next.credential_epoch <= in_force.credential_epoch {
+              BmcAccountPlanRefused { cause: ManagedGenerationNotAdvanced { in_force: in_force.credential_epoch, generation: next.credential_epoch } }
+            } else if !managed_reference_same(a: fetched_generation_reference(fetched: published_generation), b: goal.published_break_glass) {
+              BmcAccountPlanRefused { cause: PublishedGenerationNotGoalBound { generation: fetched_generation_reference(fetched: published_generation), goal: goal.published_break_glass } }
+            } else {
+              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, route: managed_route, endpoint: o.endpoint, firmware: o.firmware, approval: managed_approval, generation: managed_generation, planned_at: planned_at) {
+                PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
+                PlannedAccountWriteAdmitted { write: mw } =>
+                  match admitted_account_write(target: PublishedAccountTarget, user: o.published_user, route: published_route, endpoint: o.endpoint, firmware: o.firmware, approval: published_approval, generation: published_generation, planned_at: planned_at) {
+                    PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
+                    PlannedAccountWriteAdmitted { write: pw } =>
+                      match admitted_channel_writes(observed: o, managed_user: managed_user, input: channel_close) {
+                        ChannelWritesRefused { cause: c } => BmcAccountPlanRefused { cause: c }
+                        ChannelWritesAdmitted { writes: cw } =>
+                      BmcAccountPlanned {
+                        plan: BmcAccountActionPlan {
+                          subject: subject,
+                          endpoint: o.endpoint,
+                          firmware: o.firmware,
+                          goal: BmcSecureGoal { managed: next, published_break_glass: goal.published_break_glass, policy: goal.policy },
+                          diverged: o,
+                          due: due,
+                          managed_write: mw,
+                          published_write: pw,
+                          channel_writes: cw,
+                          planned_at: planned_at,
+                        },
+                      }
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+// ── THE APPLICATION RECEIPT AND THE PHASE RECEIPT ────────────────────────────────────────────────
+//
+// What the effect did, as the realization recorded it: each write's completion, the request and
+// response receipts, and the observer instant the application completed. Minted only by a realization
+// of the plan in this module (the dry one below; the live one is bmc_secure_state_live_apply_frontier).
+type BmcAccountApplication sole_constructor {
+  plan: BmcAccountActionPlan
+  managed_write_completed: Bool
+  published_write_completed: Bool
+  channel_writes_completed: Bool
+  request_receipt: EvidenceRef
+  response_receipt: EvidenceRef
+  applied_at: ObserverClockInstant
+}
+
+type BmcSecurePhaseDecision
+  = BmcSecurePhaseNoop { observation: BmcAccountStateObservation }
+  | BmcSecurePhaseApplied { plan: BmcAccountActionPlan, application: BmcAccountApplication, post_read: BmcAccountStateObservation }
+
+// THE PHASE'S DOMAIN RECEIPT. gunbc.ensure says of itself that its observations and satisfaction
+// Booleans are caller-supplied and that one observation can be passed twice, so the ensure shape is the
+// decision only. This carrier binds subject + phase + admitted plan + application receipt +
+// independent post-read + evidence, and it is sealed: its two mints below are the only constructors,
+// one for a reading that already held (Noop) and one for an application followed by a readback. The
+// readback is independent BY ORDERING, not by convention: its read floor must be at or after the
+// application's observer instant, which is after the plan, which is after the diverged reading, so the
+// pre-write reading cannot be passed as the post-read.
+type BmcSecurePhaseReceipt sole_constructor {
+  subject: MachineIntakeSubject
+  phase: IntakePhase
+  goal: BmcSecureGoal
+  decision: BmcSecurePhaseDecision
+  held: BmcSecureHeld
+}
+
+type BmcSecurePhaseRefusal
+  = PhaseReadingUnobserved { cause: BmcSecureStateRefusal }
+  | PhaseNotHeld { decision: UpsertDecision<BmcAccountActionDue> }
+  | ApplicationIncomplete { managed_write_completed: Bool, published_write_completed: Bool, channel_writes_completed: Bool, response_receipt: EvidenceRef }
+  | PostReadForAnotherController { expected: BmcControllerEndpoint, found: BmcControllerEndpoint }
+  | PostReadPrecedesApplication { applied_at: ObserverClockInstant, read_floor: ObserverClockInstant }
+  | ApplicationPrecedesPlan { planned_at: ObserverClockInstant, applied_at: ObserverClockInstant }
+  | PostReadNotHeld { decision: UpsertDecision<BmcAccountActionDue> }
+
+type BmcSecurePhaseOutcome
+  = BmcSecurePhaseConverged { receipt: BmcSecurePhaseReceipt }
+  | BmcSecurePhaseRefused { cause: BmcSecurePhaseRefusal }
+
+fn bmc_secure_phase_noop(
+  subject: MachineIntakeSubject,
+  goal: BmcSecureGoal,
+  reading: BmcAccountStateObservation,
+) -> BmcSecurePhaseOutcome {
+  match inspect_bmc_secure_state(subject: subject, goal: goal, reading: reading) {
+    BmcSecureStateUnobserved { cause: c } => BmcSecurePhaseRefused { cause: PhaseReadingUnobserved { cause: c } }
+    BmcSecureStateInspected { observed: o, assessment: a, decision: d } =>
+      match a {
+        GoalSatisfied { evidence: held } =>
+          BmcSecurePhaseConverged {
+            receipt: BmcSecurePhaseReceipt { subject: subject, phase: bmc_secure_phase, goal: goal, decision: BmcSecurePhaseNoop { observation: o }, held: held },
+          }
+        GoalDiverged { deviations: _ } => BmcSecurePhaseRefused { cause: PhaseNotHeld { decision: d } }
+        GoalIndeterminate { known_deviations: _, unknowns: _ } => BmcSecurePhaseRefused { cause: PhaseNotHeld { decision: d } }
+        GoalAssessmentRefused { cause: _ } => BmcSecurePhaseRefused { cause: PhaseNotHeld { decision: d } }
+      }
+  }
+}
+
+fn bmc_secure_phase_applied(
+  application: BmcAccountApplication,
+  post_read: BmcAccountStateObservation,
+) -> BmcSecurePhaseOutcome {
+  let plan = application.plan
+  if !(application.managed_write_completed && application.published_write_completed && application.channel_writes_completed) {
+    BmcSecurePhaseRefused {
+      cause: ApplicationIncomplete {
+        managed_write_completed: application.managed_write_completed,
+        published_write_completed: application.published_write_completed,
+        channel_writes_completed: application.channel_writes_completed,
+        response_receipt: application.response_receipt,
+      },
+    }
+  } else if observer_instant_precedes(earlier: application.applied_at, later: plan.planned_at) {
+    BmcSecurePhaseRefused { cause: ApplicationPrecedesPlan { planned_at: plan.planned_at, applied_at: application.applied_at } }
+  } else if (post_read.endpoint.host as String) != (plan.endpoint.host as String) {
+    BmcSecurePhaseRefused { cause: PostReadForAnotherController { expected: plan.endpoint, found: post_read.endpoint } }
+  } else if observer_instant_precedes(earlier: post_read.read_floor, later: application.applied_at) {
+    BmcSecurePhaseRefused { cause: PostReadPrecedesApplication { applied_at: application.applied_at, read_floor: post_read.read_floor } }
+  } else {
+    match inspect_bmc_secure_state(subject: plan.subject, goal: plan.goal, reading: post_read) {
+      BmcSecureStateUnobserved { cause: c } => BmcSecurePhaseRefused { cause: PhaseReadingUnobserved { cause: c } }
+      BmcSecureStateInspected { observed: o, assessment: a, decision: d } =>
+        match a {
+          GoalSatisfied { evidence: held } =>
+            BmcSecurePhaseConverged {
+              receipt: BmcSecurePhaseReceipt {
+                subject: plan.subject,
+                phase: bmc_secure_phase,
+                goal: plan.goal,
+                decision: BmcSecurePhaseApplied { plan: plan, application: application, post_read: o },
+                held: held,
+              },
+            }
+          GoalDiverged { deviations: _ } => BmcSecurePhaseRefused { cause: PostReadNotHeld { decision: d } }
+          GoalIndeterminate { known_deviations: _, unknowns: _ } => BmcSecurePhaseRefused { cause: PostReadNotHeld { decision: d } }
+          GoalAssessmentRefused { cause: _ } => BmcSecurePhaseRefused { cause: PostReadNotHeld { decision: d } }
+        }
+    }
+  }
+}
+
+fn bmc_secure_phase_receipt_evidence(receipt: BmcSecurePhaseReceipt) -> List<EvidenceRef> {
+  match receipt.decision {
+    BmcSecurePhaseNoop { observation: _ } => receipt.held.evidence
+    BmcSecurePhaseApplied { plan: _, application: a, post_read: _ } =>
+      concat([a.request_receipt, a.response_receipt], receipt.held.evidence)
+  }
+}
+
+// ── THE DRY REALIZATION OVER gunbc.bmc_model BmcWorld ────────────────────────────────────────────
+//
+// The executing consumer of this section while it is in shadow. The world's IPMI user table is the
+// controller; the realization writes it through bmc_ipmi_set_user_password and reads it through
+// bmc_ipmi_user_accepts, so the readback is a property of the world after the write and never the
+// write's own completion. The channel census and the published user's channel access are inputs of
+// the read (BmcWorld does not model channels); the probes against every addressable LAN member are
+// derived from the world. The secret bytes each write uses are materialized through a
+// SecretCredentialFetch that must resolve to exactly the generation the plan carries.
+
+data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake_bmc_secure dry realization over gunbc.bmc_model BmcWorld" as NonEmptyStr
+
+fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant {
+  observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
+}
+
+fn dry_evidence(text: String) -> EvidenceRef {
+  EvidenceRef { label: text as NonEmptyStr, digest: content_hash_of_value(value: text) }
+}
+
+fn dry_probe(world: BmcWorld, user: IpmiUserId, password: String, what: String, at: ObserverClockInstant) -> ObservedCredentialProbe {
+  let text = join(["dry ipmi probe ", what, " user ", to_string(user as Int), " at ", to_string(observer_instant_millis(instant: at) as Int)], "")
+  if bmc_ipmi_user_accepts(world: world, user: user, password: password) {
+    ObservedCredentialAccepted { reading: observed_reading(evidence: dry_evidence(text: concat(text, " -> accepted")), observed_at: at) }
+  } else {
+    ObservedCredentialRejected { reading: observed_reading(evidence: dry_evidence(text: concat(text, " -> rejected")), observed_at: at) }
+  }
+}
+
+fn dry_published_lan_probes(
+  world: BmcWorld,
+  census: IpmiControllerChannelCensus,
+  published_user: IpmiUserId,
+  published_password: String,
+  at: ObserverClockInstant,
+) -> List<ObservedPublishedLanProbe> {
+  fold(census.members, init: [], f: (acc, m) =>
+    match m {
+      IpmiNonLanChannelMember { channel: _, medium: _ } => acc
+      IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
+        match cfg {
+          IpmiLanIpv4Unassigned => acc
+          IpmiLanIpv4Assigned { address: a } =>
+            concat(acc, [ObservedPublishedLanProbe { channel: ch, address: a, probe: dry_probe(world: world, user: published_user, password: published_password, what: "published", at: at) }])
+        }
+    })
+}
+
+// ONE READ OF THE WORLD'S ACCOUNT STATE. read_at_millis is the realization's observer schedule; every
+// reading in the observation is taken at it.
+fn dry_read_bmc_account_state(
+  world: BmcWorld,
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  managed: ManagedCredentialReference,
+  managed_user: IpmiUserId,
+  managed_password: String,
+  census: IpmiControllerChannelCensus,
+  published_user: IpmiUserId,
+  published_password: String,
+  published_account: PublishedAccountKind,
+  break_glass: ManagedCredentialReference,
+  break_glass_password: String,
+  read_at_millis: EpochMs,
+) -> BmcAccountStateObservation {
+  let at = dry_bmc_account_instant(millis: read_at_millis)
+  observed_bmc_account_state(
+    subject: subject,
+    endpoint: endpoint,
+    firmware: firmware,
+    managed: managed,
+    read_floor: at,
+    managed_probe: dry_probe(world: world, user: managed_user, password: managed_password, what: "managed", at: at),
+    channel_census: census,
+    census_evidence: dry_evidence(text: join(["dry channel census of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
+    census_observed_at: at,
+    published_probes: dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at),
+    published_user: published_user,
+    published_account: observed_published_account(
+      kind: published_account,
+      evidence: dry_evidence(text: join(["dry user list of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
+      observed_at: at,
+    ),
+    break_glass: break_glass,
+    break_glass_probe: dry_probe(world: world, user: published_user, password: break_glass_password, what: "break-glass", at: at),
+    controller_clock: none,
+  )
+}
+
+type BmcChannelWritesDryStep {
+  world: BmcWorld
+  completed: Bool
+}
+
+type BmcAccountDryStep {
+  world: BmcWorld
+  application: BmcAccountApplication
+}
+
+fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) -> String? {
+  match fetch {
+    SecretCredentialReady { credential: c, resolved_version: r } =>
+      if (r as String) == (write.generation.stored.stored_version as String) { Present { value: c as String } } else { none }
+    SecretCredentialAccessUpsertRequired { plan: _ } => none
+    SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
+    SecretCredentialFetchRefused { reason: _ } => none
+    SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
+  }
+}
+
+// THE WRITES, IN THE SECRET ORDER. Each write's bytes come from a fetch that resolved to exactly that
+// write's generation; a fetch of any other version writes nothing, and the application records the
+// write as not completed rather than writing a different credential.
+fn dry_apply_bmc_account_plan(
+  world: BmcWorld,
+  plan: BmcAccountActionPlan,
+  managed_fetch: SecretCredentialFetch,
+  published_fetch: SecretCredentialFetch,
+  applied_at_millis: EpochMs,
+) -> BmcAccountDryStep {
+  let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
+    Absent => BmcIpmiSetUserPasswordStep { world: world, completed: false }
+    Present { value: pw } => bmc_ipmi_set_user_password(world: world, user: plan.managed_write.user, password: pw)
+  }
+  let published_step = match dry_fetch_resolves(fetch: published_fetch, write: plan.published_write) {
+    Absent => BmcIpmiSetUserPasswordStep { world: managed_step.world, completed: false }
+    Present { value: pw } => bmc_ipmi_set_user_password(world: managed_step.world, user: plan.published_write.user, password: pw)
+  }
+  let channel_steps = fold(plan.channel_writes, init: BmcChannelWritesDryStep { world: published_step.world, completed: true }, f: (acc, w) =>
+    match w.request {
+      IpmiSetUserPrivilegeLimit { access: x } => {
+        let step = bmc_ipmi_set_user_access(world: acc.world, access: x)
+        BmcChannelWritesDryStep { world: step.world, completed: acc.completed && step.completed }
+      }
+      IpmiSetUserPassword { user: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
+      RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
+    })
+  let request_text = join(
+    concat(
+      ["dry ", account_write_request_text(request: plan.managed_write.request) as String, " then ", account_write_request_text(request: plan.published_write.request) as String],
+      concat(map(plan.channel_writes, w => concat(" then ", account_write_request_text(request: w.request) as String)), [" on ", plan.endpoint.host as String]),
+    ),
+    "",
+  )
+  let response_text = join(
+    [request_text, " -> managed completed=", if managed_step.completed { "true" } else { "false" }, " published completed=", if published_step.completed { "true" } else { "false" }, " channel writes completed=", if channel_steps.completed { "true" } else { "false" }],
+    "",
+  )
+  BmcAccountDryStep {
+    world: channel_steps.world,
+    application: BmcAccountApplication {
+      plan: plan,
+      managed_write_completed: managed_step.completed,
+      published_write_completed: published_step.completed,
+      channel_writes_completed: channel_steps.completed,
+      request_receipt: dry_evidence(text: request_text),
+      response_receipt: dry_evidence(text: response_text),
+      applied_at: dry_bmc_account_instant(millis: applied_at_millis),
+    },
+  }
+}
+
+// ── DECLARED FRONTIERS ───────────────────────────────────────────────────────────────────────────
+
+data bmc_secure_state_live_read_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls, including the user test of the published account with the goal's exact break-glass generation (break_glass_probe) materialized through fetch_secret_ref_credential, timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; NOT satisfied by the dry realization, by a transcription of an older readback, or by a read whose instants come from the controller's clock" as NonEmptyStr,
+)
+
+data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a live realization of BmcAccountActionPlan mints BmcAccountApplication beside dry_apply_bmc_account_plan, materializing each write's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential over that write's pinned generation reference, under the controller's own operator go-ahead redeemed through gunbc.auth.approval_broker; NOT satisfied by the dry realization, by a workflow entry that has not executed, or by a write whose bytes were supplied out of band" as NonEmptyStr,
+)
+
+// THE HELD TRANSITION (operator ruling C, 2026-10-04). Its rung drop is
+// gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash, retired by the same trigger.
+data bmc_secure_state_cutover_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when mtcollins1's BmcSecure standing is derived by the state-shaped fold (bmc_secure_phase_noop or bmc_secure_phase_applied) from a committed post-reflash readback of the current subject, and the rotation-event path (derive_bmc_secure, BmcCredentialRotationObservation, CredentialRotationApplication, CredentialProbeOutcome and every consumer that reads them, including gunbc.managed_host managed_hosts and gunbc.fleet.mtcollins_firmware_converge BmcCredentialReestablishment) is deleted in the same change; NOT satisfied by this section typechecking, by its dry realization, by re-expressing the 2026-09-13 readback on BMC 0.32, or by a readback whose subject is not the unit's current firmware" as NonEmptyStr,
+)

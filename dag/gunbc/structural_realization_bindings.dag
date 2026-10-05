@@ -2,7 +2,8 @@ module gunbc.structural_realization_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration }
+import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
@@ -58,11 +59,32 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
 // structure and must never acquire a row -- a native realization takes the kernel literal directly.
 data literal_homomorphism_rows: List<LiteralHomomorphism> = [
   peano_literal_homomorphism(module_path: "test.fixture.structural_peano_nat", nat: "StructuralNat", zero: "StructuralZero", succ: "StructuralSucc", prev_field: "prev"),
-  LiteralHomomorphism {
-    source_kind: KernelStringLiteral,
-    destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
-    element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
-    producer: UnicodeScalarSequenceUnfold
+  unicode_scalar_literal_homomorphism
+]
+
+// The ONE declared Unicode scalar unfold row. literal_homomorphism_rows elaborates literals through it
+// and conversion_plan_rows' phases carry it, so the literal route and the value route are one row,
+// never two that agree by transcription.
+data unicode_scalar_literal_homomorphism: LiteralHomomorphism = LiteralHomomorphism {
+  source_kind: KernelStringLiteral,
+  destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+  element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
+  producer: UnicodeScalarSequenceUnfold
+}
+
+// THE CORPUS'S NAMED CONVERSION PLANS (std.coercion ConversionPlan), beside the literal rows whose
+// routes they apply to values. Host text is the kernel-minted String; the code-point sequence
+// is std.algebra FreeMonoid over std.types Char, the same post-peel key the literal row above uses.
+// unicode_scalar_unfold is the value form of that row's UnicodeScalarSequenceUnfold;
+// unicode_scalar_fold is its inverse, lawful by the bijection std.coercion states.
+data conversion_plan_rows: List<ConversionPlan> = [
+  ConversionPlan {
+    route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_unfold"),
+    phase: UnfoldPhase { row: unicode_scalar_literal_homomorphism }
+  },
+  ConversionPlan {
+    route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_fold"),
+    phase: InverseUnfoldPhase { row: unicode_scalar_literal_homomorphism }
   }
 ]
 
@@ -90,4 +112,15 @@ data structural_ordering_rows: List<StructuralOrderingBinding> = [
 // same discipline as the rows above: it is never added to make a failing site compile.
 data kernel_grounding_rows: List<KernelGrounding> = [
   KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat") }
+]
+
+// WHICH KERNEL MINTS STAND FOR A CORPUS DECLARATION (std.literal_elaboration
+// KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is
+// v2.std.optional Optional, the corpus's one declaration of that coproduct. Bound here so a
+// Present or Absent arm carries that declaration's identity whether it was reached through the
+// sugar or through an import.
+data kernel_optional_mint_name: String = "Optional"
+
+data kernel_mint_declaration_rows: List<KernelMintDeclaration> = [
+  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional") }
 ]
