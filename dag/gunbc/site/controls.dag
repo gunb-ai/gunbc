@@ -116,12 +116,12 @@ fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
   ts_block(stmts: [
     ts_if(
       cond: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
-      then: ts_block(stmts: [ts_return(expr: none)]),
+      then_stmt: ts_block(stmts: [ts_return(expr: none)]),
       else_stmt: none,
     ),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: js_audio_context_var)),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: js_audio_context_var),
           op: "=",
@@ -133,7 +133,7 @@ fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
     ts_const(name: "play", value: ts_arrow(params: [], body: ts_block(stmts: js_oscillator_schedule_stmts(s: s, decay_s: decay_s)))),
     ts_if(
       cond: ts_binop(left: js_actx_member(name: "state"), op: "===", right: ts_lit_str(value: "running")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "play"), args: [])),
         ts_return(expr: none),
       ]),
@@ -270,7 +270,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
       ts_const(name: "t", value: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: [])),
       ts_if(
         cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(
             callee: ts_member(object: js_document_element(), property: "removeAttribute"),
             args: [ts_lit_str(value: "data-theme")],
@@ -319,7 +319,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
             )),
             ts_if(
               cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
                   args: [ts_lit_str(value: theme_storage_key)],
@@ -329,7 +329,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
             ),
             ts_if(
               cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: theme_toggle_auto_value)),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
                   args: [ts_lit_str(value: theme_storage_key), ts_ident(name: "next")],
@@ -367,7 +367,7 @@ fn account_swap_statements() -> List<TsStmt> {
     ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "gunbcAccountSlot"), op: "&&", right: ts_ident(name: "gunbcAccountSignin")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
         callee: ts_member(
           object: ts_call(
@@ -378,7 +378,7 @@ fn account_swap_statements() -> List<TsStmt> {
                   left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
                   op: "&&",
                   right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
-                then: ts_block(stmts: [
+                then_stmt: ts_block(stmts: [
                   ts_const(name: "gunbcViewer", value: ts_binop(
                     left: ts_binop(
                       left: ts_member(object: ts_ident(name: "s"), property: "name"),
@@ -407,7 +407,7 @@ fn account_swap_statements() -> List<TsStmt> {
                     right: ts_ident(name: "gunbcShort"))),
                   ts_if(
                     cond: ts_member(object: ts_ident(name: "s"), property: "picture"),
-                    then: ts_block(stmts: [
+                    then_stmt: ts_block(stmts: [
                       ts_const(name: "gunbcAvatarImg", value: ts_call(
                         callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
                         args: [ts_lit_str(value: "img")])),
@@ -439,7 +439,7 @@ fn account_swap_statements() -> List<TsStmt> {
         ts_const(name: "gunbcAccountMenu", value: account_query_expr(selector: "[data-account-menu]")),
         ts_if(
           cond: ts_binop(left: ts_ident(name: "gunbcAccountTrigger"), op: "&&", right: ts_ident(name: "gunbcAccountMenu")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_on_click(obj: "gunbcAccountTrigger", body: [
               ts_const(name: "gunbcMenuOpen", value: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
               ts_expr_stmt(expr: ts_binop(
@@ -466,7 +466,7 @@ fn account_swap_statements() -> List<TsStmt> {
                         left: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])),
                         op: "&&",
                         right: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])))),
-                    then: ts_block(stmts: [
+                    then_stmt: ts_block(stmts: [
                       ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
                       ts_expr_stmt(expr: ts_call(
                         callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),

@@ -1,6 +1,8 @@
 module gunbc.machine_intake_bmc_rotation_route
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.scoped_authorization { AttemptIdentity }
+import v2.std.algebra { any, filter, length }
 import std.disposition { Disposition, Terminal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
@@ -9,11 +11,14 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcAccessSurface }
-import extdeps.bmc.ipmi_channel { IpmiUserId }
+import extdeps.bmc.ipmi_channel {
+  IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit, IpmiChannelNumber,
+  IpmiPrivilegeCallback, IpmiPrivilegeUser, IpmiPrivilegeOperator, IpmiPrivilegeAdministrator, IpmiPrivilegeOem, IpmiPrivilegeNoAccess,
+}
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal }
-import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts }
+import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_ipmi_get_user_access }
 
 data bmc_rotation_route_disposition: Disposition = Terminal {
   reason: "The rotation route standing is the terminal form of the AccessDiscover route answer (docs/plans/managed-host-untangle.md, cut O1a): one sealed standing per controller and firmware build, bound to the evidence that grounds it, and the separate qualification effect that is the only crossing from a candidate to an executed-request grounding. It replaces the family-keyed rotation answer that gunbc.bmc_implementation_dispatch used to give; nothing here is staged pending a different construction." as NonEmptyStr,
@@ -35,9 +40,19 @@ data bmc_rotation_route_disposition: Disposition = Terminal {
 // over the controller's IPMI LAN route; it is what mtcollins1 executed. RedfishAccountPasswordWrite
 // names the modeled Redfish account-password operation and action shape by reference; on MegaRAC it
 // is only ever a candidate today, because no AccountService write has been executed on any MegaRAC
-// controller this repository has receipts for.
+// controller this repository has receipts for. IpmiSetUserPrivilegeLimit is ONLY the privilege-limit
+// form of the public IPMI v2.0 Set User Access command (App NetFn, command 43h): request byte 1 bit 7
+// clear, so the callback, link-authentication and IPMI-messaging bits are NOT changed, and only the
+// user's privilege limit on one channel is set; no session limit is written. It is carried as the same
+// (channel, user, privilege) row Get User Access returns (extdeps.bmc.ipmi_channel IpmiUserChannelAccess),
+// which is a projection of that command's result, not the full command. A future live transport must
+// issue exactly this mode, and a route grounded by it grounds this restricted operation only: it is not
+// evidence for any other use of Set User Access. It is the write that closes a published account on a channel -- a password
+// write cannot set a channel privilege to NO ACCESS -- and no execution of it is committed for any
+// controller, so it is only ever a candidate today.
 type BmcAccountWriteRequest
   = IpmiSetUserPassword { user: IpmiUserId }
+  | IpmiSetUserPrivilegeLimit { access: IpmiUserChannelAccess }
   | RedfishAccountPasswordWrite { transport_operation: DeclarationRef, action_shape: DeclarationRef }
 
 // WHY A CANDIDATE IS WORTH TRYING. Either a surface was observed on THIS controller (the read surface
@@ -51,10 +66,21 @@ type RouteCandidateEvidence
 // RouteGroundedByExecutedRequest, plus a route grounded by a source cited for this build. Only the
 // two Grounded arms admit an ordinary rotation Apply (admit_rotation_apply).
 type BmcRotationRouteGrounding
-  = RouteGroundedByExecutedRequest { request: BmcAccountWriteRequest, request_receipt: EvidenceRef, response_receipt: EvidenceRef }
+  = RouteGroundedByExecutedRequest { request: BmcAccountWriteRequest, request_receipt: EvidenceRef, response_receipt: EvidenceRef, effect: RouteEffectStanding }
   | RouteGroundedByCitedSource { request: BmcAccountWriteRequest, citation: ExternalAuthority }
   | RouteQualificationCandidate { request: BmcAccountWriteRequest, evidence: RouteCandidateEvidence }
   | RouteUngrounded
+
+// WHAT AN EXECUTED REQUEST GROUNDS: that the controller ACCEPTED the operation, and -- only when the
+// run could tell -- that it TOOK EFFECT. A write whose requested value equals the value already present
+// reads back identically whether the controller applied it or silently ignored it, so it grounds
+// acceptance only. The effect is observed exactly when the reading taken BEFORE the write differed from
+// the requested value and the readback AFTER it matches; that comparison is made by whoever mints the
+// response, never declared by a caller. A privilege-lowering Apply relies on the effect and requires
+// EffectObserved (admit_rotation_apply).
+type RouteEffectStanding
+  = EffectObserved
+  | AcceptedEffectUnobserved
 
 // SEALED: the endpoint and build are joined to their grounding only by the mints in this module, so
 // no other module can pair one controller's executed request with another controller or build. The
@@ -97,6 +123,7 @@ fn rotation_route_from_committed_execution(
   request: BmcAccountWriteRequest,
   request_receipt: EvidenceRef,
   response_receipt: EvidenceRef,
+  effect: RouteEffectStanding,
 ) -> BmcRotationRouteStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route_evidence", decl_name: "mtcollins1_rotation_route_standing"),
@@ -105,7 +132,7 @@ fn rotation_route_from_committed_execution(
   BmcRotationRouteStanding {
     endpoint: endpoint,
     firmware: firmware,
-    grounding: RouteGroundedByExecutedRequest { request: request, request_receipt: request_receipt, response_receipt: response_receipt },
+    grounding: RouteGroundedByExecutedRequest { request: request, request_receipt: request_receipt, response_receipt: response_receipt, effect: effect },
   }
 }
 
@@ -121,9 +148,13 @@ fn rotation_route_from_citation(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "lockout_verdict"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
   ]
 {
   BmcRotationRouteStanding {
@@ -147,7 +178,7 @@ type HistoricalRotationRouteObservation {
 
 fn rotation_route_is_grounded(standing: BmcRotationRouteStanding) -> Bool {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => true
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => true
     RouteGroundedByCitedSource { request: _, citation: _ } => true
     RouteQualificationCandidate { request: _, evidence: _ } => false
     RouteUngrounded => false
@@ -157,6 +188,8 @@ fn rotation_route_is_grounded(standing: BmcRotationRouteStanding) -> Bool {
 fn account_write_request_text(request: BmcAccountWriteRequest) -> NonEmptyStr {
   match request {
     IpmiSetUserPassword { user: u } => join(["IPMI Set User Password (App 47h) user ", to_string(u as Int)], "") as NonEmptyStr
+    IpmiSetUserPrivilegeLimit { access: a } =>
+      join(["IPMI Set User Access, privilege limit only (App 43h, byte 1 bit 7 clear) user ", to_string(a.user as Int), " channel ", to_string(a.channel as Int), " privilege ", canonical_ipmi_privilege(privilege: a.privilege)], "") as NonEmptyStr
     RedfishAccountPasswordWrite { transport_operation: op, action_shape: _ } =>
       join(["Redfish account password write via ", op.module_path as String, " ", op.decl_name as String], "") as NonEmptyStr
   }
@@ -174,16 +207,68 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
     IpmiSetUserPassword { user: ua } =>
       match b {
         IpmiSetUserPassword { user: ub } => (ua as Int) == (ub as Int)
+        IpmiSetUserPrivilegeLimit { access: _ } => false
+        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+      }
+    IpmiSetUserPrivilegeLimit { access: xa } =>
+      match b {
+        IpmiSetUserPassword { user: _ } => false
+        IpmiSetUserPrivilegeLimit { access: xb } =>
+          (xa.user as Int) == (xb.user as Int)
+            && (xa.channel as Int) == (xb.channel as Int)
+            && xa.privilege == xb.privilege
         RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
       }
     RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => false
         RedfishAccountPasswordWrite { transport_operation: ob, action_shape: sb } =>
           declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
       }
   }
 }
+
+// THE OPERATION a request performs, without its arguments: which command (or which modeled Redfish
+// operation and action shape). A route grounds an OPERATION on a controller and build -- an executed
+// Set User Password on user 3 shows that controller performs Set User Password -- while the exact
+// arguments are what an approval names. So the Apply admission compares shapes, and the approval
+// identity compares every field.
+fn account_write_request_same_operation(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest) -> Bool {
+  match a {
+    IpmiSetUserPassword { user: _ } =>
+      match b {
+        IpmiSetUserPassword { user: _ } => true
+        IpmiSetUserPrivilegeLimit { access: _ } => false
+        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+      }
+    IpmiSetUserPrivilegeLimit { access: _ } =>
+      match b {
+        IpmiSetUserPassword { user: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => true
+        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+      }
+    RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
+      match b {
+        IpmiSetUserPassword { user: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => false
+        RedfishAccountPasswordWrite { transport_operation: ob, action_shape: sb } =>
+          declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
+      }
+  }
+}
+
+fn canonical_ipmi_privilege(privilege: IpmiChannelPrivilegeLimit) -> String {
+  match privilege {
+    IpmiPrivilegeCallback => "callback"
+    IpmiPrivilegeUser => "user"
+    IpmiPrivilegeOperator => "operator"
+    IpmiPrivilegeAdministrator => "administrator"
+    IpmiPrivilegeOem => "oem"
+    IpmiPrivilegeNoAccess => "no-access"
+  }
+}
+
 
 fn canonical_component(text: String) -> String {
   join([to_string(length(text)), ":", text], "")
@@ -204,6 +289,8 @@ fn canonical_decl_ref(r: DeclarationRef) -> String {
 fn canonical_account_write_request(request: BmcAccountWriteRequest) -> String {
   match request {
     IpmiSetUserPassword { user: u } => join(["ipmi-set-user-password;", canonical_component(text: to_string(u as Int))], "")
+    IpmiSetUserPrivilegeLimit { access: a } =>
+      join(["ipmi-set-user-privilege-limit;", canonical_component(text: to_string(a.user as Int)), canonical_component(text: to_string(a.channel as Int)), canonical_component(text: canonical_ipmi_privilege(privilege: a.privilege))], "")
     RedfishAccountPasswordWrite { transport_operation: op, action_shape: act } =>
       join(["redfish-account-password-write;", canonical_decl_ref(r: op), canonical_decl_ref(r: act)], "")
   }
@@ -278,6 +365,7 @@ type RouteQualificationLiveResponse sole_constructor {
   response_receipt: EvidenceRef
   completed: Bool
   readback_accepted: Bool
+  effect: RouteEffectStanding
 }
 
 type ModeledRouteQualificationResponse sole_constructor {
@@ -286,6 +374,11 @@ type ModeledRouteQualificationResponse sole_constructor {
   response_receipt: EvidenceRef
   completed: Bool
   readback_accepted: Bool
+  effect: RouteEffectStanding
+}
+
+fn effect_of(before_matched: Bool, after_matched: Bool) -> RouteEffectStanding {
+  if !before_matched && after_matched { EffectObserved } else { AcceptedEffectUnobserved }
 }
 
 type DryRouteQualificationStep {
@@ -293,16 +386,47 @@ type DryRouteQualificationStep {
   response: ModeledRouteQualificationResponse?
 }
 
-// THE DRY REALIZATION. The request is the IPMI Set User Password transition of gunbc.bmc_model; the
-// readback is that model's authentication of the same user with the same password, independent of
-// the write's completion. The receipts digest the rendered request and response; the password is
+// THE DRY REALIZATION. A Set User Password request is gunbc.bmc_model's password transition, read
+// back by that model's authentication of the same user with the same password; a Set User Access
+// request is its channel-access transition, read back by Get User Access for the same (channel,
+// user). Each readback is independent of the write's completion. The receipts digest the rendered request and response; the password is
 // never rendered into either. A request the model does not carry (the Redfish account write: the
 // model holds no Redfish account surface) yields no response, so the classifier refuses rather than
 // reading a success from nothing.
 fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationSubject, password: String) -> DryRouteQualificationStep {
   match subject.request {
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => DryRouteQualificationStep { world: world, response: none }
+    IpmiSetUserPrivilegeLimit { access: x } => {
+      let before = match bmc_ipmi_get_user_access(world: world, user: x.user, channel: x.channel) {
+        Present { value: p } => p == x.privilege
+        Absent => false
+      }
+      let step = bmc_ipmi_set_user_access(world: world, access: x)
+      let accepted = match bmc_ipmi_get_user_access(world: step.world, user: x.user, channel: x.channel) {
+        Present { value: p } => p == x.privilege
+        Absent => false
+      }
+      let request_text = join(["modeled ", account_write_request_text(request: subject.request) as String, " at ", subject.endpoint.host as String, " firmware ", subject.firmware.raw_version as String], "") as NonEmptyStr
+      let response_text = join(
+        [request_text as String, " -> completed=", if step.completed { "true" } else { "false" }, " get-user-access=", if accepted { "matches" } else { "differs" }],
+        "",
+      ) as NonEmptyStr
+      DryRouteQualificationStep {
+        world: step.world,
+        response: Present {
+          value: ModeledRouteQualificationResponse {
+            subject: subject,
+            request_receipt: EvidenceRef { label: request_text, digest: content_hash_of_value(value: request_text) },
+            response_receipt: EvidenceRef { label: response_text, digest: content_hash_of_value(value: response_text) },
+            completed: step.completed,
+            readback_accepted: accepted,
+            effect: effect_of(before_matched: before, after_matched: accepted),
+          },
+        },
+      }
+    }
     IpmiSetUserPassword { user: u } => {
+      let before = bmc_ipmi_user_accepts(world: world, user: u, password: password)
       let step = bmc_ipmi_set_user_password(world: world, user: u, password: password)
       let accepted = bmc_ipmi_user_accepts(world: step.world, user: u, password: password)
       let request_text = join(["modeled ", account_write_request_text(request: subject.request) as String, " at ", subject.endpoint.host as String, " firmware ", subject.firmware.raw_version as String, ", password length ", to_string(length(password))], "") as NonEmptyStr
@@ -319,6 +443,7 @@ fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationS
             response_receipt: EvidenceRef { label: response_text, digest: content_hash_of_value(value: response_text) },
             completed: step.completed,
             readback_accepted: accepted,
+            effect: effect_of(before_matched: before, after_matched: accepted),
           },
         },
       }
@@ -368,7 +493,7 @@ fn route_qualification_refusal(
   readback_accepted: Bool,
 ) -> RouteQualificationRefusal? {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => Present { value: QualificationSubjectNotACandidate }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => Present { value: QualificationSubjectNotACandidate }
     RouteGroundedByCitedSource { request: _, citation: _ } => Present { value: QualificationSubjectNotACandidate }
     RouteUngrounded => Present { value: QualificationSubjectNotACandidate }
     RouteQualificationCandidate { request: req, evidence: _ } =>
@@ -397,7 +522,7 @@ fn candidate_refusal_without_response(standing: BmcRotationRouteStanding, approv
         Present { value: refusal } => refusal
         Absent => QualificationRequestUnrealized
       }
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => QualificationSubjectNotACandidate
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => QualificationSubjectNotACandidate
     RouteGroundedByCitedSource { request: _, citation: _ } => QualificationSubjectNotACandidate
     RouteUngrounded => QualificationSubjectNotACandidate
   }
@@ -424,7 +549,7 @@ fn qualify_rotation_route(
             standing: BmcRotationRouteStanding {
               endpoint: standing.endpoint,
               firmware: standing.firmware,
-              grounding: RouteGroundedByExecutedRequest { request: r.subject.request, request_receipt: r.request_receipt, response_receipt: r.response_receipt },
+              grounding: RouteGroundedByExecutedRequest { request: r.subject.request, request_receipt: r.request_receipt, response_receipt: r.response_receipt, effect: r.effect },
             },
           }
       }
@@ -433,7 +558,7 @@ fn qualify_rotation_route(
 
 // THE MODELED VERDICT: what the same classifier says of a modeled run. No arm carries a standing.
 type ModeledRouteQualificationVerdict
-  = ModeledQualificationWouldQualify { subject: RouteQualificationSubject, request_receipt: EvidenceRef, response_receipt: EvidenceRef }
+  = ModeledQualificationWouldQualify { subject: RouteQualificationSubject, request_receipt: EvidenceRef, response_receipt: EvidenceRef, effect: RouteEffectStanding }
   | ModeledQualificationRefused { cause: RouteQualificationRefusal }
 
 fn classify_modeled_route_qualification(
@@ -446,13 +571,151 @@ fn classify_modeled_route_qualification(
     Present { value: r } =>
       match route_qualification_refusal(standing: standing, approval: approval, answered: r.subject, response_receipt: r.response_receipt, completed: r.completed, readback_accepted: r.readback_accepted) {
         Present { value: refusal } => ModeledQualificationRefused { cause: refusal }
-        Absent => ModeledQualificationWouldQualify { subject: r.subject, request_receipt: r.request_receipt, response_receipt: r.response_receipt }
+        Absent => ModeledQualificationWouldQualify { subject: r.subject, request_receipt: r.request_receipt, response_receipt: r.response_receipt, effect: r.effect }
       }
   }
 }
 
+// ── THE PRE-WRITE QUALIFICATION ADMISSION: the only value a transport call may be made from ──────
+//
+// THE FIRST DANGEROUS WRITE IS THE QUALIFICATION, NOT THE APPLY. Qualifying a route executes a real
+// account write, so every guard the Apply has must hold BEFORE that write too. Each request shape has
+// its own qualification entrypoint -- the effect boundary its census row names -- and each produces
+// AdmittedRouteQualificationRequest, sealed, minted only here, and the ONLY input from which the live
+// realization may make its transport call (route_qualification_live_frontier). A privilege-limit write
+// is admitted only beside a same-run ManagedAdministratorReadback for the same controller and build:
+// the managed account read back, uniquely, at ADMINISTRATOR on that channel, and not the account being
+// lowered. No receipt, no transport call.
+type AdmittedRouteQualificationRequest sole_constructor {
+  subject: RouteQualificationSubject
+  attempt: AttemptIdentity
+  decided_by: NonEmptyStr
+}
+
+type RouteQualificationRequestRefusal
+  = QualificationRequestForAnotherOperation { candidate: BmcAccountWriteRequest }
+  | QualificationRequestRefusedByClassifier { cause: RouteQualificationRefusal }
+  | QualificationRequestWouldLeaveNoAdministrator { cause: AdministratorRetentionRefusal }
+
+type RouteQualificationRequestAdmission
+  = RouteQualificationRequestAdmitted { request: AdmittedRouteQualificationRequest }
+  | RouteQualificationRequestRefused { cause: RouteQualificationRequestRefusal }
+
+fn admit_route_qualification_request(
+  standing: BmcRotationRouteStanding,
+  approval: Redemption,
+  readback: ManagedAdministratorReadback?,
+) -> RouteQualificationRequestAdmission {
+  match standing.grounding {
+    RouteQualificationCandidate { request: req, evidence: _ } =>
+      match qualification_approval_refusal(standing: standing, request: req, approval: approval) {
+        Present { value: refusal } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: refusal } }
+        Absent =>
+          match approval {
+            RedemptionRefused { cause: c } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationApprovalRefused { cause: c } } }
+            RedemptionAdmitted { claims: cl, decided_by: by } =>
+              match qualification_retention_refusal(standing: standing, request: req, readback: readback, approved_attempt: cl.attempt) {
+                Present { value: c } => RouteQualificationRequestRefused { cause: QualificationRequestWouldLeaveNoAdministrator { cause: c } }
+                Absent =>
+                  RouteQualificationRequestAdmitted {
+                    request: AdmittedRouteQualificationRequest {
+                      subject: RouteQualificationSubject { endpoint: standing.endpoint, firmware: standing.firmware, request: req },
+                      attempt: cl.attempt,
+                      decided_by: by,
+                    },
+                  }
+              }
+          }
+      }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+    RouteGroundedByCitedSource { request: _, citation: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+    RouteUngrounded => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+  }
+}
+
+// AT THE QUALIFICATION BOUNDARY a privilege-limit request that does not lower anything is admitted
+// only as an IDEMPOTENT RE-ASSERTION OF THE MANAGED ACCOUNT'S OWN CURRENT VALUE: the request's target user
+// IS the readback's managed account, and that account's unique row for the target channel already holds
+// exactly the requested limit. The second half is not a separate check: a non-lowering request IS
+// ADMINISTRATOR, and administrator_retention_refusal (applied first) already requires the managed
+// account's unique row on that channel to be ADMINISTRATOR. So a managed id that changed after the
+// reflash, or a target that does not already hold the value, issues no request at all, rather than
+// granting a privilege. A lowering request
+// at qualification is an effectful act and passes the ordinary retention precondition.
+fn qualification_retention_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
+  match administrator_retention_refusal(standing: standing, request: request, readback: readback, approved_attempt: approved_attempt) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match request {
+        IpmiSetUserPrivilegeLimit { access: x } =>
+          if lowers_privilege(privilege: x.privilege) {
+            none
+          } else {
+            match readback {
+              Absent => Present { value: ManagedReadbackAbsent }
+              Present { value: r } =>
+                if (r.managed_user as Int) != (x.user as Int) {
+                  Present { value: QualificationTargetIsNotTheManagedAccount { target: x.user, managed_user: r.managed_user } }
+                } else {
+                  none
+                }
+            }
+          }
+        IpmiSetUserPassword { user: _ } => none
+        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
+      }
+  }
+}
+
+fn candidate_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
+  match standing.grounding {
+    RouteQualificationCandidate { request: r, evidence: _ } => Present { value: r }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => none
+    RouteGroundedByCitedSource { request: _, citation: _ } => none
+    RouteUngrounded => none
+  }
+}
+
+fn is_password_request(request: BmcAccountWriteRequest) -> Bool {
+  match request {
+    IpmiSetUserPassword { user: _ } => true
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true
+    IpmiSetUserPrivilegeLimit { access: _ } => false
+  }
+}
+
+// THE PASSWORD QUALIFICATION EFFECT. Census: route_qualification_effect.
+fn admit_password_route_qualification(standing: BmcRotationRouteStanding, approval: Redemption) -> RouteQualificationRequestAdmission {
+  match candidate_request(standing: standing) {
+    Present { value: r } =>
+      if is_password_request(request: r) {
+        admit_route_qualification_request(standing: standing, approval: approval, readback: none)
+      } else {
+        RouteQualificationRequestRefused { cause: QualificationRequestForAnotherOperation { candidate: r } }
+      }
+    Absent => admit_route_qualification_request(standing: standing, approval: approval, readback: none)
+  }
+}
+
+// THE PRIVILEGE-LIMIT QUALIFICATION EFFECT. Census: route_qualification_channel_access_effect.
+fn admit_privilege_limit_route_qualification(
+  standing: BmcRotationRouteStanding,
+  approval: Redemption,
+  readback: ManagedAdministratorReadback?,
+) -> RouteQualificationRequestAdmission {
+  match candidate_request(standing: standing) {
+    Present { value: r } =>
+      if is_password_request(request: r) {
+        RouteQualificationRequestRefused { cause: QualificationRequestForAnotherOperation { candidate: r } }
+      } else {
+        admit_route_qualification_request(standing: standing, approval: approval, readback: readback)
+      }
+    Absent => admit_route_qualification_request(standing: standing, approval: approval, readback: readback)
+  }
+}
+
 data route_qualification_live_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live realization of the route-qualification request mints RouteQualificationLiveResponse in this module from a transport call against the controller, bound to the exact RouteQualificationSubject it was made against, under that controller's own operator go-ahead redeemed through gunbc.auth.approval_broker, with request and response bytes committed as content-addressed evidence, and qualify_rotation_route is called with it; until then RouteQualificationLiveResponse has no mint and no candidate can be grounded by qualification. NOT satisfied by the dry realization over gunbc.bmc_model BmcWorld (its ModeledRouteQualificationResponse cannot construct a standing), by a workflow entry that has not executed, or by a receipt that names no controller and build" as NonEmptyStr,
+  description: "dissolves when a live realization of the route-qualification request mints RouteQualificationLiveResponse in this module from a transport call against the controller made ONLY from an AdmittedRouteQualificationRequest whose pre-write receipt satisfied managed_administrator_readback_live_frontier in full (goal-bound account authentication and subject binding, unique channel/user evidence, pre-write ordering) (admit_password_route_qualification or admit_privilege_limit_route_qualification, so every pre-write guard including the same-run administrator-retention receipt has held) and, for a privilege-limit request, issued in the privilege-limit-only mode of Set User Access, bound to the exact RouteQualificationSubject it was made against, with its effect standing computed from an ESTABLISHED pre-write reading of the target that DIFFERS from the requested value and a post-write readback that MATCHES it (EffectObserved), and AcceptedEffectUnobserved otherwise -- a missing or unread pre-state is never evidence of a difference, under that controller's own operator go-ahead redeemed through gunbc.auth.approval_broker, with request and response bytes committed as content-addressed evidence, and qualify_rotation_route is called with it; until then RouteQualificationLiveResponse has no mint and no candidate can be grounded by qualification. NOT satisfied by the dry realization over gunbc.bmc_model BmcWorld (its ModeledRouteQualificationResponse cannot construct a standing), by a workflow entry that has not executed, or by a receipt that names no controller and build" as NonEmptyStr,
 )
 
 // ── THE ORDINARY ROTATION APPLY CONSUMES ONLY A GROUNDED ROUTE ──────────────────────────────────
@@ -463,20 +726,185 @@ data route_qualification_live_frontier: DissolutionCondition = unbound_dissoluti
 // controller or build refuses a write to another, so mtcollins1's executed IPMI route can never
 // authorize mtjade1. The approval must name the rotation authority AND this exact controller, build
 // and request (rotation_route_request_identity): an approval given for one controller is a different
-// decision on every other, refused as RotationApplyApprovalForAnotherRequest.
+// decision on every other, refused as RotationApplyApprovalForAnotherRequest. The Apply names the
+// request it will make, and a route grounds one OPERATION: a grounded Set User Password route does not
+// admit a Set User Access write, refused as RotationApplyRouteForAnotherOperation.
 type RotationApplyAdmission
   = RotationApplyAdmitted { standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, decided_by: NonEmptyStr }
   | RotationApplyRouteNotGrounded { standing: BmcRotationRouteStanding }
   | RotationApplyRouteForAnotherController { route_endpoint: BmcControllerEndpoint, target_endpoint: BmcControllerEndpoint }
   | RotationApplyRouteForAnotherBuild { route_firmware: BmcFirmwareReleaseIdentity, target_firmware: BmcFirmwareReleaseIdentity }
+  | RotationApplyRouteForAnotherOperation { grounded: BmcAccountWriteRequest, requested: BmcAccountWriteRequest }
+  | RotationApplyRouteEffectUnobserved { standing: BmcRotationRouteStanding }
   | RotationApplyApprovalRefused { cause: RedemptionRefusal }
   | RotationApplyApprovalDenied
   | RotationApplyApprovalForAnotherAuthority { authority: NonEmptyStr }
   | RotationApplyApprovalForAnotherRequest { approved: NonEmptyStr, requested: NonEmptyStr }
+  | RotationApplyWouldLeaveNoAdministrator { channel: IpmiChannelNumber, cause: AdministratorRetentionRefusal }
+
+// THE LOCKOUT HAZARD IS A REFUSAL, NOT A NOTE. A Set User Access write that lowers a user's privilege
+// on a channel (anything other than ADMINISTRATOR) could remove the last administrator-capable account
+// from that channel. It is admissible only beside a typed precondition: the MANAGED account -- a
+// different user from the one being closed -- read back at ADMINISTRATOR on that same channel with
+// Get User Access, IN THE SAME RUN, which is the attempt the approval names, ON THE SAME CONTROLLER AND
+// BUILD as the route.
+//
+// THE READBACK IS SEALED, so the precondition is not a caller-supplied Boolean in a record. Its
+// production mint, managed_administrator_readback_projected, is a projection of the BmcSecure account
+// observation performed inside the BmcSecure plan mint; it is live only once that observation is
+// (managed_administrator_readback_live_frontier). The one other mint is admitted only to the exact
+// witness claims that consume the readback they mint and return a Bool, so no admitted caller hands a
+// readback to anyone else.
+type ManagedAdministratorReadback sole_constructor {
+  endpoint: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
+  attempt: AttemptIdentity
+  managed_user: IpmiUserId
+  access: List<IpmiUserChannelAccess>
+}
+
+fn managed_administrator_readback_fixture(
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  attempt: AttemptIdentity,
+  managed_user: IpmiUserId,
+  access: List<IpmiUserChannelAccess>,
+) -> ManagedAdministratorReadback
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_readback_from_another_controller_or_build_does_not_unlock_a_close"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_duplicated_managed_readback_row_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "the_prewrite_admission_admits_only_with_the_same_run_receipt"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value"),
+  ]
+{
+  ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
+}
+
+// THE PRODUCTION MINT: A PROJECTION OF THE ACCOUNT OBSERVATION THE PLAN ASSESSED. This module sits below
+// gunbc.machine_intake_bmc_secure and cannot name its observation type, so the projection is performed
+// there, by project_managed_administrator_readback, and this mint admits that one function and nothing
+// else. That function runs inside the BmcSecure plan mint, over the very BmcAccountStateObservation the
+// plan assessed: the readback is therefore bound by construction to that observation's machine/intake
+// subject, its goal-bound managed reference, its managed-account authentication (accepted at or after
+// the read floor), its census evidence and its observer time -- all ordered before the plan, which is
+// before any write -- and it is never received from a caller.
+fn managed_administrator_readback_projected(
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  attempt: AttemptIdentity,
+  managed_user: IpmiUserId,
+  access: List<IpmiUserChannelAccess>,
+) -> ManagedAdministratorReadback
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "project_managed_administrator_readback"),
+  ]
+{
+  ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
+}
+
+data managed_administrator_readback_live_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the BmcAccountStateObservation that managed_administrator_readback_projected is projected from is itself minted ONLY from a live read in the same run (gunbc.machine_intake_bmc_secure bmc_secure_state_live_read_frontier), against the controller, that establishes ALL of: (1) successful authentication of the GOAL-BOUND managed account (the account the BmcSecure goal names, bound to the machine/intake subject), so the reading is that account's and not a cached or supplied row; (2) the endpoint and the firmware build observed in that run, and the run's attempt; (3) a Get User Access result for every (channel, user) pair it carries, unique per pair, with the response bytes committed as content-addressed evidence; (4) an observer-clock time ordered BEFORE the write the readback admits. Missing, unreadable, duplicated or conflicting, stale, other-controller, other-build or other-account readings refuse. Until then the only observations a readback is projected from are the dry realization's, so no live privilege-limit write can be planned. NOT satisfied by the witness fixture, by a reading from another run, by a cached access row, or by a reading timed after the write" as NonEmptyStr,
+)
+
+type AdministratorRetentionRefusal
+  = ManagedReadbackAbsent
+  | ManagedReadbackFromAnotherController { readback: BmcControllerEndpoint, route: BmcControllerEndpoint }
+  | ManagedReadbackFromAnotherBuild { readback: BmcFirmwareReleaseIdentity, route: BmcFirmwareReleaseIdentity }
+  | ManagedReadbackFromAnotherRun { readback: AttemptIdentity, approved: AttemptIdentity }
+  | ManagedAccountIsTheClosedAccount { user: IpmiUserId }
+  | ManagedAccountNotAdministratorOnChannel { managed_user: IpmiUserId }
+  | ManagedReadbackDuplicateRow { managed_user: IpmiUserId, count: Int }
+  | QualificationTargetIsNotTheManagedAccount { target: IpmiUserId, managed_user: IpmiUserId }
+
+fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
+  match privilege {
+    IpmiPrivilegeAdministrator => false
+    IpmiPrivilegeCallback => true
+    IpmiPrivilegeUser => true
+    IpmiPrivilegeOperator => true
+    IpmiPrivilegeOem => true
+    IpmiPrivilegeNoAccess => true
+  }
+}
+
+fn administrator_retention_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
+  match request {
+    IpmiSetUserPassword { user: _ } => none
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
+    IpmiSetUserPrivilegeLimit { access: x } =>
+        match readback {
+          Absent => Present { value: ManagedReadbackAbsent }
+          Present { value: r } =>
+            if (r.endpoint.host as String) != (standing.endpoint.host as String) {
+              Present { value: ManagedReadbackFromAnotherController { readback: r.endpoint, route: standing.endpoint } }
+            } else if !bmc_firmware_release_identity_eq(a: r.firmware, b: standing.firmware) {
+              Present { value: ManagedReadbackFromAnotherBuild { readback: r.firmware, route: standing.firmware } }
+            } else if (r.attempt as String) != (approved_attempt as String) {
+              Present { value: ManagedReadbackFromAnotherRun { readback: r.attempt, approved: approved_attempt } }
+            } else if lowers_privilege(privilege: x.privilege) && (r.managed_user as Int) == (x.user as Int) {
+              Present { value: ManagedAccountIsTheClosedAccount { user: x.user } }
+            } else {
+              let rows = filter(r.access, a => (a.user as Int) == (r.managed_user as Int) && (a.channel as Int) == (x.channel as Int))
+              if length(rows) > 1 {
+                Present { value: ManagedReadbackDuplicateRow { managed_user: r.managed_user, count: length(rows) } }
+              } else if any(rows, a => !lowers_privilege(privilege: a.privilege)) {
+                none
+              } else {
+                Present { value: ManagedAccountNotAdministratorOnChannel { managed_user: r.managed_user } }
+              }
+            }
+        }
+  }
+}
+
+
+fn lowering_request(request: BmcAccountWriteRequest) -> Bool {
+  match request {
+    IpmiSetUserPrivilegeLimit { access: x } => lowers_privilege(privilege: x.privilege)
+    IpmiSetUserPassword { user: _ } => false
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+  }
+}
+
+// A route whose grounding observed the operation take effect: an executed request with EffectObserved,
+// or a source cited for this build (the citation states the operation's effect). An accept-only
+// execution does not qualify.
+fn route_effect_observed(standing: BmcRotationRouteStanding) -> Bool {
+  match standing.grounding {
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: e } =>
+      match e { EffectObserved => true  AcceptedEffectUnobserved => false }
+    RouteGroundedByCitedSource { request: _, citation: _ } => true
+    RouteQualificationCandidate { request: _, evidence: _ } => false
+    RouteUngrounded => false
+  }
+}
+
+// THE WITNESS'S EXECUTED-ROUTE FIXTURE: the only way to hold an executed grounding with a chosen effect
+// standing while no live response mint exists. Admitted only to the one claim that consumes it and
+// returns a Bool.
+fn rotation_route_executed_fixture(
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  request: BmcAccountWriteRequest,
+  receipt: EvidenceRef,
+  effect: RouteEffectStanding,
+) -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
+  ]
+{
+  BmcRotationRouteStanding {
+    endpoint: endpoint,
+    firmware: firmware,
+    grounding: RouteGroundedByExecutedRequest { request: request, request_receipt: receipt, response_receipt: receipt, effect: effect },
+  }
+}
 
 fn grounded_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => Present { value: r }
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => Present { value: r }
     RouteGroundedByCitedSource { request: r, citation: _ } => Present { value: r }
     RouteQualificationCandidate { request: _, evidence: _ } => none
     RouteUngrounded => none
@@ -487,15 +915,21 @@ fn admit_rotation_apply(
   standing: BmcRotationRouteStanding,
   target_endpoint: BmcControllerEndpoint,
   target_firmware: BmcFirmwareReleaseIdentity,
+  request: BmcAccountWriteRequest,
+  managed_readback: ManagedAdministratorReadback?,
   approval: Redemption,
 ) -> RotationApplyAdmission {
   match grounded_request(standing: standing) {
     Absent => RotationApplyRouteNotGrounded { standing: standing }
-    Present { value: request } =>
+    Present { value: grounded } =>
       if (standing.endpoint.host as String) != (target_endpoint.host as String) {
         RotationApplyRouteForAnotherController { route_endpoint: standing.endpoint, target_endpoint: target_endpoint }
       } else if !bmc_firmware_release_identity_eq(a: standing.firmware, b: target_firmware) {
         RotationApplyRouteForAnotherBuild { route_firmware: standing.firmware, target_firmware: target_firmware }
+      } else if !account_write_request_same_operation(a: grounded, b: request) {
+        RotationApplyRouteForAnotherOperation { grounded: grounded, requested: request }
+      } else if lowering_request(request: request) && !route_effect_observed(standing: standing) {
+        RotationApplyRouteEffectUnobserved { standing: standing }
       } else {
         match approval {
           RedemptionRefused { cause: c } => RotationApplyApprovalRefused { cause: c }
@@ -508,7 +942,15 @@ fn admit_rotation_apply(
                 } else if cl.request_revision != rotation_route_request_identity(standing: standing, request: request) {
                   RotationApplyApprovalForAnotherRequest { approved: cl.request_revision, requested: rotation_route_request_identity(standing: standing, request: request) }
                 } else {
-                  RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                  match request {
+                    IpmiSetUserPrivilegeLimit { access: x } =>
+                      match administrator_retention_refusal(standing: standing, request: request, readback: managed_readback, approved_attempt: cl.attempt) {
+                        Present { value: c } => RotationApplyWouldLeaveNoAdministrator { channel: x.channel, cause: c }
+                        Absent => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                      }
+                    IpmiSetUserPassword { user: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                  }
                 }
             }
         }

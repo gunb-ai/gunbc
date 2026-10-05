@@ -1,0 +1,49 @@
+module v2.test.claim.long.reference_conservation_advisory_route
+
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation { reference_conservation_report_lines, reference_conservation_subject_of_read }
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_fixture_read, conservation_report_of }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { any }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, Some, Unavailable, UserInputBoundary, diagnostics_has_reason, diagnostics_singleton, invariant_port_locus }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN ACCEPTED SUBJECT'S ADVISORIES REACH THE REPORT AND ITS CENSUS LINES BY IDENTITY, THROUGH THE
+// REAL ROUTE. No advisory reaches the front end from real source today: the dag grammar's overlap
+// residue is empty (gunbc#13056). So the one advisory input is SUPPLIED at the boundary the route
+// already takes it through, reference_conservation_subject_of_read's `residue`, which the real
+// parse merges into the accepted outcome. A one-line module then goes through the real subject and
+// report path, and the report and its census lines must name the supplied reason. Dropping the
+// advisories at reference_conservation_of_subject_admitted (the old `diagnostics: _`) reds both
+// conjuncts. It lives in the long home because one real parse exceeds the new-witness CPU margin
+// (450ms against 302ms on CI); the renderer's supplied claim stays in
+// v2.test.claim.namespace_xl0.reference_conservation.
+data supplied_route_source: String = "module v2.test.reference_conservation_advisory_route\n"
+
+test fn an_accepted_subjects_advisories_reach_the_report_by_identity_holds() -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      let report = conservation_report_of(subject: reference_conservation_subject_of_read(
+        read: conservation_fixture_read(id_tail: "advisory_route", source: supplied_route_source),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
+        prepared: prepared,
+        residue: Some {
+          diagnostics: diagnostics_singleton(d: Diagnostic {
+            reason: ^reference_conservation_supplied_advisory,
+            at: invariant_port_locus(port: ^body_lowering_locus_port, invariant: ^reference_conservation_supplied_advisory),
+            correction: Unavailable { reason: UserInputBoundary }
+          })
+        }
+      ))
+      diagnostics_has_reason(d: report.advisories, reason: ^reference_conservation_supplied_advisory)
+        && any(
+          xs: reference_conservation_report_lines(report: report),
+          predicate: fn(line) { line == "advisory " + report.path + " reference_conservation_supplied_advisory" }
+        )
+  }
+}
