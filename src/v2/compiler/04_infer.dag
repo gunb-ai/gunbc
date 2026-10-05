@@ -155,6 +155,7 @@ import v2.std.node {
   host_text_type_node,
   symbol_type_node,
   node_rebuild,
+  node_with_occurrence_id,
   Arrow,
   Atom,
   Bind,
@@ -1869,17 +1870,17 @@ fn infer_operand_declared_type_instantiated(declared: Node, instances: List<Type
         Absent =>
           match dag_binding_denotation(sym: id) {
             Present { value: _ } =>
-              match infer_declared_type_children_instantiated(children: node_positional_child_targets(node: declared), instances: instances) {
+              match infer_declared_type_children_instantiated(children: declared.children, instances: instances) {
                 Present { value: children } =>
                   if length(xs: children) == 0 {
                     optional_present(value: declared)
                   } else {
                     optional_present(
-                      value: Node {
+                      value: node_with_occurrence_id(
                         kind: TypeNode { connective: Atom { identity: id } },
                         children: children,
                         occurrence_id: declared.occurrence_id
-                      }
+                      )
                     )
                   }
                 Absent => optional_absent()
@@ -1926,16 +1927,17 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
 // instance binds leaves the whole declared type unheld, and the read falls through to the facts
 // rather than fabricate a partially formal type.
 fn infer_declared_type_children_instantiated(
-  children: FreeMonoid<Node>,
+  children: FreeMonoid<Edge>,
   instances: List<TypeVariableInstance>
-) -> Optional<FreeMonoid<Node>> {
+) -> Optional<FreeMonoid<Edge>> {
   match children {
     Empty => optional_present(value: Empty)
     Cons { head: c, tail: rest } =>
-      match infer_operand_declared_type_instantiated(declared: c, instances: instances) {
+      match infer_operand_declared_type_instantiated(declared: c.target, instances: instances) {
         Present { value: c2 } =>
           match infer_declared_type_children_instantiated(children: rest, instances: instances) {
-            Present { value: rest2 } => optional_present(value: Cons { head: c2, tail: rest2 })
+            Present { value: rest2 } =>
+              optional_present(value: Cons { head: Edge { label: c.label, target: c2 }, tail: rest2 })
             Absent => Absent
           }
         Absent => Absent
