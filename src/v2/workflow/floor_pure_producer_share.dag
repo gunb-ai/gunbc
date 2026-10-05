@@ -596,7 +596,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   },
   // gunbc#13307 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every other claim
   // in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300 new-witness budget on
-  // that PR's floor run 37241064520 (886,357 steps) by the pipeline's per-claim fixed cost of assembling and inferring a one-module
+  // that PR's floor run 37240332005 (886,357 steps) by the pipeline's per-claim fixed cost of assembling and inferring a one-module
   // fixture, not the test's own work. Trigger: assemble plus infer of a one-module fixture runs under the per-claim
   // budget (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
   SingleClaimFillDebtModule {
