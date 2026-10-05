@@ -12,7 +12,7 @@ import std.fabric_blob {
 }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound }
 import gunbc.fabric.fabric_blob_r2 {
-  CacheBlobRead, CacheBlobWrite, CacheBlobTargetReady, CacheBlobTargetRefused, resolve_cache_blob_target,
+  FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
 }
 import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
 import extdeps.cloudflare.r2_lifecycle {
@@ -81,13 +81,13 @@ test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
 // ── THE CACHE'S CREDENTIALS ARE UNMINTED, SO EVERY TRANSFER REFUSES BEFORE THE NETWORK ─────────
 
 test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
-  let read = match resolve_cache_blob_target(direction: CacheBlobRead, key: "blobs/x" as NonEmptyStr) {
-    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token") && string_contains(s: c as String, pattern: "run_cache_object_read")
-    CacheBlobTargetReady { target: _ } => false
+  let read = match resolve_fabric_blob_target(direction: FabricBlobReadDirection, key: "blobs/x" as NonEmptyStr, purpose: FabricCacheBlobs {}) {
+    FabricBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token") && string_contains(s: c as String, pattern: "run_cache_object_read")
+    FabricBlobTargetReady { target: _ } => false
   }
-  let write = match resolve_cache_blob_target(direction: CacheBlobWrite, key: "blobs/x" as NonEmptyStr) {
-    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-write-token") && string_contains(s: c as String, pattern: "run_cache_object_write")
-    CacheBlobTargetReady { target: _ } => false
+  let write = match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: "blobs/x" as NonEmptyStr, purpose: FabricCacheBlobs {}) {
+    FabricBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-write-token") && string_contains(s: c as String, pattern: "run_cache_object_write")
+    FabricBlobTargetReady { target: _ } => false
   }
   read && write
 }

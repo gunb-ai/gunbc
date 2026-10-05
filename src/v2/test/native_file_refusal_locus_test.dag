@@ -2,7 +2,8 @@ module v2.test.native_file_refusal_locus
 
 import v2.compiler.compile { native_test_file_refusal }
 import v2.compiler.native_test_vocabulary {
-  NativeTestFileRefusal, FileRefusalAtLine, FileRefusalAtOtherFile, FileRefusalAtInvariant
+  NativeTestFileRefusal, FileRefusalAtLine, FileRefusalAtOtherFile, FileRefusalAtInvariant,
+  native_test_file_refusal_fatal_reason
 }
 import v2.std.diagnostic {
   Diagnostic, NonEmptyDiagnostics, Textual, ByteRange, Unavailable, ExternalContractUnknown,
@@ -46,11 +47,11 @@ fn located_row() -> NativeTestFileRefusal {
 
 test fn the_fatal_link_is_positioned_at_its_line_and_byte_column() -> Bool {
   let row = located_row()
-  match row.chain {
-    Cons { head: h, tail: Cons { head: f, tail: Empty } } =>
-      (match h.at { FileRefusalAtInvariant { invariant: _ } => true _ => false })
+  match row.chain.tail {
+    Cons { head: f, tail: Empty } =>
+      (match row.chain.head.at { FileRefusalAtInvariant { invariant: _ } => true _ => false })
         && (match f.at { FileRefusalAtLine { line: l, byte_column: c } => l == 2 && c.value == 2 _ => false })
-        && row.fatal_reason == ^native_file_refusal_locus_fatal
+        && native_test_file_refusal_fatal_reason(fr: row) == ^native_file_refusal_locus_fatal
     _ => false
   }
 }
@@ -65,8 +66,8 @@ test fn a_locus_in_another_file_is_not_positioned_against_this_one() -> Bool {
     spans: span_index_empty(),
     text: "\u{00e9}\u{000a}ab"
   )
-  match row.chain {
-    Cons { head: h, tail: Empty } => match h.at { FileRefusalAtOtherFile { file: f } => f == ^native_file_refusal_locus_elsewhere _ => false }
+  match row.chain.tail {
+    Empty => match row.chain.head.at { FileRefusalAtOtherFile { file: f } => f == ^native_file_refusal_locus_elsewhere _ => false }
     _ => false
   }
 }

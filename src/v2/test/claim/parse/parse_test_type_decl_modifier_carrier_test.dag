@@ -1,4 +1,4 @@
-module v2.test.parse.type_decl_modifier_carrier
+module test.claim.parse_test_type_decl_modifier_carrier
 
 import v2.compiler.body_lowering_fold {
   DeclaredTypeModifiers,
@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // asserts the row arrives there by name: deleting the capture in v2.compiler.normalize makes it red.
 //
 // The red that an unknown spelling in the slot refuses, located, is held on the real parse route by
-// v2.test.parse.type_decl_modifier_g0_parse_probe unknown_type_decl_modifier_still_refuses_holds (the
+// test.claim.parse_test_type_decl_modifier_g0_parse_probe unknown_type_decl_modifier_still_refuses_holds (the
 // grammar admits only the closed set's terminals there); it is not restated here.
 
 data tdm_lm: LanguageModel = dag_language_model()
