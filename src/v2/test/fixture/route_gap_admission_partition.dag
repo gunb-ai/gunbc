@@ -1,0 +1,54 @@
+module v2.test.fixture.route_gap_admission_partition
+
+import std.types { List }
+import v2.workflow.floor_route_gap {
+  FloorRouteGapSuppressedRow,
+  FloorRouteGapAdmissionRow,
+  FloorRouteGapAdmissionMeasuredRow,
+  FloorRouteGapAdmissionRefusedRow,
+  floor_route_gap_admission_partition,
+}
+
+// ONE FIXTURE, READ BY ALL THREE SIDES. `test.claim.route_gap_partition_witness` asserts the
+// modeled partition over these rows on the floor (the route: the same surface the run site
+// marshals into). The seed's `required_floor_runner` pairing witness evaluates the same rows
+// through `run_in_context_with_args` -- the real call path the run site uses -- and asserts both
+// arms at identity grain. The rows span both arms and both grounds the runner produces: a
+// declared suppressed row whose module the gate cut withdrew (measured, ground kept), a
+// cost-debt-withheld row the tree declares (measured, ground kept), and an enrollment the tree
+// does not declare -- renamed, deleted, or fabricated (refused; the wall).
+data route_gap_partition_fixture_suppressed: List<FloorRouteGapSuppressedRow> = [
+  FloorRouteGapSuppressedRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: "outside_required_gate" },
+  FloorRouteGapSuppressedRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: "withheld_cost_debt" },
+  FloorRouteGapSuppressedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name", ground: "outside_required_gate" }
+]
+
+data route_gap_partition_fixture_declared: List<String> = [
+  "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
+  "test.claim.parse_test.parse_witness_floor_holds"
+]
+
+data route_gap_partition_fixture_expected: List<FloorRouteGapAdmissionRow> = [
+  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: "outside_required_gate" },
+  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: "withheld_cost_debt" },
+  FloorRouteGapAdmissionRefusedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name" }
+]
+
+fn partition_fixture_suppressed() -> List<FloorRouteGapSuppressedRow> {
+  route_gap_partition_fixture_suppressed
+}
+
+fn partition_fixture_declared() -> List<String> {
+  route_gap_partition_fixture_declared
+}
+
+fn partition_fixture_expected() -> List<FloorRouteGapAdmissionRow> {
+  route_gap_partition_fixture_expected
+}
+
+fn partition_fixture_decided() -> List<FloorRouteGapAdmissionRow> {
+  floor_route_gap_admission_partition(
+    suppressed: route_gap_partition_fixture_suppressed,
+    declared: route_gap_partition_fixture_declared,
+  )
+}

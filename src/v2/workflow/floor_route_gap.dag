@@ -2250,3 +2250,45 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
     tail: Empty {}
   }
 }
+
+// THE ADMISSION PARTITION, MODELED ON THE AUTHORITY THAT OWNS THE REGISTER. This is the single
+// implementation of the route-gap admission decision: the required floor's runner marshals the
+// run's real values -- the identities suppression removed, each with the label of the ground
+// that removed it, and the discovery walk's declared-identity index -- into this relation
+// through the hermetic frame it already holds. Nothing re-derives the membership test in Rust:
+// a runner-side copy would be a second authority over one decision, the shape the changed-
+// selection capability documented at v2.workflow.required_floor's dissolve-on note retires.
+//
+// COST, NAMED: one frame call per required run, linear in suppressed x declared. The
+// changed-selection capability measured per-probe re-folds at roughly 38,000 eval steps and
+// retired the mirror for it; the route-gap suppressed population is smaller than the corpus
+// census roster and this call is not per claim. If the roster or the gate grows the join back
+// into a cost, the corpus census's served-once shape (floor_pure_producer_share) is the named
+// retirement.
+type FloorRouteGapSuppressedRow = { identity: String, ground: String }
+
+// THE TWO ARMS AT IDENTITY GRAIN. A declared suppressed row is MEASUREMENT: it keeps its ground
+// and the run names it, and for identities whose module the 2026-08-29 gate cut withdrew that
+// record closes nothing. An undeclared row REFUSES: suppression removed it before the reverse
+// join, so no other guard can see it, and an enrollment nothing can observe must never pass as
+// a count.
+type FloorRouteGapAdmissionRow =
+    FloorRouteGapAdmissionMeasuredRow { identity: String, ground: String }
+  | FloorRouteGapAdmissionRefusedRow { identity: String }
+
+fn floor_route_gap_string_eq(left: String, right: String) -> Bool {
+  left == right
+}
+
+fn floor_route_gap_admission_partition(
+  suppressed: List<FloorRouteGapSuppressedRow>,
+  declared: List<String>,
+) -> List<FloorRouteGapAdmissionRow> {
+  map(
+    suppressed,
+    row => match contains(xs: declared, item: row.identity, eq: floor_route_gap_string_eq) {
+      true => FloorRouteGapAdmissionMeasuredRow { identity: row.identity, ground: row.ground }
+      false => FloorRouteGapAdmissionRefusedRow { identity: row.identity }
+    },
+  )
+}

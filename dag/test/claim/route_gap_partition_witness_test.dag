@@ -1,0 +1,103 @@
+module test.claim.route_gap_partition_witness
+
+import std.types { List, Bool, Int }
+import v2.std.integer { int_add }
+import v2.workflow.floor_route_gap {
+  FloorRouteGapAdmissionRow,
+  FloorRouteGapAdmissionMeasuredRow,
+  FloorRouteGapAdmissionRefusedRow,
+  floor_route_gap_admission_partition,
+}
+import v2.test.fixture.route_gap_admission_partition {
+  route_gap_partition_fixture_suppressed,
+  route_gap_partition_fixture_declared,
+}
+
+// THE ROUTE WITNESS for the route-gap admission partition (docs/plans/
+// route-gap-dormant-observation.md). The required floor's runner marshals the run's real values
+// -- the identities suppression removed with the ground that removed each, and the discovery
+// walk's declared-identity index -- into `v2.workflow.floor_route_gap`
+// `.floor_route_gap_admission_partition`, the modeled relation on the authority that owns the
+// register; the runner-side classifier this relation replaces was deleted, so this surface is
+// the run site's only route to the answer. This claim drives that surface over the shared
+// fixture (src/v2/test/fixture/route_gap_admission_partition.dag) and asserts both arms at
+// identity grain on the floor: a declared suppressed row comes back MEASURED with its ground
+// kept, and a misnamed enrollment -- renamed, deleted, or fabricated -- comes back REFUSED, the
+// wall's discriminating arm. Substrate inputs only: constructed lists through the modeled
+// relation; no host effect, no service, no wet lane. The seed's pairing witness in
+// `required_floor_runner` evaluates the same fixture rows through `run_in_context_with_args`,
+// the real call path the run site uses.
+fn measured_row_holds(row: FloorRouteGapAdmissionRow, identity: String, ground: String) -> Bool {
+  match row {
+    FloorRouteGapAdmissionMeasuredRow { identity: i, ground: g } => i == identity && g == ground
+    FloorRouteGapAdmissionRefusedRow { identity: _ } => false
+  }
+}
+
+fn refused_row_holds(row: FloorRouteGapAdmissionRow, identity: String) -> Bool {
+  match row {
+    FloorRouteGapAdmissionMeasuredRow { identity: _, ground: _ } => false
+    FloorRouteGapAdmissionRefusedRow { identity: i } => i == identity
+  }
+}
+
+fn count_measured_holding(
+  rows: List<FloorRouteGapAdmissionRow>,
+  identity: String,
+  ground: String,
+) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) {
+    if measured_row_holds(row: r, identity: identity, ground: ground) {
+      int_add(a: acc, b: 1)
+    } else {
+      acc
+    }
+  })
+}
+
+fn count_refused_naming(rows: List<FloorRouteGapAdmissionRow>, identity: String) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) {
+    if refused_row_holds(row: r, identity: identity) {
+      int_add(a: acc, b: 1)
+    } else {
+      acc
+    }
+  })
+}
+
+// THE MEASUREMENT ARM, AT IDENTITY GRAIN: a declared suppressed row keeps its ground and is
+// named, never absorbed into a count. For identities whose module the 2026-08-29 gate cut
+// withdrew this record closes nothing -- the gate decision owns their dormancy.
+test fn the_partition_measures_a_declared_suppressed_row_with_its_ground_kept() -> Bool {
+  let decided = floor_route_gap_admission_partition(
+    suppressed: route_gap_partition_fixture_suppressed,
+    declared: route_gap_partition_fixture_declared
+  )
+  count(decided) == 3
+    && count_measured_holding(
+      rows: decided,
+      identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
+      ground: "outside_required_gate"
+    ) == 1
+    && count_measured_holding(
+      rows: decided,
+      identity: "test.claim.parse_test.parse_witness_floor_holds",
+      ground: "withheld_cost_debt"
+    ) == 1
+}
+
+// THE WALL'S DISCRIMINATING ARM: an enrollment the tree does not declare refuses. Suppression
+// removes such a row before the reverse join, so no other guard can ever see it; the cheapest
+// way to fake a green run -- enrolling an identity that does not exist -- must come back as a
+// refusal, never as a count.
+test fn the_partition_refuses_an_enrollment_the_tree_does_not_declare() -> Bool {
+  let decided = floor_route_gap_admission_partition(
+    suppressed: route_gap_partition_fixture_suppressed,
+    declared: route_gap_partition_fixture_declared
+  )
+  count(decided) == 3
+    && count_refused_naming(
+      rows: decided,
+      identity: "test.claim.renamed_away_witness_test.old_witness_name"
+    ) == 1
+}

@@ -99,36 +99,47 @@ Acceptance path: author a fresh claim in an out-of-gate module, enroll it in `fl
 required run records it per identity with ground `OutsideRequiredGate` — or, if misnamed, refuses. Heavy
 runs remote/CI only.
 
-## Repair as approved and built (coordinator ack, four conditions)
+## Repair as approved and built (coordinator ack, conditions + single-implementation round)
 
-Built in the coordinator's order; the Rust delta mirrors `partition_cost_debt_roster`, which also lives in
-seed Rust (`cli_run.rs`) — stated here and in the PR body because the route-gap .dag **cannot** express the
-refuse-if-undeclared decision: the roster decodes in a hermetic frame that never loads out-of-gate modules,
-so declaredness is knowledge only the discovery walk has. The .dag authority owns what the arms MEAN (its
-header contract is amended below); Rust executes them.
+The partition decision is now **modeled on the .dag authority** —
+`v2.workflow.floor_route_gap.floor_route_gap_admission_partition` is the single implementation of the
+route-gap admission decision; the Rust call site marshals the run's real values (suppressed identities
+with their ground labels, and the discovery walk's declared-identity index) into it through
+`run_in_context_with_args`, and an earlier Rust classifier (`route_gap_suppressed_undeclared`) was
+**deleted** rather than kept beside the call — one implementation, a net reduction of seed decision
+surface; the seed receipt is back to +3 hand items. What would move even the marshal into the .dag is a
+modeled declared-identity projection the regen lane would maintain; deliberately not built. The
+refuse-if-undeclared decision could not have been expressed in .dag on its own because the run-time
+declared index is discovery-walk knowledge (the roster decodes in a hermetic frame whose subject is the
+gate closure); modeling the RELATION and marshaling the index in is the resolution of that.
 
-1. **The wall (closure)**: `route_gap_suppressed_undeclared` + the refusal at the route-gap suppression
-   site — an enrollment the tree does not declare (module or tail absent from the discovery roots; the
-   disposition index covers every declared witness identity, gunbc#9684) refuses the run with
-   `cause=RouteGapEnrollmentUndeclared`, naming the identities. Fresh-recurrence control: a newly misnamed
-   enrollment refuses (`route_gap_admission_partition_tests`, three tests, including the declared-dormancy
-   negative control).
-2. **Single authority**: the route-gap .dag header contract now carries the gate-bounded amendment (the
-   two further arms: suppressed-dormant with ground, undeclared-refuses) beside the original four; the
-   `suppress_withheld` stderr line no longer promises a whole-corpus receipts run — it states the true
-   standing: no other observation point exists, and consuming rosters record suppressed identities per
-   identity, never as a bare count.
-3. **Measurement (labeled)**: the route-gap suppression site prints every suppressed identity with its
-   ground (`suppression_ground_label`), one line per ground, headed MEASUREMENT — for the (a) families this
-   records declared dormancy and closes nothing.
-4. **NOT closed here — class (b)**: an out-of-gate enrollment still demands the route it names, and a
-   per-identity suppressed row for the `artifact_store_fs` / `effect_plan_bash` / `emit_on_demand` families
-   remains a green absence of something meant to be observed. What would actually observe them, with its
-   trigger: **(i)** gate admission of those modules — the bankruptcy's own restoration trigger, "a required
-   lane resolves every module"; each readmitted module brings its enrollments straight back under the
-   four-arm join; or **(ii)** a dispatch instrument row that schedules a receipts run over the named
-   families with the same join armed — which would need a required lane to hang it on, because the rung
-   drop rules receipt-only runs out as a retirement path. Neither is built in this PR.
+1. **The wall (closure)**: a refused row names an enrollment the tree does not declare (module or tail
+   absent from the discovery roots; the disposition index covers every declared witness identity,
+   gunbc#9684) and the run refuses with `cause=RouteGapEnrollmentUndeclared`, naming the identities and
+   the modeled entry that decided.
+2. **Single authority**: the route-gap .dag header contract states the gate-bounded amendment (the two
+   further arms) beside the original four; the `suppress_withheld` stderr line no longer promises a
+   whole-corpus receipts run — it states the true standing; and the membership test has exactly one
+   implementation, on the authority.
+3. **Measurement (labeled)**: every suppressed identity is named with the ground the modeled partition
+   returned for it, headed MEASUREMENT — for the (a) families this records declared dormancy and closes
+   nothing.
+4. **Not closed here — class (b)**: unchanged from the section above; the named follow-ups are gate
+   admission of those modules, or a dispatch instrument row running a probe roster with the join armed.
+
+**Evidence, pinned on both sides of the boundary:**
+- **Floor-side route witness** — `test.claim.route_gap_partition_witness`, gate-admitted at exact module
+  grain in `required_gate_authored_modules` (the same mechanism and operator ruling as
+  `test.claim.discovery_census_witness` and `test.claim.seed_growth_admission_witness`): drives the
+  modeled relation over the shared fixture `src/v2/test/fixture/route_gap_admission_partition.dag` and
+  asserts both arms on the floor — the route, executed by a required run. Substrate inputs only
+  (constructed lists; no host effect, no service).
+- **Seed-side pairing witness** — `route_gap_admission_partition_tests` in `required_floor_runner.rs`
+  drives the SAME entry by the SAME constant through `run_in_context_with_args` (the real call path the
+  run site uses) and asserts both arms at identity grain; a second test pins the marshal shape (identity
+  and ground label, nothing else). Local diligence, not a CI path (`docs/onboarding.md` line 175).
+- **One implementation**: with the Rust classifier deleted, the run site's route to the answer is the
+  modeled entry by construction; a run-path refusal names the entry that decided it.
 
 **The wall's real standing (corrected per review 76431 — an earlier revision of this paragraph claimed a
 shipped fixture; the fixture is gone, per review 38602, and this is what actually holds):**
