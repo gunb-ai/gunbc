@@ -725,7 +725,8 @@ fn worker_turn_selection_of(inventory: ProviderInventory, kind: ProviderKind, si
 
 // THE CURSOR DRAW takes the attempt's credential snapshot first (shared rule above): the status probe
 // reads that snapshot and keeps it, and the spawn loads the same snapshot and removes it before exec. A
-// refused draw discards the snapshot it took.
+// refused draw discards the snapshot it took, as the Claude draw does; after selection the belt owns
+// the discard (gunbc.roadmap_belt_actuate belt_snapshot_owned_outcome).
 fn cursor_selection_observed(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -754,10 +755,14 @@ fn cursor_selection_observed(
         )
         match selection {
           DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => selection
-          DispatchActuatorSelectionRefused { reason: _ } => {
-            let _ = dispatch_credential_snapshot_discard(snapshot: snapshot)
-            selection
-          }
+          DispatchActuatorSelectionRefused { reason } =>
+            if dispatch_credential_snapshot_discard(snapshot: snapshot) {
+              selection
+            } else {
+              DispatchActuatorSelectionRefused {
+                reason: join([reason as String, "; and the credential snapshot ", snapshot as String, " could not be removed"], "") as NonEmptyStr,
+              }
+            }
         }
       }
     }

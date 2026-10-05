@@ -4,6 +4,8 @@ import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_launch_admission { launch_identity_exemplar }
+import gunbc.roadmap_belt_actuate { belt_snapshot_disposition, SnapshotConsumedByChild, SnapshotDiscardRequired, SpawnFailed }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
   DispatchProviderInnerArgv,
@@ -138,5 +140,33 @@ test fn a_codex_turn_off_its_custody_host_refuses() -> Bool {
     CursorProviderCredentialUnbound { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}
+
+// THE CURSOR ABANDONMENT CONTROL. The snapshot the cursor spawn loads is the provider-labelled path
+// the belt discards for every post-selection outcome but a launched child
+// (gunbc.roadmap_belt_actuate belt_snapshot_owned_outcome), and the spawn's wrapper refuses the exec
+// (exit 79) when it cannot remove that snapshot. If the cursor spawn read any other path, the belt's
+// discard would miss it and an abandoned attempt would leave the key on disk.
+test fn an_abandoned_cursor_attempt_leaves_no_snapshot_the_belt_does_not_discard() -> Bool {
+  let belt_path = dispatch_credential_snapshot_path_for_instance(
+    instance: srv2_lab_dashboard_instance(),
+    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    attempt_key: "0123456789abcdef",
+    provider: CursorDispatchProvider,
+  )
+  let id = launch_identity_exemplar()
+  let abandoned_discards = match belt_snapshot_disposition(
+    outcome: SpawnFailed { node_id: "node-worker-turn", step: "cursor-provider-preflight", detail: "refused", provider: "cursor", launch: id },
+  ) {
+    SnapshotDiscardRequired => true
+    SnapshotConsumedByChild => false
+  }
+  match ready_argv(inner: inner_for(instance: srv2_lab_dashboard_instance(), provider: CursorDispatchProvider)) {
+    Absent => false
+    Present { value: argv } =>
+      abandoned_discards
+        && any(argv, a => a == belt_path as String)
+        && any(argv, a => string_contains(s: a, pattern: "|| exit 79"))
   }
 }
