@@ -16543,7 +16543,11 @@ mod route_gap_admission_partition_tests {
             let index = crate::cli_run::process_shared_index(&roots);
             let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
                 .expect("the shared fixture resolves");
-            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let ctx = crate::cli_run::make_eval_context(
+                &graph,
+                indices,
+                v1_interpreter::ExecutionMode::Hermetic,
+            );
             let read = |name: &str| {
                 v1_interpreter::with_active_context(&ctx, || {
                     v1_interpreter::run_in_context(
@@ -16630,7 +16634,11 @@ mod route_gap_admission_partition_tests {
             let index = crate::cli_run::process_shared_index(&roots);
             let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
                 .expect("the shared fixture resolves");
-            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let ctx = crate::cli_run::make_eval_context(
+                &graph,
+                indices,
+                v1_interpreter::ExecutionMode::Hermetic,
+            );
             let value = route_gap_suppressed_rows_value(
                 &ctx,
                 &[(
@@ -17336,7 +17344,11 @@ mod changed_selections_outside_discovery_mirror_tests {
             let index = crate::cli_run::process_shared_index(&roots);
             let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
                 .expect("the shared fixture resolves");
-            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let ctx = crate::cli_run::make_eval_context(
+                &graph,
+                indices,
+                v1_interpreter::ExecutionMode::Hermetic,
+            );
             let read = |name: &str| {
                 v1_interpreter::with_active_context(&ctx, || {
                     v1_interpreter::run_in_context(&ctx, &format!("{FIXTURE}.{name}"), false)
