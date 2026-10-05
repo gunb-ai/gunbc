@@ -482,9 +482,9 @@ test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation()
       })
       length(plans) == 1
         && length(timeouts) == length(steps)
-        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( start + ", t, " ))"], "")))
+        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( started + ", t, " ))"], "")))
              && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-front-door")
-             && string_contains(s: p.script, pattern: "until curl"))
+             && string_contains(s: p.script, pattern: "if curl -fsS"))
     }
   }
 }
@@ -504,7 +504,7 @@ test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_time
       })
       length(plans) == length(steps)
         && length(timeouts) == length(steps)
-        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( start + ", t, " ))"], "")))
+        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( started + ", t, " ))"], "")))
              && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-nccl-transport-announcement")
              && string_contains(s: p.script, pattern: "'Using network '"))
     }
@@ -671,13 +671,13 @@ test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
 test fn w_a_host_disposition_comes_from_its_own_leg() -> Bool {
   let h = operator_host_srv9
   spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
-    host: h, detail: spark_native_incumbent_restored_word, standing: serving_standing(attempts: []) }))
+    host: h, wire: "management-lan", stdout: spark_native_incumbent_restored_word, standing: serving_standing(attempts: []) }))
     && spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
-         host: h, detail: spark_native_unit_removed_word, standing: serving_standing(attempts: []) }))
+         host: h, wire: "management-lan", stdout: spark_native_unit_removed_word, standing: serving_standing(attempts: []) }))
     && !spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplyFailed {
          host: h, cause: "ssh refused" }))
     && !spark_native_disposition_is_read(d: spark_native_disposition_of(o: SparkPairHostApplied {
-         host: h, detail: "restarted", standing: serving_standing(attempts: []) }))
+         host: h, wire: "management-lan", stdout: "restarted", standing: serving_standing(attempts: []) }))
 }
 
 // ── THE FENCE: AN UNRESOLVED TRANSACTION REFUSES THE NEXT ONE ─────────────────────────────────

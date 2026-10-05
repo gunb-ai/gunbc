@@ -1,5 +1,6 @@
 module gunbc.spark.host_occupancy_admission
 
+import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.measure { Kibibyte }
 import product.host_identity { HostIdentity }
@@ -96,7 +97,9 @@ fn unit_leg_failure(leg: HostOperationLeg) -> List<String> {
 // RESTORE: start each stopped unit, then read each back. A unit that does not read back as occupying
 // (active or activating) is not restored, and says so.
 fn restore_spark_serving_units(run: fn(List<String>) -> ArgvRun, units: List<NonEmptyStr>) -> String? {
-  let start_failures = flat_map(units, u => unit_leg_failure(leg: host_operation_leg(run: run, operation: SystemctlStart { unit: u }, accepted_exits: [0])))
+  // A RESTORE IS A DELIBERATE START (gunbc.spark.deliberate_unit_start): a bounded unit stopped by this
+  // launch inside its StartLimitBurst window would otherwise be refused here (side-chat ruling, #13319 finding 4).
+  let start_failures = flat_map(units, u => match deliberate_unit_start_leg(run: run, unit: u) { Absent => [] as List<String>  Present { value: why } => [why] })
   let readback_failures = flat_map(units, u => match read_unit_activity(run: run, unit: u) {
     UnitOccupies { occupant: _ } => [] as List<String>
     UnitVacant => [join([u as String, " did not come back after start"], "")]

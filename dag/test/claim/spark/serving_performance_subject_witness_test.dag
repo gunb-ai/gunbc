@@ -68,8 +68,7 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   kv_cache_dtype: Present { value: KvFp8 },
   speculative: Present { value: SpeculativeDecodingOff },
   collective_transport: Present { value: fx_socket },
-  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: Present { value: "fixture-profile-deepseek" }
-    )
+  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: Present { value: "fixture-profile-deepseek" }, deployment_env_key: Present { value: "env=none" } )
 
 // THE LIVE QUESTION'S PROFILE: GLM-5.3-Flash, community SM121 runtime, group B, TP=4. Every axis but
 // topology and budget differs from the measurement profile above, which is the whole point.
@@ -86,8 +85,7 @@ data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   kv_cache_dtype: Present { value: KvFp8 },
   speculative: Present { value: SpeculativeDecodingOff },
   collective_transport: Present { value: fx_socket },
-  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: Present { value: "fixture-profile-glm" }
-    )
+  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: Present { value: "fixture-profile-glm" }, deployment_env_key: Present { value: "env=none" } )
 
 fn join_is_different(j: ServingSubjectJoin) -> Bool {
   match j {
@@ -171,8 +169,7 @@ test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool {
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: fx_deepseek_tp4.collective_transport,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key
-    )
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisTopology) && !join_names_axis(j: j, a: AxisCheckpoint)
 }
@@ -191,8 +188,7 @@ test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool {
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: fx_deepseek_tp4.collective_transport,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key
-    )
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisBatchBudget)
 }
@@ -211,8 +207,7 @@ test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool {
     kv_cache_dtype: Present { value: KvBf16 },
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: fx_deepseek_tp4.collective_transport,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key
-    )
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisKvCacheDtype)
 }
@@ -235,8 +230,7 @@ test fn w_socket_and_rdma_are_different_subjects() -> Bool {
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: fx_ib,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key
-    )
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: on_ib)
   join_is_different(j: j) && join_names_axis(j: j, a: AxisCollectiveTransport)
 }
@@ -260,8 +254,7 @@ test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: Absent,
-    indexer_kv_dtype: fx_deepseek_tp4.indexer_kv_dtype, scheduler_admission: fx_deepseek_tp4.scheduler_admission, launch_profile_key: fx_deepseek_tp4.launch_profile_key
-    )
+    indexer_kv_dtype: fx_deepseek_tp4.indexer_kv_dtype, scheduler_admission: fx_deepseek_tp4.scheduler_admission, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: fx_deepseek_tp4))
     && join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: unread))
     && join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: unread))
@@ -312,8 +305,7 @@ test fn w_a_one_axis_difference_over_fully_read_subjects_names_that_axis() -> Bo
     kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
     speculative: fx_deepseek_tp4.speculative,
     collective_transport: fx_ib,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key
-    )
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: fx_deepseek_tp4.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   is_delta_on(
     c: serving_subject_axis_delta(left: SubjectEstablished { subject: fx_deepseek_tp4 }, right: SubjectEstablished { subject: on_ib }),
     a: AxisCollectiveTransport)
@@ -539,8 +531,7 @@ fn moved(base: ServingPerformanceSubject, which: ServingSubjectAxis) -> ServingP
     speculative: if axis_is(a: which, b: AxisSpeculativePolicy) { Present { value: SpeculativeDecodingOn { proposer: "draft" as NonEmptyStr } } } else { base.speculative },
     collective_transport: base.collective_transport,
     indexer_kv_dtype: if axis_is(a: which, b: AxisIndexerKvDtype) { Present { value: IndexerKvDtypeExplicit { dtype: IndexerKvFp8 } } } else { base.indexer_kv_dtype },
-    scheduler_admission: if axis_is(a: which, b: AxisSchedulerAdmission) { Present { value: VllmSchedulerAdmissionRequest { full_input_admission: FullInputAdmissionExplicit { enabled: true }, kv_watermark: KvWatermarkOmitted } } } else { base.scheduler_admission }, launch_profile_key: if axis_is(a: which, b: AxisLaunchProfile) { Present { value: "moved-profile" } } else { base.launch_profile_key }
-  )
+    scheduler_admission: if axis_is(a: which, b: AxisSchedulerAdmission) { Present { value: VllmSchedulerAdmissionRequest { full_input_admission: FullInputAdmissionExplicit { enabled: true }, kv_watermark: KvWatermarkOmitted } } } else { base.scheduler_admission }, launch_profile_key: if axis_is(a: which, b: AxisLaunchProfile) { Present { value: "moved-profile" } } else { base.launch_profile_key }, deployment_env_key: if axis_is(a: which, b: AxisDeploymentEnv) { Present { value: "env=moved" } } else { base.deployment_env_key } )
 }
 
 // THE BUMP GOES THROUGH THE OPTIONAL rather than substituting a literal, so the moved subject keeps
@@ -624,8 +615,7 @@ test fn w_the_weight_quantization_is_read_off_the_checkpoint_row() -> Bool {
     speculative: fx_glm_group_b.speculative,
     collective_transport: fx_glm_group_b.collective_transport,
     indexer_kv_dtype: fx_glm_group_b.indexer_kv_dtype,
-    scheduler_admission: fx_glm_group_b.scheduler_admission, launch_profile_key: fx_glm_group_b.launch_profile_key
-  )
+    scheduler_admission: fx_glm_group_b.scheduler_admission, launch_profile_key: fx_glm_group_b.launch_profile_key, deployment_env_key: Present { value: "env=none" } )
   (serving_subject_axis_value(s: fx_glm_group_b, a: AxisWeightQuantization) as String) == "fp8"
     && (serving_subject_axis_value(s: nvfp4, a: AxisWeightQuantization) as String) == "modelopt"
     && serving_subject_axis_list_contains(axes: serving_subject_differing_axes(left: fx_glm_group_b, right: nvfp4), a: AxisWeightQuantization)
@@ -660,8 +650,7 @@ fn ServingPerformanceSubject_with_unread(base: ServingPerformanceSubject) -> Ser
     kv_cache_dtype: base.kv_cache_dtype,
     speculative: base.speculative,
     collective_transport: Absent,
-    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: base.launch_profile_key
-  )
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted }, scheduler_admission: Present { value: vllm_scheduler_admission_omitted }, launch_profile_key: base.launch_profile_key, deployment_env_key: base.deployment_env_key )
 }
 
 // AND WHEN NOTHING KNOWN DIFFERS, THE UNKNOWN AXIS IS THE ANSWER. This is the other half: the same

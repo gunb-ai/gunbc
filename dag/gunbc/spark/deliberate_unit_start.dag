@@ -1,0 +1,90 @@
+module gunbc.spark.deliberate_unit_start
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import extdeps.exec.command { shell_quote }
+import gunbc.host_operation_exec { HostOperation, SystemctlShowLoadState, SystemctlResetFailed, SystemctlRestart, host_operation_materialize_argv }
+import v2.std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.compute.host_occupancy { host_operation_leg, HostOperationLegRead, HostOperationLegUnread }
+import gunbc.spark.host_effect_quiescence { ArgvRun }
+
+// ── A DELIBERATE START BY A TRANSACTION IS ONE OPERATION ──────────────────────────────────────
+//
+// WHY IT EXISTS. systemd keys StartLimitBurst on the unit NAME, so a bounded unit (StartLimitBurst=1 over
+// 600 s) started by one launch and then stopped and started again by the next transaction inside the
+// window is refused 'Start request repeated too quickly' (run 37241423753: the rollback's own restart, on
+// all four hosts). The counter lives on the LOADED unit object, and `reset-failed` on an unloaded unit is
+// an error (run 37254736596), so the clear runs iff the unit reads loaded. A deliberate start is
+// therefore three operations in one order: read the load state, clear the counter if loaded, restart.
+//
+// ONE AUTHORITY, TWO REALIZATIONS. The sequence is these HostOperation rows and nothing else. The
+// typed realization runs them as legs (gunbc.spark.host_occupancy_admission restore_spark_serving_units,
+// the incumbent restore); the shell realization renders the SAME rows' argv into the transaction's stage
+// scripts (gunbc.spark.native_serving_apply apply and rollback). A start anywhere else that is a
+// transaction's deliberate start and does not come from here is the fork the side-chat ruling on #13319
+// (finding 4) found: the outer incumbent restore started with a plain SystemctlStart.
+//
+// 'ONE ATTEMPT PER LAUNCH' STAYS TRUE: only a deliberate start clears the counter. A unit crashing on
+// its own, with no transaction starting it, meets StartLimitBurst unchanged, and Restart=no is not
+// touched.
+fn deliberate_start_load_state(unit: NonEmptyStr) -> HostOperation { SystemctlShowLoadState { unit: unit } }
+fn deliberate_start_reset(unit: NonEmptyStr) -> HostOperation { SystemctlResetFailed { unit: unit } }
+fn deliberate_start_restart(unit: NonEmptyStr) -> HostOperation { SystemctlRestart { unit: unit } }
+
+data deliberate_start_loaded_word: String = "loaded"
+
+// ── THE TYPED REALIZATION: one leg per operation, the clear only on a loaded unit ──────────────
+// Returns the refusal, or nothing when the restart was accepted.
+fn deliberate_unit_start_leg(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> String? {
+  match host_operation_leg(run: run, operation: deliberate_start_load_state(unit: unit), accepted_exits: [0]) {
+    HostOperationLegUnread { cause: c } => Present { value: join([unit as String, ": the load state could not be read before its deliberate start: ", c], "") }
+    HostOperationLegRead { stdout: state } => {
+      let reset = if trim(s: state) == deliberate_start_loaded_word {
+        match host_operation_leg(run: run, operation: deliberate_start_reset(unit: unit), accepted_exits: [0]) {
+          HostOperationLegUnread { cause: c } => [join([unit as String, ": its start-limit counter could not be cleared: ", c], "")]
+          HostOperationLegRead { stdout: _ } => [] as List<String>
+        }
+      } else { [] as List<String> }
+      if count(reset) > 0 { Present { value: join(reset, "; ") } }
+      else {
+        match host_operation_leg(run: run, operation: deliberate_start_restart(unit: unit), accepted_exits: [0]) {
+          HostOperationLegUnread { cause: c } => Present { value: join([unit as String, ": ", c], "") }
+          HostOperationLegRead { stdout: _ } => none
+        }
+      }
+    }
+  }
+}
+
+// ── THE SHELL REALIZATION: the same rows' argv, rendered into a stage script ──────────────────
+//
+// feature:remote-shell-body-emission — covered by the marker and dissolve-on trigger stated once above
+// gunbc.spark.native_serving_apply spark_native_host_apply_script. The words are not spelled here: each is
+// the materialized argv of the operation row above, so the typed and the shell realization cannot
+// disagree on what a deliberate start runs. A row that does not materialize renders a refusal line, so a
+// script never runs a start that skipped its clear.
+fn deliberate_start_argv_text(op: HostOperation) -> String? {
+  match host_operation_materialize_argv(operation: op) {
+    ArgvMaterializationRefused { at: _, cause: _ } => none
+    ArgvMaterialized { argv: argv } => Present { value: join(map(argv, w => shell_quote(arg: w)), " ") }
+  }
+}
+
+fn deliberate_unit_start_script(unit: NonEmptyStr, indent: String) -> String {
+  match deliberate_start_argv_text(op: deliberate_start_load_state(unit: unit)) {
+    Absent => join([indent, "echo DELIBERATE-START-REFUSED-load-state-argv-unmaterialized; exit 1\n"], "")
+    Present { value: show } =>
+      match deliberate_start_argv_text(op: deliberate_start_reset(unit: unit)) {
+        Absent => join([indent, "echo DELIBERATE-START-REFUSED-reset-argv-unmaterialized; exit 1\n"], "")
+        Present { value: reset } =>
+          match deliberate_start_argv_text(op: deliberate_start_restart(unit: unit)) {
+            Absent => join([indent, "echo DELIBERATE-START-REFUSED-restart-argv-unmaterialized; exit 1\n"], "")
+            Present { value: restart } => join([
+              indent, "if [ \"$(", show, ")\" = ", deliberate_start_loaded_word, " ]; then ", reset, "; fi\n",
+              indent, restart, "\n",
+            ], "")
+          }
+      }
+  }
+}
