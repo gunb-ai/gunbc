@@ -271,14 +271,6 @@ fn fx_rank(rank: Nat, checkpoint: ArmComponentBound) -> ArmRankDemand {
     activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
     graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
     kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
-    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),    rank: rank,
-    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: checkpoint),
-    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
-    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
-    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
-    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
-    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
-    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
     fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
 }
