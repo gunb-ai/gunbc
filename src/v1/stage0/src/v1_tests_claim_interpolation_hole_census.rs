@@ -14,7 +14,7 @@ pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{
-    ExprCall, ExprFieldAccess, ExprLiteral, ExprMethodCall, ExprStringInterp, ExprVar,
+    ExprBinOp, ExprCall, ExprFieldAccess, ExprLiteral, ExprMethodCall, ExprStringInterp, ExprVar,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::TokenShape::{ShStrBegin, ShStrEnd, ShStrMid};
@@ -103,6 +103,13 @@ pub struct HoleRow {
     pub shape: Rc<HoleShape>,
     pub reading: Rc<HoleTypeReading>,
     pub site: Rc<HoleSite>,
+    pub fused: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IhcHole {
+    pub node: Rc<Node>,
+    pub fused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -244,6 +251,57 @@ pub fn ihc_reading(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc
 }
 
 pub fn ihc_hole_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*e.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => ihc_named_or_span(e.clone(), si.clone()),
+            ExprData::ExprFieldAccess { summary: _, .. } => {
+                match e.children.clone().first().cloned() {
+                    Some(receiver) => v1_rt::concat(
+                        v1_rt::concat(ihc_hole_text(receiver.clone(), si.clone()), ".".to_string()),
+                        crate::v1_std_core::authored_name_at(si.clone(), e.clone()),
+                    ),
+                    std::option::Option::None => v1_rt::concat(
+                        ".".to_string(),
+                        crate::v1_std_core::authored_name_at(si.clone(), e.clone()),
+                    ),
+                }
+            }
+            ExprData::ExprCall { .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(ihc_named_or_span(e.clone(), si.clone()), "/".to_string()),
+                    (e.children.clone().len() as i64).to_string(),
+                ),
+                "-arg call".to_string(),
+            ),
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(ihc_named_or_span(e.clone(), si.clone()), "/".to_string()),
+                    (e.children.clone().len() as i64).to_string(),
+                ),
+                "-arg method call".to_string(),
+            ),
+            _ => ihc_span_text(e.clone(), si.clone()),
+        }
+    })
+}
+
+pub fn ihc_named_or_span(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    {
+        let named = crate::v1_std_core::authored_name_at(si.clone(), e.clone());
+        if (named.clone() != "".to_string()) {
+            named.clone()
+        } else {
+            ihc_span_text(e.clone(), si.clone())
+        }
+    }
+}
+
+pub fn ihc_span_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match v1_rt::map_get(&si, e.span.clone().file.clone()) {
         Some(index) => crate::v1_std_core::source_text_at(index.clone(), e.span.clone()),
         std::option::Option::None => "".to_string(),
@@ -268,35 +326,72 @@ pub fn ihc_is_text_part(part: Rc<Node>) -> bool {
     }
 }
 
-pub fn ihc_template_holes(ctx: Rc<HoleWalkContext>, template: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn ihc_template_holes(ctx: Rc<HoleWalkContext>, template: Rc<Node>) -> Rc<Vec<Rc<IhcHole>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in Rc::new({
+        for h in Rc::new({
             let mut __result = Vec::new();
-            for p in template.children.clone().iter().cloned() {
-                if !ihc_is_text_part(p.clone()) {
-                    __result.push(p);
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in template.children.clone().iter().cloned() {
+                    if !ihc_is_text_part(p.clone()) {
+                        __result.push(p);
+                    }
                 }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*Rc::new(
+                        p.children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .take(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         })
         .iter()
         .cloned()
         {
-            __result.extend(
-                (*Rc::new(
-                    p.children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .take(1 as usize)
-                        .collect::<Vec<_>>(),
-                ))
-                .iter()
-                .cloned(),
-            );
+            __result.extend((*ihc_unfuse(ctx.clone(), h.clone(), false)).iter().cloned());
         }
         __result
+    })
+}
+
+pub fn ihc_is_fusion(ctx: Rc<HoleWalkContext>, h: Rc<Node>) -> bool {
+    match (*h.expr_data.clone()).clone() {
+        ExprData::ExprBinOp { .. } => {
+            v1_rt::starts_with(ihc_span_text(h.clone(), ctx.si.clone()), "}".to_string())
+        }
+        _ => false,
+    }
+}
+
+pub fn ihc_unfuse(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<Vec<Rc<IhcHole>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ihc_is_fusion(ctx.clone(), h.clone()) {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in h.children.clone().iter().cloned() {
+                    __result.extend((*ihc_unfuse(ctx.clone(), c.clone(), true)).iter().cloned());
+                }
+                __result
+            })
+        } else {
+            Rc::new(vec![Rc::new(IhcHole {
+                node: h.clone(),
+                fused: fused.clone(),
+            })])
+        }
     })
 }
 
@@ -310,22 +405,27 @@ pub fn ihc_template_observation(
             file: template.span.clone().file.clone(),
             holes: Rc::new({
                 let mut __result = Vec::new();
-                for h in holes.iter().cloned() {
-                    __result.push(Rc::new(HoleRow {
-                        file: h.span.clone().file.clone(),
-                        line: ihc_line(h.clone(), ctx.si.clone()),
-                        decl: ctx.file_decl.clone(),
-                        ordinal: 0,
-                        text: ihc_hole_text(h.clone(), ctx.si.clone()),
-                        shape: ihc_shape(h.clone()),
-                        reading: ihc_reading(h.clone(), ctx.si.clone()),
-                        site: ctx.site.clone(),
-                    }));
+                for hh in holes.iter().cloned() {
+                    __result.push(ihc_hole_row(ctx.clone(), hh.node.clone(), hh.fused.clone()));
                 }
                 __result
             }),
         })
     }
+}
+
+pub fn ihc_hole_row(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<HoleRow> {
+    Rc::new(HoleRow {
+        file: h.span.clone().file.clone(),
+        line: ihc_line(h.clone(), ctx.si.clone()),
+        decl: ctx.file_decl.clone(),
+        ordinal: 0,
+        text: ihc_hole_text(h.clone(), ctx.si.clone()),
+        shape: ihc_shape(h.clone()),
+        reading: ihc_reading(h.clone(), ctx.si.clone()),
+        site: ctx.site.clone(),
+        fused: fused.clone(),
+    })
 }
 
 pub fn ihc_walk(ctx: Rc<HoleWalkContext>, n: Rc<Node>) -> Rc<Vec<Rc<ObservedTemplate>>> {
@@ -453,6 +553,7 @@ pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
                             shape: r.shape.clone(),
                             reading: r.reading.clone(),
                             site: r.site.clone(),
+                            fused: r.fused.clone(),
                         }),
                     ),
                 })
@@ -627,7 +728,7 @@ pub fn ihc_tsv_escape(v: String) -> String {
 }
 
 pub fn interpolation_hole_census_header() -> String {
-    "oracle\tfile\tline\tdecl\thole\tsite\tshape\ttype_category\ttype_label\tv1_coercion\ttransport_reading\ttext".to_string()
+    "oracle\tfile\tline\tdecl\thole\tsite\tshape\ttype_category\ttype_label\tv1_coercion\ttransport_reading\tv1_parse\ttext".to_string()
 }
 
 pub fn ihc_row_tsv(r: Rc<HoleRow>) -> String {
@@ -643,6 +744,11 @@ pub fn ihc_row_tsv(r: Rc<HoleRow>) -> String {
         ihc_tsv_escape(ihc_type_label(r.reading.clone())),
         ihc_v1_coercion(r.clone()),
         ihc_transport_reading(r.clone()),
+        if r.fused.clone() {
+            "v1_fused_adjacent_holes".to_string()
+        } else {
+            "".to_string()
+        },
         ihc_tsv_escape(r.text.clone()),
     ])
     .join(&"\t".to_string())
@@ -750,6 +856,37 @@ pub fn ihc_completeness_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
                                 (l.holes.clone()).to_string(),
                             ),
                             v1_rt::concat("observed_holes=".to_string(), (oh.clone()).to_string()),
+                            v1_rt::concat(
+                                "observed_texts=".to_string(),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for t in Rc::new({
+                                        let mut __result = Vec::new();
+                                        for t in c.templates.clone().iter().cloned() {
+                                            if (t.file.clone() == l.file.clone()) {
+                                                __result.push(t);
+                                            }
+                                        }
+                                        __result
+                                    })
+                                    .iter()
+                                    .cloned()
+                                    {
+                                        __result.push(
+                                            Rc::new({
+                                                let mut __result = Vec::new();
+                                                for h in t.holes.clone().iter().cloned() {
+                                                    __result.push(h.text.clone());
+                                                }
+                                                __result
+                                            })
+                                            .join(&"+".to_string()),
+                                        );
+                                    }
+                                    __result
+                                })
+                                .join(&" | ".to_string()),
+                            ),
                         ])
                         .join(&"\t".to_string())])
                     }
@@ -800,7 +937,7 @@ pub fn ihc_summary_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
             }
             __result
         });
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(Rc::new(vec!["oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)".to_string(), v1_rt::concat("subjects ".to_string(), ((c.lexical.clone().len() as i64)).to_string()), v1_rt::concat("holes ".to_string(), ((c.rows.clone().len() as i64)).to_string()), v1_rt::concat("body_holes ".to_string(), ((body.clone().len() as i64)).to_string()), v1_rt::concat("transport_holes ".to_string(), ((transport.clone().len() as i64)).to_string())]), ihc_tally_lines("body_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_type_category(r.reading.clone())); } __result })))), v1_rt::concat(ihc_tally_lines("body_shape_by_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(ihc_shape_label(r.shape.clone()), " ".to_string()), ihc_type_category(r.reading.clone()))); } __result }))), ihc_tally_lines("body_other_type".to_string(), ihc_tally(other_labels.clone())))), v1_rt::concat(v1_rt::concat(ihc_tally_lines("v1_coercion".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_v1_coercion(r.clone())); } __result }))), ihc_tally_lines("transport_reading".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in transport.iter().cloned() { __result.push(ihc_transport_reading(r.clone())); } __result })))), ihc_completeness_lines(c.clone())))
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(Rc::new(vec!["oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)".to_string(), v1_rt::concat("subjects ".to_string(), ((c.lexical.clone().len() as i64)).to_string()), v1_rt::concat("holes ".to_string(), ((c.rows.clone().len() as i64)).to_string()), v1_rt::concat("body_holes ".to_string(), ((body.clone().len() as i64)).to_string()), v1_rt::concat("transport_holes ".to_string(), ((transport.clone().len() as i64)).to_string()), v1_rt::concat("v1_fused_adjacent_holes ".to_string(), ((Rc::new({ let mut __result = Vec::new(); for r in c.rows.clone().iter().cloned() { if r.fused.clone() { __result.push(r); } } __result }).len() as i64)).to_string())]), ihc_tally_lines("body_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_type_category(r.reading.clone())); } __result })))), v1_rt::concat(ihc_tally_lines("body_shape_by_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(ihc_shape_label(r.shape.clone()), " ".to_string()), ihc_type_category(r.reading.clone()))); } __result }))), ihc_tally_lines("body_other_type".to_string(), ihc_tally(other_labels.clone())))), v1_rt::concat(v1_rt::concat(ihc_tally_lines("v1_coercion".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_v1_coercion(r.clone())); } __result }))), ihc_tally_lines("transport_reading".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in transport.iter().cloned() { __result.push(ihc_transport_reading(r.clone())); } __result })))), ihc_completeness_lines(c.clone())))
     }
 }
 
@@ -954,31 +1091,74 @@ pub fn interpolation_hole_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> 
                     "missing".to_string(),
                     "bare_name_not_an_input".to_string(),
                 ));
+                let fusion = ((Rc::new({
+                    let mut __result = Vec::new();
+                    for r in rows.iter().cloned() {
+                        if r.fused.clone() {
+                            __result.push(r);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    == 2);
                 let complete = (((ihc_completeness_lines(c.clone()).len() as i64) == 0)
                     && ((rows.clone().len() as i64) == 8));
-                let held = (((((string_ident.clone() && own_type.clone()) && dotted.clone())
+                let held = ((((((string_ident.clone() && own_type.clone()) && dotted.clone())
                     && call.clone())
                     && transport.clone())
+                    && fusion.clone())
                     && complete.clone());
-                Rc::new(vec![
+                v1_rt::concat(
                     v1_rt::concat(
-                        "STANDING ".to_string(),
-                        if held.clone() {
-                            "held".to_string()
-                        } else {
-                            "unmet".to_string()
-                        },
+                        Rc::new(vec![
+                            v1_rt::concat(
+                                "STANDING ".to_string(),
+                                if held.clone() {
+                                    "held".to_string()
+                                } else {
+                                    "unmet".to_string()
+                                },
+                            ),
+                            ihc_control_line(
+                                "string_identifier_hole".to_string(),
+                                string_ident.clone(),
+                            ),
+                            ihc_control_line(
+                                "own_type_not_joined_type".to_string(),
+                                own_type.clone(),
+                            ),
+                            ihc_control_line(
+                                "dotted_holes_typed_by_field".to_string(),
+                                dotted.clone(),
+                            ),
+                            ihc_control_line("call_hole_typed_by_return".to_string(), call.clone()),
+                            ihc_control_line(
+                                "transport_holes_read_against_inputs".to_string(),
+                                transport.clone(),
+                            ),
+                            ihc_control_line(
+                                "v1_fusion_recovered_as_two_holes".to_string(),
+                                fusion.clone(),
+                            ),
+                            ihc_control_line(
+                                "every_lexed_hole_observed".to_string(),
+                                complete.clone(),
+                            ),
+                        ]),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for r in rows.iter().cloned() {
+                                __result.push(v1_rt::concat(
+                                    "fixture_row ".to_string(),
+                                    ihc_row_tsv(r.clone()),
+                                ));
+                            }
+                            __result
+                        }),
                     ),
-                    ihc_control_line("string_identifier_hole".to_string(), string_ident.clone()),
-                    ihc_control_line("own_type_not_joined_type".to_string(), own_type.clone()),
-                    ihc_control_line("dotted_holes_typed_by_field".to_string(), dotted.clone()),
-                    ihc_control_line("call_hole_typed_by_return".to_string(), call.clone()),
-                    ihc_control_line(
-                        "transport_holes_read_against_inputs".to_string(),
-                        transport.clone(),
-                    ),
-                    ihc_control_line("every_lexed_hole_observed".to_string(), complete.clone()),
-                ])
+                    ihc_completeness_lines(c.clone()),
+                )
                 .join(&"\n".to_string())
             }
         }

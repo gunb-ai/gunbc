@@ -8,7 +8,7 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 import v1.std.core {
   Node, NewlineIndex, Token, Resolved, authored_name_at, param_node_name_at, source_text_at, byte_to_line_col,
   ShStrBegin, ShStrMid, ShStrEnd,
-  ExprStringInterp, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprLiteral
+  ExprStringInterp, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprLiteral, ExprBinOp
 }
 import std.types { List, String, Map, Bool, Int }
 
@@ -57,6 +57,19 @@ type HoleRow {
   shape: HoleShape
   reading: HoleTypeReading
   site: HoleSite
+  fused: Bool
+}
+
+// One hole as the typed tree holds it. `fused` marks a hole recovered from a v1 FUSION: v1's hole
+// parser reads the text token between two adjacent holes -- `-` in a template like s-e, `/` in
+// path/missing -- as a binary operator and folds both holes into one ExprBinOp, whose operator span
+// is the template's own text token (it begins with the closing brace). That is a v1 parse defect,
+// not a source property: each operand is a hole the lexer counted, and v1 typed each one. The census
+// recovers the operands as holes and marks them, so the defect is counted rather than hidden as a
+// missing hole or misread as one hole of the operator's type.
+type IhcHole {
+  node: Node
+  fused: Bool
 }
 
 type HoleWalkContext {
@@ -188,15 +201,36 @@ fn ihc_is_text_part(part: Node) -> Bool {
 
 // The holes of one template, in source order. A part that is not a text literal is a hole part, whose
 // only child is the hole expression infer typed.
-fn ihc_template_holes(ctx: HoleWalkContext, template: Node) -> List<Node> {
+fn ihc_template_holes(ctx: HoleWalkContext, template: Node) -> List<IhcHole> {
   template.children |> filter(p => !ihc_is_text_part(part: p)) |> flat_map(p => p.children |> take(1))
+    |> flat_map(h => ihc_unfuse(ctx: ctx, h: h, fused: false))
+}
+
+fn ihc_is_fusion(ctx: HoleWalkContext, h: Node) -> Bool {
+  match h.expr_data {
+    ExprBinOp { op: _, algebra_field: _, operand: _ } => starts_with(s: ihc_span_text(e: h, si: ctx.si), prefix: "}")
+    _ => false
+  }
+}
+
+fn ihc_unfuse(ctx: HoleWalkContext, h: Node, fused: Bool) -> List<IhcHole> {
+  if ihc_is_fusion(ctx: ctx, h: h) {
+    h.children |> flat_map(c => ihc_unfuse(ctx: ctx, h: c, fused: true))
+  } else {
+    [IhcHole { node: h, fused: fused }]
+  }
 }
 
 fn ihc_template_observation(ctx: HoleWalkContext, template: Node) -> ObservedTemplate {
   let holes = ihc_template_holes(ctx: ctx, template: template)
   ObservedTemplate {
     file: template.span.file,
-    holes: holes |> map(h => HoleRow {
+    holes: holes |> map(hh => ihc_hole_row(ctx: ctx, h: hh.node, fused: hh.fused))
+  }
+}
+
+fn ihc_hole_row(ctx: HoleWalkContext, h: Node, fused: Bool) -> HoleRow {
+  HoleRow {
       file: h.span.file,
       line: ihc_line(e: h, si: ctx.si),
       decl: ctx.file_decl,
@@ -204,8 +238,8 @@ fn ihc_template_observation(ctx: HoleWalkContext, template: Node) -> ObservedTem
       text: ihc_hole_text(e: h, si: ctx.si),
       shape: ihc_shape(e: h),
       reading: ihc_reading(e: h, si: ctx.si),
-      site: ctx.site
-    })
+      site: ctx.site,
+      fused: fused
   }
 }
 
@@ -263,7 +297,7 @@ fn ihc_number_holes(rows: List<HoleRow>) -> List<HoleRow> {
     }
     IhcNumbering {
       seen: map_insert(acc.seen, key, next),
-      out: list_push(acc.out, HoleRow { file: r.file, line: r.line, decl: r.decl, ordinal: next, text: r.text, shape: r.shape, reading: r.reading, site: r.site })
+      out: list_push(acc.out, HoleRow { file: r.file, line: r.line, decl: r.decl, ordinal: next, text: r.text, shape: r.shape, reading: r.reading, site: r.site, fused: r.fused })
     })
   numbered.out
 }
@@ -364,7 +398,7 @@ fn ihc_tsv_escape(v: String) -> String {
 }
 
 fn interpolation_hole_census_header() -> String {
-  "oracle\tfile\tline\tdecl\thole\tsite\tshape\ttype_category\ttype_label\tv1_coercion\ttransport_reading\ttext"
+  "oracle\tfile\tline\tdecl\thole\tsite\tshape\ttype_category\ttype_label\tv1_coercion\ttransport_reading\tv1_parse\ttext"
 }
 
 fn ihc_row_tsv(r: HoleRow) -> String {
@@ -380,6 +414,7 @@ fn ihc_row_tsv(r: HoleRow) -> String {
     ihc_tsv_escape(v: ihc_type_label(r: r.reading)),
     ihc_v1_coercion(r: r),
     ihc_transport_reading(r: r),
+    if r.fused { "v1_fused_adjacent_holes" } else { "" },
     ihc_tsv_escape(v: r.text)
   ] |> join(separator: "\t")
 }
@@ -438,7 +473,8 @@ fn ihc_summary_lines(c: IhcCensus) -> List<String> {
           concat("subjects ", to_string(c.lexical |> count)),
           concat("holes ", to_string(c.rows |> count)),
           concat("body_holes ", to_string(body |> count)),
-          concat("transport_holes ", to_string(transport |> count))
+          concat("transport_holes ", to_string(transport |> count)),
+          concat("v1_fused_adjacent_holes ", to_string(c.rows |> filter(r => r.fused) |> count))
         ],
         ihc_tally_lines(prefix: "body_type", tally: ihc_tally(keys: body |> map(r => ihc_type_category(r: r.reading))))
       ),
@@ -509,8 +545,9 @@ fn interpolation_hole_fixture_standing(sources: List<SourceFile>) -> String {
       let call = ihc_row_is(rows: rows, decl: "call_hole", ordinal: 1, category: "String", shape: "call")
       let transport = ihc_transport_row_is(rows: rows, text: "path", reading: "bare_name_matches_input")
         && ihc_transport_row_is(rows: rows, text: "missing", reading: "bare_name_not_an_input")
+      let fusion = (rows |> filter(r => r.fused) |> count) == 2
       let complete = (ihc_completeness_lines(c: c) |> count) == 0 && (rows |> count) == 8
-      let held = string_ident && own_type && dotted && call && transport && complete
+      let held = string_ident && own_type && dotted && call && transport && fusion && complete
       concat(concat([
         concat("STANDING ", if held { "held" } else { "unmet" }),
         ihc_control_line(name: "string_identifier_hole", held: string_ident),
@@ -518,6 +555,7 @@ fn interpolation_hole_fixture_standing(sources: List<SourceFile>) -> String {
         ihc_control_line(name: "dotted_holes_typed_by_field", held: dotted),
         ihc_control_line(name: "call_hole_typed_by_return", held: call),
         ihc_control_line(name: "transport_holes_read_against_inputs", held: transport),
+        ihc_control_line(name: "v1_fusion_recovered_as_two_holes", held: fusion),
         ihc_control_line(name: "every_lexed_hole_observed", held: complete)
       ], rows |> map(r => concat("fixture_row ", ihc_row_tsv(r: r)))), ihc_completeness_lines(c: c)) |> join(separator: "\n")
   }
