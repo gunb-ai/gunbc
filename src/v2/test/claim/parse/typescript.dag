@@ -8,7 +8,9 @@ data ts_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 
 // THE TYPESCRIPT GRAMMAR CLAIMS THAT ARE RED ON MAIN, held here ungated while they are diagnosed
 // (v2.test.parse census, gunbc#13372, phase 4 item D). Their green siblings are gated in test.claim.parse_test_typescript_grammar.
-// These rows are data TestClaims, which no runner executes; the diagnosis PR converts them.
+// These rows are data TestClaims, which no runner executes. STATED FRONTIER: gunbc.recurring_failure_mode
+// ts_lexer_has_no_ingest_rule_set (TS has no ingest lexer; its rules are emission spellings), owner the
+// grammar program; they stay here, ungated, until its trigger fires.
 
 data claim_ts_union_task_status_parses: TestClaim = EqualsClaim {
   label: "TS grammar accepts a 3-variant string-literal discriminated union in a const annotation (TaskStatus surface): const status: 'Open' | 'InProgress' | 'Done' = status;",

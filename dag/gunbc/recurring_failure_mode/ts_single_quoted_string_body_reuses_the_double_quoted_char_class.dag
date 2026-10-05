@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.ts_single_quoted_string_body_reuses_the_double_quoted_char_class
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data ts_single_quoted_string_body_reuses_the_double_quoted_char_class: RecurringFailureMode = RecurringFailureMode {
+  identity: "ts_single_quoted_string_body_reuses_the_double_quoted_char_class" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: v2.extdeps.languages.typescript ts_string_lit_lex_rule delimited a single-quoted string with a body of RepeatPattern over StringTextChar, the DOUBLE-quoted body class (v2.compiler.tokenize: excludes the double quote and newline, not the single quote). The greedy body consumed the closing quote, the close never matched, and every single-quoted TypeScript string refused in tokenize.",
+
+    "SPECIMENS: `const bit: 'On' | 'Off' = bit;` refused tokenize_lex_e1_unrecognized_char at the first quote (gunbc run, BuildBuddy invocation b9e2870f), as did the three-variant status union. Both were data TestClaim rows no runner executes.",
+
+    "HARM: a modeled token class that can never be produced; any TypeScript claim over a string literal was false and silent.",
+
+    "REPAIR: each body char is guarded by NotFollowedByPattern on the closing quote, so body and close are disjoint by construction (the zero-ambiguity ruling). RED-FIRST CONTROL: test.claim.parse_test_typescript_grammar a_single_quoted_ts_string_lexes_as_one_string_token_holds, false before and true after. The kotlin and swift string rules use the same body with a DOUBLE-quoted delimiter, where StringTextChar is the right class.",
+
+    "RUNG FOUND AT: below the floor (unexecuted). CEILING: 2 -- the control is the wall; a delimited pattern whose body can match its own close is decidable from the rule and could be refused when the lexer is prepared (3), which is the next trigger. OWNER: grammar program (stern-bear-500).",
+  ],
+
+  evidence: [],
+}

@@ -47,6 +47,7 @@ import v2.std.compilers.lexing {
   LiteralPattern,
   lex_rule_set_token_class_member,
   ModeledLexRules,
+  NotFollowedByPattern,
   OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
@@ -2325,12 +2326,22 @@ fn ts_num_lit_lex_rule() -> LexRule {
   TokenRule { token_class: ^ts_token_num_lit, pattern: ts_num_lit_lex_pattern() }
 }
 
+// A SINGLE-QUOTED STRING'S BODY STOPS AT ITS OWN QUOTE. StringTextChar is the DOUBLE-quoted body
+// class (it excludes `"` and newline, not `'`), so a body of bare StringTextChar consumed the closing
+// `'` and every single-quoted string refused (gunbc.recurring_failure_mode
+// ts_single_quoted_string_body_reuses_the_double_quoted_char_class). Each body char is guarded by
+// the PEG not-predicate on the close, so the body and the close are disjoint by construction.
 fn ts_string_lit_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^ts_token_string_lit,
     pattern: DelimitedPattern {
       open: LiteralPattern { text: "'" },
-      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      body: RepeatPattern {
+        element: SequencePattern {
+          left: NotFollowedByPattern { element: LiteralPattern { text: "'" } },
+          right: CharClassPattern { class: StringTextChar }
+        }
+      },
       close: LiteralPattern { text: "'" }
     }
   }
