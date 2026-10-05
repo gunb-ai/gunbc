@@ -1562,6 +1562,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         changed,
         &changed_paths,
         &added_paths,
+        cost_debt_roster_head_closure,
         cost_debt_admitted_identities,
         || cost_debt_admitted_by_fold(&[], None),
     )?;
@@ -2498,7 +2499,7 @@ pub(crate) fn cost_debt_admitted_by_fold(
 }
 
 /// THE ADMISSION STEP OF THE DIFF PROJECTION, as `changed_and_enrolled_witness_identities_with_index`
-/// runs it: decide whether the diff touched the roster, read the admitted rows (`read_modified`
+/// runs it: decide whether the diff touched the roster or its dependency closure, read the admitted rows (`read_modified`
 /// for a modified roster, against the base; `read_added` for a roster this change adds, where
 /// every row is new), and merge them into the changed set the floor plans from and the wall owes.
 /// Returns the merged changed set and the admitted rows. The readers are parameters so the
@@ -2507,10 +2508,19 @@ pub(crate) fn changed_with_cost_debt_admissions(
     mut changed: Vec<String>,
     changed_paths: &[String],
     added_paths: &HashSet<String>,
+    roster_closure: impl FnOnce() -> Result<HashSet<String>, String>,
     read_modified: impl FnOnce() -> Result<Vec<String>, String>,
     read_added: impl FnOnce() -> Result<Vec<String>, String>,
 ) -> Result<(Vec<String>, Vec<String>), String> {
-    let touched = changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER);
+    // MEMBERSHIP CAN CHANGE WITHOUT THE ROSTER FILE CHANGING: the roster's result is computed, and
+    // any module in its dependency closure can add a row (an imported provider's `selected_rows()`).
+    // So the question is asked whenever the diff touches the roster OR any file its head closure
+    // loads -- never by whether the roster's own path is in the diff (review on gunbc#13332). A
+    // closure that cannot be read refuses rather than answering "untouched".
+    let touched = changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER) || {
+        let closure = roster_closure()?;
+        changed_paths.iter().any(|p| closure.contains(p))
+    };
     let admitted = if added_paths.contains(FLOOR_COST_DEBT_ROSTER) {
         read_added()?
     } else if touched {
@@ -2526,6 +2536,43 @@ pub(crate) fn changed_with_cost_debt_admissions(
     }
     merge_cost_debt_admissions(&mut changed, &admitted);
     Ok((changed, admitted))
+}
+
+/// THE FINALIZATION STEP: the wall's refusals written onto the floor's outcome, where
+/// `v1_compiler.cli_run` `required_floor_outcome_is_clean` reads them and the run goes unclean.
+/// `run_required_floor` calls this, and the integration control drives it into that predicate.
+pub(crate) fn record_cost_debt_verdict(
+    outcome: &mut RequiredFloorOutcome,
+    changed_witnesses: Option<&[String]>,
+    head_roster: &HashSet<String>,
+    terminal: &[ClaimTerminalRow],
+) -> Result<(), String> {
+    outcome.cost_debt_verdict_refused =
+        cost_debt_verdict_wall(changed_witnesses, head_roster, terminal)?;
+    Ok(())
+}
+
+/// THE FILES THE HEAD ROSTER'S RESULT DEPENDS ON: every source file the resolver loaded for
+/// `v2.workflow.floor_cost_debt`, as workspace-relative paths, so a diff path can be tested against
+/// it. Read from the resolved graph's own file table, never re-derived from import lines.
+fn cost_debt_roster_head_closure() -> Result<HashSet<String>, String> {
+    let workspace = process_workspace_root();
+    let entry = workspace.join(FLOOR_COST_DEBT_ROSTER);
+    let (_graph, indices) =
+        resolve_entry_graph_shared(&default_source_roots(), &entry.to_string_lossy()).map_err(
+            |e| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterClosureUnreadable -- the head \
+                     roster's dependency closure could not be resolved ({e}), so whether this \
+                     change altered its membership cannot be decided"
+                )
+            },
+        )?;
+    let prefix = format!("{}/", workspace.to_string_lossy());
+    Ok(indices
+        .keys()
+        .map(|path| normalize_repo_path(path.strip_prefix(&prefix).unwrap_or(path)))
+        .collect())
 }
 
 /// ADMISSION JOINS THE CHANGED SET, here and nowhere else: the diff projection calls this, so the
@@ -12059,7 +12106,8 @@ pub fn run_required_floor(
     // this change admits or restores ran for its verdict; a row over a claim that did not pass is
     // refused here whatever the expected-red roster says, because a withhold suppresses that
     // enrolment and the red would stop being read.
-    outcome.cost_debt_verdict_refused = cost_debt_verdict_wall(
+    record_cost_debt_verdict(
+        &mut outcome,
         changed_witnesses.as_deref(),
         &cost_debt_roster,
         &terminal_rows,
@@ -13725,6 +13773,13 @@ mod changed_witness_projection_tests {
             .expect("fold")
             .is_empty());
         std::fs::remove_dir_all(&head_tree).ok();
+        std::fs::remove_dir_all(&base_tree).ok();
+    }
+
+    /// REFUSAL: a base tree whose roster does not evaluate, or that has no roster at all, refuses
+    /// typed rather than reading as carrying anything.
+    #[test]
+    fn cost_debt_base_roster_that_does_not_evaluate_refuses() {
         let broken = cost_debt_fixture_tree("[\"t.old\"]", false);
         let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
         assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
@@ -13732,7 +13787,6 @@ mod changed_witness_projection_tests {
         let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
         assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
         std::fs::remove_dir_all(&broken).ok();
-        std::fs::remove_dir_all(&base_tree).ok();
     }
 
     /// RED (gunbc#13344): on a merge-base comparison the base is the MERGE BASE, not the base
@@ -13778,6 +13832,90 @@ mod changed_witness_projection_tests {
         );
     }
 
+    /// An outcome with every blocking population empty: the state `run_required_floor` starts from.
+    fn cost_debt_clean_outcome() -> RequiredFloorOutcome {
+        RequiredFloorOutcome {
+            subject_digest: String::new(),
+            modules_resolved: 0,
+            modules_excluded: 0,
+            sites_offered: 0,
+            declined_long_module: 0,
+            declined_fixture_member: 0,
+            declined_outside_required_gate: 0,
+            declared_identities: 0,
+            declined_outside_gate_closure: 0,
+            declined_discovery_excluded: 0,
+            claims_planned: 0,
+            claims_executed: 0,
+            receipt_identities: 0,
+            not_attempted_after_abort: 0,
+            passed: 0,
+            known_red_held: 0,
+            route_gap_held: 0,
+            known_red_now_passing: 0,
+            known_red_budget_refused: 0,
+            known_red_passed_over_budget: 0,
+            known_red_host_tool_unresolved_held: 0,
+            known_red_host_effect_refused: 0,
+            stale_quarantine: Vec::new(),
+            interrupted_before_verdict: Vec::new(),
+            completed_over_cost_requirement: Vec::new(),
+            withheld_cost_debt: Vec::new(),
+            stale_cost_debt: Vec::new(),
+            known_red_runtime_errored: Vec::new(),
+            non_verdict_unenrolled: Vec::new(),
+            stale_non_verdict: Vec::new(),
+            known_red_observation_unreadable: Vec::new(),
+            host_tool_unresolved: Vec::new(),
+            route_gap: Vec::new(),
+            stale_route_gap: Vec::new(),
+            over_cost_line_diagnostic: 0,
+            claim_cost: Vec::new(),
+            failures: Vec::new(),
+            required_floor_disposition: Vec::new(),
+            long_home_storage_agreement: Vec::new(),
+            changed_witness_rows: 0,
+            changed_witness_blocking: Vec::new(),
+            enrolment_margin_blocking: Vec::new(),
+            cost_debt_verdict_refused: Vec::new(),
+        }
+    }
+
+    /// RED (provider-only change): the diff edits only a module the roster IMPORTS, not the roster
+    /// file. Membership can still change, so the admission step must consult the closure and read
+    /// the admissions; a path outside the closure must not.
+    #[test]
+    fn cost_debt_provider_only_change_is_admitted() {
+        const PROVIDER: &str = "src/v2/workflow/cost_debt_fixture_provider.dag";
+        let closure = || -> Result<HashSet<String>, String> {
+            Ok([FLOOR_COST_DEBT_ROSTER, PROVIDER]
+                .iter()
+                .map(|p| p.to_string())
+                .collect())
+        };
+        let (changed, admitted) = changed_with_cost_debt_admissions(
+            Vec::new(),
+            &[PROVIDER.to_string()],
+            &HashSet::new(),
+            closure,
+            || Ok(vec!["t.new".to_string()]),
+            || panic!("the roster is not added"),
+        )
+        .expect("admission step");
+        assert_eq!(admitted, vec!["t.new".to_string()]);
+        assert_eq!(changed, vec!["t.new".to_string()]);
+        let (_, untouched) = changed_with_cost_debt_admissions(
+            Vec::new(),
+            &["src/v2/workflow/unrelated.dag".to_string()],
+            &HashSet::new(),
+            closure,
+            || panic!("a path outside the closure must not ask for admissions"),
+            || panic!("the roster is not added"),
+        )
+        .expect("admission step");
+        assert!(untouched.is_empty());
+    }
+
     /// THE INTEGRATION CONTROL, through the production admission step of the diff projection
     /// (`changed_with_cost_debt_admissions`, the function `changed_and_enrolled_witness_identities_with_index`
     /// calls) and the wall as `run_required_floor` calls it. The diff modified the roster and
@@ -13798,6 +13936,7 @@ mod changed_witness_projection_tests {
             Vec::new(),
             &[FLOOR_COST_DEBT_ROSTER.to_string()],
             &HashSet::new(),
+            || panic!("the roster's own path is in the diff; the closure is not consulted"),
             || {
                 let base = cost_debt_roster_in_tree(&base_tree)?;
                 cost_debt_admitted_by_fold(&base, Some(&head))
@@ -13809,7 +13948,17 @@ mod changed_witness_projection_tests {
         assert_eq!(admitted, vec!["t.new".to_string(), "t.pass".to_string()]);
         let roster: HashSet<String> = head.iter().cloned().collect();
         let terminal = [terminal("t.pass", ClaimOutcome::Pass)];
-        let refused = cost_debt_verdict_wall(Some(&changed), &roster, &terminal).expect("wall");
+        let mut outcome = cost_debt_clean_outcome();
+        assert!(
+            required_floor_outcome_is_clean(&outcome),
+            "the fixture outcome starts clean"
+        );
+        record_cost_debt_verdict(&mut outcome, Some(&changed), &roster, &terminal).expect("wall");
+        assert!(
+            !required_floor_outcome_is_clean(&outcome),
+            "the floor's own cleanliness predicate must read the refusal"
+        );
+        let refused = outcome.cost_debt_verdict_refused.clone();
         assert_eq!(
             refused
                 .iter()
