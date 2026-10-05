@@ -10,7 +10,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
-  NoWitnessDischarge,
+  NoWitnessDischarge, StandingRulingUnderInterlock, WitnessDischarge,
   FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
@@ -393,7 +393,8 @@ test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
 
 // THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT registration,
 // deregistration, the qualification dispatch and its per-attempt branch pin are each a
-// recurring automated effect under the dispatching run's federated identity, so the selection must
+// recurring automated effect under the dispatching run's federated identity (the pin and its removal
+// on their own parameters, with no ruling discharge), so the selection must
 // answer the federated scoped grant and the row must conform; rowing it as an approval capability or
 // a per-registration ntfy approval turns this red.
 test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federated_grant_and_conform() -> Bool {
@@ -402,6 +403,25 @@ test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federa
       (v.site.decl_name as String) == name
         && selected_federated(s: v.selection)
         && match v.conformance { Conforms => true _ => false }))
+}
+
+// ONE ANSWER FOR WHICH SITES THE RUNNER-LIFECYCLE RULING DISCHARGES: the interpretation's covers list.
+// A census row carries that ruling's discharge exactly when covers names its site, so a row cannot
+// claim the ruling while covers omits it, and covers cannot name a row that never takes the discharge
+// (the branch-pin rows once did both at once). The red is either drift: a row hard-coding the ruling,
+// or a covers entry whose row hard-codes NoWitnessDischarge.
+fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
+  match d {
+    NoWitnessDischarge => false
+    StandingRulingUnderInterlock { ruling: g } => (g.ruling_text as String) == (runner_lifecycle_operator_ruling.ruling_text as String)
+  }
+}
+
+test fn a_row_takes_the_runner_lifecycle_ruling_exactly_when_the_interpretation_covers_it() -> Bool {
+  privileged_effect_census |> all(r =>
+    discharged_by_runner_lifecycle_ruling(d: r.effect.witness_discharge)
+      == any(runner_lifecycle_ruling_scope_interpretation.covers, c => declaration_ref_eq(a: c, b: r.site)))
+    && runner_lifecycle_ruling_scope_interpretation.covers |> all(c => any(privileged_effect_census, r => declaration_ref_eq(a: c, b: r.site)))
 }
 
 // THE DISPATCH'S COVERAGE IS THE INTERPRETATION'S, NOT THE RULING TEXT'S. The census row's
