@@ -55,7 +55,7 @@ fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: Stri
 // forging against it -- which is what makes the probe's refusals attributable to the forgeries.
 data harness_control_source: String = "module probe_census_app_acquisition_harness_control\nimport std.types { String }\nimport gunbc.github_app_acquisition { CensusAppAcquisitionReceipt, census_app_acquisition_standing, census_app_custody_handoff_directory }\nfn dir() -> String { census_app_custody_handoff_directory }\n"
 
-test fn a_source_that_only_names_the_acquisition_module_forges_no_receipt() -> Bool {
+test fn a_source_that_only_names_the_acquisition_module_forges_no_receipt() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: harness_control_source),
     wanted: "SoleConstructorViolation", subject: "CensusAppAcquisitionReceipt",
@@ -76,13 +76,13 @@ fn no_standing_is_refused_in(c: CompileDiagnosticCensus) -> Bool {
     && (blocking_count_for_class_and_subject(c: c, wanted: "CallPositionalDeficit", subject: "record") == 0)
 }
 
-test fn a_source_that_only_names_the_acquisition_module_is_not_refused_at_the_mint() -> Bool {
+test fn a_source_that_only_names_the_acquisition_module_is_not_refused_at_the_mint() -> Bool  {
   no_standing_is_refused_in(c: census_of(source: harness_control_source))
 }
 
 // (a) THE RECORD HAS NO CONSTRUCTOR OUTSIDE THE MODULE. A hand-built receipt over an authored slug
 // and an authored custody path refuses at the literal.
-test fn a_forged_acquisition_receipt_cannot_be_authored_outside_the_module() -> Bool {
+test fn a_forged_acquisition_receipt_cannot_be_authored_outside_the_module() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "census_app_acquisition_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "CensusAppAcquisitionReceipt",
@@ -98,6 +98,6 @@ test fn a_forged_acquisition_receipt_cannot_be_authored_outside_the_module() -> 
 // four read zero over the control above, so the refusal is attributable to spelling the old route
 // and not to naming the mint. No arm of the mint is reachable by an authored standing, and no
 // comparison inside it is what stands between this call and a receipt.
-test fn the_mint_cannot_be_called_with_authored_standings() -> Bool {
+test fn the_mint_cannot_be_called_with_authored_standings() -> Bool  {
   standings_refused_at(c: census_of(source: probe_source(name: "census_app_acquisition_forged_probe")))
 }

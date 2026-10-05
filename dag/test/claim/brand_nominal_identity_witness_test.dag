@@ -168,14 +168,14 @@ fn count_occurrences(xs: List<String>, wanted: String) -> Int {
 // arity the wall's evidence requires -- three refusing arms and three accepting arms -- so removing
 // any one of them reds here rather than passing quietly with a narrowed subject.
 
-test fn b_all_six_arms_are_enrolled() -> Bool {
+test fn b_all_six_arms_are_enrolled() -> Bool  {
   let total = brand_arms |> count
   let refusing = brand_arms |> filter(a => a.expect_blocking) |> count
   let accepting = brand_arms |> filter(a => !a.expect_blocking) |> count
   total == 6 && refusing == 3 && accepting == 3 && refusing + accepting == total
 }
 
-test fn b_arm_names_are_pairwise_distinct() -> Bool {
+test fn b_arm_names_are_pairwise_distinct() -> Bool  {
   arm_names() |> all(n => count_occurrences(xs: arm_names(), wanted: n) == 1)
 }
 
@@ -184,7 +184,7 @@ test fn b_arm_names_are_pairwise_distinct() -> Bool {
 // half reds somewhere else in the report; joined, the only way to pass is to draw the line exactly
 // where the six fixtures put it.
 
-test fn b_every_arm_behaves_as_declared() -> Bool {
+test fn b_every_arm_behaves_as_declared() -> Bool  {
   brand_arms |> all(a => arm_agrees(a: a))
 }
 
@@ -214,11 +214,11 @@ fn arm_blocking_by_name(wanted: String) -> Int {
 // and construct. These assert the pairs have come apart, which is the single fact the repair adds
 // and the one a permanently-green decoration could not carry.
 
-test fn b_collision_and_dual_are_distinguished() -> Bool {
+test fn b_collision_and_dual_are_distinguished() -> Bool  {
   arm_blocking_by_name(wanted: "collision") >= 1 && arm_total_blocking_by_name(wanted: "dual") == 0
 }
 
-test fn b_mismatch_and_construct_are_distinguished() -> Bool {
+test fn b_mismatch_and_construct_are_distinguished() -> Bool  {
   arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_total_blocking_by_name(wanted: "construct") == 0
 }
 
@@ -226,7 +226,7 @@ test fn b_mismatch_and_construct_are_distinguished() -> Bool {
 // asserts the check reads the immediate operand rather than peeling to the original value. It is
 // the assertion the first version of this wall would have failed, and it does not retire.
 
-test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool {
+test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool  {
   arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_total_blocking_by_name(wanted: "strip") == 0
 }
 
@@ -237,6 +237,6 @@ test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool {
 // reachable by fixture and the guard is a wall rather than a decoration. Paired with `mismatch`
 // it asserts that the two forms of one violation now agree.
 
-test fn b_undeclared_site_refuses_like_a_declared_mismatch() -> Bool {
+test fn b_undeclared_site_refuses_like_a_declared_mismatch() -> Bool  {
   arm_blocking_by_name(wanted: "undeclared_site") >= 1 && arm_blocking_by_name(wanted: "mismatch") >= 1
 }

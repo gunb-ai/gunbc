@@ -41,7 +41,7 @@ data fixture_token: Secret = "hermetic-fixture-token" as Secret
 // substituted for it would go red rather than pass quietly.
 // -------------------------------------------------------------------------------------
 
-test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
+test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool  {
   match perform_code_search_page(auth_token: fixture_token, q: "\"depot-ubuntu-24.04-arm\" path:.github/workflows", per_page: 100, page: 1) {
     CodeSearchPageComplete { page, hits_read } =>
       hits_read == 1
@@ -75,7 +75,7 @@ test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
 // THE FILE READ, AND THE TWO ARMS THAT EXIST BECAUSE 200 IS NOT ALWAYS AN ANSWER.
 // -------------------------------------------------------------------------------------
 
-test fn a_workflow_source_read_binds_the_hermetic_blob_identity() -> Bool {
+test fn a_workflow_source_read_binds_the_hermetic_blob_identity() -> Bool  {
   match perform_workflow_source_read(
     auth_token: fixture_token, owner: "biomejs", repo: "biome",
     path: ".github/workflows/main.yml", ref: "47d7383d049b36ff8eaba50912176928143dd9e9",
@@ -178,7 +178,7 @@ data observed_file: RepositoryFileContent = RepositoryFileContent {
   content: "ZmFrZQ==",
 }
 
-test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool {
+test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool  {
   match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
     HitCanonicalized { identity } =>
       identity.ref == fixture_ref
@@ -198,7 +198,7 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
 // THE DISCRIMINATING RED FOR THE PROMOTION: an unread file must NOT become an identity, however
 // complete the hit that pointed at it was. Both non-reading arms are exercised, because a scan
 // that refused only the oversized one would still fabricate on an unrecognized encoding.
-test fn an_unread_file_never_becomes_an_identity() -> Bool {
+test fn an_unread_file_never_becomes_an_identity() -> Bool  {
   let oversized_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: oversized_response)) {
     HitCanonicalized { identity } => false
     HitFileUnreadable { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
@@ -228,7 +228,7 @@ test fn an_unread_file_never_becomes_an_identity() -> Bool {
 // the effectful read calls, so these claims drive the same code the production path runs.
 // -------------------------------------------------------------------------------------
 
-test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool {
+test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool  {
   match classify_workflow_source(request: coherent_request, file: oversized_response) {
     WorkflowSourceTooLargeForContentsApi { file, cause } =>
       file.encoding == contents_absent_encoding && string_contains(s: cause as String, pattern: "was NOT read")
@@ -238,7 +238,7 @@ test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool
   }
 }
 
-test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bool {
+test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bool  {
   match classify_workflow_source(request: coherent_request, file: unknown_encoding_response) {
     WorkflowSourceEncodingUnrecognized { file, cause } => file.encoding == "utf-16"
     WorkflowSourceObserved { file } => false
@@ -249,7 +249,7 @@ test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bo
 
 // The positive control on the same function, so the two claims above are not green because the
 // classifier refuses everything.
-test fn a_base64_response_is_observed_by_the_production_classifier() -> Bool {
+test fn a_base64_response_is_observed_by_the_production_classifier() -> Bool  {
   match classify_workflow_source(request: coherent_request, file: observed_file) {
     WorkflowSourceObserved { file } => file.sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
     other => false
@@ -266,7 +266,7 @@ data truncated_page: CodeSearchPage = CodeSearchPage {
   items: [],
 }
 
-test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool {
+test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool  {
   let truncated = match classify_code_search_page(page: truncated_page) {
     CodeSearchPageTruncated { page, hits_read, cause } =>
       hits_read == 0 && string_contains(s: cause as String, pattern: "incomplete_results")
@@ -319,7 +319,7 @@ fn refused_status(read: WorkflowSourceRead) -> Int {
   }
 }
 
-test fn a_read_refusal_reaches_canonicalization_carrying_its_status() -> Bool {
+test fn a_read_refusal_reaches_canonicalization_carrying_its_status() -> Bool  {
   refused_status(read: refusal_of(status: 404, body: "Not Found")) == 404
     && refused_status(read: refusal_of(status: 403, body: "rate limit exceeded")) == 403
     && refused_status(read: refusal_of(status: 500, body: "boom")) == 500
@@ -327,7 +327,7 @@ test fn a_read_refusal_reaches_canonicalization_carrying_its_status() -> Bool {
 
 // AND A TRANSPORT LOSS IS NOT A STATUS, which is the arm that would otherwise be flattened into a
 // zero by a reader expecting one. It reaches the same refusal arm and keeps its own disposition.
-test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
+test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool  {
   let read = WorkflowSourceRefused {
     performance: classify_rest_outcome(standing: RestReadExchange {
       rest: RestTransportRefused { cause: "timeout" },
@@ -357,7 +357,7 @@ test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
 // Both directions of the mismatch are claimed, because refusing only the repository case would
 // still admit a blob from a different FILE in the right repository - which is the subtler of the
 // two and the one a scan would actually hit, since one repository holds many workflows.
-test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
+test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool  {
   let foreign_repo_refused = match canonicalize_hit(
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: foreign_repo_request, file: observed_file },
@@ -404,7 +404,7 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
 // THE REF COMES FROM THE READ, NOT FROM THE CALLER, so an identity cannot be labelled with a ref
 // the fetch did not use. It is a CommitSha because "main" is not an exact ref - a branch name names
 // whatever it points at today, and an observation keyed by one cannot be returned to.
-test fn the_identitys_ref_is_the_one_the_read_was_made_with() -> Bool {
+test fn the_identitys_ref_is_the_one_the_read_was_made_with() -> Bool  {
   let other_ref_request = WorkflowSourceRequest {
     owner: "llvm", repo: "llvm-project",
     path: ".github/workflows/premerge.yaml",
@@ -431,7 +431,7 @@ data response_naming_another_file: RepositoryFileContent = RepositoryFileContent
   content: "ZmFrZQ==",
 }
 
-test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool {
+test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool  {
   match canonicalize_hit(
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: coherent_request, file: response_naming_another_file },
@@ -460,7 +460,7 @@ data branch_ref_request: WorkflowSourceRequest = WorkflowSourceRequest {
   ref: "main",
 }
 
-test fn a_branch_name_is_refused_as_a_ref() -> Bool {
+test fn a_branch_name_is_refused_as_a_ref() -> Bool  {
   let branch_refused = match canonicalize_hit(
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: branch_ref_request, file: observed_file },

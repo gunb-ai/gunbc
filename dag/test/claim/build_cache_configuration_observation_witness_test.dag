@@ -30,7 +30,7 @@ fn owner_fixture(pid: Nat) -> ProcessIdentity {
   }
 }
 
-test fn storage_unset_and_storage_unavailable_are_distinct() -> Bool {
+test fn storage_unset_and_storage_unavailable_are_distinct() -> Bool  {
   let instance = ci_cache_instance(host: "srv1")
   let unset = BuildCacheStorageObserved {
     instance: instance,
@@ -53,7 +53,7 @@ test fn storage_unset_and_storage_unavailable_are_distinct() -> Bool {
   }
 }
 
-test fn capacity_unset_and_capacity_unavailable_are_distinct() -> Bool {
+test fn capacity_unset_and_capacity_unavailable_are_distinct() -> Bool  {
   let instance = ci_cache_instance(host: "srv1")
   let unset = BuildCacheCapacityObserved {
     instance: instance,
@@ -77,7 +77,7 @@ test fn capacity_unset_and_capacity_unavailable_are_distinct() -> Bool {
   }
 }
 
-test fn storage_observation_is_bound_to_the_deployed_instance() -> Bool {
+test fn storage_observation_is_bound_to_the_deployed_instance() -> Bool  {
   let observed = BuildCacheStorageObserved {
     instance: session_cache_instance(host: "srv1"),
     owner: owner_fixture(pid: 3975946),
@@ -95,7 +95,7 @@ test fn storage_observation_is_bound_to_the_deployed_instance() -> Bool {
   }
 }
 
-test fn capacity_observation_carries_a_typed_byte_size() -> Bool {
+test fn capacity_observation_carries_a_typed_byte_size() -> Bool  {
   let observed = BuildCacheCapacityObserved {
     instance: session_cache_instance(host: "srv1"),
     owner: owner_fixture(pid: 3975946),
@@ -112,7 +112,7 @@ test fn capacity_observation_carries_a_typed_byte_size() -> Bool {
   }
 }
 
-test fn suffixed_capacity_stays_text_until_its_unit_grammar_is_grounded() -> Bool {
+test fn suffixed_capacity_stays_text_until_its_unit_grammar_is_grounded() -> Bool  {
   let observed = BuildCacheCapacityObserved {
     instance: session_cache_instance(host: "srv1"),
     owner: owner_fixture(pid: 3975946),

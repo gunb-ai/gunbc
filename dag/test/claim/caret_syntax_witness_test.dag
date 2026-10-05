@@ -33,11 +33,11 @@ fn caret_emit_disc_source() -> String {
 // function literally spelled '^' if the caret-sugar production ever regressed;
 // that shows up as a located "function '^'" diagnostic, which makes compile
 // fail and compile_dag_rust_emit_check return false.
-test fn w_caret_paren_let_binding_compiles_clean_test() -> Bool {
+test fn w_caret_paren_let_binding_compiles_clean_test() -> Bool  {
   compile_dag_rust_emit_check(caret_probe5b_source(), "src/caret_probe5b.rs", [], [])
 }
 
-test fn w_caret_ident_emits_as_symbol_literal_test() -> Bool {
+test fn w_caret_ident_emits_as_symbol_literal_test() -> Bool  {
   compile_dag_rust_emit_check(
     caret_emit_tag_source(),
     "src/caret_emit_tag.rs",
@@ -46,7 +46,7 @@ test fn w_caret_ident_emits_as_symbol_literal_test() -> Bool {
   )
 }
 
-test fn w_caret_paren_emits_as_discriminant_sugar_test() -> Bool {
+test fn w_caret_paren_emits_as_discriminant_sugar_test() -> Bool  {
   compile_dag_rust_emit_check(
     caret_emit_disc_source(),
     "src/caret_emit_disc.rs",

@@ -122,30 +122,30 @@ fn mixed_index() -> List<GitIndexEntry> {
   ]
 }
 
-test fn selection_keeps_only_the_matching_path() -> Bool {
+test fn selection_keeps_only_the_matching_path() -> Bool  {
   count(commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())) == 2
     && count(commit_writer_index_entries_for_path(index: mixed_index(), path: path_b())) == 2
 }
 
-test fn selection_preserves_matching_order_and_identity() -> Bool {
+test fn selection_preserves_matching_order_and_identity() -> Bool  {
   let selected = commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())
   oid_trace(entries: selected) == concat(oid_a1, oid_a2)
 }
 
-test fn selection_preserves_matching_stage() -> Bool {
+test fn selection_preserves_matching_stage() -> Bool  {
   stage_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())) == "NO"
     && stage_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_b())) == "BN"
 }
 
-test fn selection_of_a_nonmatching_path_is_empty() -> Bool {
+test fn selection_of_a_nonmatching_path_is_empty() -> Bool  {
   count(commit_writer_index_entries_for_path(index: mixed_index(), path: path_absent())) == 0
 }
 
-test fn selection_of_an_empty_index_is_empty() -> Bool {
+test fn selection_of_an_empty_index_is_empty() -> Bool  {
   count(commit_writer_index_entries_for_path(index: [], path: path_a())) == 0
 }
 
-test fn the_two_paths_select_disjoint_entries() -> Bool {
+test fn the_two_paths_select_disjoint_entries() -> Bool  {
   let from_a = oid_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_a()))
   let from_b = oid_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_b()))
   from_a != from_b

@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // REACHABILITY, not shape: the entrypoint a person or a converge pass actually calls must produce the effect,
 // and the effect must resolve to a cell that dispatches to the realizer. Asserting the arm exists on the
 // coproduct would prove nothing -- it existed before this change too, with nothing routing to it.
-test fn witness_compile_pool_kind_produces_the_effect() -> Bool {
+test fn witness_compile_pool_kind_produces_the_effect() -> Bool  {
   match host_toolchain_ensure_effect(kind: CompilePool, host: "srv1" as HostIdentity) {
     EnsureCompilePoolSlice {} => true
     _ => false
@@ -37,7 +37,7 @@ test fn witness_compile_pool_kind_produces_the_effect() -> Bool {
 // dispatcher and the dispatcher reachable from nobody -- which is the same unreachability this module
 // exists to close, moved one layer out. It asserts the production func's own effect selection rather
 // than re-asserting the dispatcher's, so deleting provision_compile_pool reds here.
-test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool {
+test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool  {
   match provision_compile_pool_effect_for_host(host: "srv1" as HostIdentity) {
     EnsureCompilePoolSlice {} => provision_compile_pool_routes_through_host_effect_apply()
     _ => false
@@ -65,7 +65,7 @@ test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool
 //   to appear in one of five pinned vectors to exist at all; a second witness restating the pin would
 //   be a second authority for one fact.
 
-test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
+test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool  {
   match resolve_host_effect_cell(target: HostOs { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
     EnsureCompilePoolSliceOnHost { node: _ } => true
     _ => false
@@ -75,7 +75,7 @@ test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
 // The BMC arm is the discriminating negative: a slice is an in-band systemd fact, so a Redfish target must
 // refuse rather than resolve. Without it the routing witness above would pass on a fold that resolved
 // everything to the same cell.
-test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
+test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool  {
   match resolve_host_effect_cell(target: BmcController { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
     IncompatibleCell { reason: why } => string_contains(s: why, pattern: "EnsureCompilePoolSlice")
     _ => false
@@ -87,7 +87,7 @@ test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
 // a managed slice and every convergence attempt refuses naming that row. When the row flips to
 // CompilePoolSliceDeclared this witness reds -- deliberately, in the same change that shrinks runner_pool --
 // and at that point it becomes an assertion that the pool converges rather than being deleted.
-test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
+test fn witness_live_topology_refuses_the_slice_ensure() -> Bool  {
   let a = admit_ensure_compile_pool_slice(
     topology: gunbc_compile_pool_placement,
     sizing: compile_pool_bytes_for(
@@ -115,7 +115,7 @@ test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
 // loaded slice with no ceiling. Reading either as a magnitude would let a slice with NO LIMIT be reported as
 // a sized pool, which is the unbounded charge the managed slice exists to replace -- reported as its own
 // remedy. The refusal is what keeps the two apart.
-test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool {
+test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool  {
   match compile_pool_limit_of_capture(
     slice_unit: gunbc_managed_compile_pool_slice,
     property_name: "MemoryMax",
@@ -132,7 +132,7 @@ test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool {
 
 // The paired positive control: a real byte count must decode, or the refusal above would be satisfied by a
 // decoder that refuses everything.
-test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool {
+test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool  {
   match compile_pool_limit_of_capture(
     slice_unit: gunbc_managed_compile_pool_slice,
     property_name: "MemoryMax",
@@ -146,7 +146,7 @@ test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool {
 // A read that could not run is UNAVAILABLE, never ABSENT. The two have opposite remedies -- install the slice
 // versus fix the reach -- and folding an unreadable manager into "the slice is not there" would send a
 // converger to write a unit on a host it cannot see.
-test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
+test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool  {
   match compile_pool_limit_of_capture(
     slice_unit: gunbc_managed_compile_pool_slice,
     property_name: "MemoryMax",
@@ -164,6 +164,6 @@ test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
 
 // The load-state argv the transport materializes must be the argv extdeps.systemd.systemctl declares. Without
 // this the operation could drift from its own authority and every reading above would be of the wrong unit.
-test fn witness_load_state_operation_argv_matches_its_authority() -> Bool {
+test fn witness_load_state_operation_argv_matches_its_authority() -> Bool  {
   systemctl_show_load_state_operation_argv_matches_transport(unit: gunbc_managed_compile_pool_slice)
 }

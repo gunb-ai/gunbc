@@ -21,12 +21,12 @@ import tools.build_step_transport {
 // controls that closed review 39735. Enrolled here, not in a new file, because these are wet
 // bin-witness probes with the same effects and cadence as the corruption probes above.
 
-test fn build_artifact_corruption_probe_holds() -> Bool {
+test fn build_artifact_corruption_probe_holds() -> Bool  {
   witness_zero_byte_artifact_rejected_by_execution()
     && witness_nonempty_executable_accepted_by_execution()
 }
 
-test fn witness_bin_readiness_arms_are_discriminating() -> Bool {
+test fn witness_bin_readiness_arms_are_discriminating() -> Bool  {
   witness_readiness_absent_refuses_located()
     && witness_readiness_not_executable_refuses_located()
     && witness_readiness_empty_artifact_refuses_located()

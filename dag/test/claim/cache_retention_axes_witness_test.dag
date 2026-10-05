@@ -85,7 +85,7 @@ fn scope_exit_runtime_derived_replace_existing() -> ProviderRetention {
   }
 }
 
-test fn unobserved_capacity_never_satisfies_a_bounded_role() -> Bool {
+test fn unobserved_capacity_never_satisfies_a_bounded_role() -> Bool  {
   let r = capacity_not_established()
   !capacity_is_bounded(c: r.capacity) && !retention_growth_is_bounded(r: r)
 }
@@ -95,17 +95,17 @@ test fn unobserved_capacity_never_satisfies_a_bounded_role() -> Bool {
 // scope. retention_growth_is_bounded is the growth predicate, deliberately not a peak-memory
 // guarantee, and a role that needs a peak bound asks the capacity axis.
 
-test fn scope_release_and_a_byte_ceiling_are_one_value() -> Bool {
+test fn scope_release_and_a_byte_ceiling_are_one_value() -> Bool  {
   let r = scope_exit_byte_bounded_refuse_new()
   capacity_is_bounded(c: r.capacity) && retention_growth_is_bounded(r: r)
 }
 
-test fn scope_release_and_a_runtime_derived_ceiling_are_one_value() -> Bool {
+test fn scope_release_and_a_runtime_derived_ceiling_are_one_value() -> Bool  {
   let r = scope_exit_runtime_derived_replace_existing()
   capacity_is_bounded(c: r.capacity) && retention_growth_is_bounded(r: r)
 }
 
-test fn refuse_new_store_is_distinct_from_replacement() -> Bool {
+test fn refuse_new_store_is_distinct_from_replacement() -> Bool  {
   let refusing = scope_exit_byte_bounded_refuse_new()
   let replacing = scope_exit_runtime_derived_replace_existing()
   let a = match refusing.capacity {
@@ -129,7 +129,7 @@ test fn refuse_new_store_is_distinct_from_replacement() -> Bool {
   a && b
 }
 
-test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool {
+test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool  {
   let known_unbounded = ProviderRetention {
     release_policy: ReleasedNever,
     capacity: CapacityUnbounded
@@ -155,7 +155,7 @@ test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool {
 // admitted it to a byte-budget role, exactly the promoted-eval-memo obligation PR 2 owes. These two
 // cells hold the predicates apart at the one point they disagree.
 
-test fn scope_release_with_unbounded_capacity_bounds_growth_but_not_capacity() -> Bool {
+test fn scope_release_with_unbounded_capacity_bounds_growth_but_not_capacity() -> Bool  {
   let r = ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityUnbounded
@@ -165,7 +165,7 @@ test fn scope_release_with_unbounded_capacity_bounds_growth_but_not_capacity() -
     && !retention_has_exact_byte_bound(r: r)
 }
 
-test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() -> Bool {
+test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() -> Bool  {
   let r = ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityUnobserved
@@ -175,7 +175,7 @@ test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() 
     && !retention_has_exact_byte_bound(r: r)
 }
 
-test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
+test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool  {
   let r = ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityBounded {
@@ -186,7 +186,7 @@ test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
   retention_has_capacity_bound(r: r) && !retention_has_exact_byte_bound(r: r)
 }
 
-test fn an_unobserved_byte_ceiling_is_not_a_byte_budget() -> Bool {
+test fn an_unobserved_byte_ceiling_is_not_a_byte_budget() -> Bool  {
   let r = ProviderRetention {
     release_policy: ReleasedNever,
     capacity: CapacityBounded {

@@ -20,7 +20,7 @@ fn w_limit(l: CgroupHardMemoryLimit) -> String {
 }
 
 // THE TIGHTEST memory.max ON THE PATH BINDS, whichever level carries it.
-test fn the_tightest_memory_max_among_the_levels_binds() -> Bool {
+test fn the_tightest_memory_max_among_the_levels_binds() -> Bool  {
   let levels = [
     CgroupMemoryLevelRead { dir: "/sys/fs/cgroup/a" as NonEmptyStr, max: CgroupMemoryLimited { bytes: byte_size(count: 64) }, high: CgroupMemoryUnlimited },
     CgroupMemoryLevelWithoutFiles { dir: "/sys/fs/cgroup/a/b" as NonEmptyStr },
@@ -30,7 +30,7 @@ test fn the_tightest_memory_max_among_the_levels_binds() -> Bool {
 }
 
 // THE RED: memory.high alone is a throttle, not a fence, however low it is.
-test fn memory_high_alone_is_no_hard_limit() -> Bool {
+test fn memory_high_alone_is_no_hard_limit() -> Bool  {
   let levels = [
     CgroupMemoryLevelRead { dir: "/sys/fs/cgroup/a" as NonEmptyStr, max: CgroupMemoryUnlimited, high: CgroupMemoryLimited { bytes: byte_size(count: 25) } },
     CgroupMemoryLevelUnread { dir: "/sys/fs/cgroup/a/b" as NonEmptyStr, cause: "fixture" },
@@ -39,7 +39,7 @@ test fn memory_high_alone_is_no_hard_limit() -> Bool {
 }
 
 // EVERY LEVEL BELOW THE ROOT, AND NONE AT THE ROOT, which carries no memory.max.
-test fn the_bounding_dirs_are_every_level_below_the_root() -> Bool {
+test fn the_bounding_dirs_are_every_level_below_the_root() -> Bool  {
   let ds = map(cgroup_v2_bounding_dirs(mount_point: "/sys/fs/cgroup" as NonEmptyStr, relative_path: "/a/b/c" as NonEmptyStr), d => d as String)
   ds == ["/sys/fs/cgroup/a", "/sys/fs/cgroup/a/b", "/sys/fs/cgroup/a/b/c"]
     && length(cgroup_v2_bounding_dirs(mount_point: "/sys/fs/cgroup" as NonEmptyStr, relative_path: "/" as NonEmptyStr)) == 0

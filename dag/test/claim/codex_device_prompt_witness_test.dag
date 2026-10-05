@@ -46,7 +46,7 @@ data device_prompt_plain_expected_code: String = "YWLD-9I0CI"
 data device_prompt_escaped_expected_code: String = "YWCU-V8ESC"
 data device_prompt_expected_url: String = "https://auth.openai.com/codex/device"
 
-test fn tmux_captured_prompt_parses_to_a_pasteable_code() -> Bool {
+test fn tmux_captured_prompt_parses_to_a_pasteable_code() -> Bool  {
   let read = Filesystem.Read(path: device_prompt_plain_fixture)
   if !read.success {
     false
@@ -71,7 +71,7 @@ test fn tmux_captured_prompt_parses_to_a_pasteable_code() -> Bool {
 // plain-path one because they fail differently. A regression that branded every capture regardless
 // of fidelity would leave the plain path green and only this one red.
 
-test fn escape_retaining_capture_refuses_to_render() -> Bool {
+test fn escape_retaining_capture_refuses_to_render() -> Bool  {
   let read = Filesystem.Read(path: device_prompt_escaped_fixture)
   if !read.success {
     false
@@ -93,7 +93,7 @@ test fn escape_retaining_capture_refuses_to_render() -> Bool {
 // the plain fixture carries its code bare, the escaped one does not carry the plain fixture's code
 // at all.
 
-test fn escape_carrying_rendering_would_yield_an_unpasteable_code() -> Bool {
+test fn escape_carrying_rendering_would_yield_an_unpasteable_code() -> Bool  {
   let escaped = Filesystem.Read(path: device_prompt_escaped_fixture)
   let plain = Filesystem.Read(path: device_prompt_plain_fixture)
   if !escaped.success || !plain.success {

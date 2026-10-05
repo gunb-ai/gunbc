@@ -22,6 +22,6 @@ fn witness_commit_witness_claim_roster_red_holds() -> Bool {
   )
 }
 
-test fn commit_witness_claim_roster_red_control_holds() -> Bool {
+test fn commit_witness_claim_roster_red_control_holds() -> Bool  {
   witness_commit_witness_claim_roster_red_holds()
 }

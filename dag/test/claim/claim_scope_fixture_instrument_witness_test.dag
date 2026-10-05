@@ -57,7 +57,7 @@ fn csf_scope_of(path: String, source: String, module_path: String) -> ClaimScope
 
 // THE POSITIVE CONTROL. A one-module manifest whose entry names it. Scope construction must
 // succeed and the outcome must be `ClaimScopeAccepted`.
-test fn a_well_formed_manifest_builds_a_claim_scope() -> Bool {
+test fn a_well_formed_manifest_builds_a_claim_scope() -> Bool  {
   claim_scope_was_accepted(
     o: claim_scope_fixture(
       fixture: MultiModuleCompileFixture {
@@ -80,7 +80,7 @@ test fn a_well_formed_manifest_builds_a_claim_scope() -> Bool {
 // those mean the HARNESS or the SOURCE broke, not that a scope refused. A red that could be
 // satisfied by either would not discriminate the thing this instrument exists to carry. These two
 // rows differ by exactly one string, so the only variable is the scope builder's own verdict.
-test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> Bool {
+test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> Bool  {
   claim_scope_refusal_names(
     cause_marker: "EntryModuleOutsidePreparedSubject",
     o: claim_scope_fixture(
@@ -129,7 +129,7 @@ test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> 
 // closes the remaining gap is occupancy being observable at all, which is the next rung and is not
 // what this row claims to be.
 
-test fn several_distinct_fixture_subjects_all_resolve() -> Bool {
+test fn several_distinct_fixture_subjects_all_resolve() -> Bool  {
   claim_scope_was_accepted(o: csf_scope_of(path: "csf/user.dag", source: csf_module_source, module_path: "csf.user"))
     && claim_scope_was_accepted(o: csf_scope_of(path: "csf/second.dag", source: csf_second_source, module_path: "csf.second"))
     && claim_scope_was_accepted(o: csf_scope_of(path: "csf/third.dag", source: csf_third_source, module_path: "csf.third"))

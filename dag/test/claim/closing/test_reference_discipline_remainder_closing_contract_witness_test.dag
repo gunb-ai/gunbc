@@ -78,6 +78,6 @@ fn ledger_census_gap_is_declared() -> Bool {
     && any(all_guarantee_stalls, s => s.subject == test_reference_ledger_typed_census_stall.subject)
 }
 
-test fn test_reference_discipline_remainder_closing_contract_holds() -> Bool {
+test fn test_reference_discipline_remainder_closing_contract_holds() -> Bool  {
   gate_enrollment_holds() && ledger_census_gap_is_declared()
 }

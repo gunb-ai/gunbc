@@ -64,10 +64,10 @@ fn target_key_count_of(source: String) -> Int {
   }
 }
 
-test fn w_selector_cause_on_a_uri_projection_refusal_is_refused() -> Bool {
+test fn w_selector_cause_on_a_uri_projection_refusal_is_refused() -> Bool  {
   target_key_count_of(source: forbidden_cause_on_projection_source) == 1
 }
 
-test fn w_the_same_cause_on_its_own_subject_is_admitted() -> Bool {
+test fn w_the_same_cause_on_its_own_subject_is_admitted() -> Bool  {
   target_key_count_of(source: admitted_cause_on_selector_source) == 0
 }

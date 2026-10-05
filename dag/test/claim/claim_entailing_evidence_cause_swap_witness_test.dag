@@ -58,12 +58,12 @@ fn cause_swap_old_predicate(fault_exit_ok: Bool) -> Bool {
   fault_exit_ok == false
 }
 
-test fn cause_swap_old_predicate_cannot_tell_the_two_causes_apart() -> Bool {
+test fn cause_swap_old_predicate_cannot_tell_the_two_causes_apart() -> Bool  {
   cause_swap_old_predicate(fault_exit_ok: false)
     && cause_swap_old_predicate(fault_exit_ok: false)
 }
 
-test fn cause_swap_detected_fault_is_admitted() -> Bool {
+test fn cause_swap_detected_fault_is_admitted() -> Bool  {
   cssl_fault_run_detected_the_planted_fault(
     fault_exit_ok: false,
     fault_stdout: cause_swap_fault_detected_stdout,
@@ -72,7 +72,7 @@ test fn cause_swap_detected_fault_is_admitted() -> Bool {
 }
 
 // THE LOAD-BEARING ARM. Old predicate true, new carrier must answer false.
-test fn cause_swap_absent_binary_is_refused_not_treated_as_detection() -> Bool {
+test fn cause_swap_absent_binary_is_refused_not_treated_as_detection() -> Bool  {
   !cssl_fault_run_detected_the_planted_fault(
     fault_exit_ok: false,
     fault_stdout: cause_swap_binary_absent_stdout,
@@ -82,7 +82,7 @@ test fn cause_swap_absent_binary_is_refused_not_treated_as_detection() -> Bool {
 
 // A SECOND REFUSAL THE OLD PREDICATE ALSO ADMITTED: the process was killed after printing progress
 // but before reaching its comparison. Nonzero exit, real output, no verdict.
-test fn cause_swap_killed_before_comparison_is_refused() -> Bool {
+test fn cause_swap_killed_before_comparison_is_refused() -> Bool  {
   !cssl_fault_run_detected_the_planted_fault(
     fault_exit_ok: false,
     fault_stdout: "required_lens_grain_note emitted_len=402 seed_len=402 eq=true\n",
@@ -92,7 +92,7 @@ test fn cause_swap_killed_before_comparison_is_refused() -> Bool {
 
 // THE DRIVER AGREED ANYWAY. If the fault run somehow printed the PASS marker, the planted fault was
 // not detected whatever else the exit status says.
-test fn cause_swap_fault_run_that_agreed_is_refused() -> Bool {
+test fn cause_swap_fault_run_that_agreed_is_refused() -> Bool  {
   !cssl_fault_run_detected_the_planted_fault(
     fault_exit_ok: false,
     fault_stdout: "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS\n",
@@ -102,7 +102,7 @@ test fn cause_swap_fault_run_that_agreed_is_refused() -> Bool {
 
 // A DETECTED FAULT ON A ZERO EXIT IS STILL REFUSED. The exit-status conjunct is retained rather than
 // replaced, so this arm pins that the repair NARROWED the admitted set and did not merely move it.
-test fn cause_swap_zero_exit_is_still_refused() -> Bool {
+test fn cause_swap_zero_exit_is_still_refused() -> Bool  {
   !cssl_fault_run_detected_the_planted_fault(
     fault_exit_ok: true,
     fault_stdout: cause_swap_fault_detected_stdout,
@@ -113,7 +113,7 @@ test fn cause_swap_zero_exit_is_still_refused() -> Bool {
 // THE MARKER DERIVATION REFUSES A MALFORMED STEM RATHER THAN FABRICATING ONE. A pass marker that
 // does not end in PASS yields no stem, so no fault marker can be derived and no detection is
 // claimed -- rather than deriving a marker that matches nothing and reporting an undetected fault.
-test fn cause_swap_malformed_pass_marker_establishes_nothing() -> Bool {
+test fn cause_swap_malformed_pass_marker_establishes_nothing() -> Bool  {
   cssl_pass_marker_stem(pass_marker: "SOMETHING ELSE ENTIRELY") == ""
     && !cssl_fault_run_detected_the_planted_fault(
       fault_exit_ok: false,
@@ -122,6 +122,6 @@ test fn cause_swap_malformed_pass_marker_establishes_nothing() -> Bool {
     )
 }
 
-test fn cause_swap_stem_is_derived_from_the_pass_marker() -> Bool {
+test fn cause_swap_stem_is_derived_from_the_pass_marker() -> Bool  {
   cssl_pass_marker_stem(pass_marker: cause_swap_pass_marker) == "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: "
 }

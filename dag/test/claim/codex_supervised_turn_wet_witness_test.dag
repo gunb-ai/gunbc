@@ -147,7 +147,7 @@ fn wet_supervised_turn() -> WorkerTurn {
   }
 }
 
-test fn wet_committed_admitted_source_lock_admits() -> Bool {
+test fn wet_committed_admitted_source_lock_admits() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(nodes) > 0 && count(registry_artifacts) > 0
@@ -155,12 +155,12 @@ test fn wet_committed_admitted_source_lock_admits() -> Bool {
   }
 }
 
-test fn wet_committed_admitted_source_construct_only() -> Bool {
+test fn wet_committed_admitted_source_construct_only() -> Bool  {
   let source = committed_admitted_codex_runtime_source()
   (source.lock_bytes != "") && (source.manifest_bytes != "")
 }
 
-test fn wet_select_codex_exact_target_closure_only() -> Bool {
+test fn wet_select_codex_exact_target_closure_only() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match observe_codex_npm_runtime_target() {
@@ -183,7 +183,7 @@ test fn wet_select_codex_exact_target_closure_only() -> Bool {
   }
 }
 
-test fn wet_acquire_wrapper_artifact_only() -> Bool {
+test fn wet_acquire_wrapper_artifact_only() -> Bool  {
   match prepare_codex_runtime_closure(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -221,7 +221,7 @@ test fn wet_acquire_wrapper_artifact_only() -> Bool {
   }
 }
 
-test fn wet_acquire_platform_artifact_only() -> Bool {
+test fn wet_acquire_platform_artifact_only() -> Bool  {
   match prepare_codex_runtime_closure(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -259,7 +259,7 @@ test fn wet_acquire_platform_artifact_only() -> Bool {
   }
 }
 
-test fn wet_codex_runtime_prepare_closure_only() -> Bool {
+test fn wet_codex_runtime_prepare_closure_only() -> Bool  {
   match prepare_codex_runtime_closure(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -277,62 +277,62 @@ test fn wet_codex_runtime_prepare_closure_only() -> Bool {
   }
 }
 
-test fn wet_materialize_through_prepare_only() -> Bool {
+test fn wet_materialize_through_prepare_only() -> Bool  {
   materialize_codex_runtime_bundle_through_prepare(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_acquire_selected_pair_only() -> Bool {
+test fn wet_acquire_selected_pair_only() -> Bool  {
   materialize_codex_runtime_bundle_through_pair_acquire(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_materialize_npm_ci_offline_only() -> Bool {
+test fn wet_materialize_npm_ci_offline_only() -> Bool  {
   materialize_codex_runtime_bundle_through_npm_ci_offline(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_materialize_finish_after_install_only() -> Bool {
+test fn wet_materialize_finish_after_install_only() -> Bool  {
   materialize_codex_runtime_bundle_finish_after_install(
     source: committed_admitted_codex_runtime_source(),
     release_parent: wet_materialize_bisect_release_parent,
   )
 }
 
-test fn wet_finish_observe_set_identity_only() -> Bool {
+test fn wet_finish_observe_set_identity_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_set_identity_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_manifest_digest_only() -> Bool {
+test fn wet_finish_observe_manifest_digest_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_lock_digest_only() -> Bool {
+test fn wet_finish_observe_lock_digest_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_native_digest_only() -> Bool {
+test fn wet_finish_observe_native_digest_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_native_digest_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_toolchain_only() -> Bool {
+test fn wet_finish_observe_toolchain_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_toolchain_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_protocol_schema_only() -> Bool {
+test fn wet_finish_observe_protocol_schema_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
@@ -344,7 +344,7 @@ test fn wet_finish_observe_protocol_schema_only() -> Bool {
 // JSON. Both fail the witness -- correctly, since neither is a green bisect step -- but they are now
 // DIFFERENT VALUES at the point a human reads the bisect, so a wrong staging path can no longer be
 // bisected as a subject defect.
-test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
+test fn wet_finish_parse_largest_protocol_schema_only() -> Bool  {
   match materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -355,7 +355,7 @@ test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
   }
 }
 
-test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
+test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool  {
   match materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -366,25 +366,25 @@ test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
   }
 }
 
-test fn wet_finish_observe_package_tree_only() -> Bool {
+test fn wet_finish_observe_package_tree_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_package_tree_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_receipt_identity_only() -> Bool {
+test fn wet_finish_observe_receipt_identity_only() -> Bool  {
   materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
-test fn wet_finish_observe_package_tree_tiny_fixture() -> Bool {
+test fn wet_finish_observe_package_tree_tiny_fixture() -> Bool  {
   finish_bisect_observe_package_materialized_tree_tiny_fixture()
 }
 
 data wet_materialize_bisect_release_parent: FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as FilePath
 
-test fn wet_materialize_codex_runtime_bundle_only() -> Bool {
+test fn wet_materialize_codex_runtime_bundle_only() -> Bool  {
   match materialize_codex_runtime_bundle(
     source: committed_admitted_codex_runtime_source(),
     release_parent: wet_materialize_bisect_release_parent,
@@ -395,7 +395,7 @@ test fn wet_materialize_codex_runtime_bundle_only() -> Bool {
   }
 }
 
-test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
+test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool  {
   let release_tmp = shell.Mktemp.Dir()
   let evidence = shell.Mktemp.Dir()
   let cwd = shell.Mktemp.Dir()

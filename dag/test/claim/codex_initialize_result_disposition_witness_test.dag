@@ -120,7 +120,7 @@ fn refusal_reason_for_stdout(stdout: String) -> String {
   }
 }
 
-test fn a_present_result_with_a_non_string_user_agent_is_unusable_not_missing() -> Bool {
+test fn a_present_result_with_a_non_string_user_agent_is_unusable_not_missing() -> Bool  {
   match disposition_from_initialize_result(
     result: initialize_result_with(value: json_int(n: 7)),
   ) {
@@ -135,7 +135,7 @@ test fn a_present_result_with_a_non_string_user_agent_is_unusable_not_missing() 
   }
 }
 
-test fn a_real_user_agent_string_is_still_ok() -> Bool {
+test fn a_real_user_agent_string_is_still_ok() -> Bool  {
   match disposition_from_initialize_result(
     result: initialize_result_with(value: json_string(s: "codex-cli/1.2.3")),
   ) {
@@ -150,7 +150,7 @@ test fn a_real_user_agent_string_is_still_ok() -> Bool {
   }
 }
 
-test fn a_malformed_initialize_result_classifies_as_unusable_not_initialize_missing() -> Bool {
+test fn a_malformed_initialize_result_classifies_as_unusable_not_initialize_missing() -> Bool  {
   let evidence = parse_account_trip_stdout_for_tests(
     stdout: stdout_present_but_numeric_user_agent,
   )
@@ -166,7 +166,7 @@ test fn a_malformed_initialize_result_classifies_as_unusable_not_initialize_miss
   }
 }
 
-test fn an_absent_initialize_frame_still_classifies_as_initialize_missing() -> Bool {
+test fn an_absent_initialize_frame_still_classifies_as_initialize_missing() -> Bool  {
   let evidence = parse_account_trip_stdout_for_tests(
     stdout: stdout_no_initialize_frame_at_all,
   )
@@ -182,7 +182,7 @@ test fn an_absent_initialize_frame_still_classifies_as_initialize_missing() -> B
   }
 }
 
-test fn the_actuated_refusal_reason_does_not_call_a_present_result_missing() -> Bool {
+test fn the_actuated_refusal_reason_does_not_call_a_present_result_missing() -> Bool  {
   let malformed = refusal_reason_for_stdout(stdout: stdout_present_but_numeric_user_agent)
   let absent = refusal_reason_for_stdout(stdout: stdout_no_initialize_frame_at_all)
   malformed == "codex app-server initialize result arrived without a readable userAgent"

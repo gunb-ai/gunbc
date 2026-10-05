@@ -221,14 +221,14 @@ fn admission_is_clean(writer: CommitWriter) -> Bool {
   }
 }
 
-test fn clean_tree_admits_every_commit_writer() -> Bool {
+test fn clean_tree_admits_every_commit_writer() -> Bool  {
   admission_is_clean(writer: HumanGitCommit)
     && admission_is_clean(writer: DashboardAutocommit)
     && admission_is_clean(writer: HealAutocommit)
     && admission_is_clean(writer: IntegrationCommit)
 }
 
-test fn missing_writer_bindings_are_two_owned_triggered_work_rows() -> Bool {
+test fn missing_writer_bindings_are_two_owned_triggered_work_rows() -> Bool  {
   (count(commit_writer_binding_work) == 2)
     && match first(commit_writer_binding_work) {
       Present { value: first_work } =>
@@ -254,7 +254,7 @@ test fn missing_writer_bindings_are_two_owned_triggered_work_rows() -> Bool {
     }
 }
 
-test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool {
+test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool  {
   let path = publication_grant_path()
   let observation = CompleteStagedCommitObservation {
     index: [
@@ -279,7 +279,7 @@ test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool {
   }
 }
 
-test fn staged_marker_text_218dea6_shape_refuses_typed_and_located() -> Bool {
+test fn staged_marker_text_218dea6_shape_refuses_typed_and_located() -> Bool  {
   match admit_commit_writer(
     writer: DashboardAutocommit,
     observation: source_observation(text: staged_marker_218dea6_text()),
@@ -300,7 +300,7 @@ test fn staged_marker_text_218dea6_shape_refuses_typed_and_located() -> Bool {
   }
 }
 
-test fn isolated_and_out_of_order_marker_controls_admit() -> Bool {
+test fn isolated_and_out_of_order_marker_controls_admit() -> Bool  {
   match admit_commit_writer(
     writer: HumanGitCommit,
     observation: source_observation(
@@ -320,7 +320,7 @@ test fn isolated_and_out_of_order_marker_controls_admit() -> Bool {
   }
 }
 
-test fn non_default_git_conflict_marker_size_refuses() -> Bool {
+test fn non_default_git_conflict_marker_size_refuses() -> Bool  {
   let storage = module_storage_for(artifact: source_artifact())
   let observation = CompleteStagedCommitObservation {
     index: [normal_index_entry(path: publication_grant_path(), oid: blob_oid())],
@@ -340,7 +340,7 @@ test fn non_default_git_conflict_marker_size_refuses() -> Bool {
   }
 }
 
-test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
+test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool  {
   let storage = module_storage_for(artifact: fixture_artifact())
   let observation = CompleteStagedCommitObservation {
     index: [normal_index_entry(path: fixture_path(), oid: blob_oid())],
@@ -360,7 +360,7 @@ test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
   }
 }
 
-test fn source_path_with_test_claim_refuses() -> Bool {
+test fn source_path_with_test_claim_refuses() -> Bool  {
   let authority = module_storage_for(artifact: source_artifact())
   let claimed = Artifact {
     kind: TestClaimArtifact,
@@ -389,7 +389,7 @@ test fn source_path_with_test_claim_refuses() -> Bool {
   }
 }
 
-test fn mismatched_provenance_file_path_refuses() -> Bool {
+test fn mismatched_provenance_file_path_refuses() -> Bool  {
   let authority = module_storage_for(artifact: source_artifact())
   let mismatched = Artifact {
     kind: TestClaimArtifact,
@@ -419,7 +419,7 @@ test fn mismatched_provenance_file_path_refuses() -> Bool {
   }
 }
 
-test fn fabricated_matching_artifact_refuses() -> Bool {
+test fn fabricated_matching_artifact_refuses() -> Bool  {
   let authority = module_storage_for(artifact: source_artifact())
   let fabricated = Artifact {
     kind: TestClaimArtifact,
@@ -448,7 +448,7 @@ test fn fabricated_matching_artifact_refuses() -> Bool {
   }
 }
 
-test fn incomplete_population_refuses_each_shape() -> Bool {
+test fn incomplete_population_refuses_each_shape() -> Bool  {
   let storage = module_storage_for(artifact: source_artifact())
   let blob = classified_text_blob(
     path: publication_grant_path(),
@@ -518,7 +518,7 @@ test fn incomplete_population_refuses_each_shape() -> Bool {
   }
 }
 
-test fn identity_content_and_classification_fail_closed() -> Bool {
+test fn identity_content_and_classification_fail_closed() -> Bool  {
   let storage = module_storage_for(artifact: source_artifact())
   let good = classified_text_blob(
     path: publication_grant_path(),
@@ -586,7 +586,7 @@ test fn identity_content_and_classification_fail_closed() -> Bool {
   }
 }
 
-test fn extra_population_and_content_mismatch_refusals_accumulate() -> Bool {
+test fn extra_population_and_content_mismatch_refusals_accumulate() -> Bool  {
   let storage = module_storage_for(artifact: source_artifact())
   let good = classified_text_blob(
     path: publication_grant_path(),

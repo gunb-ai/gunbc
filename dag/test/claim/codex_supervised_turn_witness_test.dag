@@ -86,7 +86,7 @@ fn fixture_credential() -> AmbientCodexCredentialContext {
   }
 }
 
-test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
+test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool  {
   let binding = codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
@@ -100,28 +100,28 @@ test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
   }
 }
 
-test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> Bool {
+test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> Bool  {
   match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadIdle) {
     CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
     _ => false
   }
 }
 
-test fn witness_absent_thread_admits_turn_start() -> Bool {
+test fn witness_absent_thread_admits_turn_start() -> Bool  {
   match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadAbsent) {
     CodexTurnStartAdmitted => true
     _ => false
   }
 }
 
-test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool {
+test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool  {
   match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadBusy) {
     CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
     _ => false
   }
 }
 
-test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
+test fn witness_running_lease_observation_is_expected_not_absent() -> Bool  {
   let binding = codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
@@ -135,7 +135,7 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
   }
 }
 
-test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
+test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool  {
   let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match parse.thread_start {
     SupervisedRpcOk { native_id: tid } =>
@@ -148,7 +148,7 @@ test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
   }
 }
 
-test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
+test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool  {
   let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
     ProviderTurnCompleted => true
@@ -156,7 +156,7 @@ test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
   }
 }
 
-test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
+test fn witness_terminal_receipt_carries_client_command_id() -> Bool  {
   let binding = codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
@@ -176,7 +176,7 @@ test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
     && press_display_finished(disposition: receipt.disposition)
 }
 
-test fn witness_parse_turn_failed_notification_disposition() -> Bool {
+test fn witness_parse_turn_failed_notification_disposition() -> Bool  {
   let stdout = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/failed\",\"params\":{}}\n"
   let parse = parse_supervised_turn_stdout(stdout: stdout)
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
@@ -185,7 +185,7 @@ test fn witness_parse_turn_failed_notification_disposition() -> Bool {
   }
 }
 
-test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
+test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool  {
   let stdout =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n"
   let parse = parse_supervised_turn_stdout(stdout: stdout)
@@ -207,7 +207,7 @@ test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
 // NotObserved. Either witness alone is satisfiable by a wrong implementation -- one by answering
 // unreadable for everything, the other by answering not-observed for everything - so both stay
 // enrolled (DESIGN 4b(4)).
-test fn witness_unreadable_lines_are_not_reported_as_unobserved() -> Bool {
+test fn witness_unreadable_lines_are_not_reported_as_unobserved() -> Bool  {
   let stdout = "not json at all\n{ broken\n]]]\n"
   let parse = parse_supervised_turn_stdout(stdout: stdout)
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
@@ -221,14 +221,14 @@ test fn witness_unreadable_lines_are_not_reported_as_unobserved() -> Bool {
 // blank separator between records is ordinary stream shape and must not be counted. Without this,
 // counting could be moved ahead of the blank-line test and every trailing newline would be recorded
 // as a decoder failure.
-test fn witness_blank_lines_are_not_counted_as_unreadable() -> Bool {
+test fn witness_blank_lines_are_not_counted_as_unreadable() -> Bool  {
   let stdout =
     "\n{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n\n\n"
   let parse = parse_supervised_turn_stdout(stdout: stdout)
   parse.unreadable_lines == 0
 }
 
-test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
+test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool  {
   let line =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
   match supervised_thread_id_from_line(line: line) {
@@ -246,7 +246,7 @@ test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
 // and needs a human, while a NON-MATCHING LINE is the ordinary answer for almost every line of a
 // stream and needs nothing. Under the old Optional a supervised run whose thread-start was refused
 // was indistinguishable from one whose response had simply not arrived yet.
-test fn RED_unreadable_thread_id_line_is_not_a_non_matching_line() -> Bool {
+test fn RED_unreadable_thread_id_line_is_not_a_non_matching_line() -> Bool  {
   match supervised_thread_id_from_line(line: "{ not json") {
     ThreadIdLineUnreadable => true
     ThreadIdRead { id: _ } => false
@@ -257,7 +257,7 @@ test fn RED_unreadable_thread_id_line_is_not_a_non_matching_line() -> Bool {
   }
 }
 
-test fn RED_rpc_refusal_is_not_a_non_matching_line() -> Bool {
+test fn RED_rpc_refusal_is_not_a_non_matching_line() -> Bool  {
   let line =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32000,\"message\":\"thread start refused\"}}"
   match supervised_thread_id_from_line(line: line) {
@@ -286,7 +286,7 @@ test fn RED_rpc_refusal_is_not_a_non_matching_line() -> Bool {
 //
 // It is also the positive control the two RED witnesses above need -- without a line that still
 // reads successfully, refusing everything would satisfy both of them.
-test fn a_mis_addressed_rpc_response_is_still_accepted_as_the_thread_id() -> Bool {
+test fn a_mis_addressed_rpc_response_is_still_accepted_as_the_thread_id() -> Bool  {
   let line = "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{\"thread\":{\"id\":\"other\"}}}"
   match supervised_thread_id_from_line(line: line) {
     ThreadIdRead { id: id } => (id as String) == "other"
@@ -298,7 +298,7 @@ test fn a_mis_addressed_rpc_response_is_still_accepted_as_the_thread_id() -> Boo
   }
 }
 
-test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
+test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool  {
   let user_input = "say \"hello\"\nline2\\backslash"
   let line = codex_supervised_turn_start_line_template(user_input: user_input)
   match parse_json_document(s: line) {
@@ -307,7 +307,7 @@ test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
   }
 }
 
-test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
+test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool  {
   let parse = empty_supervised_turn_parse_acc()
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
     ProviderTurnFailed { cause: _ } => true
@@ -326,7 +326,7 @@ test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
 // sole_constructor and constructible only inside the interface module, so the fixture derives
 // the observation from a listed directory whose entries omit the store name -- the same
 // modeled route the wet reader takes.
-test fn witness_missing_generation_store_reads_as_zero() -> Bool {
+test fn witness_missing_generation_store_reads_as_zero() -> Bool  {
   let listing = filesystem_listing_observation(
     directory: "/tmp/gunbc-supervised-evidence",
     success: true,
@@ -356,7 +356,7 @@ test fn witness_missing_generation_store_reads_as_zero() -> Bool {
 
 // MINTED, never written: the absence comes from a listed directory whose entries omit the
 // store name, the only route the sole_constructor carrier authorizes.
-test fn witness_established_generation_absence_admits_supervised_turn_start() -> Bool {
+test fn witness_established_generation_absence_admits_supervised_turn_start() -> Bool  {
   let listing = filesystem_listing_observation(
     directory: "/tmp/gunbc-supervised-evidence",
     success: true,
@@ -386,7 +386,7 @@ test fn witness_established_generation_absence_admits_supervised_turn_start() ->
   }
 }
 
-test fn witness_unlistable_evidence_directory_refuses_supervised_turn_start() -> Bool {
+test fn witness_unlistable_evidence_directory_refuses_supervised_turn_start() -> Bool  {
   let read = codex_supervised_generation_read_from_observation(
     o: FilesystemFileIndeterminate {
       cause: "the directory /tmp/gunbc-supervised-evidence could not be listed, so the absence of codex_supervised_turn_generation is not established -- permission denied",
@@ -402,7 +402,7 @@ test fn witness_unlistable_evidence_directory_refuses_supervised_turn_start() ->
   }
 }
 
-test fn witness_listed_but_unreadable_generation_store_refuses_supervised_turn_start() -> Bool {
+test fn witness_listed_but_unreadable_generation_store_refuses_supervised_turn_start() -> Bool  {
   let read = codex_supervised_generation_read_from_observation(
     o: FilesystemFileIndeterminate {
       cause: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation is listed and could not be read, so it exists and its content is unavailable -- permission denied",
@@ -418,7 +418,7 @@ test fn witness_listed_but_unreadable_generation_store_refuses_supervised_turn_s
   }
 }
 
-test fn witness_inadmissible_generation_store_name_refuses_supervised_turn_start() -> Bool {
+test fn witness_inadmissible_generation_store_name_refuses_supervised_turn_start() -> Bool  {
   let read = codex_supervised_generation_read_from_observation(
     o: FilesystemFileSubjectRefused {
       directory: "/tmp/gunbc-supervised-evidence",
@@ -436,7 +436,7 @@ test fn witness_inadmissible_generation_store_name_refuses_supervised_turn_start
   }
 }
 
-test fn witness_generation_store_observation_disagreement_refuses_supervised_turn_start() -> Bool {
+test fn witness_generation_store_observation_disagreement_refuses_supervised_turn_start() -> Bool  {
   let read = codex_supervised_generation_read_from_observation(
     o: FilesystemFileObservationsDisagree {
       path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
@@ -453,13 +453,13 @@ test fn witness_generation_store_observation_disagreement_refuses_supervised_tur
   }
 }
 
-test fn witness_generation_store_path_is_root_slash_bare_name() -> Bool {
+test fn witness_generation_store_path_is_root_slash_bare_name() -> Bool  {
   codex_supervised_turn_generation_store_path(
     evidence_root: "/tmp/gunbc-supervised-evidence" as FilePath,
   ) == "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation"
 }
 
-test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
+test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool  {
   let read = codex_supervised_generation_read_from_observation(
     o: FilesystemFileRead {
       path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
@@ -476,7 +476,7 @@ test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
   }
 }
 
-test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
+test fn witness_negative_generation_store_refuses_prior_read() -> Bool  {
   let read = codex_supervised_generation_read_from_observation(
     o: FilesystemFileRead {
       path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
@@ -494,7 +494,7 @@ test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
   }
 }
 
-test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
+test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool  {
   match codex_supervised_generation_read_from_observation(
     o: FilesystemFileRead {
       path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",

@@ -44,14 +44,14 @@ import v2.std.algebra { length }
 // .dag roster construction never exercises), that observation gets its own witness here rather than
 // reviving this wrapper.
 
-test fn compile_clean_shard_entry_paths_fast_hand_rust_scaffold_is_seed_retained() -> Bool {
+test fn compile_clean_shard_entry_paths_fast_hand_rust_scaffold_is_seed_retained() -> Bool  {
   match compile_clean_shard_entry_paths_fast_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
-test fn compile_clean_shard_entry_paths_fast_hand_rust_receipt_is_checkable() -> Bool {
+test fn compile_clean_shard_entry_paths_fast_hand_rust_receipt_is_checkable() -> Bool  {
   !(dissolution_description(condition: compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger) == "")
     && !(compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor == "")
     && !(compile_clean_shard_entry_paths_fast_hand_rust_roadmap_lane_anchor == "")

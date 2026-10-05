@@ -70,50 +70,50 @@ data witness_pdf_base_uri: Uri = Uri {
   locator: "example.test/fixture.pdf",
 }
 
-test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
+test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool  {
   extdeps_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
 }
 
-test fn iso_32000_2_is_further_citation() -> Bool {
+test fn iso_32000_2_is_further_citation() -> Bool  {
   extdeps_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
 }
 
-test fn rfc_pdf_open_page_admits_positive_one() -> Bool {
+test fn rfc_pdf_open_page_admits_positive_one() -> Bool  {
   match pdf_open_page(page: 1) {
     ParameterConstructed(OpenPage(PdfOpenPage { page: p })) => p == 1
     _ => false
   }
 }
 
-test fn rfc_pdf_open_zoom_is_upstream_constructed_not_refused() -> Bool {
+test fn rfc_pdf_open_zoom_is_upstream_constructed_not_refused() -> Bool  {
   match pdf_open_zoom(scale_percent: 100) {
     ParameterConstructed(OpenZoom(zoom)) => zoom.scale_percent == 100
     _ => false
   }
 }
 
-test fn gunbc_safe_profile_refuses_zoom() -> Bool {
+test fn gunbc_safe_profile_refuses_zoom() -> Bool  {
   match pdf_safe_parameter_sequence(constructions: [pdf_open_zoom(scale_percent: 100)]) {
     SafeSequenceConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
     _ => false
   }
 }
 
-test fn gunbc_safe_profile_admits_page_only_sequence() -> Bool {
+test fn gunbc_safe_profile_admits_page_only_sequence() -> Bool  {
   match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SafeSequenceConstructed(sequence) => pdf_safe_parameters_include_page(sequence, 1)
     _ => false
   }
 }
 
-test fn pdf_safe_parameters_include_page_red_wrong_page() -> Bool {
+test fn pdf_safe_parameters_include_page_red_wrong_page() -> Bool  {
   match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SafeSequenceConstructed(sequence) => !pdf_safe_parameters_include_page(sequence, 99)
     _ => false
   }
 }
 
-test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
+test fn project_navigable_uri_appends_ordered_fragment() -> Bool  {
   match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SequenceConstructed(sequence) =>
       match project_navigable_uri(base: witness_pdf_base_uri, sequence: sequence) {
@@ -124,7 +124,7 @@ test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
   }
 }
 
-test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool {
+test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool  {
   match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SafeSequenceConstructed(_) =>
       match project_navigable_uri_safe(
@@ -139,7 +139,7 @@ test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool 
   }
 }
 
-test fn project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters() -> Bool {
+test fn project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters() -> Bool  {
   match project_navigable_uri_safe(
     base: witness_pdf_base_uri,
     construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_zoom(scale_percent: 100)]),
@@ -149,7 +149,7 @@ test fn project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters
   }
 }
 
-test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
+test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool  {
   match pdf_open_nameddest(name: "a&b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
       match pdf_profile_parameter_wire(parameter: parameter) {
@@ -160,7 +160,7 @@ test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
   }
 }
 
-test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
+test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool  {
   match pdf_open_structelem(struct_id: "id#1" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
       match pdf_profile_parameter_wire(parameter: parameter) {
@@ -171,7 +171,7 @@ test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
   }
 }
 
-test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
+test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool  {
   match pdf_open_nameddest(name: "a=b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
       match pdf_profile_parameter_wire(parameter: parameter) {
@@ -182,7 +182,7 @@ test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
   }
 }
 
-test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
+test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool  {
   match pdf_open_nameddest(name: "100%25" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
       match pdf_profile_parameter_wire(parameter: parameter) {
@@ -193,7 +193,7 @@ test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
   }
 }
 
-test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
+test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool  {
   match pdf_open_nameddest(name: "a b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
       match pdf_profile_parameter_wire(parameter: parameter) {
@@ -204,21 +204,21 @@ test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
   }
 }
 
-test fn uri_percent_encode_component_round_trip_unreserved() -> Bool {
+test fn uri_percent_encode_component_round_trip_unreserved() -> Bool  {
   match uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) {
     UriPercentComponentEncoded(encoded) => encoded == ("page-1_ok" as NonEmptyStr)
     UriPercentComponentRefused { cause: _ } => false
   }
 }
 
-test fn uri_hex_nibble_construction_refuses_out_of_range_digit() -> Bool {
+test fn uri_hex_nibble_construction_refuses_out_of_range_digit() -> Bool  {
   match uri_hex_nibble_construction(d: 16) {
     UriHexNibbleOutOfRange { digit: 16 } => true
     _ => false
   }
 }
 
-test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
+test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool  {
   match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SequenceConstructed(sequence) =>
       match pdf_open_fragment_selector(sequence: sequence) {
@@ -233,14 +233,14 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
 
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
-test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> Bool {
+test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> Bool  {
   match uri_percent_encode_code_points(code_points: witness_unencodable_scalar_code_points) {
     UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
     _ => false
   }
 }
 
-test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
+test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool  {
   match pdf_open_nameddest_wire_from_scalar_code_points(
     name: "plant" as NonEmptyStr,
     code_points: witness_unencodable_scalar_code_points,
@@ -261,7 +261,7 @@ test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
   }
 }
 
-test fn pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_concat_fold() -> Bool {
+test fn pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_concat_fold() -> Bool  {
   match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_nameddest(name: "a" as NonEmptyStr)]) {
     SequenceConstructed(sequence) =>
       match pdf_open_parameter_sequence_wire(sequence: sequence) {
@@ -272,7 +272,7 @@ test fn pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_
   }
 }
 
-test fn citation_cit1_witness_split_names_homonym_accommodation() -> Bool {
+test fn citation_cit1_witness_split_names_homonym_accommodation() -> Bool  {
   string_contains(s: citation_cit1_witness_split_note, pattern: "homonym shadowing")
     && string_contains(s: citation_cit1_witness_split_note, pattern: "namespace-only resolution")
 }

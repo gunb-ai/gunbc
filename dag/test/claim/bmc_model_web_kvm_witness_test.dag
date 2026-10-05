@@ -37,7 +37,7 @@ fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
 
 // A WORLD WITH NO ACCOUNT REFUSES EVERY LOGIN, empty credentials included: absence is a constructor,
 // not a sentinel a guard has to catch.
-test fn a_world_without_an_account_refuses_every_login() -> Bool {
+test fn a_world_without_an_account_refuses_every_login() -> Bool  {
   let untouched = bmc_world(power: BmcPowerOn)
   let empty = bmc_web_login(world: untouched, username: "", password: "")
   let named = bmc_web_login(world: untouched, username: "admin", password: "pw")
@@ -45,7 +45,7 @@ test fn a_world_without_an_account_refuses_every_login() -> Bool {
 }
 
 // A MATCHING ACCOUNT OPENS A SESSION; ANY OTHER IS REFUSED AND CHANGES NOTHING.
-test fn login_opens_a_session_only_for_the_account() -> Bool {
+test fn login_opens_a_session_only_for_the_account() -> Bool  {
   let ok = bmc_web_login(world: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "pw")
   let bad = bmc_web_login(world: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "nope")
   let opened = match ok.reply { BmcWebLoginAccepted { session: s } => s.id == 7 && count(ok.world.web.sessions) == 1  _ => false }
@@ -55,7 +55,7 @@ test fn login_opens_a_session_only_for_the_account() -> Bool {
 
 // THE VIEWER COUNT IS EVERY VIEWER THE CONTROLLER SERVES; OUR STREAM COUNTS ONCE CONNECTED, AND A
 // LOGOUT ENDS THE STREAM ITS SESSION OWNED.
-test fn viewer_count_connect_and_logout_move_the_stream() -> Bool {
+test fn viewer_count_connect_and_logout_move_the_stream() -> Bool  {
   let login = bmc_web_login(world: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "pw")
   let before = bmc_kvm_viewer_count(world: login.world)
   let c = bmc_kvm_connect(world: login.world, csrf_token: "csrf-7")
@@ -68,7 +68,7 @@ test fn viewer_count_connect_and_logout_move_the_stream() -> Bool {
 
 // THE CONTROLLER CLOSES THE STREAM ON ITS OWN SCHEDULE: before the event it streams, at it the stream
 // is closed by the controller, and the web session survives.
-test fn a_scheduled_close_ends_the_stream_not_the_session() -> Bool {
+test fn a_scheduled_close_ends_the_stream_not_the_session() -> Bool  {
   let login = bmc_web_login(world: world(other_viewers: 0, close_at: 30, canvas_readable: true), username: "admin", password: "pw")
   let c = bmc_kvm_connect(world: login.world, csrf_token: "csrf-7")
   let early = match bmc_advance(world: c.world, now: second(count: 29)).web.kvm { BmcKvmStreaming { session: k } => k == 7  _ => false }
@@ -85,7 +85,7 @@ fn step(w: BmcWorld, r: MegaRacWebRequest) -> MegaRacWebStep {
   megarac_web_step(world: w, request: r, extended_privilege: 259)
 }
 
-test fn each_request_is_the_models_answer_against_the_current_world() -> Bool {
+test fn each_request_is_the_models_answer_against_the_current_world() -> Bool  {
   let w0 = world(other_viewers: 0, close_at: -1, canvas_readable: true)
   let wrong = step(w: w0, r: MegaRacWebLogin { username: "admin", password: "nope" })
   let early = step(w: w0, r: MegaRacWebConnect { token: "csrf-7" })
@@ -106,7 +106,7 @@ test fn each_request_is_the_models_answer_against_the_current_world() -> Bool {
 }
 
 // ANOTHER VIEWER HOLDS THE SEAT: the services read reports it and a connect is refused.
-test fn another_viewer_holding_the_seat_refuses_the_connect() -> Bool {
+test fn another_viewer_holding_the_seat_refuses_the_connect() -> Bool  {
   let w0 = world(other_viewers: 1, close_at: -1, canvas_readable: true)
   let login = step(w: w0, r: MegaRacWebLogin { username: "admin", password: "pw" })
   let services = step(w: login.world, r: MegaRacWebServices {})
@@ -116,7 +116,7 @@ test fn another_viewer_holding_the_seat_refuses_the_connect() -> Bool {
 
 // FIELD BOUNDARIES SURVIVE: two credential pairs whose space-joined forms are equal are different
 // requests, and each keeps its own row answered by the model.
-test fn credentials_that_join_alike_stay_distinct_requests() -> Bool {
+test fn credentials_that_join_alike_stay_distinct_requests() -> Bool  {
   let w0 = bmc_with_web(world: bmc_world(power: BmcPowerOn),
     web: BmcWebWorld { account: Present { value: BmcWebAccount { username: "admin", password: "pw secret", privilege: 4 } }, sessions: [], next_session_id: 7, other_kvm_viewers: 0, kvm: BmcKvmIdle {}, canvas_readable: true },
   )
@@ -132,7 +132,7 @@ test fn credentials_that_join_alike_stay_distinct_requests() -> Bool {
 
 // A WORLD'S TABLE KEY IS COMPLETE: two worlds that differ only in their pending schedule, or only in
 // which events have fired, or only in the controller's SOL session, are different table states.
-test fn world_keys_distinguish_pending_and_fired_events() -> Bool {
+test fn world_keys_distinguish_pending_and_fired_events() -> Bool  {
   let a = world(other_viewers: 0, close_at: 3, canvas_readable: true)
   let b = world(other_viewers: 0, close_at: 5, canvas_readable: true)
   let c = world(other_viewers: 0, close_at: -1, canvas_readable: true)
@@ -145,7 +145,7 @@ test fn world_keys_distinguish_pending_and_fired_events() -> Bool {
 
 // THE TABLE CARRIES THE ABSOLUTE INSTANT: the only advance row is at the event's own second, and at
 // it a held stream closes.
-test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool {
+test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool  {
   let table = megarac_web_transition_table(
     initial: world(other_viewers: 0, close_at: 3, canvas_readable: false),
     credentials: [MegaRacWebLogin { username: "admin", password: "pw" }],

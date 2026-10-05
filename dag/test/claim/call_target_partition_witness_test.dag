@@ -112,7 +112,7 @@ fn instrument_formed_a_subject(outcome: MultiModuleCompileFixtureOutcome) -> Boo
 // CASE 1, POSITIVE. An ordinary declared call with formals matching the declaration is ACCEPTED.
 // This is the control that fails if the repair over-refuses, and it is stated against the DECLARED
 // arm specifically -- the only constructor that carries a declaration-bound formal count to check.
-test fn declared_call_with_matching_formals_is_accepted() -> Bool {
+test fn declared_call_with_matching_formals_is_accepted() -> Bool  {
   completed_clean(peer_and_entry(entry_declared_ok))
 }
 
@@ -121,7 +121,7 @@ test fn declared_call_with_matching_formals_is_accepted() -> Bool {
 // by accident; under the repair it must reach the BUILTIN constructor and still be accepted. A
 // repair that answers "no formal authority, therefore refuse" for absence fails here and nowhere
 // else, which is precisely why removing the guards without partitioning the carrier was rejected.
-test fn builtin_call_still_routes_to_the_builtin_path() -> Bool {
+test fn builtin_call_still_routes_to_the_builtin_path() -> Bool  {
   completed_clean(entry_only(entry_builtin_call))
 }
 
@@ -137,7 +137,7 @@ test fn builtin_call_still_routes_to_the_builtin_path() -> Bool {
 // check", and the sig-absent fallthrough routes real calls to the method bridge. Refusing here
 // would refuse method-dispatched calls whose callee legitimately resolves nowhere at this seam --
 // an over-refusal wearing a wall's clothes.
-test fn local_binding_shadowing_a_declared_callable_is_accepted() -> Bool {
+test fn local_binding_shadowing_a_declared_callable_is_accepted() -> Bool  {
   completed_clean(peer_and_entry(entry_local_shadow))
 }
 
@@ -152,7 +152,7 @@ test fn local_binding_shadowing_a_declared_callable_is_accepted() -> Bool {
 //
 // Discovered by asking what the negative controls would actually flip, after the acceptance
 // cases were already written and passing -- which is the order that hides this.
-test fn declared_call_with_mismatched_formals_refuses() -> Bool {
+test fn declared_call_with_mismatched_formals_refuses() -> Bool  {
   !completed_clean(peer_and_entry(entry_wrong_arity))
     && instrument_formed_a_subject(peer_and_entry(entry_wrong_arity))
 }
@@ -160,7 +160,7 @@ test fn declared_call_with_mismatched_formals_refuses() -> Bool {
 // CASE 4. The instrument must FORM A SUBJECT for every case above, so that a green in cases 1-3
 // cannot be a compile that never ran. Without this, an instrument refusal renders identically to
 // a clean compile in any assertion phrased as "no blocking rows".
-test fn every_case_formed_a_real_subject() -> Bool {
+test fn every_case_formed_a_real_subject() -> Bool  {
   instrument_formed_a_subject(peer_and_entry(entry_declared_ok))
     && instrument_formed_a_subject(entry_only(entry_builtin_call))
     && instrument_formed_a_subject(peer_and_entry(entry_local_shadow))

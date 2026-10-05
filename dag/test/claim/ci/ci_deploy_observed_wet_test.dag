@@ -31,6 +31,6 @@ fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
   }
 }
 
-test fn ci_deploy_observed_wet_witnesses() -> Bool {
+test fn ci_deploy_observed_wet_witnesses() -> Bool  {
   witness_deploy_access_preflight_is_fail_closed()
 }

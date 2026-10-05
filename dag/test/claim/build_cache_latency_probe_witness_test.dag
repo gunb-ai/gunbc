@@ -66,21 +66,21 @@ data empty_population: BuildLatencyPopulation = BuildLatencyPopulation {
   durations: [],
 }
 
-test fn median_selects_the_middle_of_an_unsorted_population() -> Bool {
+test fn median_selects_the_middle_of_an_unsorted_population() -> Bool  {
   match population_median(p: odd_population) {
     Present { value: m } => measure_count(m: m) == 300
     Absent => false
   }
 }
 
-test fn median_of_even_population_is_the_lower_middle_sample() -> Bool {
+test fn median_of_even_population_is_the_lower_middle_sample() -> Bool  {
   match population_median(p: even_population) {
     Present { value: m } => measure_count(m: m) == 200
     Absent => false
   }
 }
 
-test fn median_of_empty_population_is_absent() -> Bool {
+test fn median_of_empty_population_is_absent() -> Bool  {
   match population_median(p: empty_population) {
     Present { value: _ } => false
     Absent => true
@@ -88,7 +88,7 @@ test fn median_of_empty_population_is_absent() -> Bool {
 }
 
 // A host with no samples must NOT read as converged, and this is the arm most likely to be got wrong by a fold that treats 'nothing exceeded the threshold' as passing. A quarantined host, or one whose every build failed, produces an empty population — and reporting it healthy is precisely how a host drops out of the fleet's attention while broken. Refusal is the only honest verdict on no evidence, and it is asserted as NOT-diverged AND NOT-converged, because a check for either alone would be satisfied by the wrong arm.
-test fn empty_population_refuses_rather_than_passing() -> Bool {
+test fn empty_population_refuses_rather_than_passing() -> Bool  {
   let v = build_latency_verdict(
     p: empty_population,
     reference: millisecond(count: 238000),
@@ -120,7 +120,7 @@ data just_over_two_x: BuildLatencyPopulation = BuildLatencyPopulation {
   durations: [millisecond(count: 201)],
 }
 
-test fn ratio_boundary_converges_at_exactly_two_x() -> Bool {
+test fn ratio_boundary_converges_at_exactly_two_x() -> Bool  {
   !build_latency_verdict_is_diverged(
     v: build_latency_verdict(
       p: at_exactly_two_x,
@@ -130,7 +130,7 @@ test fn ratio_boundary_converges_at_exactly_two_x() -> Bool {
   )
 }
 
-test fn RED_ratio_boundary_diverges_one_millisecond_over() -> Bool {
+test fn RED_ratio_boundary_diverges_one_millisecond_over() -> Bool  {
   build_latency_verdict_is_diverged(
     v: build_latency_verdict(
       p: just_over_two_x,
@@ -147,7 +147,7 @@ test fn RED_ratio_boundary_diverges_one_millisecond_over() -> Bool {
 // editing the durations, or the reference, or the policy, without re-deriving the verdict beside
 // them, leaving a row whose conclusion no longer follows from its own evidence.
 
-test fn recorded_receipt_verdict_follows_from_its_own_samples() -> Bool {
+test fn recorded_receipt_verdict_follows_from_its_own_samples() -> Bool  {
   let rederived = build_latency_verdict(
     p: srv1_build_latency,
     reference: peer_combined_median,
@@ -156,7 +156,7 @@ test fn recorded_receipt_verdict_follows_from_its_own_samples() -> Bool {
   build_latency_verdict_is_diverged(v: rederived) == build_latency_verdict_is_diverged(v: srv1_verdict_2026_08_05)
 }
 
-test fn recorded_srv1_population_is_nonempty_and_ordered_derivation_works() -> Bool {
+test fn recorded_srv1_population_is_nonempty_and_ordered_derivation_works() -> Bool  {
   match population_median(p: srv1_build_latency) {
     Present { value: m } => measure_count(m: m) > 0 && (srv1_build_latency.durations |> length) == 44
     Absent => false

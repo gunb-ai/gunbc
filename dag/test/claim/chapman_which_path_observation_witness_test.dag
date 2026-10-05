@@ -36,11 +36,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_chapman_four_model_comparison_holds() -> Bool {
+test fn w_chapman_four_model_comparison_holds() -> Bool  {
   chapman_four_model_comparison_holds()
 }
 
-test fn w_chapman_all_four_prediction_cells_execute() -> Bool {
+test fn w_chapman_all_four_prediction_cells_execute() -> Bool  {
   all_four_model_predictions_execute()
     && four_model_cell_prediction(cell: ClassicalPassiveCell) == InterferenceFringeAbsent
     && four_model_cell_prediction(cell: ClassicalDistinguishableCell) == InterferenceFringeAbsent
@@ -48,23 +48,23 @@ test fn w_chapman_all_four_prediction_cells_execute() -> Bool {
     && four_model_cell_prediction(cell: CoherentDistinguishableCell) == InterferenceFringeAbsent
 }
 
-test fn w_chapman_cited_rows_match_coherent_not_classical() -> Bool {
+test fn w_chapman_cited_rows_match_coherent_not_classical() -> Bool  {
   chapman_all_cited_rows_match_coherent_predictions()
     && chapman_not_all_cited_rows_match_classical_predictions()
 }
 
-test fn w_chapman_single_axis_insufficient_derivation() -> Bool {
+test fn w_chapman_single_axis_insufficient_derivation() -> Bool  {
   chapman_composition_axis_insufficient_alone()
     && chapman_disclosure_axis_insufficient_alone()
 }
 
-test fn w_chapman_rejects_classical_for_passive_visible_observation() -> Bool {
+test fn w_chapman_rejects_classical_for_passive_visible_observation() -> Bool  {
   chapman_four_model_rejects_classical_for_passive_visible_row(
     row: chapman_no_distinguishable_record_fringes_visible,
   )
 }
 
-test fn w_chapman_rejects_coherent_for_fabricated_passive_absent() -> Bool {
+test fn w_chapman_rejects_coherent_for_fabricated_passive_absent() -> Bool  {
   let fabricated = ChapmanWhichPathObservationRow {
     apparatus: chapman_et_al_1995_atom_interferometer,
     which_path_distinguishability_record: DistinguishableWhichPathRecordNotProduced,
@@ -74,7 +74,7 @@ test fn w_chapman_rejects_coherent_for_fabricated_passive_absent() -> Bool {
   chapman_four_model_rejects_coherent_for_row(row: fabricated)
 }
 
-test fn w_chapman_rejects_coherent_for_fabricated_distinguishable_visible() -> Bool {
+test fn w_chapman_rejects_coherent_for_fabricated_distinguishable_visible() -> Bool  {
   let fabricated = ChapmanWhichPathObservationRow {
     apparatus: chapman_et_al_1995_atom_interferometer,
     which_path_distinguishability_record: DistinguishableWhichPathRecordProduced,
@@ -84,11 +84,11 @@ test fn w_chapman_rejects_coherent_for_fabricated_distinguishable_visible() -> B
   chapman_four_model_rejects_coherent_for_row(row: fabricated)
 }
 
-test fn w_chapman_cited_observations_are_ensemble_grain() -> Bool {
+test fn w_chapman_cited_observations_are_ensemble_grain() -> Bool  {
   chapman_cited_observations_are_ensemble_grain()
 }
 
-test fn w_chapman_rejects_trial_grain_for_ensemble_gate() -> Bool {
+test fn w_chapman_rejects_trial_grain_for_ensemble_gate() -> Bool  {
   let trial_grain_row = ChapmanWhichPathObservationRow {
     apparatus: chapman_et_al_1995_atom_interferometer,
     which_path_distinguishability_record: DistinguishableWhichPathRecordNotProduced,

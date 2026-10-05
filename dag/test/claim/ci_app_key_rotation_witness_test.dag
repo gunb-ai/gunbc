@@ -170,7 +170,7 @@ fn verify_v7(record: String) -> AppKeyVersionVerdict {
 // The intent is the honest one for this subject: received out of band (GitHub mints App keys only in
 // settings), DisableOnly, and a NON-EMPTY roster whose one consumer is pinned to the exact new
 // version rather than the alias.
-test fn the_app_key_intent_is_out_of_band_disable_only_and_pinned_to_the_exact_version() -> Bool {
+test fn the_app_key_intent_is_out_of_band_disable_only_and_pinned_to_the_exact_version() -> Bool  {
   let intent = intent_for_v7()
   let out_of_band = match intent.replacement {
     ReceivedOutOfBand { channel: _ } => true
@@ -200,7 +200,7 @@ test fn the_app_key_intent_is_out_of_band_disable_only_and_pinned_to_the_exact_v
 
 // POSITIVE CONTROL: the verifier minted on version 7, the read-back confirmed version 7, the store
 // lists both enabled. The plan retires exactly version 6, and does not permit destroy.
-test fn a_verified_mint_on_the_exact_new_version_retires_only_the_prior() -> Bool {
+test fn a_verified_mint_on_the_exact_new_version_retires_only_the_prior() -> Bool  {
   match plan_rotation_retirement(
     intent: intent_for_v7(),
     read_back: read_back_v7(payload_matches: true),
@@ -221,7 +221,7 @@ test fn a_verified_mint_on_the_exact_new_version_retires_only_the_prior() -> Boo
 
 // RED 1: the mint on version 7 is refused by GitHub (401). The rotation refuses with the cause
 // carried through, and there are no targets — the prior version stays enabled.
-test fn a_mint_that_401s_refuses_the_rotation_and_leaves_the_prior_enabled() -> Bool {
+test fn a_mint_that_401s_refuses_the_rotation_and_leaves_the_prior_enabled() -> Bool  {
   let verdict = verify_v7(record: record_with_token_line(line: "HTTP/2 401"))
   match plan_rotation_retirement(
     intent: intent_for_v7(),
@@ -250,7 +250,7 @@ test fn a_mint_that_401s_refuses_the_rotation_and_leaves_the_prior_enabled() -> 
 }
 
 // RED 2: the read-back answered about a different version than the one added.
-test fn a_read_back_of_another_version_refuses_before_any_consumer_is_consulted() -> Bool {
+test fn a_read_back_of_another_version_refuses_before_any_consumer_is_consulted() -> Bool  {
   match plan_rotation_retirement(
     intent: intent_for_v7(),
     read_back: verify_read_back(
@@ -275,7 +275,7 @@ test fn a_read_back_of_another_version_refuses_before_any_consumer_is_consulted(
 }
 
 // RED 3: the read-back's payload is not the one written.
-test fn a_payload_mismatch_refuses_the_rotation() -> Bool {
+test fn a_payload_mismatch_refuses_the_rotation() -> Bool  {
   match plan_rotation_retirement(
     intent: intent_for_v7(),
     read_back: read_back_v7(payload_matches: false),
@@ -298,7 +298,7 @@ test fn a_payload_mismatch_refuses_the_rotation() -> Bool {
 // RED 4, and it is a KERNEL red: an empty roster under DisableOnly used to authorize disabling every
 // prior version, because the census over zero names is vacuously complete. It now refuses as
 // CensusReachedNoOne at retirement, not only at destroy.
-test fn an_empty_roster_refuses_retirement_as_census_reached_no_one() -> Bool {
+test fn an_empty_roster_refuses_retirement_as_census_reached_no_one() -> Bool  {
   let base = intent_for_v7()
   let empty = SecretRotationIntent {
     intent_id: base.intent_id,
@@ -335,7 +335,7 @@ test fn an_empty_roster_refuses_retirement_as_census_reached_no_one() -> Bool {
 // The verifier
 // ---------------------------------------------------------------------------
 
-test fn the_alias_is_refused_rather_than_resolved() -> Bool {
+test fn the_alias_is_refused_rather_than_resolved() -> Bool  {
   match admit_app_key_version_selector(requested: "latest") {
     AppKeyVersionSelectorRefused { cause: c } =>
       match c {
@@ -346,7 +346,7 @@ test fn the_alias_is_refused_rather_than_resolved() -> Bool {
   }
 }
 
-test fn a_selector_that_is_not_a_version_number_is_refused() -> Bool {
+test fn a_selector_that_is_not_a_version_number_is_refused() -> Bool  {
   let not_number = match admit_app_key_version_selector(requested: "7;rm") {
     AppKeyVersionSelectorRefused { cause: c } =>
       match c {
@@ -372,7 +372,7 @@ test fn a_selector_that_is_not_a_version_number_is_refused() -> Bool {
 
 // The positive route: a 201 over the exact version, answered in project-NUMBER spelling, mints, and
 // becomes ResolvedVersionObserved on that identity — never success-only.
-test fn a_201_on_the_exact_version_mints_and_is_observed_evidence() -> Bool {
+test fn a_201_on_the_exact_version_mints_and_is_observed_evidence() -> Bool  {
   let verdict = verify_v7(record: minted_record())
   let mints = match verdict {
     AppKeyVersionMints { version: v } => (v as String) == app_key_v7_name
@@ -385,7 +385,7 @@ test fn a_201_on_the_exact_version_mints_and_is_observed_evidence() -> Bool {
   }
 }
 
-test fn a_version_whose_key_cannot_be_read_is_refused_with_the_status() -> Bool {
+test fn a_version_whose_key_cannot_be_read_is_refused_with_the_status() -> Bool  {
   match verify_v7(record: "key_http_status 404\n") {
     AppKeyVersionRefused { cause: c } =>
       match c {
@@ -396,7 +396,7 @@ test fn a_version_whose_key_cannot_be_read_is_refused_with_the_status() -> Bool 
   }
 }
 
-test fn a_mint_that_401s_is_refused_with_the_cause() -> Bool {
+test fn a_mint_that_401s_is_refused_with_the_cause() -> Bool  {
   match verify_v7(record: record_with_token_line(line: "HTTP/2 401")) {
     AppKeyVersionRefused { cause: c } =>
       match c {
@@ -407,7 +407,7 @@ test fn a_mint_that_401s_is_refused_with_the_cause() -> Bool {
   }
 }
 
-test fn a_response_about_another_version_is_refused_not_minted() -> Bool {
+test fn a_response_about_another_version_is_refused_not_minted() -> Bool  {
   let record = join([
     "key_http_status 200",
     concat("resolved_name ", app_key_v6_name),
@@ -426,7 +426,7 @@ test fn a_response_about_another_version_is_refused_not_minted() -> Bool {
 
 // A record with no token line is unobserved, not a pass: `unverified therefore fine` is the arm
 // this verifier exists to refuse.
-test fn a_missing_token_observation_is_refused_not_passed() -> Bool {
+test fn a_missing_token_observation_is_refused_not_passed() -> Bool  {
   let record = join(["key_http_status 200", concat("resolved_name ", app_key_v7_name), ""], "\n")
   match verify_v7(record: record) {
     AppKeyVersionRefused { cause: c } =>
@@ -442,7 +442,7 @@ test fn a_missing_token_observation_is_refused_not_passed() -> Bool {
 // The contract is read
 // ---------------------------------------------------------------------------
 
-test fn the_rotation_deadline_is_read_against_the_clock() -> Bool {
+test fn the_rotation_deadline_is_read_against_the_clock() -> Bool  {
   let before = match rotation_deadline_standing(contract: ci_app_key_contract, now: "2026-09-19T00:00:00Z" as Rfc3339Timestamp) {
     RotationDeadlineAhead { rotate_by: _ } => true
     _ => false
@@ -459,7 +459,7 @@ test fn the_rotation_deadline_is_read_against_the_clock() -> Bool {
 }
 
 // The contract attaches to the real subject, and its restore test IS the rostered consumer.
-test fn the_contract_is_bound_to_the_app_key_and_its_restore_test_is_the_roster() -> Bool {
+test fn the_contract_is_bound_to_the_app_key_and_its_restore_test_is_the_roster() -> Bool  {
   (ci_app_key_contract.subject.secret as String) == "ci-github-app-private-key"
     && match intent_for_v7().verification.consumers.first() {
       Present { value: c } => (ci_app_key_contract.restore_test.consumer as String) == (c.id as String)
@@ -484,7 +484,7 @@ fn contains_text(haystack: String, needle: String) -> Bool {
 // pins that an observation that could not be completed refuses as unreadable and carries the
 // cause verbatim. The observation arm here is one where presence was never established -- the
 // listing could not be interrogated -- so nothing in the pinned refusal may speak of what exists.
-test fn an_unreadable_mint_record_is_refused_as_unreadable_never_collapsed_into_absent() -> Bool {
+test fn an_unreadable_mint_record_is_refused_as_unreadable_never_collapsed_into_absent() -> Bool  {
   match app_key_mint_record_from_observation(observation: FilesystemFileIndeterminate { cause: "permission denied" }) {
     AppKeyMintRecordUnread { cause: c } => (c as String) == "permission denied"
     AppKeyMintRecordDecoded { observation: _ } => false
@@ -494,7 +494,7 @@ test fn an_unreadable_mint_record_is_refused_as_unreadable_never_collapsed_into_
 
 // Positive control over the same classifier: the success arm still decodes through the observation,
 // so the red above cannot be satisfied by refusing everything.
-test fn a_readable_mint_record_still_decodes_through_the_read_fold() -> Bool {
+test fn a_readable_mint_record_still_decodes_through_the_read_fold() -> Bool  {
   match app_key_mint_record_from_observation(observation: FilesystemFileRead { path: "/var/lib/gunbc/ci/app-key/observation.json", content: minted_record() }) {
     AppKeyMintRecordDecoded { observation: obs } =>
       match obs.key_http_status {
@@ -513,7 +513,7 @@ test fn a_readable_mint_record_still_decodes_through_the_read_fold() -> Bool {
 // maps the listing-established absence (FilesystemFileAbsent) onto Missing is driven separately
 // through the owner's producers in an_established_absence_of_the_record_refuses_as_missing_...
 // below -- the absence carrier is a sole_constructor of filesystem_io and is never forged here.
-test fn a_missing_record_is_distinct_from_unreadable_and_claims_no_existence() -> Bool {
+test fn a_missing_record_is_distinct_from_unreadable_and_claims_no_existence() -> Bool  {
   let missing = app_key_refusal_text(cause: AppKeyMintObservationMissing { cause: "the record path was supplied but the directory listing establishes absence" as NonEmptyStr })
   let unreadable = app_key_refusal_text(cause: AppKeyMintObservationUnreadable { cause: "permission denied" as NonEmptyStr })
   let absent = app_key_refusal_text(cause: AppKeyMintObservationAbsent { cause: "APP_KEY_VERIFY_RECORD is unset" as NonEmptyStr })
@@ -534,7 +534,7 @@ test fn a_missing_record_is_distinct_from_unreadable_and_claims_no_existence() -
 // FilesystemFileAbsent, the mint classifier maps it to AppKeyMintRecordMissing, the verify
 // classifier maps that to AppKeyMintObservationMissing, and the operator-facing text names the
 // absence and claims no existence.
-test fn an_established_absence_of_the_record_refuses_as_missing_and_claims_no_existence() -> Bool {
+test fn an_established_absence_of_the_record_refuses_as_missing_and_claims_no_existence() -> Bool  {
   let listing = filesystem_listing_observation(directory: "/var/lib/gunbc/ci/app-key", success: true, entries: "stale-agent-sock\nnote.txt", error: "unused on success")
   let observed = filesystem_file_observation(listing: listing, name: "observation.json", path: "/var/lib/gunbc/ci/app-key/observation.json", read: FilesystemReadRefused { error: "permission denied" })
   match app_key_mint_record_from_observation(observation: observed) {

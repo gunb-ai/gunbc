@@ -45,20 +45,20 @@ fn dag_refuses(rel: String) -> Bool {
   }
 }
 
-test fn cli_run_repo_grant_hand_rust_scaffold_is_seed_retained() -> Bool {
+test fn cli_run_repo_grant_hand_rust_scaffold_is_seed_retained() -> Bool  {
   match cli_run_repo_grant_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
-test fn cli_run_repo_grant_dissolve_trigger_names_chunk_f() -> Bool {
+test fn cli_run_repo_grant_dissolve_trigger_names_chunk_f() -> Bool  {
   string_contains(s: dissolution_description(condition: cli_run_repo_grant_dissolve_trigger), pattern: "Chunk F")
     && string_contains(s: dissolution_description(condition: cli_run_repo_grant_dissolve_trigger), pattern: "cli-run-reconcile-defork")
     && string_contains(s: dissolution_description(condition: cli_run_repo_grant_dissolve_trigger), pattern: "5-dissolve-patches")
 }
 
-test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
+test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool  {
   dag_admits(rel: fixture_contained_rel)
     && match cli_run_repo_read_admissible(rel: fixture_contained_rel) {
       Permit => true
@@ -66,16 +66,16 @@ test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
     }
 }
 
-test fn cli_run_repo_grant_equivalence_dag_escaping_refuses_holds() -> Bool {
+test fn cli_run_repo_grant_equivalence_dag_escaping_refuses_holds() -> Bool  {
   dag_refuses(rel: fixture_escaping_rel)
     && dag_refuses(rel: fixture_escaping_rel)
 }
 
-test fn cli_run_repo_grant_equivalence_dag_absolute_outside_refuses_holds() -> Bool {
+test fn cli_run_repo_grant_equivalence_dag_absolute_outside_refuses_holds() -> Bool  {
   dag_refuses(rel: fixture_absolute_outside)
 }
 
-test fn cli_run_repo_grant_equivalence_rust_tests_named() -> Bool {
+test fn cli_run_repo_grant_equivalence_rust_tests_named() -> Bool  {
   string_contains(
     s: cli_run_repo_grant_equivalence_test_contained,
     pattern: "contained_admits"

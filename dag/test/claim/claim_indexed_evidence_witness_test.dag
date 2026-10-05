@@ -178,7 +178,7 @@ fn provider_live_request_succeeded_fact(
   }
 }
 
-test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
+test fn witness_login_status_does_not_promote_provider_readiness() -> Bool  {
   let provider = provider_evidence_fixture()
   let login = provider_login_status_inference(
     observed_fact: provider_login_status_fact(id: "provider-login-status-fact"),
@@ -234,7 +234,7 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     && !claim_readiness_is_ready(assessment: readiness)
 }
 
-test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_status() -> Bool {
+test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_status() -> Bool  {
   let provider = provider_evidence_fixture()
   let login_claiming_authenticated = RecordedFact {
     id: "provider-login-status-cannot-be-live-success",
@@ -255,7 +255,7 @@ test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_stat
     && evidence_inference_insufficiencies(inference: inference).length() == 1
 }
 
-test fn witness_refresh_refusal_cannot_support_provider_authentication() -> Bool {
+test fn witness_refresh_refusal_cannot_support_provider_authentication() -> Bool  {
   let provider = provider_evidence_fixture()
   let inference = provider_live_request_succeeded_inference(
     observed_fact: provider_live_request_failed_fact(
@@ -269,7 +269,7 @@ test fn witness_refresh_refusal_cannot_support_provider_authentication() -> Bool
     && evidence_inference_insufficiencies(inference: inference).length() == 1
 }
 
-test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bool {
+test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bool  {
   let provider = provider_evidence_fixture()
   let inference = provider_live_request_succeeded_inference(
     observed_fact: provider_live_request_succeeded_fact(
@@ -291,7 +291,7 @@ test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bo
   !other_state.support && !other_state.challenge
 }
 
-test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
+test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool  {
   let provider = provider_evidence_fixture()
   let failed = provider_live_request_failed_inference(
     observed_fact: provider_live_request_failed_fact(
@@ -338,7 +338,7 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
     && !neither.challenge
 }
 
-test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool {
+test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool  {
   let provider = provider_evidence_fixture()
   let failed = provider_live_request_failed_inference(
     observed_fact: provider_live_request_failed_fact(
@@ -380,11 +380,11 @@ test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool 
     )
 }
 
-test fn witness_empty_readiness_assessment_is_never_ready() -> Bool {
+test fn witness_empty_readiness_assessment_is_never_ready() -> Bool  {
   !claim_readiness_is_ready(assessment: [])
 }
 
-test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
+test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool  {
   let provider = provider_evidence_fixture()
   let required = provider_ready_claim(
     provider: provider,
@@ -429,7 +429,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
   !claim_readiness_is_ready(assessment: readiness)
 }
 
-test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool {
+test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool  {
   let provider = provider_evidence_fixture()
   let claim = provider_credential_recorded_claim(
     provider: provider,
@@ -492,7 +492,7 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
     && evidence_inference_insufficiencies(inference: challenge).length() == 0
 }
 
-test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
+test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool  {
   let target = "claim-evidence-host" as HostIdentity
   let bound = "os-install-attempt-1" as RunKey
   let attestation = KvmOperatorAttestation {
@@ -535,7 +535,7 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
     && !installed.challenge
 }
 
-test fn witness_source_capture_does_not_invent_admission() -> Bool {
+test fn witness_source_capture_does_not_invent_admission() -> Bool  {
   let bound = "source-attempt-1" as RunKey
   let fact = SourceBindingFact {
     bound: bound,
@@ -577,6 +577,6 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     )
 }
 
-test fn witness_claim_evidence_roles_are_externally_grounded() -> Bool {
+test fn witness_claim_evidence_roles_are_externally_grounded() -> Bool  {
   claim_evidence_grounding_authorities.length() == 3
 }

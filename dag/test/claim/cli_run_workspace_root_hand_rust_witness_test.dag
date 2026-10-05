@@ -7,14 +7,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.dissolution { dissolution_description }
 
 
-test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
+test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool  {
   match cli_run_workspace_root_discovery_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
-test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool {
+test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool  {
   string_contains(
     s: dissolution_description(condition: cli_run_workspace_root_discovery_dissolve_trigger),
     pattern: "workspace_root_from"
@@ -29,14 +29,14 @@ test fn workspace_root_hand_rust_dissolve_trigger_names_site_and_lane() -> Bool 
     )
 }
 
-test fn workspace_root_hand_rust_receipt_plan_anchor_is_checkable() -> Bool {
+test fn workspace_root_hand_rust_receipt_plan_anchor_is_checkable() -> Bool  {
   string_contains(
     s: cli_run_workspace_root_hand_rust_receipt_plan_anchor,
     pattern: "cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
   ) && cli_run_workspace_root_discovery_loc_delta_net > 0
 }
 
-test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
+test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool  {
   string_contains(
     s: cli_run_workspace_root_discovery_test_discriminator_git_toplevel,
     pattern: "git_toplevel"
@@ -64,7 +64,7 @@ test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
 // carries each row's value, which is what makes the seed's consumption of it a consumption OF THE
 // AUTHORITY. The emitter never spells either literal, so this fails if a row moves and the
 // projection does not.
-test fn workspace_root_spawn_arm_names_its_env_receipt_and_controls() -> Bool {
+test fn workspace_root_spawn_arm_names_its_env_receipt_and_controls() -> Bool  {
   string_contains(
     s: expected_release_locus_seed_constants_generated_rs(),
     pattern: concat(concat("GUNBC_WORKSPACE_ROOT_ENV: &str = \"", gunbc_workspace_root_env_name), "\";"),
@@ -102,14 +102,14 @@ fn the_scaffold_names_four_distinct_executed_controls() -> Bool {
     && all(names, n => (filter(names, m => m == n) |> count) == 1)
 }
 
-test fn source_root_anchor_hand_rust_scaffold_is_seed_retained() -> Bool {
+test fn source_root_anchor_hand_rust_scaffold_is_seed_retained() -> Bool  {
   match cli_run_source_root_anchor_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
-test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool {
+test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool  {
   string_contains(
     s: dissolution_description(condition: cli_run_source_root_anchor_dissolve_trigger),
     pattern: "try_anchor_source_root"
@@ -128,14 +128,14 @@ test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool {
     )
 }
 
-test fn source_root_anchor_receipt_plan_anchor_is_checkable() -> Bool {
+test fn source_root_anchor_receipt_plan_anchor_is_checkable() -> Bool  {
   string_contains(
     s: cli_run_source_root_anchor_receipt_plan_anchor,
     pattern: "cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
   ) && cli_run_source_root_anchor_loc_delta_net > 0
 }
 
-test fn source_root_anchor_discriminating_tests_named() -> Bool {
+test fn source_root_anchor_discriminating_tests_named() -> Bool  {
   string_contains(
     s: cli_run_source_root_anchor_test_discriminator_present_root,
     pattern: "resolves_declared_present"

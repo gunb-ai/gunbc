@@ -10,19 +10,19 @@ fn ae_b_sample() -> String {
   concat("a", concat(from_code_point(cp: 233), "b"))
 }
 
-test fn char_at_indexes_code_points_on_multibyte_text() -> Bool {
+test fn char_at_indexes_code_points_on_multibyte_text() -> Bool  {
   let s = ae_b_sample()
   char_at(s: s, pos: 0) == "a"
     && code_point(c: char_at(s: s, pos: 1)) == 233
     && char_at(s: s, pos: 2) == "b"
 }
 
-test fn char_at_byte_offset_would_mismatch_at_index_one() -> Bool {
+test fn char_at_byte_offset_would_mismatch_at_index_one() -> Bool  {
   let s = ae_b_sample()
   code_point(c: char_at(s: s, pos: 1)) != code_point(c: "©")
 }
 
-test fn string_length_counts_code_points_not_bytes() -> Bool {
+test fn string_length_counts_code_points_not_bytes() -> Bool  {
   string_length(s: ae_b_sample()) == 3
 }
 
@@ -40,7 +40,7 @@ fn ab_e_c_sample() -> String {
   concat("ab", concat(from_code_point(cp: 233), "c"))
 }
 
-test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
+test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool  {
   let s = ab_e_c_sample()
   char_at(s: s, pos: 0) == "a"
     && char_at(s: s, pos: 1) == "b"
@@ -48,7 +48,7 @@ test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
     && char_at(s: s, pos: 3) == "c"
 }
 
-test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool {
+test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool  {
   let s = ab_e_c_sample()
   char_at(s: s, pos: 3) != from_code_point(cp: 169) && char_at(s: s, pos: 4) == ""
 }

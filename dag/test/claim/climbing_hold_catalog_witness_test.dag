@@ -63,7 +63,7 @@ data readiness_split_note: NonEmptyStr = "RECUT. An earlier witness was named wi
 // AXIS. Shape is genuinely irrelevant to locating the bolt axis, and this is the surviving true
 // half of the retracted reasoning's inverse: the hold was deleted because it could not be drawn,
 // and drawing was never what located the fastener.
-test fn witness_mounting_axis_needs_no_shape_or_envelope() -> Bool {
+test fn witness_mounting_axis_needs_no_shape_or_envelope() -> Bool  {
   let known_fixation: HoldFixationInterface = HoldFixationInterface {
     primary_bolt_thread: ImperialUncThread { designation: "3/8-16 UNC" },
     primary_bolt_count: 1,
@@ -89,20 +89,20 @@ test fn witness_mounting_axis_needs_no_shape_or_envelope() -> Bool {
 
 // And the real row's axis is NOT locatable, because its thread and mounting face are unread. This
 // is the paired refusal for the control above.
-test fn witness_real_row_axis_is_not_yet_locatable() -> Bool {
+test fn witness_real_row_axis_is_not_yet_locatable() -> Bool  {
   !hold_local_frame_is_ready(row: atomik_xl_arrow_down_climb_jug)
 }
 
 // CLEARANCE. A relayed page reading IS spendable for reserving space, so the real row's clearance
 // is admissible - this is a genuine PASS, not a refusal, and it is what the upgraded provenance
 // bought.
-test fn witness_relayed_reading_makes_envelope_spendable() -> Bool {
+test fn witness_relayed_reading_makes_envelope_spendable() -> Bool  {
   hold_catalog_clearance_envelope_is_spendable(row: atomik_xl_arrow_down_climb_jug)
 }
 
 // Paired refusal: drop the same row's envelope back to a search summary and clearance refuses.
 // This proves the clearance gate reads PROVENANCE rather than merely the presence of numbers.
-test fn witness_search_summary_envelope_is_not_spendable() -> Bool {
+test fn witness_search_summary_envelope_is_not_spendable() -> Bool  {
   let downgraded: ClimbingHoldCatalogRow = ClimbingHoldCatalogRow {
     naming: atomik_xl_arrow_down_climb_jug.naming,
     material: atomik_xl_arrow_down_climb_jug.material,
@@ -126,7 +126,7 @@ test fn witness_search_summary_envelope_is_not_spendable() -> Bool {
 // PROVENANCE LADDER. Relayed and first-party readings and measurements are spendable; a search
 // summary and an unread field are not. Without this the refusals above prove only that a constant
 // is constant.
-test fn witness_evidence_spendability_discriminates() -> Bool {
+test fn witness_evidence_spendability_discriminates() -> Bool  {
   dimension_evidence_is_spendable(evidence: SampleMeasured { receipt: "calipered, three positions" })
     && dimension_evidence_is_spendable(
          evidence: VendorPageRead { authority: extdeps_external_authority_anchor, read_on: "unused in this tree" },
@@ -140,7 +140,7 @@ test fn witness_evidence_spendability_discriminates() -> Bool {
 
 // RENDERING. No shape artifact, so no silhouette. An envelope box is admissible in a clearance
 // view when labelled as one; it may never stand in for the visible hold body.
-test fn witness_absent_shape_refuses_silhouette() -> Bool {
+test fn witness_absent_shape_refuses_silhouette() -> Bool  {
   !hold_may_render_silhouette(row: atomik_xl_arrow_down_climb_jug)
 }
 
@@ -149,7 +149,7 @@ data vacuous_proof_load_witness_retraction: NonEmptyStr = "RETRACTED AND REPLACE
 // The replacement holds every preceding condition TRUE so the proof-load input is the only thing
 // that varies. That is the whole point of a discriminating control: the flag must flip the answer,
 // and it can only be shown to flip the answer once nothing else is refusing first.
-test fn witness_proof_load_receipt_is_load_bearing() -> Bool {
+test fn witness_proof_load_receipt_is_load_bearing() -> Bool  {
   let ready_fixation: HoldFixationInterface = HoldFixationInterface {
     primary_bolt_thread: ImperialUncThread { designation: "3/8-16 UNC" },
     primary_bolt_count: 1,
@@ -177,7 +177,7 @@ test fn witness_proof_load_receipt_is_load_bearing() -> Bool {
 
 // And the real row still refuses, which remains true and is now stated as its own narrow claim
 // rather than smuggled in as evidence about the proof load.
-test fn witness_real_row_refuses_lift_role_on_axis() -> Bool {
+test fn witness_real_row_refuses_lift_role_on_axis() -> Bool  {
   !hold_lift_role_is_admissible(row: atomik_xl_arrow_down_climb_jug, placement: witness_placement_unresolved, proof_load_receipt_held: true)
     && !hold_local_frame_is_ready(row: atomik_xl_arrow_down_climb_jug)
 }
@@ -185,7 +185,7 @@ test fn witness_real_row_refuses_lift_role_on_axis() -> Bool {
 // NAMING. Two spellings from one page are an alias, not two orderable products. The earlier row
 // asserted SkuAmbiguous, which is a claim about the vendor's catalog made from a wording
 // difference. The order code stays unread, because only an order code establishes a SKU.
-test fn witness_naming_is_alias_with_sku_unread() -> Bool {
+test fn witness_naming_is_alias_with_sku_unread() -> Bool  {
   count(atomik_xl_arrow_down_climb_jug.naming.marketing_aliases) == 1
     && match atomik_xl_arrow_down_climb_jug.naming.manufacturer_sku {
          ProductSkuObserved { value: _, authority: _ } => false
@@ -196,7 +196,7 @@ test fn witness_naming_is_alias_with_sku_unread() -> Bool {
 // SOURCE PRESERVATION. The vendor states 6-1/2 in; the row stores 13/2 exactly and the rounded
 // 166 mm lives only in the derived clearance box. If a later edit collapses these into one integer
 // field, the fraction is unrecoverable and no reader can tell a measured 166 from a rounded 165.1.
-test fn witness_source_reading_survives_conversion() -> Bool {
+test fn witness_source_reading_survives_conversion() -> Bool  {
   atomik_xl_arrow_down_climb_jug.source_width.value.numerator == 13
     && atomik_xl_arrow_down_climb_jug.source_width.value.denominator == 2
     && atomik_xl_arrow_down_climb_jug.source_projection.value.numerator == 3
@@ -205,7 +205,7 @@ test fn witness_source_reading_survives_conversion() -> Bool {
 
 data clearance_rename_note: NonEmptyStr = "CONTROL for the defect that put a climbing hold on top of a CPU cooler and called it the selected design. hold_clearance_is_admissible checked whether the catalog envelope's SOURCE READING was spendable and was consumed by the lift gate as though it proved physical clearance. It is now hold_catalog_clearance_envelope_is_spendable and is out of that gate entirely. This witness holds the catalog side maximally strong - spendable envelope, locatable axis, proof-load receipt in hand - and still refuses while the scene has not resolved placement. No amount of catalog evidence can buy clearance, because clearance is a property of a placed body and a catalog row has no position."
 
-test fn witness_catalog_evidence_cannot_buy_placement_clearance() -> Bool {
+test fn witness_catalog_evidence_cannot_buy_placement_clearance() -> Bool  {
   let ready_fixation: HoldFixationInterface = HoldFixationInterface {
     primary_bolt_thread: ImperialUncThread { designation: "3/8-16 UNC" },
     primary_bolt_count: 1,

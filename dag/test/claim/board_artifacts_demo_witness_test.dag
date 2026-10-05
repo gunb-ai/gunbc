@@ -38,7 +38,7 @@ fn source_at(path: String) -> String {
   })
 }
 
-test fn w_the_demo_renders_five_artifacts_and_refuses_none() -> Bool {
+test fn w_the_demo_renders_five_artifacts_and_refuses_none() -> Bool  {
   let rs = renderings()
   (list_length(items: rs) == 5)
     && fold(rs, init: true, f: fn(acc, r) { acc && rendering_is_rendered(r: r) })
@@ -50,14 +50,14 @@ fn path_count(path: String) -> Int {
   fold(renderings(), init: 0, f: fn(acc, r) { if rendering_path(r: r) == path { acc + 1 } else { acc } })
 }
 
-test fn w_every_demo_artifact_has_its_own_path() -> Bool {
+test fn w_every_demo_artifact_has_its_own_path() -> Bool  {
   fold(renderings(), init: true, f: fn(acc, r) { acc && (path_count(path: rendering_path(r: r)) == 1) })
 }
 
 // EACH TARGET'S OWN MARKER AT ITS OWN PATH. This is what a count cannot establish: five renderings
 // could all be the same target's bytes under five names, and the demo's whole claim is that these are
 // five different projections of one article.
-test fn w_each_demo_path_carries_its_own_targets_output() -> Bool {
+test fn w_each_demo_path_carries_its_own_targets_output() -> Bool  {
   string_contains(s: source_at(path: "target/demo/board_power_interlock.v"), pattern: "module board_power_interlock (")
     && string_contains(s: source_at(path: "target/demo/conditioning_network.spice"), pattern: "Rpg_top pg_raw pg_cond 30k")
     && string_contains(s: source_at(path: "target/demo/conditioning_network.cir"), pattern: ".op")
@@ -70,7 +70,7 @@ test fn w_each_demo_path_carries_its_own_targets_output() -> Bool {
 // equation states; the SPICE circuit and the pin file do not mention it at all, because neither
 // depends on the digital equation. A projection that leaked the equation into the analog deck would
 // pass every claim above and fail this one.
-test fn w_the_digital_equation_reaches_only_the_digital_targets() -> Bool {
+test fn w_the_digital_equation_reaches_only_the_digital_targets() -> Bool  {
   string_contains(s: source_at(path: "target/demo/board_power_interlock.v"), pattern: "(conditioned_good & ~fault)")
     && !string_contains(s: source_at(path: "target/demo/conditioning_network.spice"), pattern: "conditioned_good")
     && !string_contains(s: source_at(path: "target/demo/conditioning_network.cir"), pattern: "conditioned_good")

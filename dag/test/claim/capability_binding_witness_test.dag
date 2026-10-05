@@ -660,7 +660,7 @@ fn witness_the_two_coverage_axes_vary_independently() -> Bool {
     && probe_state_key(s: ProbeRequired) != probe_state_key(s: ProbeDeferred { trigger: "t" })
 }
 
-test fn capability_binding_keystone_holds() -> Bool {
+test fn capability_binding_keystone_holds() -> Bool  {
   witness_container_and_renderer_are_independent_axes()
     && witness_host_role_is_orthogonal_to_container()
     && witness_continuity_is_a_capability_not_a_container_property()

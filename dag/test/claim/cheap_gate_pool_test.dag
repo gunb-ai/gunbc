@@ -12,15 +12,15 @@ import tools.cheap_gate_pool {
 import tools.extdeps_external_authority_transport { extdeps_external_authority_claims }
 import std.logic { Bool }
 
-test fn cheap_pool_chunk_totality_holds() -> Bool {
+test fn cheap_pool_chunk_totality_holds() -> Bool  {
   claims_covered_by_cheap_pool_chunks(claims: extdeps_external_authority_claims())
 }
 
-test fn cheap_pool_chunking_preserves_count() -> Bool {
+test fn cheap_pool_chunking_preserves_count() -> Bool  {
   length(cheap_pool_chunked_claims()) == length(cheap_claim_pool_claims())
 }
 
-test fn cheap_pool_chunk_totality_red_control_holds() -> Bool {
+test fn cheap_pool_chunk_totality_red_control_holds() -> Bool  {
   let bogus = ClaimRun {
     entry: "dag/test/claim/__no_such_entry_zzz.dag",
     function: "no_such_claim_zzz"
@@ -28,7 +28,7 @@ test fn cheap_pool_chunk_totality_red_control_holds() -> Bool {
   !claims_covered_by_cheap_pool_chunks(claims: [bogus])
 }
 
-test fn cheap_pool_chunk_cap_splits_at_cap() -> Bool {
+test fn cheap_pool_chunk_cap_splits_at_cap() -> Bool  {
   let a = ClaimRun { entry: "a.dag", function: "f1" }
   let b = ClaimRun { entry: "a.dag", function: "f2" }
   let c = ClaimRun { entry: "b.dag", function: "g" }

@@ -24,7 +24,7 @@ import v2.std.algebra { fold_list, length, list_map }
 // that claim falsely are authorable, so each is executed as a discriminating RED beside the
 // positive control on the real rows, and both stay enrolled after the wall lands (DESIGN 4b(4)).
 
-test fn compiler_diagnostic_seed_projection_receipt_is_well_formed() -> Bool {
+test fn compiler_diagnostic_seed_projection_receipt_is_well_formed() -> Bool  {
   match compiler_diagnostic_seed_projection_verdict() {
     SeedProjectionReceiptWellFormed { items: items } => length(xs: items) == 1
     SeedProjectionReceiptRefused { detail: _ } => false
@@ -52,7 +52,7 @@ fn well_formed_plant() -> List<SeedGrowthChangeDisposition> {
   ]
 }
 
-test fn the_plant_is_well_formed_before_mutation() -> Bool {
+test fn the_plant_is_well_formed_before_mutation() -> Bool  {
   match seed_projection_receipt_verdict_of(rows: well_formed_plant()) {
     SeedProjectionReceiptWellFormed { items: _ } => true
     SeedProjectionReceiptRefused { detail: _ } => false
@@ -62,7 +62,7 @@ test fn the_plant_is_well_formed_before_mutation() -> Bool {
 // RED 1 -- A ROW CLAIMING THE SEED GAINED SEMANTICS. This is the claim the receipt exists to deny:
 // the arms are forced by the .dag coproduct gaining a member, so an author filing ModeledCapability
 // under this receipt's name is saying the opposite of what the receipt says while keeping its name.
-test fn a_modeled_capability_row_is_refused() -> Bool {
+test fn a_modeled_capability_row_is_refused() -> Bool  {
   let mutated = [
     ExistingSeedItemModified {
       item: DeclarationRef {
@@ -96,7 +96,7 @@ test fn a_modeled_capability_row_is_refused() -> Bool {
 // RED 2 -- A RECEIPT ABOUT SOMETHING ELSE FILED HERE. A disposition naming a different .dag
 // authority is a well-formed seed-growth row and a wrong CompilerDiagnostic receipt, which is
 // exactly the state a String row could not distinguish.
-test fn a_foreign_dag_authority_row_is_refused() -> Bool {
+test fn a_foreign_dag_authority_row_is_refused() -> Bool  {
   let mutated = [
     ExistingSeedItemModified {
       item: DeclarationRef {
@@ -121,7 +121,7 @@ test fn a_foreign_dag_authority_row_is_refused() -> Bool {
 
 // RED 3 -- AN EMPTY RECEIPT. A projection that modifies nothing is not a green receipt; the whole
 // content of this row is that a seed item IS modified, so an empty list is the absorbing answer.
-test fn an_empty_receipt_is_refused() -> Bool {
+test fn an_empty_receipt_is_refused() -> Bool  {
   match seed_projection_receipt_verdict_of(rows: []) {
     SeedProjectionReceiptWellFormed { items: _ } => false
     SeedProjectionReceiptRefused { detail: _ } => true
@@ -130,7 +130,7 @@ test fn an_empty_receipt_is_refused() -> Bool {
 
 // RED 4 -- A DISPOSITION THAT IS NOT A MODIFICATION. HandRustDeleted is a real arm of the shared
 // coproduct and a false statement about this subject: the total match is modified, not deleted.
-test fn a_non_modification_disposition_is_refused() -> Bool {
+test fn a_non_modification_disposition_is_refused() -> Bool  {
   match seed_projection_receipt_verdict_of(rows: [HandRustDeleted]) {
     SeedProjectionReceiptWellFormed { items: _ } => false
     SeedProjectionReceiptRefused { detail: _ } => true
@@ -141,7 +141,7 @@ test fn a_non_modification_disposition_is_refused() -> Bool {
 // projected markdown: a renderer that silently drops a row would publish a receipt shorter than the
 // rows it claims to project, and the drift gate cannot see an omission it never rendered. This is
 // an identity join over item keys rather than a substring pin on authored prose.
-test fn every_disposition_reaches_the_projected_paragraphs() -> Bool {
+test fn every_disposition_reaches_the_projected_paragraphs() -> Bool  {
   let keys = projected_item_keys(rows: compiler_diagnostic_seed_projection_dispositions)
   let rendered = fold_list(xs: compiler_diagnostic_seed_projection_paragraphs(), empty: "", cons: fn(acc, s) { concat(acc, s) })
   fold_list(
@@ -153,7 +153,7 @@ test fn every_disposition_reaches_the_projected_paragraphs() -> Bool {
 
 // THE JOIN ABOVE IS DISCRIMINATING: a key no row carries is absent from the render, so the check is
 // not satisfied by a renderer that emits everything or by one that emits nothing.
-test fn an_unrostered_item_key_is_not_in_the_projected_paragraphs() -> Bool {
+test fn an_unrostered_item_key_is_not_in_the_projected_paragraphs() -> Bool  {
   let rendered = fold_list(xs: compiler_diagnostic_seed_projection_paragraphs(), empty: "", cons: fn(acc, s) { concat(acc, s) })
   !string_contains(s: rendered, pattern: "v1_compiler.cli_run.compile_clean totally_unrostered_seed_item")
 }

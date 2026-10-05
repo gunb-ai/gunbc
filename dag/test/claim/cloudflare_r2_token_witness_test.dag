@@ -75,12 +75,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
+test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool  {
   (cloudflare_client_v4_edition as String) == "v4"
     && (cloudflare_client_v4_base as String) == "https://api.cloudflare.com/client/v4"
 }
 
-test fn account_token_formats_are_prefixed() -> Bool {
+test fn account_token_formats_are_prefixed() -> Bool  {
   classify_cloudflare_credential_format(value: "cfat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX")
     == ScannableAccountApiToken
     && classify_cloudflare_credential_format(value: "cfut_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX")
@@ -91,14 +91,14 @@ test fn account_token_formats_are_prefixed() -> Bool {
       == Pre2026Unprefixed
 }
 
-test fn token_status_and_effect_use_upstream_wire_words() -> Bool {
+test fn token_status_and_effect_use_upstream_wire_words() -> Bool  {
   parse_account_token_status(raw: "active") == Present { value: TokenActive }
     && parse_account_token_status(raw: "nope") == none
     && token_policy_effect_wire(effect: PolicyAllow) == "allow"
     && token_policy_effect_wire(effect: PolicyDeny) == "deny"
 }
 
-test fn create_policy_body_uses_the_effect_wire_word() -> Bool {
+test fn create_policy_body_uses_the_effect_wire_word() -> Bool  {
   let policy = r2_object_read_token_policy(
     account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
     jurisdiction: R2JurisdictionDefault,
@@ -107,7 +107,7 @@ test fn create_policy_body_uses_the_effect_wire_word() -> Bool {
   account_token_policy_create_wire(policy: policy).effect == "allow"
 }
 
-test fn create_response_folds_wire_status_fail_closed() -> Bool {
+test fn create_response_folds_wire_status_fail_closed() -> Bool  {
   let admitted = created_account_token_from_create_response(
     response: CreatedAccountTokenCreateResponse {
       id: "ed17574386854bf78a67040be0a770b0",
@@ -138,7 +138,7 @@ test fn create_response_folds_wire_status_fail_closed() -> Bool {
     }
 }
 
-test fn create_response_preserves_wire_expiry() -> Bool {
+test fn create_response_preserves_wire_expiry() -> Bool  {
   let admitted = created_account_token_from_create_response(
     response: CreatedAccountTokenCreateResponse {
       id: "ed17574386854bf78a67040be0a770b0",
@@ -157,7 +157,7 @@ test fn create_response_preserves_wire_expiry() -> Bool {
   }
 }
 
-test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool {
+test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool  {
   r2_s3_endpoint_url(
     endpoint: R2S3Endpoint {
       account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
@@ -197,7 +197,7 @@ test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool {
       == "com.cloudflare.api.account.4793d734c0b8e484dfc37ec392b5fa8a"
 }
 
-test fn r2_object_read_create_request_cites_the_documented_permission_group_id() -> Bool {
+test fn r2_object_read_create_request_cites_the_documented_permission_group_id() -> Bool  {
   let policy = r2_object_read_token_policy(
     account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
     jurisdiction: R2JurisdictionDefault,
@@ -217,7 +217,7 @@ test fn r2_object_read_create_request_cites_the_documented_permission_group_id()
     )
 }
 
-test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
+test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool  {
   let token = CreatedAccountToken {
     id: "ed17574386854bf78a67040be0a770b0",
     name: "readonly token",
@@ -233,7 +233,7 @@ test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
     }
 }
 
-test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
+test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool  {
   cloudflare_bootstrap_token_shape().grants == [AccountApiTokensWrite]
     && human_intervention_count_at(
       burden: cloudflare_r2_token_human_burden(),
@@ -243,7 +243,7 @@ test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Boo
     && cloudflare_r2_object_read_token_shape().acquisition == CreatedViaAccountTokensApi
 }
 
-test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
+test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool  {
   match admit_r2_object_read_api_mint(
     name: "r2-read",
     account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
@@ -280,7 +280,7 @@ test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
     }
 }
 
-test fn api_mint_refuses_when_create_policies_omit_the_shape_grant() -> Bool {
+test fn api_mint_refuses_when_create_policies_omit_the_shape_grant() -> Bool  {
   match admit_account_token_api_mint(
     shape: cloudflare_r2_object_read_token_shape(),
     request: CreateAccountTokenRequest {
@@ -298,7 +298,7 @@ test fn api_mint_refuses_when_create_policies_omit_the_shape_grant() -> Bool {
   }
 }
 
-test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group() -> Bool {
+test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group() -> Bool  {
   let policy = r2_object_read_token_policy(
     account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
     jurisdiction: R2JurisdictionDefault,
@@ -330,7 +330,7 @@ test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group(
   }
 }
 
-test fn api_mint_refuses_when_request_expiry_disagrees_with_shape_lifetime() -> Bool {
+test fn api_mint_refuses_when_request_expiry_disagrees_with_shape_lifetime() -> Bool  {
   let policy = r2_object_read_token_policy(
     account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
     jurisdiction: R2JurisdictionDefault,
@@ -408,11 +408,11 @@ fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
   }
 }
 
-test fn r2_token_mint_frontier_rows_well_formed() -> Bool {
+test fn r2_token_mint_frontier_rows_well_formed() -> Bool  {
   frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
 }
 
-test fn r2_token_mint_create_frontier_rows_are_retired() -> Bool {
+test fn r2_token_mint_create_frontier_rows_are_retired() -> Bool  {
   !any(
     cloudflare_r2_token_mint_frontier_rows,
     row => frontier_row_names_decl(
@@ -436,7 +436,7 @@ test fn r2_token_mint_create_frontier_rows_are_retired() -> Bool {
     )
 }
 
-test fn cloudflare_frontier_rows_are_in_the_census() -> Bool {
+test fn cloudflare_frontier_rows_are_in_the_census() -> Bool  {
   all(cloudflare_r2_token_mint_frontier_rows, row => census_contains_frontier_subject(row: row))
     && all(cloudflare_account_api_tokens_frontier_rows, row => census_contains_frontier_subject(row: row))
     && all(cloudflare_r2_frontier_rows, row => census_contains_frontier_subject(row: row))

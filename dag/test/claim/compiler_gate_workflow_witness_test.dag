@@ -70,7 +70,7 @@ fn floor_step_positions(job: Job) -> StepPositions {
   )
 }
 
-test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool {
+test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool  {
   let p = floor_step_positions(job: compiler_gate_floor_job())
   p.producer >= 0 && p.adjudicator >= 0 && p.producer < p.adjudicator
 }
@@ -123,7 +123,7 @@ fn step_id_text(step: Step) -> String {
   }
 }
 
-test fn w_RED_the_stage0_mirrors_are_adjudicated_on_every_event_beside_the_floor() -> Bool {
+test fn w_RED_the_stage0_mirrors_are_adjudicated_on_every_event_beside_the_floor() -> Bool  {
   let p = fold_list(
     xs: compiler_gate_generated_job().steps,
     empty: GeneratedLanePlacement { next: 0, stage0_steps: 0, stage0_position: -1, stage0_ungated: true, drift_position: -1, drift_reads_the_lane: false },
@@ -162,7 +162,7 @@ test fn w_RED_the_stage0_mirrors_are_adjudicated_on_every_event_beside_the_floor
 // step skip the lint, and a condition naming the build outcome would do the same. So this reads the
 // generated job for the step by id, and asserts it runs the clippy command under exactly that
 // guard. Deleting the step, moving it off the job, or narrowing its condition reds this.
-test fn w_RED_the_lint_runs_on_the_generated_lane_under_the_status_guard_alone() -> Bool {
+test fn w_RED_the_lint_runs_on_the_generated_lane_under_the_status_guard_alone() -> Bool  {
   fold_list(
     xs: compiler_gate_generated_job().steps,
     empty: false,
@@ -184,26 +184,26 @@ test fn w_RED_the_lint_runs_on_the_generated_lane_under_the_status_guard_alone()
 // discriminates (a supplied merge path that meets the hosted set refuses, one that does not is
 // admitted), that a runner decided at dispatch counts as hosted, and that the live merge path both
 // holds and is not vacuous -- it names the two fleet lanes and the aggregate.
-test fn w_RED_a_hosted_job_on_the_merge_path_refuses() -> Bool {
+test fn w_RED_a_hosted_job_on_the_merge_path_refuses() -> Bool  {
   compiler_gate_no_merge_path_job_is_hosted(
     merge_path: ["floor", "generated", "witnesses"],
     hosted: ["rust-unit-tests", "emit-build", "witnesses"]
   ) == false
 }
 
-test fn a_merge_path_disjoint_from_the_hosted_jobs_is_admitted() -> Bool {
+test fn a_merge_path_disjoint_from_the_hosted_jobs_is_admitted() -> Bool  {
   compiler_gate_no_merge_path_job_is_hosted(
     merge_path: ["floor", "generated", "witnesses"],
     hosted: ["rust-unit-tests", "emit-build"]
   )
 }
 
-test fn w_RED_a_runner_decided_at_dispatch_counts_as_hosted() -> Bool {
+test fn w_RED_a_runner_decided_at_dispatch_counts_as_hosted() -> Bool  {
   compiler_gate_runner_is_hosted(runner: RunsOnExpression { expression: "${{ inputs.runner }}" })
     && (compiler_gate_runner_is_hosted(runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] }) == false)
 }
 
-test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool {
+test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool  {
   let path = compiler_gate_merge_path_job_ids()
   compiler_gate_merge_path_runs_on_the_fleet()
     && any(path, id => id == compiler_gate_floor_job_id)

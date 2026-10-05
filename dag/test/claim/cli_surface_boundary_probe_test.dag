@@ -107,7 +107,7 @@ fn argument_texts(arguments: List<CliArgumentSyntax>) -> List<String> {
 }
 
 // Grouped as one: exactly one argument, "--color=never".
-test fn joined_fragments_render_one_argument() -> Bool {
+test fn joined_fragments_render_one_argument() -> Bool  {
   match argument_texts(arguments: joined_grouping()) {
     Empty => false
     Cons { head: only, tail: rest } =>
@@ -119,7 +119,7 @@ test fn joined_fragments_render_one_argument() -> Bool {
 }
 
 // Grouped as three: exactly three arguments, and the middle one is bare "=".
-test fn separated_fragments_render_three_arguments() -> Bool {
+test fn separated_fragments_render_three_arguments() -> Bool  {
   match argument_texts(arguments: separated_grouping()) {
     Empty => false
     Cons { head: a, tail: r1 } =>
@@ -156,13 +156,13 @@ fn grouping_flat_text(arguments: List<CliArgumentSyntax>) -> String {
 // both flatten to identical text, so the text carrier cannot separate them at all, while the
 // two assertions above show the argv carrier does. Grouping is exactly the information the argv
 // vector holds and source text loses -- which is what the 17 remote jq rows lose at the ssh seam.
-test fn both_groupings_flatten_to_the_same_text() -> Bool {
+test fn both_groupings_flatten_to_the_same_text() -> Bool  {
   (grouping_flat_text(arguments: joined_grouping()) == "--color=never")
     && (grouping_flat_text(arguments: joined_grouping())
           == grouping_flat_text(arguments: separated_grouping()))
 }
 
-test fn keystone_flat_text_is_nonempty() -> Bool {
+test fn keystone_flat_text_is_nonempty() -> Bool  {
   match bound_tokens_source_text(
     tokens: flatten_grouping(arguments: separated_grouping()),
     lex: probe_lex_rules(),
@@ -185,7 +185,7 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
 // The assertion is deliberately Rejected-vs-Accepted rather than a text comparison: if the
 // fallback ever returns, this goes red because the fold ACCEPTS, and no assertion about the
 // emitted text is needed to see it.
-test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
+test fn a_bound_fragment_with_no_spelling_refuses() -> Bool  {
   match serialize_cli_arguments(
     arguments: [CliArgumentSyntax {
       fragments: [BoundToken { token_class: ^probe_value_class, binding: ^probe_unbound_value }]

@@ -43,7 +43,7 @@ data spark_rail_requirement: CableLinkRequirement = cable_link_requirement(
 // THE LOUD FAILURE THE WHOLE SUBJECT EXISTS TO PRODUCE. A part whose per-leg coding nobody declared
 // cannot be bought for a link that needs a specific mode, because a part number does not determine
 // a link contract.
-test fn an_undeclared_coding_refuses_the_purchase() -> Bool {
+test fn an_undeclared_coding_refuses_the_purchase() -> Bool  {
   match admit_cable_order(evidence: LegCodingUndeclared, requirement: spark_rail_requirement) {
     OrderRefused { reason: r } => true
     AdmittedOnVendorClaim { claimed_mode: m, citation: c } => false
@@ -54,7 +54,7 @@ test fn an_undeclared_coding_refuses_the_purchase() -> Bool {
 // THE CENTRAL CASE, AND THE ONE MOST LIKELY TO BE MISREMEMBERED. FS's listing promises 4x100G legs
 // of 2x50G PAM4 -- exactly the requirement -- so the real order is ADMITTED here. A gate that
 // refused it would be reasoning from bytes nobody could have had before delivery.
-test fn the_real_order_is_admitted_on_the_vendor_claim() -> Bool {
+test fn the_real_order_is_admitted_on_the_vendor_claim() -> Bool  {
   match admit_cable_order(
     evidence: LegCodingVendorAsserted {
       asserted_mode: ieee_100gbase_cr2, citation: fs_listing },
@@ -66,7 +66,7 @@ test fn the_real_order_is_admitted_on_the_vendor_claim() -> Bool {
 }
 
 // A claim for the WRONG mode still refuses, so admission is not merely "the vendor said something".
-test fn a_claim_for_a_different_mode_refuses() -> Bool {
+test fn a_claim_for_a_different_mode_refuses() -> Bool  {
   match admit_cable_order(
     evidence: LegCodingVendorAsserted {
       asserted_mode: ieee_100gbase_cr4, citation: fs_listing },
@@ -95,7 +95,7 @@ data admitted_purchase: CableOrderAdmission = admit_cable_order(
   requirement: spark_rail_requirement)
 
 // THE GATE THAT WOULD HAVE CAUGHT THIS ORDER, an hour after delivery instead of after installation.
-test fn the_delivered_leg_diverges_from_the_admitted_claim() -> Bool {
+test fn the_delivered_leg_diverges_from_the_admitted_claim() -> Bool  {
   match reconcile_cable_receipt(
     admitted: admitted_purchase,
     observed: LegCodingObserved { coding: delivered_leg },
@@ -109,7 +109,7 @@ test fn the_delivered_leg_diverges_from_the_admitted_claim() -> Bool {
 }
 
 // AND THAT DIVERGENCE IS THE RMA TRIGGER, named once rather than re-derived by each consumer.
-test fn a_divergence_requires_a_supplier_remedy() -> Bool {
+test fn a_divergence_requires_a_supplier_remedy() -> Bool  {
   receipt_requires_supplier_remedy(r: reconcile_cable_receipt(
     admitted: admitted_purchase,
     observed: LegCodingObserved { coding: delivered_leg },
@@ -119,7 +119,7 @@ test fn a_divergence_requires_a_supplier_remedy() -> Bool {
 // SILENCE IS NOT AGREEMENT. A delivered assembly nobody has read must NOT reconcile as matching --
 // that is exactly the state this fleet sat in while the fabric ran at half rate, and a model that
 // scored it as clean would have certified the outage.
-test fn an_unread_delivery_does_not_reconcile_as_matching() -> Bool {
+test fn an_unread_delivery_does_not_reconcile_as_matching() -> Bool  {
   match reconcile_cable_receipt(
     admitted: admitted_purchase,
     observed: LegCodingUndeclared,
@@ -152,7 +152,7 @@ data admitted_cr4_purchase: CableOrderAdmission = admit_cable_order(
   evidence: LegCodingVendorAsserted { asserted_mode: ieee_100gbase_cr4, citation: fs_listing },
   requirement: cr4_requirement)
 
-test fn a_leg_coded_for_the_required_mode_honours_the_claim() -> Bool {
+test fn a_leg_coded_for_the_required_mode_honours_the_claim() -> Bool  {
   let r = reconcile_cable_receipt(
     admitted: admitted_cr4_purchase,
     observed: LegCodingObserved { coding: correctly_coded_leg },

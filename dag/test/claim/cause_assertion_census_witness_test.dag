@@ -21,7 +21,7 @@ fn cause_census_token(class: Symbol, lexeme: String, at: Int) -> Token {
   Token { class: class, lexeme: lexeme, file: ^cause_census_fixture, start: at, end: at + 1 }
 }
 
-test fn cause_census_retains_caret_spelling_and_argument_coordinate() -> Bool {
+test fn cause_census_retains_caret_spelling_and_argument_coordinate() -> Bool  {
   let tokens = [
     cause_census_token(class: ^ShIdent, lexeme: "cause", at: 0),
     cause_census_token(class: ^ShColon, lexeme: ":", at: 1),
@@ -37,13 +37,13 @@ test fn cause_census_retains_caret_spelling_and_argument_coordinate() -> Bool {
     && any(occurrences, o => o.spelling == "second_cause" && !o.cause_argument)
 }
 
-test fn cause_census_string_token_cannot_mint_an_assertion() -> Bool {
+test fn cause_census_string_token_cannot_mint_an_assertion() -> Bool  {
   count(cause_caret_occurrences(tokens: [
     cause_census_token(class: ^ShLitStr, lexeme: "cause: ^fake", at: 0)
   ])) == 0
 }
 
-test fn cause_census_import_projection_preserves_dotted_member_identity() -> Bool {
+test fn cause_census_import_projection_preserves_dotted_member_identity() -> Bool  {
   let projection = cause_import_projection(tokens: [
     cause_census_token(class: ^ShLBrace, lexeme: "{", at: 2),
     cause_census_token(class: ^ShIdent, lexeme: "child", at: 3),
@@ -74,7 +74,7 @@ fn cause_census_witness_source() -> CauseModuleSyntax {
   }
 }
 
-test fn cause_census_missing_and_ambiguous_declarations_are_separate_refusals() -> Bool {
+test fn cause_census_missing_and_ambiguous_declarations_are_separate_refusals() -> Bool  {
   let subject = cause_census_witness_source()
   let missing = cause_join_declaration(source: subject, spelling: "fixture_cause", declarations: cause_declarations_by_name(declarations: []))
   let ambiguous = cause_join_declaration(source: subject, spelling: "fixture_cause", declarations: cause_declarations_by_name(declarations: [
@@ -93,7 +93,7 @@ test fn cause_census_missing_and_ambiguous_declarations_are_separate_refusals() 
   missing_holds && ambiguous_holds
 }
 
-test fn cause_census_import_by_name_repairs_only_its_own_declaration() -> Bool {
+test fn cause_census_import_by_name_repairs_only_its_own_declaration() -> Bool  {
   let unimported = cause_census_witness_source()
   let imported = CauseModuleSyntax {
     module: unimported.module, path: unimported.path, witness: true, carets: [],
@@ -115,7 +115,7 @@ fn cause_census_source(owner: String, witness: Bool, argument: Bool) -> CauseMod
   }
 }
 
-test fn cause_census_ambiguous_assertion_cannot_become_no_assertion() -> Bool {
+test fn cause_census_ambiguous_assertion_cannot_become_no_assertion() -> Bool  {
   let joined = cause_census_join(sources: [
     cause_census_source(owner: "first", witness: false, argument: true),
     cause_census_source(owner: "second", witness: false, argument: true),
@@ -124,7 +124,7 @@ test fn cause_census_ambiguous_assertion_cannot_become_no_assertion() -> Bool {
   count(joined.refusals) == 1 && count(cause_standing_rows(joined: joined, rows: cause_all_joined_rows(joined: joined))) == 0
 }
 
-test fn cause_census_deleted_production_cause_keeps_witness_refusal() -> Bool {
+test fn cause_census_deleted_production_cause_keeps_witness_refusal() -> Bool  {
   let joined = cause_census_join(sources: [
     cause_census_source(owner: "first", witness: false, argument: true),
     cause_census_source(owner: "test.fixture", witness: true, argument: false)
@@ -132,7 +132,7 @@ test fn cause_census_deleted_production_cause_keeps_witness_refusal() -> Bool {
   count(joined.refusals) == 2 && count(cause_standing_rows(joined: joined, rows: cause_all_joined_rows(joined: joined))) == 0
 }
 
-test fn cause_census_ambiguity_does_not_erase_a_separate_import_gap() -> Bool {
+test fn cause_census_ambiguity_does_not_erase_a_separate_import_gap() -> Bool  {
   let known = CauseModuleSyntax {
     module: "test.known", path: "known.dag", witness: true,
     carets: [CauseCaretOccurrence { spelling: "fixture_cause", start: 0, cause_argument: false }],
@@ -152,7 +152,7 @@ test fn cause_census_ambiguity_does_not_erase_a_separate_import_gap() -> Bool {
     && string_contains(s: report, pattern: "first.fixture_cause\tfirst.dag\ttrue\t\tknown.dag\tknown.dag")
 }
 
-test fn cause_census_acquired_projection_keeps_raw_lexeme_and_seed_class() -> Bool {
+test fn cause_census_acquired_projection_keeps_raw_lexeme_and_seed_class() -> Bool  {
   match cause_source_observation_from_content(path: "cause_projection_fixture.dag", source: "module fixture\n// Ω shifts bytes, not scalar spans\nimport std.types { String }\ndata note: String = \"cause: ^fake\"\nfn value() -> Symbol { ^real_cause }\n") {
     CauseSourceObserved { tokens: tokens, imports: imports, members: members } => {
       let occurrences = cause_caret_occurrences(tokens: tokens)
@@ -165,21 +165,21 @@ test fn cause_census_acquired_projection_keeps_raw_lexeme_and_seed_class() -> Bo
   }
 }
 
-test fn cause_census_moduleless_source_is_explicitly_excluded() -> Bool {
+test fn cause_census_moduleless_source_is_explicitly_excluded() -> Bool  {
   match cause_source_observation_from_content(path: "fragment.dag", source: "type Fragment { value: String }\n") {
     CauseSourceExcluded { path: path, cause: _ } => path == "fragment.dag"
     _ => false
   }
 }
 
-test fn cause_census_unknown_token_cannot_report_no_causes() -> Bool {
+test fn cause_census_unknown_token_cannot_report_no_causes() -> Bool  {
   match cause_source_observation_from_content(path: "broken.dag", source: "module fixture\n@\n") {
     CauseSourceLexicalRefused { path: path } => path == "broken.dag"
     _ => false
   }
 }
 
-test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
+test fn cause_census_acquisition_requires_the_source_index_join() -> Bool  {
   let source = FloorDiscoverySource {
     module_path: "fixture", repo_path: "fixture.dag",
     content: "module fixture\nimport std.types { String }\nfn value() -> Symbol { ^fixture_cause }\n"
@@ -198,7 +198,7 @@ test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
 }
 
 // Production declarations can have witness in their name without being test sidecars.
-test fn cause_census_module_role_uses_floor_authority() -> Bool {
+test fn cause_census_module_role_uses_floor_authority() -> Bool  {
   cause_witness_module(path: "dag/test/claim/cause_assertion_census_witness_test.dag")
     && !cause_witness_module(path: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag")
     && !cause_witness_module(path: "dag/gunbc/json_exact_number_witness.dag")
@@ -208,7 +208,7 @@ test fn cause_census_module_role_uses_floor_authority() -> Bool {
 }
 
 // The parser admits keyword-shaped names; their complete dotted spelling must survive.
-test fn cause_census_keyword_import_members_keep_identity() -> Bool {
+test fn cause_census_keyword_import_members_keep_identity() -> Bool  {
   match cause_source_observation_from_content(path: "keyword_import.dag",
     source: "module fixture\nimport provider { child.type, fn }\n") {
     CauseSourceObserved { tokens: _, imports: _, members: members } =>
@@ -221,7 +221,7 @@ test fn cause_census_keyword_import_members_keep_identity() -> Bool {
 }
 
 // An acquired token outside the supported member projection cannot turn into an empty import.
-test fn cause_census_unsupported_import_is_explicitly_unestablished() -> Bool {
+test fn cause_census_unsupported_import_is_explicitly_unestablished() -> Bool  {
   let observation = cause_source_projection_observation(path: "future_import.dag", tokens: [
     cause_census_token(class: ^ShLBrace, lexeme: "{", at: 1),
     cause_census_token(class: ^ShIdent, lexeme: "cause", at: 2),
