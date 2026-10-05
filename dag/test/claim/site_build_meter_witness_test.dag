@@ -21,13 +21,14 @@ import gunbc.site.element.build_meter {
   CompactWorkSummary, BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterRead,
   BuildMeterTypedOperation, BuildMeterToolCallCount, BuildMeterChangedPathCountRise,
   BuildMeterCoverage, BuildMeterNoRoundYet, BuildMeterRoundsRecorded, BuildMeterRoundsNotRecorded,
-  BuildMeterPose, BuildMeterWorking, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
+  BuildMeterPose, BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
   FailureDigest, FailureRefused, FailureVerificationFailed, FailureBudgetSpent,
   build_meter, build_meter_rules, build_meter_class, build_meter_kind_key, build_meter_evidence_key, build_meter_pose_key,
   build_meter_coverage_key, failure_kind_key, build_meter_visible_rounds, build_meter_blink_class, build_meter_name_class,
   build_meter_digest_class,
 }
 import gunbc.workflow_reconcile { WorkflowFactKey }
+import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_antenna_path, robot_mark_body_transform }
 import gunbc.site.element.styles { element_styles }
 import gunbc.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.design.material { BuildRule, StaticRule, reduced_motion_block, serialize_rules, decl }
@@ -364,4 +365,38 @@ test fn the_meters_motion_is_removed_under_reduced_motion() -> Bool {
   has(s: block, pattern: "@media (prefers-reduced-motion: reduce)")
     && has(s: block, pattern: join([".", build_meter_class, " .", build_meter_blink_class, " { animation: none }"], ""))
     && has(s: block, pattern: "transition: none")
+}
+
+// THE WORKER IS THE ROBOT MARK. The mark's numbers derive its paths byte for byte as the frontend's
+// #stoic-robot symbol spells them (the copy below is that symbol's, the external referent), and
+// every pose of the meter's worker, solid or outlined, draws the robot variant from the same
+// numbers: square eyes three units wide, a ball-topped antenna above the body, a flat mouth, and
+// no round eye anywhere. Waiting droops one lid row (a shorter bar); published sleeps with both,
+// leaving a flat line on the eyes' lowest row.
+fn worker_html(pose: BuildMeterPose, stale: Bool) -> String {
+  fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale))
+}
+
+fn draws_the_robot(h: String) -> Bool {
+  !has(s: h, pattern: "<circle")
+    && has(s: h, pattern: "x=\"9\" y=\"-1\" width=\"2\" height=\"1\"")
+    && has(s: h, pattern: "x=\"8\" y=\"-2\" width=\"4\" height=\"1\"")
+    && has(s: h, pattern: "x=\"9\" y=\"-3\" width=\"2\" height=\"1\"")
+}
+
+test fn the_worker_is_the_robot_mark_in_every_pose() -> Bool {
+  let solid = map([BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle], p => worker_html(pose: p, stale: false))
+  let outline = worker_html(pose: BuildMeterWorking, stale: true)
+  robot_mark_body_path == "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
+    && robot_mark_antenna_path == "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
+    && robot_mark_body_transform == "translate(-12 -12) scale(1.2)"
+    && all(solid, h => draws_the_robot(h: h)
+      && has(s: h, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
+      && has(s: h, pattern: "x=\"13\" y=\"4\" width=\"3\" height=\"3\"")
+      && has(s: h, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\""))
+    && has(s: worker_html(pose: BuildMeterWaitingForSeat, stale: false), pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"4\" width=\"3\" height=\"1\"")
+    && has(s: worker_html(pose: BuildMeterDone, stale: false), pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
+    && draws_the_robot(h: outline)
+    && has(s: outline, pattern: "x=\"4\" y=\"6\" width=\"3\" height=\"1\"")
+    && has(s: outline, pattern: "x=\"13\" y=\"6\" width=\"3\" height=\"1\"")
 }

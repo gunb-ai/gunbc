@@ -10,6 +10,7 @@ import gunbc.design.material {
 }
 import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_1, space_2, space_4, border_1, border_2 }
 import gunbc.site.element.tokens { radius_element }
+import gunbc.site.robot_mark { robot_mark_body, robot_mark_left_eye, robot_mark_mouth, robot_mark_body_scale_tenths }
 import gunbc.site.element.palette {
   PaletteSlot, palette_var, SlotAction, SlotBorder, SlotError, SlotHover, SlotSurface, SlotTextDim,
   SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
@@ -631,9 +632,15 @@ fn build_meter_edge_mark_width(view: BuildMeterView) -> Int {
   }
 }
 
-// The worker is the gunbai mark at strip size: a wide flat-topped slab, two round eyes set far
-// apart, a short flat mouth. The body is drawn as pixel rows; the eyes are circles, because a
-// three-pixel square would read as the robot variant's square eye.
+// The worker is the Fabric workflow's mark (gunbc.site.robot_mark), the gunbai robot variant, at
+// strip size: the squircle body, two square eyes, a flat mouth and a ball-topped antenna. Every
+// position is read from the mark's own numbers and scaled so the body is the worker's width; one
+// unit of the drawing is one CSS pixel, so each value is rounded to the nearest unit. Three
+// quantisations are deliberate and named here. The right eye is the left eye mirrored, as the mark
+// is symmetric, so rounding cannot set the eyes off centre. The mouth is widened to an even width
+// so it centres on the even body. The antenna, two units tall at this scale, is drawn three units
+// tall (a two-unit stem under a ball two units tall and four wide) so the ball reads as a ball
+// above its stem. The feet are the worker's own: the mark has none.
 type BuildMeterBox {
   x: Int
   y: Int
@@ -645,38 +652,115 @@ fn build_meter_box(x: Int, y: Int, w: Int, h: Int) -> BuildMeterBox {
   BuildMeterBox { x: x, y: y, w: w, h: h }
 }
 
-data build_meter_body_rows: List<BuildMeterBox> = [
-  build_meter_box(x: 4, y: 0, w: 12, h: 1), build_meter_box(x: 2, y: 1, w: 16, h: 1), build_meter_box(x: 1, y: 2, w: 18, h: 1),
-  build_meter_box(x: 0, y: 3, w: 20, h: 10),
-  build_meter_box(x: 1, y: 13, w: 18, h: 1), build_meter_box(x: 2, y: 14, w: 16, h: 1), build_meter_box(x: 4, y: 15, w: 12, h: 1),
+// The mark's tenths of a unit across the body, after the body group's scale.
+fn build_meter_mark_span() -> Int {
+  robot_mark_body.w * robot_mark_body_scale_tenths
+}
+
+// A length of the mark, in tenths of its units after the body's scale, as the nearest whole unit
+// of the worker.
+fn build_meter_sprite_units(tenths: Int) -> Int {
+  (tenths * build_meter_worker_width * 2 + build_meter_mark_span()) / (2 * build_meter_mark_span())
+}
+
+fn build_meter_mark_length(v: Int) -> Int {
+  build_meter_sprite_units(tenths: v * robot_mark_body_scale_tenths)
+}
+
+data build_meter_body_height: Int = build_meter_mark_length(v: robot_mark_body.h)
+data build_meter_corner_radius: Int = build_meter_mark_length(v: robot_mark_body.r)
+data build_meter_eye_size: Int = build_meter_mark_length(v: robot_mark_left_eye.w)
+data build_meter_eye_left: Int = build_meter_mark_length(v: robot_mark_left_eye.x - robot_mark_body.x)
+data build_meter_eye_top: Int = build_meter_mark_length(v: robot_mark_left_eye.y - robot_mark_body.y)
+data build_meter_eye_lefts: List<Int> = [build_meter_eye_left, build_meter_worker_width - build_meter_eye_left - build_meter_eye_size]
+data build_meter_mouth_top: Int = build_meter_mark_length(v: robot_mark_mouth.y - robot_mark_body.y)
+
+fn build_meter_even_width(w: Int) -> Int {
+  if (build_meter_worker_width - w) % 2 == 0 { w } else { w + 1 }
+}
+
+data build_meter_mouth_width: Int = build_meter_even_width(w: build_meter_mark_length(v: robot_mark_mouth.w))
+data build_meter_mouth: BuildMeterBox = build_meter_box(x: (build_meter_worker_width - build_meter_mouth_width) / 2, y: build_meter_mouth_top, w: build_meter_mouth_width, h: 1)
+
+// The squircle's corner, pixel by pixel: on each row within the corner radius of the top or the
+// bottom, the first column whose pixel centre lies inside the corner's circle.
+fn build_meter_inset_search(r: Int, dy: Int, i: Int, budget: Int) -> Int {
+  if budget <= 0 || (2 * r - 2 * i - 1) * (2 * r - 2 * i - 1) + dy * dy <= 4 * r * r {
+    i
+  } else {
+    build_meter_inset_search(r: r, dy: dy, i: i + 1, budget: budget - 1)
+  }
+}
+
+fn build_meter_body_inset(y: Int) -> Int {
+  let from_edge = if y < build_meter_body_height - 1 - y { y } else { build_meter_body_height - 1 - y }
+  if y < 0 || y >= build_meter_body_height {
+    build_meter_worker_width
+  } else if from_edge >= build_meter_corner_radius {
+    0
+  } else {
+    build_meter_inset_search(r: build_meter_corner_radius, dy: 2 * build_meter_corner_radius - 2 * from_edge - 1, i: 0, budget: build_meter_corner_radius)
+  }
+}
+
+fn build_meter_body_ys(y: Int) -> List<Int> {
+  if y >= build_meter_body_height { [] } else { concat([y], build_meter_body_ys(y: y + 1)) }
+}
+
+fn build_meter_body_row(y: Int) -> BuildMeterBox {
+  let i = build_meter_body_inset(y: y)
+  build_meter_box(x: i, y: y, w: build_meter_worker_width - 2 * i, h: 1)
+}
+
+data build_meter_body_rows: List<BuildMeterBox> = map(build_meter_body_ys(y: 0), y => build_meter_body_row(y: y))
+
+// The antenna above the body's top row: a two-unit stem centred on the body, under a ball.
+data build_meter_antenna_rows: List<BuildMeterBox> = [
+  build_meter_box(x: build_meter_worker_width / 2 - 1, y: 0 - 1, w: 2, h: 1),
+  build_meter_box(x: build_meter_worker_width / 2 - 2, y: 0 - 2, w: 4, h: 1),
+  build_meter_box(x: build_meter_worker_width / 2 - 1, y: 0 - 3, w: 2, h: 1),
 ]
-// The outline of the same body, for a paused (stale) worker: the body's edge pixels, hollow feet,
-// eyes and mouth as flat strokes.
-data build_meter_edge_rows: List<BuildMeterBox> = [
-  build_meter_box(x: 4, y: 0, w: 12, h: 1),
-  build_meter_box(x: 2, y: 1, w: 2, h: 1), build_meter_box(x: 16, y: 1, w: 2, h: 1),
-  build_meter_box(x: 1, y: 2, w: 1, h: 1), build_meter_box(x: 18, y: 2, w: 1, h: 1),
-  build_meter_box(x: 0, y: 3, w: 1, h: 10), build_meter_box(x: 19, y: 3, w: 1, h: 10),
-  build_meter_box(x: 1, y: 13, w: 1, h: 1), build_meter_box(x: 18, y: 13, w: 1, h: 1),
-  build_meter_box(x: 2, y: 14, w: 2, h: 1), build_meter_box(x: 16, y: 14, w: 2, h: 1),
-  build_meter_box(x: 4, y: 15, w: 12, h: 1),
+
+// The outline of the same body, for a paused (stale) worker: each row's edge pixels (the whole row
+// at the top and bottom, and on the corners as far as the next row steps in), hollow feet, the
+// antenna, and the eyes and mouth as flat strokes on the eyes' lowest row and the mouth's row.
+fn build_meter_edge_width(y: Int) -> Int {
+  let i = build_meter_body_inset(y: y)
+  let up = build_meter_body_inset(y: y - 1) - i
+  let down = build_meter_body_inset(y: y + 1) - i
+  let step = if up > down { up } else { down }
+  if step < 1 { 1 } else { step }
+}
+
+fn build_meter_edge_row(y: Int) -> List<BuildMeterBox> {
+  let i = build_meter_body_inset(y: y)
+  if y == 0 || y == build_meter_body_height - 1 {
+    [build_meter_box(x: i, y: y, w: build_meter_worker_width - 2 * i, h: 1)]
+  } else {
+    let w = build_meter_edge_width(y: y)
+    [build_meter_box(x: i, y: y, w: w, h: 1), build_meter_box(x: build_meter_worker_width - i - w, y: y, w: w, h: 1)]
+  }
+}
+
+data build_meter_edge_rows: List<BuildMeterBox> = concat(concat(flat_map(build_meter_body_ys(y: 0), y => build_meter_edge_row(y: y)), build_meter_antenna_rows), concat([
   build_meter_box(x: 3, y: 16, w: 1, h: 2), build_meter_box(x: 6, y: 16, w: 1, h: 2), build_meter_box(x: 4, y: 17, w: 2, h: 1),
   build_meter_box(x: 13, y: 16, w: 1, h: 2), build_meter_box(x: 16, y: 16, w: 1, h: 2), build_meter_box(x: 14, y: 17, w: 2, h: 1),
-  build_meter_box(x: 4, y: 6, w: 3, h: 1), build_meter_box(x: 13, y: 6, w: 3, h: 1), build_meter_box(x: 8, y: 9, w: 4, h: 1),
-]
+  build_meter_mouth,
+], map(build_meter_eye_lefts, x => build_meter_box(x: x, y: build_meter_eye_top + build_meter_eye_size - 1, w: build_meter_eye_size, h: 1))))
 data build_meter_light_rows: List<BuildMeterBox> = [build_meter_box(x: 5, y: 1, w: 5, h: 1), build_meter_box(x: 3, y: 2, w: 2, h: 1), build_meter_box(x: 2, y: 3, w: 1, h: 2)]
 data build_meter_shade_rows: List<BuildMeterBox> = [build_meter_box(x: 2, y: 14, w: 16, h: 1), build_meter_box(x: 4, y: 15, w: 12, h: 1), build_meter_box(x: 19, y: 6, w: 1, h: 6)]
 data build_meter_feet_rows: List<BuildMeterBox> = [build_meter_box(x: 3, y: 16, w: 4, h: 2), build_meter_box(x: 13, y: 16, w: 4, h: 2)]
-data build_meter_eye_lefts: List<Int> = [4, 13]
-data build_meter_upper_lid_rows: List<Int> = [4, 5]
-data build_meter_lower_lid_rows: List<Int> = [7, 8]
+// Square eyes close from the top: the drooping lid covers the eyes' top row (a shorter bar), the
+// sleeping lid the next (a flat line on the lowest row), and a blink both.
+data build_meter_upper_lid_rows: List<Int> = [build_meter_eye_top]
+data build_meter_lower_lid_rows: List<Int> = [build_meter_eye_top + 1]
 
 fn build_meter_rows(rows: List<BuildMeterBox>) -> List<Fragment> {
   map(rows, r => build_meter_rect(x: r.x, y: r.y, w: r.w, h: r.h, attributes: []))
 }
 
 fn build_meter_lid_rects(rows: List<Int>) -> List<Fragment> {
-  flat_map(build_meter_eye_lefts, x => map(rows, y => build_meter_rect(x: x, y: y, w: 4, h: 1, attributes: [])))
+  flat_map(build_meter_eye_lefts, x => map(rows, y => build_meter_rect(x: x, y: y, w: build_meter_eye_size, h: 1, attributes: [])))
 }
 
 // A lid group is drawn over the eyes in the lid colour. `on` is the pose's own still; a group
@@ -720,12 +804,7 @@ fn build_meter_pose_reaches(pose: BuildMeterPose) -> Bool {
 }
 
 fn build_meter_eye_node(x: Int) -> Fragment {
-  build_meter_svg(tag: "circle", attributes: [
-    attr(name: "cx", value: join([to_string(x + 1), ".5"], "")),
-    attr(name: "cy", value: "6.5"),
-    attr(name: "r", value: "1.6"),
-    attr(name: "shape-rendering", value: "geometricPrecision"),
-  ], children: [])
+  build_meter_rect(x: x, y: build_meter_eye_top, w: build_meter_eye_size, h: build_meter_eye_size, attributes: [])
 }
 
 // Standing: feet under the body. Sitting (a published attempt): no feet, the body two units
@@ -760,13 +839,13 @@ fn build_meter_solid_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
         [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_arm_class), attr(name: build_meter_paint_attribute, value: "body")], children: [build_meter_rect(x: 0 - 2, y: 8, w: 3, h: 3, attributes: [])])]
       } else { [] }),
     [
-      build_meter_painted(paint: "body", children: build_meter_rows(rows: build_meter_body_rows)),
+      build_meter_painted(paint: "body", children: build_meter_rows(rows: concat(build_meter_body_rows, build_meter_antenna_rows))),
       build_meter_painted(paint: "light", children: build_meter_rows(rows: build_meter_light_rows)),
       build_meter_painted(paint: "shade", children: build_meter_rows(rows: build_meter_shade_rows)),
       build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_face_class)], children: [
         build_meter_painted(paint: "feature", children: concat(
           map(build_meter_eye_lefts, x => build_meter_eye_node(x: x)),
-          [build_meter_rect(x: 8, y: 9, w: 4, h: 1, attributes: [])])),
+          build_meter_rows(rows: [build_meter_mouth]))),
         build_meter_lid_group(class_name: build_meter_droop_class, rows: build_meter_upper_lid_rows, on: build_meter_pose_droops(pose: pose)),
         build_meter_lid_group(class_name: build_meter_sleep_class, rows: build_meter_lower_lid_rows, on: sits),
         build_meter_lid_group(class_name: build_meter_blink_class, rows: concat(build_meter_upper_lid_rows, build_meter_lower_lid_rows), on: false),

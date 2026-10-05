@@ -1,6 +1,7 @@
 module gunbc.site.specimen
 
 import std.types { Int, List, String, NonEmptyStr }
+import v2.std.algebra { filter }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { el_attrs, txt }
 import gunbc.site.document { SiteStyles, site_document, site_styles, site_extend_styles }
@@ -65,7 +66,7 @@ import gunbc.roadmap.roadmap_submission { CandidateHandoffState, HandoffAwaiting
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, BorderCollapse, BorderRadius, BoxShadow, Display, FlexDirection, FlexWrap, Gap, GridTemplateColumns,
-  Height, Margin, MinHeight, MinWidth, Padding, Width, RawProperty,
+  Height, Margin, MaxWidth, MinHeight, MinWidth, Padding, Width, RawProperty,
 }
 
 // The specimen: every element of the internal tools frontend in every variant, built only from
@@ -628,6 +629,28 @@ fn specimen_field_list_section() -> Fragment {
   ])
 }
 
+// THE WORKER AT ITS REAL SIZE. One meter per pose, drawn at the strip's own 22px with no
+// enlargement, so the robot's antenna, square eyes and lids are judged where they are shown:
+// working, waiting (half-lidded), stopped, paused on a stale revision (outlined) and asleep after
+// publishing. Each is the production meter over a supplied view; the page's theme switch shows
+// the same strip in the other scheme.
+data specimen_pose_captions: List<String> = [
+  "Read-heavy (typed operations, supplied)",
+  "Waiting for a seat, no round yet",
+  "Verification failed after 18 rounds",
+  "Stale: launched on an earlier revision",
+  "Published",
+]
+
+data specimen_pose_strip_class: String = "specimen-pose-strip"
+
+fn specimen_pose_section() -> Fragment {
+  specimen_section(label: "Worker poses, actual size", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_pose_strip_class)], flat_map(specimen_pose_captions, c =>
+      map(filter(specimen_meters(), m => m.caption == c), m => specimen_meter_node(row: m)))),
+  ])
+}
+
 fn specimen_meter_section() -> Fragment {
   specimen_section(label: "BuildMeter", body: [
     el_attrs("div", [attr(name: "class", value: specimen_meters_class)], map(specimen_meters(), m => specimen_meter_node(row: m))),
@@ -639,6 +662,7 @@ fn specimen_content() -> List<Fragment> {
     el_attrs("main", [attr(name: "class", value: specimen_page_class)], concat(
       concat([specimen_source_section(), specimen_composite()], specimen_issue_composite()),
       [
+        specimen_pose_section(),
         specimen_meter_section(),
         specimen_field_list_section(),
         specimen_chain_section(),
@@ -703,6 +727,12 @@ fn specimen_layout_rules() -> List<BuildRule> {
       decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
     ] },
     StaticRule { selector: ClassSelector { name: specimen_note_class }, decls: element_text_decls(role: ElementLabel) },
+    StaticRule { selector: ClassSelector { name: specimen_pose_strip_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: scale_var(t: card_outer_margin)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+    ] },
     StaticRule { selector: ClassSelector { name: specimen_field_rail_class }, decls: [
       decl(prop: MaxWidth, value: scale_var(t: field_rail_width)),
     ] },
