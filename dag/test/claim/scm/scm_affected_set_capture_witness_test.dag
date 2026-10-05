@@ -1,0 +1,595 @@
+module test.claim.scm.scm_affected_set_capture_witness_test
+
+// THE AFFECTED-SET CAPTURE (2026-10-03), proven over a PLANTED LARGE REPOSITORY with a READER THAT
+// RECORDS WHAT IT WAS ASKED FOR. The srv2 belt's candidate capture decoded every object shard of the
+// project repository to record one candidate, and every tick died at its 90-minute TimeoutStart once
+// the repository outgrew a tick. The capture's demand is now: the v8 index (commits, allocator,
+// selections, object roster), the base commit's manifest from its own singleton shard, and the shard
+// of any re-bound content the repository already holds. These claims establish that shape at the
+// interface where it is decided -- gunbc.scm.repository_load object_demand and materialize_planned,
+// fed by a planted reader instead of the filesystem -- and that every underivable demand refuses
+// rather than widening. The effectful reader (materialize_objects) reads exactly the plan's shards;
+// its real-path inhabitance is the measurement over a copy of srv2's projects store, which the PR
+// names by its instrument.
+
+import std.types { Bool, String, Int, List, NonEmptyStr, Map }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.minted_identity { MintedIdAllocator }
+import extdeps.languages.json.emit { serialize_json, JsonValue }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.object_store {
+  ObjectId, ObjectStore, ScmObject, CorpusManifestEntry, CorpusManifestRecord,
+  empty_store, rostered_store, scm_object_identity, authored_source_object,
+  store_authored_sources_batch, SourcesBatched, SourceBatchCollision,
+  store_authored_source, SourceStored, SourceLocatorCollision,
+  store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  find_corpus_manifest_record, CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode,
+  authored_source_target_of, AuthoredSourceObjectRef, AuthoredSourceTarget,
+  path_unique_of_record, path_unique_with_path_bound,
+  store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
+  RosteredObject, CorpusManifestKind, AuthoredSourceKind,
+  rostered_entry_source_refusal, CorpusEntrySourceIsCorpusManifest, CorpusEntrySourceMissing,
+  store_object_count, store_rostered_rows, store_rostered_shards,
+}
+import std.content_hash { fnv1a64_structural_hex_digest }
+import v2.std.collection { map_lookup }
+import gunbc.scm.object_shard_json { shard_partition, shard_identity_of, shard_members_of, shard_batch_size }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope, RepositoryCommit, commit_at_reference, empty_repository,
+  encode_repository_v7, encode_repository_v8,
+  decode_repository_v7_index, decode_repository_v8_index, decode_repository_v7_finish,
+  ShardedIndexDecoded, ShardedIndexRefused, ObjectRosterAbsentByFormat, ObjectRosterDeclared,
+  RepositoryDecoded, RepositoryDecodeRefused,
+  encode_repository_checked, encode_repository_appended_checked,
+  RepositoryEncoded, RepositoryEncodeRefused, RepositoryEncodeStoreIsPartial,
+  RepositoryIndexHasNoObjectRoster, RepositoryEncodeAppendShadowsRosteredIdentity,
+}
+import gunbc.scm.repository_load {
+  object_demand, ObjectDemandPlanned, ObjectDemandUnderivable,
+  materialize_planned, ShardContent, ObjectsMaterialized, ObjectMaterializationRefused,
+  rows_by_digest, shard_objects_agree_with_roster,
+  load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused, RepositoryDocumentRefused,
+}
+import gunbc.scm.write_spine {
+  commit_staged, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
+}
+import test.claim.scm_repository_save_witness { scm_sv_v7_fixture_path, scm_sv_v8_fixture_path }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL REPOSITORY IS SMALL AND THE MASS IS SUPPLIED (DESIGN section 3, a witness discriminates at
+// one interface). The claims are about the READ PLAN, whose inputs are the roster and the commit
+// table; building a thousand-file repository through the production verbs per claim measured ~1.8M
+// eval steps and taught nothing the plan does not already see. So a small repository is built for
+// real (its manifest, sources and commits are what the reader returns), and the repository's mass is
+// supplied as roster rows -- persisted objects in shards the plan must NEVER ask for. The real-path
+// inhabitance of the reader is the measurement over a copy of srv2's projects store
+// (gunbc.scm.repository_convert scm_capture_demand_cli), named in the PR.
+data planted_files: Int = 6
+data planted_mass: Int = 300
+data planted_mass_batch: Int = 100
+// The append claim needs only that old rows and shards are carried forward, so one mass shard suffices.
+data planted_mass_for_append: Int = 30
+
+fn planted_mass_hex(i: Int) -> String {
+  let digits = join(["0000000000000000", to_string(i + 1)], "")
+  substring(s: digits, start: string_length(s: digits) - 16, end: string_length(s: digits))
+}
+
+type PlantedMassAcc { rows: Map<String, RosteredObject>, shards: List<String>, shard_seen: Map<String, Bool> }
+
+// k persisted sources the real repository never names, in shards of planted_mass_batch rows each.
+fn with_planted_mass(indexed: RepositoryEnvelope, k: Int) -> RepositoryEnvelope {
+  let acc = fold(planted_indices(n: k, i: 0, acc: []), init: PlantedMassAcc { rows: rows_by_digest(rows: store_rostered_rows(store: indexed.store)), shards: [], shard_seen: empty_map() }, f: fn(acc, i) {
+    match fnv1a64_structural_hex_digest(hex: planted_mass_hex(i: i)) {
+      Absent => acc
+      Present { value: identity } => {
+        let shard = join(["planted-mass-", to_string(i / planted_mass_batch)], "")
+        PlantedMassAcc {
+          rows: map_insert(acc.rows, identity.digest as String, RosteredObject { identity: identity, kind: AuthoredSourceKind, shard: shard }),
+          shards: match map_lookup(m: acc.shard_seen, key: shard) { Present { value: _ } => acc.shards Absent => concat(acc.shards, [shard]) },
+          shard_seen: map_insert(acc.shard_seen, shard, true),
+        }
+      }
+    }
+  })
+  RepositoryEnvelope {
+    store: rostered_store(rostered: acc.rows, shards: concat(store_rostered_shards(store: indexed.store), acc.shards)),
+    commits: indexed.commits,
+    commit_allocator: indexed.commit_allocator,
+    checked_out: indexed.checked_out,
+    staged: indexed.staged,
+  }
+}
+
+fn planted_text(i: Int) -> String {
+  join(["module planted.file_", to_string(i), "\n// planted body ", to_string(i), "\n"], "")
+}
+
+fn planted_path(i: Int) -> NonEmptyStr {
+  join(["src/planted/file_", to_string(i), ".dag"], "") as NonEmptyStr
+}
+
+fn planted_indices(n: Int, i: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { reverse(acc) } else { planted_indices(n: n, i: i + 1, acc: concat([i], acc)) }
+}
+
+type PlantedEntriesAcc { i: Int, entries: List<CorpusManifestEntry> }
+
+fn planted_entries(sources: List<AuthoredSourceObjectRef>) -> List<CorpusManifestEntry> {
+  reverse(fold(sources, init: PlantedEntriesAcc { i: 0, entries: [] }, f: fn(acc, s) {
+    PlantedEntriesAcc {
+      i: acc.i + 1,
+      entries: concat([CorpusManifestEntry { path: planted_path(i: acc.i), source: authored_source_target_of(reference: s) }], acc.entries),
+    }
+  }).entries)
+}
+
+// THE PLANTED BASE: n authored sources and one root commit freezing them, built by the production
+// verbs (batch store, manifest store, commit_staged) -- the same population a belt seed writes.
+fn planted_base(n: Int) -> RepositoryEnvelope? {
+  match store_authored_sources_batch(store: empty_store(), texts: map(planted_indices(n: n, i: 0, acc: []), i => planted_text(i: i))) {
+    SourceBatchCollision { identity: _ } => none
+    SourcesBatched { store, sources } =>
+      match store_corpus_manifest(store: store, entries: planted_entries(sources: sources)) {
+        CorpusManifestDuplicatePath { path: _ } => none
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => none
+        CorpusManifestStored { store: with_manifest, manifest } =>
+          match commit_staged(
+            repository: RepositoryEnvelope {
+              store: with_manifest,
+              commits: [],
+              commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+              checked_out: none,
+              staged: Present { value: manifest },
+            },
+            message: "planted base",
+          ) {
+            StagedCommitMinted { repository, reference: _ } => Present { value: repository }
+            StagedCommitCandidateRefused { cause: _ } => none
+            StagedCommitNothingToFreeze => none
+            StagedCommitAllocatorInvalid { next_ordinal: _ } => none
+            StagedCommitSourceUnrecoverable { cause: _ } => none
+          }
+      }
+  }
+}
+
+// THE INDEXED LOAD, PURE: the v8 index as the writer emits it, parsed back, decoded over a store
+// holding NO object -- exactly what load_repository_indexed builds from the index file alone.
+fn indexed_of(whole: RepositoryEnvelope) -> RepositoryEnvelope? {
+  match parse_json_document(s: serialize_json(v: encode_repository_v8(repo: whole))) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } =>
+      match decode_repository_v8_index(v: doc) {
+        ShardedIndexRefused { cause: _ } => none
+        ShardedIndexDecoded { index } =>
+          match index.roster {
+            ObjectRosterAbsentByFormat => none
+            ObjectRosterDeclared { rows } =>
+              match decode_repository_v7_finish(v: index.document, store: rostered_store(rostered: rows_by_digest(rows: rows), shards: index.shard_digests)) {
+                RepositoryDecodeRefused { cause: _ } => none
+                RepositoryDecoded { envelope } => Present { value: envelope }
+              }
+          }
+      }
+  }
+}
+
+// THE RECORDING READER: answers a shard digest with the planted shard's members, from the same
+// partition the writer persisted. The list of digests handed to it IS the read population.
+fn planted_read(whole: RepositoryEnvelope, digests: List<String>) -> List<ShardContent> {
+  let partition = shard_partition(objects: whole.store.objects)
+  map(digests, d => ShardContent {
+    digest: d,
+    objects: (partition |> filter(shard => shard_identity_of(member_digests: shard_members_of(objects: shard)) == d)
+      |> flat_map(shard => shard)),
+  })
+}
+
+fn base_root_of(repo: RepositoryEnvelope) -> ObjectId? {
+  match repo.checked_out {
+    Absent => none
+    Present { value: head } =>
+      match commit_at_reference(commits: repo.commits, reference: head) {
+        Absent => none
+        Present { value: c } => Present { value: c.root.locator }
+      }
+  }
+}
+
+fn demand_shard_count(repo: RepositoryEnvelope, identities: List<ObjectId>) -> Int {
+  match object_demand(store: repo.store, identities: identities) {
+    ObjectDemandUnderivable { identity: _ } => -1
+    ObjectDemandPlanned { shards, wanted: _ } => count(shards)
+  }
+}
+
+// HOW MANY OBJECTS THE READER DECODES to answer a demand: the sum over the shards it is asked for.
+// A manifest batched beside its sources would answer 1 shard and hundreds of objects.
+fn demanded_objects_read(whole: RepositoryEnvelope, repo: RepositoryEnvelope, identities: List<ObjectId>) -> Int {
+  match object_demand(store: repo.store, identities: identities) {
+    ObjectDemandUnderivable { identity: _ } => -1
+    ObjectDemandPlanned { shards, wanted: _ } =>
+      fold(planted_read(whole: whole, digests: shards), init: 0, f: fn(n, c) { n + count(c.objects) })
+  }
+}
+
+test fn an_indexed_load_holds_no_object_and_rosters_every_one() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } =>
+          store_object_count(store: indexed.store) == 0
+            && count(store_rostered_rows(store: indexed.store)) == store_object_count(store: whole.store)
+            && count(indexed.commits) == 1
+      }
+  }
+}
+
+// THE COST SHAPE: the capture's demand on history is ONE shard holding ONE object -- the base
+// manifest's singleton -- for the real repository alone and for the same repository carrying 300 more
+// persisted objects in three more shards. The demand does not move with the repository.
+test fn the_capture_demand_is_one_manifest_shard_at_any_repository_size() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: small } => {
+          let large = with_planted_mass(indexed: small, k: planted_mass)
+          match base_root_of(repo: small) {
+            Absent => false
+            Present { value: root } =>
+              demand_shard_count(repo: small, identities: [root]) == 1
+                && demand_shard_count(repo: large, identities: [root]) == 1
+                && demanded_objects_read(whole: whole, repo: large, identities: [root]) == 1
+                && count(store_rostered_shards(store: large.store)) == count(store_rostered_shards(store: small.store)) + 3
+          }
+        }
+      }
+  }
+}
+
+// THE CAPTURE, END TO END OVER THE PARTIAL STORE, COUNTED BY THE READER. One path re-bound to new
+// bytes (never held: no read) and one re-bound to bytes another path already holds (held: its batch
+// shard is read, once, so the identity law can compare). The reader is asked for exactly two of the
+// repository's five shards and never for a mass shard; the commit is minted with completeness
+// answered from the roster for the untouched entries; and the append-only re-index rosters exactly
+// the two new objects in two new shards while carrying every old row and shard forward.
+test fn a_capture_over_a_planted_repository_reads_only_the_affected_shards() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: small } => {
+          let indexed = with_planted_mass(indexed: small, k: planted_mass)
+          match base_root_of(repo: indexed) {
+            Absent => false
+            Present { value: root } => {
+              let reverted = scm_object_identity(object: authored_source_object(text: planted_text(i: 3)))
+              match object_demand(store: indexed.store, identities: [root, reverted]) {
+                ObjectDemandUnderivable { identity: _ } => false
+                ObjectDemandPlanned { shards, wanted } =>
+                  count(shards) == 2
+                    && count(store_rostered_shards(store: indexed.store)) == 5
+                    && match materialize_planned(store: indexed.store, wanted: wanted, contents: planted_read(whole: whole, digests: shards)) {
+                      ObjectMaterializationRefused { detail: _ } => false
+                      ObjectsMaterialized { store: _, read_shards } => read_shards == shards
+                    }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE MINT AND THE APPEND OVER THE PARTIAL STORE, split from the read claim above so each stays one
+// interface: given the materialized base manifest and the re-bound source (the same two shards the
+// read plan named), the commit mints with completeness answered from the roster for the untouched
+// entries, and the append-only re-index rosters exactly the two new objects in two new shards while
+// carrying every old row and shard forward.
+test fn a_capture_over_a_partial_store_mints_and_appends_only_the_new_objects() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: small } => {
+          let indexed = with_planted_mass(indexed: small, k: planted_mass_for_append)
+          match base_root_of(repo: indexed) {
+            Absent => false
+            Present { value: root } => {
+              let reverted = scm_object_identity(object: authored_source_object(text: planted_text(i: 3)))
+              match object_demand(store: indexed.store, identities: [root, reverted]) {
+                ObjectDemandUnderivable { identity: _ } => false
+                ObjectDemandPlanned { shards, wanted } =>
+                  match materialize_planned(store: indexed.store, wanted: wanted, contents: planted_read(whole: whole, digests: shards)) {
+                    ObjectMaterializationRefused { detail: _ } => false
+                    ObjectsMaterialized { store: resident, read_shards: _ } =>
+                      capture_mints_and_appends(indexed: indexed, resident: resident, root: root, old_shards: count(store_rostered_shards(store: indexed.store)), old_objects: count(store_rostered_rows(store: indexed.store)))
+                  }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn capture_mints_and_appends(indexed: RepositoryEnvelope, resident: ObjectStore, root: ObjectId, old_shards: Int, old_objects: Int) -> Bool {
+  match find_corpus_manifest_record(store: resident, identity: root) {
+    CorpusManifestAbsent { identity: _ } => false
+    CorpusManifestIsAuthoredSource { identity: _ } => false
+    CorpusManifestIsSemanticNode { identity: _ } => false
+    CorpusManifestFound(base_record) =>
+      match store_authored_source(store: resident, text: "module planted.file_0\n// the worker's change\n") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+        SourceStored { store: with_new, source: changed } =>
+          match store_authored_source(store: with_new, text: planted_text(i: 3)) {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+            SourceStored { store: with_revert, source: restored } =>
+              match store_path_unique_manifest(
+                store: with_revert,
+                unique: path_unique_with_path_bound(
+                  unique: path_unique_with_path_bound(unique: path_unique_of_record(base: base_record), path: planted_path(i: 0), source: authored_source_target_of(reference: changed)),
+                  path: planted_path(i: 5),
+                  source: authored_source_target_of(reference: restored),
+                ),
+              ) {
+                UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } => false
+                UniqueManifestStored { store: with_manifest, manifest } =>
+                  match commit_staged(
+                    repository: RepositoryEnvelope {
+                      store: with_manifest,
+                      commits: indexed.commits,
+                      commit_allocator: indexed.commit_allocator,
+                      checked_out: indexed.checked_out,
+                      staged: Present { value: manifest },
+                    },
+                    message: "a worker's candidate",
+                  ) {
+                    StagedCommitMinted { repository: minted, reference: _ } =>
+                      appended_index_rosters_exactly_the_new_objects(minted: minted, old_shards: old_shards, old_objects: old_objects)
+                    StagedCommitCandidateRefused { cause: _ } => false
+                    StagedCommitNothingToFreeze => false
+                    StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+                    StagedCommitSourceUnrecoverable { cause: _ } => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn appended_index_rosters_exactly_the_new_objects(minted: RepositoryEnvelope, old_shards: Int, old_objects: Int) -> Bool {
+  match encode_repository_appended_checked(repo: minted) {
+    RepositoryEncodeRefused { cause: _ } => false
+    RepositoryEncoded { value: doc } =>
+      match decode_repository_v8_index(v: doc) {
+        ShardedIndexRefused { cause: _ } => false
+        ShardedIndexDecoded { index } =>
+          match index.roster {
+            ObjectRosterAbsentByFormat => false
+            ObjectRosterDeclared { rows } =>
+              count(rows) == old_objects + 2
+                && count(index.shard_digests) == old_shards + 2
+                && count(minted.commits) == 2
+          }
+      }
+  }
+}
+
+// AN UNDERIVABLE DEMAND REFUSES; IT NEVER WIDENS. An identity the store neither holds nor rosters
+// names no shard, and the plan refuses with that identity rather than reading every shard to look.
+test fn an_identity_neither_resident_nor_rostered_refuses_the_demand() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } => {
+          let never = scm_object_identity(object: authored_source_object(text: "bytes this repository never held"))
+          match object_demand(store: indexed.store, identities: [never]) {
+            ObjectDemandUnderivable { identity } => identity.digest == never.digest
+            ObjectDemandPlanned { shards: _, wanted: _ } => false
+          }
+        }
+      }
+  }
+}
+
+// A PARTIAL STORE CANNOT BE WRITTEN WHOLE: the whole-store encoder would roster away every object the
+// store does not hold, so it refuses, typed; the append-only encoder is the only route.
+test fn the_whole_store_encoder_refuses_a_partial_store() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } =>
+          match encode_repository_checked(repo: indexed) {
+            RepositoryEncodeRefused { cause: RepositoryEncodeStoreIsPartial { rostered_shards: n } } => n > 0
+            RepositoryEncodeRefused { cause: _ } => false
+            RepositoryEncoded { value: _ } => false
+          }
+      }
+  }
+}
+
+// A v7 INDEX CARRIES NO OBJECT ROSTER, AND THE INDEXED LOAD REFUSES IT BY NAME rather than falling
+// back to decoding every shard: the committed v7 fixture refuses as RepositoryIndexHasNoObjectRoster.
+test fn a_v7_index_refuses_the_indexed_load_as_rosterless() -> Bool {
+  let decoded_absent = match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match decode_repository_v7_index(v: encode_repository_v7(repo: whole)) {
+        ShardedIndexRefused { cause: _ } => false
+        ShardedIndexDecoded { index } =>
+          match index.roster {
+            ObjectRosterAbsentByFormat => true
+            ObjectRosterDeclared { rows: _ } => false
+          }
+      }
+  }
+  decoded_absent
+    && match load_repository_indexed(path: scm_sv_v7_fixture_path) {
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: _, cause: RepositoryIndexHasNoObjectRoster { found } } } =>
+        found == "gunbc-scm-repository-v7"
+      RepositoryLoadRefused { cause: _ } => false
+      RepositoryLoaded { path: _, envelope: _, generation: _ } => false
+    }
+}
+
+// COMPLETENESS FROM THE ROSTER IS THE SAME THREE-ARM ANSWER: a rostered source resolves, a rostered
+// manifest at a source's locator is the wrong kind, and an identity the roster does not name is
+// missing -- located by path in both refusals.
+test fn completeness_answers_from_the_roster_by_kind() -> Bool {
+  let source = scm_object_identity(object: authored_source_object(text: "a rostered source"))
+  let entry = CorpusManifestEntry {
+    path: "src/a.dag" as NonEmptyStr,
+    source: AuthoredSourceTarget { locator: source },
+  }
+  let as_source = map_insert(empty_map(), source.digest as String, RosteredObject { identity: source, kind: AuthoredSourceKind, shard: "s" })
+  let as_manifest = map_insert(empty_map(), source.digest as String, RosteredObject { identity: source, kind: CorpusManifestKind, shard: "s" })
+  let resolved = match rostered_entry_source_refusal(rostered: as_source, entry: entry) { Absent => true Present { value: _ } => false }
+  let wrong_kind = match rostered_entry_source_refusal(rostered: as_manifest, entry: entry) {
+    Present { value: CorpusEntrySourceIsCorpusManifest { path, source: _ } } => (path as String) == "src/a.dag"
+    Present { value: _ } => false
+    Absent => false
+  }
+  let missing = match rostered_entry_source_refusal(rostered: empty_map(), entry: entry) {
+    Present { value: CorpusEntrySourceMissing { path, source: _ } } => (path as String) == "src/a.dag"
+    Present { value: _ } => false
+    Absent => false
+  }
+  resolved && wrong_kind && missing
+}
+
+// THE WHOLE LOAD CHECKS THE ROSTER AGAINST THE SHARDS: a roster placing an object in a different
+// shard than the one holding it is caught there, the one route that reads every shard.
+test fn a_roster_disagreeing_with_its_shard_is_caught_by_the_whole_load() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match whole.store.objects.first() {
+        Absent => false
+        Present { value: object } => {
+          let identity = scm_object_identity(object: object)
+          let rows = map_insert(empty_map(), identity.digest as String, RosteredObject { identity: identity, kind: AuthoredSourceKind, shard: "elsewhere" })
+          let disagrees = match shard_objects_agree_with_roster(rows: rows, shard: "here", objects: [object]) { Present { value: _ } => true Absent => false }
+          let agrees = match shard_objects_agree_with_roster(
+            rows: map_insert(empty_map(), identity.digest as String, RosteredObject { identity: identity, kind: AuthoredSourceKind, shard: "here" }),
+            shard: "here",
+            objects: [object],
+          ) { Present { value: _ } => false Absent => true }
+          disagrees && agrees
+        }
+      }
+  }
+}
+
+// THE COMMITTED v8 FIXTURE IS THE WRITER'S OWN BYTES for an empty repository, so the guarded save's
+// idempotent rewrite over it (test.claim.scm_repository_save_real_execution_witness) writes what is
+// already there.
+test fn the_committed_v8_fixture_is_the_writers_bytes() -> Bool {
+  Filesystem.Read(path: scm_sv_v8_fixture_path).content == serialize_json(v: encode_repository_v8(repo: empty_repository()))
+}
+
+// THE COLLISION WALL OVER A PARTIAL STORE (ruling on #13111). A producer that inserts under an
+// identity the roster already holds, WITHOUT reading the persisted object back, cannot have its object
+// compared -- so the append-only save refuses it rather than keeping the roster's row (Old) while the
+// in-memory state was built from New. Planted two ways at the test boundary: the same bytes (the
+// store cannot know they are the same without reading them), and a roster row recording a different
+// KIND under the identity the new object derives.
+test fn an_unmaterialized_insert_under_a_rostered_identity_cannot_be_saved() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } => {
+          let same_bytes = match store_authored_source(store: indexed.store, text: planted_text(i: 3)) {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+            SourceStored { store: shadowed, source: _ } =>
+              match encode_repository_appended_checked(repo: envelope_over(indexed: indexed, store: shadowed)) {
+                RepositoryEncodeRefused { cause: RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } } => true
+                RepositoryEncodeRefused { cause: _ } => false
+                RepositoryEncoded { value: _ } => false
+              }
+          }
+          let incoming = scm_object_identity(object: authored_source_object(text: "bytes the roster claims are a manifest"))
+          let other_kind = rostered_store(
+            rostered: map_insert(rows_by_digest(rows: store_rostered_rows(store: indexed.store)), incoming.digest as String, RosteredObject { identity: incoming, kind: CorpusManifestKind, shard: "planted-old" }),
+            shards: concat(store_rostered_shards(store: indexed.store), ["planted-old"]),
+          )
+          let different_kind = match store_authored_source(store: other_kind, text: "bytes the roster claims are a manifest") {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+            SourceStored { store: shadowed, source: _ } =>
+              match encode_repository_appended_checked(repo: envelope_over(indexed: indexed, store: shadowed)) {
+                RepositoryEncodeRefused { cause: RepositoryEncodeAppendShadowsRosteredIdentity { identity } } => identity.digest == incoming.digest
+                RepositoryEncodeRefused { cause: _ } => false
+                RepositoryEncoded { value: _ } => false
+              }
+          }
+          same_bytes && different_kind
+        }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL: the same insert AFTER materializing the persisted object is compared, dedups,
+// and saves -- rostering nothing new for it.
+test fn a_materialized_insert_under_a_rostered_identity_is_idempotent() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } => {
+          let held = scm_object_identity(object: authored_source_object(text: planted_text(i: 3)))
+          match object_demand(store: indexed.store, identities: [held]) {
+            ObjectDemandUnderivable { identity: _ } => false
+            ObjectDemandPlanned { shards, wanted } =>
+              match materialize_planned(store: indexed.store, wanted: wanted, contents: planted_read(whole: whole, digests: shards)) {
+                ObjectMaterializationRefused { detail: _ } => false
+                ObjectsMaterialized { store: resident, read_shards: _ } =>
+                  match store_authored_source(store: resident, text: planted_text(i: 3)) {
+                    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+                    SourceStored { store: again, source: _ } =>
+                      match encode_repository_appended_checked(repo: envelope_over(indexed: indexed, store: again)) {
+                        RepositoryEncodeRefused { cause: _ } => false
+                        RepositoryEncoded { value: doc } =>
+                          match decode_repository_v8_index(v: doc) {
+                            ShardedIndexRefused { cause: _ } => false
+                            ShardedIndexDecoded { index } =>
+                              match index.roster {
+                                ObjectRosterAbsentByFormat => false
+                                ObjectRosterDeclared { rows } => count(rows) == count(store_rostered_rows(store: indexed.store))
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn envelope_over(indexed: RepositoryEnvelope, store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: indexed.commits,
+    commit_allocator: indexed.commit_allocator,
+    checked_out: indexed.checked_out,
+    staged: indexed.staged,
+  }
+}

@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 // Apple Push Notification service, HTTP/2 provider API with token-based authentication.
 // Cited pages: "Sending notification requests to APNs", "Establishing a token-based connection to
@@ -179,11 +179,13 @@ type ApnsSendOutcome
 // APNs ANSWERS EVERY ACCEPTED REQUEST WITH AN apns-id HEADER, supplied or generated. A 200 without
 // one is not an acceptance this module can name, so it is undecodable -- never an ApnsAccepted
 // carrying an empty id.
-fn apns_send_outcome_of(rest: RestOutcome, apns_id: String) -> ApnsSendOutcome {
+fn apns_send_outcome_of(rest: RestResult<String>) -> ApnsSendOutcome {
   match rest {
-    RestOk => if apns_id == "" { ApnsUndecodable { status: 200, cause: "accepted response carried no apns-id header" } } else { ApnsAccepted { apns_id: apns_id as NonEmptyStr } }
-    RestStatusRefused { status, body } => ApnsRefused { status: status, class: apns_refusal_class(status: status), reason: body }
-    RestTransportRefused { cause } => ApnsUnreached { cause: cause as String }
-    RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
+    RestAnswered { answer } => if answer == "" { ApnsUndecodable { status: 200, cause: "accepted response carried no apns-id header" } } else { ApnsAccepted { apns_id: answer as NonEmptyStr } }
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status, body } => ApnsRefused { status: status, class: apns_refusal_class(status: status), reason: body }
+      RestTransportRefused { cause } => ApnsUnreached { cause: cause as String }
+      RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
+    }
   }
 }

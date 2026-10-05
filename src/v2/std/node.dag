@@ -544,7 +544,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
   )
 }
 
@@ -873,13 +873,16 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   }
 }
 
-// WHETHER AN EDGE IS AN ARROW'S DECLARED ORDER: label metadata (the domain's binder labels), not a value
-// the Arrow is built from. The one classification every reader that walks values through an Arrow asks
-// -- v2.compiler.infer (its gather fold and product evidence) and std.kind's roster-kind index -- so
-// no reader keeps its own list of metadata labels.
+// WHETHER AN EDGE IS A DECLARED ORDER: label metadata (binder labels), not a value the parent is built
+// from. Two parents carry one: an Arrow (its domain's order) and a type-parameter binder set
+// (type_binder_conj_conforms). A Conj can carry the core marker only as a binder set -- no authored
+// label spells a core marker -- so the Conj arm answers for exactly those. The one classification
+// every reader that walks values through either asks -- v2.compiler.infer (its gather fold and product
+// evidence) and std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
 fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
+    TypeNode { connective: Conj } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
     _ => false
   }
 }
@@ -1102,24 +1105,71 @@ fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget 
 // the Conj (v2.std.type_binder) rather than by a second node kind. The same Conj rides on an Arrow for
 // `fn f<T>` and on a type declaration's member for `type Box<T>`; a binder whose target is not its own
 // Atom is unwritable here rather than refused downstream.
+//
+// A KINDED TYPE PARAMETER (`type MachineWidth<bits: WidthResolution>`) carries its kind the way a value
+// binder carries its type: one BinderTypeEdge, here on the binder's own Atom, so the identity the
+// binder declares is unchanged and an unkinded binder is exactly the leaf it was. Any other child is
+// unwritable. v2.std.type_binder type_param_kind_optional is the one reader of the edge.
 fn type_binder_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
     StructuralLabel { label: _ } => false
     Authored { name: sym } =>
       match e.target.kind {
-        TypeNode { connective: Atom { identity: id } } => (id == sym) && (count(e.target.children) == 0)
+        TypeNode { connective: Atom { identity: id } } => (id == sym) && type_binder_children_conform(children: e.target.children)
         _ => false
       }
   }
 }
 
+fn type_binder_children_conform(children: List<Edge>) -> Bool {
+  match children {
+    Empty => true
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => false
+  }
+}
+
+// A BINDER SET CARRIES ITS DECLARED ORDER, the way an Arrow's domain does. The Conj's binder edges are
+// labelled, and content hashing sorts labelled edges, so `type Pair<z, a>` and `type Pair<a, z>` would
+// otherwise be one identity and an application's arguments would pair with binders in LABEL order. So
+// a set that binds any name carries exactly one ^arrow_signature_order_edge -- the carrier a declared
+// signature already uses (v2.std.arrow_signature signature_order_edge), read by the same parser
+// (arrow_signature_order_read) -- whose labels are exactly a permutation of the binder labels; a set
+// that binds none carries no order. Any other edge is unwritable here.
 fn type_binder_conj_conforms(t: Node) -> Bool {
   match t.kind {
     TypeNode { connective: Conj } =>
       all_names_distinct(children: t.children)
-        && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_conforms(e: e) })
+        && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_set_edge_conforms(e: e) })
+        && type_binder_order_conforms(children: t.children)
     _ => false
+  }
+}
+
+fn type_binder_set_edge_conforms(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => type_binder_conforms(e: e)
+    StructuralLabel { label: _ } => edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
+    Positional => false
+  }
+}
+
+fn type_binder_labels_of(children: List<Edge>) -> List<Symbol> {
+  fold(children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: sym } => list_snoc_item(xs: acc, item: sym)
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+fn type_binder_order_conforms(children: List<Edge>) -> Bool {
+  match arrow_signature_order_read(children: children) {
+    OrderAbsent => count(type_binder_labels_of(children: children)) == 0
+    OrderUnreadable => false
+    OrderLabels { labels: labels } => symbols_are_one_distinct_set(a: labels, b: type_binder_labels_of(children: children))
   }
 }
 
