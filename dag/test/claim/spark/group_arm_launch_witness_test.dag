@@ -398,24 +398,24 @@ fn w_without_skip_ops(i: GroupArmLaunchInputs) -> GroupArmLaunchInputs {
 test fn w_skip_ops_present_or_absent_is_a_different_successor_and_subject() -> Bool {
   match glm53_step_inputs(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) {
     Absent => false
-    Present { value: with } => {
-      let without = w_without_skip_ops(i: with)
-      length(with.deployment_env) == length(without.deployment_env) + 1
-        && (match group_arm_row_successor(inputs: with) {
+    Present { value: skipping } => {
+      let without = w_without_skip_ops(i: skipping)
+      length(skipping.deployment_env) == length(without.deployment_env) + 1
+        && (match group_arm_row_successor(inputs: skipping) {
           ArmSuccessorUnkeyed { causes: _ } => false
           ArmSuccessorKeyed { key: kw } => match group_arm_row_successor(inputs: without) {
             ArmSuccessorUnkeyed { causes: _ } => false
             ArmSuccessorKeyed { key: ko } => !content_hash_equal(left: kw, right: ko)
           }
         })
-        && (match glm53_step_performance_subject(inputs: with) {
+        && (match glm53_step_performance_subject(inputs: skipping) {
           Absent => false
           Present { value: pw } => match glm53_step_performance_subject(inputs: without) {
             Absent => false
             Present { value: po } => !serving_subject_key_equal(a: serving_subject_key(s: pw), b: serving_subject_key(s: po))
           }
         })
-        && string_contains(s: glm53_autotune_standing_wire(env: with.deployment_env), pattern: "LOWER BOUND")
+        && string_contains(s: glm53_autotune_standing_wire(env: skipping.deployment_env), pattern: "LOWER BOUND")
         && !string_contains(s: glm53_autotune_standing_wire(env: without.deployment_env), pattern: "LOWER BOUND")
     }
   }

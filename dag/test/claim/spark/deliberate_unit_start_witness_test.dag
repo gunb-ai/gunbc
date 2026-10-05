@@ -95,7 +95,7 @@ fn w_leg(host: HostIdentity, ok: Bool, word: String) -> SparkNativeLegRun {
 fn w_runner(host: HostIdentity, prepare_ok: Bool) -> SparkNativeLegRunner {
   SparkNativeLegRunner {
     script: fn(script) { w_leg(host: host, ok: prepare_ok || string_contains(s: script, pattern: "distributed_init_method"), word: if string_contains(s: script, pattern: "distributed_init_method") { "rendezvous-entered" } else { "unit-written" }) },
-    deliberate_start: fn() { w_leg(host: host, ok: true, word: "deliberate-start-accepted") },
+    deliberate_start: fn(unit) { w_leg(host: host, ok: true, word: "deliberate-start-accepted") },
   }
 }
 

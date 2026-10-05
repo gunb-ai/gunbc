@@ -278,7 +278,7 @@ fn arm_launch_step_needed() -> ArmLaunchStepNeed {
   })
   if count(causes) > 0 { ArmLaunchStepNeedRefused { causes: causes } }
   else {
-    let longest = fold(map(read, r => match r { EngineReadyTimeoutResolved { timeout: t } => second_count(s: t)  EngineReadyTimeoutUnreadable { cause: _ } => 0 }), init: 0, f: fn(a, m) { if m > a { m } else { a } })
+    let longest = fold(map(read, r => match r { EngineReadyTimeoutResolved { timeout: t } => second_count(s: t)  EngineReadyTimeoutUnreadable { cause: _ } => second_count(s: second(count: 0)) }), init: second_count(s: second(count: 0)), f: fn(a, m) { if m > a { m } else { a } })
     ArmLaunchStepNeedDerived { need: second(count: longest + second_count(s: arm_launch_apply_budget) + second_count(s: arm_launch_rollback_budget)) }
   }
 }

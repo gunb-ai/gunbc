@@ -1484,7 +1484,7 @@ type SparkNativeSequenceResult
 
 type SparkNativeLegRunner {
   script: fn(String) -> SparkNativeLegRun
-  deliberate_start: fn() -> SparkNativeLegRun
+  deliberate_start: fn(NonEmptyStr) -> SparkNativeLegRun
 }
 
 fn spark_native_typed_start_outcome(host: HostIdentity, path: SparkReachPath, refusal: String?) -> SparkPairHostApplyOutcome {
@@ -1508,10 +1508,10 @@ fn spark_native_run_host_sequences(
           spark_native_leg_with_retry(budget: spark_native_unreached_leg_attempt_budget,
             attempt: fn(i) { spark_pair_privileged_leg(trust: trust, path: path, plan: spark_native_plan_of(step: st, script: script), admin_credential: administrator, admin_credential_file: file) })
         },
-        deliberate_start: fn() {
+        deliberate_start: fn(unit) {
           let ctx = spark_native_materialize_context(host: st.host, trust: trust, path: path, administrator: administrator, credential_file: file)
           spark_native_leg_with_retry(budget: 0,
-            attempt: fn(i) { spark_native_typed_start_outcome(host: st.host, path: path, refusal: deliberate_unit_start_leg(run: spark_ctx_argv_run(ctx: ctx), unit: st.unit_name)) })
+            attempt: fn(i) { spark_native_typed_start_outcome(host: st.host, path: path, refusal: deliberate_unit_start_leg(run: spark_ctx_argv_run(ctx: ctx), unit: unit)) })
         },
       }) })
     },
@@ -1544,7 +1544,7 @@ fn spark_native_apply_sequence(st: SparkNativeHostStep, run: SparkNativeLegRunne
   let prepared = run.script(spark_native_host_apply_prepare_script(unit_name: st.unit_name, log_path: st.log_path, unit_text: st.unit_text, container_name: st.launch.container.name))
   if !spark_native_leg_applied(l: prepared) { [prepared] }
   else {
-    let started = run.deliberate_start()
+    let started = run.deliberate_start(st.unit_name)
     if !spark_native_leg_applied(l: started) { [prepared, started] }
     else { [prepared, started, run.script(spark_native_host_apply_wait_script(unit_name: st.unit_name, log_path: st.log_path))] }
   }
@@ -1562,7 +1562,7 @@ fn spark_native_rollback_sequence(transaction_id: String) -> fn(SparkNativeHostS
     }
     if !start_owed { [prepared] }
     else {
-      let started = run.deliberate_start()
+      let started = run.deliberate_start(st.unit_name)
       if !spark_native_leg_applied(l: started) { [prepared, started] }
       else { [prepared, started, run.script(spark_native_rollback_finish_script(unit_name: st.unit_name, transaction_id: transaction_id))] }
     }
