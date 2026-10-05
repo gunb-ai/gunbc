@@ -42,3 +42,17 @@ fn fabric_cache_object_bound() -> ByteSize {
 fn fabric_cache_blob_key(address: FabricBlobAddress) -> NonEmptyStr {
   concat(fabric_cache_blob_prefix as String, fabric_blob_object_name(address: address) as String) as NonEmptyStr
 }
+
+// THE WORKSPACE CHUNKS' PLACEMENT (gunbc.cloudflare.r2_origin FabricWorkspace): a chunk is stored
+// under its own address beneath its own prefix, released never (the bucket declares no lifecycle
+// rule), and admitted whole up to the bound below, which is the cache's: both are one PutObject of a
+// staged file, and R2 refuses a single PUT past five GiB.
+data fabric_workspace_chunk_prefix: NonEmptyStr = "chunks/"
+
+fn fabric_workspace_object_bound() -> ByteSize {
+  fabric_cache_object_bound()
+}
+
+fn fabric_workspace_chunk_key(address: FabricBlobAddress) -> NonEmptyStr {
+  concat(fabric_workspace_chunk_prefix as String, fabric_blob_object_name(address: address) as String) as NonEmptyStr
+}

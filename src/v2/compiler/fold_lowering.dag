@@ -32,6 +32,7 @@ import std.algebra {
   Cons,
   Empty,
   collection_all_shape,
+  collection_concat_shape,
   collection_fold_shape,
   collection_map_shape,
   template_accumulator_position,
@@ -40,7 +41,7 @@ import std.algebra {
 }
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { list_at_optional }
 import v2.std.node {
   Atom,
@@ -65,14 +66,21 @@ import v2.std.node {
   core_edge_label,
   Found,
   Instantiation,
-  arrow_body_target_lookup
+  arrow_body_target_lookup,
+  Ambiguous,
+  Arrow,
+  Cardinality,
+  Disj
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child, node_positional_child_targets }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
-import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
-import v2.std.type_binder { type_param_names }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, anonymous_signature_arrow, arrow_declared_parameter_order }
+import v2.std.type_binder { type_param_names, type_params_edge }
+import v2.std.list_introduction { list_introduction_head_path }
+import std.algebra { AlgebraTypeTemplate, AlgebraTypeVariable, CallableOf, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { any, fold_list, length }
 
 data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_lowering reads the collection, init and step from their declared slots (named, else at the position std.algebra collection_fold_shape declares), and fold_recurrence_encoding builds the full fold encoding Bind { acc := init, Loop { step, domain, carrier, bound, realized: head } } (gunbc.plans.for_while_loop_sugar §2.3), bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to an encoding whose Loop terminates; v2.test.claim.fold_encoding pins each operand at its authored occurrence. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
@@ -201,18 +209,30 @@ type CallbackRealization
   = CallbackMapsToCons
   | CallbackAllByAnd
 
-type FoldRosterForm
+// A ROSTER ROW IS EITHER REALIZED AS A FOLD (an authored or synthesized step over the one Loop encoding)
+// or IS A PRIMITIVE CALL: concat is not an iteration, so its call stays a call, its unbound bare head binds
+// to the row through this one roster (v2.compiler.resolve resolve_atom_unscoped, after every in-scope
+// declaration, the symbol index and the kernel have declined it), and v2.compiler.infer types it by the
+// row's own param_types/return_type (collection_roster_signature_arrow) -- the row IS the signature; no
+// body is read. The receiver carrier the row's ReceiverSelf denotes is named by the form, not assumed: the
+// one primitive-call form today is over the free monoid, and a second carrier is a second form.
+// THIS REVERSES an earlier boundary (that a bare concat reaches its field only through an imported declaration, and that
+// infer never reads the template tables). The reversal, its reason and its approval are recorded on
+// gunbc.recurring_failure_mode algebra_structure_has_two_representations_with_no_declared_mapping (the collection-concat
+// receipt); the approval is the N7 manager's, cited in gunbc#13207's description, not asserted here.
+type CollectionRosterForm
   = RosterAuthoredStep
   | RosterCallbackStep { realization: CallbackRealization }
+  | RosterFreeMonoidPrimitiveCall
 
 type CollectionRosterRow {
   head: Symbol
   template: AlgebraFieldTemplate
   row: DeclarationRef
-  form: FoldRosterForm
+  form: CollectionRosterForm
 }
 
-fn collection_roster_row(t: AlgebraFieldTemplate, decl_name: String, form: FoldRosterForm) -> CollectionRosterRow {
+fn collection_roster_row(t: AlgebraFieldTemplate, decl_name: String, form: CollectionRosterForm) -> CollectionRosterRow {
   CollectionRosterRow {
     head: symbol_intern_lexeme(lexeme: t.name),
     template: t,
@@ -228,7 +248,8 @@ fn collection_roster_row(t: AlgebraFieldTemplate, decl_name: String, form: FoldR
 data collection_roster_rows: List<CollectionRosterRow> = [
   collection_roster_row(t: collection_fold_shape(), decl_name: "collection_fold_shape", form: RosterAuthoredStep),
   collection_roster_row(t: collection_map_shape(), decl_name: "collection_map_shape", form: RosterCallbackStep { realization: CallbackMapsToCons }),
-  collection_roster_row(t: collection_all_shape(), decl_name: "collection_all_shape", form: RosterCallbackStep { realization: CallbackAllByAnd })
+  collection_roster_row(t: collection_all_shape(), decl_name: "collection_all_shape", form: RosterCallbackStep { realization: CallbackAllByAnd }),
+  collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall)
 ]
 
 data collection_fold_head: Symbol = symbol_intern_lexeme(lexeme: collection_fold_shape().name)
@@ -242,15 +263,147 @@ fn collection_roster_row_optional(head: Symbol) -> Optional<CollectionRosterRow>
   })
 }
 
+// The roster rows lowering realizes as a fold Loop; a primitive-call row is never one.
+fn collection_roster_fold_row_optional(head: Symbol) -> Optional<CollectionRosterRow> {
+  match collection_roster_row_optional(head: head) {
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => optional_present(value: r)
+        RosterCallbackStep { realization: _ } => optional_present(value: r)
+        RosterFreeMonoidPrimitiveCall => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+// The primitive-call row an unbound bare head binds to, if the roster carries one for it.
+fn collection_roster_primitive_call_row_optional(head: Symbol) -> Optional<CollectionRosterRow> {
+  match collection_roster_row_optional(head: head) {
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => optional_absent()
+        RosterCallbackStep { realization: _ } => optional_absent()
+        RosterFreeMonoidPrimitiveCall => optional_present(value: r)
+      }
+    Absent => optional_absent()
+  }
+}
+
 // Whether a roster operation's step is the authored recurrence step or one synthesized around a callback.
-fn fold_roster_form(row: DeclarationRef) -> FoldRosterForm {
+fn fold_roster_form(row: DeclarationRef) -> CollectionRosterForm {
   fold_list(xs: collection_roster_rows, empty: RosterAuthoredStep, cons: fn(acc, r) {
     if r.row.decl_name == row.decl_name && r.row.module_path == row.module_path { r.form } else { acc }
   })
 }
 
+// THE ROW AS THE CALL'S SIGNATURE. A primitive-call row's param_types/return_type are read as one generic
+// Arrow over a single element binder: ReceiverSelf is the row's declared carrier instantiated at that
+// element (the free monoid, std.algebra FreeMonoid<E>), ReceiverElement is the element. Arguments are
+// therefore judged against the carrier by v2.compiler.infer's ordinary application path -- a non-carrier
+// operand (Int concat Int) and a mismatched element (List<Edge> concat List<Int>) refuse there, located,
+// with no per-name or per-type arm. A template the projection cannot read answers Absent, never a guess.
+// The binder is one fixed symbol: every use instantiates it afresh, as any declared generic's is.
+fn collection_roster_element_type() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^collection_roster_element } }, children: [])
+}
+
+fn collection_roster_free_monoid_type() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: collection_roster_element_type() }
+    ]
+  )
+}
+
+fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
+  match t {
+    ReceiverSelf => optional_present(value: collection_roster_free_monoid_type())
+    ReceiverElement => optional_present(value: collection_roster_element_type())
+    ReceiverKey => optional_absent()
+    ReceiverValue => optional_absent()
+    NamedTemplate { name: _ } => optional_absent()
+    ContainerOf { source: _, element: _ } => optional_absent()
+    OptionalOf { inner: _ } => optional_absent()
+    WitnessOf { inner: _ } => optional_absent()
+    TupleOf { first: _, second: _ } => optional_absent()
+    CallableOf { params: _, return_type: _ } => optional_absent()
+    AlgebraTypeVariable { id: _ } => optional_absent()
+  }
+}
+
+fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node> {
+  match row.form {
+    RosterFreeMonoidPrimitiveCall =>
+      let domain = fold(row.template.param_types, init: optional_present(value: Empty), f: fn(acc, t) {
+        match acc {
+          Absent => acc
+          Present { value: types } =>
+            match collection_roster_template_type(t: t) {
+              Absent => optional_absent()
+              Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
+            }
+        }
+      })
+      match domain {
+        Absent => optional_absent()
+        Present { value: domain_types } =>
+          match collection_roster_template_type(t: row.template.return_type) {
+            Absent => optional_absent()
+            Present { value: codomain } =>
+              let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_element_type())
+              let binders = node_synthetic(
+                kind: TypeNode { connective: Conj },
+                children: [Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }]
+              )
+              optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
+          }
+      }
+    RosterAuthoredStep => optional_absent()
+    RosterCallbackStep { realization: _ } => optional_absent()
+  }
+}
+
+// The signature a resolved reference to a primitive-call row denotes, keyed on the row's declaring path. THREE
+// answers, never two (review 76235): a path that is no roster row is the indexed declaration's business; a row whose
+// signature reads is typed by it; a row whose template the projection cannot read REFUSES -- it must never fall
+// through to the indexed declaration, which is the row's template VALUE, not the operation (DESIGN section 5: a
+// failure arm refuses, it does not widen).
+type RosterSignatureLookup
+  = NotARosterPrimitiveCallRow
+  | RosterPrimitiveCallSignature { arrow: Node }
+  | RosterPrimitiveCallSignatureUnreadable
+
+fn collection_roster_primitive_call_signature_at(path: String) -> RosterSignatureLookup {
+  collection_roster_primitive_call_signature_in(rows: collection_roster_rows, path: path)
+}
+
+// The lookup over a SUPPLIED roster, so the unreadable arm's RED is authorable at this interface (DESIGN section 4b,
+// review 76235): the production lookup above passes the one real roster.
+fn collection_roster_primitive_call_signature_in(rows: List<CollectionRosterRow>, path: String) -> RosterSignatureLookup {
+  match fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if r.row.module_path + "." + r.row.decl_name == path { optional_present(value: r) } else { acc }
+    }
+  }) {
+    Absent => NotARosterPrimitiveCallRow
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => NotARosterPrimitiveCallRow
+        RosterCallbackStep { realization: _ } => NotARosterPrimitiveCallRow
+        RosterFreeMonoidPrimitiveCall =>
+          match collection_roster_signature_arrow(row: r) {
+            Present { value: arrow } => RosterPrimitiveCallSignature { arrow: arrow }
+            Absent => RosterPrimitiveCallSignatureUnreadable
+          }
+      }
+  }
+}
+
 fn fold_family_realization(head: Symbol) -> Optional<FoldRealization> {
-  match collection_roster_row_optional(head: head) {
+  match collection_roster_fold_row_optional(head: head) {
     Present { value: r } =>
       optional_present(value: FoldRealizesRosterOperation {
         template: r.template,
@@ -286,11 +439,12 @@ fn fold_family_authored_step_realization(head: Symbol) -> Optional<FoldRealizati
       match fold_realization_form(r: r) {
         RosterAuthoredStep => optional_present(value: r)
         RosterCallbackStep { realization: _ } => optional_absent()
+        RosterFreeMonoidPrimitiveCall => optional_absent()
       }
   }
 }
 
-fn fold_realization_form(r: FoldRealization) -> FoldRosterForm {
+fn fold_realization_form(r: FoldRealization) -> CollectionRosterForm {
   match r {
     FoldRealizesRosterOperation { template: _, row: row, slots: _ } => fold_roster_form(row: row)
     FoldRealizesDeclaration { declaration: _, slots: _ } => RosterAuthoredStep
@@ -953,7 +1107,15 @@ fn fold_realization_is_at(head: Symbol, path: String) -> Bool {
 
 // Every collection roster operation -- the fold and each callback operation -- hands its step one member.
 fn fold_roster_row_is_at(path: String) -> Bool {
-  any(xs: collection_roster_rows, predicate: fn(r) { r.row.module_path + "." + r.row.decl_name == path })
+  match collection_roster_row_at(path: path) {
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => true
+        RosterCallbackStep { realization: _ } => true
+        RosterFreeMonoidPrimitiveCall => false
+      }
+    Absent => false
+  }
 }
 
 // THE ORDER A FOLD-REALIZED LOOP VISITS ITS DOMAIN IS A FACT OF ITS REALIZATION, and the realization says
@@ -976,10 +1138,12 @@ fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldItera
   }
 }
 
-fn fold_roster_form_iteration_direction(f: FoldRosterForm) -> FoldIterationDirection {
+// Absent for a primitive-call row: it is no Loop, so it has no visiting order.
+fn fold_roster_form_iteration_direction(f: CollectionRosterForm) -> Optional<FoldIterationDirection> {
   match f {
-    RosterAuthoredStep => IteratesLeftToRight
-    RosterCallbackStep { realization: r } => callback_realization_iteration_direction(r: r)
+    RosterAuthoredStep => optional_present(value: IteratesLeftToRight)
+    RosterCallbackStep { realization: r } => optional_present(value: callback_realization_iteration_direction(r: r))
+    RosterFreeMonoidPrimitiveCall => optional_absent()
   }
 }
 
@@ -995,7 +1159,7 @@ fn collection_roster_row_at(path: String) -> Optional<CollectionRosterRow> {
 // Absent: the path names no collection fold realization (fold_node walks a tree, not a sequence).
 fn fold_realized_path_iteration_direction(path: String) -> Optional<FoldIterationDirection> {
   match collection_roster_row_at(path: path) {
-    Present { value: r } => optional_present(value: fold_roster_form_iteration_direction(f: r.form))
+    Present { value: r } => fold_roster_form_iteration_direction(f: r.form)
     Absent =>
       if fold_realization_is_at(head: ^fold_list, path: path) {
         optional_present(value: IteratesLeftToRight)
@@ -1340,6 +1504,8 @@ fn fold_call_lowering_from(fold_call: Node, source: FoldCollectionSource) -> Fol
             RosterAuthoredStep => fold_call_lowering_of(fold_call: fold_call, slots: slots, source: source)
             RosterCallbackStep { realization: callback } =>
               fold_call_callback_lowering_of(fold_call: fold_call, slots: slots, source: source, realization: callback)
+            RosterFreeMonoidPrimitiveCall =>
+              FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
           }
       }
   }

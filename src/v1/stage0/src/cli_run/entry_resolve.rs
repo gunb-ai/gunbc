@@ -58,7 +58,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -965,7 +964,6 @@ pub(crate) fn try_index_for_run_or_owned_pool(
     Ok(Rc::new(new_multi_entry_index_shell(
         try_build_module_index(&roots)?,
         &roots,
-        None,
     )))
 }
 
@@ -1033,7 +1031,6 @@ pub fn try_process_shared_index_for_pool(
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    let build_started = std::time::Instant::now();
     let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
@@ -1045,11 +1042,7 @@ pub fn try_process_shared_index_for_pool(
         super::pre_entry_phase::PhaseScale::Tree,
         walk_started.elapsed(),
     );
-    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
-    discovery_phase_totals::add(
-        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
-        build_started.elapsed(),
-    );
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots));
     PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });
@@ -1155,7 +1148,6 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
-    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
     record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
     MultiEntryIndex {
@@ -1170,7 +1162,6 @@ pub(crate) fn new_multi_entry_index_shell(
         typed_module_cache_cap: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
-        cross_worker_store,
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(std::collections::HashMap::new()),
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),

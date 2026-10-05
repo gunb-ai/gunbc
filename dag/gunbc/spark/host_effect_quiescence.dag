@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
 import extdeps.exec.command { argv_words }
 import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome }
@@ -145,13 +145,20 @@ type HostQuiescence
 
 // THE LEG IS SUPPLIED: production hands the fleet-ssh typed-argv leg to the host, a witness hands a
 // local one. The observer decides from exit codes and stdout only.
+// THREE ARMS, BECAUSE "DID NOT RUN" IS A CLAIM. ArgvLegDidNotRun is admissible only when nothing was
+// sent. A leg whose transport failed after the command may have reached the host -- the session went
+// dark before any acknowledgement arrived -- is ArgvLegMayHaveRun: a reader reads it as UNREAD, and an
+// effect consumer must read the host back before retrying a non-idempotent effect, never treat it as
+// a leg that did not run.
 type ArgvRun
   = ArgvRan { exit_code: Int, stdout: String, stderr: String }
   | ArgvLegDidNotRun { cause: String }
+  | ArgvLegMayHaveRun { cause: String }
 
 fn observe_host_effect_quiescence(run: fn(List<String>) -> ArgvRun, claim: EventId, host: HostIdentity, spec: HostEffectResidueSpec, observer: NonEmptyStr, at: EpochSecs) -> HostQuiescence {
   match run(pgrep_match_full_command_line_argv(pattern: spec.process_pattern)) {
     ArgvLegDidNotRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["the process scan did not run: ", c], "") }
+    ArgvLegMayHaveRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["the process scan's result was not received: ", c], "") }
     ArgvRan { exit_code: code, stdout: out, stderr: err } =>
       match pgrep_scan_outcome(exit_code: code, stdout: out, stderr: err) {
         PgrepScanFailed { exit_code: c2, stderr: e2 } => HostQuiescenceUnread { host: host, cause: join(["the process scan failed (exit ", to_string(c2), "): ", e2], "") }
@@ -162,6 +169,7 @@ fn observe_host_effect_quiescence(run: fn(List<String>) -> ArgvRun, claim: Event
             Present { value: f } =>
               match run(argv_words(command: docker_ps_running_command(filter: f))) {
                 ArgvLegDidNotRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["docker ps did not run: ", c], "") }
+                ArgvLegMayHaveRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["docker ps's result was not received: ", c], "") }
                 ArgvRan { exit_code: code2, stdout: out2, stderr: err2 } =>
                   if code2 != 0 {
                     HostQuiescenceUnread { host: host, cause: join(["docker ps exited ", to_string(code2), ": ", trim(s: err2)], "") }

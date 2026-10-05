@@ -20,7 +20,8 @@ import extdeps.vllm.kv_dtype_capability {
   KvCapabilitySubject, DsaSparseIndexer, kv_capability_verdict, upstream_kv_main_dtype_rows,
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
-import extdeps.zhipu.glm_5_3_flash {
+import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_dtype }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_architecture_class,
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
 }
 import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim }
@@ -41,7 +42,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
-  glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading,
+  glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading, glm53_kvplan_v2_group_a_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root, spark_models_root,
@@ -78,6 +79,7 @@ type ServingCheckpoint
   | DeepseekV4FlashIq3sSplit
   | Glm53RadixArkNvfp4Modelopt
   | DeepseekV41FlashDba1be0a
+  | Glm53FlashNvidiaNvfp4
 
 // A PRODUCED RUNTIME CARRIES ITS OWN BYTES, BECAUSE NO ROW CAN BE WRITTEN FOR IT AHEAD OF THE BUILD.
 // Every other variant here names an image somebody pulled or built once and pinned by hand, so its row
@@ -101,6 +103,7 @@ type ServingRuntime
   | GunbcGlm53NopeDerivedGb10
   | GunbcGlm53DerivedGb10
   | GunbcGlm53DerivedKvplanV2Gb10
+  | GunbcGlm53KvplanV2GroupAProduced
   | GunbcDeepseekV41EngramProduced { artifact: RuntimeArtifactIdentity, registry_reading: ArchitectureRegistryReading? }
 
 // THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE, AND ONLY A RANK COUNT. It exists
@@ -158,6 +161,7 @@ fn serving_checkpoint_wire(c: ServingCheckpoint) -> NonEmptyStr {
     Glm53Nvfp4CompressedTensors => "glm-5.3-flash-nvfp4-compressed-tensors" as NonEmptyStr
     DeepseekV4FlashIq3sSplit => "deepseek-v4-flash-iq3s-split" as NonEmptyStr
     Glm53RadixArkNvfp4Modelopt => "glm-5.3-radixark-nvfp4-modelopt" as NonEmptyStr
+    Glm53FlashNvidiaNvfp4 => "glm-5.3-flash-nvidia-nvfp4" as NonEmptyStr
     DeepseekV41FlashDba1be0a => "deepseek-v4.1-flash-dba1be0a" as NonEmptyStr
   }
 }
@@ -174,6 +178,7 @@ fn serving_runtime_wire(r: ServingRuntime) -> NonEmptyStr {
     GunbcGlm53NopeDerivedGb10 => "gunbc-glm53-nope-derived-gb10" as NonEmptyStr
     GunbcGlm53DerivedGb10 => "gunbc-glm53-derived-gb10" as NonEmptyStr
     GunbcGlm53DerivedKvplanV2Gb10 => "gunbc-glm53-derived-kvplan-v2-gb10" as NonEmptyStr
+    GunbcGlm53KvplanV2GroupAProduced => "gunbc-glm53-kvplan-v2-group-a-produced" as NonEmptyStr
     GunbcDeepseekV41EngramProduced { artifact: _, registry_reading: _ } => "gunbc-deepseek-v41-engram-produced" as NonEmptyStr
   }
 }
@@ -311,7 +316,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
   placement: LocalDirectoryPlacement { host_path: join([spark_models_root as String, "/glm53-flash-exl3-2.05"], "") as NonEmptyStr },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
@@ -324,12 +329,30 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
+}
+
+// NVIDIA's NVFP4 GLM-5.3-FLASH IS THE SAME MODEL AS THE NATIVE ROW, QUANTIZED: same architecture class
+// and parsers (the base's), a different publisher, revision, byte population and quantization. Its
+// launch policy reads its KV request from the checkpoint's own extdeps row (glm_5_3_flash_nvfp4_kv_cache_dtype),
+// and whether a backend admits that request is the capability join's answer, not this row's -- so adding
+// this checkpoint is this row, its wire, its policy and its extdeps module, and nothing downstream.
+data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  repo: glm_5_3_flash_nvfp4_hub_repo,
+  revision: glm_5_3_flash_nvfp4_manifest.revision,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  architecture: glm_5_3_flash_architecture_class,
+  weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_nvfp4_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
+  provenance: "revision and byte population are extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_manifest, read from the Hub API at that exact revision on 2026-10-02; the GiB figure is derived from those bytes. The architecture is the sole entry of `architectures` in config.json at the pin. NOT fetched, NOT launched and NOT measured on this fleet" as NonEmptyStr,
 }
 
 // THE RadixArk NVFP4 ROW IS GLM-5.3, NOT GLM-5.3-FLASH -- a different base model with a different
@@ -397,6 +420,7 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
     DeepseekV4FlashIq3sSplit => none
     Glm53RadixArkNvfp4Modelopt => Present { value: glm53_radixark_nvfp4_row }
     DeepseekV41FlashDba1be0a => Present { value: deepseek_v41_flash_row }
+    Glm53FlashNvidiaNvfp4 => Present { value: glm53_flash_nvidia_nvfp4_row }
   }
 }
 
@@ -736,6 +760,7 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
     GunbcGlm53NopeDerivedGb10 => Present { value: glm53_nope_derived_row }
     GunbcGlm53DerivedGb10 => Present { value: glm53_derived_row }
     GunbcGlm53DerivedKvplanV2Gb10 => Present { value: glm53_derived_kvplan_v2_row }
+    GunbcGlm53KvplanV2GroupAProduced => Present { value: glm53_kvplan_v2_group_a_row }
   }
 }
 
@@ -1338,6 +1363,16 @@ data deepseek_v41_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
   modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
 }
 
+// THE NVFP4 CHECKPOINT'S POLICY: its KV request is its own row's; the rest is the base model's (no
+// Engram, text by omission, indexer at its default).
+data glm53_flash_nvidia_nvfp4_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  kv_cache_dtype: glm_5_3_flash_nvfp4_kv_cache_dtype,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
 // THE EXL3 ARM'S PROFILE IS ITS OWN, and giving this subject the native one would make the receipt below
 // assert something that was never measured. The canary is retired; this row exists so its EVIDENCE stays
 // accurate, which is the only reason a retired route's facts are worth keeping at all.
@@ -1535,5 +1570,35 @@ data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: glm53_derived_kvplan_v2_registry_reading },
   reasoning_projection: none,
   provenance: "the engine inside this tag self-reported vllm 0.1.dev1+g8d09804c8 and printed its v2 KV allocation plan at the 2026-09-26 bounded experiment on the four Group B ranks; its architecture registry was read inside the tag on 2026-10-01 (glm53_derived_kvplan_v2_registry_reading). NOT read inside this tag: the hub CLI path and the reasoning projection" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
+}
+
+// THE SAME KVPLAN-V2 BUILD, PRODUCED ONCE FOR GROUP A (deforking cut 8c, image option A). It is a distinct
+// runtime from the Group B row above because it is a distinct artifact: one content id built on srv7 by
+// fleet-converge run 37100656092 from the pinned recipe (gunbc.spark.vllm_runtime_image_build
+// converge_glm53_kvplan_image) and moved by digest, where Group B's is a per-host layer under a shared
+// tag. So a receipt taken on Group A is about THIS identity and does not promote Group B's.
+data glm53_kvplan_v2_group_a_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53KvplanV2GroupAProduced,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: "sha256:6ef84cd49a68dbefd957bfca36f0ec458ed80f8194def41642e7b37b34ae76fb" as NonEmptyStr },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "built from source revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 by fleet-converge run 37100656092 (base and FlashInfer stage build key c99be081f219d123, kvplan layer build key 50ba9aad263fea47); the probe inside the produced digest read vllm 0.1.dev1+g8d09804c8 and the kvplan marker present" as NonEmptyStr,
+    },
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+      "kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr,
+    ],
+    provenance: "produced on srv7 by fleet-converge run 37100656092 under tag gunbc-vllm-glm53-gb10:kvplan-v2-50ba9aad263fea47, configuration digest read back inside the image by that run's probe" as NonEmptyStr,
+  ),
+  hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
+  vllm_version: Present { value: glm53_nope_derived_vllm_version },
+  registry_reading: Present { value: glm53_kvplan_v2_group_a_registry_reading },
+  reasoning_projection: none,
+  provenance: "every field of this row except the patch roster was read inside the produced digest by fleet-converge run 37100656092 (version, package dir, kvplan marker, hub CLI path, 378-name registry); the patch roster is the recipe's" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

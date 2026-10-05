@@ -179,17 +179,20 @@ fn effect_io_pure_backends_match(
     FileResourceBackend =>
       match right {
         FileResourceBackend => true
-        _ => false
+        HttpResourceBackend => false
+        StorageResourceBackend => false
       }
     HttpResourceBackend =>
       match right {
         HttpResourceBackend => true
-        _ => false
+        FileResourceBackend => false
+        StorageResourceBackend => false
       }
     StorageResourceBackend =>
       match right {
         StorageResourceBackend => true
-        _ => false
+        FileResourceBackend => false
+        HttpResourceBackend => false
       }
   }
 }

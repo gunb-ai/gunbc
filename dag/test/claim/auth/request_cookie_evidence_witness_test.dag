@@ -1,20 +1,26 @@
 module test.claim.auth.request_cookie_evidence_witness_test
 
-import std.types { Bool, FilePath }
+import std.types { NonEmptyStr, Bool, FilePath }
 import gunbc.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.roadmap_serve { roadmap_serve_request_security }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid }
+import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackUntaken }
+import gunbc.auth.request_authentication { TailnetReadbackNotDemanded, IngressUnattested, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid }
 import gunbc.auth.session { SessionCookieMalformed, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent, SessionCookieUnknown, SessionCookieUnread }
 
-// ABSENCE STAYS ABSENCE AT THE COOKIE SEAM (review 74789). The seed passes no cookie_header argument
-// when a request carries no Cookie header, so the security context's default is what an absent
-// header reaches; these claims run that real seam (gunbc.roadmap_serve roadmap_serve_request_security)
+// ABSENCE STAYS ABSENCE AT THE COOKIE SEAM (review 74789). A request with no Cookie header field
+// reads as the empty cookie string at the served entry (gunbc.roadmap_serve
+// roadmap_serve_handle_over), which is the security context's default; these claims run that real seam (gunbc.roadmap_serve roadmap_serve_request_security)
 // and never reach the session store, because no session id parses. RED if an absent header, or a
 // header carrying only other cookies, ever reads as anything but AuthAbsent.
 fn fixture_instance() -> HostDashboardInstance {
-  isolated_dashboard_instance(instance_id: "cookie-seam-fixture", layout: srv1_host_layout(), root: "/fixture-never-read" as FilePath,
+  isolated_dashboard_instance(deployment: deployment_id(name: "cookie-seam-fixture" as NonEmptyStr), instance_id: "cookie-seam-fixture", layout: srv1_host_layout(), root: "/fixture-never-read" as FilePath,
     serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+}
+
+fn no_readback() -> TailnetServeReadback {
+  TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }
 }
 
 fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {
@@ -27,16 +33,16 @@ fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {
 }
 
 test fn an_absent_cookie_header_reads_as_auth_absent() -> Bool {
-  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "").authentication)
+  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", ingress: IngressUnattested, readback: no_readback(), decided_at: "").authentication)
 }
 
 test fn a_header_with_only_other_cookies_reads_as_auth_absent() -> Bool {
-  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", cookie_header: "theme=dark; __Host-gunbc-login=x").authentication)
+  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", ingress: IngressUnattested, readback: no_readback(), decided_at: "", cookie_header: "theme=dark; __Host-gunbc-login=x").authentication)
 }
 
 // The discriminating neighbour: a session cookie that is present but malformed is NOT absence.
 test fn a_duplicated_session_cookie_is_a_typed_invalid_standing_not_absence() -> Bool {
-  match roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", cookie_header: "gunbc_session=a; gunbc_session=b").authentication {
+  match roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", ingress: IngressUnattested, readback: no_readback(), decided_at: "", cookie_header: "gunbc_session=a; gunbc_session=b").authentication {
     SessionStandingInvalid { standing: SessionCookieMalformed { detail: _ } } => true
     SessionStandingInvalid { standing: SessionCookieValid { session: _ } } => false
     SessionStandingInvalid { standing: SessionCookieExpired { session: _, observed_at: _ } } => false

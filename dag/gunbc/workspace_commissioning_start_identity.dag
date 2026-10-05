@@ -1,0 +1,27 @@
+module gunbc.workspace_commissioning_start_identity
+
+import std.types { String, NonEmptyStr }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// systemd snapshots this independently of the immutable reviewed provenance. Rearming after
+// a fence changes this identity; a process carrying the predecessor snapshot cannot win CAS.
+data workspace_commissioning_submitter_credential_id: NonEmptyStr = "workspace-commissioning-submitter"
+data workspace_commissioning_submitter_credential_prefix: String = "gunbc-workspace-commissioning-submitter-"
+
+fn workspace_commissioning_submitter_path(instance: String) -> String {
+  join(["/etc/credstore/", workspace_commissioning_submitter_credential_prefix, instance], "")
+}
+
+fn workspace_commissioning_snapshotted_submitter() -> NonEmptyStr? {
+  match shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value {
+    Present { value: directory } => {
+      let read = Filesystem.Read(path: join([directory, "/", workspace_commissioning_submitter_credential_id as String], ""))
+      if read.success && content_hash_validate_lower_hex_length(text: read.content, expected_hex_digits: 32) {
+        Present { value: read.content as NonEmptyStr }
+      } else { none }
+    }
+    Absent => none
+  }
+}

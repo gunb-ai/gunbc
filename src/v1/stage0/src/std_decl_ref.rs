@@ -3,7 +3,7 @@
 
 use self::CitationIndexCoverage::*;
 use self::DeclField::*;
-pub use crate::std_types::NonEmptyStr;
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -24,6 +24,14 @@ pub struct DeclarationRef {
     pub module_path: NonEmptyStr,
     pub decl_name: NonEmptyStr,
     pub field: Rc<DeclField>,
+}
+
+pub fn declaration_ref_is_type_parameter(ref_: Rc<DeclarationRef>) -> bool {
+    match (*ref_.field.clone()).clone() {
+        DeclField::TypeParameter { name: _, .. } => true,
+        DeclField::WholeDeclaration => false,
+        DeclField::NamedField { field_name: _, .. } => false,
+    }
 }
 
 #[derive(

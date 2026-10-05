@@ -1,0 +1,159 @@
+module extdeps.tools.kopia
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.algebra { Cons, Empty }
+import std.measure { ByteSize, byte_size }
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// KOPIA, AS ITS UPSTREAM RELEASES AND DOCUMENTS IT: a content-addressed backup tool that walks a
+// directory, splits and hashes every file's content, and writes the deduplicated result into a
+// repository. It is pinned here at one release by the SHA-256 its own checksums.txt publishes per
+// asset, and this module carries only what kopia IS -- the release coordinates, those digests, the
+// argv of the two operations a scanning caller needs, and the shape of the summary it prints -- never
+// where a caller installs it or which directory it scans (DESIGN 3).
+//
+// THE FLAGS WERE READ FROM THE PINNED BINARY'S OWN --help AND ONE EXECUTED RUN (0.23.1, linux-arm64):
+// `repository create filesystem --path --config-file --password --cache-directory --log-dir
+// --no-check-for-updates --no-progress` and `snapshot create <source> --config-file --password
+// --log-dir --no-progress --json`, both exiting 0, the second printing one JSON snapshot manifest.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/kopia/kopia/releases/tag/v0.23.1"
+  }
+}
+
+data kopia_cli_reference: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "kopia.io/docs/reference/command-line/common/snapshot-create/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.kopia",
+      decl_name: "kopia_release",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [kopia_cli_reference]
+}
+
+// ONE RELEASE, ONE ROW: the tag, each architecture's asset name, and the digest checksums.txt of that
+// release publishes for it. A version bump is a new row, never an edit to one field of this one.
+type KopiaRelease {
+  tag: NonEmptyStr
+  version: NonEmptyStr
+  asset_aarch64: NonEmptyStr
+  digest_aarch64: Digest
+  asset_x86_64: NonEmptyStr
+  digest_x86_64: Digest
+}
+
+data kopia_release: KopiaRelease = KopiaRelease {
+  tag: "v0.23.1",
+  version: "0.23.1",
+  asset_aarch64: "kopia-0.23.1-linux-arm64.tar.gz",
+  digest_aarch64: sha256_digest(hex: "a4ffbc019e0b0f932e2632054e73ec521dc1e80172a00095369c53ecf4e5a6cb"),
+  asset_x86_64: "kopia-0.23.1-linux-x64.tar.gz",
+  digest_x86_64: sha256_digest(hex: "416d0f84a3dbb321a8b2d8f0997b1a0a6e915babe79ee76fa6e4d2bd1e1c5178"),
+}
+
+fn kopia_release_download_url(kopia: KopiaRelease, asset: NonEmptyStr) -> String {
+  join(["https://github.com/kopia/kopia/releases/download/", kopia.tag as String, "/", asset as String], "")
+}
+
+// The release tarball wraps the binary in one directory (kopia-<version>-linux-<arch>/kopia), so an
+// extract strips one component to land the binary directly in the destination.
+data kopia_release_strip_components: Int = 1
+
+// THE BINARY IS ADDRESSED BY THE PATH IT WAS EXTRACTED TO: the caller owns where that is, so the
+// program identity is minted from the caller's path rather than a PATH lookup that could resolve
+// some other kopia.
+fn kopia_program_at(path: NonEmptyStr) -> ProgramIdentity = uncataloged_program(invocation: path)
+
+// A FILESYSTEM REPOSITORY, created with its config, cache and logs all under paths the caller names,
+// so a run writes nothing into the job user's home.
+fn kopia_repository_create_filesystem_command(program: ProgramIdentity, repository: String, config_file: String, password: String, cache_directory: String, log_directory: String) -> ArgvCommand {
+  argv_command(
+    program: program,
+    arguments: [
+      "repository", "create", "filesystem",
+      concat("--path=", repository),
+      concat("--config-file=", config_file),
+      concat("--password=", password),
+      concat("--cache-directory=", cache_directory),
+      concat("--log-dir=", log_directory),
+      "--no-check-for-updates", "--no-progress",
+    ],
+  )
+}
+
+// ONE SNAPSHOT OF ONE SOURCE DIRECTORY: every file read, chunked, hashed and the new content written
+// into the repository; --json prints the snapshot manifest on stdout.
+fn kopia_snapshot_create_command(program: ProgramIdentity, source: String, config_file: String, password: String, log_directory: String) -> ArgvCommand {
+  argv_command(
+    program: program,
+    arguments: [
+      "snapshot", "create", source,
+      concat("--config-file=", config_file),
+      concat("--password=", password),
+      concat("--log-dir=", log_directory),
+      "--no-progress", "--json",
+    ],
+  )
+}
+
+// WHAT THE MANIFEST SAYS IT SCANNED: rootEntry.summ's file count and byte size. Read as two integers
+// following their keys in the printed JSON; a manifest that does not carry both is unread, never zero.
+type KopiaSnapshotSummary {
+  files: Int
+  bytes: ByteSize
+}
+
+fn kopia_text_after(text: String, key: String) -> String? {
+  match split(text, separator: key) {
+    Empty => none
+    Cons { head: _, tail: Empty } => none
+    Cons { head: _, tail: Cons { head: after, tail: _ } } => Present { value: after }
+  }
+}
+
+fn kopia_json_int_after(text: String, key: String) -> Int? {
+  match kopia_text_after(text: text, key: key) {
+    Absent => none
+    Present { value: after } =>
+      match first(split(after, separator: ",")) {
+        Absent => none
+        Present { value: token } =>
+          match first(split(token, separator: "}")) {
+            Absent => none
+            Present { value: digits } => parse_int(s: digits)
+          }
+      }
+  }
+}
+
+fn kopia_snapshot_summary_of(manifest: String) -> KopiaSnapshotSummary? {
+  match kopia_text_after(text: manifest, key: "\"summ\":") {
+    Absent => none
+    Present { value: summ } =>
+      match kopia_json_int_after(text: summ, key: "\"size\":") {
+        Absent => none
+        Present { value: bytes } =>
+          match kopia_json_int_after(text: summ, key: "\"files\":") {
+            Absent => none
+            Present { value: files } => if bytes < 0 || files < 0 { none } else { Present { value: KopiaSnapshotSummary { files: files, bytes: byte_size(count: bytes) } } }
+          }
+      }
+  }
+}

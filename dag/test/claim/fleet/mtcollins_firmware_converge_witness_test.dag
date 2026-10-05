@@ -24,7 +24,8 @@ import gunbc.machine_intake_bmc_secure {
   BmcSecureStanding, ManagedCredentialReference, CredentialAccepted, CredentialRejected, CredentialProbeOutcome, RotationApplied,
   PublishedCredentialRetired, observed_bmc_credential_rotation, derive_bmc_secure,
 }
-import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.deployment_risk { TestRisk }
+import gunbc.machine_intake_phase { machine_qualification_policy }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
   ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
@@ -47,7 +48,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SelSnapshotReadi
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
+import gunbc.machine_intake_ampere_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
@@ -65,7 +66,7 @@ import gunbc.fleet.mtcollins_firmware_converge {
   SelCapture, PreFlashReceipt, PreFlashSel, SelNotRequired, SelCaptured,
   ManagedRightsReceipt, RightReading, RightGranted, RightNotGranted, ManagedAccountRight,
   IpmiAdministratorOnLanChannel, RedfishSessionRight,
-  RemoteMediaReceipt, RemoteMediaReadback, RemoteMediaImagesEnumerated, RemoteMediaNotConfigured, RemoteMediaNotRestored, KvmRight, mtcollins1_required_managed_rights, VersionReadback, UncitedReadback, hpm_check_readback,
+  RemoteMediaReceipt, RemoteMediaReadback, RemoteMediaImagesEnumerated, RemoteMediaNotConfigured, RemoteMediaNotRestored, KvmRight, mtcollins1_required_managed_rights, VersionReadback, UncitedReadback, hpm_check_readback, hpm_app_patch_standing, hpm_major_minor_standing,
   HostPoweredOff, HostPoweredOn, BmcAnswering, BmcNotAnswering,
   FirmwareCredentialReprovisionDue, FirmwareBootReadbackDue,
   BmcCredentialReestablishment, ManagedRightNotRestored, ManagedRightMissingFromReceipt, BootProgressLostAfterFirmwareSet, BootReachedUefiThenRestartedRepeatedly,
@@ -281,7 +282,7 @@ fn reestablished(epoch: Int, previous: Int, managed_accepted: Bool) -> BmcSecure
           published_user: mtcollins1_published_user,
           published_account: PublishedCredentialRetired { evidence: mtcollins1_user2_retire_evidence, observed_at: mtcollins1_user2_retire_at },
         ),
-        policy: intake_qualification_policy(environment: DevelopmentAndTest),
+        policy: machine_qualification_policy(admits: TestRisk),
       ) }
   }
 }
@@ -340,9 +341,9 @@ fn bmc_sel() -> PreFlashSel { SelCaptured { capture: sel_read_capture(at: sel_re
 fn readback_at(t: FirmwareTarget, version: FirmwareSemanticVersion, at: EpochMs) -> VersionReadback? {
   match t {
     ScpFirmware => Present { value: scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: version.minor * 256 + version.major }, observed_at: at) }
-    BmcController => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, observed_at: at) }
-    HostBios => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, observed_at: at) }
-    MainboardCpld => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, observed_at: at) }
+    BmcController => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, decode: hpm_app_patch_standing, observed_at: at) }
+    HostBios => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, decode: hpm_major_minor_standing, observed_at: at) }
+    MainboardCpld => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, decode: hpm_major_minor_standing, observed_at: at) }
   }
 }
 
@@ -965,12 +966,13 @@ fn readback_over(lines: List<String>, restarts: List<SelWindowEvent>) -> Firmwar
   Present { value: firmware_set_boot_readback(a: account_over(lines: lines, restarts: restarts)) }
 }
 
-// The set converges on UEFI, and the converged verdict NAMES the SCP readback as grounded through the
-// uncited SMpro decode -- it is never promoted to an unqualified observation.
-test fn whole_set_reaching_uefi_converges_naming_the_uncited_scp_decode() -> Bool {
+// The set converges on UEFI, and the converged verdict NAMES every readback grounded through an
+// uncited decode -- the SMpro word for the SCP and the self-observed hpm check projections for the
+// BMC, BIOS and CPLD -- so none is promoted to an unqualified observation.
+test fn whole_set_reaching_uefi_converges_naming_every_uncited_decode() -> Bool {
   match run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: uefi_cycle, restarts: [])) {
     FirmwareBaselineConverged { uncited_readbacks: u } =>
-      list_length(u) == 1 && any(u, x => (x.target == ScpFirmware))
+      list_length(u) == 4 && any(u, x => (x.target == ScpFirmware)) && any(u, x => (x.target == BmcController))
     _ => false
   }
 }

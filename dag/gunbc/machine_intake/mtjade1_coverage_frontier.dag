@@ -159,10 +159,9 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
 data mtjade1_access_observation_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
   module_path: "gunbc.machine_intake_mtjade1_access_observation",
   decl_names: [
-    "mtjade1_unit_key_standing",
     "mtjade1_managed_bmc_secret_standing",
   ],
-  reason: "The access standing for unit 1 before any wet contact. The unit key is UnitKeyRefused{BoardSerialAbsent} because no FRU or SMBIOS read has happened, and the secret locus is reserved off the accessor roster because the secret is not minted. Both are refusals, and nothing in production reads a refusal that has no alternative yet.",
+  reason: "The secret locus for unit 1 is reserved off the accessor roster because the secret is not minted. It is a refusal, and nothing in production reads a refusal that has no alternative yet. (The unit key is no longer a row here: gunbc.machine_intake_arrival_converge identity_bind_provisional derives it from the committed FRU and SMBIOS captures.)",
   dissolution: unbound_dissolution(description: "NAMED CONSUMER: the BMC onboarding route, which reads the secret standing to decide whether a credential may be fetched and the unit key to name the machine it belongs to. TRIGGER: THREE STAGES IN ORDER, and the first does not imply the second -- (1) a wet ProbeServiceRoot read establishes reachability and a Redfish surface; (2) a SEPARATE per-unit discriminator (observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe) constructs FamilyObserved; (3) only then may the family-specific rotation route run, the secret be minted and read back, and the locus join fleet_accessor_grant_roster - at which point SecretLocusReservedNotOnAccessorRoster is no longer the only arm and a fold must choose between them. SUFFICIENT FOR deleting the NAME the route reads. NOT satisfied by minting the secret without rotating, which is the 'secret populated, server never rotated' state extdeps.bmc.http warns about."),
 )
 

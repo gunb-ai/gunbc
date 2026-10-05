@@ -47,7 +47,7 @@ import gunbc.fleet_intent {
   srv4_baseboard,
   srv4_host,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { OpenBmc }
 import std.measure {
   Celsius,

@@ -24,7 +24,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_reset_return {
   AttemptReceiptMinted,
   AttemptReceiptPairingRefused,
@@ -547,8 +547,8 @@ fn host_reset_return_issue_and_watch(
 //
 // AND extdeps.shell IS IMPORTED FOR A MEASURED REASON. Service operations register from the IMPORT
 // CLOSURE, so an unimported service compiles clean and refuses at RUN TIME naming the operation
-// rather than the missing import; gunbc.machine_intake_mtcollins1_actuate lost a run to exactly that
-// diagnostic and wrote it down.
+// rather than the missing import; gunbc.managed_host_boot_handoff records the run lost to exactly
+// that diagnostic.
 data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" as NonEmptyStr
 
 // THE PREFLIGHT REFUSAL WRITES ITS RECEIPT AND THEN EXITS, in that order, because the upload step

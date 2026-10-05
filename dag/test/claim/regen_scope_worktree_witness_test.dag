@@ -1,0 +1,90 @@
+module test.claim.regen_scope_worktree_witness
+
+import std.types { Bool, String, List }
+import v2.workflow.regen_scope_worktree {
+  RegenScopeWorktreeAdmission, ScopeWorktreeAdmitted, ScopeWorktreeHasUncommittedDag, ScopeWorktreeUnobservable,
+  regen_scope_worktree_admission, regen_scope_worktree_refusal
+}
+import v2.workflow.floor_diff_observe { floor_diff_mode_for_baseline }
+import gunbc.ci_diff_policy { DiffMode, DiffMergeBase, DiffTwoDot, gunbc_ci_diff_policy }
+import gunbc.diff_baseline { PushParent }
+import gunbc.repo_identity { gunbc_merge_target_ref }
+
+// WHAT THIS WITNESS COVERS: the two facts a developer's scoped regen round rests on.
+//
+// (1) THE LOCAL BASELINE SEES EVERY COMMIT ON THE BRANCH. With no CI event the baseline is
+// PushParent over the default branch (test.claim.diff_baseline witness_bootstrap_no_event_is_push_parent),
+// and the relation this witness pins is the one that decides how many commits it sees: the
+// merge-base relation, so a two-commit branch's diff is both commits. The RED is the relation
+// that would see one: a two-dot diff against a moving default branch reads the branch's commits
+// AND the default branch's newer commits inverted, and a HEAD^ base reads only the last commit.
+//
+// (2) THE SCOPED ROUND REFUSES A TREE ITS EDIT OBSERVATION CANNOT SEE: an uncommitted .dag path,
+// or an unreadable status. It does not widen.
+//
+// DOES NOT COVER: the observation against a real repository (git.Inspect.WorkingTreeStatus is
+// mocked clean under the hermetic envelope), and the end-to-end selection of a two-commit branch
+// through `claim_executor --regen-affected-set`. Both were executed locally and their receipts are
+// on the PR that introduced this file; the next rung is a wet witness form that can stage a
+// scratch repository.
+
+test fn the_local_no_event_baseline_diffs_from_the_merge_base() -> Bool {
+  match floor_diff_mode_for_baseline(baseline: PushParent { ref: gunbc_merge_target_ref }, policy: gunbc_ci_diff_policy) {
+    DiffMergeBase => true
+    DiffTwoDot => false
+  }
+}
+
+data nul: String = from_code_point(0)
+
+test fn a_clean_tree_admits_the_scoped_round() -> Bool {
+  match regen_scope_worktree_admission(status_success: true, entries_nul: "", stderr: "") {
+    ScopeWorktreeAdmitted => regen_scope_worktree_refusal(a: ScopeWorktreeAdmitted) == ""
+    ScopeWorktreeHasUncommittedDag { paths: _ } => false
+    ScopeWorktreeUnobservable { reason: _ } => false
+  }
+}
+
+// A dirty tree whose only changes are a regenerated mirror and an untracked scratch file is
+// ADMITTED: nothing there is a .dag edit the scope could have selected from. Refusing it would
+// block the ordinary state between two rounds for no selection the refusal protects.
+test fn non_dag_changes_do_not_refuse() -> Bool {
+  let entries = concat(concat(" M src/v1/stage0/src/std_measure.rs", nul), concat("?? notes.txt", nul))
+  match regen_scope_worktree_admission(status_success: true, entries_nul: entries, stderr: "") {
+    ScopeWorktreeAdmitted => true
+    ScopeWorktreeHasUncommittedDag { paths: _ } => false
+    ScopeWorktreeUnobservable { reason: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED: one modified and one untracked .dag path refuse, naming both.
+test fn w_RED_an_uncommitted_dag_edit_refuses_and_names_the_paths() -> Bool {
+  let entries = concat(concat(" M dag/std/measure.dag", nul), concat("?? dag/gunbc/new_row.dag", nul))
+  match regen_scope_worktree_admission(status_success: true, entries_nul: entries, stderr: "") {
+    ScopeWorktreeHasUncommittedDag { paths: paths } =>
+      count(paths) == 2
+        && (paths |> any(p => p == "dag/std/measure.dag"))
+        && (paths |> any(p => p == "dag/gunbc/new_row.dag"))
+    ScopeWorktreeAdmitted => false
+    ScopeWorktreeUnobservable { reason: _ } => false
+  }
+}
+
+// A rename record carries its source as a second NUL field; a .dag on either side refuses.
+test fn w_RED_a_renamed_dag_refuses() -> Bool {
+  let entries = concat(concat("R  dag/std/b.dag", nul), concat("dag/std/a.dag", nul))
+  match regen_scope_worktree_admission(status_success: true, entries_nul: entries, stderr: "") {
+    ScopeWorktreeHasUncommittedDag { paths: paths } => count(paths) == 2
+    ScopeWorktreeAdmitted => false
+    ScopeWorktreeUnobservable { reason: _ } => false
+  }
+}
+
+// An unreadable status is not a clean one.
+test fn w_RED_an_unreadable_status_refuses_rather_than_admitting() -> Bool {
+  match regen_scope_worktree_admission(status_success: false, entries_nul: "", stderr: "fatal: not a git repository") {
+    ScopeWorktreeUnobservable { reason: r } => string_contains(s: r, pattern: "not a git repository")
+    ScopeWorktreeAdmitted => false
+    ScopeWorktreeHasUncommittedDag { paths: _ } => false
+  }
+}
