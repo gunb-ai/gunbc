@@ -8,7 +8,7 @@ import extdeps.languages.json.emit { serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead, FieldMalformed, JsonDocumentUnreadable, FieldAbsent }
 import gunbc.workspace_commissioning_executor_plan { WorkspaceExecutorPlanBytes, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
-import gunbc.durable_cas_file_store { KeepAllGenerations, observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -75,7 +75,7 @@ fn workspace_commissioning_input_read(slot: NonEmptyStr) -> WorkspaceCommissioni
   let root = workspace_commissioning_store_location as NonEmptyStr
   let key = workspace_commissioning_input_key(slot: slot)
   match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_cas_slot_state(root: root, key: key, retention: KeepAllGenerations) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_cas_slot_state(root: root, key: key) {
       CasObservedReadable { readable: CasReadableAbsent } => WorkspaceCommissioningInputAbsent
       CasObservedReadable { readable: CasReadablePresent { version } } => match read_store_ownership(path: cas_file_slot_path(root: root, key: key, generation: version.generation)) {
         OwnershipRead { ownership: StoreRootOwned } => match workspace_commissioning_input_decode(text: version.value as String) {
@@ -106,7 +106,7 @@ fn workspace_commissioning_input_publish(bytes: WorkspaceCommissioningInputBytes
         } else { WorkspaceCommissioningInputRefused { reason: "another reviewed input owns this commissioning transaction" } }
         WorkspaceCommissioningInputAbsent => match admit_cas_attempt_for_derived_payload(key: workspace_commissioning_input_key(slot: slot),
           expected: ExpectSlotAbsent, proposed: workspace_commissioning_input_text(bytes: bytes) as NonEmptyStr) {
-          DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: workspace_commissioning_store_location as NonEmptyStr, publication: OwnerOnlyCreateOnly, verified: verified, retention: KeepAllGenerations).outcome {
+          DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: workspace_commissioning_store_location as NonEmptyStr, publication: OwnerOnlyCreateOnly, verified: verified) {
             CasCommitted { committed: _ } => workspace_commissioning_input_read(slot: slot)
             CasPreconditionFailed { expected: _, observed: _ } => match workspace_commissioning_input_read(slot: slot) {
               WorkspaceCommissioningInputPresent { bytes: stored, plan: existing } => if stored == bytes {

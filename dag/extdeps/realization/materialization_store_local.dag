@@ -76,8 +76,8 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store {
   admit_cas_attempt, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  file_compare_and_set, observe_cas_slot_state, DefaultAccessCreateOnly,
-  CasSlotRetention, KeepGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
+  file_compare_and_set_windowed, observe_cas_slot_state_windowed, DefaultAccessCreateOnly,
+  cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
   CasWindowReclamation, CasReclamationNotCommitted, CasAttemptAdmission,
   cas_window_generations, CasWindowGenerations, CasWindowGenerationsListed, CasWindowGenerationsUnlisted,
   cas_reclaim_below, CasGenerationWindow,
@@ -89,12 +89,12 @@ import std.durable_exclusive_hold {
   durable_hold_owner_equal,
 }
 import gunbc.durable_exclusive_hold_file_store {
-  file_hold_acquire, FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  file_hold_acquire_windowed, FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
-  file_hold_release_assess, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  file_hold_release_assess_windowed, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
-  file_hold_recovery_assess, FileHoldRecoveryPlanned, FileHoldRecoveryNotEligible,
-  observe_file_hold,
+  file_hold_recovery_assess_windowed, FileHoldRecoveryPlanned, FileHoldRecoveryNotEligible,
+  observe_file_hold_windowed,
 }
 import gunbc.process_hold_identity {
   process_hold_text, process_hold_marker, process_hold_decode, ProcessHoldHolder,
@@ -793,9 +793,9 @@ fn local_store_name_set(names: List<String>) -> Set<String> {
   fold(names, init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
 
-fn local_store_index_retention() -> CasSlotRetention? {
+fn local_store_index_window() -> CasGenerationWindow? {
   match cas_generation_window(k: local_store_index_window_k) {
-    CasGenerationWindowAdmitted { window: w } => Present { value: KeepGenerationWindow { window: w } }
+    CasGenerationWindowAdmitted { window: w } => Present { value: w }
     CasGenerationWindowTooNarrow { k: _ } => none
   }
 }
@@ -907,10 +907,10 @@ fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalSto
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
   ]
 {
-  match local_store_index_retention() {
+  match local_store_index_window() {
     Absent => LocalStoreIndexUnavailable { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
-    Present { value: retention } =>
-      match observe_cas_slot_state(root: root_path as NonEmptyStr, key: local_store_index_key(family: family), retention: retention) {
+    Present { value: window } =>
+      match observe_cas_slot_state_windowed(root: root_path as NonEmptyStr, key: local_store_index_key(family: family), window: window) {
         CasObservedUnreadable { cause: c } => LocalStoreIndexUnavailable { refusal: LocalStoreIndexSlotUnreadable { cause: c } }
         CasObservedReadable { readable: r } => match r {
           CasReadableAbsent => LocalStoreIndexAt { index: local_store_empty_index, expected: ExpectSlotAbsent }
@@ -962,15 +962,15 @@ fn local_store_write_index_settled(held: LocalStoreFamilyHeld, expected: CasExpe
   let root_path = materialization_store_root_path(root: held.binding.root)
   let family = held.family
   let content = local_store_index_encode(index: index) as NonEmptyStr
-  match local_store_index_retention() {
+  match local_store_index_window() {
     Absent => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
-    Present { value: retention } =>
+    Present { value: window } =>
       match admit_cas_attempt(attempt: cas_attempt(key: local_store_index_key(family: family), expected: expected, proposed: content, proposed_content: content_hash_of_value(value: content))) {
         CasAttemptDigestMismatch { claimed: c, actual: a } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptDigestMismatch { claimed: c, actual: a } } }
         CasAttemptDigestIncomparable { claimed: c, actual: a } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptDigestIncomparable { claimed: c, actual: a } } }
         CasAttemptKeyNotSlotAddressable { key: k } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptKeyNotSlotAddressable { key: k } } }
         CasAttemptAdmitted { verified: v } => {
-          let write = file_compare_and_set(root: root_path as NonEmptyStr, publication: DefaultAccessCreateOnly, retention: retention, verified: v)
+          let write = file_compare_and_set_windowed(root: root_path as NonEmptyStr, publication: DefaultAccessCreateOnly, window: window, verified: v)
           match write.outcome {
             CasCommitted { committed: _ } => LocalStoreIndexWritten { reclamation: write.reclamation }
             CasPreconditionFailed { expected: _, observed: _ } => LocalStoreIndexLostRace
@@ -1043,7 +1043,7 @@ type LocalStoreFamilyHeld sole_constructor {
   family: ArtifactKindId
   owner: DurableHoldOwnerRef
   generation: CasGeneration
-  retention: CasSlotRetention
+  window: CasGenerationWindow
 }
 
 type LocalStoreHoldAcquisition
@@ -1066,16 +1066,16 @@ fn local_store_acquire_family_hold(binding: LocalStoreBinding, family: ArtifactK
 {
   let root = binding.root
   let root_path = materialization_store_root_path(root: root)
-  match local_store_index_retention() {
+  match local_store_index_window() {
     Absent => LocalStoreHoldRefused { refusal: LocalStoreHoldWindowTooNarrow { k: local_store_index_window_k } }
-    Present { value: retention } =>
+    Present { value: window } =>
       match self_process_identity() {
         SelfUnidentified { cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldSelfUnidentified { cause: c } }
         SelfIdentified { process: me, pid_namespace: ns } => {
           let owner = concat(local_store_hold_owner_prefix, process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef
           let key = local_store_hold_key(family: family)
           match local_store_settle_slot(root_path: root_path, key: key) {
-            LocalStoreSlotSettled => local_store_acquire_settled(binding: binding, family: family, key: key, owner: owner, retention: retention, recovered: recovered)
+            LocalStoreSlotSettled => local_store_acquire_settled(binding: binding, family: family, key: key, owner: owner, window: window, recovered: recovered)
             LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
             LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
             LocalStoreSlotWindowTooNarrow { k: k } => LocalStoreHoldRefused { refusal: LocalStoreHoldWindowTooNarrow { k: k } }
@@ -1085,18 +1085,18 @@ fn local_store_acquire_family_hold(binding: LocalStoreBinding, family: ArtifactK
   }
 }
 
-fn local_store_acquire_settled(binding: LocalStoreBinding, family: ArtifactKindId, key: NonEmptyStr, owner: DurableHoldOwnerRef, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition
+fn local_store_acquire_settled(binding: LocalStoreBinding, family: ArtifactKindId, key: NonEmptyStr, owner: DurableHoldOwnerRef, window: CasGenerationWindow, recovered: Bool) -> LocalStoreHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_family_hold"),
   ]
 {
   let root = binding.root
   let root_path = materialization_store_root_path(root: root)
-          match file_hold_acquire(root: root_path as NonEmptyStr, slot_key: key, requested_owner: owner, retention: retention) {
+          match file_hold_acquire_windowed(root: root_path as NonEmptyStr, slot_key: key, requested_owner: owner, window: window) {
             FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
-              LocalStoreHoldAcquired { held: LocalStoreFamilyHeld { binding: binding, family: family, owner: o, generation: g, retention: retention } }
+              LocalStoreHoldAcquired { held: LocalStoreFamilyHeld { binding: binding, family: family, owner: o, generation: g, window: window } }
             FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
-              local_store_hold_occupied(binding: binding, family: family, key: key, holder: h, generation: g, retention: retention, recovered: recovered)
+              local_store_hold_occupied(binding: binding, family: family, key: key, holder: h, generation: g, window: window, recovered: recovered)
             FileHoldAcquireLost { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
             FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldStoreUnavailable { cause: c } }
             FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => LocalStoreHoldRefused { refusal: LocalStoreHoldSlotUndecodable { detail: d } }
@@ -1107,7 +1107,7 @@ fn local_store_acquire_settled(binding: LocalStoreBinding, family: ArtifactKindI
 // An occupied family is looked at ONCE: a live or unobservable holder refuses; a holder observed dead is
 // recovered at the generation the refused acquire saw, and the acquire is tried once more. A family
 // still held after that recovery is busy -- the loop is bounded by construction.
-fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition
+fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration, window: CasGenerationWindow, recovered: Bool) -> LocalStoreHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_settled"),
   ]
@@ -1125,7 +1125,7 @@ fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId,
           if recovered {
             LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
           } else {
-            match file_hold_recovery_assess(root: root_path as NonEmptyStr, slot_key: key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }, released_by: local_store_hold_recovery_ref, retention: retention) {
+            match file_hold_recovery_assess_windowed(root: root_path as NonEmptyStr, slot_key: key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }, released_by: local_store_hold_recovery_ref, window: window) {
               FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => LocalStoreHoldRefused { refusal: LocalStoreHoldRecoveryRefused { refusal: r } }
               FileHoldRecoveryPlanned { plan: pl, dead_holder: _, evidence: _ } =>
                 match file_hold_release_commit(plan: pl) {
@@ -1159,7 +1159,7 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
-  let observed = observe_file_hold(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), retention: held.retention)
+  let observed = observe_file_hold_windowed(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), window: held.window)
   match observed {
     HoldSlotHeld { generation: g, owner: o } =>
       if cas_generation_count(g: g) == cas_generation_count(g: held.generation) && durable_hold_owner_equal(left: o, right: held.owner) { LocalStoreHoldCurrent } else { LocalStoreHoldNotCurrent { observed: observed } }
@@ -1213,7 +1213,7 @@ fn local_store_release_family_hold(held: LocalStoreFamilyHeld) -> LocalStoreHold
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_all"),
   ]
 {
-  match file_hold_release_assess(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, retention: held.retention) {
+  match file_hold_release_assess_windowed(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, window: held.window) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: r } => LocalStoreHoldReleaseNotEligible { refusal: r }
     FileHoldReleasePlanned { plan: pl } =>
       match file_hold_release_commit(plan: pl) {

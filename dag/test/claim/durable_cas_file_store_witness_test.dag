@@ -13,7 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemPermissionDenied, FilesystemExactPathKindUnrecognized,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
   admit_cas_attempt, cas_file_slot_path, observe_cas_slot_state, cas_key_not_slot_addressable_detail,
   cas_outcome_from_create, cas_classify_generation_read, GenerationRefused, ProbedAbsent, cas_probe_as_observation,
@@ -168,7 +168,7 @@ test fn a_key_that_would_escape_the_store_root_is_refused_at_the_mint() -> Bool 
 // and the answer discriminates nothing about the host. This runs hermetically precisely because no
 // read happens; routing the key to the probe would fail here on the missing filesystem arm.
 test fn a_key_that_would_escape_the_store_root_is_refused_at_the_read() -> Bool {
-  match observe_cas_slot_state(root: "/var/lib/gunbc/cas", key: "../../etc/passwd", retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: "/var/lib/gunbc/cas", key: "../../etc/passwd") {
     CasObservedUnreadable { cause: c } =>
       match c {
         CasUnreadableReadRefused { detail: d } => d == cas_key_not_slot_addressable_detail

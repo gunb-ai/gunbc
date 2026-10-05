@@ -1,6 +1,5 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
@@ -386,7 +385,7 @@ test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool 
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
     frame: matrix_frame(world: other_running),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr), retention: KeepAllGenerations) }
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {
@@ -743,13 +742,15 @@ test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bo
 // THE WALL CLOCK JUMPS TEN MINUTES FORWARD DURING THE READINESS WAIT. The window reads as closed at the
 // next look, and the attempt refuses without a handoff: a forward step shortens the wait, it never
 // buys an unbounded one. The look count follows the route's own schedule before the media wait -- it
-// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it -- so a later change to that
-// prefix moves it again; what the case holds is the refusal at the look after the jump.
+// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it, and from 3 to 2 when the
+// power-on account's pre-power hpm check read (one virtual second, after admission) joined the prefix
+// -- so a later change to that prefix moves it again; what the case holds is the refusal at the look
+// after the jump.
 test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
   match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
-        && string_contains(s: outcome_reason(a: value), pattern: "(3 looks,")
+        && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
         && reached_no_power_action(route: route)
     _ => false
   }

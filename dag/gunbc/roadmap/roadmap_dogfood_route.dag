@@ -6,7 +6,7 @@ import std.durable_compare_and_set {
   ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
@@ -716,7 +716,7 @@ fn dogfood_occupied_slot_record(defect: String?) -> DogfoodStartRecord {
 
 fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> DogfoodStartRecord {
   let root = dogfood_start_store_root(instance: instance)
-  match observe_cas_slot_state(root: root, key: dogfood_start_receipt_key, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: dogfood_start_receipt_key) {
     CasObservedUnreadable { cause: _ } => DogfoodStartRefused { reason: "the start receipt slot cannot be read, so whether a start is recorded is unknown" }
     CasObservedReadable { readable } =>
       match readable {
@@ -783,7 +783,7 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
 // a receipt the total decoder accepts. A plain function rather than a floor witness: its subject is
 // a deployment's durable store, which a CI runner does not have. An unreadable slot is not a pass.
 fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
-  match observe_cas_slot_state(root: dogfood_start_store_root(instance: instance), key: dogfood_start_receipt_key, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: dogfood_start_store_root(instance: instance), key: dogfood_start_receipt_key) {
     CasObservedUnreadable { cause: _ } => false
     CasObservedReadable { readable } =>
       match readable {

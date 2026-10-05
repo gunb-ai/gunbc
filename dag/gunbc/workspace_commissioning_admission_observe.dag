@@ -1,6 +1,5 @@
 module gunbc.workspace_commissioning_admission_observe
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import std.types { String, NonEmptyStr }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
@@ -70,7 +69,7 @@ fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningP
 fn workspace_commissioning_no_hold_refusal(provenance: WorkspaceCommissioningProvenance) -> String? {
   let root = fabric_control_plane_store_root()
   match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: provenance.slot), retention: KeepAllGenerations) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: provenance.slot)) {
       HoldSlotAbsent => none
       HoldSlotFree { generation: _, released_by: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
       HoldSlotHeld { generation: _, owner: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }

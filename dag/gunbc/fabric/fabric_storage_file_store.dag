@@ -19,7 +19,7 @@ import std.fabric_storage {
   FabricObjectGet, FabricObjectFetched, FabricObjectGetRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   observe_cas_slot_state, file_compare_and_set, DefaultAccessCreateOnly, DeclaredModeCreateOnly, CasGenerationPublication, cas_key_is_slot_addressable,
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
@@ -196,7 +196,7 @@ fn fabric_storage_file_head(root: FabricStorageFileRoot, name: NonEmptyStr) -> F
   if !fabric_storage_head_name_admitted(name: name) {
     FabricHeadReadRefused { fault: FabricHeadNameRefused { name: name } }
   } else {
-    match observe_cas_slot_state(root: root.heads, key: name, retention: KeepAllGenerations) {
+    match observe_cas_slot_state(root: root.heads, key: name) {
       CasObservedUnreadable { cause: c } => FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: c } } }
       CasObservedReadable { readable: r } =>
         match r {
@@ -238,7 +238,7 @@ fn fabric_storage_file_advance(root: FabricStorageFileRoot, name: NonEmptyStr, e
             match admit_cas_attempt_for_derived_payload(key: name, expected: fabric_storage_cas_expectation(reading: observed), proposed: fabric_object_ref_wire(object: target)) {
               DerivedPayloadKeyNotSlotAddressable { key: k } => FabricHeadAdvanceRefused { fault: FabricHeadNameRefused { name: k } }
               DerivedPayloadAdmitted { verified: v } =>
-                match file_compare_and_set(root: root.heads, publication: fabric_storage_head_publication(root: root), retention: KeepAllGenerations, verified: v).outcome {
+                match file_compare_and_set(root: root.heads, publication: fabric_storage_head_publication(root: root), verified: v) {
                   CasCommitted { committed: c } => FabricHeadAdvanced { object: target, generation: c.generation }
                   CasStoreRefused { cause: c } => FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: c } }
                   CasPreconditionFailed { expected: _, observed: _ } =>

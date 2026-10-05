@@ -1,6 +1,7 @@
 module extdeps.shell.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
+import std.types { List }
 
 data shell_find_mock_case_list_dirs: PublishedMockCase = PublishedMockCase {
   operation_key: "shell.Find.ListDirs",

@@ -45,12 +45,12 @@ import extdeps.realization.materialization_store_local {
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
   LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow, LocalStoreHoldUnsettled,
   LocalStoreCatalogMismatch, LocalStoreCatalogInadmissible, LocalStoreSweepIncomplete, LocalStoreUnavailableCause,
-  local_store_index_retention,
+  local_store_index_window,
   LocalStoreRecordDeleteAttempt, LocalStoreRecordGone, LocalStoreRecordFileRefused, LocalStoreRecordPartsRefused, LocalStoreRecordPartsUnlisted, LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
 }
 import gunbc.process_hold_identity { self_process_identity, SelfIdentified, SelfUnidentified, process_hold_text }
 import gunbc.build_cache_instance { ProcessIdentity }
-import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
+import gunbc.durable_exclusive_hold_file_store { file_hold_acquire_windowed, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
@@ -717,12 +717,12 @@ test fn a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_executi
       match self_process_identity() {
         SelfUnidentified { cause: _ } => false
         SelfIdentified { process: me, pid_namespace: ns } =>
-          match local_store_index_retention() {
+          match local_store_index_window() {
             Absent => false
-            Present { value: retention } => {
+            Present { value: window } => {
               let dead = ProcessIdentity { boot_id: me.boot_id, pid: 4194303, start_time: "1" as NonEmptyStr }
               let owner = concat(local_store_hold_owner_prefix, process_hold_text(p: dead, pid_namespace: ns)) as DurableHoldOwnerRef
-              let planted = match file_hold_acquire(root: root_path as NonEmptyStr, slot_key: local_store_hold_key(family: native_module_verdict_bundle_artifact_kind), requested_owner: owner, retention: retention) {
+              let planted = match file_hold_acquire_windowed(root: root_path as NonEmptyStr, slot_key: local_store_hold_key(family: native_module_verdict_bundle_artifact_kind), requested_owner: owner, window: window) {
                 FileHoldAcquired { slot_key: _, owner: _, generation: _ } => true
                 FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
                 FileHoldAcquireLost { slot_key: _ } => false

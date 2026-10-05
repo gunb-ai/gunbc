@@ -1,6 +1,5 @@
 module gunbc.managed_host_unit_hold
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.process_hold_identity {
   process_hold_text, process_hold_marker, process_hold_decode, text_at, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
 }
@@ -463,7 +462,7 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
 {
   let report = holder_report(holder: holder, generation: generation)
   let released_by = join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef
-  match file_hold_recovery_assess(root: root, slot_key: key, report: report, released_by: released_by, retention: KeepAllGenerations) {
+  match file_hold_recovery_assess(root: root, slot_key: key, report: report, released_by: released_by) {
     FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: r) }
     FileHoldRecoveryPlanned { plan: p, dead_holder: h, evidence: e } =>
       match file_hold_release_commit(plan: p) {
@@ -525,13 +524,13 @@ fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: Durab
   ]
 {
   let subject = executor.subject
-  let outcome = file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner, retention: KeepAllGenerations)
+  let outcome = file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner)
   match outcome {
     FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
       match unit_hold_recover_dead_holder(root: unit_hold_store_root, key: subject.key, holder: h, generation: g) {
         DeadHolderNotRecovered { reason: r } => UnitHoldRefused { reason: r }
         DeadHolderRecovered { dead_holder: _, evidence: _ } =>
-          unit_hold_minted(subject: subject, outcome: file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner, retention: KeepAllGenerations))
+          unit_hold_minted(subject: subject, outcome: file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner))
       }
     FileHoldAcquired { slot_key: _, owner: _, generation: _ } => unit_hold_minted(subject: subject, outcome: outcome)
     FileHoldAcquireLost { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
@@ -689,12 +688,12 @@ fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: N
   ]
 {
   let key = executor.subject.key
-  match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: key, retention: KeepAllGenerations), run_id: run_id) {
+  match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: key), run_id: run_id) {
     ProbeHoldFreeNoop => ProbeHoldAlreadyFree
     ProbeHoldForeignNoop { holder: h } => ProbeHoldNotOurs { holder: h }
     ProbeHoldUnobservable { cause: c } => ProbeHoldUnreleased { cause: c }
     ProbeHoldReleaseAt { owner: o, generation: g } =>
-      match file_hold_release_assess(root: unit_hold_store_root, slot_key: key, owner: o, acquired_generation: g, released_by: concat("kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef, retention: KeepAllGenerations) {
+      match file_hold_release_assess(root: unit_hold_store_root, slot_key: key, owner: o, acquired_generation: g, released_by: concat("kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
         FileHoldReleaseNotEligible { slot_key: _, refusal: r } => probe_hold_release_refused(refusal: r)
         FileHoldReleasePlanned { plan: p } => probe_hold_release_committed(outcome: file_hold_release_commit(plan: p))
       }
@@ -716,7 +715,7 @@ type UnitHoldReleaseOutcome
   | UnitHoldLeftHeld { cause: NonEmptyStr }
 
 fn unit_hold_release_outcome(proof: UnitHoldProof) -> UnitHoldReleaseOutcome {
-  match file_hold_release_assess(root: unit_hold_store_root, slot_key: proof.subject.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef, retention: KeepAllGenerations) {
+  match file_hold_release_assess(root: unit_hold_store_root, slot_key: proof.subject.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => UnitHoldLeftHeld { cause: "the slot no longer showed this run's hold" as NonEmptyStr }
     FileHoldReleasePlanned { plan: p } =>
       match file_hold_release_commit(plan: p) {
@@ -828,7 +827,7 @@ fn maintenance_hold_take_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
       if reason == "" {
         exit_failure(reason: concat(hold.reason_env as String, " is unset; a maintenance hold names why the unit is held"))
       } else {
-        match file_hold_acquire(root: unit_hold_store_root, slot_key: e.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr), retention: KeepAllGenerations) {
+        match file_hold_acquire(root: unit_hold_store_root, slot_key: e.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
           FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
           FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
             exit_failure(reason: join([label, ": unit already held by ", h as String], ""))
@@ -875,7 +874,7 @@ fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> Pr
   ]
 {
   let label = concat("maintenance hold on ", executor.subject.key as String)
-  match observe_file_hold(root: unit_hold_store_root, key: executor.subject.key, retention: KeepAllGenerations) {
+  match observe_file_hold(root: unit_hold_store_root, key: executor.subject.key) {
     HoldSlotAbsent => exit_failure(reason: concat(label, ": no hold was ever taken"))
     HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: join([label, ": already free (released by ", b as String, ")"], ""))
     HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
@@ -891,7 +890,7 @@ fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> Pr
         UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: r, process: p, pid_namespace: n } } =>
           exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: KvmObserverProbe { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next acquirer recovers it if that run is observed dead"], ""))
         UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
-          match file_hold_release_assess(root: unit_hold_store_root, slot_key: executor.subject.key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef, retention: KeepAllGenerations) {
+          match file_hold_release_assess(root: unit_hold_store_root, slot_key: executor.subject.key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
             FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: concat(label, ": slot moved before release; re-run"))
             FileHoldReleasePlanned { plan: p } =>
               match file_hold_release_commit(plan: p) {

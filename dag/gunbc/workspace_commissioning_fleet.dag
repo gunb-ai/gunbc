@@ -1,6 +1,5 @@
 module gunbc.workspace_commissioning_fleet
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import std.decl_ref { decl_ref }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_plan_credential, workspace_executor_plan_prestate }
 import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
@@ -135,7 +134,7 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
         Absent => match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
           WorkspaceCommissioningStoreObserved { snapshot } => match workspace_executor_journal_observe(slot_key: key) {
             WorkspaceExecutorJournalObserved { snapshot: execution } => {
-              let mutation = observe_file_hold(root: workspace_commissioning_store_location as NonEmptyStr, key: workspace_slot_mutation_key(slot_key: key), retention: KeepAllGenerations)
+              let mutation = observe_file_hold(root: workspace_commissioning_store_location as NonEmptyStr, key: workspace_slot_mutation_key(slot_key: key))
               let readiness = read_cell_readiness_store()
               let committed = (match snapshot.reading {
                 WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningCommitted { provenance: stored } } => stored == provenance

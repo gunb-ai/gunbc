@@ -1,6 +1,5 @@
 module gunbc.fabric_control_plane
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
   WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
@@ -265,7 +264,7 @@ fn reserve_selected_cell_under_exclusion(
     slot_key: slot_key,
     requested_owner: fabric_hold_owner(
       reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
-    ), retention: KeepAllGenerations
+    ),
   ) {
     FileHoldAcquired { slot_key: _, owner: _, generation: g } =>
       CellReserved {
@@ -705,7 +704,7 @@ fn end_cell_hold(
     slot_key: slot_key,
     owner: fabric_hold_owner(reservation: reservation),
     acquired_generation: acquired_generation,
-    released_by: fabric_hold_release_ref(reason: reason), retention: KeepAllGenerations
+    released_by: fabric_hold_release_ref(reason: reason),
   ) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: r } =>
       match r {

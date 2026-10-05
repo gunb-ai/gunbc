@@ -59,7 +59,7 @@ import std.durable_compare_and_set {
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   cas_attempt,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly,
   DerivedPayloadAdmission, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
@@ -278,9 +278,8 @@ fn publish_prepared(preparation: PreparedRepositoryPublication) -> RepositoryPub
       match file_compare_and_set(
         root: preparation.slot.root,
         publication: DefaultAccessCreateOnly,
-        retention: KeepAllGenerations,
         verified: verified,
-      ).outcome {
+      ) {
         CasCommitted { committed: committed } =>
           RepositoryPublished { generation: committed.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
@@ -309,7 +308,7 @@ type RepositorySlotRead
   | RepositorySlotDocumentRefused { generation: CasGeneration, cause: RepositoryDecodeRefusal }
 
 fn read_repository_slot(slot: RepositorySlot) -> RepositorySlotRead {
-  match observe_cas_slot_state(root: slot.root, key: slot.key, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: slot.root, key: slot.key) {
     CasObservedUnreadable { cause: c } => RepositorySlotStoreUnreadable { cause: c }
     CasObservedReadable { readable: readable } =>
       match readable {

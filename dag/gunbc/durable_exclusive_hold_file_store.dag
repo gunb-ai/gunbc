@@ -139,8 +139,24 @@ fn hold_observation_of_cas(observed: CasSlotObservation<NonEmptyStr>) -> Durable
 // CasSlotRetention): a hold whose history is an audit trail keeps every generation; a hold taken and
 // released on every commit of a bounded store keeps a window, or its own bookkeeping would grow
 // without bound. Read, plan and commit carry the same declaration.
-fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> DurableHoldObservation {
-  hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key, retention: retention))
+fn observe_file_hold_retained(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> DurableHoldObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_prepare_retained"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_retained"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_retained"),
+  ]
+{
+  hold_observation_of_cas(observed: observe_cas_slot_state_retained(root: root, key: key, retention: retention))
+}
+
+fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservation {
+  observe_file_hold_retained(root: root, key: key, retention: KeepAllGenerations)
+}
+
+fn observe_file_hold_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> DurableHoldObservation {
+  observe_file_hold_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
 }
 
 // EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
@@ -178,13 +194,19 @@ type FileHoldAcquirePreparation
 
 // The live read and the protocol's judgement of it. Only an absent or a free
 // slot yields a plan; the expectation on the plan is derived from what was read.
-fn file_hold_acquire_prepare(
+fn file_hold_acquire_prepare_retained(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   requested_owner: DurableHoldOwnerRef,
   retention: CasSlotRetention,
-) -> FileHoldAcquirePreparation {
-  match durable_hold_acquire_assess(observed: observe_file_hold(root: root, key: slot_key, retention: retention)) {
+) -> FileHoldAcquirePreparation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_prepare"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_prepare_windowed"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_retained"),
+  ]
+{
+  match durable_hold_acquire_assess(observed: observe_file_hold_retained(root: root, key: slot_key, retention: retention)) {
     HoldAcquireRefused { refusal: r } => FileHoldAcquireNotEligible { slot_key: slot_key, refusal: r }
     HoldAcquireEligible { expected: e } =>
       FileHoldAcquirePlanned {
@@ -198,6 +220,14 @@ fn file_hold_acquire_prepare(
         },
       }
   }
+}
+
+fn file_hold_acquire_prepare(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef) -> FileHoldAcquirePreparation {
+  file_hold_acquire_prepare_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepAllGenerations)
+}
+
+fn file_hold_acquire_prepare_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef, window: CasGenerationWindow) -> FileHoldAcquirePreparation {
+  file_hold_acquire_prepare_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepGenerationWindow { window: window })
 }
 
 // EVERY WAY AN ACQUIRE ENDS, TYPED AND SEPARATE, because the remedies differ.
@@ -224,7 +254,7 @@ fn file_hold_acquire_commit(plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome
   match admit_cas_attempt_for_derived_payload(key: plan.slot_key, expected: plan.expected, proposed: plan.held_payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldKeyNotSlotAddressable { slot_key: plan.slot_key }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v).outcome {
+      match file_compare_and_set_retained(root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v).outcome {
         CasCommitted { committed: c } =>
           FileHoldAcquired { slot_key: plan.slot_key, owner: plan.owner, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldAcquireLost { slot_key: plan.slot_key }
@@ -238,13 +268,18 @@ fn file_hold_acquire_commit(plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome
 // free, derives the expectation from that read, and writes. A caller cannot
 // present a generation, so it cannot overwrite a hold whose generation it
 // happens to know.
-fn file_hold_acquire(
+fn file_hold_acquire_retained(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   requested_owner: DurableHoldOwnerRef,
   retention: CasSlotRetention,
-) -> FileHoldAcquireOutcome {
-  match file_hold_acquire_prepare(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: retention) {
+) -> FileHoldAcquireOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_windowed"),
+  ]
+{
+  match file_hold_acquire_prepare_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: retention) {
     FileHoldAcquirePlanned { plan: p } => file_hold_acquire_commit(plan: p)
     FileHoldAcquireNotEligible { slot_key: _, refusal: r } =>
       match r {
@@ -256,6 +291,14 @@ fn file_hold_acquire(
           FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
       }
   }
+}
+
+fn file_hold_acquire(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef) -> FileHoldAcquireOutcome {
+  file_hold_acquire_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepAllGenerations)
+}
+
+fn file_hold_acquire_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef, window: CasGenerationWindow) -> FileHoldAcquireOutcome {
+  file_hold_acquire_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepGenerationWindow { window: window })
 }
 
 // RELEASE IS ASSESS-THEN-COMMIT, NOT ONE INDIVISIBLE FREE, because a consumer
@@ -283,16 +326,21 @@ type FileHoldReleaseAssessment
 // such a mint would produce a plan that frees a real hold of B's at N, and the
 // plan being sole_constructor would then protect nothing. Every field on the
 // plan is copied from this live read.
-fn file_hold_release_assess(
+fn file_hold_release_assess_retained(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   owner: DurableHoldOwnerRef,
   acquired_generation: CasGeneration,
   released_by: DurableHoldReleaseRef,
   retention: CasSlotRetention,
-) -> FileHoldReleaseAssessment {
+) -> FileHoldReleaseAssessment
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed"),
+  ]
+{
   match durable_hold_release_assess(
-    observed: observe_file_hold(root: root, key: slot_key, retention: retention),
+    observed: observe_file_hold_retained(root: root, key: slot_key, retention: retention),
     owner: owner,
     acquired_generation: acquired_generation,
   ) {
@@ -309,6 +357,14 @@ fn file_hold_release_assess(
         },
       }
   }
+}
+
+fn file_hold_release_assess(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef) -> FileHoldReleaseAssessment {
+  file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepAllGenerations)
+}
+
+fn file_hold_release_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment {
+  file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepGenerationWindow { window: window })
 }
 
 // The commit still tells a lost race from an unavailable store. A release
@@ -330,7 +386,7 @@ fn file_hold_release_commit(plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome
   ) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldReleaseKeyNotSlotAddressable { slot_key: plan.slot_key }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v).outcome {
+      match file_compare_and_set_retained(root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v).outcome {
         CasCommitted { committed: c } => FileHoldReleased { slot_key: plan.slot_key, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldReleaseLost { slot_key: plan.slot_key }
         CasStoreRefused { cause: c } => FileHoldReleaseStoreUnavailable { slot_key: plan.slot_key, cause: c }
@@ -352,7 +408,7 @@ type FileHoldRecoveryAssessment
   = FileHoldRecoveryPlanned { plan: FileHoldReleasePlan, dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
   | FileHoldRecoveryNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldRecoveryRefusal }
 
-fn file_hold_recovery_assess(
+fn file_hold_recovery_assess_retained(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   report: DurableHoldHolderReport,
@@ -360,11 +416,11 @@ fn file_hold_recovery_assess(
   retention: CasSlotRetention,
 ) -> FileHoldRecoveryAssessment
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
   ]
 {
-  match durable_hold_recovery_assess(observed: observe_file_hold(root: root, key: slot_key, retention: retention), report: report) {
+  match durable_hold_recovery_assess(observed: observe_file_hold_retained(root: root, key: slot_key, retention: retention), report: report) {
     HoldRecoveryRefused { refusal: r } => FileHoldRecoveryNotEligible { slot_key: slot_key, refusal: r }
     HoldRecoveryEligible { generation: g, dead_holder: h, evidence: e } =>
       FileHoldRecoveryPlanned {
@@ -380,4 +436,20 @@ fn file_hold_recovery_assess(
         evidence: e,
       }
   }
+}
+
+fn file_hold_recovery_assess(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef) -> FileHoldRecoveryAssessment
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+  ]
+{
+  file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepAllGenerations)
+}
+
+fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldRecoveryAssessment
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
+  ]
+{
+  file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepGenerationWindow { window: window })
 }
