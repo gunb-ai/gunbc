@@ -2398,6 +2398,11 @@ fn cost_debt_admitted_identities(base: &str) -> Result<Vec<String>, String> {
              path={FLOOR_COST_DEBT_ROSTER} -- the base roster did not tokenize, so which rows this \
              change admits cannot be read"
         )),
+        "CostDebtRosterStructureUnrecognizedAtBase" => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterStructureUnrecognizedAtBase base={base} \
+             path={FLOOR_COST_DEBT_ROSTER} -- the base roster carries no member in the supported \
+             chunk structure, so which rows it carried cannot be read; it is never read as empty"
+        )),
         other => Err(format!(
             "cost_debt_admitted_identities_at_base returned unknown variant {other}"
         )),
@@ -2407,13 +2412,22 @@ fn cost_debt_admitted_identities(base: &str) -> Result<Vec<String>, String> {
 /// THE COST-DEBT VERDICT WALL over the claims this run executed for a cost row's verdict.
 /// Mirror of `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing` and
 /// `cost_debt_verdict_refusal_cause`; the match is exhaustive, so a new `ClaimDisposition` arm
-/// must be placed here as it must there. `verdict_required` is every rostered identity this
-/// change admits or restores; an identity with no terminal row was planned and never reached
-/// one, which is a refusal and never a pass.
+/// must be placed here as it must there.
+///
+/// THE OWED POPULATION IS DERIVED FROM THE CHANGE AND THE HEAD ROSTER, NEVER FROM PLANNING: every
+/// head-rostered identity in `changed` (which carries this change's admissions as well as the
+/// witnesses it touched) owes a verdict. Planning may decline such an identity -- a declared
+/// `BinWitnessWet` row takes `DeclinedNoCiWetLane` -- and then no terminal row exists; that is
+/// `CostDebtRowVerdictUnreached`, not a row that owed nothing (review on gunbc#13332).
 pub(crate) fn cost_debt_verdict_refusals(
+    changed: &HashSet<String>,
+    head_roster: &HashSet<String>,
     terminal: &[ClaimTerminalRow],
-    verdict_required: &BTreeSet<String>,
 ) -> Vec<ChangedWitnessBlocker> {
+    let verdict_required: BTreeSet<&String> = changed
+        .iter()
+        .filter(|id| head_roster.contains(*id))
+        .collect();
     let outcomes: HashMap<&str, ClaimDisposition> = terminal
         .iter()
         .map(|row| (row.qualified.as_str(), claim_disposition(row)))
@@ -2442,7 +2456,7 @@ pub(crate) fn cost_debt_verdict_refusals(
                 | None => "CostDebtRowVerdictUnreached",
             };
             Some(ChangedWitnessBlocker {
-                identity: identity.clone(),
+                identity: (*identity).clone(),
                 cause: cause.to_string(),
             })
         })
@@ -11873,19 +11887,15 @@ pub fn run_required_floor(
     // this change admits or restores ran for its verdict; a row over a claim that did not pass is
     // refused here whatever the expected-red roster says, because a withhold suppresses that
     // enrolment and the red would stop being read.
-    let cost_debt_verdict_required: BTreeSet<String> = changed_witness_set
-        .iter()
-        .filter(|identity| {
-            cost_debt_roster.contains(*identity) && cost_debt_verdict_only.contains(*identity)
-        })
-        .cloned()
-        .collect();
     outcome.cost_debt_verdict_refused =
-        cost_debt_verdict_refusals(&terminal_rows, &cost_debt_verdict_required);
+        cost_debt_verdict_refusals(&changed_witness_set, &cost_debt_roster, &terminal_rows);
     eprintln!(
         "[floor-cost-debt-verdict] required={} admitted={} refused={} (authority \
          v2.workflow.floor_cost_debt_verdict)",
-        cost_debt_verdict_required.len(),
+        changed_witness_set
+            .iter()
+            .filter(|id| cost_debt_roster.contains(*id))
+            .count(),
         cost_debt_admitted.len(),
         outcome.cost_debt_verdict_refused.len()
     );
@@ -13462,8 +13472,33 @@ mod changed_witness_projection_tests {
         }
     }
 
-    fn cost_debt_required(ids: &[&str]) -> BTreeSet<String> {
-        ids.iter().map(|id| id.to_string()).collect()
+    fn ids(xs: &[&str]) -> HashSet<String> {
+        xs.iter().map(|x| x.to_string()).collect()
+    }
+
+    /// THE PLAN/TERMINAL COMPOSITION THE FLOOR RUNS: `changed` is the diff's changed set after
+    /// admissions joined it, the roster is the head roster, and the terminal rows are what
+    /// planning let execute. `m.wet` is a roster-only addition of a declared BinWitnessWet identity:
+    /// planning declines it (`DeclinedNoCiWetLane`), so it has no terminal row and must refuse as
+    /// unreached. `m.old` is rostered and untouched, and `m.heavy` is a new row that passed.
+    #[test]
+    fn a_new_cost_row_planning_declined_is_refused_as_unreached() {
+        let refused = cost_debt_verdict_refusals(
+            &ids(&["m.wet", "m.heavy", "m.ordinary"]),
+            &ids(&["m.wet", "m.heavy", "m.old"]),
+            &[
+                terminal("m.heavy", ClaimOutcome::Pass),
+                terminal("m.ordinary", ClaimOutcome::Fail),
+            ],
+        );
+        assert_eq!(
+            refused.len(),
+            1,
+            "{:?}",
+            refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
+        );
+        assert_eq!(refused[0].identity, "m.wet");
+        assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
     }
 
     /// RED: a planted cost row over a semantically failing claim is refused, under the cause
@@ -13471,11 +13506,11 @@ mod changed_witness_projection_tests {
     #[test]
     fn cost_debt_row_over_a_failing_claim_is_refused() {
         let refused = cost_debt_verdict_refusals(
+            &ids(&["m.fails"]),
+            &ids(&["m.fails"]),
             &[terminal("m.fails", ClaimOutcome::Fail)],
-            &cost_debt_required(&["m.fails"]),
         );
         assert_eq!(refused.len(), 1);
-        assert_eq!(refused[0].identity, "m.fails");
         assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
     }
 
@@ -13485,35 +13520,9 @@ mod changed_witness_projection_tests {
     fn cost_debt_row_over_an_enrolled_expected_red_is_refused() {
         let mut row = terminal("m.known", ClaimOutcome::Fail);
         row.expected_red = true;
-        let refused = cost_debt_verdict_refusals(&[row], &cost_debt_required(&["m.known"]));
+        let refused = cost_debt_verdict_refusals(&ids(&["m.known"]), &ids(&["m.known"]), &[row]);
         assert_eq!(refused.len(), 1);
         assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
-    }
-
-    /// RED: a required row with no terminal verdict is unreached, never a pass.
-    #[test]
-    fn cost_debt_row_without_a_verdict_is_refused_as_unreached() {
-        let refused = cost_debt_verdict_refusals(&[], &cost_debt_required(&["m.silent"]));
-        assert_eq!(refused.len(), 1);
-        assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
-    }
-
-    /// POSITIVE CONTROL: a passing row is admitted, and a failing claim this change neither
-    /// admits nor restores is not this wall's to judge.
-    #[test]
-    fn cost_debt_row_over_a_passing_claim_is_admitted() {
-        let refused = cost_debt_verdict_refusals(
-            &[
-                terminal("m.heavy", ClaimOutcome::Pass),
-                terminal("m.other", ClaimOutcome::Fail),
-            ],
-            &cost_debt_required(&["m.heavy"]),
-        );
-        assert!(
-            refused.is_empty(),
-            "{:?}",
-            refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
-        );
     }
 
     /// Positive control: a planned changed identity with a terminal Pass is the ONE green

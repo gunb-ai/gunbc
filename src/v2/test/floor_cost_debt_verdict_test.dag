@@ -2,7 +2,7 @@ module v2.test.floor_cost_debt_verdict
 
 import std.types { List }
 import v2.workflow.floor_cost_debt_verdict {
-  CostDebtAdmissionReading, CostDebtAdmittedIdentities, CostDebtRosterUnreadableAtBase, CostDebtRosterUntokenizableAtBase,
+  CostDebtAdmissionReading, CostDebtAdmittedIdentities, CostDebtRosterUnreadableAtBase, CostDebtRosterUntokenizableAtBase, CostDebtRosterStructureUnrecognizedAtBase,
   cost_debt_admitted_identities,
   cost_debt_verdict_standing, cost_debt_verdict_refuses, cost_debt_verdict_refusal_cause,
 }
@@ -29,12 +29,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // every change that modifies `src/v2/workflow/floor_cost_debt.dag`, which is the population it
 // exists for; the change that lands this file modifies it for that reason.
 
+// The base carries `t.w_old` in a chunk's `head:` position -- the roster's one supported member
+// structure -- and spells `t.w_prose` only in a report string, which is not membership.
 fn base_roster_source() -> String {
-  "module fixture.roster\nfn chunk() -> List<String> {\n  [\"t.w_old\"]\n}\n"
+  "module fixture.roster\nfn chunk() -> List<String> {\n  Cons { head: \"t.w_old\", tail: Empty {} }\n}\nfn report() -> String {\n  \"t.w_prose\"\n}\n"
 }
 
 fn head_roster() -> List<String> {
-  ["t.w_old", "t.w_fails", "t.w_heavy"]
+  ["t.w_old", "t.w_fails", "t.w_heavy", "t.w_prose"]
 }
 
 fn admitted(identity: String) -> Bool {
@@ -42,6 +44,7 @@ fn admitted(identity: String) -> Bool {
     CostDebtAdmittedIdentities { identities: ids } => any(xs: ids, predicate: fn(id) { id == identity })
     CostDebtRosterUnreadableAtBase { stderr: _ } => false
     CostDebtRosterUntokenizableAtBase => false
+    CostDebtRosterStructureUnrecognizedAtBase => false
   }
 }
 
@@ -79,4 +82,20 @@ test fn a_planted_cost_row_over_a_passing_over_budget_claim_is_admitted() -> Boo
 // CONTROL: a row the base already carried is not an admission, so this change does not run it.
 test fn a_row_the_base_already_carried_is_not_admitted() -> Bool {
   !admitted(identity: "t.w_old") && !row_refused(identity: "t.w_old", outcome: Failed {})
+}
+
+// RED: an identity the base spells only in a non-member literal is NOT carried; newly in the head
+// roster, it is selected for its verdict.
+test fn a_head_row_the_base_spells_only_outside_the_roster_structure_is_admitted() -> Bool {
+  admitted(identity: "t.w_prose") && row_refused(identity: "t.w_prose", outcome: Failed {})
+}
+
+// RED: a base with no member in the supported structure refuses, typed, rather than reading empty.
+test fn a_base_roster_in_no_supported_structure_refuses() -> Bool {
+  match cost_debt_admitted_identities(base_source: "module fixture.roster\nfn chunk() -> List<String> {\n  [\"t.w_old\"]\n}\n", head_roster: head_roster()) {
+    CostDebtAdmittedIdentities { identities: _ } => false
+    CostDebtRosterUnreadableAtBase { stderr: _ } => false
+    CostDebtRosterUntokenizableAtBase => false
+    CostDebtRosterStructureUnrecognizedAtBase => true
+  }
 }
