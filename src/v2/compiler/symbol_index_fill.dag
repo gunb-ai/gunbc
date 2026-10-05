@@ -238,6 +238,17 @@ fn symbol_index_fill_containment_edge(
 // is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain
 // reachable. New TypeNode connectives that carry real named bindings must get an explicit arm
 // before relying on this fallback.
+fn symbol_index_fill_containment_children(
+  index: SymbolIndex,
+  path: QualifiedName,
+  node: Node,
+  counts: Map<Symbol, Int>,
+  module_qn: QualifiedName
+) -> SymbolIndex {
+  fold(node.children, init: index, f: fn(acc, edge) {
+    symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
+  })
+}
 
 // AN ARROW'S DOMAIN IS A PARAMETER LIST, NEVER A NAMESPACE SPINE SEGMENT. The Arrow arm indexes the
 // domain's binders under the Arrow's path by label, directly, rather than handing the domain to the
@@ -324,21 +335,19 @@ fn symbol_index_fill_containment_node(
               fold(domain.children, init: index, f: fn(acc, edge) {
                 symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
               })
-            _ =>
-              symbol_index_fill_containment_node(
-                index: index,
-                path: path,
-                node: domain,
-                counts: counts,
-                module_qn: module_qn
-              )
+            TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Cardinality } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
           }
         FirstPositionalAbsent => index
       }
-    _ =>
-      fold(node.children, init: index, f: fn(acc, edge) {
-        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge, counts: counts, module_qn: module_qn)
-      })
+    TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    TypeNode { connective: Cardinality } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
   }
 }
 
@@ -416,7 +425,12 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
               Positional => c
             }
           })
-        _ => counts
+        TypeNode { connective: Atom { identity: _ } } => counts
+        TypeNode { connective: Conj } => counts
+        TypeNode { connective: Arrow } => counts
+        TypeNode { connective: Cardinality } => counts
+        TypeNode { connective: Instantiation } => counts
+        ComputationNode { behavior: _ } => counts
       }
     }
   )
@@ -492,6 +506,94 @@ fn symbol_index_bind_pending_round(
             index: acc.index,
             deferred: list_snoc_item(xs: acc.deferred, item: p)
           }
+      }
+    }
+  )
+}
+
+// THE FIXED POINT IS WHAT MAKES ORDER-INDEPENDENCE TRUE ONE LEVEL UP, and one level up is where the
+// first version of this was wrong (review 69735 on gunbc#12009). Splitting declarations from
+// bindings removes the order dependence only for a row whose target is a DECLARATION -- pass A
+// writes every one of those before any row is tried. It does not remove it for a RE-EXPORT CHAIN,
+// where a row's target is another row's binding: `v2.std.collection` imports `Absent` from
+// `v2.std.optional` and declares it nowhere, and `v2.compiler.normalize` imports `Absent` from
+// `v2.std.collection`, so normalize's row can only bind after collection's has. A single pass over
+// the roots resolves that pair in one root order and silently not in the other, and the loser binds
+// NOTHING -- the quiet failure again, surfacing far away as an unbound reference.
+//
+// Retrying the deferred rows removes it for chains of any depth without needing the dependency
+// order computed: each round binds every row whose target has become available. It TERMINATES
+// because each recursion is entered only when the deferred list got strictly shorter, so the
+// measure decreases and the last round is either empty or made no progress. Rows still deferred at
+// the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
+// reference that wanted them refuses, located, at the reference site -- which is where
+// docs/plans/namespace-resolution-design.md section 13 puts that refusal.
+fn symbol_index_fill_bindings_to_fixed_point(
+  index: SymbolIndex,
+  pending: FreeMonoid<PendingBinding>
+) -> SymbolIndex {
+  let round = symbol_index_bind_pending_round(index: index, pending: pending)
+  if is_empty(xs: round.deferred) {
+    round.index
+  } else if length(xs: round.deferred) == length(xs: pending) {
+    round.index
+  } else {
+    symbol_index_fill_bindings_to_fixed_point(
+      index: round.index,
+      pending: round.deferred
+    )
+  }
+}
+
+fn symbol_index_fill_alias_bindings(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node
+) -> SymbolIndex {
+  symbol_index_fill_bindings_to_fixed_point(
+    index: index,
+    pending: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
+  )
+}
+
+fn symbol_index_fill_unique_variant_aliases(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node
+) -> SymbolIndex {
+  let counts = disj_variant_counts_in_module(root: root)
+  fold(
+    node_subtree_nodes(root: root),
+    init: index,
+    f: fn(acc, n) {
+      match n.kind {
+        TypeNode { connective: Disj } =>
+          fold(n.children, init: acc, f: fn(a2, e) {
+            match e.label {
+              StructuralLabel { label: _ } => a2
+              Authored { name: sym } =>
+                if disj_variant_count_of(counts: counts, sym: sym) == 1 {
+                  symbol_index_mark_declared_payload(
+                    index: symbol_index_insert(
+                      index: a2,
+                      qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                      resolved: e.target
+                    ),
+                    qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                    kind: VariantArmPayload
+                  )
+                } else {
+                  a2
+                }
+              Positional => a2
+            }
+          })
+        TypeNode { connective: Atom { identity: _ } } => acc
+        TypeNode { connective: Conj } => acc
+        TypeNode { connective: Arrow } => acc
+        TypeNode { connective: Cardinality } => acc
+        TypeNode { connective: Instantiation } => acc
+        ComputationNode { behavior: _ } => acc
       }
     }
   )

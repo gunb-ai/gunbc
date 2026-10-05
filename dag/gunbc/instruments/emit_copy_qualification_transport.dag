@@ -177,7 +177,7 @@ fn parse_case_line(line: String) -> CaseLineParse {
 fn parsed_case_lines(stdout: String) -> List<CaseLineParse> {
   split(s: stdout, delimiter: "\n")
     |> map(l => parse_case_line(line: l))
-    |> filter(p => match p { NotACaseLine => false, _ => true })
+    |> filter(p => match p { NotACaseLine => false, CaseResultLine { slug: _, cardinality: _, result: _ } => true, CaseObservationLine { slug: _, cardinality: _, result: _, alloc_ops: _, alloc_bytes: _ } => true, CaseNondeterministicLine { slug: _, cardinality: _ } => true })
 }
 
 fn lines_for_slug(lines: List<CaseLineParse>, slug: String) -> List<CaseLineParse> {
@@ -193,12 +193,15 @@ fn result_at(lines: List<CaseLineParse>, cardinality: Int) -> Int? {
   let hit = lines |> filter(p => match p {
     CaseResultLine { slug: _, cardinality: n, result: _ } => n == cardinality
     CaseObservationLine { slug: _, cardinality: n, result: _, alloc_ops: _, alloc_bytes: _ } => n == cardinality
-    _ => false
+    CaseNondeterministicLine { slug: _, cardinality: _ } => false
+    NotACaseLine => false
   }) |> first
   match hit {
     Present { value: CaseResultLine { slug: _, cardinality: _, result: r } } => Present { value: r }
     Present { value: CaseObservationLine { slug: _, cardinality: _, result: r, alloc_ops: _, alloc_bytes: _ } } => Present { value: r }
-    _ => none
+    Present { value: CaseNondeterministicLine { slug: _, cardinality: _ } } => none
+    Present { value: NotACaseLine } => none
+    Absent => none
   }
 }
 
@@ -206,7 +209,8 @@ fn observation_at(lines: List<CaseLineParse>, cardinality: Int) -> CaseLineParse
   let hit = lines |> filter(p => match p {
     CaseObservationLine { slug: _, cardinality: n, result: _, alloc_ops: _, alloc_bytes: _ } => n == cardinality
     CaseNondeterministicLine { slug: _, cardinality: n } => n == cardinality
-    _ => false
+    CaseResultLine { slug: _, cardinality: _, result: _ } => false
+    NotACaseLine => false
   }) |> first
   match hit {
     Present { value: p } => p
@@ -225,7 +229,9 @@ type ClippyFinding {
 fn json_member(v: JsonValue, key: String) -> JsonValue {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: m } => m
-    _ => JsonNull
+    JsonMemberAbsent => JsonNull
+    JsonMemberDuplicated { count: _ } => JsonNull
+    JsonMemberNotAnObject => JsonNull
   }
 }
 
@@ -287,7 +293,11 @@ fn clippy_findings_from_stdout(stdout: String) -> List<ClippyFinding> {
                     }]
                   Absent => []
                 }
-              _ => []
+              JsonNull => []
+              JsonBool { value: _ } => []
+              JsonNumber { lexeme: _ } => []
+              JsonString { value: _ } => []
+              JsonObject { members: _ } => []
             }
           }
       }
@@ -404,7 +414,11 @@ fn behavior_for_case(
                 match observation_at(lines: n_lines, cardinality: n) {
                   CaseNondeterministicLine { slug: _, cardinality: k } =>
                     BehaviorUnavailable { phase: "native_runner", detail: concat("nondeterministic repeats at cardinality ", to_string(k)) }
-                  _ =>
+                  CaseResultLine { slug: _, cardinality: _, result: _ } =>
+                    BehaviorUnavailable { phase: "native_runner", detail: concat("no native result line for cardinality ", to_string(n)) }
+                  CaseObservationLine { slug: _, cardinality: _, result: _, alloc_ops: _, alloc_bytes: _ } =>
+                    BehaviorUnavailable { phase: "native_runner", detail: concat("no native result line for cardinality ", to_string(n)) }
+                  NotACaseLine =>
                     BehaviorUnavailable { phase: "native_runner", detail: concat("no native result line for cardinality ", to_string(n)) }
                 }
               Present { value: nv } =>
@@ -417,7 +431,8 @@ fn behavior_for_case(
                 }
             }
         }
-      _ => acc
+      BehaviorDisagreed { expected_line: _, observed_line: _ } => acc
+      BehaviorUnavailable { phase: _, detail: _ } => acc
     }
   )
 }
@@ -436,7 +451,9 @@ fn runtime_for_case(native_lines: List<CaseLineParse>, id: EmitCopyQualification
               RuntimeRowsObserved { rows: list_push(rows, AllocObservationRow { cardinality: k, allocation_operations: o, allocated_bytes: allocated_byte_size(bytes: b) }) }
             CaseNondeterministicLine { slug: _, cardinality: k } =>
               RuntimeObservationUnavailable { cause: concat("nondeterministic repeats at cardinality ", to_string(k)) }
-            _ =>
+            CaseResultLine { slug: _, cardinality: _, result: _ } =>
+              RuntimeObservationUnavailable { cause: concat("no native observation line for cardinality ", to_string(n)) }
+            NotACaseLine =>
               RuntimeObservationUnavailable { cause: concat("no native observation line for cardinality ", to_string(n)) }
           }
       }
