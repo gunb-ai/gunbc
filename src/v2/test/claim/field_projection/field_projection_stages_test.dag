@@ -641,7 +641,8 @@ fn fps_root_kind_namespace() -> Namespace {
       declared_type_params: index.declared_type_params,
       declared_resources: index.declared_resources,
       namespace_bodies: index.namespace_bodies,
-      module_roots: index.module_roots
+      module_roots: index.module_roots,
+      variant_alias_carriers: index.variant_alias_carriers
     },
     module_qn: base.module_qn,
     test_code: base.test_code,
