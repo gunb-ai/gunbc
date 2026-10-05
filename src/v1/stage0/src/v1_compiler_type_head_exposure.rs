@@ -50,13 +50,7 @@ pub fn type_declaration_identity_key(decl_file: String, declared_name: String) -
 pub fn type_head_exposure_is_kernel_scalar(exposure: Rc<TypeHeadExposure>) -> bool {
     match (*exposure.clone()).clone() {
         TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(
-                view.as_ref(),
-                TypeHeadView::KernelScalarHead {
-                    type_identity: _,
-                    ..
-                }
-            ) =>
+            if matches!(view.as_ref(), TypeHeadView::KernelScalarHead { .. }) =>
         {
             let TypeHeadView::KernelScalarHead {
                 type_identity: _, ..
@@ -73,13 +67,7 @@ pub fn type_head_exposure_is_kernel_scalar(exposure: Rc<TypeHeadExposure>) -> bo
 pub fn type_head_exposure_is_product(exposure: Rc<TypeHeadExposure>) -> bool {
     match (*exposure.clone()).clone() {
         TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(
-                view.as_ref(),
-                TypeHeadView::ProductHead {
-                    type_identity: _,
-                    ..
-                }
-            ) =>
+            if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
         {
             let TypeHeadView::ProductHead {
                 type_identity: _, ..
@@ -96,13 +84,7 @@ pub fn type_head_exposure_is_product(exposure: Rc<TypeHeadExposure>) -> bool {
 pub fn type_head_exposure_is_coproduct(exposure: Rc<TypeHeadExposure>) -> bool {
     match (*exposure.clone()).clone() {
         TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(
-                view.as_ref(),
-                TypeHeadView::CoproductHead {
-                    type_identity: _,
-                    ..
-                }
-            ) =>
+            if matches!(view.as_ref(), TypeHeadView::CoproductHead { .. }) =>
         {
             let TypeHeadView::CoproductHead {
                 type_identity: _, ..
