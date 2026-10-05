@@ -102,7 +102,7 @@ fn requirements_are_independent_per_occurrence(r: NameRequirements) -> Bool {
 // Different labels, different numbers, same principal. Both sides must actually have GROUNDED --
 // asserted explicitly, because two Absent answers would also compare unequal to nothing and the
 // claim would pass while proving the opposite of what it says.
-test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
+test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool  {
   let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let a6 = alloc(host: spark6, name: "cobalt" as PosixLoginName, uid: 1732)
   let g5 = ground_posix_principal(
@@ -125,7 +125,7 @@ test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
 // CONTROL 2 -- an unallocated principal cannot be grounded. This is the wall replacing the reverted
 // commit, which presented a desired account as a GroundedPosixPrincipal by authoring a name and uid
 // for it. Nothing here can render useradd, User=, a home path, sudoers or authorized_keys.
-test fn witness_unallocated_principal_cannot_ground() -> Bool {
+test fn witness_unallocated_principal_cannot_ground() -> Bool  {
   let o = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: spark_automation_allocation_standing(host: spark5),
@@ -144,7 +144,7 @@ test fn witness_unallocated_principal_cannot_ground() -> Bool {
 // CONTROL 3 -- allocated but never observed is its OWN state, distinct from unallocated. An
 // Optional return would have collapsed these two, and they have different remedies: one needs an
 // allocation decision, the other needs the apply to actually run.
-test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
+test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool  {
   let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   match ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
@@ -163,7 +163,7 @@ test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
 // CONTROL 4 -- an observation that contradicts the allocation is DRIFT carrying both sides, never a
 // silent acceptance and never rounded to absence. Two shapes: the label differs, and the number
 // differs. The uid case matters most, because an inode records the number.
-test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
+test fn witness_observation_contradicting_allocation_is_drift() -> Bool  {
   let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let name_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
@@ -181,7 +181,7 @@ test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
 // CONTROL 5 -- the same label text on two different hosts does NOT merge the accounts. Identity is
 // the occurrence, not the spelling; a name is a host-local handle and nothing more.
 // identical label AND identical number, still two distinct occurrences
-test fn witness_same_label_on_two_hosts_does_not_merge_identities() -> Bool {
+test fn witness_same_label_on_two_hosts_does_not_merge_identities() -> Bool  {
   let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
   a5.local_name == a6.local_name
@@ -192,7 +192,7 @@ test fn witness_same_label_on_two_hosts_does_not_merge_identities() -> Bool {
 // CONTROL 6 -- the service identity holds NO privilege, and the human principal is structurally
 // marked human-only. The second half is the live fusion this split exists to end: automation had
 // been resolving through the human principal.
-test fn witness_service_has_no_privilege_and_human_is_marked_human_only() -> Bool {
+test fn witness_service_has_no_privilege_and_human_is_marked_human_only() -> Bool  {
   let svc = fleet_principal_intent(key: FleetAccountInferenceService)
   let human = fleet_principal_intent(key: FleetAccountOperator)
   let automation = fleet_principal_intent(key: FleetAccountAutomation)
@@ -214,7 +214,7 @@ test fn witness_service_has_no_privilege_and_human_is_marked_human_only() -> Boo
 // CONTROL 7 -- the automation and service labels are required to carry NO domain meaning, while the
 // human label is permitted a mnemonic. Asserted on the requirements rather than on any string, so
 // it stays true whatever words a later allocation picks.
-test fn witness_name_requirements_forbid_domain_meaning_for_machine_principals() -> Bool {
+test fn witness_name_requirements_forbid_domain_meaning_for_machine_principals() -> Bool  {
   requirements_forbid_domain_meaning(r: fleet_principal_intent(key: FleetAccountAutomation).name_requirements)
     && requirements_forbid_domain_meaning(r: fleet_principal_intent(key: FleetAccountInferenceService).name_requirements)
     && requirements_are_independent_per_occurrence(r: fleet_principal_intent(key: FleetAccountAutomation).name_requirements)
@@ -228,7 +228,7 @@ test fn witness_name_requirements_forbid_domain_meaning_for_machine_principals()
 // could render into an effect, a path, or a log without ever acknowledging failure.
 // The legacy four must still ground through that same accessor, so the refusal is proven to be
 // scoped to host-scoped principals rather than a blanket failure of the accessor.
-test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool {
+test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool  {
   let a = match fleet_posix_principal(key: FleetAccountAutomation) {
     PrincipalRequiresHostScope { principal: _ } => true
     PrincipalGrounded { principal: _ } => false
@@ -259,7 +259,7 @@ test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool {
 // CONTROL 9 -- an observation bound to a DIFFERENT host is drift, not a match. Without this the
 // srv5 observation could ground srv6's allocation, which is the copied-receipt failure at account
 // grain.
-test fn witness_observation_from_another_host_is_drift() -> Bool {
+test fn witness_observation_from_another_host_is_drift() -> Bool  {
   let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
   outcome_is_drift(o: ground_posix_principal(
@@ -270,7 +270,7 @@ test fn witness_observation_from_another_host_is_drift() -> Bool {
 }
 
 // CONTROL 10 -- the service realization is UNSELECTED, not silently a persistent account.
-test fn witness_service_realization_is_unselected() -> Bool {
+test fn witness_service_realization_is_unselected() -> Bool  {
   match spark_inference_realization_standing(host: spark5) {
     ServicePrincipalRealizationUnselected => true
     DynamicServicePrincipal { supervisor: _ } => false
@@ -303,7 +303,7 @@ fn access_obs(a: PosixAccountAllocation, pw_refused: Bool, priv_ok: Bool) -> Pos
 // fold could not express: it copied DESIRED sudo grants into a grounded result, so an account whose
 // sudoers was never installed still read as fully subsumed. Here the account grounds and the access
 // outcome still refuses, twice, for two different reasons.
-test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool {
+test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool  {
   let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let standing = AccountAllocated { allocation: a }
   let intent = fleet_principal_intent(key: FleetAccountAutomation)
@@ -343,7 +343,7 @@ test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool {
 // CONTROL 12 -- an unallocated occurrence cannot reach access grounding at all, whatever the access
 // observation claims. The account layer refuses first, so a fabricated key population or a claimed
 // privileged probe cannot manufacture subsumption for an account nobody allocated.
-test fn witness_unallocated_cannot_reach_access_grounding() -> Bool {
+test fn witness_unallocated_cannot_reach_access_grounding() -> Bool  {
   let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   match ground_host_access(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
@@ -362,7 +362,7 @@ test fn witness_unallocated_cannot_reach_access_grounding() -> Bool {
 // CONTROL 11 -- the PUBLICATION helper's realization IS selected, persistent, and unallocated
 // until the host's uid is observed; the Spark inference principal above stays Unselected, so the
 // two rows together pin that selection is per principal and never a default.
-test fn witness_publication_helper_realization_is_a_persistent_account() -> Bool {
+test fn witness_publication_helper_realization_is_a_persistent_account() -> Bool  {
   match publication_helper_realization_standing(host: spark5) {
     PersistentServiceAccount { allocation: AccountUnallocated { occurrence: o } } =>
       match o.principal {

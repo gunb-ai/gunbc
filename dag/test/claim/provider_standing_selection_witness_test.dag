@@ -18,7 +18,7 @@ import gunbc.provider_standing {
   fixture_standing_bundle_claude_profile_present_token_absent,
 }
 
-test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
+test fn model_rejection_does_not_erase_account_eligibility() -> Bool  {
   limit_observations_are_selection_eligible(
     observations: [
       LimitRejected {
@@ -39,7 +39,7 @@ test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
   )
 }
 
-test fn model_rejection_blocks_dispatch_under_unspecified_draw() -> Bool {
+test fn model_rejection_blocks_dispatch_under_unspecified_draw() -> Bool  {
   !limit_observation_blocks_dispatch(
     observation: LimitRejected {
       subject: ProviderModelLimit {
@@ -53,28 +53,28 @@ test fn model_rejection_blocks_dispatch_under_unspecified_draw() -> Bool {
   )
 }
 
-test fn authenticated_available_bundle_is_selection_eligible() -> Bool {
+test fn authenticated_available_bundle_is_selection_eligible() -> Bool  {
   provider_standing_bundle_is_selection_eligible(
     bundle: fixture_standing_bundle_authenticated_available(),
     draw: LimitDispatchDrawAutomatic,
   )
 }
 
-test fn weekly_cap_blocks_automatic_draw() -> Bool {
+test fn weekly_cap_blocks_automatic_draw() -> Bool  {
   !provider_standing_bundle_is_selection_eligible(
     bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
     draw: LimitDispatchDrawAutomatic,
   )
 }
 
-test fn cursor_capability_gap_does_not_block_selection() -> Bool {
+test fn cursor_capability_gap_does_not_block_selection() -> Bool  {
   provider_standing_bundle_is_selection_eligible(
     bundle: fixture_standing_bundle_cursor_capability_gap(),
     draw: LimitDispatchDrawAutomatic,
   )
 }
 
-test fn claude_profile_present_token_absent_is_ineligible() -> Bool {
+test fn claude_profile_present_token_absent_is_ineligible() -> Bool  {
   !provider_standing_bundle_is_selection_eligible(
     bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
     draw: LimitDispatchDrawAutomatic,

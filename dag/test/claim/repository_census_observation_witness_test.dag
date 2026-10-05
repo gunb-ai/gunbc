@@ -112,7 +112,7 @@ fn census_witness_baseline() -> RepositoryCensusObservation {
   )
 }
 
-test fn witness_observation_identity_does_not_depend_on_who_reads_it() -> Bool {
+test fn witness_observation_identity_does_not_depend_on_who_reads_it() -> Bool  {
   let observation = census_witness_baseline()
   let first_read = repository_census_observation_identity(observation: observation)
   let second_read = repository_census_observation_identity(observation: observation)
@@ -123,7 +123,7 @@ test fn witness_observation_identity_does_not_depend_on_who_reads_it() -> Bool {
     )
 }
 
-test fn witness_rows_identity_is_derived_from_the_rows_the_observation_stores() -> Bool {
+test fn witness_rows_identity_is_derived_from_the_rows_the_observation_stores() -> Bool  {
   let observation = census_witness_baseline()
   let reclassified = repository_census_observation(
     population: census_witness_repo_wide_population,
@@ -145,7 +145,7 @@ test fn witness_rows_identity_is_derived_from_the_rows_the_observation_stores() 
     )
 }
 
-test fn witness_reclassifying_a_row_fact_changes_the_observation_identity() -> Bool {
+test fn witness_reclassifying_a_row_fact_changes_the_observation_identity() -> Bool  {
   let observed = census_witness_baseline()
   let reclassified = repository_census_observation(
     population: census_witness_repo_wide_population,
@@ -162,7 +162,7 @@ test fn witness_reclassifying_a_row_fact_changes_the_observation_identity() -> B
     && !repository_census_observation_identity_eq(left: observed, right: reclassified)
 }
 
-test fn witness_changing_a_row_subject_changes_the_observation_identity() -> Bool {
+test fn witness_changing_a_row_subject_changes_the_observation_identity() -> Bool  {
   let observed = census_witness_baseline()
   let moved = repository_census_observation(
     population: census_witness_repo_wide_population,
@@ -176,7 +176,7 @@ test fn witness_changing_a_row_subject_changes_the_observation_identity() -> Boo
   !repository_census_observation_identity_eq(left: observed, right: moved)
 }
 
-test fn witness_a_row_stamps_its_identity_from_both_subject_and_fact() -> Bool {
+test fn witness_a_row_stamps_its_identity_from_both_subject_and_fact() -> Bool  {
   let base = census_witness_row(subject: "s", fact_seed: "v")
   let other_fact = census_witness_row(subject: "s", fact_seed: "w")
   let other_subject = census_witness_row(subject: "t", fact_seed: "v")
@@ -186,7 +186,7 @@ test fn witness_a_row_stamps_its_identity_from_both_subject_and_fact() -> Bool {
     && !content_hash_eq_structural(left: base.identity, right: other_subject.identity)
 }
 
-test fn witness_row_order_is_part_of_the_observation_address() -> Bool {
+test fn witness_row_order_is_part_of_the_observation_address() -> Bool  {
   let forward = census_witness_baseline()
   let reversed = repository_census_observation(
     population: census_witness_repo_wide_population,
@@ -203,7 +203,7 @@ test fn witness_row_order_is_part_of_the_observation_address() -> Bool {
     && !repository_census_observation_identity_eq(left: forward, right: reversed)
 }
 
-test fn witness_one_joined_root_is_not_the_same_population_as_two_roots() -> Bool {
+test fn witness_one_joined_root_is_not_the_same_population_as_two_roots() -> Bool  {
   let two_roots = repository_census_population_identity(
     population: census_witness_two_roots_population,
   )
@@ -221,7 +221,7 @@ test fn witness_one_joined_root_is_not_the_same_population_as_two_roots() -> Boo
     && !content_hash_eq_structural(left: two_roots, right: one_joined)
 }
 
-test fn witness_a_dag_only_census_is_not_the_same_observation_as_a_repo_wide_one() -> Bool {
+test fn witness_a_dag_only_census_is_not_the_same_observation_as_a_repo_wide_one() -> Bool  {
   let repo_wide = census_witness_baseline()
   let dag_only = repository_census_observation(
     population: census_witness_dag_only_population,
@@ -235,7 +235,7 @@ test fn witness_a_dag_only_census_is_not_the_same_observation_as_a_repo_wide_one
     && !repository_census_observation_identity_eq(left: repo_wide, right: dag_only)
 }
 
-test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() -> Bool {
+test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() -> Bool  {
   let pinned = census_witness_baseline()
   let later = repository_census_observation(
     population: census_witness_repo_wide_population,
@@ -246,7 +246,7 @@ test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() 
   !repository_census_observation_identity_eq(left: pinned, right: later)
 }
 
-test fn witness_every_method_run_field_reaches_the_identity() -> Bool {
+test fn witness_every_method_run_field_reaches_the_identity() -> Bool  {
   let baseline = census_method_run_identity(method: census_witness_method())
   let other_classifier = census_method_run_identity(
     method: CensusMethodRunIdentity {
@@ -274,7 +274,7 @@ test fn witness_every_method_run_field_reaches_the_identity() -> Bool {
     && !content_hash_eq_structural(left: baseline, right: other_invocation)
 }
 
-test fn witness_two_runs_of_one_classifier_at_one_revision_stay_distinct_observations() -> Bool {
+test fn witness_two_runs_of_one_classifier_at_one_revision_stay_distinct_observations() -> Bool  {
   let first_run = census_witness_baseline()
   let second_run = repository_census_observation(
     population: census_witness_repo_wide_population,
@@ -289,7 +289,7 @@ test fn witness_two_runs_of_one_classifier_at_one_revision_stay_distinct_observa
   !repository_census_observation_identity_eq(left: first_run, right: second_run)
 }
 
-test fn witness_every_population_field_reaches_the_identity() -> Bool {
+test fn witness_every_population_field_reaches_the_identity() -> Bool  {
   let baseline = repository_census_population_identity(
     population: census_witness_repo_wide_population,
   )
@@ -327,7 +327,7 @@ test fn witness_every_population_field_reaches_the_identity() -> Bool {
     && !content_hash_eq_structural(left: baseline, right: with_exclusion)
 }
 
-test fn witness_a_declaration_field_selector_reaches_the_identity() -> Bool {
+test fn witness_a_declaration_field_selector_reaches_the_identity() -> Bool  {
   let whole = census_declaration_ref_identity(
     reference: census_witness_decl(name: "census_witness_classifier"),
   )
@@ -341,7 +341,7 @@ test fn witness_a_declaration_field_selector_reaches_the_identity() -> Bool {
   !content_hash_eq_structural(left: whole, right: named)
 }
 
-test fn witness_a_git_revision_and_a_content_fingerprint_are_not_interchangeable() -> Bool {
+test fn witness_a_git_revision_and_a_content_fingerprint_are_not_interchangeable() -> Bool  {
   let git = census_revision_identity(revision: census_witness_revision)
   let fingerprint = census_revision_identity(
     revision: ContentFingerprint { digest: census_witness_digest(seed: "subject-material") },
@@ -349,7 +349,7 @@ test fn witness_a_git_revision_and_a_content_fingerprint_are_not_interchangeable
   !content_hash_eq_structural(left: git, right: fingerprint)
 }
 
-test fn witness_row_count_is_a_projection_of_rows() -> Bool {
+test fn witness_row_count_is_a_projection_of_rows() -> Bool  {
   let empty = repository_census_observation(
     population: census_witness_repo_wide_population,
     observed_at_revision: census_witness_revision,
@@ -363,7 +363,7 @@ test fn witness_row_count_is_a_projection_of_rows() -> Bool {
     )
 }
 
-test fn witness_source_roots_are_present_and_nonempty_by_construction() -> Bool {
+test fn witness_source_roots_are_present_and_nonempty_by_construction() -> Bool  {
   repository_census_source_root_count(population: census_witness_repo_wide_population) == 2
     && repository_census_source_root_count(population: census_witness_dag_only_population) == 1
     && count(repository_census_source_roots(population: census_witness_dag_only_population)) == 1

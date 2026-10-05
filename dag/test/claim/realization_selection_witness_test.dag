@@ -280,7 +280,7 @@ fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints:
   }
 }
 
-test fn a_hard_constraint_failure_excludes_before_unread_axes_are_requested() -> Bool {
+test fn a_hard_constraint_failure_excludes_before_unread_axes_are_requested() -> Bool  {
   let forbidden = entry_over_cap_missing_tput(id: id_a, label: "over cap missing tput" as NonEmptyStr, power: 200)
   let feasible = entry(id: id_b, label: "under cap" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
@@ -298,7 +298,7 @@ test fn a_hard_constraint_failure_excludes_before_unread_axes_are_requested() ->
   }
 }
 
-test fn a_sole_hard_constraint_failure_is_no_feasible_not_needs_evidence() -> Bool {
+test fn a_sole_hard_constraint_failure_is_no_feasible_not_needs_evidence() -> Bool  {
   let forbidden = entry_over_cap_missing_tput(id: id_a, label: "over cap missing tput" as NonEmptyStr, power: 200)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -318,7 +318,7 @@ test fn a_sole_hard_constraint_failure_is_no_feasible_not_needs_evidence() -> Bo
   }
 }
 
-test fn hard_power_constraint_excludes_before_pareto() -> Bool {
+test fn hard_power_constraint_excludes_before_pareto() -> Bool  {
   let attractive = entry(id: id_a, label: "high tput over cap" as NonEmptyStr, tput: 90, power: 200)
   let feasible = entry(id: id_b, label: "lower tput under cap" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
@@ -336,7 +336,7 @@ test fn hard_power_constraint_excludes_before_pareto() -> Bool {
   }
 }
 
-test fn missing_power_reading_needs_evidence_never_zero_watts() -> Bool {
+test fn missing_power_reading_needs_evidence_never_zero_watts() -> Bool  {
   let incomplete = entry_missing_power(id: id_a, label: "no power" as NonEmptyStr, tput: 90)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -366,7 +366,7 @@ test fn missing_power_reading_needs_evidence_never_zero_watts() -> Bool {
   }
 }
 
-test fn two_survivors_without_policy_need_policy_not_first_element() -> Bool {
+test fn two_survivors_without_policy_need_policy_not_first_element() -> Bool  {
   let left = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
   let right = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
   match select_realization(
@@ -388,7 +388,7 @@ test fn two_survivors_without_policy_need_policy_not_first_element() -> Bool {
   }
 }
 
-test fn reversing_candidate_and_axis_order_preserves_answer() -> Bool {
+test fn reversing_candidate_and_axis_order_preserves_answer() -> Bool  {
   let a = entry(id: id_a, label: "a" as NonEmptyStr, tput: 10, power: 90)
   let b = entry(id: id_b, label: "b" as NonEmptyStr, tput: 50, power: 50)
   let fwd = select_realization(
@@ -421,7 +421,7 @@ test fn reversing_candidate_and_axis_order_preserves_answer() -> Bool {
   }
 }
 
-test fn policy_cannot_choose_dominated_infeasible_or_absent() -> Bool {
+test fn policy_cannot_choose_dominated_infeasible_or_absent() -> Bool  {
   let attractive = entry(id: id_a, label: "over cap" as NonEmptyStr, tput: 90, power: 200)
   let feasible = entry(id: id_b, label: "under cap" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
@@ -439,7 +439,7 @@ test fn policy_cannot_choose_dominated_infeasible_or_absent() -> Bool {
   }
 }
 
-test fn changing_only_policy_may_choose_a_different_survivor() -> Bool {
+test fn changing_only_policy_may_choose_a_different_survivor() -> Bool  {
   let left = entry(id: id_a, label: "tput" as NonEmptyStr, tput: 80, power: 80)
   let right = entry(id: id_b, label: "power" as NonEmptyStr, tput: 20, power: 20)
   let field = [left, right]
@@ -454,7 +454,7 @@ test fn changing_only_policy_may_choose_a_different_survivor() -> Bool {
   }
 }
 
-test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool {
+test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool  {
   let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -484,7 +484,7 @@ test fn changing_evidence_or_field_identity_invalidates_receipt() -> Bool {
   }
 }
 
-test fn different_funded_axes_are_a_different_receipt() -> Bool {
+test fn different_funded_axes_are_a_different_receipt() -> Bool  {
   let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -514,7 +514,7 @@ test fn different_funded_axes_are_a_different_receipt() -> Bool {
   }
 }
 
-test fn selection_refuses_before_any_convergence() -> Bool {
+test fn selection_refuses_before_any_convergence() -> Bool  {
   match fleet_operating_point_selection() {
     RealizationSelectionRefused { defects: ds } => (ds |> count) > 0
     SelectedWithin { candidate: _, receipt: _ } => false
@@ -545,7 +545,7 @@ fn selection_assess(goal: DeclarationRef, observed: DeclarationRef) -> GoalAsses
   assess_by_deviations(evidence: observed, deviations: [])
 }
 
-test fn selected_within_feeds_the_goal_assessment_root() -> Bool {
+test fn selected_within_feeds_the_goal_assessment_root() -> Bool  {
   let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -572,7 +572,7 @@ test fn selected_within_feeds_the_goal_assessment_root() -> Bool {
   }
 }
 
-test fn incomplete_subject_cannot_mint_selected_within() -> Bool {
+test fn incomplete_subject_cannot_mint_selected_within() -> Bool  {
   let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
     assessment: unestablished_selection_assessment(),
@@ -590,7 +590,7 @@ test fn incomplete_subject_cannot_mint_selected_within() -> Bool {
   }
 }
 
-test fn generated_section_3d_and_reviewer_execute() -> Bool {
+test fn generated_section_3d_and_reviewer_execute() -> Bool  {
   let md = expected_design_md()
   string_contains(s: md, pattern: "Selection precedes convergence")
     && string_contains(s: md, pattern: "std.decision")
@@ -601,7 +601,7 @@ test fn generated_section_3d_and_reviewer_execute() -> Bool {
     }
 }
 
-test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
+test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool  {
   match select_realization(
     assessment: closed_selection_assessment(),
     candidate_field_identity: fleet_operating_point_field,
@@ -630,7 +630,7 @@ test fn fleet_operating_point_names_throughput_and_ac_power_gaps() -> Bool {
   }
 }
 
-test fn fleet_operating_point_refuses_under_modeled_subject() -> Bool {
+test fn fleet_operating_point_refuses_under_modeled_subject() -> Bool  {
   match fleet_operating_point_selection() {
     RealizationSelectionRefused { defects: ds } =>
       any(ds, d => string_contains(s: d as String, pattern: "subject completeness join is not closed"))
@@ -638,7 +638,7 @@ test fn fleet_operating_point_refuses_under_modeled_subject() -> Bool {
   }
 }
 
-test fn deferred_subject_merges_into_field_evidence_needs() -> Bool {
+test fn deferred_subject_merges_into_field_evidence_needs() -> Bool  {
   let incomplete = entry_missing_power(id: id_a, label: "no power" as NonEmptyStr, tput: 90)
   match select_realization(
     assessment: unestablished_selection_assessment(),
@@ -667,7 +667,7 @@ test fn deferred_subject_merges_into_field_evidence_needs() -> Bool {
   }
 }
 
-test fn unfunded_constraint_axis_refuses_not_needs_evidence() -> Bool {
+test fn unfunded_constraint_axis_refuses_not_needs_evidence() -> Bool  {
   let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -686,7 +686,7 @@ test fn unfunded_constraint_axis_refuses_not_needs_evidence() -> Bool {
   }
 }
 
-test fn undecided_constraint_does_not_gap_decided_constraints() -> Bool {
+test fn undecided_constraint_does_not_gap_decided_constraints() -> Bool  {
   let mixed = ParetoEntry {
     identity: id_b,
     display_label: "sharp tput, wide power" as NonEmptyStr,
@@ -724,7 +724,7 @@ test fn undecided_constraint_does_not_gap_decided_constraints() -> Bool {
   }
 }
 
-test fn two_unevidenced_candidates_accumulate_every_gap() -> Bool {
+test fn two_unevidenced_candidates_accumulate_every_gap() -> Bool  {
   match select_realization(
     assessment: closed_selection_assessment(),
     candidate_field_identity: id_field,
@@ -782,7 +782,7 @@ fn refusal_scope_over(field_identity: DeclarationRef) -> DecisionScope? {
   }
 }
 
-test fn two_refusals_over_different_fields_carry_distinguishable_scopes() -> Bool {
+test fn two_refusals_over_different_fields_carry_distinguishable_scopes() -> Bool  {
   match refusal_scope_over(field_identity: id_field) {
     Absent => false
     Present { value: s1 } =>

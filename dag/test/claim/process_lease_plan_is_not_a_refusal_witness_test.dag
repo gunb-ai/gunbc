@@ -62,10 +62,10 @@ fn target_key_count_of(source: String) -> Int {
   }
 }
 
-test fn w_a_refusal_cannot_be_written_as_a_lease_plan() -> Bool {
+test fn w_a_refusal_cannot_be_written_as_a_lease_plan() -> Bool  {
   target_key_count_of(source: refusal_as_a_plan_source) == 1
 }
 
-test fn w_a_real_plan_on_the_same_arm_is_admitted() -> Bool {
+test fn w_a_real_plan_on_the_same_arm_is_admitted() -> Bool  {
   target_key_count_of(source: start_as_a_plan_source) == 0
 }

@@ -49,28 +49,28 @@ data local_argument_green_source: String = "module probe_product_argument_green\
 data imported_argument_red_source: String = "module v2.probe_product_argument_imported_red\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn needs(tree: InferredTree) -> Int { 0 }\nfn b(t: InferredFacts) -> Int { needs(tree: t) }\n"
 data imported_argument_green_source: String = "module v2.probe_product_argument_imported_green\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn needs(tree: InferredTree) -> Int { 0 }\nfn b(t: InferredTree) -> Int { needs(tree: t) }\n"
 
-test fn product_return_mismatch_refuses_as_type_mismatch() -> Bool {
+test fn product_return_mismatch_refuses_as_type_mismatch() -> Bool  {
   blocking_of_class(source: local_return_red_source, wanted: "TypeMismatch") == 1
     && blocking_of_class(source: local_return_red_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
-test fn product_return_green_is_clean() -> Bool {
+test fn product_return_green_is_clean() -> Bool  {
   blocking_total(source: local_return_green_source) == 0
 }
 
-test fn product_argument_mismatch_refuses_as_declared_type_not_inhabited() -> Bool {
+test fn product_argument_mismatch_refuses_as_declared_type_not_inhabited() -> Bool  {
   blocking_of_class(source: local_argument_red_source, wanted: "DeclaredTypeNotInhabited") == 1
     && blocking_of_class(source: local_argument_red_source, wanted: "TypeMismatch") == 0
 }
 
-test fn product_argument_green_is_clean() -> Bool {
+test fn product_argument_green_is_clean() -> Bool  {
   blocking_total(source: local_argument_green_source) == 0
 }
 
-test fn imported_product_argument_mismatch_refuses_as_declared_type_not_inhabited() -> Bool {
+test fn imported_product_argument_mismatch_refuses_as_declared_type_not_inhabited() -> Bool  {
   blocking_of_class(source: imported_argument_red_source, wanted: "DeclaredTypeNotInhabited") == 1
 }
 
-test fn imported_product_argument_green_is_clean() -> Bool {
+test fn imported_product_argument_green_is_clean() -> Bool  {
   blocking_total(source: imported_argument_green_source) == 0
 }

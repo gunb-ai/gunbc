@@ -42,7 +42,7 @@ fn fail_probe(detail: String) -> DashboardExecResult {
   DashboardExecResult { success: false, stdout: "not empty", stderr: detail }
 }
 
-test fn witness_red_control_state_root_absent_is_pending_not_refused() -> Bool {
+test fn witness_red_control_state_root_absent_is_pending_not_refused() -> Bool  {
   match classify_dashboard_provider_readiness(
     executable: Present { value: "/usr/bin/codex" as FilePath },
     executable_refusal: "",
@@ -60,7 +60,7 @@ test fn witness_red_control_state_root_absent_is_pending_not_refused() -> Bool {
   }
 }
 
-test fn witness_red_control_transport_refusal_is_refused_not_pending() -> Bool {
+test fn witness_red_control_transport_refusal_is_refused_not_pending() -> Bool  {
   match classify_dashboard_provider_readiness(
     executable: Present { value: "/usr/bin/codex" as FilePath },
     executable_refusal: "",
@@ -79,7 +79,7 @@ test fn witness_red_control_transport_refusal_is_refused_not_pending() -> Bool {
   }
 }
 
-test fn witness_red_control_unauthenticated_is_pending_not_ready() -> Bool {
+test fn witness_red_control_unauthenticated_is_pending_not_ready() -> Bool  {
   match classify_dashboard_provider_readiness(
     executable: Present { value: "/usr/bin/codex" as FilePath },
     executable_refusal: "",
@@ -97,7 +97,7 @@ test fn witness_red_control_unauthenticated_is_pending_not_ready() -> Bool {
   }
 }
 
-test fn witness_provider_ready_when_runtime_and_auth_succeed() -> Bool {
+test fn witness_provider_ready_when_runtime_and_auth_succeed() -> Bool  {
   match classify_dashboard_provider_readiness(
     executable: Present { value: "/usr/bin/codex" as FilePath },
     executable_refusal: "",
@@ -114,7 +114,7 @@ test fn witness_provider_ready_when_runtime_and_auth_succeed() -> Bool {
   }
 }
 
-test fn witness_red_control_missing_executable_is_refused() -> Bool {
+test fn witness_red_control_missing_executable_is_refused() -> Bool  {
   match classify_dashboard_provider_readiness(
     executable: Absent,
     executable_refusal: "no placement",
@@ -132,7 +132,7 @@ test fn witness_red_control_missing_executable_is_refused() -> Bool {
   }
 }
 
-test fn witness_red_control_runtime_unavailable_is_refused() -> Bool {
+test fn witness_red_control_runtime_unavailable_is_refused() -> Bool  {
   match classify_dashboard_provider_readiness(
     executable: Present { value: "/usr/bin/codex" as FilePath },
     executable_refusal: "",
@@ -161,7 +161,7 @@ fn witness_unplaced_executable_layout() -> GunbcHostLayout {
   }
 }
 
-test fn witness_red_control_observe_unplaced_executable_runs_the_producer() -> Bool {
+test fn witness_red_control_observe_unplaced_executable_runs_the_producer() -> Bool  {
   match observe_dashboard_provider_readiness(
     instance: isolated_dashboard_instance(
       deployment: deployment_id(name: "witness-unplaced-provider" as NonEmptyStr),

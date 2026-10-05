@@ -6,19 +6,19 @@ fn milli(count: std.nat.Nat) -> Measure<Time, Milli, std.nat.Nat> {
   time_measure(count: count)
 }
 
-test fn witness_milli_seq_and_par() -> Bool {
+test fn witness_milli_seq_and_par() -> Bool  {
   let a = milli(count: 30)
   let b = milli(count: 12)
   (measure_count(m: time_measure_seq(a: a, b: b)) == 42)
     && (measure_count(m: time_measure_par(a: a, b: b)) == 30)
 }
 
-test fn witness_milli_critical_path() -> Bool {
+test fn witness_milli_critical_path() -> Bool  {
   let batches = [[milli(count: 10), milli(count: 40)], [milli(count: 5)]]
   measure_count(m: schedule_critical_path_time(batch_times: batches)) == 45
 }
 
-test fn witness_milli_cost_account() -> Bool {
+test fn witness_milli_cost_account() -> Bool  {
   let batches = [[milli(count: 7)], [milli(count: 8)]]
   let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
   match cost_account_time_count(account: account) {
@@ -27,7 +27,7 @@ test fn witness_milli_cost_account() -> Bool {
   }
 }
 
-test fn witness_milli_rollup_discriminates() -> Bool {
+test fn witness_milli_rollup_discriminates() -> Bool  {
   witness_measured_rollup_differs_from_predicted_zero(wall_time: milli(count: 99))
 }
 

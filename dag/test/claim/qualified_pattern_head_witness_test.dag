@@ -46,10 +46,10 @@ fn qualpat_probe_has_no_blocking_diagnostic(source: String) -> Bool {
   }
 }
 
-test fn qualified_pattern_head_binds_the_instantiation() -> Bool {
+test fn qualified_pattern_head_binds_the_instantiation() -> Bool  {
   qualpat_probe_has_no_blocking_diagnostic(source: qualpat_qualified_probe_source)
 }
 
-test fn bare_pattern_head_is_unchanged() -> Bool {
+test fn bare_pattern_head_is_unchanged() -> Bool  {
   qualpat_probe_has_no_blocking_diagnostic(source: qualpat_bare_probe_source)
 }

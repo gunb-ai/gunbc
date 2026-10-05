@@ -113,7 +113,7 @@ fn expected_cut_line(op: CouponOperation, thickness: Micrometer) -> String {
 // carrying its own three numbers, and the datum is checked as a distinct subject rather than folded
 // into the ladder population. An emitter that dropped one hole, emitted one twice, or replaced the
 // twelve cuts with a loop over a generated list fails here.
-test fn w_every_modeled_feature_appears_as_its_own_cut_line() -> Bool {
+test fn w_every_modeled_feature_appears_as_its_own_cut_line() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } =>
       match emitted_source(l: l) {
@@ -138,7 +138,7 @@ test fn w_every_modeled_feature_appears_as_its_own_cut_line() -> Bool {
 // centre from the plate CORNER. An emitter that omitted the argument would produce a program whose
 // twelve holes are all displaced by half a plate -- valid Python, valid geometry, wrong part, and
 // no other witness here would see it because every cut line would still be exactly right.
-test fn w_the_plate_is_emitted_with_centering_off_on_all_three_axes() -> Bool {
+test fn w_the_plate_is_emitted_with_centering_off_on_all_three_axes() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } =>
       match emitted_source(l: l) {
@@ -195,7 +195,7 @@ fn expected_program(g: HoleDiameterCouponGeometry) -> String {
   )
 }
 
-test fn w_the_program_is_exactly_what_the_model_accounts_for() -> Bool {
+test fn w_the_program_is_exactly_what_the_model_accounts_for() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } =>
       match emitted_source(l: l) {
@@ -220,7 +220,7 @@ test fn w_the_program_is_exactly_what_the_model_accounts_for() -> Bool {
 // against the ladder would leave both walls permanently green and unexercised, and a future rung of
 // 3.05 mm would break them silently. The RED here is authorable because the argument is a fixture,
 // not a corpus value.
-test fn w_the_millimetre_rendering_loses_nothing_on_odd_micrometres() -> Bool {
+test fn w_the_millimetre_rendering_loses_nothing_on_odd_micrometres() -> Bool  {
   wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 3100))) == "3.1"
     && wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 3000))) == "3"
     && wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 102000))) == "102"
@@ -249,7 +249,7 @@ test fn w_the_millimetre_rendering_loses_nothing_on_odd_micrometres() -> Bool {
 // Concretely: every hole's diameter and centre wire is asserted to appear exactly as the model
 // states it, with no term involving overtravel. If overtravel were added to a radius, the emitted
 // circle() argument would be 1.5 plus something and this would go red.
-test fn w_overtravel_moves_no_measured_dimension() -> Bool {
+test fn w_overtravel_moves_no_measured_dimension() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } =>
       match emitted_source(l: l) {

@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data budget_100: HostBudget = BudgetReadable { bytes: byte_size(count: 100) }
 
-test fn realize_packs_within_budget_holds() -> Bool {
+test fn realize_packs_within_budget_holds() -> Bool  {
   let bound = BoundDerived { bytes: byte_size(count: 25) }
   let v = realize_pack_width(bound: bound, budget: budget_100, independence_width: 16)
   let width = realize_verdict_width(v: v)
@@ -33,27 +33,27 @@ test fn realize_packs_within_budget_holds() -> Bool {
     && match v { PackedWidth { width: _ } => true  MaturationReserve { width: _ } => false  BudgetRefused => false }
 }
 
-test fn realize_capped_by_independence_holds() -> Bool {
+test fn realize_capped_by_independence_holds() -> Bool  {
   let bound = BoundDerived { bytes: byte_size(count: 1) }
   let v = realize_pack_width(bound: bound, budget: budget_100, independence_width: 3)
   realize_verdict_width(v: v) == 3
     && realize_fits_budget(v: v, bound: bound, budget: budget_100)
 }
 
-test fn realize_never_exceeds_budget_holds() -> Bool {
+test fn realize_never_exceeds_budget_holds() -> Bool  {
   let bound = BoundDerived { bytes: byte_size(count: 60) }
   let v = realize_pack_width(bound: bound, budget: budget_100, independence_width: 16)
   realize_verdict_width(v: v) == 1
     && realize_fits_budget(v: v, bound: bound, budget: budget_100)
 }
 
-test fn realize_unknown_peak_maturation_reserve_holds() -> Bool {
+test fn realize_unknown_peak_maturation_reserve_holds() -> Bool  {
   let v = realize_pack_width(bound: BoundUnknown, budget: budget_100, independence_width: 16)
   realize_verdict_width(v: v) == 1
     && match v { MaturationReserve { width: _ } => true  PackedWidth { width: _ } => false  BudgetRefused => false }
 }
 
-test fn realize_unreadable_budget_refuses_holds() -> Bool {
+test fn realize_unreadable_budget_refuses_holds() -> Bool  {
   let bound = BoundDerived { bytes: byte_size(count: 25) }
   let v = realize_pack_width(bound: bound, budget: BudgetUnreadable, independence_width: 16)
   match v { BudgetRefused => true  PackedWidth { width: _ } => false  MaturationReserve { width: _ } => false }
@@ -61,7 +61,7 @@ test fn realize_unreadable_budget_refuses_holds() -> Bool {
     && realize_fits_budget(v: v, bound: bound, budget: BudgetUnreadable)
 }
 
-test fn realize_derived_vs_frontier_bound_holds() -> Bool {
+test fn realize_derived_vs_frontier_bound_holds() -> Bool  {
   let derived: ByteSize? = Present { value: byte_size(count: 25) }
   let frontier: ByteSize? = none
   match derived_bound_of(derived_space: derived) { BoundDerived { bytes: _ } => true  BoundUnknown => false }

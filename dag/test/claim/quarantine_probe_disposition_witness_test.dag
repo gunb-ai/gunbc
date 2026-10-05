@@ -146,7 +146,7 @@ fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
 // and so cannot be evaluated from inside it. Mirroring the literal here would be a second
 // representation that drifts silently. Unmeasured and zero are different states, and this guard
 // exists to refuse exactly that conflation, so it does not commit it in its own witness.
-test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
+test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool  {
   quarantine_probe_dispositions_all_hold(
     subjects: live_quarantine_probe_subjects(),
     facts: live_quarantine_probe_facts()
@@ -180,7 +180,7 @@ fn some_disposition_holds_by(ds: List<QuarantineProbeDisposition>, kind: fn(Quar
   fold_list(xs: ds, empty: false, cons: fn(acc, d) { acc || disposition_holds_by(d: d, kind: kind) })
 }
 
-test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
+test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool  {
   let ds = live_dispositions()
   fold_list(xs: ds, empty: true, cons: fn(acc, d) { acc && quarantine_probe_disposition_holds(disposition: d) })
     && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { FloorExpectedRedHeld => true  _ => false } })
@@ -358,7 +358,7 @@ fn fixture_disposition(facts: QuarantineProbeHoldingFacts) -> QuarantineProbeDis
 // carries the holder it found -- including NeverRunPathExcluded, whose derivation is exercised here even
 // though no live row inhabits it, and NeverRunDeclinedByLiveTreeRead. An arm with no live inhabitant is
 // not an unexercised arm.
-test fn each_holder_alone_derives_exactly_one_disposition() -> Bool {
+test fn each_holder_alone_derives_exactly_one_disposition() -> Bool  {
   disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: FloorExpectedRedHeld {})
     && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_route_gap()), expected: RouteGapHeldNoVerdict {})
     && disposition_is_held_by(
@@ -379,7 +379,7 @@ test fn each_holder_alone_derives_exactly_one_disposition() -> Bool {
 // derives the ALARM and does NOT hold. There is no accepting arm for this state anywhere in the
 // model, so a corpus in this condition cannot be made green by classification -- only by
 // deleting the admission row or by giving it a mechanism that really holds it.
-test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> Bool {
+test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> Bool  {
   disposition_is_now_passing(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
     && !quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
     && !quarantine_probe_dispositions_all_hold(
@@ -392,7 +392,7 @@ test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> Bool {
 // than a false positive: two authorities for one fact means someone has to decide which one
 // actually holds it. No live row exercises this today, so the control is what keeps the arm
 // real.
-test fn a_probe_held_by_two_mechanisms_refuses() -> Bool {
+test fn a_probe_held_by_two_mechanisms_refuses() -> Bool  {
   disposition_is_held_by_more_than_one(disposition: fixture_disposition(facts: facts_with_two_holders()))
     && !quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: facts_with_two_holders()))
 }
@@ -400,7 +400,7 @@ test fn a_probe_held_by_two_mechanisms_refuses() -> Bool {
 // THE JOIN IS ON EXACT IDENTITY, NOT CONTAINMENT. A roster row whose name merely CONTAINS the
 // probe's identity does not hold it. Without this, a rename or a near-miss would read as
 // covered, which is the substring weakness the exact-admission authority was built to remove.
-test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Bool {
+test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Bool  {
   let near_miss = QuarantineProbeHoldingFacts {
     expected_red_roster: Cons { head: concat(probe_fixture_identity(), "_extra"), tail: Empty {} },
     route_gap_roster: Empty {},
@@ -416,7 +416,7 @@ test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Boo
 
 // The former live-tree specimen now executes and is held by its observed expected-red verdict.
 // Keeping an assertion that it is never routed would restate the deleted floor policy.
-test fn the_former_live_tree_declined_row_is_now_expected_red() -> Bool {
+test fn the_former_live_tree_declined_row_is_now_expected_red() -> Bool  {
   let facts = live_quarantine_probe_facts()
   let subject = QuarantineProbeSubject {
     module: "test.claim.legacy_test_behavior_disposition_acceptance_test",
@@ -433,7 +433,7 @@ test fn the_former_live_tree_declined_row_is_now_expected_red() -> Bool {
 // everything: the entry that declares ReadsLiveTree reads true, and a sibling admission entry
 // that does not declare it reads false. Both are live files, so this control also fails if the
 // read itself stops working.
-test fn the_live_tree_declaration_read_discriminates() -> Bool {
+test fn the_live_tree_declaration_read_discriminates() -> Bool  {
   entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
     && !entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
 }
@@ -465,7 +465,7 @@ fn facts_with_outside_gate(gate_admits_fixture: Bool) -> QuarantineProbeHoldingF
   }
 }
 
-test fn an_outside_gate_row_holds_only_while_the_gate_refuses_the_module_and_only_as_never_run() -> Bool {
+test fn an_outside_gate_row_holds_only_while_the_gate_refuses_the_module_and_only_as_never_run() -> Bool  {
   let outside = fixture_disposition(facts: facts_with_outside_gate(gate_admits_fixture: false))
   let inside = fixture_disposition(facts: facts_with_outside_gate(gate_admits_fixture: true))
   (match outside {

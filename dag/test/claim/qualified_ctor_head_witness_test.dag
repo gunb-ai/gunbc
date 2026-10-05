@@ -13,12 +13,12 @@ fn qch_bare_product() -> QchProduct {
   QchProduct { label: "bare", size: 1 }
 }
 
-test fn qualified_product_ctor_head_constructs() -> Bool {
+test fn qualified_product_ctor_head_constructs() -> Bool  {
   let q = test.claim.qualified_ctor_head_witness_test.QchProduct { label: "bare", size: 1 }
   q == qch_bare_product()
 }
 
-test fn qualified_variant_ctor_head_types_as_coproduct() -> Bool {
+test fn qualified_variant_ctor_head_types_as_coproduct() -> Bool  {
   let v = test.claim.qualified_ctor_head_witness_test.QchNorth { deg: 7 }
   match v {
     QchNorth { deg: d } => d == 7
@@ -26,7 +26,7 @@ test fn qualified_variant_ctor_head_types_as_coproduct() -> Bool {
   }
 }
 
-test fn qualified_pattern_head_projects_variant() -> Bool {
+test fn qualified_pattern_head_projects_variant() -> Bool  {
   let v = QchNorth { deg: 3 }
   match v {
     test.claim.qualified_ctor_head_witness_test.QchNorth { deg: d } => d == 3
@@ -34,6 +34,6 @@ test fn qualified_pattern_head_projects_variant() -> Bool {
   }
 }
 
-test fn qualified_value_ref_projects_decl() -> Bool {
+test fn qualified_value_ref_projects_decl() -> Bool  {
   test.claim.qualified_ctor_head_witness_test.qch_bare_product() == qch_bare_product()
 }

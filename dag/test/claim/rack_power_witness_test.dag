@@ -82,11 +82,11 @@ fn refusal_of(rack: RackInstance?, loads: List<AssetLoad>, percent: Int) -> Powe
 // The cited RS-1215 states 120 V and 15 A; their product is what the unit can deliver: 1800
 // volt-amperes. Derived from the two datasheet figures, not authored, so no third number can
 // disagree with them.
-test fn the_feed_capacity_is_the_product_of_the_two_cited_figures() -> Bool {
+test fn the_feed_capacity_is_the_product_of_the_two_cited_figures() -> Bool  {
   volt_ampere_count(v: feed_capacity(f: feed())) == 1800
 }
 
-test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
+test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool  {
   match budget(
     rack: two_host_rack(),
     loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, ObservedRealPower { asset: host_b(), draw: watt(400) }],
@@ -104,7 +104,7 @@ test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
 // THE POWER FACTOR IS LOAD-BEARING, and this pair proves it rather than the type name. 1700 watts
 // at a factor of 100 is 1700 volt-amperes and fits; the SAME load at 90 needs about 1889 and does
 // not. A module quietly assuming unity would admit both.
-test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
+test fn the_declared_power_factor_decides_a_marginal_load() -> Bool  {
   match budget(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(1700) }, ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 100) {
     Absent => false
     Present { value: _ } =>
@@ -128,7 +128,7 @@ test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
 // A nameplate figure is already apparent power and is NOT converted: the power factor applies to
 // the real-power arm only. Mixing the two in one rack is ordinary; the totals stay separate so a
 // reader sees which half rests on the declared assumption.
-test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
+test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool  {
   match budget(
     rack: two_host_rack(),
     loads: [DeclaredApparentPower { asset: host_a(), draw: volt_ampere(1000) }, ObservedRealPower { asset: host_b(), draw: watt(400) }],
@@ -142,7 +142,7 @@ test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
 
 // An unmeasured machine is not a machine drawing nothing; this arm keeps an unmeasured rack from
 // reporting comfortable headroom.
-test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
+test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool  {
   match refusal_of(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, LoadUnobserved { asset: host_b() }], percent: 95) {
     Absent => false
     Present { value: c } =>
@@ -161,7 +161,7 @@ test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
 // COMPLETENESS IS AN IDENTITY JOIN, and this arrangement proves it: two rows for two mounted
 // assets, so any count-based check passes, while one asset is measured twice and the other not at
 // all.
-test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool {
+test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool  {
   match refusal_of(
     rack: two_host_rack(),
     loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, ObservedRealPower { asset: host_a(), draw: watt(400) }],
@@ -183,7 +183,7 @@ test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool {
 
 // The other direction of the join: a row naming a machine this rack does not carry is a stale
 // inventory — its own refusal, because its remedy is different.
-test fn a_load_for_an_unmounted_asset_refuses() -> Bool {
+test fn a_load_for_an_unmounted_asset_refuses() -> Bool  {
   match refusal_of(
     rack: two_host_rack(),
     loads: [
@@ -207,7 +207,7 @@ test fn a_load_for_an_unmounted_asset_refuses() -> Bool {
   }
 }
 
-test fn a_power_factor_outside_its_range_is_not_a_power_factor() -> Bool {
+test fn a_power_factor_outside_its_range_is_not_a_power_factor() -> Bool  {
   match declared_power_factor(percent: 0) {
     PowerReady { value: _ } => false
     PowerRefused { cause: c } =>
@@ -223,7 +223,7 @@ test fn a_power_factor_outside_its_range_is_not_a_power_factor() -> Bool {
   }
 }
 
-test fn a_power_factor_above_unity_is_refused_too() -> Bool {
+test fn a_power_factor_above_unity_is_refused_too() -> Bool  {
   match declared_power_factor(percent: 101) {
     PowerReady { value: _ } => false
     PowerRefused { cause: _ } => true

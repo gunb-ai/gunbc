@@ -108,7 +108,7 @@ fn witness_v1_handler_id_declared() -> Bool {
   id == "host:v1-interpreter.eval_expr_self_time"
 }
 
-test fn realization_measurement_keystone_witnesses() -> Bool {
+test fn realization_measurement_keystone_witnesses() -> Bool  {
   witness_predicted_zero_is_predicted_basis()
     && witness_measured_receipt_rollup_uses_lens()
     && witness_space_rolls_up_across_receipts()
@@ -123,7 +123,7 @@ test fn realization_measurement_keystone_witnesses() -> Bool {
 // two axes nobody looked at, indistinguishable from a genuinely zero-space run (DESIGN section 5,
 // fabricated plausible output). The value now lives inside the constructor that says how it was
 // come by, so the fabricated zero has no constructor at all.
-test fn measuring_only_time_leaves_space_and_power_unestablished() -> Bool {
+test fn measuring_only_time_leaves_space_and_power_unestablished() -> Bool  {
   let account = cost_account_measured(time: nanosecond(count: 7))
   let space_unestablished = match account.space {
     CostAxisUnestablished => true
@@ -140,7 +140,7 @@ test fn measuring_only_time_leaves_space_and_power_unestablished() -> Bool {
 
 // POSITIVE CONTROL: the axis that WAS measured still reads back, so the witness above discriminates
 // the unmeasured axes rather than reporting a universally unestablished account.
-test fn the_measured_axis_still_carries_its_value() -> Bool {
+test fn the_measured_axis_still_carries_its_value() -> Bool  {
   match cost_account_time_count(account: cost_account_measured(time: nanosecond(count: 7))) {
     Present { value: n } => n == 7
     Absent => false
@@ -151,7 +151,7 @@ test fn the_measured_axis_still_carries_its_value() -> Bool {
 // inventing a balance from an axis nobody measured. The fixture is authored directly because no
 // constructor in std can produce an unestablished time -- which is the wall, and is exactly why
 // the refusal has to be exercised from a fixture or it would be unreachable and decorative.
-test fn unestablished_time_refuses_a_shard_balance_slot() -> Bool {
+test fn unestablished_time_refuses_a_shard_balance_slot() -> Bool  {
   let unestablished = CostAccount {
     time: CostTimeUnestablished,
     space: CostAxisUnestablished,
@@ -167,7 +167,7 @@ test fn unestablished_time_refuses_a_shard_balance_slot() -> Bool {
 // a total containing a predicted term is not a measurement -- the first revision of the rollup
 // answered both with a measured number, which is the same fabricated-plausible-output class this
 // change closes for cost_account_measured.
-test fn an_empty_receipt_roster_totals_to_nothing_established() -> Bool {
+test fn an_empty_receipt_roster_totals_to_nothing_established() -> Bool  {
   let account = cost_account_from_performance_receipts(receipts: [])
   let time_unestablished = match account.time {
     CostTimeUnestablished => true
@@ -184,7 +184,7 @@ test fn an_empty_receipt_roster_totals_to_nothing_established() -> Bool {
 
 // POSITIVE CONTROL for the witness above: a NON-empty roster of measured receipts still totals to a
 // measured account, so the empty case is discriminated rather than the rollup refusing universally.
-test fn a_measured_receipt_roster_still_totals_to_a_measured_account() -> Bool {
+test fn a_measured_receipt_roster_still_totals_to_a_measured_account() -> Bool  {
   let receipt = performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
     wall_time: sample_wall_time,
@@ -199,7 +199,7 @@ test fn a_measured_receipt_roster_still_totals_to_a_measured_account() -> Bool {
 
 // A total is only as established as its softest term: one predicted term makes the whole sum
 // predicted rather than measured.
-test fn one_predicted_term_makes_the_total_predicted() -> Bool {
+test fn one_predicted_term_makes_the_total_predicted() -> Bool  {
   let measured = CostTimeMeasured { value: nanosecond(count: 10) }
   let predicted = CostTimePredicted { value: nanosecond(count: 5) }
   let mixed = cost_axis_add_time(acc: measured, term: predicted)
@@ -218,7 +218,7 @@ test fn one_predicted_term_makes_the_total_predicted() -> Bool {
 }
 
 // And an unestablished term poisons the total rather than contributing zero.
-test fn one_unestablished_term_makes_the_total_unestablished() -> Bool {
+test fn one_unestablished_term_makes_the_total_unestablished() -> Bool  {
   match cost_axis_add_time(
     acc: CostTimeMeasured { value: nanosecond(count: 10) },
     term: CostTimeUnestablished,

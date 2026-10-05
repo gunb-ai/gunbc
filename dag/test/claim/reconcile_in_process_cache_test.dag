@@ -27,7 +27,7 @@ import extdeps.realization.reconcile_in_process {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_subject_digest: ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
-test fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
+test fn witness_parse_cache_is_in_process_hand_authored() -> Bool  {
   let row = cache_interface_facts_from_catalog(row: parse_cache_facts)
   (catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == HandAuthoredString)
     && !row.key_derivation.content_verified_on_read
@@ -36,7 +36,7 @@ test fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
     && (row.miss_semantics == MissThenCreate)
 }
 
-test fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
+test fn witness_typed_module_cache_is_in_process_native_internal() -> Bool  {
   let row = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
   (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
     && !row.key_derivation.content_verified_on_read
@@ -45,7 +45,7 @@ test fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
     && (row.miss_semantics == MissThenCreate)
 }
 
-test fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
+test fn witness_in_process_siblings_share_locality_not_key_class() -> Bool  {
   let parse = cache_interface_facts_from_catalog(row: parse_cache_facts)
   let typed = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
   (parse.locality == typed.locality)
@@ -54,7 +54,7 @@ test fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
     && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
 }
 
-test fn witness_parse_source_routes_to_parse_cache_backend() -> Bool {
+test fn witness_parse_source_routes_to_parse_cache_backend() -> Bool  {
   let id = ArtifactIdentity {
     subject_digest: shared_subject_digest,
     artifact_kind: parse_source_artifact_kind,
@@ -63,7 +63,7 @@ test fn witness_parse_source_routes_to_parse_cache_backend() -> Bool {
   key.store == parse_cache_id
 }
 
-test fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool {
+test fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool  {
   let id = ArtifactIdentity {
     subject_digest: shared_subject_digest,
     artifact_kind: typed_module_artifact_kind,
@@ -72,7 +72,7 @@ test fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool {
   key.store == typed_module_cache_id
 }
 
-test fn witness_reconcile_family_backends_are_distinct() -> Bool {
+test fn witness_reconcile_family_backends_are_distinct() -> Bool  {
   !(parse_cache_id == typed_module_cache_id)
 }
 

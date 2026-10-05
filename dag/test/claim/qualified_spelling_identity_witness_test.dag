@@ -55,10 +55,10 @@ fn w_bare_field_value_is_unchanged() -> Bool {
   )
 }
 
-test fn qualified_spelling_takes_the_shared_layer() -> Bool {
+test fn qualified_spelling_takes_the_shared_layer() -> Bool  {
   w_qualified_field_value_takes_the_shared_layer()
 }
 
-test fn bare_spelling_shared_layer_is_unchanged() -> Bool {
+test fn bare_spelling_shared_layer_is_unchanged() -> Bool  {
   w_bare_field_value_is_unchanged()
 }

@@ -50,7 +50,7 @@ fn method_template_source() -> String {
   "module wrapmethodcall\n\nimport std.types { Int }\n\nfn rest(xs: List<Int>) -> List<Int> {\n  xs.skip(n: 1)\n}\n"
 }
 
-test fn plain_call_to_declared_method_roster_name_is_not_wrapped() -> Bool {
+test fn plain_call_to_declared_method_roster_name_is_not_wrapped() -> Bool  {
   compile_dag_rust_emit_check(
     plain_call_declared_shadow_source(),
     "src/wrapplaincall.rs",
@@ -59,7 +59,7 @@ test fn plain_call_to_declared_method_roster_name_is_not_wrapped() -> Bool {
   )
 }
 
-test fn plain_call_to_rt_bridge_keeps_its_wrap() -> Bool {
+test fn plain_call_to_rt_bridge_keeps_its_wrap() -> Bool  {
   compile_dag_rust_emit_check(
     plain_call_rt_bridge_source(),
     "src/wrapplaincallrt.rs",
@@ -68,7 +68,7 @@ test fn plain_call_to_rt_bridge_keeps_its_wrap() -> Bool {
   )
 }
 
-test fn method_template_call_keeps_its_wrap() -> Bool {
+test fn method_template_call_keeps_its_wrap() -> Bool  {
   compile_dag_rust_emit_check(
     method_template_source(),
     "src/wrapmethodcall.rs",

@@ -141,7 +141,7 @@ fn admitted_three_layer_selection(ordinal: Int) -> Bool {
 // A layer reference reports the ordinal asked for AND the function of the layer actually there —
 // the second makes the reference a read of the stackup rather than a restatement of the request.
 // Ordinal 1 is the ground plane, and the reference knows it.
-test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
+test fn w_a_selected_layer_carries_the_function_it_found() -> Bool  {
   match admit_stackup(s: three_layer, authority: board_authority) {
     StackupRefused { causes: _ } => false
     StackupAdmitted { admitted: a } =>
@@ -161,7 +161,7 @@ test fn w_a_selected_layer_carries_the_function_it_found() -> Bool {
 
 // The top layer is signal and the bottom layer is signal, so reading only ordinal 1 could not
 // distinguish a real lookup from a constant. Reading 0 and 2 as well pins that the fold walks.
-test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
+test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool  {
   match admit_stackup(s: three_layer, authority: board_authority) {
     StackupRefused { causes: _ } => false
     StackupAdmitted { admitted: a } =>
@@ -186,7 +186,7 @@ test fn w_selection_distinguishes_the_layers_it_walks_past() -> Bool {
 
 // RED control: an ordinal past the last layer refuses and reports BOTH numbers, rather than
 // clamping to the nearest real layer. A clamp would put copper on a layer nobody asked for.
-test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> Bool {
+test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> Bool  {
   match admit_stackup(s: three_layer, authority: board_authority) {
     StackupRefused { causes: _ } => false
     StackupAdmitted { admitted: a } =>
@@ -197,7 +197,7 @@ test fn w_red_an_ordinal_outside_the_stackup_refuses_with_both_numbers() -> Bool
   }
 }
 
-test fn w_red_a_negative_ordinal_refuses() -> Bool {
+test fn w_red_a_negative_ordinal_refuses() -> Bool  {
   !admitted_three_layer_selection(ordinal: 0 - 1)
     && admitted_three_layer_selection(ordinal: 0)
 }
@@ -224,7 +224,7 @@ fn realization_on(net: NetIdentity, ordinal: Int) -> List<NetCopperRealization> 
   }
 }
 
-test fn w_copper_naming_real_nets_admits() -> Bool {
+test fn w_copper_naming_real_nets_admits() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -240,7 +240,7 @@ test fn w_copper_naming_real_nets_admits() -> Bool {
 // RED control: THE RENAMED-NET CLASS. Copper naming a net the schematic does not carry is a
 // conductor belonging to nothing. A count would not see it — two nets, two realizations — which is
 // why admission joins on identity.
-test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
+test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -268,7 +268,7 @@ test fn w_red_copper_naming_a_net_the_schematic_lacks_is_refused() -> Bool {
 // RED control: one net on two layers with NO via is two conductors claiming one name. Exactly ONE
 // cause, because the problem is a fact about the net rather than about either row - the same net
 // reported twice would be a duplicate, not a second finding.
-test fn w_red_a_net_split_across_layers_without_a_via_is_refused() -> Bool {
+test fn w_red_a_net_split_across_layers_without_a_via_is_refused() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -296,7 +296,7 @@ test fn w_red_a_net_split_across_layers_without_a_via_is_refused() -> Bool {
 // ADMISSION AND COVERAGE ARE SEPARATE AXES. An empty copper set is internally consistent — nothing
 // wrong is realized — and covers nothing. If one arm carried both, an unrouted board would report
 // as admitted-and-therefore-done.
-test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
+test fn w_an_empty_board_admits_and_covers_nothing() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -310,7 +310,7 @@ test fn w_an_empty_board_admits_and_covers_nothing() -> Bool {
   }
 }
 
-test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool {
+test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool  {
   let partial = realization_on(net: vcc, ordinal: 0)
   let full = partial + realization_on(net: gnd_net, ordinal: 1)
   count(unrealized_nets(nets: board_nets, rs: partial)) == 1
@@ -323,7 +323,7 @@ test fn w_coverage_completes_only_when_every_net_is_realized() -> Bool {
 // or function from one selected against three_layer - only the bound declaration separates them.
 // Admitting it against three_layer must refuse, or the seal proved the ref came from SOME admitted
 // stackup and never which one.
-test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool {
+test fn w_red_copper_selected_against_another_stackup_is_refused() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -363,7 +363,7 @@ fn layer_of(a: AdmittedStackup, ordinal: Int) -> CopperLayerRef? {
 // THE POINT OF THE WHOLE INCREMENT, asserted in BOTH directions in one run: the identical split
 // realization refuses with no via and admits with one. If only the admitting half were asserted, a
 // refusal that had quietly stopped firing would read as success.
-test fn w_a_via_makes_a_split_net_admissible() -> Bool {
+test fn w_a_via_makes_a_split_net_admissible() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -393,7 +393,7 @@ test fn w_a_via_makes_a_split_net_admissible() -> Bool {
 
 // RED control: a via belonging to a DIFFERENT net does not route this one. Same two layers, same
 // count of vias — only the net identity differs, so a check that merely counted vias would pass.
-test fn w_red_a_via_on_another_net_does_not_route_this_one() -> Bool {
+test fn w_red_a_via_on_another_net_does_not_route_this_one() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -428,7 +428,7 @@ test fn w_red_a_via_on_another_net_does_not_route_this_one() -> Bool {
 
 // RED control: a via whose endpoints are the same layer is a drilled hole connecting nothing, and
 // it reports the ordinal so the author knows which one.
-test fn w_red_a_via_from_a_layer_to_itself_is_refused() -> Bool {
+test fn w_red_a_via_from_a_layer_to_itself_is_refused() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -457,7 +457,7 @@ test fn w_red_a_via_from_a_layer_to_itself_is_refused() -> Bool {
 
 // RED control: a via inherits the stackup binding through its endpoints, so one selected against
 // another board refuses without the via model needing its own check for it.
-test fn w_red_a_via_selected_against_another_stackup_is_refused() -> Bool {
+test fn w_red_a_via_selected_against_another_stackup_is_refused() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -496,7 +496,7 @@ test fn w_red_a_via_selected_against_another_stackup_is_refused() -> Bool {
 // catching when it narrowed to via-reachability: both rows sit on layer 0, a vcc via touches layer
 // 0, so every realized layer IS via-reached and the routing question is satisfied. It is still two
 // rows claiming one net on one layer. Confirmed admitted by a probe before this refusal existed.
-test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool {
+test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -536,7 +536,7 @@ test fn w_red_two_conductors_on_one_layer_are_refused_even_with_a_via() -> Bool 
 // refusal; w_islands_joined_into_one_conductor_admits asserts the same population admits once the
 // halves are bridged — both directions in one run, so a refusal that stopped firing cannot read as
 // success.
-test fn w_two_islands_of_one_net_refuse() -> Bool {
+test fn w_two_islands_of_one_net_refuse() -> Bool  {
   match admitted_board(s: four_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -600,7 +600,7 @@ fn islanded_connections(board: AdmittedStackup) -> List<InterlayerConnection>? {
 
 // The other direction: bridge the two islands with a third connection and the same four
 // realizations admit. Without this, the refusal above could be firing for any reason at all.
-test fn w_islands_joined_into_one_conductor_admits() -> Bool {
+test fn w_islands_joined_into_one_conductor_admits() -> Bool  {
   match admitted_board(s: four_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -636,7 +636,7 @@ test fn w_islands_joined_into_one_conductor_admits() -> Bool {
 // admitted values that DIFFER, or the carrier dropped the evidence it judged. A count alone would
 // be satisfied by a carrier that stored the number and discarded the rows, so this also reads a
 // connection back out and checks it names the net it was authored with.
-test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool {
+test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {
@@ -667,7 +667,7 @@ test fn w_admitted_copper_retains_the_connections_it_judged() -> Bool {
 // passes. It does not land on VCC copper, and before this refusal the board admitted. The net is
 // still split, so the connectivity refusal fires too; this asserts the endpoint cause specifically,
 // the one that names WHERE the hole goes nowhere.
-test fn w_a_connection_endpoint_with_no_conductor_refuses() -> Bool {
+test fn w_a_connection_endpoint_with_no_conductor_refuses() -> Bool  {
   match admitted_board(s: three_layer, authority: board_authority) {
     Absent => false
     Present { value: board } => {

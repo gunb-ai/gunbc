@@ -47,7 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the suite instead of quietly substituting for it.
 // WITNESS 1 — THE DECLARED LADDER IS WELL-FORMED. The live specification must actually mint, not
 // merely be written; a refused ladder would leave every later witness testing the fallback above.
-test fn w_the_declared_hole_ladder_mints() -> Bool {
+test fn w_the_declared_hole_ladder_mints() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: _ } => true
     _ => false
@@ -56,7 +56,7 @@ test fn w_the_declared_hole_ladder_mints() -> Bool {
 // WITNESS 2 — THE RUNGS ARE DERIVED, AND THE LAST ONE PROVES IT. Eleven rungs from 3000 um in 100 um
 // steps must END at 4000 um. An authored list that drifted from the declared step would fail here,
 // which is the redundancy this derivation exists to make impossible.
-test fn w_the_ladder_rungs_derive_from_base_and_step() -> Bool {
+test fn w_the_ladder_rungs_derive_from_base_and_step() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let rungs = ladder_rungs(l: l)
@@ -68,14 +68,14 @@ test fn w_the_ladder_rungs_derive_from_base_and_step() -> Bool {
 }
 // WITNESS 3 — A ZERO STEP REFUSES. Every rung would be identical, so the specimen would present as a
 // ladder while measuring one diameter eleven times — a coupon that cannot discriminate.
-test fn w_a_zero_step_ladder_refuses() -> Bool {
+test fn w_a_zero_step_ladder_refuses() -> Bool  {
   match length_ladder(base: micrometer(count: 3000), step: micrometer(count: 0), rung_count: 11) {
     LadderStepIsZero => true
     _ => false
   }
 }
 // WITNESS 4 — A ONE-RUNG LADDER REFUSES, carrying the count it was given so the refusal is located.
-test fn w_a_single_rung_ladder_refuses() -> Bool {
+test fn w_a_single_rung_ladder_refuses() -> Bool  {
   match length_ladder(base: micrometer(count: 3000), step: micrometer(count: 100), rung_count: 1) {
     LadderTooFewRungs { supplied: n } => n == 1
     _ => false
@@ -84,7 +84,7 @@ test fn w_a_single_rung_ladder_refuses() -> Bool {
 // WITNESS 5 — THE PLATE IS SIZED FROM THE LADDER. Eleven rungs at 9 mm pitch with 6 mm margins is
 // 2*6000 + 10*9000 = 102000 um. If the plate were authored beside the ladder rather than derived
 // from it, adding a rung would leave this stale.
-test fn w_the_plate_width_follows_the_rung_count() -> Bool {
+test fn w_the_plate_width_follows_the_rung_count() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } => micrometer_count(m: hole_ladder_specimen(l: l).geometry.plate.size_x) == 102000
     _ => false
@@ -96,7 +96,7 @@ test fn w_the_plate_width_follows_the_rung_count() -> Bool {
 // own subject: it would have stayed green if the real machine had a different envelope, and green if
 // no printer authority existed in the corpus at all. Reading extdeps.printing.bambu_lab_a1_mini
 // means the vendor row is what this claim is about, and editing that row is what moves it.
-test fn w_the_hole_ladder_coupon_fits_the_a1_mini() -> Bool {
+test fn w_the_hole_ladder_coupon_fits_the_a1_mini() -> Bool  {
   match hole_ladder_spec {
     LadderReady { ladder: l } =>
       match specimen_fits(envelope: a1_mini_build_envelope, s: hole_ladder_specimen(l: l)) {
@@ -111,7 +111,7 @@ test fn w_the_hole_ladder_coupon_fits_the_a1_mini() -> Bool {
 // truncates to 180 mm and would compare EQUAL to a 180 mm envelope — reported as fitting a machine
 // it does not fit. Rounding up yields 181 and refuses. The witness asserts the conversion directly
 // so the property is pinned even if no current specimen exercises it.
-test fn w_the_micrometre_conversion_rounds_up_not_down() -> Bool {
+test fn w_the_micrometre_conversion_rounds_up_not_down() -> Bool  {
   micrometer_to_millimeter_ceiling(m: micrometer(count: 180500)) == millimeter(count: 181)
     && micrometer_to_millimeter_ceiling(m: micrometer(count: 180000)) == millimeter(count: 180)
     && micrometer_to_millimeter_ceiling(m: micrometer(count: 1)) == millimeter(count: 1)
@@ -119,7 +119,7 @@ test fn w_the_micrometre_conversion_rounds_up_not_down() -> Bool {
 // WITNESS 8 — AND THE ROUNDING ACTUALLY REACHES THE FIT ANSWER. Witness 7 pins the arithmetic; this
 // pins that the fit path CONSUMES it. A part 180.5 mm tall must be refused on Z against a 180 mm
 // envelope — the exact print that truncation would have greenlit.
-test fn w_an_oversize_part_is_refused_on_the_axis_that_exceeds() -> Bool {
+test fn w_an_oversize_part_is_refused_on_the_axis_that_exceeds() -> Bool  {
   let envelope = a1_mini_build_envelope
   let part = part_extent(
     x: millimeter(count: 100),
@@ -151,7 +151,7 @@ test fn w_an_oversize_part_is_refused_on_the_axis_that_exceeds() -> Bool {
 // So the assertion is now about the vendor's own table: ten materials are stated, and they are the
 // ten the table lists. Growth in the substrate does not red this; a change to what the vendor said
 // does, which is the only thing this row is authority for.
-test fn w_the_a1_mini_grades_every_material_its_table_names() -> Bool {
+test fn w_the_a1_mini_grades_every_material_its_table_names() -> Bool  {
   a1_mini_material_suitability.length() == 10
 }
 
@@ -160,7 +160,7 @@ test fn w_the_a1_mini_grades_every_material_its_table_names() -> Bool {
 // never mentioned must come back Unstated, which is a fact about the vendor's silence and not a
 // grade. Today every modelled material happens to be graded, so this exercises the lookup's
 // behaviour on a row-free material by asking with a roster that omits one.
-test fn w_a_material_the_vendor_did_not_grade_reads_unstated() -> Bool {
+test fn w_a_material_the_vendor_did_not_grade_reads_unstated() -> Bool  {
   match material_suitability(rows: [], material: Pla) {
     SuitabilityResolved { suitability: s } =>
       match s {
@@ -176,7 +176,7 @@ test fn w_a_material_the_vendor_did_not_grade_reads_unstated() -> Bool {
 // that graded all ten identically would satisfy witness 9 and be useless. PLA is Ideal and ABS is
 // Not Recommended in the vendor's own table, and those are the two the chassis decision turns on:
 // PLA is what ships in the combo and ABS is what a naive "stronger plastic" instinct reaches for.
-test fn w_pla_is_ideal_and_abs_is_not_recommended() -> Bool {
+test fn w_pla_is_ideal_and_abs_is_not_recommended() -> Bool  {
   let pla = match material_suitability(rows: a1_mini_material_suitability, material: Pla) {
     SuitabilityResolved { suitability: s } =>
       match s {

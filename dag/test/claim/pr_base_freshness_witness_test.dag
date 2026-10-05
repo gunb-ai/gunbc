@@ -29,14 +29,14 @@ fn superseded_at(base: CommitSha) -> TestedBaseProvenance {
   )
 }
 
-test fn base_committed_before_the_run_is_recovered() -> Bool {
+test fn base_committed_before_the_run_is_recovered() -> Bool  {
   match recovered_at(base: ancestor_commit) {
     TestedBaseRecovered { base: _ } => true
     TestedBaseSuperseded { observed_base: _ } => false
   }
 }
 
-test fn base_committed_after_the_run_is_superseded() -> Bool {
+test fn base_committed_after_the_run_is_superseded() -> Bool  {
   match superseded_at(base: ancestor_commit) {
     TestedBaseRecovered { base: _ } => false
     TestedBaseSuperseded { observed_base: _ } => true
@@ -46,12 +46,12 @@ test fn base_committed_after_the_run_is_superseded() -> Bool {
 // TIMESTAMP ORDER IS THE WHOLE PROVENANCE TEST, so it is asserted directly rather than only
 // through its consumer: if lexicographic order ever stopped agreeing with chronological order for
 // this encoding, every arm above would still typecheck and silently answer backwards.
-test fn iso8601_utc_lexicographic_order_is_chronological() -> Bool {
+test fn iso8601_utc_lexicographic_order_is_chronological() -> Bool  {
   merge_ref_was_recomputed(merge_ref_base_committed_at: after_run, run_started_at: run_started)
     && !merge_ref_was_recomputed(merge_ref_base_committed_at: before_run, run_started_at: run_started)
 }
 
-test fn identical_comparison_is_at_target() -> Bool {
+test fn identical_comparison_is_at_target() -> Bool  {
   match classify_base_freshness(
     provenance: recovered_at(base: target_commit),
     status: Identical,
@@ -68,7 +68,7 @@ test fn identical_comparison_is_at_target() -> Bool {
 // THE TARGET BEING `Ahead` IS THE TESTED BASE BEING BEHIND, and the distance carries through
 // unchanged. This is the inversion that is easiest to get backwards, so it is asserted on the
 // number and not merely on the arm.
-test fn target_ahead_means_base_is_behind_by_that_many() -> Bool {
+test fn target_ahead_means_base_is_behind_by_that_many() -> Bool  {
   match classify_base_freshness(
     provenance: recovered_at(base: ancestor_commit),
     status: Ahead,
@@ -86,7 +86,7 @@ test fn target_ahead_means_base_is_behind_by_that_many() -> Bool {
 // the tested base means the target moved backwards; a diverged pair means neither contains the
 // other. They have different causes and different remedies, and an earlier revision of this module
 // folded both into one state — this pair of witnesses is what makes that folding fail.
-test fn target_behind_is_ahead_of_target_not_diverged() -> Bool {
+test fn target_behind_is_ahead_of_target_not_diverged() -> Bool  {
   match classify_base_freshness(
     provenance: recovered_at(base: ancestor_commit),
     status: Behind,
@@ -100,7 +100,7 @@ test fn target_behind_is_ahead_of_target_not_diverged() -> Bool {
   }
 }
 
-test fn diverged_is_diverged_not_ahead_of_target() -> Bool {
+test fn diverged_is_diverged_not_ahead_of_target() -> Bool  {
   match classify_base_freshness(
     provenance: recovered_at(base: ancestor_commit),
     status: Diverged,
@@ -122,7 +122,7 @@ test fn diverged_is_diverged_not_ahead_of_target() -> Bool {
 // before it, this witness and the one below it go red. That is the wall: the fabricated green is
 // unreachable because the question that would fabricate it is never asked of a base we cannot
 // vouch for.
-test fn superseded_base_with_identical_comparison_does_not_read_as_current() -> Bool {
+test fn superseded_base_with_identical_comparison_does_not_read_as_current() -> Bool  {
   !base_freshness_is_current(
     f: classify_base_freshness(
       provenance: superseded_at(base: target_commit),
@@ -132,7 +132,7 @@ test fn superseded_base_with_identical_comparison_does_not_read_as_current() -> 
   )
 }
 
-test fn superseded_base_with_identical_comparison_is_provenance_lost() -> Bool {
+test fn superseded_base_with_identical_comparison_is_provenance_lost() -> Bool  {
   match classify_base_freshness(
     provenance: superseded_at(base: target_commit),
     status: Identical,
@@ -150,7 +150,7 @@ test fn superseded_base_with_identical_comparison_is_provenance_lost() -> Bool {
 // UNKNOWN IS NEITHER CURRENT NOR STALE. A consumer counting staleness as `!is_current` would absorb
 // this row into the stale count and one counting freshness would absorb it into the fresh count;
 // both destroy the deficit's frequency. The two predicates disagree in exactly one state.
-test fn provenance_lost_is_unknown_and_not_current() -> Bool {
+test fn provenance_lost_is_unknown_and_not_current() -> Bool  {
   let lost = classify_base_freshness(
     provenance: superseded_at(base: ancestor_commit),
     status: Ahead,
@@ -159,7 +159,7 @@ test fn provenance_lost_is_unknown_and_not_current() -> Bool {
   base_freshness_is_unknown(f: lost) && !base_freshness_is_current(f: lost)
 }
 
-test fn at_target_is_current_and_not_unknown() -> Bool {
+test fn at_target_is_current_and_not_unknown() -> Bool  {
   let fresh = classify_base_freshness(
     provenance: recovered_at(base: target_commit),
     status: Identical,
@@ -171,14 +171,14 @@ test fn at_target_is_current_and_not_unknown() -> Bool {
 // A ROOT COMMIT HAS NO PARENTS, so first_parent has nothing to answer with. Asserted because the
 // alternative — returning a zero sha or the commit's own — would be a fabricated base that every
 // downstream comparison would happily consume.
-test fn first_parent_of_no_parents_is_absent() -> Bool {
+test fn first_parent_of_no_parents_is_absent() -> Bool  {
   match first_parent(parents: []) {
     Absent {} => true
     Present { value: _ } => false
   }
 }
 
-test fn first_parent_is_the_merge_base_side() -> Bool {
+test fn first_parent_is_the_merge_base_side() -> Bool  {
   match first_parent(parents: [
     CommitParentRef { sha: ancestor_commit },
     CommitParentRef { sha: target_commit },
@@ -192,7 +192,7 @@ test fn first_parent_is_the_merge_base_side() -> Bool {
 // `UnrecognizedComparisonStatus` that a fixture can reach without a forge. The alternative a
 // decoder is tempted into — defaulting an unknown string to `Identical`, the only status that
 // reads as fresh — would answer "this base is current" from a word it does not know.
-test fn unmodeled_comparison_status_decodes_to_absent() -> Bool {
+test fn unmodeled_comparison_status_decodes_to_absent() -> Bool  {
   match parse_comparison_status(raw: "sideways") {
     Absent {} => true
     Present { value: _ } => false
@@ -219,7 +219,7 @@ fn comparison_status_label(s: ComparisonStatus) -> String {
 // that returns `Absent` for everything, which would refuse the whole comparison axis while looking
 // correctly fail-closed. Each of the four modeled statuses must decode to ITS OWN variant, so a
 // decoder that collapses two of them — or shifts them by one — reds here.
-test fn each_modeled_comparison_status_decodes_to_its_own_variant() -> Bool {
+test fn each_modeled_comparison_status_decodes_to_its_own_variant() -> Bool  {
   decoded_status_label(raw: "identical") == "identical"
     && decoded_status_label(raw: "ahead") == "ahead"
     && decoded_status_label(raw: "behind") == "behind"

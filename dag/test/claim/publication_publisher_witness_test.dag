@@ -123,7 +123,7 @@ fn synthetic_push() -> PrePushStdinRow {
   }
 }
 
-test fn ordinary_session_lacks_public_write_authority_holds() -> Bool {
+test fn ordinary_session_lacks_public_write_authority_holds() -> Bool  {
   ordinary_session_lacks_public_write_authority(session: synthetic_ordinary_session)
     && match session_publication_posture(session: synthetic_ordinary_session) {
       OrdinarySession { session: session } => session == synthetic_ordinary_session
@@ -131,14 +131,14 @@ test fn ordinary_session_lacks_public_write_authority_holds() -> Bool {
     }
 }
 
-test fn sole_publisher_posture_is_unique() -> Bool {
+test fn sole_publisher_posture_is_unique() -> Bool  {
   match session_publication_posture(session: sole_modeled_publisher_session) {
     SoleModeledPublisher { session: session } => session == sole_modeled_publisher_session
     OrdinarySession { session: _ } => false
   }
 }
 
-test fn git_push_shape_is_modeled_not_raw_argv() -> Bool {
+test fn git_push_shape_is_modeled_not_raw_argv() -> Bool  {
   let update = GitRefUpdateSpec {
     local_ref: "refs/heads/session/example" as GitRef,
     remote_ref: "refs/heads/session/example" as GitRef,
@@ -150,7 +150,7 @@ test fn git_push_shape_is_modeled_not_raw_argv() -> Bool {
   request.remote == ("origin" as NonEmptyStr) && request.ref_updates == [update]
 }
 
-test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
+test fn publication_policy_refuses_unknown_top_level_root() -> Bool  {
   match admit_publication_policy(policy: PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: publication_policy_default_disposition,
@@ -168,7 +168,7 @@ test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
   }
 }
 
-test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool {
+test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool  {
   match admit_publication_policy(policy: PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: WithholdPrivate,
@@ -186,7 +186,7 @@ test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool {
   }
 }
 
-test fn publication_policy_most_specific_rule_wins() -> Bool {
+test fn publication_policy_most_specific_rule_wins() -> Bool  {
   let policy = PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: WithholdPrivate,
@@ -203,7 +203,7 @@ test fn publication_policy_most_specific_rule_wins() -> Bool {
   }
 }
 
-test fn public_projection_plan_derives_from_policy_not_pathname_census() -> Bool {
+test fn public_projection_plan_derives_from_policy_not_pathname_census() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/sole-modeled-publisher-design.md" as FilePath,
@@ -218,7 +218,7 @@ test fn public_projection_plan_derives_from_policy_not_pathname_census() -> Bool
     && count(plan.omitted_subjects) == 0
 }
 
-test fn change_local_admission_classifies_newly_public_delta() -> Bool {
+test fn change_local_admission_classifies_newly_public_delta() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/new.md" as FilePath,
@@ -242,7 +242,7 @@ test fn change_local_admission_classifies_newly_public_delta() -> Bool {
   }
 }
 
-test fn change_local_admission_refuses_tampered_projection_digest() -> Bool {
+test fn change_local_admission_refuses_tampered_projection_digest() -> Bool  {
   let candidate = derive_public_projection_plan(
     admitted: admitted_public_docs_policy(),
     source_revision: synthetic_head,
@@ -271,7 +271,7 @@ test fn change_local_admission_refuses_tampered_projection_digest() -> Bool {
   }
 }
 
-test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
+test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/deleted.md" as FilePath,
@@ -300,7 +300,7 @@ test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
   }
 }
 
-test fn publication_decision_authorizes_matching_policy_authority_and_audience() -> Bool {
+test fn publication_decision_authorizes_matching_policy_authority_and_audience() -> Bool  {
   let subject = synthetic_subject(
     path: "docs/plans/receipt-auth.md" as FilePath,
     identity: "subject-receipt-auth",
@@ -313,7 +313,7 @@ test fn publication_decision_authorizes_matching_policy_authority_and_audience()
   )
 }
 
-test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
+test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/stale-receipt.md" as FilePath,
@@ -348,7 +348,7 @@ test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
   }
 }
 
-test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
+test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool  {
   let subject = synthetic_subject(
     path: "docs/plans/wrong-authority.md" as FilePath,
     identity: "subject-wrong-authority",
@@ -381,7 +381,7 @@ test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
   }
 }
 
-test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
+test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool  {
   let subject = synthetic_subject(
     path: "docs/plans/narrow-audience.md" as FilePath,
     identity: "subject-narrow-audience",
@@ -414,7 +414,7 @@ test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
   }
 }
 
-test fn publication_decision_binds_content_identity_not_pathname() -> Bool {
+test fn publication_decision_binds_content_identity_not_pathname() -> Bool  {
   let receipt = PublicationDecisionReceipt {
     subject_identity: content_hash_of_value(value: "subject-a" as NonEmptyStr),
     content_identity: content_hash_of_value(value: "content-v1" as NonEmptyStr),
@@ -429,7 +429,7 @@ test fn publication_decision_binds_content_identity_not_pathname() -> Bool {
   )
 }
 
-test fn ordinary_session_reds_before_projection_check() -> Bool {
+test fn ordinary_session_reds_before_projection_check() -> Bool  {
   let candidate = derive_public_projection_plan(
     admitted: admitted_public_docs_policy(),
     source_revision: synthetic_head,
@@ -454,7 +454,7 @@ test fn ordinary_session_reds_before_projection_check() -> Bool {
   }
 }
 
-test fn sole_publisher_admits_change_local_projection() -> Bool {
+test fn sole_publisher_admits_change_local_projection() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/y.md" as FilePath,
@@ -479,7 +479,7 @@ test fn sole_publisher_admits_change_local_projection() -> Bool {
   }
 }
 
-test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool {
+test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/no-receipt.md" as FilePath,
@@ -507,7 +507,7 @@ test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool {
   }
 }
 
-test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
+test fn sole_publisher_refuses_push_head_mismatch() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/mismatch.md" as FilePath,
@@ -540,7 +540,7 @@ test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
   }
 }
 
-test fn sole_publisher_refuses_empty_pushed_refs() -> Bool {
+test fn sole_publisher_refuses_empty_pushed_refs() -> Bool  {
   let admitted = admitted_public_docs_policy()
   let subject = synthetic_subject(
     path: "docs/plans/empty-push.md" as FilePath,
@@ -568,7 +568,7 @@ test fn sole_publisher_refuses_empty_pushed_refs() -> Bool {
   }
 }
 
-test fn shadow_replay_counts_ordinary_session_refusals() -> Bool {
+test fn shadow_replay_counts_ordinary_session_refusals() -> Bool  {
   let candidate = derive_public_projection_plan(
     admitted: admitted_public_docs_policy(),
     source_revision: synthetic_head,

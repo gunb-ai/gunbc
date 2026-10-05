@@ -26,21 +26,21 @@ fn authored_source_gate_oracle(module_source: String, name: String) -> Bool {
   module_source != "" && string_contains(s: module_source, pattern: name)
 }
 
-test fn authored_spelling_admits_candidate_holds() -> Bool {
+test fn authored_spelling_admits_candidate_holds() -> Bool  {
   authored_source_gate_oracle(
     module_source: "type UrlPathToken = Segment | Slash\nfn join_path(parts: List<String>) -> String { parts }",
     name: "UrlPathToken",
   )
 }
 
-test fn unspelled_authored_token_ordinal_refused_holds() -> Bool {
+test fn unspelled_authored_token_ordinal_refused_holds() -> Bool  {
   !authored_source_gate_oracle(
     module_source: "type UrlPathToken = Segment | Slash\nfn join_path(parts: List<String>) -> String { parts }",
     name: "AuthoredTokenOrdinal",
   )
 }
 
-test fn empty_module_source_refuses_all_holds() -> Bool {
+test fn empty_module_source_refuses_all_holds() -> Bool  {
   !authored_source_gate_oracle(
     module_source: "",
     name: "AuthoredTokenOrdinal",

@@ -15,7 +15,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Hermetic executing consumer for extdeps.github.push_event JSON ingest and git object-id validation. Payload read refusal on a missing path lives in test.claim.push_event_witness_wet (Filesystem.Read is wet-only).
-test fn witness_push_before_observed_from_json() -> Bool {
+test fn witness_push_before_observed_from_json() -> Bool  {
   match push_before_from_event_json(
     text: "{\"before\":\"abc123def4567890abc123def4567890abc12345\",\"after\":\"fedcba09\"}"
   ) {
@@ -28,7 +28,7 @@ test fn witness_push_before_observed_from_json() -> Bool {
   }
 }
 
-test fn witness_push_before_zero_sha_from_json() -> Bool {
+test fn witness_push_before_zero_sha_from_json() -> Bool  {
   match push_before_from_event_json(
     text: concat("{\"before\":\"", concat(zero_sha, "\",\"after\":\"abc\"}"))
   ) {
@@ -40,7 +40,7 @@ test fn witness_push_before_zero_sha_from_json() -> Bool {
   }
 }
 
-test fn witness_push_before_absent_member_refuses() -> Bool {
+test fn witness_push_before_absent_member_refuses() -> Bool  {
   match push_before_from_event_json(text: "{\"after\":\"abc\"}") {
     PushBeforeAbsent { detail: _ } => true
     PushBeforeObserved { sha: _ } => false
@@ -50,7 +50,7 @@ test fn witness_push_before_absent_member_refuses() -> Bool {
   }
 }
 
-test fn witness_push_before_malformed_json_refuses() -> Bool {
+test fn witness_push_before_malformed_json_refuses() -> Bool  {
   match push_before_from_event_json(text: "not json") {
     PushBeforeMalformed { detail: _ } => true
     PushBeforeObserved { sha: _ } => false
@@ -60,7 +60,7 @@ test fn witness_push_before_malformed_json_refuses() -> Bool {
   }
 }
 
-test fn witness_push_before_invalid_sha_refuses_before_minting() -> Bool {
+test fn witness_push_before_invalid_sha_refuses_before_minting() -> Bool  {
   match push_before_from_event_json(text: "{\"before\":\"not-a-valid-git-object-id\"}") {
     PushBeforeMalformed { detail: detail } =>
       detail == "push event before member is not a valid git object id"

@@ -96,7 +96,7 @@ fn axis_lists_agree(a: List<String>, b: List<String>) -> Bool {
     && (b |> all(y => a |> any(x => x == y)))
 }
 
-test fn both_grounded_rows_scale_in_the_same_derived_axis() -> Bool {
+test fn both_grounded_rows_scale_in_the_same_derived_axis() -> Bool  {
   axis_lists_agree(
     a: row_axis_names(row: primitive_map_keys_cost),
     b: row_axis_names(row: primitive_map_values_cost),
@@ -107,14 +107,14 @@ test fn both_grounded_rows_scale_in_the_same_derived_axis() -> Bool {
 // carried a coarse shape before the structured form existed; `cost_bound_to_shape` must re-derive
 // exactly that shape from the new bound. A bound that scaled in the wrong power -- a plausible
 // authoring slip, since nothing types the parameter -- would still typecheck and would fail here.
-test fn the_structured_bound_rederives_the_coarse_shape_it_replaced() -> Bool {
+test fn the_structured_bound_rederives_the_coarse_shape_it_replaced() -> Bool  {
   match modeled_cost_coarse_shape(cost: primitive_map_keys_cost.cost) {
     Absent => false
     Present { value: s } => shape_eq(a: s, b: ShapeLinearScan)
   }
 }
 
-test fn map_values_structured_bound_also_rederives_its_coarse_shape() -> Bool {
+test fn map_values_structured_bound_also_rederives_its_coarse_shape() -> Bool  {
   match modeled_cost_coarse_shape(cost: primitive_map_values_cost.cost) {
     Absent => false
     Present { value: s } => shape_eq(a: s, b: ShapeLinearScan)
@@ -126,7 +126,7 @@ test fn map_values_structured_bound_also_rederives_its_coarse_shape() -> Bool {
 // constructor the live rows use must produce the refusal arm -- if this ever returns a structured
 // bound, the derivation is inventing an axis for a carrier that has none, which is precisely the
 // fabricated fact `std.realization_cost_fidelity` exists to refuse.
-test fn an_open_support_carrier_refuses_instead_of_naming_an_axis() -> Bool {
+test fn an_open_support_carrier_refuses_instead_of_naming_an_axis() -> Bool  {
   match linear_support_scan_cost(
     profile: PartialFunctionProfile,
     coarse: ShapeLinearScan,
@@ -140,7 +140,7 @@ test fn an_open_support_carrier_refuses_instead_of_naming_an_axis() -> Bool {
 // THE POSITIVE CONTROL FOR THAT RED, so a green above cannot come from the constructor refusing
 // everything. Same call, the carrier the live rows actually use, and it must reach the structured
 // arm.
-test fn a_finite_support_carrier_reaches_the_structured_arm() -> Bool {
+test fn a_finite_support_carrier_reaches_the_structured_arm() -> Bool  {
   match linear_support_scan_cost(
     profile: FinitelySupportedFunctionProfile,
     coarse: ShapeLinearScan,
@@ -152,14 +152,14 @@ test fn a_finite_support_carrier_reaches_the_structured_arm() -> Bool {
 }
 
 // THE PARAM PRODUCER ITSELF, both directions, because the two arms above route through it.
-test fn a_finite_support_profile_names_an_axis() -> Bool {
+test fn a_finite_support_profile_names_an_axis() -> Bool  {
   match finite_support_cardinality_param(profile: FinitelySupportedFunctionProfile) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn an_open_support_profile_names_no_axis() -> Bool {
+test fn an_open_support_profile_names_no_axis() -> Bool  {
   match finite_support_cardinality_param(profile: PartialFunctionProfile) {
     Present { value: _ } => false
     Absent => true
@@ -168,7 +168,7 @@ test fn an_open_support_profile_names_no_axis() -> Bool {
 
 // THE THREE UNGROUNDED ROWS. Each must carry the cause and no bound -- and must still carry the
 // coarse fact it always had, which is the half a reader is most likely to assume was dropped.
-test fn sorted_map_keys_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
+test fn sorted_map_keys_keeps_its_coarse_fact_and_carries_a_cause() -> Bool  {
   !row_is_structured(row: primitive_sorted_map_keys_cost)
     && match modeled_cost_coarse_shape(cost: primitive_sorted_map_keys_cost.cost) {
       Absent => false
@@ -176,7 +176,7 @@ test fn sorted_map_keys_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
     }
 }
 
-test fn fold_list_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
+test fn fold_list_keeps_its_coarse_fact_and_carries_a_cause() -> Bool  {
   !row_is_structured(row: primitive_fold_list_cost)
     && match modeled_cost_coarse_shape(cost: primitive_fold_list_cost.cost) {
       Absent => false
@@ -184,7 +184,7 @@ test fn fold_list_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
     }
 }
 
-test fn index_by_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
+test fn index_by_keeps_its_coarse_fact_and_carries_a_cause() -> Bool  {
   !row_is_structured(row: primitive_index_by_cost)
     && match modeled_cost_coarse_shape(cost: primitive_index_by_cost.cost) {
       Absent => false
@@ -194,7 +194,7 @@ test fn index_by_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
 
 // EVERY ROW ANSWERS THE COARSE QUESTION, whichever arm it took. This is what makes the refusal arm a
 // declared two-grain state rather than a hole: no row lost information in the migration.
-test fn every_row_still_answers_the_coarse_question() -> Bool {
+test fn every_row_still_answers_the_coarse_question() -> Bool  {
   primitive_d0_cost_facts
     |> all(row => match modeled_cost_coarse_shape(cost: row.cost) {
       Present { value: _ } => true
@@ -210,7 +210,7 @@ fn roster_has(p: PrimitiveIdentity) -> Bool {
   primitive_d0_cost_facts |> any(row => primitive_identity_eq(left: row.primitive, right: p))
 }
 
-test fn the_roster_joins_every_cost_row_by_identity() -> Bool {
+test fn the_roster_joins_every_cost_row_by_identity() -> Bool  {
   roster_has(p: primitive_map_keys)
     && roster_has(p: primitive_sorted_map_keys)
     && roster_has(p: primitive_map_values)
@@ -219,7 +219,7 @@ test fn the_roster_joins_every_cost_row_by_identity() -> Bool {
 }
 
 // THE OTHER DIRECTION OF THE JOIN, so a roster that grew a row nobody named would be caught too.
-test fn the_roster_carries_no_row_outside_the_five() -> Bool {
+test fn the_roster_carries_no_row_outside_the_five() -> Bool  {
   (primitive_d0_cost_facts |> count) == 5
     && (primitive_d0_cost_facts |> all(row =>
       primitive_identity_eq(left: row.primitive, right: primitive_map_keys)
@@ -232,7 +232,7 @@ test fn the_roster_carries_no_row_outside_the_five() -> Bool {
 // EXACTLY TWO ROWS ARE STRUCTURED TODAY, and this is deliberately an identity statement rather than
 // a tally: the two that are structured are named, so enrolling a third without modelling its
 // parameter reds here instead of silently changing a count.
-test fn the_structured_rows_are_exactly_the_two_grounded_ones() -> Bool {
+test fn the_structured_rows_are_exactly_the_two_grounded_ones() -> Bool  {
   row_is_structured(row: primitive_map_keys_cost)
     && row_is_structured(row: primitive_map_values_cost)
     && !row_is_structured(row: primitive_sorted_map_keys_cost)

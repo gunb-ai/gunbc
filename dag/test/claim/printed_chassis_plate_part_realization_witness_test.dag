@@ -113,7 +113,7 @@ fn part_traces_every_hole(p: AdmittedPlatePartV0, subject_holes: List<CouponOper
   })
 }
 // One cut per modeled feature plus the plate, counted from the part's own hole population.
-test fn w_the_fan_mount_traces_every_admitted_hole() -> Bool {
+test fn w_the_fan_mount_traces_every_admitted_hole() -> Bool  {
   match arctic_p8_fan_mount {
     FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => false
     FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => false
@@ -125,7 +125,7 @@ test fn w_the_fan_mount_traces_every_admitted_hole() -> Bool {
   }
 }
 // The gauge is the second subject, and its two holes are the population its admission settled.
-test fn w_the_standoff_gauge_traces_every_admitted_hole() -> Bool {
+test fn w_the_standoff_gauge_traces_every_admitted_hole() -> Bool  {
   match altrad8ud_standoff_gauge {
     GaugeLocationNotEnumerated { requested: _ } => false
     GaugeLocationDuplicated { requested: _, count: _ } => false
@@ -138,7 +138,7 @@ test fn w_the_standoff_gauge_traces_every_admitted_hole() -> Bool {
   }
 }
 // The discriminating input for the generalization: one function, two subjects, two programs.
-test fn w_one_emitter_serves_two_subjects_with_different_programs() -> Bool {
+test fn w_one_emitter_serves_two_subjects_with_different_programs() -> Bool  {
   match arctic_p8_fan_mount {
     FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => false
     FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => false
@@ -161,7 +161,7 @@ test fn w_one_emitter_serves_two_subjects_with_different_programs() -> Bool {
 // the model's digits somewhere, which is exactly the defect the paired fragment was written to fix.
 // The bore sits at (46, 46) with radius 38, so a 2.2-radius cut at that centre is a hole the fan
 // mount never declares -- same coordinates as a real feature, wrong radius.
-test fn w_a_fragment_the_model_does_not_declare_is_absent_from_the_program() -> Bool {
+test fn w_a_fragment_the_model_does_not_declare_is_absent_from_the_program() -> Bool  {
   match arctic_p8_fan_mount {
     FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => false
     FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => false
@@ -181,7 +181,7 @@ test fn w_a_fragment_the_model_does_not_declare_is_absent_from_the_program() -> 
   }
 }
 // The emitted program must be EXACTLY the model's program -- no extra cut, no missing cut, in order.
-test fn w_the_fan_mount_program_is_exactly_what_the_model_declares() -> Bool {
+test fn w_the_fan_mount_program_is_exactly_what_the_model_declares() -> Bool  {
   match arctic_p8_fan_mount {
     FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => false
     FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => false
@@ -195,7 +195,7 @@ test fn w_the_fan_mount_program_is_exactly_what_the_model_declares() -> Bool {
 }
 
 // The SECOND subject's whole program, so the conversion seam is proven for both, not just one.
-test fn w_the_standoff_gauge_program_is_exactly_what_the_model_declares() -> Bool {
+test fn w_the_standoff_gauge_program_is_exactly_what_the_model_declares() -> Bool  {
   match altrad8ud_standoff_gauge {
     GaugeLocationNotEnumerated { requested: _ } => false
     GaugeLocationDuplicated { requested: _, count: _ } => false

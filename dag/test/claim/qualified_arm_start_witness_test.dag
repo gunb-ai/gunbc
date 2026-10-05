@@ -30,6 +30,6 @@ fn w_qualified_arm_start_ends_the_previous_body() -> Bool {
   )
 }
 
-test fn qualified_arm_start_ends_the_previous_body() -> Bool {
+test fn qualified_arm_start_ends_the_previous_body() -> Bool  {
   w_qualified_arm_start_ends_the_previous_body()
 }

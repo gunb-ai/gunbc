@@ -123,7 +123,7 @@ fn t(component: NonEmptyStr, terminal: NonEmptyStr) -> ElectricalTerminalRef {
 
 // THE JOIN, ASSERTED IN THE DIRECTION THAT MATTERS: a net whose members every have a pad admits, and
 // the admitted value carries the footprints it judged rather than a count of them.
-test fn w_a_net_whose_terminals_all_have_pads_admits() -> Bool {
+test fn w_a_net_whose_terminals_all_have_pads_admits() -> Bool  {
   match admitted_board(s: two_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -153,7 +153,7 @@ test fn w_a_net_whose_terminals_all_have_pads_admits() -> Bool {
 // naming a terminal the drawing does not have — so the board is unroutable and, until this module,
 // nothing could say so. The cause names the component and the terminal, not just the net, because
 // "VCC is unroutable" sends an author back to look for which of its members is the problem.
-test fn w_red_a_net_member_with_no_pad_refuses() -> Bool {
+test fn w_red_a_net_member_with_no_pad_refuses() -> Bool  {
   match admitted_board(s: two_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -184,7 +184,7 @@ test fn w_red_a_net_member_with_no_pad_refuses() -> Bool {
 // RED control: the member names a terminal that EXISTS on a different component. A check that
 // compared terminal identities alone — the pin-number comparison this module refuses to perform —
 // would find "1" among the pads and pass.
-test fn w_red_a_pad_on_another_component_does_not_satisfy_the_member() -> Bool {
+test fn w_red_a_pad_on_another_component_does_not_satisfy_the_member() -> Bool  {
   match admitted_board(s: two_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -212,7 +212,7 @@ test fn w_red_a_pad_on_another_component_does_not_satisfy_the_member() -> Bool {
 }
 
 // RED control: one terminal with two pads is two coordinates claiming one electrical identity.
-test fn w_red_two_pads_on_one_terminal_refuse() -> Bool {
+test fn w_red_two_pads_on_one_terminal_refuse() -> Bool  {
   match admitted_board(s: two_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -245,7 +245,7 @@ test fn w_red_two_pads_on_one_terminal_refuse() -> Bool {
 
 // RED control: a pad whose layer was selected against a different stackup is not this board's
 // copper, however plausible its coordinate.
-test fn w_red_a_pad_on_another_boards_layer_refuses() -> Bool {
+test fn w_red_a_pad_on_another_boards_layer_refuses() -> Bool  {
   match admitted_board(s: two_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>
@@ -278,7 +278,7 @@ test fn w_red_a_pad_on_another_boards_layer_refuses() -> Bool {
 }
 
 // RED control: two drawings read for one component, neither chosen.
-test fn w_red_two_footprints_for_one_component_refuse() -> Bool {
+test fn w_red_two_footprints_for_one_component_refuse() -> Bool  {
   match admitted_board(s: two_layer, authority: board_authority) {
     Absent => false
     Present { value: board } =>

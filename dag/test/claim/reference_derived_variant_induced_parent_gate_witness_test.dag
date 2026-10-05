@@ -49,7 +49,7 @@ data homonym_variant_to_enum: Map<String, String> = {
   "Absent": ""
 }
 
-test fn unspelled_parent_with_spelled_variant_admitted_holds() -> Bool {
+test fn unspelled_parent_with_spelled_variant_admitted_holds() -> Bool  {
   authored_source_gate_oracle(module_source: root_k_module_source, name: "NodeKind") == false
     && candidate_authored_oracle(
       module_source: root_k_module_source,
@@ -59,7 +59,7 @@ test fn unspelled_parent_with_spelled_variant_admitted_holds() -> Bool {
     )
 }
 
-test fn unspelled_parent_with_no_spelled_variant_refused_holds() -> Bool {
+test fn unspelled_parent_with_no_spelled_variant_refused_holds() -> Bool  {
   !candidate_authored_oracle(
     module_source: root_k_module_source,
     name: "Behavior",
@@ -68,7 +68,7 @@ test fn unspelled_parent_with_no_spelled_variant_refused_holds() -> Bool {
   )
 }
 
-test fn homonym_variant_admits_neither_enum_holds() -> Bool {
+test fn homonym_variant_admits_neither_enum_holds() -> Bool  {
   !candidate_authored_oracle(
     module_source: "match r case Present binds value arrow v case Absent arrow zero",
     name: "Optional",
@@ -77,7 +77,7 @@ test fn homonym_variant_admits_neither_enum_holds() -> Bool {
   )
 }
 
-test fn unspelled_authored_token_ordinal_still_refused_holds() -> Bool {
+test fn unspelled_authored_token_ordinal_still_refused_holds() -> Bool  {
   !candidate_authored_oracle(
     module_source: root_k_module_source,
     name: "AuthoredTokenOrdinal",
@@ -86,7 +86,7 @@ test fn unspelled_authored_token_ordinal_still_refused_holds() -> Bool {
   )
 }
 
-test fn empty_module_source_refuses_all_holds() -> Bool {
+test fn empty_module_source_refuses_all_holds() -> Bool  {
   !candidate_authored_oracle(
     module_source: "",
     name: "NodeKind",

@@ -13,15 +13,15 @@ data example_component_draws: List<Watt> = [
   watt(count: 30)
 ]
 
-test fn total_power_is_computed_sum() -> Bool {
+test fn total_power_is_computed_sum() -> Bool  {
   watt_count(w: total_power_watts(components: example_component_draws)) == 220
 }
 
-test fn empty_budget_is_zero_watts() -> Bool {
+test fn empty_budget_is_zero_watts() -> Bool  {
   watt_count(w: total_power_watts(components: [])) == 0
 }
 
-test fn watt_roundtrips() -> Bool {
+test fn watt_roundtrips() -> Bool  {
   watt_count(w: watt(count: 183)) == 183
 }
 

@@ -79,7 +79,7 @@ data seam_hdr: String = "module probe_refinement_seam\nimport std.types { String
 
 // THE POSITIVE CONTROL. A blank literal cast to a refined alias refuses, blocking; the same cast
 // of a non-blank literal does not. Delta exactly 1.
-test fn a_blank_literal_at_a_refined_position_refuses() -> Bool {
+test fn a_blank_literal_at_a_refined_position_refuses() -> Bool  {
   blocking_delta(
     hostile: seam_hdr + "fn f() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
     safe: seam_hdr + "fn f() -> NonEmptyStr { \"ok\" as NonEmptyStr }\n"
@@ -88,7 +88,7 @@ test fn a_blank_literal_at_a_refined_position_refuses() -> Bool {
 
 // The same wall at the seam positions that DO hold it, so the zeros below are located rather than
 // general: record field, list literal, call argument, function return, let binding.
-test fn a_blank_literal_refuses_at_the_record_list_argument_return_and_let_seams() -> Bool {
+test fn a_blank_literal_refuses_at_the_record_list_argument_return_and_let_seams() -> Bool  {
   blocking_delta(
     hostile: seam_hdr + "type R { s: NonEmptyStr }\nfn f() -> R { R { s: \"\" } }\n",
     safe: seam_hdr + "type R { s: NonEmptyStr }\nfn f() -> R { R { s: \"ok\" } }\n"
@@ -118,7 +118,7 @@ test fn a_blank_literal_refuses_at_the_record_list_argument_return_and_let_seams
 // expect the refusal.
 data seam_probe_control: String = "module probe_refinement_seam_control\nimport std.types { String, Int, List, NonEmptyStr, PathSegment }\nfn blanks() -> List<String> { [\"a\", \"b\"] }\nfn take_nonempty_list(xs: List<NonEmptyStr>) -> Int { count(xs) }\nfn blank_reaches_a_nonempty_list() -> Int { take_nonempty_list(xs: blanks()) }\ntype Seg = PathSegment\ndata blank_through_an_alias: Seg = \"ok\" as Seg\nfn take_nonempty(s: NonEmptyStr) -> Int { 1 }\nfn any_string_reaches_a_nonempty_parameter(raw: String) -> Int { take_nonempty(s: raw) }\nfn any_string_becomes_a_nonempty_return(raw: String) -> NonEmptyStr { raw as NonEmptyStr }\n"
 
-test fn every_non_literal_seam_and_the_alias_mediated_literal_still_admit_a_blank() -> Bool {
+test fn every_non_literal_seam_and_the_alias_mediated_literal_still_admit_a_blank() -> Bool  {
   blocking_delta(
     hostile: probe_source(name: "refinement_seam_admission_probe"),
     safe: seam_probe_control
@@ -128,7 +128,7 @@ test fn every_non_literal_seam_and_the_alias_mediated_literal_still_admit_a_blan
 // EXPECTING-RED HOLE, and the sharper half of it stated on its own: one local alias line defeats
 // the literal wall the positive control above establishes. The pair differs only in whether the
 // cast names PathSegment directly or through `type Seg = PathSegment`.
-test fn an_alias_defeats_the_literal_wall_that_the_direct_spelling_holds() -> Bool {
+test fn an_alias_defeats_the_literal_wall_that_the_direct_spelling_holds() -> Bool  {
   blocking_delta(
     hostile: seam_hdr + "data v: PathSegment = \"\" as PathSegment\n",
     safe: seam_hdr + "data v: PathSegment = \"ok\" as PathSegment\n"
@@ -145,7 +145,7 @@ test fn an_alias_defeats_the_literal_wall_that_the_direct_spelling_holds() -> Bo
 // (asserted at delta 1 above) refuses. Two more #124-shaped cells with no parameter-literal
 // involved: a List<String> let returned as List<NonEmptyStr>, and the same let fed to a
 // List<PathSegment> parameter.
-test fn the_alias_edge_and_let_bound_lists_admit_a_blank_without_any_cast() -> Bool {
+test fn the_alias_edge_and_let_bound_lists_admit_a_blank_without_any_cast() -> Bool  {
   blocking_delta(
     hostile: seam_hdr + "type Seg = NonEmptyStr\nfn f() -> Seg { \"\" }\n",
     safe: seam_hdr + "type Seg = NonEmptyStr\nfn f() -> Seg { \"ok\" }\n"
@@ -167,7 +167,7 @@ test fn the_alias_edge_and_let_bound_lists_admit_a_blank_without_any_cast() -> B
 // consults.
 data path_segment_probe_control: String = "module probe_path_segment_control\nimport std.types { String, PathSegment, GlobSegment }\ndata navigates_out_of_its_parent: PathSegment = \"ok\" as PathSegment\ndata introduces_a_level: PathSegment = \"ok\" as PathSegment\ndata introduces_a_level_backslash: PathSegment = \"ok\" as PathSegment\ndata terminates_a_line_oriented_record: PathSegment = \"ok\" as PathSegment\ndata terminates_at_the_syscall_boundary: PathSegment = \"ok\" as PathSegment\ndata a_glob_segment_navigates_too: GlobSegment = \"ok\" as GlobSegment\nfn any_string_becomes_a_segment(raw: String) -> PathSegment { raw as PathSegment }\n"
 
-test fn no_path_segment_safety_character_is_refused_at_any_seam() -> Bool {
+test fn no_path_segment_safety_character_is_refused_at_any_seam() -> Bool  {
   blocking_delta(
     hostile: probe_source(name: "path_segment_predicate_admission_probe"),
     safe: path_segment_probe_control
@@ -181,7 +181,7 @@ test fn no_path_segment_safety_character_is_refused_at_any_seam() -> Bool {
 // modules, so their whole closure cancels and the delta is the forgery alone.
 data forgery_probe_control: String = "module probe_forgery_control\nimport std.types { String }\nimport gunbc.merge_admission_subject { WalkAttemptId }\nimport gunbc.fleet_known_hosts_anchor { FleetSshAttemptIdentity }\ndata forged_attempt_id_escapes_its_directory: WalkAttemptId = \"ok\" as WalkAttemptId\ndata forged_ssh_identity_introduces_a_level: FleetSshAttemptIdentity = \"ok\" as FleetSshAttemptIdentity\nfn any_string_becomes_an_attempt_id(raw: String) -> WalkAttemptId { raw as WalkAttemptId }\n"
 
-test fn a_branded_path_segment_can_be_forged_from_any_module() -> Bool {
+test fn a_branded_path_segment_can_be_forged_from_any_module() -> Bool  {
   blocking_delta(
     hostile: probe_source(name: "branded_path_segment_forgery_probe"),
     safe: forgery_probe_control
