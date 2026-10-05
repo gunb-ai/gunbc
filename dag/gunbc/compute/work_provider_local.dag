@@ -1778,6 +1778,8 @@ fn compute_spawn_and_collect(
     outcome: match run {
       ComputeExecFailed { exit_code, stdout: _, stderr: _ } =>
         compute_failed_unit_outcome(summary: summary, identity: identity, exit_code: exit_code, op: op, granted: granted, grant_was_ceiling: grant_was_ceiling, log_path: layout.log_path)
+      ComputeExecRefused { reason } =>
+        WorkCancelled { identity: identity, detail: join(["the unit launch was refused by the builder: ", reason], "") }
       ComputeExecOk { stdout: _, stderr: _ } =>
         match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
           OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }

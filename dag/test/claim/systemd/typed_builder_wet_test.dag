@@ -1,6 +1,7 @@
 module test.claim.systemd.typed_builder_wet
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.algebra { trim }
 import std.resources { Network }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReady,
