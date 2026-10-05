@@ -93,33 +93,46 @@ Then the existing readback runs: field-for-field container comparison, the per-r
 announcement wait, and the bounded front door. That is `ensure`'s independent readback, unchanged.
 
 Rollback is the same planner with desired = last committed arm. A failed rollback leaves nothing
-special behind: the next run observes, assesses and converges. Every file other than the hold and
+special behind: the next run observes, assesses and converges. Every file other than
 the committed record is then unread, and therefore harmless. The first converge deletes the legacy
 fence, backup and marker files as a declared, one-time migration step (§4).
 
-### 2.5 The fence only serializes writers (std.durable_exclusive_hold)
+### 2.5 Writers are serialized by the job's concurrency group; there is no fence and no hold file
 
-The fence becomes a `std.durable_exclusive_hold` slot per arm, stored through the existing
-`gunbc.durable_exclusive_hold_file_store`. Acquire and release use compare-and-set on the
-generation. **Holder liveness is observed, not timed.** The holder is the writer's identity: the
-workflow run id and attempt. Its liveness is read from that run's status:
+(Revised with valiant-crab-775, 2026-10-05, after the hold was found to be a second authority.)
 
-| run status | liveness verdict |
-|---|---|
-| `in_progress` | `HolderObservedLive` |
-| `completed` | `HolderObservedDead`, with the run's conclusion as evidence |
-| unreadable | `HolderLivenessUnobservable` → refuse |
+The fence's only remaining job is to serialize writers, and an existing authority already does
+that: the fleet-converge job's `concurrency` group, emitted from `ci_spec` through
+`gunbc.fleet.fleet_converge_workflow`. GitHub releases the group exactly when the **job** ends, so
+the group's own state is the holder-liveness read the hold would have needed. That covers the
+parent's three conditions on the hold:
 
-Recovery of a dead holder's hold goes through `durable_hold_recovery_assess` →
-`file_hold_recovery_assess` (an `admit_callers` row added for the arm converge).
+- a re-run attempt is a new job, queued behind the group;
+- a hand run never holds the group;
+- release follows the job's own state, not the run's conclusion.
 
-**Choice to make:** the brief says "a lease with a deadline the holder renews". I recommend
-observing the run instead. It answers "is the writer dead" directly, needs no renewal machinery, and
-is the method `std.durable_exclusive_hold` asks for: observe the holder, never age. A renewed lease
-still declares death by a clock: a stalled-but-live writer loses its hold, and a renewal loop is one
-more effect that can fail. If you prefer the lease, `HeldLease` carries no deadline today. The
-termed carrier is `gunbc.product.capacity.lease` `LeaseGrant`, and the hold's liveness verdict would
-be minted from that grant's deadline. Either way, nothing reads a fixed horizon.
+A hold file would have been a second serialization of the same fact. It would also have needed a
+GitHub token in the arm job and a store that two executors share; `durable_exclusive_hold_file_store`
+is local-only.
+
+So the per-host `.gunbc-transaction` fence is deleted, and every arm-writing mode joins its arm
+group's concurrency group, `gunbc-arm-mutation-<group>`, following the existing
+`gunbc-arm-mutation-glm-group-b-native`. The arm-writing modes are launch, the recovery converge,
+adoption of an already-running arm as committed, and any rollback-only path. A witness over the
+`ci_spec` rows asserts that every arm-writing mode maps to its arm's group, exhaustively and with no
+default.
+
+A killed run (step timeout, cancel) leaves no special state: the next run observes and converges.
+
+**Measured dispatch fact.** With `cancel-in-progress: false`, a group still holds at most ONE
+pending run, so a third dispatch cancels the queued middle one. That is safe, because a run
+cancelled while pending never ran. The receipt and the dispatcher therefore report "cancelled while
+pending" as NOT RUN, never as a failed launch.
+
+**The honest residue: hand actuation is unserialized.** A person acting on the hosts directly holds
+no group and is excluded by nothing. Their effect is caught only by the next observation, as
+`GoalDiverged` (the realized arm differs from the desired one) or as an unknown (`Refuse`). No
+mechanism here prevents it, and none is claimed.
 
 ## 3. What is deleted (the root cut, DESIGN §3)
 
@@ -148,13 +161,13 @@ srv8, while serving fp8-16 that was started by hand.
 
 The first converge under the new path does the following:
 
-1. Acquires the new hold. No new slot exists yet, so it is absent.
-2. Observes the arm. It is `GoalSatisfied` only if a committed record exists. None does yet: the
-   hand start committed nothing.
-3. Is therefore asked explicitly to converge to a named step. **Adopting the running arm as
-   committed is a separate, declared operation**: observe, assess against the named step's render,
-   and write the record only on `GoalSatisfied`.
-4. Deletes the four legacy file kinds as one declared step, after the hold is held.
+1. Runs under the arm group's concurrency group.
+2. Observes the arm against the requested step's render.
+3. Adopting tonight's hand-started fp8-16 as committed is therefore just a launch of fp8-16 under
+   the same mode. The assessment against fp8-16's render is either `GoalSatisfied` → `Noop`, or
+   `GoalDiverged` → a whole-arm restart. Then the ordinary readback runs, and only its success
+   writes the committed record. There is no separate adoption mode and nothing to enumerate.
+4. Deletes the four legacy file kinds as one declared step.
 
 ## 5. Witnesses (supplied at the planner's interface, plus one inhabitance claim)
 
@@ -167,8 +180,8 @@ The first converge under the new path does the following:
 - **An arm that is all running but split across incarnation sets** plans a whole-arm restart.
 - **An unknown field** gives `Refuse` naming it, never `Apply`.
 - **A satisfied arm** gives `Noop`, with no actuation.
-- **The hold:** a live holder refuses; a completed run lets the hold be recovered; an unreadable run
-  refuses. No clock is read.
+- **Serialization:** every arm-writing mode maps to its arm group's concurrency group, read
+  exhaustively from the `ci_spec` rows with no default.
 - **Inhabitance:** the real per-rank observation producer, over a captured observe receipt from
   Group A, yields the same assessment the supplied cases assume.
 
@@ -176,12 +189,12 @@ The first converge under the new path does the following:
 
 The authority transition must be atomic, because the leftover classifier and the converge both
 answer "what does this arm need". So it is one PR (on top of #13319) that lands the observation,
-assessment, planner, committed record and hold, and deletes §3 in the same change.
+assessment, planner, committed record and concurrency-group keying, and deletes §3 in the same change.
 
 If review finds it too large, the only admissible split is root-first:
 
-1. **First PR:** the hold and the committed record, replacing the fence and backups; the classifier
-   is deleted in that same PR.
+1. **First PR:** the committed record and the concurrency-group keying, replacing the fence and
+   backups; the classifier is deleted in that same PR.
 2. **Second PR:** the planner.
 
 Under that split, the interval between the two has no recovery path except refusal, and that is
