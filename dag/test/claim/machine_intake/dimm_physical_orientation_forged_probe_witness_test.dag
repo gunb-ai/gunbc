@@ -1,0 +1,48 @@
+module test.claim.machine_intake.dimm_physical_orientation_forged_probe_witness
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ORIENTED-HOST SEAL, ENROLLED AS AN EXECUTED RED. The probe source authors a DimmOrientedHost
+// outside gunbc.machine_intake_dimm_physical_orientation: mtcollins1's name beside a figure and an
+// outcome the bound host's board never selected. This witness hands that source to the compiler through
+// the diagnostic-census harness and requires the refusal class at that subject by name; the harness
+// control shows the census ran and that a source reaching the real mint emits no such row.
+data forged_probe_source: String = "module probe_dimm_physical_orientation_forged\n\nimport gunbc.fleet_host_identity { operator_host_mtcollins1 }\nimport extdeps.boards.types { GigabyteMp72Hb0 }\nimport gunbc.baseboard_dimm_figure { MtCollinsGettingStartedGuideFigures }\nimport gunbc.machine_intake_dimm_physical_orientation { DimmOrientedHost, OrientationContradicted }\n\nfn forged() -> DimmOrientedHost {\n  DimmOrientedHost { host: operator_host_mtcollins1, board: GigabyteMp72Hb0, figure: MtCollinsGettingStartedGuideFigures, outcome: OrientationContradicted }\n}\n"
+
+data harness_control_source: String = "module probe_dimm_physical_orientation_harness_control\nimport std.types { List }\nimport gunbc.managed_host { ManagedHostBinding }\nimport gunbc.machine_intake_dimm_physical_orientation { DimmPlacementAnchor, HostDimmOrientation, host_dimm_orientation }\nfn orientation(binding: ManagedHostBinding, anchors: List<DimmPlacementAnchor>) -> HostDimmOrientation { host_dimm_orientation(binding: binding, anchors: anchors) }\n"
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// THE CONTROL IS CLASS-SCOPED: a clean source reaching the real mint through a binding yields no
+// SoleConstructorViolation row, so the red below is the probe's own forgery.
+test fn the_harness_runs_and_a_source_through_the_mint_emits_no_seal_row() -> Bool {
+  blocking_count_for_class(c: compile_dag_diagnostic_census(harness_control_source), wanted: "SoleConstructorViolation") == 0
+}
+
+// AN ORIENTED HOST CANNOT BE AUTHORED OUTSIDE host_dimm_orientation.
+test fn a_forged_oriented_host_is_refused_at_its_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: compile_dag_diagnostic_census(forged_probe_source), wanted: "SoleConstructorViolation", subject: "DimmOrientedHost") >= 1
+}
