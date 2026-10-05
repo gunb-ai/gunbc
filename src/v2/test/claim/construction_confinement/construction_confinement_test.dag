@@ -166,7 +166,15 @@ fn cc_count(head: Diagnostic, tail: List<Diagnostic>, reason: Symbol) -> Int {
   fold_list(xs: tail, empty: if head.reason == reason { 1 } else { 0 }, cons: fn(n, d) { if d.reason == reason { n + 1 } else { n } })
 }
 
-test fn cc_real_route_refuses_exactly_the_outside_introductions_holds() -> Bool {
+// THE ROUTE'S DECIDED VALUE, read once by a nullary producer: portable Bools and Ints only, never a tree.
+type CcRealRouteReading {
+  assembled: Bool
+  inferred: Bool
+  sealed_refusals: Int
+  caller_refusals: Int
+}
+
+fn cc_real_route_reading() -> CcRealRouteReading {
   match assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness { source: Medium { carried: cc_provider(), fidelity: Lossless }, artifact: cc_provider_artifact, compilation_unit: ^cc_provider_cu, source_root: V2Tree },
@@ -178,12 +186,22 @@ test fn cc_real_route_refuses_exactly_the_outside_introductions_holds() -> Bool 
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
     lm: dag_language_model()
   ) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => CcRealRouteReading { assembled: false, inferred: false, sealed_refusals: 0, caller_refusals: 0 }
     Accepted { value: tree, diagnostics: _ } =>
       match infer(tree: tree) {
-        Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => CcRealRouteReading { assembled: true, inferred: true, sealed_refusals: 0, caller_refusals: 0 }
         Rejected { diagnostics: r } =>
-          (cc_count(head: r.head, tail: r.tail, reason: cc_sealed()) == 2) && (cc_count(head: r.head, tail: r.tail, reason: cc_caller()) == 1)
+          CcRealRouteReading {
+            assembled: true,
+            inferred: false,
+            sealed_refusals: cc_count(head: r.head, tail: r.tail, reason: cc_sealed()),
+            caller_refusals: cc_count(head: r.head, tail: r.tail, reason: cc_caller())
+          }
       }
   }
+}
+
+test fn cc_real_route_refuses_exactly_the_outside_introductions_holds() -> Bool {
+  let r = cc_real_route_reading()
+  r.assembled && !r.inferred && (r.sealed_refusals == 2) && (r.caller_refusals == 1)
 }

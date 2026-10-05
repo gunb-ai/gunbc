@@ -582,7 +582,18 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
+// One more was added from floor run 37145732420 (gunbc#13123): the construction-confinement module was
+// restructured per the witness rule -- six decision claims supplied at
+// v2.compiler.construction_confinement construction_confinement_member, each ~5ms -- and its ONE
+// real-route inhabitance claim, the sole demander of cc_real_route_reading, measured 1,083,372 eval
+// steps; that claim IS the kept front-end path, so its fill is the debt this row exposes.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.construction_confinement.construction_confinement",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "cc_real_route_refuses_exactly_the_outside_introductions_holds", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.generic_formal_instantiation",
     claims: [
