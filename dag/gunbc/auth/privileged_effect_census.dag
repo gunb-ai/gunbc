@@ -616,7 +616,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
-    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, the approval ntfy publisher token, the fabric state writer key, or a worker-turn credential (cursor-api-key-harness, codex-auth-harness) -- and place it on one fleet host at its row's owner, group and mode; for the host-authoritative codex row, read the placed file back and add it to codex-auth-harness as a new version when codex rotated its refresh token" as NonEmptyStr),
+    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, the approval ntfy publisher token, the fabric state writer key, the Claude Code subscription OAuth token the roadmap belt's explicit Claude dispatch reads, or a worker-turn credential (cursor-api-key-harness, codex-auth-harness) -- and place it on one fleet host at its row's owner, group and mode; for the host-authoritative codex row, read the placed file back and add it to codex-auth-harness as a new version when codex rotated its refresh token" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },

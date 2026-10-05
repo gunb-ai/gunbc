@@ -296,8 +296,12 @@ test fn witness_srv1_inventory_includes_claude() -> Bool {
   )
 }
 
-test fn witness_production_inventory_excludes_claude() -> Bool {
-  !inventory_includes_provider_kind(
+// The WorkerTurn-PR deferral is discharged (gunbc.dispatch_selection PRODUCTION WIRING): srv1's
+// live inventory now offers Claude. It does so at declared-unobserved standing, so this asserts the
+// row's presence only; witness_production_claude_row_admits_no_automatic_draw keeps the automatic
+// path off it.
+test fn witness_production_inventory_includes_claude() -> Bool {
+  inventory_includes_provider_kind(
     inventory: provider_inventory_for_instance(
       instance: srv1_live_dashboard_instance(),
     ),

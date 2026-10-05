@@ -2,7 +2,7 @@ module extdeps.posix.sh_invocation
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -77,4 +77,30 @@ fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+// EXPORT ONE VARIABLE FROM A FILE, THEN EXEC A COMMAND (POSIX sh: command substitution, export,
+// exec). The value is read by the shell itself and placed only in the exec'd command's environment;
+// it never appears in any process's argument vector, which every local user can read. The script is
+// fixed text built from the variable NAME alone (which the caller supplies from its own authority);
+// the file path is $0 and the command is "$@", so neither is ever spliced into the script. A file
+// that cannot be read exits 78 before the command runs, never an empty value exported.
+data posix_sh_export_from_file_unreadable_exit: Int = 78
+
+fn posix_sh_export_from_file_then_exec_script(name: NonEmptyStr) -> String {
+  join([
+    name as String, "=\"$(cat -- \"$0\")\" || exit ", to_string(value: posix_sh_export_from_file_unreadable_exit),
+    "; export ", name as String, "; exec \"$@\"",
+  ], "")
+}
+
+fn posix_sh_export_from_file_then_exec_words(name: NonEmptyStr, path: NonEmptyStr, command: List<String>) -> List<String> {
+  concat([posix_sh_program().invocation as String, "-c", posix_sh_export_from_file_then_exec_script(name: name), path as String], command)
+}
+
+fn posix_sh_export_from_file_then_exec_command(name: NonEmptyStr, path: NonEmptyStr, command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: posix_sh_program(),
+    arguments: concat(["-c", posix_sh_export_from_file_then_exec_script(name: name), path as String], command),
+  )
+}
+
 fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")

@@ -102,7 +102,20 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
+import gunbc.claude_code_credential {
+  claude_code_custody_path, claude_code_oauth_env_wrapped_argv, claude_code_oauth_env_wrapped_command,
+  claude_code_harness_credential_label, claude_code_standing_trip_prompt,
+}
+import gunbc.claude_code_limit_standing { claude_code_standing_from_trip, ClaudeCodeStandingRead, ClaudeCodeStandingUnreadable }
+import extdeps.llm.claude_code_stream_json { claude_code_stream_json_print_args }
+import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved, ToolEnvironmentReady, provider_standing_from_observed_bundle }
+import std.claim_evidence { RecordedFactId }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_observe }
+import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit }
 import gunbc.dispatch_selection {
+  ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
+  claude_dispatch_credential, inventory_with_claude_standing, claude_offer_for_instance,
   ExecutionProfile,
   ProfileAutomatic,
   ProviderSelectionRequest,
@@ -411,6 +424,158 @@ fn dispatch_actuator_selection_for_provider(
     DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
+  }
+}
+
+// THE OPERATOR NAMES THE EXECUTOR, OR THE DEFAULT STANDS (operator ruling via swift-ibex-601,
+// 2026-10-05). Belt dispatch selects the harness unconditionally (dispatch_actuator_selection);
+// the vendor selector above had no production caller, so no dispatched attempt could reach a vendor
+// CLI. An explicit request is the smallest honest door: it names one vendor, routes through the
+// SAME dispatch_actuator_selection_for_provider every vendor arm already answers through, and
+// inherits its refusals -- an offer that is absent, or whose standing (credential, entitlement,
+// per-window usage limits) does not admit the draw, refuses typed, and is never replaced by the
+// harness. Absence of a request is ExecutorDefault, never a vendor.
+//
+// DECLARED FRONTIER, NOT CODE: automatic selection between the harness and a vendor is a std.decision
+// select_realization over funded axes (cost, usage-window headroom, latency, quality). Its trigger is
+// a grounded funded-axis policy once limit, latency and quality readings exist for at least two
+// providers; until then nothing here chooses on the operator's behalf.
+type DispatchExecutorRequest
+  = ExecutorDefault
+  | ExecutorVendor { provider: DispatchCliProvider }
+
+type DispatchExecutorRequestDecode
+  = DispatchExecutorRequestDecoded { request: DispatchExecutorRequest }
+  | DispatchExecutorRequestUnknown { word: String, known: List<String> }
+
+data dispatch_vendor_executor_roster: List<DispatchCliProvider> = [ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider]
+
+// The wire word is dispatch_provider_label, the label the belt already reports a provider under, so
+// a request and a report spell one provider one way. The empty word is no request. The harness label
+// is the default executor named explicitly, not a vendor. Any other word is a typed refusal naming
+// the accepted set -- never the default, which would run a turn somewhere the operator did not ask.
+fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDecode {
+  if word == "" || word == dispatch_provider_label(provider: GunbcHarnessProvider) {
+    DispatchExecutorRequestDecoded { request: ExecutorDefault }
+  } else {
+    fold(
+      dispatch_vendor_executor_roster,
+      init: DispatchExecutorRequestUnknown {
+        word: word,
+        known: concat(
+          [dispatch_provider_label(provider: GunbcHarnessProvider)],
+          map(dispatch_vendor_executor_roster, p => dispatch_provider_label(provider: p)),
+        ),
+      },
+      f: (acc, p) =>
+        if dispatch_provider_label(provider: p) == word {
+          DispatchExecutorRequestDecoded { request: ExecutorVendor { provider: p } }
+        } else {
+          acc
+        },
+    )
+  }
+}
+
+// THE EXPLICIT CLAUDE DRAW OBSERVES BEFORE IT SELECTS. The declared Claude row's standing admits no
+// draw, so selection over it would always refuse; this runs the standing trip under the very
+// credential the spawn will bind, projects the CLI's own report (gunbc.claude_code_limit_standing),
+// substitutes it into the declared row, and selects. An exhausted usage window, a rejected token or
+// an unreadable trip therefore refuses the dispatch typed, naming why -- it never falls back to the
+// harness and never spawns a turn that would fail for a reason already known. The trip runs only
+// here, on an operator's explicit request; no observation or projection path performs it.
+//
+// The tool environment is supplied as Ready because this is reached only after the spawn's
+// environment admission (belt_actuate_spawn_for_instance EnvironmentAdmitted); the trip itself does
+// not observe the worktree.
+data claude_code_standing_trip_fact_id: RecordedFactId = "claude-code-standing-trip" as RecordedFactId
+
+fn claude_standing_trip_command(path: NonEmptyStr) -> ArgvCommand {
+  claude_code_oauth_env_wrapped_command(
+    token_path: path,
+    argv: concat(
+      [claude_cli_program],
+      concat(claude_code_stream_json_print_args, ["--max-turns", "1", claude_code_standing_trip_prompt]),
+    ),
+  )
+}
+
+fn claude_observed_standing_for_instance(instance: HostDashboardInstance) -> ProviderStanding {
+  match claude_dispatch_credential() {
+    ClaudeOAuthTokenSecretRef { secret_ref } =>
+      match claude_code_custody_path(secret_ref: secret_ref) {
+        Absent =>
+          ProviderStandingUnobserved {
+            reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody"], "") as NonEmptyStr,
+          }
+        Present { value: path } => {
+          let run = run_shell_command_observe(command: claude_standing_trip_command(path: path), transport: LocalExec)
+              if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+                ProviderStandingUnobserved {
+                  reason: join(["the claude credential custody file ", path as String, " is unreadable on this host: ", run.stderr], "") as NonEmptyStr,
+                }
+              } else {
+                match claude_code_standing_from_trip(
+                  credential_label: claude_code_harness_credential_label,
+                  stdout: run.stdout,
+                  tool_environment: ToolEnvironmentReady,
+                ) {
+                  ClaudeCodeStandingUnreadable { line_index, gap: _ } =>
+                    ProviderStandingUnobserved {
+                      reason: join(["the claude standing trip wrote an unreadable stream-json line at index ", to_string(value: line_index)], "") as NonEmptyStr,
+                    }
+                  ClaudeCodeStandingRead { bundle } =>
+                    provider_standing_from_observed_bundle(
+                      fact_id: claude_code_standing_trip_fact_id,
+                      provider: claude_offer_for_instance(instance: instance).instance,
+                      bundle: bundle,
+                    )
+                }
+              }
+        }
+      }
+    ClaudeApiKeySecretRef { secret_ref: _ } =>
+      ProviderStandingUnobserved { reason: "an API-key Claude credential has no standing trip" as NonEmptyStr }
+    ClaudeStateRootRef { root: _ } =>
+      ProviderStandingUnobserved { reason: "a Claude state root is a profile tree, not a credential a trip can observe" as NonEmptyStr }
+  }
+}
+
+fn dispatch_actuator_claude_selection_observed(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+  let instance = srv1_live_dashboard_instance()
+  match resolve_dispatch_selection(
+    inventory: inventory_with_claude_standing(
+      inventory: provider_inventory_for_instance(instance: instance),
+      standing: claude_observed_standing_for_instance(instance: instance),
+    ),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    sizing_expectation: sizing_expectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      DispatchActuatorSelectionOk {
+        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+        effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
+        process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+      DispatchActuatorSelectionRefused { reason: reason }
+  }
+}
+
+fn dispatch_actuator_selection_for_request(
+  request: DispatchExecutorRequest,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  match request {
+    ExecutorDefault => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
+    ExecutorVendor { provider } =>
+      match provider {
+        ClaudeCodeProvider => dispatch_actuator_claude_selection_observed(sizing_expectation: sizing_expectation)
+        CodexDispatchProvider => dispatch_actuator_selection_for_provider(provider: provider, sizing_expectation: sizing_expectation)
+        CursorDispatchProvider => dispatch_actuator_selection_for_provider(provider: provider, sizing_expectation: sizing_expectation)
+        GunbcHarnessProvider => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
+      }
   }
 }
 
@@ -826,6 +991,48 @@ fn dispatch_attempt_key_path_for_instance(
     ),
     "/attempt-key",
   ], "")
+}
+
+// THE PROCESS FINGERPRINT THE SPAWN'S SELECTION CHOSE, written at state initialization beside the
+// attempt key. Live-session observation and stop judge a tmux session against what THIS attempt
+// spawned, read here, rather than against whatever the default selection would choose now: once an
+// operator can name a vendor executor (DispatchExecutorRequest), a Claude attempt's pane is not the
+// harness's, and re-selecting at observation time would also hide a live session the moment its
+// provider's standing stopped admitting new draws. An attempt with no such file predates the record
+// and keeps the default-selection scope it was always observed under.
+fn dispatch_attempt_process_fingerprint_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/process-fingerprint",
+  ], "")
+}
+
+fn dispatch_current_attempt_process_fingerprint_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> String {
+  join([
+    dispatch_current_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    "/process-fingerprint",
+  ], "")
+}
+
+fn dispatch_actuator_selection_process_fingerprint(selection: DispatchActuatorSelection) -> NonEmptyStr? {
+  match selection {
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } => Present { value: process_fingerprint }
+    DispatchActuatorSelectionRefused { reason: _ } => Absent
+  }
 }
 
 // THE TURN NUMBER OF THIS ATTEMPT IN ITS LINEAGE (gunbc.roadmap.roadmap_attempt_continuation), written
@@ -1920,6 +2127,7 @@ type DispatchProviderInnerArgv
   | CodexProviderExecutableAbsent { reason: NonEmptyStr }
   | CursorProviderSpawnUnwired { reason: NonEmptyStr }
   | GunbcHarnessSpawnNeedsInstance { reason: NonEmptyStr }
+  | ClaudeProviderCredentialUnbound { reason: NonEmptyStr }
 
 data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
 
@@ -2042,6 +2250,30 @@ fn dispatch_provider_inner_argv(
   }
 }
 
+// THE CLAUDE PROCESS RECEIVES THE CREDENTIAL THE SELECTION JUDGED (gunbc.dispatch_selection
+// claude_dispatch_credential). A setup-token secret is read from its srv1 custody file into the
+// child's environment by the fixed wrapper of gunbc.claude_code_credential -- never into argv, which
+// the process table exposes. A secret the credential roster names no custody for, and an API-key
+// credential (no dispatch path consumes one), refuse typed rather than falling back to the ambient
+// ~/.claude profile, which is a profile on disk and not the authority to act.
+fn claude_inner_argv_for_credential(credential: ClaudeCredentialRef, argv: List<String>) -> DispatchProviderInnerArgv {
+  match credential {
+    ClaudeOAuthTokenSecretRef { secret_ref } =>
+      match claude_code_custody_path(secret_ref: secret_ref) {
+        Present { value: path } =>
+          DispatchProviderInnerArgvReady { argv: claude_code_oauth_env_wrapped_argv(token_path: path, argv: argv) }
+        Absent =>
+          ClaudeProviderCredentialUnbound {
+            reason: join(["claude credential secret ", secret_ref.secret as String, " has no host custody in gunbc.claude_code_credential"], "") as NonEmptyStr,
+          }
+      }
+    ClaudeApiKeySecretRef { secret_ref: _ } =>
+      ClaudeProviderCredentialUnbound { reason: "an API-key Claude credential has no dispatch spawn binding" as NonEmptyStr }
+    ClaudeStateRootRef { root: _ } =>
+      ClaudeProviderCredentialUnbound { reason: "a Claude state root is a profile tree, not a credential the spawn can bind" as NonEmptyStr }
+  }
+}
+
 fn dispatch_provider_inner_argv_for_instance(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
@@ -2056,7 +2288,8 @@ fn dispatch_provider_inner_argv_for_instance(
 ) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
-      DispatchProviderInnerArgvReady {
+      claude_inner_argv_for_credential(
+        credential: claude_dispatch_credential(),
         argv: concat(
           [
             dispatch_capability_program(
@@ -2073,7 +2306,7 @@ fn dispatch_provider_inner_argv_for_instance(
             brief: brief,
           ),
         ),
-      }
+      )
     CodexDispatchProvider =>
       match dashboard_instance_provider_executable(instance: instance) {
         Absent =>
@@ -2901,6 +3134,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
     GunbcHarnessSpawnNeedsInstance { reason } =>
       DispatchSpawnRefused {
         step: "harness-controller-checkout" as NonEmptyStr,
+        detail: reason as String,
+      }
+    ClaudeProviderCredentialUnbound { reason } =>
+      DispatchSpawnRefused {
+        step: "claude-credential-binding" as NonEmptyStr,
         detail: reason as String,
       }
     DispatchProviderInnerArgvReady { argv: provider_inner } => {
@@ -3766,15 +4004,38 @@ fn live_session_row_with_process(
   }
 }
 
+// A node whose current attempt recorded the fingerprint its spawn selected (see
+// dispatch_attempt_process_fingerprint_path_for_instance) is judged against that record; a node
+// with no record falls back to the default selection's scope, exactly as before the record existed.
+type RecordedAttemptFingerprint {
+  node_id: String
+  fingerprint: NonEmptyStr
+}
+
+fn dispatch_tmux_session_scope_for_recorded(
+  node_id: RoadmapNodeId,
+  recorded: List<RecordedAttemptFingerprint>,
+  selection: DispatchActuatorSelection,
+) -> TmuxSessionScope? {
+  match (recorded |> filter(r => r.node_id == node_id as String)).first() {
+    Present { value: r } =>
+      Present {
+        value: dispatch_tmux_session_scope_for_process_fingerprint(node_id: node_id, process_fingerprint: r.fingerprint),
+      }
+    Absent => dispatch_tmux_session_scope(node_id: node_id, selection: selection)
+  }
+}
+
 fn append_present_live_session_with_process(
   acc: List<DispatchLiveSession>,
   entry: TmuxLsEntry,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
   selection: DispatchActuatorSelection,
+  recorded: List<RecordedAttemptFingerprint>,
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId, selection: selection) {
+  match dispatch_tmux_session_scope_for_recorded(node_id: node_id as RoadmapNodeId, recorded: recorded, selection: selection) {
     Present { value: scope } =>
       match live_session_row_with_process(
         entry: entry,
@@ -3797,6 +4058,7 @@ fn dispatch_live_sessions_with_process(
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
   selection: DispatchActuatorSelection,
+  recorded: List<RecordedAttemptFingerprint>,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
@@ -3808,6 +4070,7 @@ fn dispatch_live_sessions_with_process(
         panes: panes,
         pane_observation_refusal: pane_observation_refusal,
         selection: selection,
+        recorded: recorded,
       )
     },
   )
