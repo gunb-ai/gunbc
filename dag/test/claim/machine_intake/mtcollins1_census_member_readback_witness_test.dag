@@ -3,12 +3,14 @@ module test.claim.machine_intake.mtcollins1_census_member_readback_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
-import gunbc.boot_medium { BootMedium, stock_installer_boot_medium }
+import gunbc.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
+import gunbc.fleet_known_hosts_anchor { SshTarget }
 import gunbc.machine_intake_mtcollins1_census_member_readback {
   census_member_readback_from_readings, census_member_readback_holds, render_census_member_readback,
   MemberReading, MemberRead, MemberUnread, IsoReading, IsoMeasured, IsoUnmeasured,
   CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, BootChainControlDidNotDiscriminate,
-  BootChainIsoNotPinned, BootChainUnread, BootChainMediumNotCensus,
+  BootChainIsoNotPinned, BootChainUnread, BootChainMediumNotCensus, BootChainMediumExporterUnsupported,
+  census_member_readback,
   CasperKernel, CasperInitrd, GrubConfig, StockSide, CensusSide,
   census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
   census_member_attempt_of,
@@ -29,6 +31,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data stock_iso: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 data census_iso: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706"
 data census: BootMedium = mtcollins1_census_boot_medium(output_digest: census_iso)
+
+// THE SAME CENSUS MEDIUM -- genuine name, digest, directory and label -- NAMING ANOTHER EXPORTER. Only the
+// export's SSH target differs: another endpoint, or another principal at the supported endpoint. Its
+// bytes live on an exporter these readers never read, so a successful readback from the supported one
+// would answer for bytes the medium did not name (side-chat review at cad3011782).
+fn census_at(endpoint: String, principal: String) -> BootMedium {
+  BootMedium {
+    image_name: census.image_name,
+    digest: census.digest,
+    export: BootImageExport { target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: principal as NonEmptyStr }, dir: census.export.dir },
+    terminal: census.terminal,
+  }
+}
+
+fn census_at_other_endpoint() -> BootMedium {
+  census_at(endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+}
+
+fn census_as_other_principal() -> BootMedium {
+  census_at(endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}
 
 fn read(d: NonEmptyStr) -> MemberReading { MemberRead { digest: d } }
 
@@ -255,4 +278,37 @@ test fn a_reported_rm_failure_and_an_undispatched_rm_are_distinct_from_a_lost_re
     && says(a: failed, pattern: "REMOVAL FAILED")
     && match undispatched.workspace { RemovalNotDispatched { dir: _, reason: _ } => true _ => false }
     && says(a: undispatched, pattern: "rm was not dispatched")
+}
+
+fn member_exporter_unsupported_naming(r: CensusMemberReadback, endpoint: String, principal: String) -> Bool {
+  match r {
+    BootChainMediumExporterUnsupported { supported: _, named: n } => (n.target.endpoint as String) == endpoint && (n.target.principal as String) == principal
+    _ => false
+  }
+}
+
+// REDS: THE PIN GATE AND THE PRODUCTION ENTRY REFUSE A CENSUS MEDIUM NAMING ANOTHER EXPORTER, by endpoint
+// and by principal at the same endpoint, even when both ISOs measure exactly at their pins. The
+// production entry qualifies before any leg is dispatched, so it requests no workspace and reads nothing.
+test fn a_census_medium_naming_another_exporter_has_no_member_readback() -> Bool {
+  let e = census_at_other_endpoint()
+  let p = census_as_other_principal()
+  let pe = census.export.target.principal as String
+  let ee = census.export.target.endpoint as String
+  let ae = census_member_readback(medium: e)
+  let ap = census_member_readback(medium: p)
+  (match census_pin_gate(medium: e, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+    PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: "fixture-other-exporter", principal: pe)
+    PinsAdmitted { stock_iso: _, census_iso: _ } => false
+  })
+    && (match census_pin_gate(medium: p, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+      PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: ee, principal: "fixture-other-principal")
+      PinsAdmitted { stock_iso: _, census_iso: _ } => false
+    })
+    && member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: pe) && !census_member_attempt_holds(attempt: ae)
+    && member_exporter_unsupported_naming(r: ap.readback, endpoint: ee, principal: "fixture-other-principal")
+    && (match census_pin_gate(medium: census_at(endpoint: ee, principal: pe), stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+      PinsAdmitted { stock_iso: _, census_iso: _ } => true
+      PinsRefused { readback: _ } => false
+    })
 }
