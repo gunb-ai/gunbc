@@ -48,8 +48,8 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
  if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
  let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
  if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Preparation output must be an absolute writable directory")}
- match check(appimage:appimage,receipt:concat(output,"/runtime.json")) {ExitSuccess=>{} other=>return other}
- match check_residential_cad(output:concat(output,"/cad")) {ExitSuccess=>{} other=>return other}
+ match check(appimage:appimage,receipt:concat(output,"/runtime.json")) {ExitSuccess=>{} runtime_refusal=>return runtime_refusal}
+ match check_residential_cad(output:concat(output,"/cad")) {ExitSuccess=>{} cad_refusal=>return cad_refusal}
  let results=map(specs,s=>prepare_queue(spec:s,output:output,appimage:appimage,machine:machine,filament:filament,process:process))
  if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true QueueReadyForApproval {queue:_}=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; no approvals or printer starts sent")}
  let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] QueuePreparationRefused {reason:_}=>[]})
