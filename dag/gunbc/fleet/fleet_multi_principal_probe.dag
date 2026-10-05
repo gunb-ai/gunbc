@@ -35,7 +35,7 @@ import gunbc.fleet_ssh_credential_verify {
   fleet_ssh_credential_verification_refusal_reason,
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, filter, any }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, filter }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
@@ -511,40 +511,6 @@ fn spark_grant_row_text(row: SparkGrantRow) -> String {
   ], "")
 }
 
-// ── Coverage: which procured Spark's grant state this probe actually reads ───────────────────────
-//
-// THE PROBE READS spark_standing_hosts AND NOTHING ELSE. Until 2026-10-05 that set was srv5 and srv6,
-// so every other procured Spark's sudo state was ASSUMED by any run that reached it -- which is how
-// Group B kept the pre-#13040 shared inspect drop-in with no receipt saying so. Group B (srv9..srv12)
-// is now probed by every run (operator approval 2026-10-05, relayed by valiant-crab-775: the grant
-// listing is read by convergence, not by a one-off hand read). Coverage is an identity join against
-// the procured roster (gunbc.spark.dgx_procurement dgx_spark_procurement_intent reserved_identities):
-// a procured Spark is probed each run or named UNOBSERVED, never omitted. A probed host whose managed
-// account cannot be reached is not skipped: its row reports the failure, its grant standings read
-// GrantStandingUnobserved with the ssh cause, and the managed-access standing types it.
-type SparkGrantCoverage
-  = GrantCoverageProbedEachRun { host: HostIdentity }
-  | GrantCoverageUnobserved { host: HostIdentity }
-
-fn spark_grant_coverage_of(host: HostIdentity) -> SparkGrantCoverage {
-  if any(spark_standing_hosts, h => h == (host as String)) {
-    GrantCoverageProbedEachRun { host: host }
-  } else {
-    GrantCoverageUnobserved { host: host }
-  }
-}
-
-fn spark_grant_coverage() -> List<SparkGrantCoverage> {
-  map(dgx_spark_procurement_intent.reserved_identities, h => spark_grant_coverage_of(host: h))
-}
-
-fn spark_grant_coverage_wire(c: SparkGrantCoverage) -> String {
-  match c {
-    GrantCoverageProbedEachRun { host: h } => join(["grant-coverage host=", h as String, " probed-each-run\n"], "")
-    GrantCoverageUnobserved { host: h } => join(["grant-coverage host=", h as String, " UNOBSERVED (not probed by this mode)\n"], "")
-  }
-}
-
 fn spark_grant_row_listing_text(row: SparkGrantRow) -> String {
   match row.outcome {
     GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
@@ -559,7 +525,6 @@ fn spark_grant_report_text(report: SparkGrantReport) -> String {
       GrantProbeNotAttempted { cause: c } => join(["spark exact-grant probe not attempted: ", c, "\n"], "")
       GrantsObserved { first: f, more: m } => join(map(concat([f], m), r => spark_grant_row_text(row: r)), "")
     },
-    join(map(spark_grant_coverage(), c => spark_grant_coverage_wire(c: c)), ""),
   ], "")
 }
 
@@ -668,7 +633,16 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 
 // The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
-data spark_standing_hosts: List<String> = ["srv5", "srv6", "srv9", "srv10", "srv11", "srv12"]
+//
+// DERIVED FROM THE PROCURED ROSTER, NOT LISTED. Until 2026-10-05 this was a hand list of srv5 and
+// srv6, so every other procured Spark's sudo state was ASSUMED by any run that reached it -- which is
+// how Group B kept the pre-#13040 shared inspect drop-in with no receipt saying so. The operator
+// approved (2026-10-05, relayed by valiant-crab-775) reading every Spark's grant listing by
+// convergence, so the roster is gunbc.spark.dgx_procurement dgx_spark_procurement_intent
+// reserved_identities itself: a procured Spark left out of the probe has no constructor. A host whose
+// managed account cannot be reached is not skipped -- its row reports the failure, its grant
+// standings read GrantStandingUnobserved with the ssh cause, and the managed-access standing types it.
+data spark_standing_hosts: List<String> = map(dgx_spark_procurement_intent.reserved_identities, h => h as String)
 
 fn spark_managed_access_standing_wet() -> ProcessExit
 {

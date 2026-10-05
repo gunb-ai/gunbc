@@ -7,10 +7,7 @@ import gunbc.spark.managed_grant_reconcile {
   spark_inspect_dropin_shape_of_listing,
   spark_sudoers_dropin_listing_argv,
 }
-import gunbc.fleet_multi_principal_probe {
-  SparkGrantCoverage, GrantCoverageProbedEachRun, GrantCoverageUnobserved,
-  spark_grant_coverage, spark_grant_coverage_wire,
-}
+import gunbc.fleet_multi_principal_probe { spark_standing_hosts }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
 // alone; a host converged by the #13040 installer carries per-container files and no shared one.
@@ -56,39 +53,12 @@ test fn w_listing_argv_is_read_only() -> Bool {
   spark_sudoers_dropin_listing_argv() == ["ls", "-1", "/etc/sudoers.d"]
 }
 
-// ── coverage ──────────────────────────────────────────────────────────────────────────────────
+// ── the probe roster IS the procured roster ───────────────────────────────────────────────────
 
-fn coverage_text() -> String {
-  join(map(spark_grant_coverage(), c => spark_grant_coverage_wire(c: c)), "")
-}
-
-fn count_unobserved(cs: List<SparkGrantCoverage>) -> Int {
-  length(filter(cs, c => match c {
-    GrantCoverageUnobserved { host: _ } => true
-    GrantCoverageProbedEachRun { host: _ } => false
-  }))
-}
-
-// THE IDENTITY JOIN: every procured Spark appears in the coverage, eight rows, none dropped. A coverage
-// computed from the probed hosts alone would have two rows and reds this.
-test fn w_coverage_names_every_procured_spark() -> Bool {
-  length(spark_grant_coverage()) == 8
-}
-
-// srv7/srv8 are neither probed nor hand-read today: they must be NAMED unobserved, not omitted.
-test fn w_hosts_with_no_reading_are_named_unobserved() -> Bool {
-  count_unobserved(cs: spark_grant_coverage()) == 2
-    && contains(coverage_text(), "grant-coverage host=srv7 UNOBSERVED")
-    && contains(coverage_text(), "grant-coverage host=srv8 UNOBSERVED")
-}
-
-// Group B's grant state comes from convergence, not a hand read: srv9..srv12 are probed by every run
-// (operator approval 2026-10-05). Dropping any of them from the probe roster reds this.
-test fn w_group_b_is_probed_each_run() -> Bool {
-  contains(coverage_text(), "grant-coverage host=srv9 probed-each-run")
-    && contains(coverage_text(), "grant-coverage host=srv10 probed-each-run")
-    && contains(coverage_text(), "grant-coverage host=srv11 probed-each-run")
-    && contains(coverage_text(), "grant-coverage host=srv12 probed-each-run")
+// Every procured Spark, Group A and Group B alike, is probed by every run. A hand list that dropped
+// one (the srv5/srv6-only roster this replaced) reds this.
+test fn w_probe_roster_is_every_procured_spark() -> Bool {
+  spark_standing_hosts == ["srv5", "srv6", "srv7", "srv8", "srv9", "srv10", "srv11", "srv12"]
 }
 
 // Group B's 2026-10-04 listing shape (shared file alone, no per-container file) reads as the
