@@ -28,12 +28,14 @@ type MegaRacOperation
   = MegaRacVirtualMediaAttach
   | MegaRacKvmCanvasStill
   | MegaRacSdrSocketNaming
+  | MegaRacServedUiRead
 
 fn megarac_operation_eq(a: MegaRacOperation, b: MegaRacOperation) -> Bool {
   match a {
-    MegaRacVirtualMediaAttach => match b { MegaRacVirtualMediaAttach => true  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => false }
-    MegaRacKvmCanvasStill => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => true  MegaRacSdrSocketNaming => false }
-    MegaRacSdrSocketNaming => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => true }
+    MegaRacVirtualMediaAttach => match b { MegaRacVirtualMediaAttach => true  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => false  MegaRacServedUiRead => false }
+    MegaRacKvmCanvasStill => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => true  MegaRacSdrSocketNaming => false  MegaRacServedUiRead => false }
+    MegaRacSdrSocketNaming => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => true  MegaRacServedUiRead => false }
+    MegaRacServedUiRead => match b { MegaRacVirtualMediaAttach => false  MegaRacKvmCanvasStill => false  MegaRacSdrSocketNaming => false  MegaRacServedUiRead => true }
   }
 }
 

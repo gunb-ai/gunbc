@@ -21,7 +21,7 @@ import extdeps.bmc.megarac {
   ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing,
 }
 import gunbc.megarac_managed_host { AdmittedMegaRacHost }
-import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming, MegaRacServedUiRead }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
 import v2.std.optional { Present, Absent }
@@ -865,6 +865,7 @@ fn megarac_kvm_observer_start(
     MegaRacKvmCanvasStill => {}
     MegaRacVirtualMediaAttach => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
     MegaRacSdrSocketNaming => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
+    MegaRacServedUiRead => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
   }
   let firmware = host.firmware
   let bmc_host = host.binding.observation.endpoint.host

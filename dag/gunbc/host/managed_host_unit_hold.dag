@@ -766,7 +766,7 @@ fn unit_hold_not_admitted(admission: UnitHoldHostAdmission) -> UnitHoldAcquisiti
 // nobody accounted for. Holding the unit makes the probe, the boot and maintenance exclude each other.
 fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_observe_wet"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {
@@ -858,7 +858,7 @@ fn probe_hold_release_outcome_text(o: ProbeHoldReleaseOutcome) -> String {
 
 fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_release"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {

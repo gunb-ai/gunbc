@@ -17,12 +17,12 @@ import std.decl_ref { decl_ref }
 import v2.std.optional { Present, Absent }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
-import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
-import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
+import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, admit_megarac_host_at_current_build, megarac_operation_evidence, megarac_host_admission_in, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacServedUiRead }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data megarac_operations: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming]
+data megarac_operations: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacServedUiRead]
 
 // THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The one managed row, mtcollins1, is admitted for every
 // MegaRAC operation the boot drives, and each carrier's endpoint, account and firmware are its binding's
@@ -233,4 +233,21 @@ test fn w_an_account_is_released_only_with_the_controller_it_was_bound_to() -> B
         && (match managed_host_account_driving(lookup: managed_host_binding_for(host: "mtjade1"), endpoint: o.endpoint) { Present { value: _ } => false  Absent => true })
     }
   })
+}
+
+// THE SERVED-UI READ IS GROUNDED BY THE 2026-09-27 GET AND NOWHERE ELSE (managed-host cut 5). That
+// receipt joins the 0.32 build the binding observed, so the frozen admission admits the real row for it;
+// it predates the 2026-10-02 reflash, so the current-build gate refuses it at 0.45.3 as not current. The
+// pair differs only in the gate, so the receipt's build -- not the operation -- is what grounds it.
+test fn w_the_served_ui_read_is_admitted_at_its_observed_build_and_refused_at_the_current_one() -> Bool {
+  managed_hosts() |> all(h =>
+    (match admit_megarac_host(host: h, operation: MegaRacServedUiRead) {
+      MegaRacHostAdmitted { host: a } => (a.firmware.raw_version as String) == "0.32"
+      MegaRacHostRefused { cause: _ } => false
+    })
+    && (match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: MegaRacServedUiRead) {
+      MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: o, current: c } } => (o.raw_version as String) == "0.32" && (c.raw_version as String) == "0.45.3"
+      _ => false
+    }))
+    && count(managed_hosts()) == 1
 }

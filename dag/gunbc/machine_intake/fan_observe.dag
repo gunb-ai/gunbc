@@ -1,0 +1,243 @@
+module gunbc.machine_intake_fan_observe
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.measure { ObservationRoundCount, Second, percent, second_count }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservation }
+import product.host_identity { HostIdentity }
+import product.fan_policy_standing {
+  FanDutyCeilingVerdict,
+  ExcursionBound,
+  FanDutyExcursionOverCeiling,
+  FanDutyNotReported,
+  NoPostTransitionWindow,
+  OutlivedPostTransitionWindow,
+  WithinPostTransitionWindow,
+  FanDutySteadyCurveOverCeiling,
+  FanDutyWithinCeiling,
+  FanPolicyAuthority,
+  FanPolicySample,
+  fan_policy_standing_label,
+  fan_policy_standing_of_sample,
+}
+import gunbc.machine_intake_bmc_secure { BmcSecureRefusalCause }
+import gunbc.managed_host {
+  ManagedHostLookup, ManagedHostFound, ManagedHostNotManaged,
+  ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+}
+import gunbc.fleet_fan_converge_routes { fan_observation_authority_for_family }
+import gunbc.machine_intake_bmc_fan_observation {
+  FanObservationRefused,
+  FanObservationRound,
+  FanObservationSeries,
+  FanObservationTaken,
+  elapsed_at_round,
+  first_posted_round_index,
+  observe_fan_policy,
+  render_series,
+  samples_of_round,
+}
+import gunbc.fleet_acoustic_intent { residence_duty_verdict }
+
+// ONE MANAGED HOST'S FAN OBSERVATION, OVER ITS BINDING (managed-host cut 5; first written for Mt.
+// Collins). The producer (gunbc.machine_intake_bmc_fan_observation) reads the sensor series over IPMI,
+// which no BMC family owns; what is family-specific is only the POLICY the series is read against, and
+// that is SELECTED from the family the host's controller was observed to be
+// (gunbc.fleet_fan_converge_routes fan_observation_authority_for_family), never assumed. A host whose
+// controller was never observed has no family to select from and REFUSES with a cause naming the
+// missing observation: it is never read against either policy by default. That is Mt. Jade's case
+// (gunbc.machine_intake_mtjade1_access_observation: its family is unobserved).
+//
+// The controller, its account and the host the samples are attributed to all come off the binding.
+// How many samples, how far apart, the transition window and where the receipt lands are the caller's
+// policy, so a second host needs a second binding and no edit here.
+
+// THE BOUND HOST WITH ITS SELECTED AUTHORITY. Sealed: minted only by fan_observe_admission, which reads
+// it off a ManagedHostBinding (itself sole-constructed by gunbc.managed_host), so no controller, account
+// or authority reaches the read except through a binding.
+type FanObserveHost sole_constructor {
+  host: HostIdentity
+  observation: BmcAccessObservation
+  account: NonEmptyStr
+  authority: FanPolicyAuthority
+}
+
+type FanObserveRefusal
+  = FanHostNotManaged { host: NonEmptyStr }
+  | FanHostFamilyUnobserved { endpoint: BmcControllerEndpoint }
+  | FanHostNotSecured { cause: BmcSecureRefusalCause }
+  | FanHostEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
+
+type FanObserveAdmission
+  = FanObserveAdmitted { host: FanObserveHost }
+  | FanObserveRefused { cause: FanObserveRefusal }
+
+fn fan_observe_admission(lookup: ManagedHostLookup) -> FanObserveAdmission {
+  match lookup {
+    ManagedHostNotManaged { host: h } => FanObserveRefused { cause: FanHostNotManaged { host: h } }
+    ManagedHostFound { standing: s } =>
+      match s {
+        ManagedHostBound { binding: b } =>
+          FanObserveAdmitted {
+            host: FanObserveHost {
+              host: b.host.host,
+              observation: b.observation,
+              account: b.account,
+              authority: fan_observation_authority_for_family(family: b.observation.identity.firmware.family),
+            },
+          }
+        ManagedHostAccessUnobserved { endpoint: e } => FanObserveRefused { cause: FanHostFamilyUnobserved { endpoint: e } }
+        ManagedHostNotSecured { cause: c } => FanObserveRefused { cause: FanHostNotSecured { cause: c } }
+        ManagedHostEndpointMismatch { observed: o, secured: sec } => FanObserveRefused { cause: FanHostEndpointMismatch { observed: o, secured: sec } }
+      }
+  }
+}
+
+fn fan_observe_refusal_text(cause: FanObserveRefusal) -> NonEmptyStr {
+  let why = match cause {
+    FanHostNotManaged { host: h } => join(["'", h as String, "' is not a managed host (gunbc.managed_host managed_hosts has no row for it)"], "")
+    FanHostFamilyUnobserved { endpoint: e } => join(["the controller at ", e.host as String, " was never observed, so its BMC family -- and so the fan policy its series is read against -- is unread"], "")
+    FanHostNotSecured { cause: _ } => "the controller is not BmcSecured, so this run holds no account to read sensors with"
+    FanHostEndpointMismatch { observed: o, secured: sec } => join(["the observed controller ", o.host as String, " is not the secured one ", sec.host as String], "")
+  }
+  concat(why, "; contacting NO host") as NonEmptyStr
+}
+
+// THE AUTHORITY AN ADMITTED HOST'S SERIES IS READ AGAINST, so a caller can name it without the carrier.
+fn fan_observe_authority(host: FanObserveHost) -> FanPolicyAuthority {
+  host.authority
+}
+
+// THE CALLER'S POLICY FOR ONE SERIES: its length, its spacing, the post-transition window its standings
+// are judged in, and where its receipt lands.
+type FanObservePolicy {
+  rounds: ObservationRoundCount
+  interval: Second
+  transition_window: Second
+  receipt_path: String
+}
+
+// THE COMPARISON DUTY IS ONE HUNDRED PERCENT, AND THAT IS THIS RUN'S QUESTION RATHER THAN A FACT
+// ABOUT ANY FAMILY. Neither family authority publishes a failsafe duty and this module may not invent
+// one. What passing 100 asks is narrower and defensible - "is the drive at maximum" - which is exactly
+// the state the operator described on Mt. Jade. It is spelled as a literal because percent() admits a
+// literal only (std.measure percent_from_computed_int_frontier).
+//
+// NINETY-FIVE PERCENT IS THIS LANE'S STATED TOLERANCE, NOT A FACT ABOUT ANY FAN. It selects between
+// NearCatalogMaximum and BelowCatalogMaximum on a SPEED observation; it cannot reach a failsafe verdict,
+// because no tolerance converts RPM into a commanded duty (operator ruling 2026-09-18). No fan part is
+// modeled for any managed host, so catalog_maximum is Absent and the tolerance is not consulted today.
+//
+// ONE STANDING PER SAMPLE, EACH WITH THE SITE DUTY VERDICT BESIDE IT, so the verdict can be re-derived
+// from the artifact rather than from a summary.
+fn render_sample_standing(host: FanObserveHost, window: Second, sample: FanPolicySample, elapsed: Second?) -> String {
+  let standing = fan_policy_standing_of_sample(
+    host: host.host,
+    authority: host.authority,
+    sample: sample,
+    failsafe_duty: percent(100),
+    catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
+    elapsed_since_post: elapsed,
+    transition_window: window,
+  )
+  join([
+    "  standing fan=", sample.endpoint.name as String,
+    " at=", sample.observed_at as String,
+    " verdict=", fan_policy_standing_label(standing: standing) as String,
+    " residence_duty=", render_duty_verdict(verdict: residence_duty_verdict(standing: standing)),
+  ], "")
+}
+
+// THE TWO OVER-ARMS RENDER DISTINCTLY, because their remedies differ: a curve over the ceiling is
+// something to converge, and an excursion over it is something to bound in time or to end by
+// powering the machine off.
+fn render_duty_verdict(verdict: FanDutyCeilingVerdict) -> String {
+  match verdict {
+    FanDutyWithinCeiling { duty: _, ceiling: _ } => "WithinCeiling"
+    FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => "SteadyCurveOverCeiling"
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => join(["ExcursionOverCeiling(", render_excursion_bound(bound: b), ")"], "")
+    FanDutyNotReported { cause: _ } => "NotReported"
+  }
+}
+
+// THE BOUND RENDERS AS WHAT IT IS, and the pre-POST case says so in words rather than as a zero: nothing
+// bounds such an excursion but powering the machine off.
+fn render_excursion_bound(bound: ExcursionBound) -> String {
+  match bound {
+    NoPostTransitionWindow => "no post-transition window; bounded only by power-off"
+    WithinPostTransitionWindow { elapsed: e, window: w } =>
+      join(["within window, elapsed=", to_string(second_count(s: e)), "s of ", to_string(second_count(s: w)), "s"], "")
+    OutlivedPostTransitionWindow { elapsed: e, window: w } =>
+      join(["OUTLIVED window, elapsed=", to_string(second_count(s: e)), "s past ", to_string(second_count(s: w)), "s"], "")
+  }
+}
+
+// EACH ROUND'S SAMPLES ARE STAMPED WITH THAT ROUND'S OWN ELAPSED, never with the series'. The first
+// posted index is a property of the series and is computed once; the elapsed is the round's.
+fn render_observation(host: FanObserveHost, window: Second, rounds: List<FanObservationRound>, interval: Second) -> String {
+  let first_posted = first_posted_round_index(rounds: rounds)
+  join([
+    render_series(rounds: rounds),
+    join(
+      map(rounds, r => render_round_standings(host: host, window: window, round: r, first_posted: first_posted, interval: interval)),
+      "\n",
+    ),
+  ], "\n")
+}
+
+fn render_round_standings(host: FanObserveHost, window: Second, round: FanObservationRound, first_posted: Int?, interval: Second) -> String {
+  let elapsed = elapsed_at_round(round: round, first_posted_index: first_posted, interval: interval)
+  join(
+    map(
+      samples_of_round(host: host.host, round: round),
+      s => render_sample_standing(host: host, window: window, sample: s, elapsed: elapsed),
+    ),
+    "\n",
+  )
+}
+
+// THE ADMITTED READ. Sealed to the one entry that binds a managed host's row to it; it returns a
+// ProcessExit, never a carrier. The credential file is the caller's
+// (gunbc.machine_intake_mtcollins1_bmc_secure_observation mtcollins1_managed_secret_fetch_frontier).
+fn fan_observe_with(host: FanObserveHost, password_file: NonEmptyStr, policy: FanObservePolicy) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_fan_observe", decl_name: "mtcollins1_fan_observe_wet"),
+  ]
+{
+  fan_write_observation(
+    host: host,
+    policy: policy,
+    series: observe_fan_policy(
+      bmc_host: host.observation.endpoint.host,
+      username: host.account,
+      password_file: password_file,
+      rounds: policy.rounds,
+      interval: policy.interval,
+    ),
+  )
+}
+
+// THE RECEIPT IS WRITTEN ONLY FOR A SERIES THAT WAS TAKEN. A refused observation's text would leave an
+// artifact that LOOKS like a measurement attached to a run that failed.
+fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series: FanObservationSeries) -> ProcessExit {
+  match series {
+    FanObservationRefused { cause: cause } =>
+      exit_failure(reason: concat("fan observation: ", cause as String))
+    FanObservationTaken { rounds: rounds, interval: interval } => {
+      let written = Filesystem.Write(
+        path: policy.receipt_path,
+        content: render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
+      )
+      if written.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("fan observation: the series was taken and its receipt could not be written: ", written.error))
+      }
+    }
+  }
+}

@@ -7,7 +7,7 @@ import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing {
-  MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacServedUiRead,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition, megarac_operation_served_artifact_recovery, ServedArtifactDigestOnly,
 }
 import gunbc.machine_intake_mtcollins1_access_observation {
@@ -77,6 +77,20 @@ data mtcollins1_run_37102391062_kvm_journal: EvidenceRef = EvidenceRef {
   digest: Sha256Hash(Sha256Digest { hex: "357c2410a75c2f46e5679bc17f2c5fa46d2444e3379756037adfa57aaf75557c" }),
 }
 
+// THE 2026-09-27 GET OF THE SERVED UI BUNDLE, AS A RECEIPT THAT THE READ EXECUTED (managed-host cut 5).
+// megarac.Ui.GetServedBundle is an unauthenticated GET of what the controller serves to a browser; the
+// digest exists only because that GET ran against the 0.32 build, so it is evidence the operation
+// executed THEN and on that build -- an observation of served bytes, never a disassembly, and the
+// served file carries no proprietary notice in this tree because its bytes were never committed. The
+// URL is the capture's path and the digest is
+// gunbc.machine_intake_megarac_served_ui_catalog_observation megarac_source_min_js_sha256_2026_09_27.
+// It is dated before the 2026-10-02 reflash, so it joins the 0.32 reading and no later build: the
+// current-build gate refuses MegaRacServedUiRead at 0.45.3 until a read there is committed.
+data megarac_served_bundle_0_32_receipt: EvidenceRef = EvidenceRef {
+  label: "https://192.168.1.228/source.min.js served 2026-09-27 (bytes not committed; gunbc.machine_intake_megarac_served_ui_catalog_observation megarac_source_min_js_sha256_2026_09_27)",
+  digest: Sha256Hash(Sha256Digest { hex: megarac_source_min_js_sha256_2026_09_27 as String }),
+}
+
 // The diagnostics' handoff look answered at 1791016730385 with the medium presented, the journal's
 // established line is at 2026-10-03T08:38:30.837Z, and the diagnostics' end-of-attempt look at
 // 1791016934906 bounds the sensor read, which the capture does not timestamp.
@@ -101,6 +115,7 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_media_at),
       megarac_operation_receipt(operation: MegaRacKvmCanvasStill, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_kvm_journal, executed_at: mtcollins1_run_37102391062_kvm_at),
       megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_sensors_by),
+      megarac_operation_receipt(operation: MegaRacServedUiRead, endpoint: mtcollins1_endpoint, receipt: megarac_served_bundle_0_32_receipt, executed_at: megarac_served_bundle_0_32_read_on),
     ],
     transitions: [
       megarac_firmware_transition(

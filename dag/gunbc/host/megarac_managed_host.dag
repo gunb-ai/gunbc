@@ -13,7 +13,7 @@ import gunbc.managed_host {
   ManagedHostNotSecured, ManagedHostEndpointMismatch, managed_host_binding, managed_hosts,
 }
 import gunbc.megarac_operation_standing {
-  MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacServedUiRead,
   MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
   megarac_operation_grounded_at, megarac_operation_executed_at, megarac_current_build,
 }
@@ -165,6 +165,7 @@ fn megarac_operation_text(operation: MegaRacOperation) -> String {
     MegaRacVirtualMediaAttach => "virtual media attach"
     MegaRacKvmCanvasStill => "KVM canvas still"
     MegaRacSdrSocketNaming => "SDR socket naming"
+    MegaRacServedUiRead => "served UI read"
   }
 }
 

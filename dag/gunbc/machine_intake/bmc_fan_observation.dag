@@ -472,8 +472,9 @@ fn render_series(rounds: List<FanObservationRound>) -> String {
 // WHAT THIS PRODUCER RETURNS IS THE SERIES, NOT A VERDICT, AND THAT BOUNDARY IS THE MODULE'S WHOLE
 // SHAPE. Which family authority a host runs, what its failsafe duty is, and which site ceiling
 // bounds it are all POLICY facts about a particular machine; a producer that reached a standing
-// would have to carry them, and the next host would need a second producer. The host's own policy
-// module folds the series into standings - see gunbc.machine_intake_mtcollins1_fan_observe.
+// would have to carry them, and the next host would need a second producer. The fold of the series
+// into standings, with the authority selected from the bound family, is
+// gunbc.machine_intake_fan_observe; a host's binding supplies its series policy.
 //
 // THE UNREADABLE-CHASSIS REFUSAL LIVES HERE RATHER THAN THERE, because it is a fact about the
 // OBSERVATION and not about any host's policy: a series whose power column is empty establishes

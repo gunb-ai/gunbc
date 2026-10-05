@@ -1,0 +1,105 @@
+module test.claim.machine_intake.fan_observe_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, OpenBmc }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.managed_host { ManagedHost, ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.machine_intake_fan_observe {
+  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
+  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn authority_names(a: FanObserveAdmission, module_path: String, decl_name: String) -> Bool {
+  match a {
+    FanObserveAdmitted { host: h } =>
+      (fan_observe_authority(host: h).declaration.module_path as String) == module_path
+        && (fan_observe_authority(host: h).declaration.decl_name as String) == decl_name
+    FanObserveRefused { cause: _ } => false
+  }
+}
+
+// THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE: the one managed row, mtcollins1, reaches the fan read
+// through its real binding (gunbc.managed_host managed_host_binding_for, the lookup the wet entry
+// makes), and its observed family -- AMI MegaRAC -- selects the MegaRAC policy authority. Its observed
+// family changing, its binding refusing, or the dispatch defaulting turns this red.
+test fn the_megarac_row_is_read_against_the_megarac_policy() -> Bool {
+  let a = fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr))
+  authority_names(a: a, module_path: "extdeps.bmc.megarac_fan_policy", decl_name: "megarac_fan_policy_standing")
+    && match a {
+      FanObserveAdmitted { host: h } =>
+        (h.host as String) == (operator_host_mtcollins1 as String)
+          && managed_hosts() |> all(r => match r.access {
+            BmcAccessObserved { observation: o } => (o.endpoint.host as String) == (h.observation.endpoint.host as String)
+            BmcAccessUnobserved { endpoint: _ } => false
+          })
+          && (h.account as String) == "gunbc"
+      FanObserveRefused { cause: _ } => false
+    }
+}
+
+fn observation_as_openbmc(o: BmcAccessObservation) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: o.endpoint,
+    identity: BmcObservedIdentity { baseboard: o.identity.baseboard, chassis_part_number: o.identity.chassis_part_number, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: o.identity.firmware.raw_version) },
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+}
+
+// A SUPPLIED CONTROL, NOT A BINDING: no managed host is OpenBMC-bound. The real row with ONLY its observed
+// family changed selects the phosphor zone contract, so the authority follows the observed family and is
+// not a constant of the module.
+test fn an_openbmc_bound_row_is_read_against_the_phosphor_policy() -> Bool {
+  match managed_hosts().first() {
+    Absent => false
+    Present { value: h } =>
+      match h.access {
+        BmcAccessUnobserved { endpoint: _ } => false
+        BmcAccessObserved { observation: o } => {
+          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: openbmc) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
+        }
+      }
+  }
+}
+
+// RED: THE SAME ROW WITH ITS CONTROLLER UNOBSERVED (Mt. Jade's standing). There is no family to select a
+// policy from, so the read refuses with a cause naming the controller whose observation is missing -- it
+// is never read against either policy by default.
+test fn a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation() -> Bool {
+  match managed_hosts().first() {
+    Absent => false
+    Present { value: h } =>
+      match h.access {
+        BmcAccessUnobserved { endpoint: _ } => false
+        BmcAccessObserved { observation: o } => {
+          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+          match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: unobserved) }) {
+            FanObserveRefused { cause: FanHostFamilyUnobserved { endpoint: e } } =>
+              (e.host as String) == (o.endpoint.host as String)
+                && string_contains(s: fan_observe_refusal_text(cause: FanHostFamilyUnobserved { endpoint: e }) as String, pattern: "was never observed")
+            _ => false
+          }
+        }
+      }
+  }
+}
+
+// RED: A HOST THE FLEET DOES NOT MANAGE. mtjade1 has no managed row, so its fan read refuses by name.
+test fn a_host_that_is_not_managed_refuses() -> Bool {
+  match fan_observe_admission(lookup: managed_host_binding_for(host: "mtjade1" as NonEmptyStr)) {
+    FanObserveRefused { cause: FanHostNotManaged { host: n } } => (n as String) == "mtjade1"
+    _ => false
+  }
+}
