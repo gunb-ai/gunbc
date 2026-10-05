@@ -30,6 +30,9 @@ import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
 import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.roadmap_dispatch_actuator {
+  DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
+  RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
+  filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
   dispatch_review_unit_name, dispatch_review_unit_argv,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
@@ -494,6 +497,8 @@ import gunbc.roadmap_dispatch_actuator {
   host_exec_argv,
   dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename,
   dispatch_attempt_alignment_binding_path_for_instance, dispatch_attempt_alignment_binding_basename,
+  dispatch_attempt_process_fingerprint_path_for_instance, dispatch_current_attempt_process_fingerprint_path_for_instance,
+  dispatch_actuator_selection_process_fingerprint,
   dispatch_worker_attempt_identity,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -744,6 +749,7 @@ fn belt_attempt_state_initialize_for_instance(
   turn: Int,
   binding: AlignmentBinding,
   request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -783,6 +789,18 @@ fn belt_attempt_state_initialize_for_instance(
     AttemptStateInitializationFailed {
       step: "attempt-alignment-binding-write",
       detail: binding_write.error,
+    }
+  } else if !Filesystem.Write(
+    path: dispatch_attempt_process_fingerprint_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: process_fingerprint as String,
+  ).success {
+    AttemptStateInitializationFailed {
+      step: "attempt-process-fingerprint-write",
+      detail: "the spawn's selected process fingerprint could not be recorded in the attempt state",
     }
   } else {
     let admission_write = Filesystem.Write(
@@ -2022,6 +2040,7 @@ fn belt_actuate_spawn_for_instance(
   probed_at: String,
   launch: LaunchIdentity,
   request: AttemptLaunchRequest,
+  executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
@@ -2052,7 +2071,8 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      let selection = dispatch_actuator_selection(
+      let selection = dispatch_actuator_selection_for_request(
+        request: executor,
         sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
       )
       match selection {
@@ -2826,18 +2846,29 @@ fn belt_actuate_spawn_with_origin(
             attempt_identity: dispatch_worker_attempt_identity(node_id: node.node as String, attempt_key: attempt_key),
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
+  match dispatch_actuator_selection_process_fingerprint(selection: selection) {
+    Absent =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "selection-process-fingerprint",
+        detail: "the spawn reached its host steps under a refused selection, which the selection gate must refuse first; fail-closed",
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    Present { value: process_fingerprint } =>
   match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
-      belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: none, request: request)
+      belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint)
     BeltPlacementHeld { held } =>
       belt_spawn_release_unless_spawned(
         held: held,
         provider_wire_label: provider_wire_label,
         launch: launch,
-        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }, request: request),
+        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint),
       )
+  }
   }
   }
   }
@@ -2861,6 +2892,7 @@ fn belt_spawn_admitted(
   binding: AlignmentBinding,
   placement: BeltHeldPlacement?,
   request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
 ) -> BeltSpawnOutcome {
   match belt_exec_steps(
     steps: [
@@ -2908,6 +2940,7 @@ fn belt_spawn_admitted(
         turn: attempt_origin_turn(origin: origin),
         binding: binding,
         request: request,
+        process_fingerprint: process_fingerprint,
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -4834,6 +4867,80 @@ fn belt_attempt_panes_observe_for_instance(
 // NOT erase known presence — every present session maps to process-unobserved and
 // cleanup-unavailable with the located pane reason. The UI can say `session present · process
 // unknown` instead of fabricating liveness or hiding the container.
+// THE FINGERPRINT EACH LIVE NODE'S CURRENT ATTEMPT RECORDED AT SPAWN. A node with no current-attempt
+// directory, or whose directory has no record, predates the record and contributes nothing, so its
+// session keeps the default-selection scope. Any other unreadable state REFUSES the observation:
+// substituting the default scope for a record that exists but cannot be read would judge a vendor
+// attempt's pane against the harness's fingerprint, which is the misclassification the record exists
+// to prevent.
+type RecordedFingerprintsRead
+  = RecordedFingerprintsOk { recorded: List<RecordedAttemptFingerprint> }
+  | RecordedFingerprintsUnreadable { reason: String }
+
+fn belt_recorded_fingerprint_for_node(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> RecordedFingerprintsRead {
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  let current_name = join([node_id, "-current"], "")
+  let root_listing = Filesystem.List(path: root)
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: root, success: root_listing.success, entries: root_listing.entries, error: root_listing.error),
+    name: current_name,
+  ) {
+    FilesystemEntryAbsent(_) => RecordedFingerprintsOk { recorded: [] }
+    FilesystemEntryPresenceIndeterminate { cause } => RecordedFingerprintsUnreadable { reason: cause }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let path = dispatch_current_attempt_process_fingerprint_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId)
+      let dir = join([root, "/", current_name], "")
+      let listing = Filesystem.List(path: dir)
+      let read = Filesystem.Read(path: path)
+      match filesystem_file_observation(
+        listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+        name: "process-fingerprint",
+        path: path,
+        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+      ) {
+        FilesystemFileAbsent(_) => RecordedFingerprintsOk { recorded: [] }
+        FilesystemFileRead { path: _, content } =>
+          if trim(s: content) == "" {
+            RecordedFingerprintsUnreadable { reason: join(["the recorded process fingerprint at ", path, " is empty"], "") }
+          } else {
+            RecordedFingerprintsOk {
+              recorded: [RecordedAttemptFingerprint { node_id: node_id, fingerprint: trim(s: content) as NonEmptyStr }],
+            }
+          }
+        FilesystemFileIndeterminate { cause } => RecordedFingerprintsUnreadable { reason: cause }
+        FilesystemFileObservationsDisagree { path: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
+      }
+    }
+  }
+}
+
+fn belt_recorded_fingerprints_for_entries(
+  instance: HostDashboardInstance,
+  entries: List<TmuxLsEntry>,
+) -> RecordedFingerprintsRead {
+  fold(
+    filter_dispatch_tmux_sessions(entries: entries),
+    init: RecordedFingerprintsOk { recorded: [] },
+    f: (acc, e) =>
+      match acc {
+        RecordedFingerprintsUnreadable { reason: _ } => acc
+        RecordedFingerprintsOk { recorded } =>
+          match belt_recorded_fingerprint_for_node(
+            instance: instance,
+            node_id: dispatch_node_id_from_session_name(session_name: e.session_name),
+          ) {
+            RecordedFingerprintsUnreadable { reason } => RecordedFingerprintsUnreadable { reason: reason }
+            RecordedFingerprintsOk { recorded: mine } => RecordedFingerprintsOk { recorded: concat(recorded, mine) }
+          }
+      },
+  )
+}
+
 fn belt_sessions_observe_for_instance(
   instance: HostDashboardInstance,
 ) -> BeltObserve {
@@ -4852,6 +4959,10 @@ fn belt_sessions_observe_for_instance(
         stderr: result.stderr,
       ) {
         TmuxSessionsListed { entries } =>
+          match belt_recorded_fingerprints_for_entries(instance: instance, entries: entries) {
+            RecordedFingerprintsUnreadable { reason } =>
+              ObserveRefused { reason: join(["a live dispatch attempt's recorded process fingerprint is unreadable: ", reason], "") }
+            RecordedFingerprintsOk { recorded } =>
           match belt_attempt_panes_observe_for_instance(instance: instance) {
             BeltAttemptPanesObserved { panes } =>
               BeltSessionsObserved {
@@ -4860,6 +4971,7 @@ fn belt_sessions_observe_for_instance(
                   panes: panes,
                   pane_observation_refusal: "",
                   selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+                  recorded: recorded,
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -4869,8 +4981,10 @@ fn belt_sessions_observe_for_instance(
                   panes: [],
                   pane_observation_refusal: reason,
                   selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+                  recorded: recorded,
                 ),
               }
+          }
           }
         TmuxListStdoutRefused { line_number, raw, reason } =>
           ObserveRefused {
@@ -8743,8 +8857,16 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     BeltSessionsObserved { live } => {
-      match dispatch_tmux_session_scope(
-        node_id: node_id,
+      match belt_recorded_fingerprint_for_node(instance: instance, node_id: node_id) {
+        RecordedFingerprintsUnreadable { reason } =>
+          StopRefusedResult {
+            node_id: node_id,
+            reason: join(["the node's recorded process fingerprint is unreadable before stop scope: ", reason], ""),
+          }
+        RecordedFingerprintsOk { recorded } =>
+      match dispatch_tmux_session_scope_for_recorded(
+        node_id: node_id as RoadmapNodeId,
+        recorded: recorded,
         selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
       ) {
         Absent =>
@@ -8804,6 +8926,7 @@ fn belt_stop_node_for_instance(
           }
       }
         }
+      }
       }
     }
   }
@@ -9297,6 +9420,7 @@ fn belt_dispatch_node_for_instance_over(
   plan: RoadmapAuthorityProjection,
   node_id: String,
   request: AttemptLaunchRequest,
+  executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
   belt_dispatch_node_staged_over(
     instance: instance,
@@ -9305,6 +9429,7 @@ fn belt_dispatch_node_for_instance_over(
     merged: authored_merged_prs(),
     node_id: node_id,
     request: request,
+    executor: executor,
   )
 }
 
@@ -9325,6 +9450,7 @@ fn belt_dispatch_node_staged(
     merged: authored_merged_prs(),
     node_id: node_id,
     request: LaunchAutonomous,
+    executor: ExecutorDefault,
   )
 }
 
@@ -9335,6 +9461,7 @@ fn belt_dispatch_node_staged_over(
   merged: List<Int>,
   node_id: String,
   request: AttemptLaunchRequest,
+  executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
   match (match launch_admission_staged(cause: Operator, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: 0) {
     LaunchStageDecided { admission } => admission
@@ -9380,6 +9507,7 @@ fn belt_dispatch_node_staged_over(
                 probed_at: probed_at as String,
                 launch: identity,
                 request: request,
+                executor: executor,
               )
             Absent =>
               SpawnFailed {

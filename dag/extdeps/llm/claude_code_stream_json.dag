@@ -1,0 +1,403 @@
+module extdeps.llm.claude_code_stream_json
+
+import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.decimal { ExactDecimal, decimal_pow10 }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  JsonString,
+  JsonArray,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonObject,
+}
+import extdeps.languages.json.number { read_json_number, JsonNumberExact, JsonNumberOutsideExactFragment }
+import extdeps.llm.claude_agent_sdk_stream { claude_stream_event_type_rate_limit_event }
+
+// THE CLAUDE CODE CLI's OWN stream-json WIRE, as `claude -p --output-format stream-json --verbose`
+// writes it to stdout: one JSON object per line. This is the CLI's surface, versioned with the CLI,
+// and it is a separate upstream from @anthropic-ai/claude-agent-sdk (extdeps.llm.claude_agent_sdk_stream),
+// whose parser consumes this wire and DROPS message types it does not know. The event-type spelling
+// for the rate-limit line is that module's row and is imported, not re-minted.
+//
+// WHAT IS MODELED IS WHAT A CAPTURED LINE CARRIED, NOT WHAT A LIMIT SHOULD LOOK LIKE. Receipt:
+// claude 2.1.289 on 2026-10-05, one `-p` turn, emitted
+//   {"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791190800,
+//    "rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled",
+//    "isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.01,"resetsAt":1791190800},
+//    "seven_day":{"utilization":0.45,"resetsAt":1791554400}}},"uuid":"…","session_id":"…"}
+// and a terminal {"type":"result","subtype":"success","is_error":false,"terminal_reason":"completed",
+// "api_error_status":null,…}. A second receipt the same day, CLAUDE_CODE_OAUTH_TOKEN set to an invalid
+// token, ended {"type":"result","subtype":"success","is_error":true,"api_error_status":401,
+// "result":"Failed to authenticate. API Error: 401 OAuth access token is invalid."} -- so `subtype`
+// is NOT the outcome: is_error and the NUMERIC api_error_status are, and both are carried.
+// Subscription limits are ROLLING USAGE WINDOWS: the line names each
+// window, its utilization as a fraction of the window, and when it resets. No request count appears
+// anywhere and none is modeled. Window names and status words stay open NonEmptyStr native tokens;
+// projecting them onto dispatch vocabulary is the consumer's decision (gunbc.claude_code_limit_standing).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.anthropic.com/en/docs/claude-code/cli-reference"
+  }
+}
+
+data claude_code_stream_json_cli_version: NonEmptyStr = "2.1.289"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.claude_code_stream_json",
+      decl_name: "ClaudeCodeStreamLine",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data claude_code_stream_event_type_result: String = "result"
+data claude_code_rate_limit_status_rejected: String = "rejected"
+
+// The argv words that make the CLI write this wire. --verbose is required by the CLI for
+// stream-json under -p; without it the CLI refuses the flag combination.
+data claude_code_stream_json_print_args: List<String> = ["-p", "--output-format", "stream-json", "--verbose"]
+
+type ClaudeCodeRateLimitWindow {
+  name: NonEmptyStr
+  utilization_basis_points: Nat
+  resets_at: EpochSecs?
+}
+
+type ClaudeCodeRateLimitInfo {
+  status: NonEmptyStr
+  rate_limit_type: NonEmptyStr?
+  resets_at: EpochSecs?
+  windows: List<ClaudeCodeRateLimitWindow>
+}
+
+type ClaudeCodeTurnResult {
+  subtype: NonEmptyStr
+  is_error: Bool
+  terminal_reason: String?
+  api_error_status: Int?
+}
+
+// A line whose member could not be read is a TYPED refusal naming the member, never a default:
+// a missing utilization read as 0 would report the best possible standing on no evidence.
+type ClaudeCodeStreamLineGap
+  = StreamLineNotJson
+  | StreamLineMemberMissing { member: String }
+  | StreamLineMemberMalformed { member: String }
+
+type ClaudeCodeStreamLine
+  = ClaudeCodeRateLimitEventLine { info: ClaudeCodeRateLimitInfo }
+  | ClaudeCodeResultLine { result: ClaudeCodeTurnResult }
+  | ClaudeCodeOtherLine { event_type: String }
+  | ClaudeCodeLineUnreadable { gap: ClaudeCodeStreamLineGap }
+
+type ClaudeStringMember
+  = StringMemberRead { value: String }
+  | StringMemberNull
+  | StringMemberAbsent
+  | StringMemberMalformed
+
+fn claude_string_member(v: JsonValue, key: String) -> ClaudeStringMember {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } => StringMemberRead { value: s }
+        JsonNull => StringMemberNull
+        JsonBool { value: _ } => StringMemberMalformed
+        JsonNumber { lexeme: _ } => StringMemberMalformed
+        JsonArray { elements: _ } => StringMemberMalformed
+        JsonObject { members: _ } => StringMemberMalformed
+      }
+    JsonMemberAbsent => StringMemberAbsent
+    JsonMemberDuplicated { count: _ } => StringMemberMalformed
+    JsonMemberNotAnObject => StringMemberMalformed
+  }
+}
+
+type ClaudeIntMember
+  = IntMemberRead { value: Int }
+  | IntMemberAbsent
+  | IntMemberMalformed
+
+fn claude_int_member(v: JsonValue, key: String) -> ClaudeIntMember {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: lex } =>
+          match parse_int(s: lex as String) {
+            Present { value: n } => IntMemberRead { value: n }
+            Absent => IntMemberMalformed
+          }
+        JsonNull => IntMemberAbsent
+        JsonString { value: _ } => IntMemberMalformed
+        JsonBool { value: _ } => IntMemberMalformed
+        JsonArray { elements: _ } => IntMemberMalformed
+        JsonObject { members: _ } => IntMemberMalformed
+      }
+    JsonMemberAbsent => IntMemberAbsent
+    JsonMemberDuplicated { count: _ } => IntMemberMalformed
+    JsonMemberNotAnObject => IntMemberMalformed
+  }
+}
+
+// A fraction of the window, read EXACTLY and scaled to basis points. Digits past the fourth
+// fractional place truncate toward zero, so a window at 0.99995 reads 9999 and is not mistaken
+// for exhausted; 1.0 reads 10000. Negative fractions are not a utilization and refuse.
+fn claude_decimal_basis_points(d: ExactDecimal) -> Nat? {
+  if d.fraction_digits <= 4 {
+    checked_int_to_nat(n: d.units * decimal_pow10(exponent: 4 - d.fraction_digits))
+  } else {
+    checked_int_to_nat(n: d.units / decimal_pow10(exponent: d.fraction_digits - 4))
+  }
+}
+
+// An epoch second is a non-negative Int; a negative resetsAt is not an instant and reads as malformed.
+fn claude_epoch_secs(n: Int) -> EpochSecs? {
+  if n < 0 {
+    none
+  } else {
+    Present { value: n }
+  }
+}
+
+type ClaudeWindowRead
+  = ClaudeWindowReadOk { window: ClaudeCodeRateLimitWindow }
+  | ClaudeWindowReadGap { gap: ClaudeCodeStreamLineGap }
+
+fn claude_rate_limit_window(name: NonEmptyStr, v: JsonValue) -> ClaudeWindowRead {
+  let utilization_member = concat("unifiedWindows.", concat(name as String, ".utilization"))
+  match json_object_unique_member(v: v, key: "utilization") {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: lex } =>
+          match read_json_number(lexeme: lex) {
+            JsonNumberExact { value: d } =>
+              match claude_decimal_basis_points(d: d) {
+                Present { value: bp } =>
+                  match claude_int_member(v: v, key: "resetsAt") {
+                    IntMemberRead { value: at } =>
+                      match claude_epoch_secs(n: at) {
+                        Present { value: secs } =>
+                          ClaudeWindowReadOk {
+                            window: ClaudeCodeRateLimitWindow {
+                              name: name,
+                              utilization_basis_points: bp,
+                              resets_at: Present { value: secs },
+                            },
+                          }
+                        Absent =>
+                          ClaudeWindowReadGap {
+                            gap: StreamLineMemberMalformed {
+                              member: concat("unifiedWindows.", concat(name as String, ".resetsAt")),
+                            },
+                          }
+                      }
+                    IntMemberAbsent =>
+                      ClaudeWindowReadOk {
+                        window: ClaudeCodeRateLimitWindow {
+                          name: name,
+                          utilization_basis_points: bp,
+                          resets_at: Absent,
+                        },
+                      }
+                    IntMemberMalformed =>
+                      ClaudeWindowReadGap {
+                        gap: StreamLineMemberMalformed {
+                          member: concat("unifiedWindows.", concat(name as String, ".resetsAt")),
+                        },
+                      }
+                  }
+                Absent => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+              }
+            JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } =>
+              ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+          }
+        JsonNull => ClaudeWindowReadGap { gap: StreamLineMemberMissing { member: utilization_member } }
+        JsonString { value: _ } => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+        JsonBool { value: _ } => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+        JsonArray { elements: _ } => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+        JsonObject { members: _ } => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+      }
+    JsonMemberAbsent => ClaudeWindowReadGap { gap: StreamLineMemberMissing { member: utilization_member } }
+    JsonMemberDuplicated { count: _ } => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+    JsonMemberNotAnObject => ClaudeWindowReadGap { gap: StreamLineMemberMalformed { member: utilization_member } }
+  }
+}
+
+type ClaudeWindowsFold {
+  windows: List<ClaudeCodeRateLimitWindow>
+  gap: ClaudeCodeStreamLineGap?
+}
+
+fn claude_rate_limit_windows(members: List<JsonKeyValue>) -> ClaudeWindowsFold {
+  fold(
+    members,
+    init: ClaudeWindowsFold { windows: [], gap: Absent },
+    f: (acc, kv) =>
+      match acc.gap {
+        Present { value: _ } => acc
+        Absent =>
+          if kv.key == "" {
+            ClaudeWindowsFold { windows: acc.windows, gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+          } else {
+            match claude_rate_limit_window(name: kv.key as NonEmptyStr, v: kv.value) {
+              ClaudeWindowReadOk { window: w } =>
+                ClaudeWindowsFold { windows: append(acc.windows, [w]), gap: Absent }
+              ClaudeWindowReadGap { gap: g } =>
+                ClaudeWindowsFold { windows: acc.windows, gap: Present { value: g } }
+            }
+          }
+      },
+  )
+}
+
+fn claude_optional_nonempty(m: ClaudeStringMember) -> NonEmptyStr? {
+  match m {
+    StringMemberRead { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+    StringMemberNull => Absent
+    StringMemberAbsent => Absent
+    StringMemberMalformed => Absent
+  }
+}
+
+fn claude_rate_limit_info_line(info: JsonValue) -> ClaudeCodeStreamLine {
+  match claude_string_member(v: info, key: "status") {
+    StringMemberRead { value: status } =>
+      if status == "" {
+        ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.status" } }
+      } else {
+        let resets = match claude_int_member(v: info, key: "resetsAt") {
+          IntMemberRead { value: at } => claude_epoch_secs(n: at)
+          IntMemberAbsent => Absent
+          IntMemberMalformed => Absent
+        }
+        let windows = match json_object_unique_member(v: info, key: "unifiedWindows") {
+          JsonMemberFound { value: w } =>
+            match w {
+              JsonObject { members: ms } => claude_rate_limit_windows(members: ms)
+              JsonNull => ClaudeWindowsFold { windows: [], gap: Absent }
+              JsonString { value: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+              JsonBool { value: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+              JsonNumber { lexeme: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+              JsonArray { elements: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+            }
+          JsonMemberAbsent => ClaudeWindowsFold { windows: [], gap: Absent }
+          JsonMemberDuplicated { count: _ } => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+          JsonMemberNotAnObject => ClaudeWindowsFold { windows: [], gap: Present { value: StreamLineMemberMalformed { member: "unifiedWindows" } } }
+        }
+        match windows.gap {
+          Present { value: g } => ClaudeCodeLineUnreadable { gap: g }
+          Absent =>
+            ClaudeCodeRateLimitEventLine {
+              info: ClaudeCodeRateLimitInfo {
+                status: status as NonEmptyStr,
+                rate_limit_type: claude_optional_nonempty(m: claude_string_member(v: info, key: "rateLimitType")),
+                resets_at: resets,
+                windows: windows.windows,
+              },
+            }
+        }
+      }
+    StringMemberNull => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "rate_limit_info.status" } }
+    StringMemberAbsent => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "rate_limit_info.status" } }
+    StringMemberMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info.status" } }
+  }
+}
+
+fn claude_optional_string(m: ClaudeStringMember) -> String? {
+  match m {
+    StringMemberRead { value: s } => Present { value: s }
+    StringMemberNull => Absent
+    StringMemberAbsent => Absent
+    StringMemberMalformed => Absent
+  }
+}
+
+fn claude_result_line(doc: JsonValue) -> ClaudeCodeStreamLine {
+  match claude_string_member(v: doc, key: "subtype") {
+    StringMemberRead { value: subtype } =>
+      if subtype == "" {
+        ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "subtype" } }
+      } else {
+        match json_object_unique_member(v: doc, key: "is_error") {
+          JsonMemberFound { value: found } =>
+            match found {
+              JsonBool { value: is_error } =>
+                ClaudeCodeResultLine {
+                  result: ClaudeCodeTurnResult {
+                    subtype: subtype as NonEmptyStr,
+                    is_error: is_error,
+                    terminal_reason: claude_optional_string(m: claude_string_member(v: doc, key: "terminal_reason")),
+                    api_error_status: match claude_int_member(v: doc, key: "api_error_status") {
+                      IntMemberRead { value: code } => Present { value: code }
+                      IntMemberAbsent => Absent
+                      IntMemberMalformed => Absent
+                    },
+                  },
+                }
+              JsonNull => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "is_error" } }
+              JsonString { value: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
+              JsonNumber { lexeme: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
+              JsonArray { elements: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
+              JsonObject { members: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
+            }
+          JsonMemberAbsent => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "is_error" } }
+          JsonMemberDuplicated { count: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
+          JsonMemberNotAnObject => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "is_error" } }
+        }
+      }
+    StringMemberNull => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "subtype" } }
+    StringMemberAbsent => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "subtype" } }
+    StringMemberMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "subtype" } }
+  }
+}
+
+fn claude_code_stream_line(line: String) -> ClaudeCodeStreamLine {
+  match parse_json_document(s: line) {
+    JsonDocumentUnreadable { gap: _ } => ClaudeCodeLineUnreadable { gap: StreamLineNotJson }
+    JsonDocumentParsed { value: doc } =>
+      match claude_string_member(v: doc, key: "type") {
+        StringMemberRead { value: t } =>
+          if t == claude_stream_event_type_rate_limit_event {
+            match json_object_unique_member(v: doc, key: "rate_limit_info") {
+              JsonMemberFound { value: info } => claude_rate_limit_info_line(info: info)
+              JsonMemberAbsent => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "rate_limit_info" } }
+              JsonMemberDuplicated { count: _ } => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info" } }
+              JsonMemberNotAnObject => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "rate_limit_info" } }
+            }
+          } else {
+            if t == claude_code_stream_event_type_result {
+              claude_result_line(doc: doc)
+            } else {
+              ClaudeCodeOtherLine { event_type: t }
+            }
+          }
+        StringMemberNull => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "type" } }
+        StringMemberAbsent => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "type" } }
+        StringMemberMalformed => ClaudeCodeLineUnreadable { gap: StreamLineMemberMalformed { member: "type" } }
+      }
+  }
+}

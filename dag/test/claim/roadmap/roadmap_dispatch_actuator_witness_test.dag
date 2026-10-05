@@ -69,6 +69,7 @@ import gunbc.roadmap_dispatch_actuator {
   CursorProviderSpawnUnwired,
   CodexProviderExecutableAbsent,
   GunbcHarnessSpawnNeedsInstance,
+  ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
   CodexDispatchProvider,
   dispatch_tmux_session_name,
@@ -1099,6 +1100,7 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
     CursorProviderSpawnUnwired { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
+    ClaudeProviderCredentialUnbound { reason: r } => r as String
   }
 }
 
