@@ -31,6 +31,9 @@ import extdeps.systemd.systemd_run {
 
 // The retained invocation: the unit FAILED (exit 86) and is still known to the manager, because
 // no --collect was passed. This is the claim that proves the terminal state stays observable.
+// The observation is the point; the failed unit is then reset (ResetFailedUnit) so the NEXT
+// run of this claim can start the same fixed unit name again instead of being refused because it
+// exists.
 test fn a_real_retained_transient_is_still_known_after_a_failing_exit() -> Bool
   uses net: Network
 {
@@ -40,8 +43,6 @@ test fn a_real_retained_transient_is_still_known_after_a_failing_exit() -> Bool
     SystemdRunCommandReady { command: command } => {
       let started = systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command))
       let load_state = systemd.Systemctl.ShowLoadState(unit: unit)
-      // The observation is the point; the failed unit is then reset so the NEXT run of this claim
-      // can start the same fixed unit name again instead of being refused because it exists.
       let reset = systemd.Systemctl.ResetFailedUnit(unit: unit)
       started.success && (trim(s: load_state.value) == "loaded") && reset.success
     }
