@@ -16,7 +16,7 @@ import extdeps.boards.asrock_rack {
 import extdeps.connector.molex_mini_fit_jr { MiniFitJrTerminalRating }
 import extdeps.standards.awg { awg_copper_resistance }
 import extdeps.standards.atx12v_psdg { DcOutputRegulationBand }
-import extdeps.fans.arctic { arctic_p8_rated_current, arctic_p8_pwm_sharing, PwmSharingChain, PstPassThrough, NoPassThrough }
+import extdeps.fans.arctic { PwmSharingChain, PstPassThrough, NoPassThrough }
 
 // Node-feed screening under declared load, connector and voltage-band assumptions.
 // This does not establish ASRock's high-load input population or direct-DC voltage
@@ -139,9 +139,9 @@ type FanHeaderLoad
   = FanHeaderLoadAgainstUnreadLimit { header_current: Milliampere, fans: Nat }
   | FanBankNeedsOneHeaderPerFan { fans: Nat, headers_available: Nat }
 
-fn fan_bank_header_load(fans: Nat) -> FanHeaderLoad {
-  match arctic_p8_pwm_sharing {
-    PstPassThrough { max_chained_standing: _ } => FanHeaderLoadAgainstUnreadLimit { header_current: milliampere(count: fans * milliampere_count(i: arctic_p8_rated_current)), fans: fans }
+fn fan_bank_header_load(fans: Nat, rated_current: Milliampere, sharing: PwmSharingChain) -> FanHeaderLoad {
+  match sharing {
+    PstPassThrough { max_chained_standing: _ } => FanHeaderLoadAgainstUnreadLimit { header_current: milliampere(count: fans * milliampere_count(i: rated_current)), fans: fans }
     NoPassThrough => FanBankNeedsOneHeaderPerFan { fans: fans, headers_available: asrock_altrad8ud_system_fan_header_count }
   }
 }

@@ -161,3 +161,16 @@ data arctic_f9_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame
 // P14 PWM PST sheet, technical specifications p.1, directly read 2026-10-04.
 data arctic_p14_spec_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.arctic.de/media/1d/98/04/1693306037/Spec_Sheet_P14_PWM_PST_EN.pdf"}}
 data arctic_p14_frame_depth: Micrometer = micrometer(count:27000)
+
+// Technical specifications p.1, publisher PDF re-read 2026-10-05. These are
+// P14 rows even where a number happens to equal the P8 specification.
+data arctic_p14_cable_length: Millimeter = millimeter(count:400)
+data arctic_p14_cable_length_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p14_spec_authority}
+data arctic_p14_rated_current: Milliampere = milliampere(count:120)
+data arctic_p14_rated_current_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p14_spec_authority}
+data arctic_p14_pwm_sharing: PwmSharingChain = PstPassThrough {max_chained_standing:TranscribedUncited {read_obligation:"P14 sheet establishes a four-pin plug and pass-through socket, not an allowed chain current or fan count. Resolve the board header limit before chaining."}}
+data arctic_p14_wiring_model_scope: ExternalModelScope = ExternalModelScope {
+ subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.fans.arctic",decl_name:"arctic_p14_cable_length",field:WholeDeclaration}},
+ first_citation:arctic_p14_spec_authority,
+ further_citations:[],
+}

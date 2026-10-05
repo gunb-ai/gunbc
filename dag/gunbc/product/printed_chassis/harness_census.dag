@@ -6,7 +6,7 @@ import std.measure { Millimeter, millimeter, millimeter_count }
 import product.printed_chassis.stack_geometry { stack_pitch, footprint_half_depth }
 import product.printed_chassis.cassette { tray_d, tray_w, rear_plate_z }
 import product.printed_chassis.power_cassette { PowerCassette, PowerCassettePlacement, TopOfColumn, BottomOfColumn, BesideColumn, units_lifted_to_pop, nodes_above }
-import extdeps.fans.arctic { arctic_p8_cable_length, arctic_p8_pwm_sharing, PwmSharingChain, PstPassThrough, NoPassThrough }
+import extdeps.fans.arctic { PwmSharingChain, PstPassThrough, NoPassThrough }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_connector_edge, BoardEdge, RearIoEdge, FrontEdge, SideEdgeNearDimmBankA, SideEdgeNearPcieSlots }
 
 // HOW MUCH CABLE A STACK ACTUALLY CARRIES, counted and measured from the geometry rather than
@@ -48,6 +48,8 @@ type HarnessPlan {
   inlet: DcInletPlacement
   inputs_populated: Nat
   fans_per_node: Nat
+  fan_cable_length: Millimeter
+  fan_pwm_sharing: PwmSharingChain
   ethernet_per_node: Nat
   switch_level_from_bottom: Nat
   service_allowance: Millimeter
@@ -87,17 +89,17 @@ fn pigtail_length(plan: HarnessPlan) -> Millimeter {
 }
 
 // The fan bank: fans at the rear, header at the front, so one header cable crosses the tray.
-// The fan's own 400 mm lead covers it if the crossing fits; otherwise an extension is a second
+// The selected fan's published lead covers it if the crossing fits; otherwise an extension is a second
 // cable and the census says so by exceeding the lead.
 fn fan_header_run(plan: HarnessPlan) -> Millimeter {
   millimeter(count: (tray_d / 2 - rear_plate_z) / 1000 + millimeter_count(m: plan.service_allowance))
 }
 fn fan_header_needs_extension(plan: HarnessPlan) -> Bool {
-  millimeter_count(m: fan_header_run(plan: plan)) > millimeter_count(m: arctic_p8_cable_length)
+  millimeter_count(m: fan_header_run(plan: plan)) > millimeter_count(m: plan.fan_cable_length)
 }
 
 fn fan_cables(plan: HarnessPlan, node: Nat) -> List<CableRun> {
-  match arctic_p8_pwm_sharing {
+  match plan.fan_pwm_sharing {
     PstPassThrough { max_chained_standing: _ } => [
       CableRun { node_index_from_bottom: node, role: FanHeaderCable, count: 1, each: fan_header_run(plan: plan) },
       CableRun { node_index_from_bottom: node, role: FanPstLink, count: nat_minus(a: plan.fans_per_node, b: 1), each: millimeter(count: 100) },

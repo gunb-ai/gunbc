@@ -1,6 +1,10 @@
 # Converging a selected cassette design to an accepted physical assembly
 
-Status: migration plan, not an implemented admission mechanism. Active worktree:
+Status: migration in progress; inventory assessment, fenced inventory transitions and
+inspection readback are implemented in shadow mode. See
+[cassette-inventory-convergence-implementation.md](cassette-inventory-convergence-implementation.md)
+for the implemented operations and remaining cutover work. This is not yet the
+complete assembly admission mechanism. Active worktree:
 `session/print-workflow-integration`, PR #13334, targeting main. This plan extends
 CAS-3/5/6/8 and BATCH-1/5; it does not fork the cassette design or change active prints.
 The earlier requirements/provider framing is retained as the assessment subject,
@@ -36,8 +40,9 @@ not satisfaction of the final board-support or powered-operation requirements.
 | `exhaust_thermal` | Conditional thermal screens and measurement obligations | Keep installed airflow/temperature evidence distinct from geometric clearance |
 | `process_geometry` / `deposited_geometry` | Print-plane admission and toolpath observations | Expose evidence through the shared report without weakening existing admission |
 
-The harness currently imports P8 lead/sharing facts while the residential assembly
-selects P14. Removing that fixed-model dependency is a first-cut requirement.
+The harness and fan-header screen now receive selected fan facts explicitly; the
+residential candidate carries directly cited P14 wiring facts. Deriving the
+complete connection graph and routed harness remains a first-cut requirement.
 `product.fabric.offer_route` provides a useful precedent for identity, missing
 facts and ambiguity, but its provider-route policy is not a mechanical interface.
 `std.resource_contract` describes compiler effects, not physical port capacity;

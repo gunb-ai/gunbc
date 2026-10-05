@@ -1,13 +1,13 @@
 module product.printed_chassis.print_workflow
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import product.printing.runtime_dependencies {check}
 import product.printing.runtime_converge {converge}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import extdeps.tools.hostname
 import std.algebra {trim}
-
-import std.types {String,NonEmptyStr,List,FilePath}
+import std.types {String,NonEmptyStr,List,FilePath,Bool}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.bytes {bytes_octets,utf8_encode_bytes}
 import extdeps.crypto.sha2 {sha256_hex}
@@ -21,6 +21,11 @@ import product.printed_chassis.cad_check_run {check_residential_cad}
 import gunbc.fleet.printer_batch {BatchPlate,PrinterQueue,queues_valid,initialize,drive}
 import gunbc.fleet.printer_execution_hold {with_execution_hold}
 import gunbc.auth.access_token_source {read_supplied_access_token,SuppliedTokenReady,SuppliedTokenUnavailable,OperatorSuppliedToken}
+import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
+import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory }
+import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+
 
 // A single invocation prepares every requested plate, then hands the whole fleet
 // population to the round-robin controller. Nothing is approved/started if any
@@ -90,5 +95,47 @@ fn provision_and_run(plan_file:String,output:String,appimage:String,machine:Stri
  match converge_runtime(receipt:concat(output,"/runtime-convergence.txt")) {
   ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:mode)
   provisioning_refusal=>provisioning_refusal
+ }
+}
+
+
+// Shadow reconciliation consumes an independent inventory capture. It intentionally cannot
+// start printers: candidate work still needs placement, process admission and reservation.
+fn plan_remaining(inventory_file:String,revision:String) -> CliWireResponse {
+ match residential_assembly() {
+  ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+  ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>inventory_report(parts:p,revision:revision,path:inventory_file)
+ }
+}
+
+// Explicit inventory import initializes once; subsequent changes are fenced transitions.
+fn inventory_initialize(capture_file:String) -> ProcessExit {
+ let read=Filesystem.Read(path:capture_file)
+ if !read.success {exit_failure(reason:"Inventory capture unreadable")} else {initialize_inventory(capture:read.content)}
+}
+fn record_inspection(baseline:String,receipt:String,slot:String,revision:String,attempt:String,physical_item:String,observed_at:String,accepted:Bool) -> CliWireResponse {
+ match mutate_inventory(mutation:InspectPart {baseline:baseline,next_snapshot:receipt,part:RequiredPart {slot:slot,revision:revision},attempt:attempt,physical_item:physical_item,evidence:InspectionEvidence {reference:receipt,observed_at:observed_at},accepted:accepted}) {
+ ExitSuccess=>plan_remaining_stored(revision:revision)
+ ExitFailure {code:_,reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ }
+}
+
+// Explicit shadow-to-reservation boundary. This records work ownership only; the existing
+// printer start gates remain mandatory, and this verb sends no approval/start command.
+fn reserve_plan(plan_file:String,revision:String,baseline:String,receipt:String) -> ProcessExit {
+ let read=Filesystem.Read(path:plan_file)
+ if !read.success {return exit_failure(reason:"Reservation plan unreadable")}
+ let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Invalid reservation plan")}
+ let desired=match residential_assembly() {ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>required_printed_parts(parts:p,revision:revision) ResidentialAssemblyRefused {reason:r}=>return exit_failure(reason:r)}
+ let requests=flat_map(specs,s=>flat_map(s.plates,plate=>map(plate.plan.placements,p=>PartReservation {part:RequiredPart {slot:p.id,revision:revision},attempt:plate.attempt})))
+ if any(requests,r=>!any(desired,d=>d.slot==r.part.slot)) {return exit_failure(reason:"Reservation names a part outside the selected assembly")}
+ mutate_inventory(mutation:ReserveParts {baseline:baseline,next_snapshot:receipt,reservations:requests})
+}
+
+fn plan_remaining_stored(revision:String) -> CliWireResponse {
+ let captured=match observe_stored_inventory() {ObservationEstablished {observed:c}=>c ObservationRefused {cause:InventoryUnread {reason:r}}=>return CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
+ match residential_assembly() {
+ ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>captured_inventory_report(parts:p,revision:revision,capture:captured)
  }
 }

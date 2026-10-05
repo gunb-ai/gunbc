@@ -1,10 +1,10 @@
 module product.printed_chassis.rear_cooling
 import std.types {Int,List,String,Bool}
-import std.measure {micrometer,micrometer_count}
+import std.measure {micrometer,micrometer_count,Millimeter, millimeter_count, Milliampere, milliampere_count}
 import v2.std.optional {Present,Absent}
 import std.nat {nat_range_inclusive}
 import extdeps.fans.types {FanMountingPattern}
-import extdeps.fans.arctic {arctic_p8_mounting_pattern,arctic_f9_mounting_pattern,arctic_p12_mounting_pattern,arctic_p14_mounting_pattern}
+import extdeps.fans.arctic {arctic_p8_mounting_pattern,arctic_p8_cable_length,arctic_p8_rated_current,arctic_p8_pwm_sharing,arctic_p14_cable_length,arctic_p14_rated_current,arctic_p14_pwm_sharing,PwmSharingChain,arctic_f9_mounting_pattern,arctic_p12_mounting_pattern,arctic_p14_mounting_pattern}
 import product.printed_chassis.fan_mount {FanMountAdmission,admit_fan_mount}
 import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_array,json_null}
 
@@ -12,17 +12,17 @@ import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,js
 // RearOpening is a single unobstructed rectangle after subtracting structural and service space.
 // Multiple disjoint openings must be evaluated separately, never added into a fictitious width.
 type RearOpening {width_um:Int,height_um:Int,depth_um:Int}
-type RearFanCandidate {id:String,pattern:FanMountingPattern,depth_um:Int}
+type RearFanCandidate {id:String,pattern:FanMountingPattern,depth_um:Int,cable_length:Millimeter?,rated_current:Milliampere?,sharing:PwmSharingChain?}
 type RearFanBank {fan:RearFanCandidate,count:Int,plate_edge_um:Int,centres_x_um:List<Int>}
 type RearCoolingReading = RearFanGeometry {bank:RearFanBank} | RearCoolingInvalidInput | RearCoolingNoFit
 
 // 40 mm is a conservative design reservation for a fan body, not a vendor depth claim.
 // It includes the published 25/27 mm bodies; mounts/guards/cables reserve another 20 mm.
 data rear_fan_candidates:List<RearFanCandidate> = [
- RearFanCandidate {id:"arctic-p14-pwm-pst",pattern:arctic_p14_mounting_pattern,depth_um:40000},
- RearFanCandidate {id:"arctic-p12-pwm-pst",pattern:arctic_p12_mounting_pattern,depth_um:40000},
- RearFanCandidate {id:"arctic-f9-pwm-pst",pattern:arctic_f9_mounting_pattern,depth_um:40000},
- RearFanCandidate {id:"arctic-p8-pwm-pst",pattern:arctic_p8_mounting_pattern,depth_um:40000},
+ RearFanCandidate {id:"arctic-p14-pwm-pst",pattern:arctic_p14_mounting_pattern,depth_um:40000,cable_length:Present {value:arctic_p14_cable_length},rated_current:Present {value:arctic_p14_rated_current},sharing:Present {value:arctic_p14_pwm_sharing}},
+ RearFanCandidate {id:"arctic-p12-pwm-pst",pattern:arctic_p12_mounting_pattern,depth_um:40000,cable_length:Absent,rated_current:Absent,sharing:Absent},
+ RearFanCandidate {id:"arctic-f9-pwm-pst",pattern:arctic_f9_mounting_pattern,depth_um:40000,cable_length:Absent,rated_current:Absent,sharing:Absent},
+ RearFanCandidate {id:"arctic-p8-pwm-pst",pattern:arctic_p8_mounting_pattern,depth_um:40000,cable_length:Present {value:arctic_p8_cable_length},rated_current:Present {value:arctic_p8_rated_current},sharing:Present {value:arctic_p8_pwm_sharing}},
 ]
 data rear_mount_margin_um:Int=6000
 data rear_plate_gap_um:Int=2000
@@ -56,6 +56,6 @@ fn rear_cooling_json(reading:RearCoolingReading) -> JsonValue {
  match reading {
   RearCoolingInvalidInput=>json_object(members:[json_kv(key:"standing",value:json_string(s:"invalid rear opening or bed"))])
   RearCoolingNoFit=>json_object(members:[json_kv(key:"standing",value:json_string(s:"no standard candidate fits"))])
-  RearFanGeometry {bank:b}=>json_object(members:[json_kv(key:"fan",value:json_string(s:b.fan.id)),json_kv(key:"count",value:json_int(n:b.count)),json_kv(key:"frame_edge_um",value:json_int(n:micrometer_count(m:b.fan.pattern.frame_edge))),json_kv(key:"hole_pitch_um",value:json_int(n:micrometer_count(m:b.fan.pattern.hole_pitch))),json_kv(key:"plate_edge_um",value:json_int(n:b.plate_edge_um)),json_kv(key:"centres_x_um",value:json_array(elements:map(b.centres_x_um,x=>json_int(n:x)))),json_kv(key:"standing",value:json_string(s:"geometric candidate; airflow, header load, acoustics and mount attachment unresolved"))])
+  RearFanGeometry {bank:b}=>json_object(members:[json_kv(key:"fan",value:json_string(s:b.fan.id)),json_kv(key:"count",value:json_int(n:b.count)),json_kv(key:"fan_lead_mm",value:match b.fan.cable_length {Present {value:l}=>json_int(n:millimeter_count(m:l)) Absent=>json_null()}),json_kv(key:"bank_rated_current_ma",value:match b.fan.rated_current {Present {value:i}=>json_int(n:b.count*milliampere_count(i:i)) Absent=>json_null()}),json_kv(key:"frame_edge_um",value:json_int(n:micrometer_count(m:b.fan.pattern.frame_edge))),json_kv(key:"hole_pitch_um",value:json_int(n:micrometer_count(m:b.fan.pattern.hole_pitch))),json_kv(key:"plate_edge_um",value:json_int(n:b.plate_edge_um)),json_kv(key:"centres_x_um",value:json_array(elements:map(b.centres_x_um,x=>json_int(n:x)))),json_kv(key:"standing",value:json_string(s:"geometric candidate; airflow, header load, acoustics and mount attachment unresolved"))])
  }
 }

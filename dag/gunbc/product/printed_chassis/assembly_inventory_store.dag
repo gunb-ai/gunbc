@@ -1,0 +1,56 @@
+module product.printed_chassis.assembly_inventory_store
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.goal_assessment { GoalAssessmentRefused, ObservationAttempt, ObservationEstablished, ObservationRefused }
+import product.printed_chassis.assembly_inventory { InventoryMutation, InventoryObservation, InventoryCaptured, InventoryReadRefusal, InventoryUnread, decode_inventory, inventory_json, assess_inventory, transition_inventory, InventoryTransitionPrepared, InventoryTransitionRefused }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, file_compare_and_set, DefaultAccessCreateOnly }
+import std.durable_compare_and_set { CasExpectation, CasGeneration, cas_generation_count, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }
+import extdeps.languages.json.emit { serialize_json }
+
+// The prototype has one inventory slot in the existing printer control-plane store.
+// A caller cannot reset reservations by choosing a different output directory.
+data inventory_slot:NonEmptyStr="cassette-prototype-inventory" as NonEmptyStr
+fn publish_inventory(expected:CasExpectation, next:InventoryObservation) -> ProcessExit {
+ let text=serialize_json(v:inventory_json(observed:next))
+ match admit_cas_attempt_for_derived_payload(key:inventory_slot,expected:expected,proposed:text as NonEmptyStr) {
+ DerivedPayloadKeyNotSlotAddressable {key:_}=>exit_failure(reason:"Inventory store key refused")
+ DerivedPayloadAdmitted {verified:v}=>match file_compare_and_set(root:printer_start_claim_directory,publication:DefaultAccessCreateOnly,verified:v) {
+ CasCommitted {committed:_}=>ExitSuccess
+ CasPreconditionFailed {expected:_,observed:_}=>exit_failure(reason:"Inventory changed concurrently; re-observe before retrying")
+ CasStoreRefused {cause:_}=>exit_failure(reason:"Inventory publication refused; no actuation admitted")
+ }
+ }
+}
+fn initialize_inventory(capture:String) -> ProcessExit {
+ let decoded=match decode_inventory(text:capture) {Present {value:c}=>c Absent=>return exit_failure(reason:"Malformed initial inventory capture")}
+ match assess_inventory(desired:[],observed:decoded) {GoalAssessmentRefused {cause:_}=>exit_failure(reason:"Initial inventory contains ambiguous identities or invalid evidence") _=>publish_inventory(expected:ExpectSlotAbsent,next:decoded)}
+}
+fn mutate_inventory(mutation:InventoryMutation) -> ProcessExit {
+ match observe_cas_slot_state(root:printer_start_claim_directory,key:inventory_slot) {
+ CasObservedUnreadable {cause:_}=>exit_failure(reason:"Inventory store unreadable; no transition admitted")
+ CasObservedReadable {readable:CasReadableAbsent}=>exit_failure(reason:"Inventory has not been initialized from an independent capture")
+ CasObservedReadable {readable:CasReadablePresent {version:v}}=>{
+ let observed=match decode_inventory(text:v.value as String) {Present {value:c}=>capture_at_generation(capture:c,generation:v.generation) Absent=>return exit_failure(reason:"Stored inventory malformed")}
+ match transition_inventory(observed:observed,mutation:mutation) {
+ InventoryTransitionRefused {cause:_}=>exit_failure(reason:"Inventory transition refused; inspect baseline, identities and attempt")
+ InventoryTransitionPrepared {next:n}=>publish_inventory(expected:ExpectSlotGeneration {generation:v.generation},next:n)
+ }
+ }
+ }
+}
+
+// Independent store read after publication. Neither goal membership nor revision is an input.
+fn observe_stored_inventory() -> ObservationAttempt<InventoryObservation,InventoryReadRefusal> {
+ match observe_cas_slot_state(root:printer_start_claim_directory,key:inventory_slot) {
+ CasObservedUnreadable {cause:_}=>ObservationRefused {cause:InventoryUnread {reason:"Inventory store unreadable"}}
+ CasObservedReadable {readable:CasReadableAbsent}=>ObservationRefused {cause:InventoryUnread {reason:"Inventory capture not initialized"}}
+ CasObservedReadable {readable:CasReadablePresent {version:v}}=>match decode_inventory(text:v.value as String) {Present {value:c}=>ObservationEstablished {observed:capture_at_generation(capture:c,generation:v.generation)} Absent=>ObservationRefused {cause:InventoryUnread {reason:"Stored inventory malformed"}}}
+ }
+}
+
+// Fence with the store generation, not a caller-authored receipt name. Reusing a receipt
+// label can never resurrect an old baseline after intervening publications (ABA).
+fn capture_at_generation(capture:InventoryObservation,generation:CasGeneration) -> InventoryObservation {
+ match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e}=>InventoryCaptured {snapshot:concat("generation:",cas_generation_count(g:generation) as String),covered_slots:c,entries:e}}
+}
