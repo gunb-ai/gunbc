@@ -31,7 +31,7 @@ import extdeps.docker.container_inspect {
   container_inspect_from_stdout,
 }
 import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
-import std.measure { second_count }
+import std.measure { second, second_count }
 import gunbc.spark.serving_relaunch_transaction { RelaunchDelta, relaunch_delta, delta_comparisons, delta_unclaimed_env }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, glm_native_container_name }
 
@@ -42,6 +42,8 @@ import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, g
 // direct fabric line, so these claims pin (a) the arm's plan IS the RoCE arm keyed by the lane
 // census, (b) the rendered container line carries every projection of that plan, and (c) the
 // apply's post-pass gate refuses a rank that bound Socket.
+
+
 
 // THE LANE IS THE REAL CENSUS ROW, NOT A FIXTURE: the claim is precisely that the arm reads the
 // interface and the verbs device from fabric_switch_observed, so a fixture here would assert
@@ -148,7 +150,7 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
             arm_rank_observe_script(unit_name: st.unit_name, container_name: st.launch.container.name, planned_unit_text: st.unit_text),
             spark_native_stop_script(unit_name: st.unit_name, container_name: st.launch.container.name),
             spark_native_commit_record_script(unit_name: st.unit_name, label: "t" as NonEmptyStr),
-            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within_seconds: 3600, container: "c" as NonEmptyStr),
+            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within: second(count: 3600), container: "c" as NonEmptyStr),
           ], "\n")
           !string_contains(s: scripts, pattern: "Using network")
             && !string_contains(s: scripts, pattern: "NET/IB")
@@ -458,9 +460,9 @@ test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation()
       })
       length(plans) == 1
         && length(timeouts) == length(steps)
-        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( start + ", t, " ))"], "")))
+        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( started + ", t, " ))"], "")))
              && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-front-door")
-             && string_contains(s: p.script, pattern: "until curl"))
+             && string_contains(s: p.script, pattern: "if curl -fsS"))
     }
   }
 }
@@ -480,7 +482,7 @@ test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_time
       })
       length(plans) == length(steps)
         && length(timeouts) == length(steps)
-        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( start + ", t, " ))"], "")))
+        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( started + ", t, " ))"], "")))
              && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-nccl-transport-announcement")
              && string_contains(s: p.script, pattern: "'Using network '"))
     }
@@ -495,8 +497,8 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
         Absent => false
         Present { value: st } =>
           length(steps) == 4
-            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within_seconds: 3600, container: "c" as NonEmptyStr), pattern: "ss ")
-            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within_seconds: 3600, container: "c" as NonEmptyStr), pattern: "/v1/models")
+            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within: second(count: 3600), container: "c" as NonEmptyStr), pattern: "ss ")
+            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within: second(count: 3600), container: "c" as NonEmptyStr), pattern: "/v1/models")
             && count(st.launch.container.devices) > 0
             && count(st.launch.container.cap_add) > 0
             && st.launch.container.memlock_unlimited

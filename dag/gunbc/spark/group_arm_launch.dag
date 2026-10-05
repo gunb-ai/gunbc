@@ -32,11 +32,11 @@ import gunbc.spark.fabric_serving_assignment { FabricServingAssignment }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held_by_subject_among, spark_serving_admissible_hosts }
 import gunbc.spark.serving_promotion { no_promotion_receipts }
-import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
+import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key, serving_deployment_env_key }
 import gunbc.spark.serving_arm_launch { glm53_staircase_head_log_path, ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
-import gunbc.spark.native_serving_apply { SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_observe_plans, spark_native_preflight_plans, spark_native_stop_plans, spark_native_apply_stage_plans, spark_native_apply_transaction, SparkNativeArmSubject, VacancyReadAfterStop }
+import gunbc.spark.native_serving_apply { SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_observe_plans, spark_native_preflight_plans, spark_native_stop_plans, spark_native_apply_step_wire, spark_native_apply_transaction, SparkNativeArmSubject, VacancyReadAfterStop }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_successor_may_launch }
 import gunbc.spark.pair_serving_authority_log {
   PreparationState, Prepared, AppendClaimed, Finalized, Aborted,
@@ -221,6 +221,7 @@ fn group_arm_row_successor(inputs: GroupArmLaunchInputs) -> ArmSuccessorStanding
             realization_input(identity: "topology", value: serving_topology_wire(t: a.topology) as String),
             realization_input(identity: "group", value: fabric_group_wire(g: a.group) as String),
             realization_input(identity: "launch_profile", value: serving_launch_profile_key(p: inputs.profile)),
+            realization_input(identity: "deployment_env", value: serving_deployment_env_key(env: inputs.deployment_env)),
           ]) }
         }
       }
@@ -459,7 +460,7 @@ fn group_arm_dry_run_report(title: String, intent: ArmIntent, units: ArmUnitIden
             "plan: ", to_string(length(ls)), " ranks, rendezvous ", e as String,
             ", max_num_seqs ", to_string(prof.max_num_seqs), " over ", to_string(prof.guaranteed_cold_seqs), " guaranteed cold seats\n",
             "converge: observe every rank against this plan; Noop if it already realizes it (read back first), otherwise stop EVERY rank and apply the whole arm head first; on failure return to the last committed arm or stop the arm\n",
-            join(zip_map(a: steps, b: zip_map(a: spark_native_observe_plans(steps: steps), b: zip_map(a: spark_native_preflight_plans(steps: steps), b: zip_map(a: spark_native_stop_plans(steps: steps), b: spark_native_apply_stage_plans(steps: steps), f: fn(sp, ap) { join(["--- stop\n", sp.script, "\n--- apply\n", ap.script], "") }), f: fn(pf, rest) { join(["--- preflight\n", pf.script, "\n", rest], "") }), f: fn(ob, rest) { join([pre, "--- observe\n", ob.script, "\n", rest], "") }), f: fn(st, scripts) {
+            join(zip_map(a: steps, b: zip_map(a: spark_native_observe_plans(steps: steps), b: zip_map(a: spark_native_preflight_plans(steps: steps), b: zip_map(a: spark_native_stop_plans(steps: steps), b: map(steps, st => spark_native_apply_step_wire(st: st)), f: fn(sp, ap) { join(["--- stop\n", sp.script, "\n--- apply\n", ap], "") }), f: fn(pf, rest) { join(["--- preflight\n", pf.script, "\n", rest], "") }), f: fn(ob, rest) { join([pre, "--- observe\n", ob.script, "\n", rest], "") }), f: fn(st, scripts) {
               join([
                 "=== host ", st.host as String, " rank ", to_string(st.launch.node.node_rank), " unit ", st.unit_name as String, "\n",
                 "--- create\n", join(concat([st.launch.create.program.invocation as String], st.launch.create.arguments), " "), "\n",

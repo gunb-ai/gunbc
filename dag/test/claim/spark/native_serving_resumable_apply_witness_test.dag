@@ -1,7 +1,9 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
 
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
+import product.host_identity { HostIdentity }
 
+import std.measure { second }
 import std.types { Bool, String, NonEmptyStr, Int }
 import std.algebra { trim }
 import gunbc.fleet_host_identity { operator_host_srv9 }
@@ -15,7 +17,8 @@ import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.native_serving_apply {
   spark_native_leg_with_retry, spark_native_leg_attempt_count,
   spark_native_unreached_leg_attempt_budget,
-  spark_native_host_apply_script, spark_native_transport_announcement_script, spark_native_front_door_script,
+  spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_transport_announcement_script, spark_native_front_door_script,
+  spark_native_incarnation_check, spark_native_waited_incarnations, spark_native_incarnation_binding_refusal,
   spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg, spark_native_remove_retired_script,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
@@ -27,6 +30,8 @@ import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_rank_observati
 // below is SUPPLIED at the interface it discriminates (DESIGN section 3: a witness discriminates at one
 // interface); the leg's session result, the attempt sequence, and the observation's stdout are the
 // boundaries, and none of them needs a host.
+
+
 
 fn unreached() -> SparkPairHostApplyOutcome {
   SparkPairHostUnreached { host: operator_host_srv9, cause: "management-lan ssh exit=255 stderr=ssh: connect to host 192.168.1.232 port 22: Connection timed out" }
@@ -174,31 +179,6 @@ test fn w_the_observation_leg_only_reads() -> Bool {
 // keeps Restart=no and StartLimitBurst=1 (native_serving_realization_witness_test reads that from the
 // rendered unit), and an unrelated crash -- no transaction start -- meets the limit unchanged.
 
-fn reset_then_start(unit: String, indent: String) -> String {
-  join([indent, "if systemctl list-units --all --plain --no-legend --full ", unit, " | awk '$1 == \"", unit, "\" && $2 == \"loaded\"' | grep -q .; then systemctl reset-failed ", unit, "; fi\n", indent, "systemctl restart ", unit], "")
-}
-
-// THE SECOND RED (run 37254736596): an UNCONDITIONAL reset-failed refused on srv6 because the launch
-// mode had stopped the declared incumbent and systemd had unloaded it ('Unit ... not loaded'), and under
-// set -e that stopped both the apply and the rollback. The clear is conditioned on the unit being
-// LOADED -- the only state in which a start-limit counter exists -- never on is-failed (a cleanly
-// stopped unit is inactive and its counter still refuses), and never tolerated with `|| true`.
-test fn w_the_start_limit_clear_is_conditioned_on_a_loaded_unit_and_nothing_else() -> Bool {
-  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
-  let scripts = [
-    spark_native_host_apply_script(unit_name: unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name),
-  ]
-  all(scripts, t => !string_contains(s: t, pattern: "\nsystemctl reset-failed ")
-    && !string_contains(s: t, pattern: "\n  systemctl reset-failed ")
-    && !string_contains(s: t, pattern: "is-failed")
-    && !string_contains(s: t, pattern: "reset-failed gunbc-glm53-group-a-rank.service || true"))
-}
-
-test fn w_the_apply_clears_the_start_limit_immediately_before_its_own_start() -> Bool {
-  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
-  let apply = spark_native_host_apply_script(unit_name: unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name)
-  string_contains(s: apply, pattern: reset_then_start(unit: unit as String, indent: ""))
-}
 
 // THE CONTROL: no script that does NOT start the unit clears its start-limit state. If any of these
 // did, a crash loop between transactions could be restarted past the limit by an unrelated leg.
@@ -209,8 +189,8 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
     spark_native_stop_script(unit_name: unit, container_name: glm_native_container_name),
     spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr),
     spark_native_remove_retired_script(unit_name: unit),
-    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800),
-    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1800, container: glm_native_container_name),
+    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800)),
+    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within: second(count: 1800), container: glm_native_container_name),
   ]
   all(others, t => !string_contains(s: t, pattern: "reset-failed"))
 }
@@ -221,19 +201,19 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
 // the single capture, so the head refused 'transport verdict unread' and the arm rolled back.
 
 test fn w_the_announcement_wait_polls_for_both_facts_the_verdict_folds() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800)
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800))
   string_contains(s: t, pattern: "'Using network '")
     && string_contains(s: t, pattern: "' via NET/'")
-    && string_contains(s: t, pattern: "nccl-transport-announcement-observed-after")
+    && string_contains(s: t, pattern: "nccl-transport-announcement-observed-incarnation=")
 }
 
 // ONE WAIT AUTHORITY: the announcement wait and the front door carry the SAME deadline the caller
 // derives from VLLM_ENGINE_READY_TIMEOUT_S, and the same incarnation stop. A second number would show
 // here as a deadline the caller did not pass.
 test fn w_the_announcement_and_front_door_share_one_deadline_and_incarnation_stop() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1234)
-  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1234, container: glm_native_container_name)
-  all([t, d], s => string_contains(s: s, pattern: "deadline=$(( start + 1234 ))")
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1234))
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within: second(count: 1234), container: glm_native_container_name)
+  all([t, d], s => string_contains(s: s, pattern: "deadline=$(( started + 1234 ))")
     && string_contains(s: s, pattern: "READBACK-REFUSED-incarnation-changed-before-")
     && !string_contains(s: s, pattern: "1800"))
 }
@@ -280,4 +260,49 @@ test fn w_the_retired_file_removal_touches_nothing_else() -> Bool {
     && !string_contains(s: r, pattern: "systemctl")
     && !string_contains(s: r, pattern: "docker")
     && !string_contains(s: r, pattern: "rm -f /etc/systemd/system/gunbc-glm53-stair-rank.service ")
+}
+
+// ── ONE ABSOLUTE DEADLINE PER INCARNATION (side-chat ruling on #13319, finding 1) ───────────────
+//
+// THE RED: a wait that starts its own clock. The transport wait then spends up to the whole
+// VLLM_ENGINE_READY_TIMEOUT_S and the front door gets another full one -- two windows inside a launch
+// step budgeted for one. Both waits must anchor the deadline to the incarnation's own StartedAt, read on
+// its host, and neither may start a clock of its own; so a transport announcement just before the
+// deadline leaves the front door only what is left of the same window.
+test fn w_no_wait_starts_a_fresh_window() -> Bool {
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 3600))
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within: second(count: 3600), container: glm_native_container_name)
+  all([t, d], s => string_contains(s: s, pattern: "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\"")
+    && string_contains(s: s, pattern: "deadline=$(( started + 3600 ))")
+    && !string_contains(s: s, pattern: "start=$(date +%s)")
+    && !string_contains(s: s, pattern: "$(date +%s) + 3600"))
+}
+
+// ── THE SAME RUNNING INCARNATION AROUND EVERY PROBE, INCLUDING A SUCCESSFUL ONE (finding 2) ──────
+//
+// THE RED: a probe that succeeds right after the named container was replaced. The check therefore runs
+// immediately AFTER a successful probe and before the wait accepts it, the transport probe reads ONE
+// capture of the captured id's log (never the name, never two reads), and the observed id is printed for
+// the readback to bind to.
+test fn w_a_successful_probe_is_accepted_only_on_the_captured_incarnation() -> Bool {
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 3600))
+  let accepted_only_after_the_check = join(["; then\n", spark_native_incarnation_check(stage: "after", waited_for: "nccl-transport-announcement" as NonEmptyStr), "    break\n"], "")
+  string_contains(s: t, pattern: accepted_only_after_the_check)
+    && string_contains(s: t, pattern: "docker logs \"$incarnation\" > ")
+    && !string_contains(s: t, pattern: join(["docker logs ", glm_native_container_name as String], ""))
+    && !string_contains(s: t, pattern: join(["docker logs '", glm_native_container_name as String], ""))
+    && string_contains(s: t, pattern: "nccl-transport-announcement-observed-incarnation=$incarnation")
+}
+
+// THE READBACK IS BOUND TO THE AWAITED INCARNATION, read from the real leg reading's stdout: the same id
+// binds, a replacement id refuses naming both, and a host with no awaited id refuses.
+test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bool {
+  let leg = spark_native_leg_with_retry(budget: 0, attempt: fn(i) { spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
+    exit_code: 0, success: true,
+    stdout: join([remote_leg_began_word, "\nnccl-transport-announcement-observed-incarnation=aaaa1111 after 42s since start\n", spark_pair_leg_exit_prefix, "0\n"], ""),
+    stderr: "" }) })
+  let waited = spark_native_waited_incarnations(legs: [leg])
+  (match spark_native_incarnation_binding_refusal(host: operator_host_srv9, verified_id: "aaaa1111", waited: waited) { Absent => true  Present { value: _ } => false })
+    && (match spark_native_incarnation_binding_refusal(host: operator_host_srv9, verified_id: "bbbb2222", waited: waited) { Absent => false  Present { value: why } => string_contains(s: why, pattern: "replaced between the wait and the readback") })
+    && (match spark_native_incarnation_binding_refusal(host: "srv5" as HostIdentity, verified_id: "aaaa1111", waited: waited) { Absent => false  Present { value: _ } => true })
 }
