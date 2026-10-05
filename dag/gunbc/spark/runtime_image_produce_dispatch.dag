@@ -1,0 +1,75 @@
+module gunbc.spark.runtime_image_produce_dispatch
+
+import std.types { String, List, NonEmptyStr }
+import std.process { ProcessExit, exit_failure }
+import gunbc.fleet_multi_principal_probe { env_var_nonempty }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.group_image_produce { GroupImageProduction, group_image_produce_wet, ProducedImageHeld, produced_image_distribute_wet }
+import gunbc.spark.v41_runtime_image_converge { v41_runtime_image_production, v41_produced_image_held }
+import gunbc.spark.glm53_kvplan_image { glm53_kvplan_production, glm53_kvplan_produced_image_held }
+
+// ── WHICH IMAGE THE PRODUCE MODE BUILDS, FROM ONE CLOSED WORKFLOW INPUT (deforking cut 8c) ──────────
+//
+// The roster of producible images lives here and only here, peripheral to the one produce entry
+// (gunbc.spark.group_image_produce) and to each image's own module (DESIGN §3: the dispatch that
+// selects a realization is itself realization). The mode spark_runtime_image_produce reads the dispatch
+// input `runtime_image`, whose options are this roster's words; an unknown word refuses.
+type RuntimeImageChoice = RuntimeImageV41Dsv41Gb10 | RuntimeImageGlm53KvplanV2Gb10
+
+data runtime_image_choices: List<RuntimeImageChoice> = [RuntimeImageV41Dsv41Gb10, RuntimeImageGlm53KvplanV2Gb10]
+
+fn runtime_image_choice_wire(c: RuntimeImageChoice) -> NonEmptyStr {
+  match c {
+    RuntimeImageV41Dsv41Gb10 => "v41-dsv41-gb10" as NonEmptyStr
+    RuntimeImageGlm53KvplanV2Gb10 => "glm53-kvplan-v2-gb10" as NonEmptyStr
+  }
+}
+
+fn runtime_image_options() -> List<String> {
+  map(runtime_image_choices, c => runtime_image_choice_wire(c: c) as String)
+}
+
+fn runtime_image_choice_of_wire(word: String) -> RuntimeImageChoice? {
+  first(filter(runtime_image_choices, c => (runtime_image_choice_wire(c: c) as String) == word))
+}
+
+fn runtime_image_production_of(c: RuntimeImageChoice) -> GroupImageProduction {
+  match c {
+    RuntimeImageV41Dsv41Gb10 => v41_runtime_image_production()
+    RuntimeImageGlm53KvplanV2Gb10 => glm53_kvplan_production()
+  }
+}
+
+data runtime_image_env: NonEmptyStr = "GUNBC_RUNTIME_IMAGE" as NonEmptyStr
+data runtime_image_produce_receipt_path: String = "target/runtime-image-produce-receipt.txt"
+
+fn runtime_image_produce_ci_wet() -> ProcessExit {
+  let word = match env_var_nonempty(name: runtime_image_env) { Present { value: v } => v  Absent => "" }
+  match runtime_image_choice_of_wire(word: word) {
+    Absent => exit_failure(reason: join([runtime_image_env as String, "=`", word, "` is not a producible image; the images are ", join(runtime_image_options(), ", ")], ""))
+    Present { value: c } => group_image_produce_wet(p: runtime_image_production_of(c: c), receipt_path: runtime_image_produce_receipt_path)
+  }
+}
+
+// THE PRODUCED IMAGE EACH CHOICE DISTRIBUTES: its production receipt as a held-image row, or Absent
+// while no production of it has been recorded -- a distribution of an image nobody produced refuses.
+fn runtime_image_held_of(c: RuntimeImageChoice) -> ProducedImageHeld? {
+  match c {
+    RuntimeImageV41Dsv41Gb10 => Present { value: v41_produced_image_held() }
+    RuntimeImageGlm53KvplanV2Gb10 => glm53_kvplan_produced_image_held()
+  }
+}
+
+data runtime_image_distribute_receipt_path: String = "target/runtime-image-distribute-receipt.txt"
+
+fn runtime_image_distribute_ci_wet() -> ProcessExit {
+  let word = match env_var_nonempty(name: runtime_image_env) { Present { value: v } => v  Absent => "" }
+  match runtime_image_choice_of_wire(word: word) {
+    Absent => exit_failure(reason: join([runtime_image_env as String, "=`", word, "` is not a producible image; the images are ", join(runtime_image_options(), ", ")], ""))
+    Present { value: c } =>
+      match runtime_image_held_of(c: c) {
+        Absent => exit_failure(reason: join(["no production of ", runtime_image_choice_wire(c: c) as String, " is recorded, so there is no held image to distribute; produce it first (mode spark_runtime_image_produce)"], ""))
+        Present { value: h } => produced_image_distribute_wet(h: h, receipt_path: runtime_image_distribute_receipt_path)
+      }
+  }
+}
