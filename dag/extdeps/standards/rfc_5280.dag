@@ -289,7 +289,9 @@ fn tbs_first_index(kids: List<DerElement>) -> Int {
     null => 0
     e => match e.tag_class {
       DerContextSpecific => if e.tag_number == 0 { 1 } else { 0 }
-      _ => 0
+      DerUniversal => 0
+      DerApplication => 0
+      DerPrivate => 0
     }
   }
 }
@@ -306,7 +308,9 @@ fn tbs_tail(kids: List<DerElement>, from: Int) -> TbsTail {
   let rest = kids |> skip(from)
   let context_tags = map(rest, e => match e.tag_class {
     DerContextSpecific => e.tag_number
-    _ => 0 - 1
+    DerUniversal => 0 - 1
+    DerApplication => 0 - 1
+    DerPrivate => 0 - 1
   })
   let ordered = context_tags == [] || context_tags == [3] || context_tags == [1] || context_tags == [2] || context_tags == [1, 2] || context_tags == [1, 3] || context_tags == [2, 3] || context_tags == [1, 2, 3]
   if !ordered {
@@ -319,7 +323,9 @@ fn tbs_tail(kids: List<DerElement>, from: Int) -> TbsTail {
       Present { value: found } => Present { value: found }
       Absent => match e.tag_class {
         DerContextSpecific => if e.tag_number == 3 { Present { value: e } } else { none }
-        _ => none
+        DerUniversal => none
+        DerApplication => none
+        DerPrivate => none
       }
     }) }
   }

@@ -268,7 +268,12 @@ fn yaml_string_reads_back_plain(s: String) -> Bool {
   } else {
     match yaml_resolve_plain(s: s) {
       YamlString { value: _ } => true
-      _ => false
+      YamlNull => false
+      YamlBool { value: _ } => false
+      YamlInt { lexeme: _ } => false
+      YamlFloat { lexeme: _ } => false
+      YamlSequence { elements: _ } => false
+      YamlMapping { entries: _ } => false
     }
   }
 }
@@ -1224,7 +1229,12 @@ fn yaml_quoted_key_entry(f: String, cont: String, n: Int) -> YamlEntryRead {
       ReadYamlScalar { value: decoded } =>
         match decoded {
           YamlString { value: k } => yaml_entry_value(k: k, r: yaml_value(v: trim(substring(s: rest, start: 1, end: rest.length())), cont: cont, col: n, same_col_seq: true))
-          _ => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+          YamlNull => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+          YamlBool { value: _ } => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+          YamlInt { lexeme: _ } => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+          YamlFloat { lexeme: _ } => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+          YamlSequence { elements: _ } => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+          YamlMapping { entries: _ } => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
         }
     }
   }

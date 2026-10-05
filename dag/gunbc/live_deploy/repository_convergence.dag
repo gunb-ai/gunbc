@@ -292,13 +292,15 @@ fn convergence_worktree_identity_matches(left: GitWorktreeIdentity, right: GitWo
     && match left.checkout {
       GitWorktreeOnBranch { head: lh, branch: _ } => match right.checkout {
         GitWorktreeOnBranch { head: rh, branch: _ } => git_object_id_eq(left: lh, right: rh)
-        _ => false
+        GitWorktreeDetachedAt { head: _ } => false
+        GitWorktreeBare => false
       }
       GitWorktreeDetachedAt { head: lh } => match right.checkout {
         GitWorktreeDetachedAt { head: rh } => git_object_id_eq(left: lh, right: rh)
-        _ => false
+        GitWorktreeOnBranch { head: _, branch: _ } => false
+        GitWorktreeBare => false
       }
-      GitWorktreeBare => match right.checkout { GitWorktreeBare => true _ => false }
+      GitWorktreeBare => match right.checkout { GitWorktreeBare => true GitWorktreeOnBranch { head: _, branch: _ } => false GitWorktreeDetachedAt { head: _ } => false }
     }
     && left.locked == right.locked
     && left.prunable == right.prunable
@@ -579,7 +581,7 @@ fn convergence_coherence_fault(coherence: RepositoryCoherenceObservation) -> Rep
 }
 
 fn convergence_coherence_is_clean(coherence: RepositoryCoherenceObservation) -> Bool {
-  match convergence_coherence_fault(coherence: coherence) { Absent => true _ => false }
+  match convergence_coherence_fault(coherence: coherence) { Absent => true Present { value: _ } => false }
 }
 
 // THE NON-NOOP LAW IS ABOUT THE NEWEST ENTRY, NOT ABOUT THE TEXT CHANGING. An earlier cut proved
@@ -1024,7 +1026,8 @@ fn repository_root_emptiness_of(success: Bool, entries: String, error: String) -
       init: RepositoryRootEmpty,
       f: (acc, e) => match acc {
         RepositoryRootEmpty => RepositoryRootNotEmpty { first_entry: trim(s: e) }
-        _ => acc
+        RepositoryRootNotEmpty { first_entry: _ } => acc
+        RepositoryRootEmptinessUnobservable { detail: _ } => acc
       },
     )
   }

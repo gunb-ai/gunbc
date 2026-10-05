@@ -693,7 +693,11 @@ fn emitted_target_reach(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> Ma
       EmittedModuleTarget { module: target } =>
         match map_get(acc, target) {
           Accepted { value: Present { value: _ }, diagnostics: _ } => acc
-          _ =>
+          Accepted { value: _, diagnostics: _ } =>
+            map_insert(acc, target,
+              graph_reverse_reachable_members(names: names, graph: forward_as_reverse, start: target)
+                |> fold(init: empty_map(), f: fn(reached, member) { map_insert(reached, member, true) }))
+          Rejected { diagnostics: _ } =>
             map_insert(acc, target,
               graph_reverse_reachable_members(names: names, graph: forward_as_reverse, start: target)
                 |> fold(init: empty_map(), f: fn(reached, member) { map_insert(reached, member, true) }))
@@ -705,7 +709,8 @@ fn emitted_target_reach(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> Ma
 fn string_member(set: Map<String, Bool>, key: String) -> Bool {
   match map_get(set, key) {
     Accepted { value: Present { value: _ }, diagnostics: _ } => true
-    _ => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -732,7 +737,8 @@ fn emitted_edge_merge_step(
           } else {
             let target_reaches_source = match map_get(reach, target) {
               Accepted { value: Present { value: reached }, diagnostics: _ } => string_member(set: reached, key: edge.from)
-              _ => false
+              Accepted { value: _, diagnostics: _ } => false
+              Rejected { diagnostics: _ } => false
             }
             if target_reaches_source {
               EmittedEdgeMergeFold {
@@ -910,7 +916,7 @@ fn assignment_first_stranger(
   let known = module_dag.modules |> fold(init: empty_map(), f: fn(acc, module_id) {
     map_insert(acc, module_id, true)
   })
-  map_keys(assignment) |> fold(init: Absent, f: fn(acc, module_id) {
+  sorted_map_keys(assignment) |> fold(init: Absent, f: fn(acc, module_id) {
     match acc {
       Present { value: _ } => acc
       Absent =>
