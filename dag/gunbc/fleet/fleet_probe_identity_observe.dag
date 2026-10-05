@@ -196,7 +196,6 @@ fn passwd_probe_for_user(user: ProcessOutcome) -> ProcessOutcome?
 // says which side of it. gcloud-auth-list: the old `|| echo gcloud-absent` folded a FAILING auth
 // list into the same line as a MISSING binary; missing still answers gcloud-absent, and a binary
 // that ran and refused now reports refused with its cause, which is the report §5 asks for.
-fn fleet_probe_identity_observe_receipt_body(auth_list_command: ArgvCommand) -> String
 // THE RECEIPT BODY, PARAMETERIZED BY THE AUTH-LIST INVOCATION (the side chat's pairing fix on
 // review 5409740742). Production (fleet_probe_identity_observe_wet) supplies
 // gcloud_auth_list_accounts_command() bare; the real-path receipt supplies the SAME command with
