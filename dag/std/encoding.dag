@@ -1,7 +1,8 @@
 module std.encoding
 
-import std.algebra { BoundedLattice }
-import std.types { Bytes }
+import std.algebra { BoundedLattice, FreeMonoid, Empty, list_snoc_item }
+import std.coercion { unicode_scalar_fold }
+import std.types { Bytes, Char }
 import std.integer { UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, WordValueOutOfRange, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or }
 import extdeps.toolchain.architecture_profile { BigEndian }
@@ -673,4 +674,46 @@ data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
 
 data base64_group_fill_carrier_debt_marker: Disposition = Terminal {
   reason: "Base64EncodeBuf = EncEmpty|EncOne|EncTwo and Base64DecodeBuf = DecEmpty|DecOne|DecTwo|DecThree: the hand-rolled Int count accumulator debt is paid; closed sums are declared and all arms are covered by execution in base64_rfc4648_witness_test.dag"
+}
+
+// THE ASCII DECODE: a NAMED, PARTIAL octet -> text conversion plan (DESIGN section 4: a crossing that
+// may refuse is never implicit). ASCII is ANSI X3.4-1986 / ISO/IEC 646 IRV: the seven-bit code,
+// octets 0x00..0x7F, and Unicode 17.0 Basic Latin (U+0000..U+007F) assigns each of those octets the
+// scalar with the same number -- so on its domain the route is exact, lossless and needs no table.
+// 0x00 (NUL) IS in the domain: it is an ASCII control. A caller for whom NUL is a delimiter rather
+// than content (a git NUL-framed field) refuses it under its own policy, not here.
+// Octets 0x80..0xFF are NOT ASCII and are NOT read as Latin-1: this route refuses them, naming the
+// first offending position and octet. A byte-to-Latin-1 reading would be a different meaning of
+// "the character for this byte" and is not declared, because no current consumer's upstream
+// specifies it (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin,
+// kind OCTET-AS-CHAR).
+type AsciiDecodeOutcome
+  = AsciiDecoded { text: String }
+  | AsciiNonAscii { at: Int, octet: Int }
+
+type AsciiDecodeState
+  = AsciiDecoding { at: Int, scalars: FreeMonoid<Char> }
+  | AsciiDecodeRefused { at: Int, octet: Int }
+
+fn ascii_octet(octet: Int) -> Bool {
+  octet >= 0 && octet < 128
+}
+
+fn ascii_decode_step(state: AsciiDecodeState, octet: Int) -> AsciiDecodeState {
+  match state {
+    AsciiDecodeRefused { at, octet: refused } => AsciiDecodeRefused { at: at, octet: refused }
+    AsciiDecoding { at, scalars } =>
+      if ascii_octet(octet: octet) {
+        AsciiDecoding { at: at + 1, scalars: list_snoc_item(xs: scalars, item: octet) }
+      } else {
+        AsciiDecodeRefused { at: at, octet: octet }
+      }
+  }
+}
+
+fn ascii_decode_octets(octets: List<Int>) -> AsciiDecodeOutcome {
+  match fold(octets, init: AsciiDecoding { at: 0, scalars: Empty }, f: (st, o) => ascii_decode_step(state: st, octet: o)) {
+    AsciiDecoding { at: _, scalars } => AsciiDecoded { text: unicode_scalar_fold(xs: scalars) }
+    AsciiDecodeRefused { at, octet } => AsciiNonAscii { at: at, octet: octet }
+  }
 }

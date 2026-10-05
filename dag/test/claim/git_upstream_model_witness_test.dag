@@ -131,6 +131,7 @@ import std.content_hash {
 import std.types { Bytes }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.algebra { Cons, Empty }
+import std.unicode.scalar { char_text }
 
 // Witness-corpus Git object ids are constructed only through git_sha1_object_id /
 // git_sha256_object_id (review 45376). The Absent arm below is unreachable for pinned corpus
@@ -733,7 +734,7 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
 
 test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
   let space = " "
-  let tab = from_code_point(9)
+  let tab = char_text(c: 9)
   let header = concat(
     join(
       [
