@@ -427,7 +427,8 @@ fn collection_concat_shape() -> AlgebraFieldTemplate {
 
 // THE FREE MONOID'S SIZE, NAMED so a v2 call head binds to it (v2.compiler.fold_lowering collection_roster_rows,
 // a RosterFreeMonoidPrimitiveCall row typed by this row). ITS RESULT IS A STATED Int, A DECLARED DEPARTURE from
-// the Nat the other size rows carry -- recorded on algebra_count_length_name_fork_note with its restoration trigger.
+// the Nat the other size rows carry -- the declared drop gunbc.rung_drop
+// collection_count_result_stated_int_until_declared_results_are_judged, which carries its restoration trigger.
 fn collection_count_shape() -> AlgebraFieldTemplate {
   { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
 }
