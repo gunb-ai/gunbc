@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply { SupplierOffer }
-import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot, selected_slot, slot_quota_threads }
 import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound,
@@ -39,28 +39,6 @@ import gunbc.runner_throughput_qualification {
 type RunnerQualificationInputs<P> {
   executor_sanction: ExecutorSanction
   selection: SelectedRunnerQualification<P>
-}
-
-// THE CPU QUOTA PROJECTION: a declared ceiling becomes its thread count; the fleet's affirmative
-// no-ceiling (SlotCpuQuotaUnbounded) becomes absent. Both sides of the subject join carry the same
-// projection, so an observed unit with an unbounded quota joins a selection that declared one and
-// refuses a selection that declared a ceiling.
-fn slot_quota_threads(quota: RunnerSlotCpuQuota) -> SlotQuotaThreads {
-  match quota {
-    SlotCpuQuotaUnbounded => none
-    CpuQuotaResolved { threads: t } => Present { value: t }
-  }
-}
-
-fn selected_slot(desired: RunnerSlotDesired, unit: NonEmptyStr) -> SelectedSlot {
-  SelectedSlot {
-    unit: unit,
-    memory_max: desired.memory_max,
-    memory_high: desired.memory_high,
-    tasks_max: desired.tasks_max,
-    cpu_quota_threads: slot_quota_threads(quota: desired.cpu_quota),
-    floor_minimum_armed_budget: gunbc_floor_minimum_viable_armed_budget,
-  }
 }
 
 // THE ALLOCATION IS ADMITTED ONLY WHEN THE PLAN DERIVED AND THE ALLOCATION CONSERVES; every other

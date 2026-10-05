@@ -12,7 +12,7 @@ import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
 import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification {
-  WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
+  WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin, mtcollins1_qualification_workspace_backing,
   RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority, leg_is_wired,
 }
 
@@ -190,24 +190,6 @@ data qualification_instruments: List<QualificationInstrument> = [
 ]
 
 // ── THE mtcollins1 ROUTE ──────────────────────────────────────────────────────────────────────
-
-// RAM-BACKED TMPFS, AND WHY NOT A SCRATCH EXPORT FROM srv2.
-//
-// The subject of the receipt is THIS HOST. A scratch export from srv2 puts the checkout, the build
-// tree and every page the floor writes on a LAN hop and on srv2's disks, so the wall per phase and
-// the memory peak would be facts about srv2's export and the switch between them, and the receipt
-// would name mtcollins1 while measuring something else. srv2 is also the 125 GiB legacy host that
-// serves the boot image itself; charging it a second host's build I/O during a qualification is
-// exactly the cross-host coupling the fleet budget refuses to leave unpriced.
-//
-// tmpfs keeps every byte on the subject and makes the workspace part of the measured envelope:
-// tmpfs pages are charged to the cgroup that faults them in, so the slot's memory.peak includes
-// the build tree. That is the honest number for a diskless host -- it is what a slot on this
-// host, configured this way, actually costs -- and the receipt carries the backing so a reader
-// never compares it to an NVMe-backed fleet peak as if the two measured the same thing. If the
-// workspace-inclusive peak exceeds the slot high, the answer is not-admitted with the number, and
-// the remedy is a disk or a narrower shape, both of which are a different subject.
-data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
 
 data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
   lands_with: "a runner-payload arm of gunbc.machine_intake_mtcollins1_boot_authorization MtCollins1BootMedium (today only MtCollins1CensusMedium and MtCollins1StockInstallerMedium) whose terminal in gunbc.machine_intake_mtcollins1_boot_run is the runner host observed ready rather than the census program's terminal" as NonEmptyStr,

@@ -37,6 +37,7 @@ fn facts_with_usable_ram(f: HostWidthFacts, ram: HostUsableRam) -> HostWidthFact
     served_deployment: f.served_deployment,
     disk: f.disk,
     carries_shakedown_slot: f.carries_shakedown_slot,
+    workspace: f.workspace,
   }
 }
 

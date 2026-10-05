@@ -10,7 +10,7 @@ import product.host_identity { HostIdentity }
 import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
 import gunbc.session_reservation_policy { SessionReservationBytesResolution, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished, session_reservation_bytes }
 import gunbc.host_memory_observation { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured, gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for, oomd_actuation_floor }
 import gunbc.fabric_control_plane_charge { HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
@@ -20,8 +20,13 @@ import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.ci_fleet { fleet_compute_offer_for }
+import gunbc.runner_throughput_qualification {
+  SelectedSlot, SlotQuotaThreads, WorkspaceBacking, HostLocalDisk, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
+  workspace_bytes_locus, MemoryEnvelopeStanding, PeakWithinSlotHigh, PeakExceedsSlotHigh, SlotHighBelowFloorMinimum, MemoryUnread,
+  aggregate_memory, memory_standing_wire, recorded_qualification_runs_for, mtcollins1_qualification_workspace_backing,
+}
 import gunbc.fleet_intent { ComputeHost, compute_host_cpu_threads }
-import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved }
+import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, RunnerSlotCpuQuota, SlotCpuQuotaUnbounded }
 import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
 
 type HostRunnerSlotAllocation {
@@ -296,6 +301,7 @@ type HostWidthFacts {
   served_deployment: HostServedDeploymentClaim
   disk: HostDiskWidthConstraint
   carries_shakedown_slot: Bool
+  workspace: HostWorkspaceStanding
 }
 
 fn host_width_facts(host: HostIdentity) -> HostWidthFacts {
@@ -309,6 +315,95 @@ fn host_width_facts(host: HostIdentity) -> HostWidthFacts {
     served_deployment: host_served_deployment_claim(host: host),
     disk: host_disk_admitted_width(host: host),
     carries_shakedown_slot: host_carries_microvm_shakedown_slot(host: host),
+    workspace: host_workspace_standing(host: host),
+  }
+}
+
+// THE CPU QUOTA PROJECTION: a declared ceiling becomes its thread count; the fleet's affirmative
+// no-ceiling (SlotCpuQuotaUnbounded) becomes absent. Both sides of the subject join carry the same
+// projection, so an observed unit with an unbounded quota joins a selection that declared one and
+// refuses a selection that declared a ceiling.
+fn slot_quota_threads(quota: RunnerSlotCpuQuota) -> SlotQuotaThreads {
+  match quota {
+    SlotCpuQuotaUnbounded => none
+    CpuQuotaResolved { threads: t } => Present { value: t }
+  }
+}
+
+fn selected_slot(desired: RunnerSlotDesired, unit: NonEmptyStr) -> SelectedSlot {
+  SelectedSlot {
+    unit: unit,
+    memory_max: desired.memory_max,
+    memory_high: desired.memory_high,
+    tasks_max: desired.tasks_max,
+    cpu_quota_threads: slot_quota_threads(quota: desired.cpu_quota),
+    floor_minimum_armed_budget: gunbc_floor_minimum_viable_armed_budget,
+  }
+}
+
+// WHERE A HOST'S RUNNER WORKSPACE BYTES ARE CHARGED, AND WHAT THAT COSTS A SLOT.
+// On a disk-backed host the workspace sits on NVMe and is not charged to the slot cgroup, so the
+// slot's MemoryMax row is its whole memory term. On a RamBackedTmpfs host the tmpfs pages are
+// charged to the cgroup that faults them in (gunbc.runner_throughput_qualification
+// WorkspaceBytesLocus OnSubjectChargedToSlot). So the honest per-slot figure is the
+// WORKSPACE-INCLUSIVE peak, which only a qualification run measures. The slot is admitted only when
+// that peak sits within the slot high: the cgroup's MemoryMax then bounds the workspace together
+// with the build, and the width keeps dividing by the same row. Without such a reading the slot
+// envelope has an unread term, and committed_width_of refuses rather than assuming the build tree
+// costs nothing.
+type HostWorkspaceStanding
+  = WorkspaceNotChargedToSlot
+  | WorkspaceChargedToSlot { peak: MemoryEnvelopeStanding }
+
+// THE BACKING PER HOST. mtcollins1 reads its route's row. Every other fleet host's offer carries an
+// NVMe device and runs its workspace there.
+fn host_workspace_backing(host: HostIdentity) -> WorkspaceBacking {
+  if (host as String) == (operator_host_mtcollins1 as String) {
+    mtcollins1_qualification_workspace_backing
+  } else {
+    HostLocalDisk
+  }
+}
+
+fn workspace_standing_of(backing: WorkspaceBacking, peak: MemoryEnvelopeStanding) -> HostWorkspaceStanding {
+  match workspace_bytes_locus(backing: backing) {
+    OnSubjectChargedToSlot => WorkspaceChargedToSlot { peak: peak }
+    OnSubjectUncharged => WorkspaceNotChargedToSlot
+    OffSubject { peer: _ } => WorkspaceNotChargedToSlot
+  }
+}
+
+// THE PEAK COMES FROM THE QUALIFICATION RECEIPT, THROUGH THAT MODULE'S OWN READER. aggregate_memory
+// takes the maximum memory.peak over the host's recorded runs against the fleet slot shape. With no
+// recorded run it answers MemoryUnread, and that is the standing every tmpfs host carries until the
+// wet qualification receipt lands.
+fn host_workspace_standing(host: HostIdentity) -> HostWorkspaceStanding {
+  workspace_standing_of(
+    backing: host_workspace_backing(host: host),
+    peak: aggregate_memory(
+      envelope: selected_slot(desired: gunbc_runner_slot_desired(), unit: runner_host_label(host: host) as NonEmptyStr),
+      runs: recorded_qualification_runs_for(host: host),
+    ),
+  )
+}
+
+fn workspace_peak_admits(w: HostWorkspaceStanding) -> Bool {
+  match w {
+    WorkspaceNotChargedToSlot => true
+    WorkspaceChargedToSlot { peak: p } =>
+      match p {
+        PeakWithinSlotHigh { peak: _, high: _ } => true
+        PeakExceedsSlotHigh { peak: _, high: _ } => false
+        SlotHighBelowFloorMinimum { high: _, minimum: _ } => false
+        MemoryUnread { reason: _ } => false
+      }
+  }
+}
+
+fn workspace_standing_text(w: HostWorkspaceStanding) -> String {
+  match w {
+    WorkspaceNotChargedToSlot => "workspace not charged to the slot"
+    WorkspaceChargedToSlot { peak: p } => concat("RAM-backed workspace charged to the slot; qualification peak standing: ", memory_standing_wire(s: p) as String)
   }
 }
 
@@ -811,6 +906,7 @@ type RunnerWidthUnresolvedCause
   = WidthMemoryDenominatorUnestablished { host: HostIdentity, cause: NonEmptyStr }
   | WidthSlotShapeInadmissible { reason: NonEmptyStr }
   | WidthComputeOfferAbsent { host: HostIdentity }
+  | WidthWorkspacePeakUnestablished { host: HostIdentity, standing: HostWorkspaceStanding }
 
 type RunnerWidthResolution
   = RunnerWidthDerived { slots: Int }
@@ -831,6 +927,13 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
       join([
         "no committed runner width is derivable on any host because the fleet slot shape is inadmissible: ",
         r as String,
+      ], "")
+    WidthWorkspacePeakUnestablished { host: h, standing: w } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: its workspace is charged to the slot cgroup and the slot envelope has no admitted workspace-inclusive peak (",
+        workspace_standing_text(w: w),
+        "); the wet qualification receipt supplies it",
       ], "")
     WidthComputeOfferAbsent { host: h } =>
       join([
@@ -863,7 +966,11 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
             CpuWidthDerived { slots: by_cpu } =>
-              RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
+              if workspace_peak_admits(w: f.workspace) {
+                RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
+              } else {
+                RunnerWidthUnresolved { cause: WidthWorkspacePeakUnestablished { host: f.host, standing: f.workspace } }
+              }
           }
       }
   }

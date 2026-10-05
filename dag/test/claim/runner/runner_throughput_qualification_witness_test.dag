@@ -68,8 +68,9 @@ import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
 }
 import gunbc.runner_throughput_selection {
-  RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
+  RunnerQualificationInputs, select_runner_qualification, selected_host_allocation,
 }
+import gunbc.runner_slot_allocation { slot_quota_threads }
 import gunbc.runner_throughput_qualification_route {
   QualificationStage, BootHostUnderApprovalGate, RegisterEphemeralRunnerSlot, DispatchFloorToSlot,
   CollectInstruments, DeregisterRunnerSlot,

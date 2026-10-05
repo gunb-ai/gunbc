@@ -17,7 +17,13 @@ import gunbc.host_memory_observation {
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
-import gunbc.runner_slot_allocation { HostWidthFacts, host_width_facts, HostCpuWidthResolution, CpuWidthDerived }
+import gunbc.runner_slot_allocation {
+  HostWidthFacts, host_width_facts, HostCpuWidthResolution, CpuWidthDerived, committed_width_of,
+  HostWorkspaceStanding, WorkspaceChargedToSlot, WorkspaceNotChargedToSlot,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, WidthWorkspacePeakUnestablished,
+}
+import gunbc.runner_throughput_qualification { PeakWithinSlotHigh, MemoryUnread }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.ci_runner_placement {
   HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   HostRunnerDeploymentRefusal, UsableRamUnavailable, host_deployment_standing_given, host_deployment_refusal_text,
@@ -179,6 +185,15 @@ test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
 //                 the wet receipt will take, and the figure waits on that receipt.
 //   overhead   -- host_fixed_overhead_from_capture over the SAME designed receipt, so one census
 //                 boot supplies both memory rows.
+//   workspace  -- a DESIGNED workspace-inclusive peak, below the slot high, standing where the wet
+//                 qualification receipt's peak will stand. The production field reads that
+//                 receipt through gunbc.runner_throughput_qualification aggregate_memory, and today
+//                 it answers MemoryUnread because no run has been recorded.
+fn designed_workspace_within_high() -> HostWorkspaceStanding {
+  WorkspaceChargedToSlot {
+    peak: PeakWithinSlotHigh { peak: byte_size(count: byte_size_count(b: gunbc_runner_slot_desired().memory_high) / 2), high: gunbc_runner_slot_desired().memory_high },
+  }
+}
 fn supplied_ram(meminfo_body: String) -> HostUsableRam {
   match host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: meminfo_body)) {
     ObservationEstablished { observed: r } => r
@@ -193,7 +208,7 @@ fn supplied_overhead(meminfo_body: String) -> HostFixedOverhead {
   }
 }
 
-fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) -> HostWidthFacts {
+fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead, workspace: HostWorkspaceStanding) -> HostWidthFacts {
   let real = host_width_facts(host: operator_host_mtcollins1)
   HostWidthFacts {
     host: real.host,
@@ -205,6 +220,7 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
     served_deployment: real.served_deployment,
     disk: real.disk,
     carries_shakedown_slot: real.carries_shakedown_slot,
+    workspace: workspace,
   }
 }
 
@@ -214,7 +230,7 @@ data designed_one_socket_meminfo: String = "----ARGV meminfo: grep -E 'MemTotal|
 test fn mtcollins1_placement_accepts_the_offer_over_supplied_one_socket_facts() -> Bool {
   match host_deployment_standing_given(
     offer: mtcollins1_offer,
-    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo), overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo)),
+    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo), overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo), workspace: designed_workspace_within_high()),
     control_plane_placement: fabric_control_plane_placement,
   ) {
     HostRunnerDeploymentDerived { deployment: d } =>
@@ -228,7 +244,7 @@ test fn mtcollins1_placement_accepts_the_offer_over_supplied_one_socket_facts() 
 test fn mtcollins1_RED_placement_refuses_until_usable_ram_is_measured() -> Bool {
   match host_deployment_standing_given(
     offer: mtcollins1_offer,
-    facts: mtcollins1_supplied_facts(ram: HostUsableRamUnmeasured, overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo)),
+    facts: mtcollins1_supplied_facts(ram: HostUsableRamUnmeasured, overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo), workspace: designed_workspace_within_high()),
     control_plane_placement: fabric_control_plane_placement,
   ) {
     HostRunnerDeploymentDerived { deployment: _ } => false
@@ -244,7 +260,7 @@ test fn mtcollins1_RED_placement_refuses_until_usable_ram_is_measured() -> Bool 
 fn mtcollins1_supplied_standing_text() -> String {
   match host_deployment_standing_given(
     offer: mtcollins1_offer,
-    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo), overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo)),
+    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo), overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo), workspace: designed_workspace_within_high()),
     control_plane_placement: fabric_control_plane_placement,
   ) {
     HostRunnerDeploymentDerived { deployment: d } => concat("derived runner_count=", to_string(d.runner_count))
@@ -260,4 +276,33 @@ test fn census_meminfo_receipt_reads_as_measured_fixed_overhead() -> Bool {
       (byte_size_count(b: b) as Int) == 4000000 * 1024 && string_contains(s: p as String, pattern: "quiescent census boot")
     _ => false
   }
+}
+
+// THE TMPFS RED: SAME FACTS, NO WORKSPACE PEAK. The record's workspace field is the PRODUCTION one,
+// which is the qualification reader over mtcollins1's recorded runs. None are recorded, so it is
+// MemoryUnread, and committed_width_of refuses by type with the workspace cause. Placement therefore
+// cannot admit the RAM-backed host on its census facts alone.
+test fn mtcollins1_RED_tmpfs_host_with_no_qualification_peak_refuses() -> Bool {
+  let real_workspace = host_width_facts(host: operator_host_mtcollins1).workspace
+  let workspace_is_unread_tmpfs = match real_workspace {
+    WorkspaceChargedToSlot { peak: p } => match p { MemoryUnread { reason: _ } => true  _ => false }
+    WorkspaceNotChargedToSlot => false
+  }
+  let facts = mtcollins1_supplied_facts(
+    ram: supplied_ram(meminfo_body: designed_one_socket_meminfo),
+    overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo),
+    workspace: real_workspace,
+  )
+  let width_refuses = match committed_width_of(f: facts) {
+    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthUnresolved { cause: c } => match c {
+      WidthWorkspacePeakUnestablished { host: h, standing: _ } => (h as String) == (operator_host_mtcollins1 as String)
+      _ => false
+    }
+  }
+  let placement_refuses = match host_deployment_standing_given(offer: mtcollins1_offer, facts: facts, control_plane_placement: fabric_control_plane_placement) {
+    HostRunnerDeploymentDerived { deployment: _ } => false
+    HostRunnerDeploymentRefused { refusal: _ } => true
+  }
+  workspace_is_unread_tmpfs && width_refuses && placement_refuses
 }

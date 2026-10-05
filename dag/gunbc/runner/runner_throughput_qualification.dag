@@ -955,6 +955,37 @@ fn leg_authority(leg: RouteLegStanding) -> DeclarationRef? {
   }
 }
 
+// RAM-BACKED TMPFS, AND WHY NOT A SCRATCH EXPORT FROM srv2.
+//
+// The subject of the receipt is THIS HOST. A scratch export from srv2 puts the checkout, the build
+// tree and every page the floor writes on a LAN hop and on srv2's disks, so the wall per phase and
+// the memory peak would be facts about srv2's export and the switch between them, and the receipt
+// would name mtcollins1 while measuring something else. srv2 is also the 125 GiB legacy host that
+// serves the boot image itself; charging it a second host's build I/O during a qualification is
+// exactly the cross-host coupling the fleet budget refuses to leave unpriced.
+//
+// tmpfs keeps every byte on the subject and makes the workspace part of the measured envelope:
+// tmpfs pages are charged to the cgroup that faults them in, so the slot's memory.peak includes
+// the build tree. That is the honest number for a diskless host -- it is what a slot on this
+// host, configured this way, actually costs -- and the receipt carries the backing so a reader
+// never compares it to an NVMe-backed fleet peak as if the two measured the same thing. If the
+// workspace-inclusive peak exceeds the slot high, the answer is not-admitted with the number, and
+// the remedy is a disk or a narrower shape, both of which are a different subject.
+//
+// The row lives here rather than in gunbc.runner_throughput_qualification_route, which consumes it,
+// so that gunbc.runner_slot_allocation can read it: the route imports that module.
+data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
+
+// THE RECORDED QUALIFICATION RUNS. The list is empty, and that is accurate: nothing has produced
+// one yet. Its producer is qualification_run_producer_frontier just below. A run lands here when
+// that collect stage exists, and until then every reader of a workspace-inclusive peak gets
+// MemoryUnread from aggregate_memory, which never reads an empty sample as a peak of zero.
+data recorded_qualification_runs: List<ObservedRunnerQualificationRun> = []
+
+fn recorded_qualification_runs_for(host: HostIdentity) -> List<ObservedRunnerQualificationRun> {
+  filter(recorded_qualification_runs, r => (r.host as String) == (host as String))
+}
+
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
   lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it, AND reads every seat's ready/start/end instants and settlement plus the barrier and host window into a product.capacity.cohort_observation CohortReading, seals it with seal_cohort and passes it to assess_runner_throughput as CohortObserved (gunbc.runner_throughput_qualification_route ConcurrentCohortSeatWindows); until then assess_runner_throughput has no production caller and a delivery claim refuses ConcurrencyUnobserved; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
   sufficient_for: "minting ObservedRunnerQualificationRuns and a sealed concurrent cohort of them from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
