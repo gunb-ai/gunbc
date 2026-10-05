@@ -1,7 +1,7 @@
 module gunbc.runner_group_restriction_ensure
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, AllRepositories, PrivateRepositories, runner_group_visibility_wire }
+import extdeps.github.org_actions { SelectedRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
@@ -29,16 +29,17 @@ import gunbc.runner_group_restriction_observation {
 // GitHub saying it accepted the request, and only the readback says the group is what the mint
 // needs.
 
-// Every member of the create body, as policy. Visibility is SELECTED with this repository alone,
-// public repositories are refused, and the workflow restriction names the shakedown file: three
-// independent walls, so no single wrong member reopens the group to other work.
+// What varies between restricted groups: the organization, the name, the one selected repository
+// and the one selected workflow. The three walls every restricted group holds -- SELECTED visibility,
+// no public repositories, restricted to workflows -- are NOT fields: an open group has no
+// representation here, so the create body emits them as constants
+// (gunbc.runner_group_restriction_ensure_run microvm_runner_group_create_under) and no check over a
+// subject is needed to keep one from being sent (review 76277, DESIGN §5: construction, not
+// validation).
 type RunnerGroupCreateSubject {
   organization: NonEmptyStr
   name: NonEmptyStr
-  visibility: RunnerGroupVisibility
   selected_repository_id: Int
-  allows_public_repositories: Bool
-  restricted_to_workflows: Bool
   selected_workflow: NonEmptyStr
   workflow_policy: GroupWorkflowPolicy
 }
@@ -52,17 +53,13 @@ type GroupWorkflowPolicy
   = FixedSelectedWorkflow
   | PinnedPerAttempt { pin_prefix: NonEmptyStr }
 
-// EVERY RESTRICTED GROUP IS THIS SHAPE: selected visibility with one repository, no public
-// repositories, restricted to exactly one workflow. Only the name, the repository and the workflow
-// differ, so they are the constructor's arguments and the three walls are not re-spelled per group.
+// EVERY RESTRICTED GROUP IS THIS SHAPE: one repository and exactly one workflow, the three walls
+// being the create body's constants rather than members.
 fn restricted_runner_group_subject(name: NonEmptyStr, repository_id: Int, selected_workflow: NonEmptyStr) -> RunnerGroupCreateSubject {
   RunnerGroupCreateSubject {
     organization: org_actions_organization,
     name: name,
-    visibility: SelectedRepositories,
     selected_repository_id: repository_id,
-    allows_public_repositories: false,
-    restricted_to_workflows: true,
     selected_workflow: selected_workflow,
     workflow_policy: FixedSelectedWorkflow,
   }
@@ -101,8 +98,7 @@ fn private_heal_publisher_runner_group_subject() -> RunnerGroupCreateSubject {
 // already restricted, created under its own approval when absent, and refused when it holds the
 // name with any other restriction.
 // THE DEDICATED QUALIFICATION GROUP (decision: eager-gull-22, 2026-10-04). The same three walls as
-// every restricted group -- selected visibility with this repository alone, no public repositories,
-// restricted to one workflow -- created pinned to the reserved unpinned branch, which no attempt can
+// every restricted group, which the create body carries as constants -- created pinned to the reserved unpinned branch, which no attempt can
 // name, so it admits nothing until the first attempt pins it. Its expected restriction afterwards is
 // the pin family (PinnedPerAttempt). This ensure only ever creates it; the per-attempt re-pin is
 // gunbc.runner.runner_qualification_ref_pin's, and only on this group.
@@ -110,10 +106,7 @@ fn qualification_runner_group_subject() -> RunnerGroupCreateSubject {
   RunnerGroupCreateSubject {
     organization: org_actions_organization,
     name: qualification_runner_group_name,
-    visibility: SelectedRepositories,
     selected_repository_id: gunbc_repository_numeric_identity.repository_id,
-    allows_public_repositories: false,
-    restricted_to_workflows: true,
     selected_workflow: qualification_unpinned_selected_workflow(),
     workflow_policy: PinnedPerAttempt { pin_prefix: qualification_pin_prefix() },
   }
@@ -121,21 +114,6 @@ fn qualification_runner_group_subject() -> RunnerGroupCreateSubject {
 
 fn restricted_runner_groups() -> List<RunnerGroupCreateSubject> {
   [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject(), qualification_runner_group_subject()]
-}
-
-// A CREATE BODY IS REFUSED BEFORE IT IS SENT unless it holds the three walls: selected visibility,
-// no public repositories, restricted to workflows. The roster's constructors always hold them; this is
-// the check the effect performs on whatever subject reaches it, so a subject assembled any other way
-// cannot create an open group.
-fn runner_group_create_refusal(subject: RunnerGroupCreateSubject) -> NonEmptyStr? {
-  match subject.visibility {
-    SelectedRepositories =>
-      if subject.allows_public_repositories { Present { value: "RunnerGroupCreateRefused: allows_public_repositories=true" as NonEmptyStr } }
-      else if !subject.restricted_to_workflows { Present { value: "RunnerGroupCreateRefused: restricted_to_workflows=false" as NonEmptyStr } }
-      else { none }
-    AllRepositories => Present { value: "RunnerGroupCreateRefused: visibility=all" as NonEmptyStr }
-    PrivateRepositories => Present { value: "RunnerGroupCreateRefused: visibility=private" as NonEmptyStr }
-  }
 }
 
 fn observe_subject_restriction(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
@@ -149,10 +127,10 @@ fn observe_subject_restriction(subject: RunnerGroupCreateSubject, listed: Runner
 fn runner_group_create_subject_text(s: RunnerGroupCreateSubject) -> String {
   join([
     "create runner group ", s.name as String, " in org ", s.organization as String,
-    ": visibility=", runner_group_visibility_wire(v: s.visibility) as String,
+    ": visibility=", runner_group_visibility_wire(v: SelectedRepositories) as String,
     " repository_id=", to_string(s.selected_repository_id),
-    " allows_public_repositories=", if s.allows_public_repositories { "true" } else { "false" },
-    " restricted_to_workflows=", if s.restricted_to_workflows { "true" } else { "false" },
+    " allows_public_repositories=false",
+    " restricted_to_workflows=true",
     " selected_workflows=[", s.selected_workflow as String, "]",
   ], "")
 }
