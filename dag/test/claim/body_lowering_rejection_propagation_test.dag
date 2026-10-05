@@ -96,7 +96,7 @@ fn finish_is_retained(id: Symbol) -> Bool {
 // strategy's own reason and must NOT carry the retention reason. Asserting the absence via
 // accepted_reasons would not establish this, because that helper returns [] for every rejected
 // result — the claim would hold for the wrong reason.
-test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
+test fn genuine_rejection_leaves_the_seam_rejected() -> Bool  {
   match finish(id: ^dag_surface_expr) {
     v2.std.diagnostic.Rejected { diagnostics: d } =>
       reasons_contain(reasons: all_reasons(d: d), sym: ^body_lowering_reason_unsupported_form)
@@ -105,15 +105,15 @@ test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
   }
 }
 
-test fn genuine_rejection_lands_on_the_rejected_arm() -> Bool {
+test fn genuine_rejection_lands_on_the_rejected_arm() -> Bool  {
   rendered_arm(id: ^dag_surface_expr) == "REJECTED"
 }
 
 
-test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool {
+test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool  {
   rendered_arm(id: ^probe_unregistered_surface_form) == "ACCEPTED"
 }
 
-test fn unregistered_producer_still_retains() -> Bool {
+test fn unregistered_producer_still_retains() -> Bool  {
   finish_is_retained(id: ^probe_unregistered_surface_form)
 }

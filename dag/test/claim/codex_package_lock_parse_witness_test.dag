@@ -63,7 +63,7 @@ fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
 }
 
-test fn committed_codex_lock_parses_v3_roster() -> Bool {
+test fn committed_codex_lock_parses_v3_roster() -> Bool  {
   match npm_decode_package_lock_text(text: committed_codex_lock_text()) {
     NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
       count(unsupported) == 0
@@ -75,7 +75,7 @@ test fn committed_codex_lock_parses_v3_roster() -> Bool {
   }
 }
 
-test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
+test fn committed_codex_lock_admits_under_codex_profile() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(registry_artifacts) == 7 && count(nodes) == 8
@@ -85,7 +85,7 @@ test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
   }
 }
 
-test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
+test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
@@ -111,7 +111,7 @@ test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
   }
 }
 
-test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool {
+test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
@@ -134,7 +134,7 @@ test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool {
   }
 }
 
-test fn selected_node_with_install_script_refuses() -> Bool {
+test fn selected_node_with_install_script_refuses() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
@@ -179,7 +179,7 @@ test fn selected_node_with_install_script_refuses() -> Bool {
   }
 }
 
-test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
+test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
@@ -210,7 +210,7 @@ test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
   }
 }
 
-test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
+test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
@@ -234,7 +234,7 @@ test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
   }
 }
 
-test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
+test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
@@ -271,7 +271,7 @@ test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
   }
 }
 
-test fn non_registry_locator_refuses_before_fetch() -> Bool {
+test fn non_registry_locator_refuses_before_fetch() -> Bool  {
   match admit_codex_registry_artifact_locator(
     locator: "https://evil.example/codex.tgz" as NonEmptyStr,
   ) {
@@ -286,7 +286,7 @@ test fn non_registry_locator_refuses_before_fetch() -> Bool {
   }
 }
 
-test fn archive_digest_admission_matches_and_mismatches() -> Bool {
+test fn archive_digest_admission_matches_and_mismatches() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
@@ -332,7 +332,7 @@ test fn archive_digest_admission_matches_and_mismatches() -> Bool {
   }
 }
 
-test fn lockfile_v2_text_refuses() -> Bool {
+test fn lockfile_v2_text_refuses() -> Bool  {
   let v2 = "{\"name\":\"x\",\"lockfileVersion\":2,\"packages\":{\"\":{\"name\":\"x\"}}}"
   match npm_decode_package_lock_text(text: v2) {
     NpmPackageLockParseRefused { cause: _ } => true
@@ -340,7 +340,7 @@ test fn lockfile_v2_text_refuses() -> Bool {
   }
 }
 
-test fn admitted_and_executed_lock_bytes_disagree_when_forked() -> Bool {
+test fn admitted_and_executed_lock_bytes_disagree_when_forked() -> Bool  {
   admitted_and_executed_lock_bytes_agree(
     admitted_lock_bytes: committed_codex_lock_text(),
     executed_lock_bytes: "{\"lockfileVersion\":3,\"packages\":{}}",
@@ -351,7 +351,7 @@ test fn admitted_and_executed_lock_bytes_disagree_when_forked() -> Bool {
     )
 }
 
-test fn link_node_is_unsupported_not_half_modeled() -> Bool {
+test fn link_node_is_unsupported_not_half_modeled() -> Bool  {
   let text = "{\"name\":\"x\",\"lockfileVersion\":3,\"packages\":{\"\":{\"name\":\"x\"},\"node_modules/local\":{\"link\":true,\"resolved\":\"../local\"}}}"
   match npm_decode_package_lock_text(text: text) {
     NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
@@ -360,7 +360,7 @@ test fn link_node_is_unsupported_not_half_modeled() -> Bool {
   }
 }
 
-test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
+test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool  {
   (codex_required_package_version as String) == "0.146.0"
     && codex_runtime_version_identity_marker() == "codex-cli 0.146.0"
     && !codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.133.0\n")
@@ -382,7 +382,7 @@ test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
     )
 }
 
-test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
+test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool  {
   match srv1_codex_bundled_executable() {
     Present { value: layout_path } =>
       match codex_bundled_executable_for_srv1() {
@@ -394,7 +394,7 @@ test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
   }
 }
 
-test fn srv1_committed_lock_bundled_executable_is_present() -> Bool {
+test fn srv1_committed_lock_bundled_executable_is_present() -> Bool  {
   match codex_bundled_executable_for_srv1() {
     Present { value: _ } => true
     Absent => false

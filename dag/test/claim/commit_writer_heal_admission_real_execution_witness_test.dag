@@ -77,7 +77,7 @@ fn with_witness_repo(scenario: fn(FilePath) -> Bool) -> Bool {
   dir.success && seeded && observed && cleaned.success
 }
 
-test fn clean_staged_index_admits_by_real_execution() -> Bool {
+test fn clean_staged_index_admits_by_real_execution() -> Bool  {
   with_witness_repo(scenario: repo => {
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
     match gated {
@@ -87,7 +87,7 @@ test fn clean_staged_index_admits_by_real_execution() -> Bool {
   })
 }
 
-test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
+test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool  {
   with_witness_repo(scenario: repo => {
     let theirs = commit_witness_side(repo: repo, branch: "theirs", content: "theirs\n")
     let ours = commit_witness_side(repo: repo, branch: "ours", content: "ours\n")
@@ -112,7 +112,7 @@ test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
   })
 }
 
-test fn unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution() -> Bool {
+test fn unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution() -> Bool  {
   with_witness_repo(scenario: repo => {
     let written = write_witness_file(
       repo: repo,
@@ -137,7 +137,7 @@ test fn unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution()
   })
 }
 
-test fn space_and_tab_named_paths_admit_by_real_execution() -> Bool {
+test fn space_and_tab_named_paths_admit_by_real_execution() -> Bool  {
   with_witness_repo(scenario: repo => {
     let space_written = write_witness_file(repo: repo, name: "has space name.txt", content: "space fixture\n")
     let tab_written = write_witness_file(repo: repo, name: "has\ttab\tname.txt", content: "tab fixture\n")

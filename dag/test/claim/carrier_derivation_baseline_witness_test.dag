@@ -69,22 +69,22 @@ fn expected_roster() -> List<String> {
   ["FinitePowerSet", "FinitelySupportedFunction", "FreeMonoid", "List", "Map", "PartialFunction", "PointwisePower", "Set", "Witness"]
 }
 
-test fn derived_profile_keys_match() -> Bool {
+test fn derived_profile_keys_match() -> Bool  {
   sorted_map_keys(kernel_algebra_profile) == expected_profile_keys()
 }
 
-test fn derived_algebra_rows_match() -> Bool {
+test fn derived_algebra_rows_match() -> Bool  {
   container_template_algebra_rows == expected_algebra_rows()
 }
 
-test fn derived_alias_rows_match() -> Bool {
+test fn derived_alias_rows_match() -> Bool  {
   container_template_alias_rows == expected_alias_rows()
 }
 
-test fn derived_arity_matches() -> Bool {
+test fn derived_arity_matches() -> Bool  {
   container_type_arity == expected_arity()
 }
 
-test fn derived_roster_matches() -> Bool {
+test fn derived_roster_matches() -> Bool  {
   canonical_container_names() == expected_roster()
 }

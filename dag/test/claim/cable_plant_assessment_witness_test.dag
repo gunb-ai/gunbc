@@ -94,7 +94,7 @@ data empty_plant: CablePlant = cable_plant(
 )
 
 // THE CENTRAL WITNESS: the fabric as it stands does not converge, and the refusal names the legs.
-test fn the_installed_plant_does_not_converge() -> Bool {
+test fn the_installed_plant_does_not_converge() -> Bool  {
   match inspect_cable_plant(subject: installed_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -109,7 +109,7 @@ test fn the_installed_plant_does_not_converge() -> Bool {
 
 // THE POSITIVE CONTROL. Without it the refusal above could be produced by a plant that never
 // converges for any input, which would make the wall decoration rather than a check.
-test fn a_correctly_coded_plant_converges() -> Bool {
+test fn a_correctly_coded_plant_converges() -> Bool  {
   match inspect_cable_plant(subject: repaired_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -126,7 +126,7 @@ test fn a_correctly_coded_plant_converges() -> Bool {
 // discriminating input for the absorbing fallback -- a plant reported over its read subset would
 // converge here, because the leg that WAS read is correctly coded -- but the honest answer is
 // indeterminate, carrying the endpoint nobody measured.
-test fn one_unread_leg_is_an_unknown_and_not_a_failed_read() -> Bool {
+test fn one_unread_leg_is_an_unknown_and_not_a_failed_read() -> Bool  {
   match inspect_cable_plant(subject: partially_read_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -143,7 +143,7 @@ test fn one_unread_leg_is_an_unknown_and_not_a_failed_read() -> Bool {
 // THE CONTROL THAT PROVES THE FOURTH ARM DOES REAL WORK. A mis-coded leg and an unread leg must
 // both be reported: the unknown does not suppress the proved deviation. Under the shape this
 // replaces the whole observation refused and the mis-coding was never reported.
-test fn a_miscoded_leg_and_an_unread_leg_are_reported_together() -> Bool {
+test fn a_miscoded_leg_and_an_unread_leg_are_reported_together() -> Bool  {
   match inspect_cable_plant(subject: one_miscoded_one_unread_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -160,7 +160,7 @@ test fn a_miscoded_leg_and_an_unread_leg_are_reported_together() -> Bool {
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE, and the reason is that there is no denominator to
 // assess against -- an ill-formed question, not a read that failed. Zero legs agree trivially, and a
 // green derived from an empty population is the vacuous pass DESIGN section 5 refuses.
-test fn an_empty_plant_refuses_the_assessment() -> Bool {
+test fn an_empty_plant_refuses_the_assessment() -> Bool  {
   match inspect_cable_plant(subject: empty_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
@@ -177,7 +177,7 @@ test fn an_empty_plant_refuses_the_assessment() -> Bool {
 // THE REFUSAL CARRIES THE ENDPOINTS, not just a count: an operator reading this needs to know which
 // port to walk to. A refusal that said only "the plant diverges" would be a diagnostic without a
 // location, which is the half of fail-closed DESIGN section 5 asks for by name.
-test fn the_refusal_names_the_diverging_endpoints() -> Bool {
+test fn the_refusal_names_the_diverging_endpoints() -> Bool  {
   match inspect_cable_plant(subject: installed_plant) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>

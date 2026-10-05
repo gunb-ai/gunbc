@@ -143,7 +143,7 @@ test fn probe_calibration_wrong_scalar_only() -> Bool { wrong_scalar_argument_re
 // ADMITTED, and the censored population is REFUSED. The last of those four flipped when
 // gunbc#10226 wired `PositionGenericTypeArgument`; the other three are unchanged and are what
 // establish that the flip was the wall arriving rather than the probe breaking.
-test fn remedy_sizing_admits_exact_completions_and_refuses_censored_bounds() -> Bool {
+test fn remedy_sizing_admits_exact_completions_and_refuses_censored_bounds() -> Bool  {
   undefined_name_refuses_to_compile()
     && wrong_scalar_argument_refuses_to_compile()
     && exact_population_compiles()

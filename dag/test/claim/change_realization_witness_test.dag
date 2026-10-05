@@ -61,7 +61,7 @@ fn is_realized(c: ChangeRealizationClassification, expected_in_place: Bool) -> B
 // reachable realization is the unconditional write, and a concurrent update would be silently
 // overwritten instead of losing.
 
-test fn w_scm_ref_update_is_compare_and_swap() -> Bool {
+test fn w_scm_ref_update_is_compare_and_swap() -> Bool  {
   match classify_change(subject: ScmRefSubject, subject_label: "refs/heads/main" as NonEmptyStr, continuity: AddressPreserved, declared_intermediates: none) {
     ChangeRealized { realization: r } =>
       match r {
@@ -81,7 +81,7 @@ test fn w_scm_ref_update_is_compare_and_swap() -> Bool {
 // input yields a tree transformation for a source declaration and a staged replacement for a host
 // resource — so the subject, not the address delta alone, decides.
 
-test fn w_source_declaration_move_is_tree_transformation_not_migration() -> Bool {
+test fn w_source_declaration_move_is_tree_transformation_not_migration() -> Bool  {
   let moved = classify_change(
     subject: SourceDeclarationSubject,
     subject_label: "gunbc.membership_reconcile.MemberChanged" as NonEmptyStr,
@@ -106,7 +106,7 @@ test fn w_source_declaration_move_is_tree_transformation_not_migration() -> Bool
 // observable intermediate states. Both directions asserted from the same subject, so the address
 // axis is proven to decide rather than being incidentally true.
 
-test fn w_host_resource_address_preserved_is_in_place() -> Bool {
+test fn w_host_resource_address_preserved_is_in_place() -> Bool  {
   is_realized(
     c: classify_change(
       subject: HostResourceSubject,
@@ -118,7 +118,7 @@ test fn w_host_resource_address_preserved_is_in_place() -> Bool {
   )
 }
 
-test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
+test fn w_host_resource_address_changed_is_staged_replacement() -> Bool  {
   is_realized_staged(
     c: classify_change(
       subject: HostResourceSubject,
@@ -141,7 +141,7 @@ test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
 // srv4 outcome. The discriminating half is that the ONLY difference from the accepted row above is
 // the missing declaration.
 
-test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
+test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool  {
   match classify_change(
     subject: HostResourceSubject,
     subject_label: "srv4/build-cache" as NonEmptyStr,
@@ -164,7 +164,7 @@ test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
 // FreeSemigroup<StagedIntermediate> yields at least one step, so a count of zero cannot be
 // built to be tested for.
 
-test fn w_staged_intermediates_are_never_empty() -> Bool {
+test fn w_staged_intermediates_are_never_empty() -> Bool  {
   let single = one_intermediate(step: StopPriorUnit { unit: "sccache.service" as NonEmptyStr })
   let many = FreeSemigroup {
     head: StopPriorUnit { unit: "sccache.service" as NonEmptyStr },
@@ -187,7 +187,7 @@ test fn w_staged_intermediates_are_never_empty() -> Bool {
 // both changed still compares as the SAME occurrence, because the occurrence was allocated, not
 // computed.
 
-test fn w_occurrence_survives_total_value_change() -> Bool {
+test fn w_occurrence_survives_total_value_change() -> Bool  {
   let a0 = resource_occurrence_allocator_initial()
   let first = alloc_resource_occurrence(alloc: a0)
   let second = alloc_resource_occurrence(alloc: first.alloc)
@@ -210,7 +210,7 @@ test fn w_occurrence_survives_total_value_change() -> Bool {
 // resources would compare equal — the same numeric-coincidence failure that keeps this carrier
 // separate from std.occurrence_identity in the first place.
 
-test fn w_same_occurrence_different_host_is_different_identity() -> Bool {
+test fn w_same_occurrence_different_host_is_different_identity() -> Bool  {
   let a0 = resource_occurrence_allocator_initial()
   let first = alloc_resource_occurrence(alloc: a0)
   let on_srv3 = HostResourceIdentity { host: "srv3" as HostIdentity, occurrence: first.id }

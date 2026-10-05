@@ -166,7 +166,7 @@ fn w_table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
   )
 }
 
-test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
+test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool  {
   w_table_absent_name_realizes_natively_for_the_std_declaration()
 }
 

@@ -49,7 +49,7 @@ fn admits(coverage: CheckCoverage) -> Bool {
   )
 }
 
-test fn complete_exact_head_roster_and_population_admits() -> Bool {
+test fn complete_exact_head_roster_and_population_admits() -> Bool  {
   admits(coverage: CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
@@ -57,14 +57,14 @@ test fn complete_exact_head_roster_and_population_admits() -> Bool {
   })
 }
 
-test fn absent_coverage_refuses_instead_of_vacuously_passing() -> Bool {
+test fn absent_coverage_refuses_instead_of_vacuously_passing() -> Bool  {
   !admits(coverage: CheckCoverageAbsent {
     required_head: required_head,
     required_roster: required_roster
   })
 }
 
-test fn running_coverage_refuses() -> Bool {
+test fn running_coverage_refuses() -> Bool  {
   !admits(coverage: CheckCoverageRunning {
     head: required_head,
     roster: required_roster,
@@ -72,7 +72,7 @@ test fn running_coverage_refuses() -> Bool {
   })
 }
 
-test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
+test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool  {
   match classify_check_coverage_admission(
     coverage: CheckCoverageStopped {
       head: required_head,
@@ -106,7 +106,7 @@ test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
   }
 }
 
-test fn stale_coverage_refuses() -> Bool {
+test fn stale_coverage_refuses() -> Bool  {
   !admits(coverage: CheckCoverageStale {
     observed_head: prior_head,
     required_head: required_head,
@@ -115,7 +115,7 @@ test fn stale_coverage_refuses() -> Bool {
   })
 }
 
-test fn complete_old_head_refuses() -> Bool {
+test fn complete_old_head_refuses() -> Bool  {
   !admits(coverage: CheckCoverageComplete {
     head: prior_head,
     roster: required_roster,
@@ -123,7 +123,7 @@ test fn complete_old_head_refuses() -> Bool {
   })
 }
 
-test fn complete_old_roster_refuses() -> Bool {
+test fn complete_old_roster_refuses() -> Bool  {
   !admits(coverage: CheckCoverageComplete {
     head: required_head,
     roster: prior_roster,
@@ -131,7 +131,7 @@ test fn complete_old_roster_refuses() -> Bool {
   })
 }
 
-test fn empty_required_population_refuses() -> Bool {
+test fn empty_required_population_refuses() -> Bool  {
   !check_coverage_admits(
     coverage: CheckCoverageComplete {
       head: required_head,
@@ -144,7 +144,7 @@ test fn empty_required_population_refuses() -> Bool {
   )
 }
 
-test fn missing_required_gate_refuses() -> Bool {
+test fn missing_required_gate_refuses() -> Bool  {
   !admits(coverage: CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
@@ -152,7 +152,7 @@ test fn missing_required_gate_refuses() -> Bool {
   })
 }
 
-test fn duplicate_required_population_refuses() -> Bool {
+test fn duplicate_required_population_refuses() -> Bool  {
   !check_coverage_admits(
     coverage: CheckCoverageComplete {
       head: required_head,
@@ -165,7 +165,7 @@ test fn duplicate_required_population_refuses() -> Bool {
   )
 }
 
-test fn duplicate_required_gate_refuses() -> Bool {
+test fn duplicate_required_gate_refuses() -> Bool  {
   !admits(coverage: CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
@@ -180,7 +180,7 @@ test fn duplicate_required_gate_refuses() -> Bool {
 // asserting false, so the unexecuted population and remedy-bearing cause cannot be dropped while
 // the test stays green.
 
-test fn required_gate_failure_refuses() -> Bool {
+test fn required_gate_failure_refuses() -> Bool  {
   !admits(coverage: CheckCoverageComplete {
     head: required_head,
     roster: required_roster,

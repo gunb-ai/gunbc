@@ -374,6 +374,6 @@ fn all_code_change_workflow_witnesses() -> Bool {
     && witness_closed_anchor_from_github()
 }
 
-test fn code_change_workflow_witnesses() -> Bool {
+test fn code_change_workflow_witnesses() -> Bool  {
   all_code_change_workflow_witnesses()
 }

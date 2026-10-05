@@ -58,7 +58,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // deleted witness asserted exactly that refusal at 10,001 W over a page promising AT LEAST 10 kW, so
 // this reds if the backwards reading is ever reintroduced - which is the edit a hand-done rebase of
 // this very commit could make.
-test fn w_a_capability_floor_supports_from_below_and_never_bounds_above() -> Bool {
+test fn w_a_capability_floor_supports_from_below_and_never_bounds_above() -> Bool  {
   covered_by_floor(d: databank_ewr2_density, requested: AirCooling, required: 10000)
     && covered_by_floor(d: databank_ewr2_density, requested: AirCooling, required: 9999)
     && !outside_maximum(d: databank_ewr2_density, requested: AirCooling, required: 10001)
@@ -79,7 +79,7 @@ test fn w_a_capability_floor_supports_from_below_and_never_bounds_above() -> Boo
 // DensityUnread row has none. Both answer "no" to every screen, for opposite reasons - one because
 // the operator published nothing, one because the operator published without saying what it cools
 // with - and a control that only asked the screen would read them as identical.
-test fn w_an_unlabelled_figure_is_inventoried_but_unscreenable() -> Bool {
+test fn w_an_unlabelled_figure_is_inventoried_but_unscreenable() -> Bool  {
   medium_absent(d: njfx_wall_density, requested: AirCooling, required: 16001)
     && medium_absent(d: njfx_wall_density, requested: LiquidCooling, required: 2000)
     && !has_figure_for(d: njfx_wall_density, requested: AirCooling)
@@ -93,7 +93,7 @@ test fn w_an_unlabelled_figure_is_inventoried_but_unscreenable() -> Bool {
 // all. If a later edit ever derives a density from that building total, this control goes red.
 // The two Digital Realty Piscataway buildings are the same shape: hundreds of thousands of square
 // feet published, not one kilowatt per cabinet.
-test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
+test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool  {
   unread_density_is_silent(d: qts_piscataway_density)
     && unread_density_is_silent(d: digital_realty_ewr11_density)
     && unread_density_is_silent(d: digital_realty_ewr12_density)
@@ -105,7 +105,7 @@ test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
 // Bridgewater's page says the building contains nearly 300 cabinets and never says one is sold; a
 // count of cabinets is a fact about the building exactly as its megawatts are. This control reds if
 // that inventory line is ever promoted to a single-cabinet offer without an operator statement.
-test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool {
+test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool  {
   !grain_offers_single_cabinet(g: three_sixty_five_bridgewater_retail_grain)
     && unread_density_is_silent(d: three_sixty_five_bridgewater_density)
 }
@@ -114,7 +114,7 @@ test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool {
 // campus sibling EWR11 does not, so the two carry different grain standings at the same operator
 // in the same township. A future edit that propagates one building's grain across a campus - the
 // tempting simplification - reds here.
-test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
+test fn w_grain_does_not_propagate_across_a_campus() -> Bool  {
   grain_offers_single_cabinet(g: digital_realty_ewr12_retail_grain)
     && !grain_offers_single_cabinet(g: digital_realty_ewr11_retail_grain)
 }
@@ -124,7 +124,7 @@ test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
 // commitment, so its density is established while its grain refuses. Digital Fortress and DataBank
 // EWR2 answer both. QTS answers neither. If the carrier ever let one field imply the other, the
 // first conjunct here would be the one that fails.
-test fn w_density_read_does_not_imply_grain_read() -> Bool {
+test fn w_density_read_does_not_imply_grain_read() -> Bool  {
   density_claim_figures(d: njfx_wall_density).length() == 1
     && !grain_offers_single_cabinet(g: njfx_wall_retail_grain)
     && grain_offers_single_cabinet(g: digital_fortress_piscataway_retail_grain)
@@ -149,7 +149,7 @@ fn rate_is_quote_only(r: RetailRateStanding) -> Bool {
 // and reading one never licenses an answer on another. It is also what makes the two rates rows
 // consumed by execution rather than declared and unread - review 63178 found them dangling, which
 // they were.
-test fn w_a_read_density_is_not_a_priced_cabinet() -> Bool {
+test fn w_a_read_density_is_not_a_priced_cabinet() -> Bool  {
   rate_is_quote_only(r: njfx_wall_retail_rates)
     && rate_is_quote_only(r: digital_fortress_retail_rates)
     && density_claim_figures(d: njfx_wall_density).length() == 1

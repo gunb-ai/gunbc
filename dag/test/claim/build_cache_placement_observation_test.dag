@@ -52,7 +52,7 @@ fn observed_owned_by_unit(unit: NonEmptyStr) -> BuildCacheEndpointObservation {
   )
 }
 
-test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool {
+test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool  {
   match placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)) {
     ServerRunnerOwned { slot: s, lifecycle: lc } =>
       match lc {
@@ -66,7 +66,7 @@ test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool {
   }
 }
 
-test fn witness_active_slot_owner_also_refuses() -> Bool {
+test fn witness_active_slot_owner_also_refuses() -> Bool  {
   match placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)) {
     ServerRunnerOwned { slot: _, lifecycle: lc } =>
       match lc {
@@ -80,7 +80,7 @@ test fn witness_active_slot_owner_also_refuses() -> Bool {
   }
 }
 
-test fn witness_both_runner_lifecycles_refuse_at_the_verdict() -> Bool {
+test fn witness_both_runner_lifecycles_refuse_at_the_verdict() -> Bool  {
   refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)))
     && refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)))
 }
@@ -92,7 +92,7 @@ fn refuses(placement: BuildCacheServerPlacement) -> Bool {
   }
 }
 
-test fn witness_managed_unit_owner_converges_only_on_the_intended_unit() -> Bool {
+test fn witness_managed_unit_owner_converges_only_on_the_intended_unit() -> Bool  {
   let intended = srv1_ci_instance_fixture().intended_unit
   let good = match placement_of_endpoint_observation(observed: observed_owned_by_unit(unit: intended)) {
     ServerManagedUnitOwned { unit: _ } => true
@@ -111,7 +111,7 @@ test fn witness_managed_unit_owner_converges_only_on_the_intended_unit() -> Bool
   good && wrong
 }
 
-test fn witness_absent_endpoint_is_absent_not_unknown() -> Bool {
+test fn witness_absent_endpoint_is_absent_not_unknown() -> Bool  {
   match placement_of_endpoint_observation(observed: EndpointAbsent { instance: srv1_ci_instance_fixture() }) {
     ServerPlacementAbsent => true
     ServerPlacementUnknown { detail: _ } => false
@@ -121,7 +121,7 @@ test fn witness_absent_endpoint_is_absent_not_unknown() -> Bool {
   }
 }
 
-test fn witness_ambiguous_ownership_refuses() -> Bool {
+test fn witness_ambiguous_ownership_refuses() -> Bool  {
   let p = placement_of_endpoint_observation(
     observed: EndpointOwnershipAmbiguous { instance: srv1_ci_instance_fixture(), candidate_count: 2 },
   )
@@ -149,7 +149,7 @@ test fn witness_ambiguous_ownership_refuses() -> Bool {
 // learned that the two states had never been distinguished. The control keeps its subject because
 // the next unreachable host is not owed srv4's luck.
 
-test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
+test fn witness_unreachable_host_is_unknown_never_absent() -> Bool  {
   let p = placement_of_endpoint_observation(
     observed: EndpointObservationUnavailable {
       instance: srv1_ci_instance_fixture(),
@@ -178,7 +178,7 @@ test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
 // record — a cgroup the observer could not classify is a positive OwnerContextUndecided carrying
 // its own located reason, and it refuses.
 
-test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -> Bool {
+test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -> Bool  {
   let detail = "cgroup names actions-runner@srv1-XX.service; slot index did not parse" as NonEmptyStr
   let p = placement_of_endpoint_observation(
     observed: observed_with_context(
@@ -207,7 +207,7 @@ test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -
 // perturb it. A probe that refused on 'multiple sccache processes' would have produced a FALSE
 // refusal on all three hosts simultaneously.
 
-test fn witness_placement_is_indexed_by_owner_not_by_process_count() -> Bool {
+test fn witness_placement_is_indexed_by_owner_not_by_process_count() -> Bool  {
   let a = placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
   let b = placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
   match a {

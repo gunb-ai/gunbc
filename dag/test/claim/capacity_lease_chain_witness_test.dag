@@ -49,7 +49,7 @@ fn w_policy() -> LeasePolicy { LeasePolicy { maximum_duration_seconds: 300, rele
 
 // THE CHAIN WALKS FROM ITS HEAD TO ITS ROOT, OLDEST FIRST, AND A HOLE IS REPORTED BY ID rather than
 // folded around; the fold over the walked chain reproduces the pool the events describe.
-test fn the_chain_walks_oldest_first_and_the_fold_reproduces_the_pool() -> Bool {
+test fn the_chain_walks_oldest_first_and_the_fold_reproduces_the_pool() -> Bool  {
   let e1 = w_env(id: "e1", parent: "", payload: PoolAcquired { reference: "turn-1" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1000)
   let e2 = w_env(id: "e2", parent: "e1", payload: PoolAcquired { reference: "turn-2" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1005)
   let e3 = w_env(id: "e3", parent: "e2", payload: PoolReleased { reference: "turn-1" as NonEmptyStr, reason: "done" as NonEmptyStr }, at: 1050)
@@ -79,7 +79,7 @@ test fn the_chain_walks_oldest_first_and_the_fold_reproduces_the_pool() -> Bool 
 // THE COLLISION THE OPERATOR ASKED FOR: two writers propose from the same observed head with one
 // seat left; the first compare-and-set is admitted, the second is stale by construction, and after
 // re-folding from the admitted head the loser gets the typed full refusal rather than a seat.
-test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_full_refusal() -> Bool {
+test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_full_refusal() -> Bool  {
   let e1 = w_env(id: "e1", parent: "", payload: PoolAcquired { reference: "turn-1" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1000)
   let head = HeadAt { id: w_id(s: "e1") }
   match chain_from_head(envs: [e1], head: head, budget: 10) {
@@ -129,7 +129,7 @@ test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_ful
 // THE FENCE IS NOT THE COMPARE-AND-SET: a grant from an earlier generation is obsolete even though
 // its event is in the chain, a grant from a different admission at the same generation is foreign,
 // and expiry frees capacity under a fenced resource but holds it pending quiescence otherwise.
-test fn the_fence_rejects_obsolete_and_foreign_grants_and_expiry_frees_only_under_a_fence() -> Bool {
+test fn the_fence_rejects_obsolete_and_foreign_grants_and_expiry_frees_only_under_a_fence() -> Bool  {
   let current = lease_fence_of(admitting_event: w_id(s: "e5"), generation: 5)
   let older = lease_fence_of(admitting_event: w_id(s: "e3"), generation: 3)
   let foreign = lease_fence_of(admitting_event: w_id(s: "e5x"), generation: 5)
@@ -146,7 +146,7 @@ test fn the_fence_rejects_obsolete_and_foreign_grants_and_expiry_frees_only_unde
 
 // THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: its fence is the admitted event
 // and generation, and its deadline is the declared policy applied at the grant instant.
-test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadline() -> Bool {
+test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadline() -> Bool  {
   let req = SeatRequest { reference: "srv1-turn-7" as NonEmptyStr, amount: Measure { count: 1 }, at: 1100, term_seconds: 300 }
   match grant_from_admission(request: req, admission: AppendAdmitted { new_head: w_id(s: "e2"), generation: 2 }, policy: w_policy()) {
     Absent => false
@@ -158,7 +158,7 @@ test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadlin
 
 // THE WIRE ROUND-TRIPS: every event kind encodes to canonical text and decodes back to itself, and
 // text that is not an event is refused rather than read as one.
-test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused() -> Bool {
+test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused() -> Bool  {
   let kinds = [
     PoolAcquired { reference: "r" as NonEmptyStr, amount: 3, term_seconds: 60 },
     PoolSettled { reference: "r" as NonEmptyStr, actual: 2 },
@@ -190,7 +190,7 @@ fn w_over_ceiling_chain() -> List<ChainEnvelope<PoolEvent>> {
     w_env(id: "o4", parent: "o3", payload: PoolAcquired { reference: "seat-4" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1003) ]
 }
 
-test fn a_chain_admitted_under_a_higher_ceiling_still_folds_after_the_ceiling_drops() -> Bool {
+test fn a_chain_admitted_under_a_higher_ceiling_still_folds_after_the_ceiling_drops() -> Bool  {
   match pool_fold(root: w_root(), oldest_first: w_over_ceiling_chain()) {
     PoolFoldRefused { at_event: _, wire: _ } => false
     PoolFolded { pool: p, generation: g } =>
@@ -206,7 +206,7 @@ test fn a_chain_admitted_under_a_higher_ceiling_still_folds_after_the_ceiling_dr
 // THE WALL IS STILL THERE. The same over-committed pool refuses a NEW acquire, so the fold's
 // tolerance is not the ceiling being removed -- it is admission staying a write-time decision.
 // Without this control the change above is indistinguishable from deleting the ceiling.
-test fn an_over_committed_pool_still_refuses_a_new_acquire() -> Bool {
+test fn an_over_committed_pool_still_refuses_a_new_acquire() -> Bool  {
   match pool_fold(root: w_root(), oldest_first: w_over_ceiling_chain()) {
     PoolFoldRefused { at_event: _, wire: _ } => false
     PoolFolded { pool: p, generation: g } =>
@@ -222,7 +222,7 @@ test fn an_over_committed_pool_still_refuses_a_new_acquire() -> Bool {
 // INTEGRITY STILL REFUSES THE FOLD. A duplicate reference is a property of the chain, not of the
 // corpus: it reads the same forever, so replay must still stop on it. This is the arm that would
 // go silently green if the fix had made the fold tolerant of everything rather than of policy.
-test fn a_duplicate_reference_still_refuses_the_fold() -> Bool {
+test fn a_duplicate_reference_still_refuses_the_fold() -> Bool  {
   let dup = [ w_env(id: "d1", parent: "", payload: PoolAcquired { reference: "seat-1" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1000),
               w_env(id: "d2", parent: "d1", payload: PoolAcquired { reference: "seat-1" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1001) ]
   match pool_fold(root: w_root(), oldest_first: dup) {
@@ -256,14 +256,14 @@ fn w_after_expiry(law: ReleaseLaw) -> Int {
   }
 }
 
-test fn an_expired_unquiesced_seat_still_consumes_the_ceiling() -> Bool {
+test fn an_expired_unquiesced_seat_still_consumes_the_ceiling() -> Bool  {
   w_after_expiry(law: FencedResource) == 1 && w_after_expiry(law: QuiescenceRequired) == 0
 }
 
 // AND THE REFUSAL IS WHAT THE HEADROOM MEANS. A count nobody acts on would leave the wall stated and
 // unenforced, so the second acquisition is attempted against the same expired-but-unquiesced pool and
 // must be refused rather than granted beside the stalled holder.
-test fn a_second_seat_is_refused_while_an_expired_holder_is_unquiesced() -> Bool {
+test fn a_second_seat_is_refused_while_an_expired_holder_is_unquiesced() -> Bool  {
   match pool_acquire(pool: w_root_law(law: QuiescenceRequired), reference: "turn-stalled" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 300) {
     PoolRefused { refusal: _ } => false
     PoolAdvanced { pool: held } =>
@@ -298,14 +298,14 @@ fn w_headroom_after_lapse(law: ReleaseLaw) -> Int {
   }
 }
 
-test fn a_lapse_event_does_not_release_a_quiescence_required_holder() -> Bool {
+test fn a_lapse_event_does_not_release_a_quiescence_required_holder() -> Bool  {
   w_headroom_after_lapse(law: FencedResource) == 1 && w_headroom_after_lapse(law: QuiescenceRequired) == 0
 }
 
 // AND THE SEAT IS STILL UNAVAILABLE AFTER THAT LAPSE, which is the property the headroom stands for.
 // A count that nobody acts on would leave this wall stated and unenforced on the event path exactly
 // as it was on the reading path.
-test fn a_lapsed_quiescence_required_partition_still_refuses_the_next_seat() -> Bool {
+test fn a_lapsed_quiescence_required_partition_still_refuses_the_next_seat() -> Bool  {
   match pool_fold(root: w_root_law(law: QuiescenceRequired), oldest_first: w_lapse_chain()) {
     PoolFoldRefused { at_event: _, wire: _ } => false
     PoolFolded { pool: p, generation: g } =>
@@ -321,7 +321,7 @@ test fn a_lapsed_quiescence_required_partition_still_refuses_the_next_seat() -> 
 // AND AN EXPLICIT RELEASE STILL FREES IT, which is what keeps the law from being a wall with no door:
 // quiescence-required means expiry alone does not release, not that nothing does. Without this the
 // two controls above are satisfied by a pool that can never be given back.
-test fn an_explicit_release_frees_a_quiescence_required_seat() -> Bool {
+test fn an_explicit_release_frees_a_quiescence_required_seat() -> Bool  {
   let released = concat(w_lapse_chain(), [w_env(id: "l3", parent: "l2", payload: PoolReleased { reference: "seat-stalled" as NonEmptyStr, reason: "turn ended" as NonEmptyStr }, at: 2002)])
   match pool_fold(root: w_root_law(law: QuiescenceRequired), oldest_first: released) {
     PoolFoldRefused { at_event: _, wire: _ } => false

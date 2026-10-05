@@ -55,13 +55,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE COLLISION THAT JUSTIFIES THE WHOLE MODULE SHAPE. If this ever went false, carrying lanes and
 // modulation separately would have lost its reason, and a single aggregate would be sufficient.
-test fn one_hundred_gig_names_two_different_modes() -> Bool {
+test fn one_hundred_gig_names_two_different_modes() -> Bool  {
   hundred_gig_aggregate_collision()
 }
 
 // AND THE SAME COLLISION ONE RUNG DOWN, which is why lane count is carried rather than inferred from
 // an aggregate and a modulation.
-test fn fifty_gig_also_collides_across_lane_counts() -> Bool {
+test fn fifty_gig_also_collides_across_lane_counts() -> Bool  {
   bandwidth_count(b: link_mode_aggregate(m: ieee_50gbase_cr2))
     == bandwidth_count(b: link_mode_aggregate(m: ieee_25gbase_cr)) * 2
 }
@@ -70,7 +70,7 @@ test fn fifty_gig_also_collides_across_lane_counts() -> Bool {
 // 53.125 Gb/s encoded -- three numbers that a single field would have collapsed. This test is the
 // executing form of the correction that produced SymbolRate: if the fields are ever re-fused, or a
 // baud figure is ever assigned to a bits/s carrier, the arithmetic here stops holding.
-test fn a_pam4_lane_carries_two_bits_per_symbol() -> Bool {
+test fn a_pam4_lane_carries_two_bits_per_symbol() -> Bool  {
   modulation_bits_per_symbol(m: Pam4) == 2
     && modulation_bits_per_symbol(m: Nrz) == 1
     && symbol_rate_count(r: ieee_100gbase_cr2.per_lane_symbol_rate) == 26562500000
@@ -79,7 +79,7 @@ test fn a_pam4_lane_carries_two_bits_per_symbol() -> Bool {
 }
 
 // The aggregate is derived, so it must equal lanes times the service rate for every named mode.
-test fn the_aggregate_is_derived_from_lanes_and_service_rate() -> Bool {
+test fn the_aggregate_is_derived_from_lanes_and_service_rate() -> Bool  {
   bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr2))
       == lane_count_value(l: Lanes2) * bandwidth_count(b: ieee_100gbase_cr2.per_lane_service_rate)
     && bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr4))
@@ -148,14 +148,14 @@ fn code_not_understood(f: CableLegFinding) -> Bool {
 // the implementation returned contradiction -- a documented behaviour that no execution had ever
 // checked. It is insufficiency because byte 116 was never read: with the profile incomplete, the
 // strong claim is unavailable and the honest one is that nothing OBSERVED attests the request.
-test fn the_delivered_leg_does_not_attest_the_purchased_mode() -> Bool {
+test fn the_delivered_leg_does_not_attest_the_purchased_mode() -> Bool  {
   is_insufficient(f: assess_cable_leg(
     obs: delivered_fs_leg, requested: ieee_100gbase_cr2))
 }
 
 // AND THE SAME LEG DOES ATTEST WHAT IT IS CODED FOR. Without this arm the assertion above would pass
 // for a decoder that refused everything, which is a wall carrying no information.
-test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool {
+test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool  {
   attests_outright(f: assess_cable_leg(
     obs: delivered_fs_leg, requested: ieee_100gbase_cr4))
 }
@@ -164,7 +164,7 @@ test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool {
 // Clause 91 FEC. It must be attested -- returning "insufficient" would understate the byte -- and it
 // must NOT be attested outright, because promoting a conditional entry to unconditional support is
 // exactly the silent widening the standard's qualification exists to prevent.
-test fn the_conditional_entry_is_attested_but_not_unconditionally() -> Bool {
+test fn the_conditional_entry_is_attested_but_not_unconditionally() -> Bool  {
   let f = assess_cable_leg(obs: delivered_fs_leg, requested: ieee_50gbase_cr2)
   attests_subject_to_fec(f: f) && !attests_outright(f: f)
 }
@@ -183,14 +183,14 @@ data leg_with_unmodelled_code: CableLegObservation = cable_leg_observation(
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
   extended_rate: ExtendedRateObserved { code: 106 })
 
-test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool {
+test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool  {
   code_not_understood(f: assess_cable_leg(
     obs: leg_with_unmodelled_code, requested: ieee_100gbase_cr2))
 }
 
 // An unread code must not become a proven contradiction. Same bytes, PAM4 encoding, NRZ-only
 // understood modes -- but one code the decoder cannot read, so no contradiction may be claimed.
-test fn an_unreadable_code_blocks_the_contradiction_claim() -> Bool {
+test fn an_unreadable_code_blocks_the_contradiction_claim() -> Bool  {
   !is_insufficient(f: assess_cable_leg(
     obs: leg_with_unmodelled_code, requested: ieee_100gbase_cr4))
     && code_not_understood(f: assess_cable_leg(
@@ -198,7 +198,7 @@ test fn an_unreadable_code_blocks_the_contradiction_claim() -> Bool {
 }
 
 // The interpretation is a function of the byte, asserted directly.
-test fn the_interpretation_is_derived_from_the_byte() -> Bool {
+test fn the_interpretation_is_derived_from_the_byte() -> Bool  {
   match sff8636_interpret_extended_compliance(code: 11) {
     ComplianceUnderstood { code: c, modes: ms } => c == 11 && count(ms) == 3
     ComplianceUnspecified { code: c } => false
@@ -206,7 +206,7 @@ test fn the_interpretation_is_derived_from_the_byte() -> Bool {
   }
 }
 
-test fn an_unknown_byte_interprets_to_unknown_not_to_an_empty_attestation() -> Bool {
+test fn an_unknown_byte_interprets_to_unknown_not_to_an_empty_attestation() -> Bool  {
   match sff8636_interpret_extended_compliance(code: 254) {
     ComplianceCodeUnmodelled { code: c } => c == 254
     ComplianceUnspecified { code: c } => false
@@ -288,7 +288,7 @@ fn consistency_cause_is_scope(c: ProfileConsistency) -> Bool {
 // while leaving interpretation non-exhaustive. This is the bug the file has guarded twice already --
 // an earlier head treated a read 00h as establishing absence and licensed a verdict the bytes do not
 // support -- and it is now asserted against the REAL leg rather than a synthetic stand-in.
-test fn the_delivered_leg_is_read_but_still_not_interpretable() -> Bool {
+test fn the_delivered_leg_is_read_but_still_not_interpretable() -> Bool  {
   consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: delivered_fs_leg))
 }
 
@@ -306,14 +306,14 @@ data leg_with_unread_secondary: CableLegObservation = cable_leg_observation(
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
   extended_rate: ExtendedRateObserved { code: 106 })
 
-test fn an_unread_secondary_is_undecidable_for_want_of_a_reading() -> Bool {
+test fn an_unread_secondary_is_undecidable_for_want_of_a_reading() -> Bool  {
   consistency_cause_is_unread(c: cable_leg_consistency(obs: leg_with_unread_secondary))
 }
 
 // THE TWO AXES ARE SEPARATE, asserted directly: for 00h the field WAS observed and the
 // interpretation is still not exhaustive. Collapsing these into one boolean is what made the defect
 // recur, so the split is the thing under test.
-test fn an_unspecified_secondary_is_observed_but_not_exhaustively_interpreted() -> Bool {
+test fn an_unspecified_secondary_is_observed_but_not_exhaustively_interpreted() -> Bool  {
   length(cable_leg_unread_fields(obs: delivered_fs_leg)) == 0
     && length(cable_leg_interpretation_gaps(obs: delivered_fs_leg)) > 0
     && length(cable_leg_unread_fields(obs: leg_with_unread_secondary)) > 0
@@ -329,7 +329,7 @@ data fully_understood_leg: CableLegObservation = cable_leg_observation(
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
   extended_rate: ExtendedRateObserved { code: 106 })
 
-test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
+test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool  {
   consistency_cause_is_scope(c: cable_leg_consistency(obs: fully_understood_leg))
 }
 
@@ -337,7 +337,7 @@ test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
 // 100GBASE-CR2 and 200GBASE-CR4, so a leg carrying it in byte 116 DOES attest the mode the Spark
 // rail needs -- which the delivered leg, carrying only 0x0B, does not. This is also the positive
 // control that retires the placeholder code 0 the first head used.
-test fn the_secondary_code_0x40_attests_the_mode_the_primary_does_not() -> Bool {
+test fn the_secondary_code_0x40_attests_the_mode_the_primary_does_not() -> Bool  {
   attests_outright(f: assess_cable_leg(
       obs: fully_understood_leg, requested: ieee_100gbase_cr2))
     && is_insufficient(f: assess_cable_leg(
@@ -356,7 +356,7 @@ data encoding_unspecified_leg: CableLegObservation = cable_leg_observation(
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
   extended_rate: ExtendedRateObserved { code: 106 })
 
-test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope() -> Bool {
+test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope() -> Bool  {
   consistency_gap_is_encoding_unspecified(c: cable_leg_consistency(
       obs: encoding_unspecified_leg))
     && !consistency_cause_is_scope(c: cable_leg_consistency(
@@ -367,7 +367,7 @@ test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope()
 // specified; determine from module technology". Multiplying it out to 0 baud is a fabricated
 // measurement wearing a unit, and a consumer comparing it against a required rate would read the
 // module as infinitely slow rather than as silent.
-test fn a_zero_nominal_rate_byte_is_unspecified_not_zero_baud() -> Bool {
+test fn a_zero_nominal_rate_byte_is_unspecified_not_zero_baud() -> Bool  {
   match sff8636_nominal_rate_from_byte140(code: 0) {
     NominalRateUnspecified => true
     NominalRateDirect { rate: r } => false
@@ -376,7 +376,7 @@ test fn a_zero_nominal_rate_byte_is_unspecified_not_zero_baud() -> Bool {
 }
 
 // The escape is not a measurement.
-test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool {
+test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool  {
   match sff8636_nominal_rate_from_byte140(code: 255) {
     NominalRateEscaped => true
     NominalRateDirect { rate: r } => false
@@ -384,7 +384,7 @@ test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool {
   }
 }
 
-test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
+test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool  {
   match sff8636_nominal_rate_from_byte140(code: 254) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 25400000000
     NominalRateEscaped => false
@@ -406,7 +406,7 @@ data escape_never_followed_leg: CableLegObservation = cable_leg_observation(
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
   extended_rate: ExtendedRateNotObserved)
 
-test fn an_unfollowed_escape_is_reported_as_an_unread_field() -> Bool {
+test fn an_unfollowed_escape_is_reported_as_an_unread_field() -> Bool  {
   match cable_leg_unread_fields(obs: escape_never_followed_leg).first() {
     Present { value: f } =>
       match f {
@@ -424,7 +424,7 @@ test fn an_unfollowed_escape_is_reported_as_an_unread_field() -> Bool {
 // fabrication the whole subject exists to catch: multiplying byte 140's FFh out would produce 25500
 // here, which is what `ethtool` prints and what an earlier head of this work recorded as a
 // measurement. Resolution must decline instead.
-test fn an_unfollowed_escape_does_not_resolve_to_a_rate() -> Bool {
+test fn an_unfollowed_escape_does_not_resolve_to_a_rate() -> Bool  {
   match cable_leg_declared_nominal_rate(obs: escape_never_followed_leg) {
     NominalRateEscaped => true
     NominalRateDirect { rate: r } => false

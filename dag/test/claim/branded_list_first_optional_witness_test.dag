@@ -24,7 +24,7 @@ fn empty_string_list() -> List<String> {
   []
 }
 
-test fn branded_list_first_content_hash_method_nonempty() -> Bool {
+test fn branded_list_first_content_hash_method_nonempty() -> Bool  {
   match hash_list().first() {
     Present { value: h } =>
       match h {
@@ -43,28 +43,28 @@ test fn branded_list_first_content_hash_method_nonempty() -> Bool {
   }
 }
 
-test fn branded_list_first_content_hash_method_empty() -> Bool {
+test fn branded_list_first_content_hash_method_empty() -> Bool  {
   match empty_hash_list().first() {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn branded_list_first_string_method_nonempty() -> Bool {
+test fn branded_list_first_string_method_nonempty() -> Bool  {
   match string_list().first() {
     Present { value: s } => s == "hello"
     Absent => false
   }
 }
 
-test fn branded_list_first_string_method_empty() -> Bool {
+test fn branded_list_first_string_method_empty() -> Bool  {
   match empty_string_list().first() {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
+test fn branded_list_first_content_hash_pipe_nonempty() -> Bool  {
   match hash_list() |> first {
     Present { value: h } =>
       match h {
@@ -83,21 +83,21 @@ test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
   }
 }
 
-test fn branded_list_first_content_hash_pipe_empty() -> Bool {
+test fn branded_list_first_content_hash_pipe_empty() -> Bool  {
   match empty_hash_list() |> first {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn branded_list_first_string_pipe_nonempty() -> Bool {
+test fn branded_list_first_string_pipe_nonempty() -> Bool  {
   match string_list() |> first {
     Present { value: s } => s == "hello"
     Absent => false
   }
 }
 
-test fn branded_list_first_string_pipe_empty() -> Bool {
+test fn branded_list_first_string_pipe_empty() -> Bool  {
   match empty_string_list() |> first {
     Present { value: _ } => false
     Absent => true

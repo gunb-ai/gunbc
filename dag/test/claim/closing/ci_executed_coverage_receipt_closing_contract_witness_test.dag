@@ -77,7 +77,7 @@ fn verdict_for(coverage: CheckCoverage, gates: List<ContentHash>) -> CheckCovera
   )
 }
 
-test fn a_run_whose_executed_population_is_zero_refuses_rather_than_reporting_pass_or_fail() -> Bool {
+test fn a_run_whose_executed_population_is_zero_refuses_rather_than_reporting_pass_or_fail() -> Bool  {
   match verdict_for(
     coverage: CheckCoverageComplete {
       head: required_head,
@@ -121,7 +121,7 @@ test fn a_run_whose_executed_population_is_zero_refuses_rather_than_reporting_pa
     }
 }
 
-test fn a_failure_ahead_of_the_corpus_is_a_different_outcome_from_a_corpus_disagreement() -> Bool {
+test fn a_failure_ahead_of_the_corpus_is_a_different_outcome_from_a_corpus_disagreement() -> Bool  {
   let stopped = verdict_for(
     coverage: CheckCoverageStopped {
       head: required_head,
@@ -185,7 +185,7 @@ test fn a_failure_ahead_of_the_corpus_is_a_different_outcome_from_a_corpus_disag
     )
 }
 
-test fn a_check_that_cannot_say_what_it_executed_does_not_count_as_having_executed() -> Bool {
+test fn a_check_that_cannot_say_what_it_executed_does_not_count_as_having_executed() -> Bool  {
   match verdict_for(
     coverage: CheckCoverageAbsent {
       required_head: required_head,
@@ -218,7 +218,7 @@ test fn a_check_that_cannot_say_what_it_executed_does_not_count_as_having_execut
     )
 }
 
-test fn a_run_that_executed_its_whole_population_and_found_no_disagreement_admits() -> Bool {
+test fn a_run_that_executed_its_whole_population_and_found_no_disagreement_admits() -> Bool  {
   match verdict_for(
     coverage: CheckCoverageComplete {
       head: required_head,

@@ -96,7 +96,7 @@ fn only_refusal_is(a: PartAdmission, k: String) -> Bool {
 // assumed: the pattern names the package the body names, its derived land population equals the
 // body's terminal count, and the two pitches agree. This is a MECHANICAL join and nothing more; it
 // says the two transcriptions describe one package, not that the part suits any board role.
-test fn w_each_candidate_joins_its_own_package() -> Bool {
+test fn w_each_candidate_joins_its_own_package() -> Bool  {
   count_of(ds: land_pattern_disagreements(p: tps3808g01dbvr)) == 0
     && count_of(ds: land_pattern_disagreements(p: tps53688rsbr)) == 0
     && count_of(ds: land_pattern_disagreements(p: cdce913pwr)) == 0
@@ -109,7 +109,7 @@ test fn w_each_candidate_joins_its_own_package() -> Bool {
 // indexing ALONE — exactly one cause, and that cause is the pin map — so a consumer cannot read a
 // matching count as a known footprint. When a pin-map authority lands, these turn green by the
 // candidates gaining a fact, and this claim inverts to assert the admitted arm.
-test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool {
+test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool  {
   only_refusal_is(a: admit_part_candidate(p: tps3808g01dbvr), k: "indexing")
     && only_refusal_is(a: admit_part_candidate(p: tps53688rsbr), k: "indexing")
     && only_refusal_is(a: admit_part_candidate(p: cdce913pwr), k: "indexing")
@@ -121,7 +121,7 @@ test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool {
 // lands for a six-terminal SOT-23, fourteen for a fourteen-lead TSSOP, forty and forty-eight for
 // the two no-lead flatpacks. A stored count would have made this tautological; these numbers come
 // out of the per-row figures.
-test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Bool {
+test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Bool  {
   peripheral_land_count(g: tps3808g01dbvr.land_pattern.geometry) == 6
     && peripheral_land_count(g: cdce913pwr.land_pattern.geometry) == 14
     && peripheral_land_count(g: tps53688rsbr.land_pattern.geometry) == 40
@@ -133,7 +133,7 @@ test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Boo
 // and the land pattern prints 0.95; two times 950 micrometres is 1900, so the pitch recorded on the
 // body row is an arithmetic reading of the document rather than a figure supplied from memory of
 // what a SOT-23 usually is.
-test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
+test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool  {
   micrometer_count(m: land_pattern_pitch(g: tps3808g01dbvr.land_pattern.geometry)) == 950
     && 2 * micrometer_count(m: tps3808_dbv0006a_body.terminal_pitch) == 1900
 }
@@ -154,7 +154,7 @@ data mismatched_candidate: PartMechanicalCandidate = PartMechanicalCandidate {
   terminal_indexing: dp83867irrgz.terminal_indexing,
 }
 
-test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
+test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool  {
   let ds = land_pattern_disagreements(p: mismatched_candidate)
   count_of(ds: ds) == 3
     && has_kind(ds: ds, k: "designator")
@@ -189,7 +189,7 @@ data undercounted_candidate: PartMechanicalCandidate = PartMechanicalCandidate {
   terminal_indexing: tps53688rsbr.terminal_indexing,
 }
 
-test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool {
+test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool  {
   let ds = land_pattern_disagreements(p: undercounted_candidate)
   count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
 }
@@ -204,7 +204,7 @@ fn obligation_is_stated(o: MountingPatternObligation) -> Bool {
   !((o.what_is_missing as String) == "")
 }
 
-test fn w_the_dimm_socket_family_owes_a_hole_pattern_it_cannot_express_as_lands() -> Bool {
+test fn w_the_dimm_socket_family_owes_a_hole_pattern_it_cannot_express_as_lands() -> Bool  {
   ddr4_dimm_socket_solder_tail_288_family.position_count == 288
     && micrometer_count(m: ddr4_dimm_socket_solder_tail_288_family.contact_pitch) == 800
     && obligation_is_stated(o: ddr4_dimm_socket_solder_tail_288_family.board_pattern)
@@ -220,7 +220,7 @@ data established_standing: SurfaceMountPatternStanding = SurfaceMountPatternEsta
   pattern: cdce913_pw0014a_land_pattern,
 }
 
-test fn w_an_established_standing_reports_established() -> Bool {
+test fn w_an_established_standing_reports_established() -> Bool  {
   match established_standing {
     SurfaceMountPatternEstablished { pattern: _ } => true
     SurfaceMountPatternNotEstablished { what_is_missing: _ } => false
@@ -231,7 +231,7 @@ test fn w_an_established_standing_reports_established() -> Bool {
 // number are both outstanding. It is surface mount where the DIMM socket is through-hole, so the two
 // outstanding patterns are outstanding in different carriers — a standing with a reachable success
 // arm here, a bare obligation there — and the attachment style is asserted to keep them apart.
-test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
+test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool  {
   m2_ngff_minicard_67_position.position_count == 67
     && micrometer_count(m: m2_ngff_minicard_67_position.contact_pitch) == 500
     && match m2_ngff_minicard_67_position.board_pattern {
@@ -248,7 +248,7 @@ test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
 // Corporation and the M.2 specification by Tyco Electronics AMP K.K., and the two rows must stay
 // distinguishable — folding independently governed entities into one vendor because they share a
 // brand is the merge DESIGN §3 forbids, and it would make a correction to either edit the other.
-test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
+test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool  {
   let ddr4_vendor = ddr4_dimm_socket_solder_tail_288_family.vendor.legal_name as String
   let m2_vendor = m2_ngff_minicard_67_position.vendor.legal_name as String
   !(ddr4_vendor == m2_vendor)
@@ -263,7 +263,7 @@ fn owes_its_geometry(p: CatalogPartIdentity) -> Bool {
   obligation_is_stated(o: p.board_pattern)
 }
 
-test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
+test fn w_every_unread_document_row_owes_its_geometry() -> Bool  {
   owes_its_geometry(p: mdt420m01001)
     && owes_its_geometry(p: at24cm02)
     && owes_its_geometry(p: mx25l25673g)
@@ -272,7 +272,7 @@ test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
 
 // THE PART NUMBERS ARE THE ONE FACT THESE ROWS DO CARRY, so they are asserted rather than left to
 // be trusted.
-test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
+test fn w_the_unread_rows_carry_their_part_numbers() -> Bool  {
   (mdt420m01001.ordering_part_number as String) == "MDT420M01001"
     && (at24cm02.ordering_part_number as String) == "AT24CM02"
     && (mx25l25673g.ordering_part_number as String) == "MX25L25673G"
@@ -283,7 +283,7 @@ test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
 // is listed by distributors under three brand names, and collapsing a brand into an entity — or
 // splitting one entity into three — are the two opposite failures the Tyco decision in this same
 // tree already had to get right in the other direction.
-test fn w_the_four_new_vendors_are_four_distinct_entities() -> Bool {
+test fn w_the_four_new_vendors_are_four_distinct_entities() -> Bool  {
   let a = mdt420m01001.vendor.legal_name as String
   let m = at24cm02.vendor.legal_name as String
   let x = mx25l25673g.vendor.legal_name as String

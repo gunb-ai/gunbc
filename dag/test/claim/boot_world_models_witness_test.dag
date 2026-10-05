@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE MODELS' OWN SEMANTICS, checked apart from any orchestrator run, so a matrix case cannot pass
 // against a model that is wrong in the same direction as the code under test. Reference values for the
 // calendar are independent: Python's datetime.fromtimestamp(t, timezone.utc) for each instant.
-test fn the_wall_clock_renders_utc_like_date() -> Bool {
+test fn the_wall_clock_renders_utc_like_date() -> Bool  {
   iso8601_utc_text(unix: 0) == "1970-01-01T00:00:00Z"
     && iso8601_utc_text(unix: 951782400) == "2000-02-29T00:00:00Z"
     && iso8601_utc_text(unix: 1790000000) == "2026-09-21T14:13:20Z"
@@ -28,14 +28,14 @@ test fn the_wall_clock_renders_utc_like_date() -> Bool {
 }
 
 // A NEGATIVE STEP IS A WALL CLOCK THAT WENT BACKWARDS while virtual time moved forward.
-test fn a_backward_step_reads_earlier_while_virtual_time_advances() -> Bool {
+test fn a_backward_step_reads_earlier_while_virtual_time_advances() -> Bool  {
   let clock = ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0 - 120), jumps: [] }
   wall_clock_unix(clock: clock, now: second(count: 60)) == 1789999940
 }
 
 // THE FAR SIDE OF AN SSH REQUEST is the word before the first `--` and everything after it, so a
 // remote command that itself carries `--` keeps it.
-test fn a_remote_request_splits_at_the_first_separator() -> Bool {
+test fn a_remote_request_splits_at_the_first_separator() -> Bool  {
   match remote_request(client_args: ["-o", "BatchMode=yes", "srv2", "--", "sha256sum", "--", "/srv/x"]) {
     Present { value: r } => r.endpoint == "srv2" && r.words == ["sha256sum", "--", "/srv/x"]
     Absent => false
@@ -44,7 +44,7 @@ test fn a_remote_request_splits_at_the_first_separator() -> Bool {
 }
 
 // THE REMOTE HOST ANSWERS ONLY THE PRODUCTION BUILDERS' WORDS, in coreutils' formats.
-test fn the_remote_host_answers_production_commands_in_coreutils_format() -> Bool {
+test fn the_remote_host_answers_production_commands_in_coreutils_format() -> Bool  {
   let host = ModeledRemoteHost { endpoint: "srv2", files: [
     ModeledRemoteFile { path: "/srv/rec", content: Present { value: "abc\n" }, sha256: none },
     ModeledRemoteFile { path: "/srv/img", content: Present { value: "bytes" }, sha256: Present { value: "ff00" } },
@@ -67,7 +67,7 @@ test fn the_remote_host_answers_production_commands_in_coreutils_format() -> Boo
 }
 
 // THE FILESYSTEM'S PARENT RULE: a write under a directory the model does not hold is not_found.
-test fn a_write_needs_its_parent_directory() -> Bool {
+test fn a_write_needs_its_parent_directory() -> Bool  {
   let fs = ModeledFilesystem { directories: ["/", "/run"], files: [], refused_reads: [] }
   fs_parent(path: "/run/sol.pid") == "/run" && fs_parent(path: "/x") == "/" && fs_parent(path: "target/a.pub") == "target"
     && match fs_write(fs: fs, path: "/var/x", content: "1", create_new: false).observation {
@@ -86,7 +86,7 @@ fn cycled_on_host() -> BmcWorld {
   bmc_chassis_control(world: on, action: IpmiChassisPowerCycle, now: second(count: 0)).world
 }
 
-test fn a_power_restore_keeps_the_sol_drop_it_schedules() -> Bool {
+test fn a_power_restore_keeps_the_sol_drop_it_schedules() -> Bool  {
   let at_ten = bmc_advance(world: cycled_on_host(), now: second(count: 10))
   let at_forty = bmc_advance(world: cycled_on_host(), now: second(count: 40))
   bmc_power_is_on(world: at_ten) && at_ten.sol_session_open && count(at_ten.fired) == 1 && count(at_ten.pending) == 1
@@ -103,7 +103,7 @@ fn read_byte_count(fs: ModeledFilesystem, path: String) -> Int {
   }
 }
 
-test fn a_modeled_read_counts_utf8_bytes() -> Bool {
+test fn a_modeled_read_counts_utf8_bytes() -> Bool  {
   let fs = ModeledFilesystem { directories: ["/", "/t"], files: [ModeledFile { path: "/t/a", content: "é" }, ModeledFile { path: "/t/b", content: "abc" }], refused_reads: [] }
   read_byte_count(fs: fs, path: "/t/a") == 2 && read_byte_count(fs: fs, path: "/t/b") == 3
 }

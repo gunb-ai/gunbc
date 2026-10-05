@@ -15,7 +15,7 @@ import gunbc.package_delivery {
   codex_bundled_executable_for_srv1,
 }
 
-test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> Bool {
+test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> Bool  {
   let host = "srv1" as HostIdentity
   match codex_bundled_executable_for_srv1() {
     Absent => false
@@ -46,7 +46,7 @@ test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> 
   }
 }
 
-test fn witness_runtime_receipt_refuses_unknown_host() -> Bool {
+test fn witness_runtime_receipt_refuses_unknown_host() -> Bool  {
   match codex_bundled_executable_for_srv1() {
     Absent => true
     Present { value: executable } =>

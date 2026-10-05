@@ -20,11 +20,11 @@ import std.types { Bool, NonEmptyStr }
 // producer-level hard-diagnostic refusal is tested in cli_run.rs
 // unrelated_hard_diagnostic_observation_is_not_runnable_at_producer.
 
-test fn binding_refused_at_seam_not_runnable_is_false() -> Bool {
+test fn binding_refused_at_seam_not_runnable_is_false() -> Bool  {
   !binding_refused_at_intended_seam(obs: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr })
 }
 
-test fn binding_refused_at_seam_rejects_unrelated_hard_diagnostic() -> Bool {
+test fn binding_refused_at_seam_rejects_unrelated_hard_diagnostic() -> Bool  {
   !binding_refused_at_intended_seam(
     obs: BindingObserved {
       binding_source: Absent,
@@ -35,7 +35,7 @@ test fn binding_refused_at_seam_rejects_unrelated_hard_diagnostic() -> Bool {
   )
 }
 
-test fn binding_refused_at_seam_accepts_clean_unresolved() -> Bool {
+test fn binding_refused_at_seam_accepts_clean_unresolved() -> Bool  {
   binding_refused_at_intended_seam(
     obs: BindingObserved {
       binding_source: Absent,
@@ -46,7 +46,7 @@ test fn binding_refused_at_seam_accepts_clean_unresolved() -> Bool {
   )
 }
 
-test fn row3_production_refused_is_false() -> Bool {
+test fn row3_production_refused_is_false() -> Bool  {
   !row3_stripped_refuses_binding(
     outcome: ObservationProductionRefused {
       phase: "strip" as NonEmptyStr,
@@ -55,7 +55,7 @@ test fn row3_production_refused_is_false() -> Bool {
   )
 }
 
-test fn row3_compile_production_refused_is_false() -> Bool {
+test fn row3_compile_production_refused_is_false() -> Bool  {
   !row3_stripped_refuses_binding(
     outcome: ObservationProductionRefused {
       phase: "compile" as NonEmptyStr,
@@ -64,7 +64,7 @@ test fn row3_compile_production_refused_is_false() -> Bool {
   )
 }
 
-test fn row3_not_runnable_observation_is_false() -> Bool {
+test fn row3_not_runnable_observation_is_false() -> Bool  {
   !row3_stripped_refuses_binding(
     outcome: ObservationProduced {
       observation: BindingNotRunnable { cause: "could-not-measure" as NonEmptyStr }
@@ -72,7 +72,7 @@ test fn row3_not_runnable_observation_is_false() -> Bool {
   )
 }
 
-test fn row4_production_refused_is_false() -> Bool {
+test fn row4_production_refused_is_false() -> Bool  {
   !row4_stripped_pool_coincidence_or_refuse(
     outcome: ObservationProductionRefused {
       phase: "mktemp" as NonEmptyStr,
@@ -81,7 +81,7 @@ test fn row4_production_refused_is_false() -> Bool {
   )
 }
 
-test fn row4_compile_production_refused_is_false() -> Bool {
+test fn row4_compile_production_refused_is_false() -> Bool  {
   !row4_stripped_pool_coincidence_or_refuse(
     outcome: ObservationProductionRefused {
       phase: "compile" as NonEmptyStr,
@@ -90,7 +90,7 @@ test fn row4_compile_production_refused_is_false() -> Bool {
   )
 }
 
-test fn row4_listed_import_on_produced_observation_fails() -> Bool {
+test fn row4_listed_import_on_produced_observation_fails() -> Bool  {
   !row4_stripped_pool_coincidence_or_refuse(
     outcome: ObservationProduced {
       observation: BindingObserved {

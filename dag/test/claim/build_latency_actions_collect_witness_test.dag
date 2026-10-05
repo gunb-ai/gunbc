@@ -41,7 +41,7 @@ fn fixture_jobs() -> List<ActionsBuildJobObservation> {
   ]
 }
 
-test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool {
+test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool  {
   let srv1 = build_latency_population_for_host(
     jobs: fixture_jobs(),
     host: operator_host_srv1,
@@ -68,20 +68,20 @@ test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool {
     }
 }
 
-test fn witness_runner_name_maps_to_host_prefix() -> Bool {
+test fn witness_runner_name_maps_to_host_prefix() -> Bool  {
   match host_from_runner_name(runner: "srv3-07" as NonEmptyStr) {
     Present { value: h } => (h as String) == "srv3"
     Absent => false
   }
 }
 
-test fn witness_unknown_runner_name_yields_no_host() -> Bool {
+test fn witness_unknown_runner_name_yields_no_host() -> Bool  {
   match host_from_runner_name(runner: "github-hosted" as NonEmptyStr) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn witness_api_fold_returns_one_population_per_fleet_host() -> Bool {
+test fn witness_api_fold_returns_one_population_per_fleet_host() -> Bool  {
   (build_latency_population_from_actions_api(jobs: fixture_jobs(), window: fixture_window) |> length) == 4
 }

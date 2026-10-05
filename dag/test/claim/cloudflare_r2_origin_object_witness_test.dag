@@ -126,7 +126,7 @@ fn fixture_locator(key: NonEmptyStr) -> R2ObjectLocator {
 }
 
 // THE OBJECT ADDRESS IS PATH-STYLE UNDER THE ENDPOINT HOST, AND THE JURISDICTION MOVES THE HOST.
-test fn r2_object_url_is_path_style_under_the_jurisdiction_host() -> Bool {
+test fn r2_object_url_is_path_style_under_the_jurisdiction_host() -> Bool  {
   r2_object_url(locator: fixture_locator(key: "fabric-m0/v1/commit/attempt-1"))
     == "https://4793d734c0b8e484dfc37ec392b5fa8a.r2.cloudflarestorage.com/a-bucket/fabric-m0/v1/commit/attempt-1"
     && r2_object_url(locator: R2ObjectLocator {
@@ -175,7 +175,7 @@ fn last_word(words: List<String>) -> String {
 // THE CREDENTIAL IS NOT AN ARGV WORD AND THE NETRC PATH IS. The builder has no parameter that could
 // carry a secret, so this asserts the positive half -- the netrc file and the SigV4 provider are
 // on the line -- and the negative half that --user, the documented argv form, is never emitted.
-test fn curl_sigv4_upload_signs_through_the_netrc_and_never_through_argv() -> Bool {
+test fn curl_sigv4_upload_signs_through_the_netrc_and_never_through_argv() -> Bool  {
   let words = words_of_upload(precondition: PutIfAbsent)
   has_word(words: words, word: "--netrc-file")
     && has_word(words: words, word: "/private/netrc")
@@ -196,7 +196,7 @@ fn first_word(words: List<String>) -> String {
 // THE SIGV4 BUILDERS NAME THE 7.75 REQUIREMENT, NOT THE 7.68 FLEET PIN. curl_cli_tool still admits
 // 7.68 for download/FTPS; a host that satisfies that pin and lacks --aws-sigv4 must fail the
 // SigV4 path at the requirement, not as an opaque curl usage error.
-test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
+test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool  {
   match curl_aws_sigv4_cli_tool.min_version {
     Present { value: v } =>
       (v as String) == (curl_aws_sigv4_min_version as String)
@@ -213,7 +213,7 @@ test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
 // THE PRECONDITION IS ONE CLOSED VALUE: create-only sends If-None-Match: *, replace-matching sends
 // If-Match with the tag verbatim (quotes included), unconditional sends neither -- and no value sends
 // both, because the two are arms of one type rather than two flags.
-test fn curl_sigv4_upload_emits_exactly_the_precondition_asked_for() -> Bool {
+test fn curl_sigv4_upload_emits_exactly_the_precondition_asked_for() -> Bool  {
   let tagged = words_of_upload(precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"abc\"" } })
   has_word(words: words_of_upload(precondition: PutIfAbsent), word: "If-None-Match: *")
     && !has_word(words: words_of_upload(precondition: PutUnconditional), word: "If-None-Match: *")
@@ -224,7 +224,7 @@ test fn curl_sigv4_upload_emits_exactly_the_precondition_asked_for() -> Bool {
 
 // THE TAG-REPORTING FORM ASKS curl FOR THE ETag HEADER ON A SECOND LINE AND NAMES THE 7.84 PIN; the
 // status-only form every existing consumer reads is unchanged.
-test fn the_entity_tag_report_is_a_second_write_out_line_on_its_own_pin() -> Bool {
+test fn the_entity_tag_report_is_a_second_write_out_line_on_its_own_pin() -> Bool  {
   let tagged = argv_words(command: curl_sigv4_s3_upload_command(
     url: "https://h/b/k", local_path: "/work/obj", netrc_path: "/private/netrc" as FilePath,
     sigv4_region: r2_s3_sigv4_region, precondition: PutIfAbsent, report: ReportStatusAndEntityTag,
@@ -243,7 +243,7 @@ fn tag_read(stdout: String) -> String {
 }
 
 // THE TAG IS THE SECOND LINE; NO SECOND LINE OR AN EMPTY ONE IS NO TAG, NEVER AN EMPTY TAG.
-test fn the_entity_tag_is_read_from_the_second_line_or_is_absent() -> Bool {
+test fn the_entity_tag_is_read_from_the_second_line_or_is_absent() -> Bool  {
   tag_read(stdout: "200\n\"abc\"\n") == "\"abc\""
     && tag_read(stdout: "200\n") == "<none>"
     && tag_read(stdout: "200") == "<none>"
@@ -252,7 +252,7 @@ test fn the_entity_tag_is_read_from_the_second_line_or_is_absent() -> Bool {
 
 // WHAT A 412 MEANS IS THE PRECONDITION'S: present under If-None-Match, moved under If-Match, and not
 // this protocol at all under no precondition. The If-Match arm is the compare-and-set's lost race.
-test fn a_412_is_classified_by_the_precondition_that_was_sent() -> Bool {
+test fn a_412_is_classified_by_the_precondition_that_was_sent() -> Bool  {
   let p412 = S3Answered { status: 412, tag: none }
   (match classify_r2_put(precondition: PutIfAbsent, answer: p412, stderr: "") { R2ObjectAlreadyPresent => true  other => false })
     && (match classify_r2_put(precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"abc\"" } }, answer: p412, stderr: "") { R2ObjectTagMoved => true  other => false })
@@ -263,7 +263,7 @@ test fn a_412_is_classified_by_the_precondition_that_was_sent() -> Bool {
         })
 }
 
-test fn curl_sigv4_download_names_the_destination_and_reports_the_status() -> Bool {
+test fn curl_sigv4_download_names_the_destination_and_reports_the_status() -> Bool  {
   let words = argv_words(command: curl_sigv4_s3_download_command(
     url: "https://h/b/k",
     destination: "/staged/dir/object",
@@ -297,7 +297,7 @@ fn not_answered(stdout: String) -> Bool {
 
 // THE STATUS IS READ FROM STDOUT, NOT FROM THE EXIT CODE: exit 22 with 404 on stdout is an ANSWER.
 // 000 is curl's no-status word, and anything that is not a status in range is not an answer.
-test fn s3_transfer_status_is_read_from_stdout_and_000_is_not_an_answer() -> Bool {
+test fn s3_transfer_status_is_read_from_stdout_and_000_is_not_an_answer() -> Bool  {
   answered(status: 200) && answered(status: 404) && answered(status: 412) && answered(status: 500)
     && not_answered(stdout: "000")
     && not_answered(stdout: "")
@@ -314,7 +314,7 @@ fn put_of(answer: S3TransferAnswer) -> OriginPutOutcome {
 // no-status unknown. The 5xx-is-unknown arm is the discriminating one -- an earlier shape of the
 // token mint mapped every non-2xx to refused and classified a possibly-committed write as safely
 // retryable.
-test fn origin_put_classifies_stored_present_refused_and_unknown() -> Bool {
+test fn origin_put_classifies_stored_present_refused_and_unknown() -> Bool  {
   match put_of(answer: S3Answered { status: 200, tag: none }) {
        OriginObjectStored { key: k } => k == "k"
        other => false
@@ -345,7 +345,7 @@ test fn origin_put_classifies_stored_present_refused_and_unknown() -> Bool {
 // store's verdict is not demoted to say so. The earlier shape folded the residue into the verdict's
 // cause string; a consumer that then confirmed the object by fetch published success over a leaked
 // token (gunbc#11157 review 64512). Custody is its own field, and a stored verdict stays stored.
-test fn origin_put_with_credential_residue_is_never_clean_and_keeps_its_verdict() -> Bool {
+test fn origin_put_with_credential_residue_is_never_clean_and_keeps_its_verdict() -> Bool  {
   let leaked = OriginPut { verdict: OriginObjectStored { key: "k" }, credential: WriteCredentialResidueRemains { cause: "left on disk" } }
   let clean = OriginPut { verdict: OriginObjectStored { key: "k" }, credential: WriteCredentialShredded }
   (put_is_clean(put: leaked) == false)
@@ -359,7 +359,7 @@ fn fetch_of(answer: S3TransferAnswer) -> OriginFetchVerdict {
 
 // THE FETCH'S THREE ARMS, AND 404 IS ABSENCE ONLY BECAUSE THE ORIGIN SAID SO: a refused 403 and a
 // transport that never answered are both UNAVAILABLE, never absent.
-test fn origin_fetch_classifies_staged_absent_and_refused() -> Bool {
+test fn origin_fetch_classifies_staged_absent_and_refused() -> Bool  {
   match fetch_of(answer: S3Answered { status: 200, tag: none }) {
        OriginFetchStagedAt { staged_path: p } => p == "/staged/object"
        other => false
@@ -384,7 +384,7 @@ test fn origin_fetch_classifies_staged_absent_and_refused() -> Bool {
 
 // THE COMMIT FOLD OVER A SELF-STAGING FETCH: absence reaches ManifestNotFound (which manifest_read_of
 // cannot reach), unavailability stays unknown, and a staged reading confirms.
-test fn manifest_read_of_origin_fetch_maps_each_arm() -> Bool {
+test fn manifest_read_of_origin_fetch_maps_each_arm() -> Bool  {
   match manifest_read_of_origin_fetch(fetch: OriginObjectAbsent { key: "k" }) {
        ManifestNotFound => true
        other => false
@@ -412,7 +412,7 @@ fn declared_bucket_name() -> String {
 
 // THE READ TARGET RESOLVES FROM THE DECLARATIONS -- account, bucket, pinned read credential -- and
 // the locator's URL is the declared bucket under the declared account, with the key as given.
-test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential() -> Bool {
+test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential() -> Bool  {
   match resolve_origin_target(direction: OriginRead, key: "fabric-m0/v1/commit/attempt-1") {
     OriginTargetRefused { cause: _ } => false
     OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, precondition: precondition } =>
@@ -431,7 +431,7 @@ test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential()
 // THE WRITE TARGET RESOLVES FROM THE DECLARATIONS -- the write twin of the read test above, which
 // the unminted-write test was retired into when run_object_write executed and its version was
 // pinned (2026-09-19). It must carry the WRITE credential, never the read one.
-test fn origin_write_target_resolves_to_the_declared_bucket_and_write_credential() -> Bool {
+test fn origin_write_target_resolves_to_the_declared_bucket_and_write_credential() -> Bool  {
   match resolve_origin_target(direction: OriginWrite, key: "fabric-m0/v1/commit/attempt-1") {
     OriginTargetRefused { cause: _ } => false
     OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, precondition: precondition } =>
@@ -446,7 +446,7 @@ test fn origin_write_target_resolves_to_the_declared_bucket_and_write_credential
 // THE UNMINTED-WRITE REFUSAL STAYS ENROLLED ON A SUPPLIED ORIGIN (DESIGN section 4b(4)). The
 // declarations no longer inhabit this arm, so the origin is a constructed value: an allocated bucket
 // whose write credential is unminted must refuse, naming the entry that mints it, and never resolve.
-test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> Bool {
+test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> Bool  {
   let origin = R2OriginAllocated {
     bucket: R2OriginBucket {
       bucket_name: "a-bucket",
@@ -473,7 +473,7 @@ test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> 
 
 // THE WRITE GRANT CARRIES THE OBSERVED GROUP, NOT THE PINNED READ ONE, and it is the observation
 // module's id that arrives -- the builder took it as a parameter and did not author one.
-test fn r2_object_write_request_carries_the_observed_write_group_only() -> Bool {
+test fn r2_object_write_request_carries_the_observed_write_group_only() -> Bool  {
   let request = r2_object_write_create_request(
     name: "n",
     write_group: r2_bucket_item_write_permission_group(),
@@ -506,7 +506,7 @@ fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
 // THE FRONTIER MOVED AND SAYS WHERE IT STANDS: the S3 endpoint row is retired (r2_object_url reaches
 // it on the executing entries), and the write-mint admission row and the observed-write-id row both
 // retired when run_object_write executed and the write credential was pinned (2026-09-19).
-test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
+test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool  {
   frontier_rows_well_formed(rows: cloudflare_r2_frontier_rows)
     && frontier_rows_well_formed(rows: cloudflare_r2_supplier_frontier_rows)
     && !any(cloudflare_r2_frontier_rows, row => frontier_row_names_decl(
@@ -523,7 +523,7 @@ test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
 // A STAGING RESIDUE IS CARRIED OUT OF THE FETCH beside a confirmed reading and beside an unreadable
 // staged file alike, and neither arm's outcome absorbs it: the reading still confirms, the
 // unavailable cause still names the read, and the residue names the directory that was not removed.
-test fn a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms() -> Bool {
+test fn a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms() -> Bool  {
   match read_origin_staged_file(staged_path: fixture_staged_manifest) {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } => {
@@ -555,7 +555,7 @@ test fn a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms() -> B
 
 // THE DISCRIMINATING CONTROL: a removed directory is carried out as Removed, not as a residue, so
 // the residue above is the release's answer and not a constant of the fold.
-test fn a_released_staging_directory_is_carried_out_as_removed() -> Bool {
+test fn a_released_staging_directory_is_carried_out_as_removed() -> Bool  {
   match origin_fetch_of_staged(key: "k", read: OriginReadingUnavailable { staged_path: "/tmp/stage.X/object", cause: "unreadable" }, released: R2StagingRemoved).staging {
     R2StagingRemoved => true
     R2StagingResidue { path: _ } => false

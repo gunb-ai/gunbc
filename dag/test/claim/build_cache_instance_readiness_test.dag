@@ -95,7 +95,7 @@ fn capacity_for(instance: BuildCacheInstance) -> BuildCacheCapacityObservation {
   }
 }
 
-test fn exact_observations_mint_the_proof_receipt() -> Bool {
+test fn exact_observations_mint_the_proof_receipt() -> Bool  {
   let instance = declared_session_instance()
   match derive_build_cache_instance_readiness(
     endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
@@ -110,7 +110,7 @@ test fn exact_observations_mint_the_proof_receipt() -> Bool {
   }
 }
 
-test fn a_ready_slice_beside_the_server_does_not_verify_nesting() -> Bool {
+test fn a_ready_slice_beside_the_server_does_not_verify_nesting() -> Bool  {
   let instance = declared_session_instance()
   match derive_build_cache_instance_readiness(
     endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/gunbc-build-cache-session.service" as NonEmptyStr),
@@ -125,7 +125,7 @@ test fn a_ready_slice_beside_the_server_does_not_verify_nesting() -> Bool {
   }
 }
 
-test fn unavailable_dominates_a_positive_mismatch() -> Bool {
+test fn unavailable_dominates_a_positive_mismatch() -> Bool  {
   let instance = declared_session_instance()
   match derive_build_cache_instance_readiness(
     endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/wrong.service" as NonEmptyStr),
@@ -145,7 +145,7 @@ test fn unavailable_dominates_a_positive_mismatch() -> Bool {
   }
 }
 
-test fn foreign_unavailable_observation_cannot_classify_this_instance() -> Bool {
+test fn foreign_unavailable_observation_cannot_classify_this_instance() -> Bool  {
   let instance = declared_session_instance()
   match derive_build_cache_instance_readiness(
     endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
@@ -165,7 +165,7 @@ test fn foreign_unavailable_observation_cannot_classify_this_instance() -> Bool 
   }
 }
 
-test fn absent_capacity_intent_is_not_vacuously_verified() -> Bool {
+test fn absent_capacity_intent_is_not_vacuously_verified() -> Bool  {
   let instance = declared_ci_instance()
   match derive_build_cache_instance_readiness(
     endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-ci.service" as NonEmptyStr),

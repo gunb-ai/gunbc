@@ -49,7 +49,7 @@ fn w_fill(p: Pool<Count, One>, upto: Nat, at: EpochSecs) -> Pool<Count, One> {
     })
 }
 
-test fn the_seat_pool_fills_at_its_ceiling_and_a_release_makes_room() -> Bool {
+test fn the_seat_pool_fills_at_its_ceiling_and_a_release_makes_room() -> Bool  {
   let full = w_fill(p: w_seat_pool(), upto: 32, at: 1000)
   w_headroom(p: full, at: 1000) == 0
     && w_refused_as(o: pool_acquire(pool: full, reference: "seat-33" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 600), wire: "ledger-refused")
@@ -68,7 +68,7 @@ test fn the_seat_pool_fills_at_its_ceiling_and_a_release_makes_room() -> Bool {
 // EXPIRY IS A VERDICT AT AN INSTANT: the same pool reads full at second 1599 and empty at second
 // 1600, with nothing written in between; settling after the term refuses with the lapse instant;
 // the lapse pass then records the release durably and names the reference it touched.
-test fn a_lease_returns_its_capacity_when_its_term_runs_out_and_cannot_be_settled_after() -> Bool {
+test fn a_lease_returns_its_capacity_when_its_term_runs_out_and_cannot_be_settled_after() -> Bool  {
   match w_advanced(o: pool_acquire(pool: w_seat_pool(), reference: "turn-1" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 600)) {
     Absent => false
     Present { value: p } =>
@@ -99,7 +99,7 @@ fn w_core_pool() -> Pool<Count, One> {
   )
 }
 
-test fn a_fixed_window_pool_lapses_on_its_boundary_and_refuses_a_lease_that_crosses_it() -> Bool {
+test fn a_fixed_window_pool_lapses_on_its_boundary_and_refuses_a_lease_that_crosses_it() -> Bool  {
   match w_advanced(o: pool_acquire(pool: w_core_pool(), reference: "belt-tick-1" as NonEmptyStr, amount: w_seats(n: 4000), at: 100, term_seconds: 600)) {
     Absent => false
     Present { value: p } =>
@@ -112,7 +112,7 @@ test fn a_fixed_window_pool_lapses_on_its_boundary_and_refuses_a_lease_that_cros
   }
 }
 
-test fn an_instant_before_the_anchor_has_no_window_and_refuses() -> Bool {
+test fn an_instant_before_the_anchor_has_no_window_and_refuses() -> Bool  {
   let p = pool_of(
     identity: "github-core-late-anchor" as NonEmptyStr,
     ceiling: w_seats(n: 5000),
@@ -126,7 +126,7 @@ test fn an_instant_before_the_anchor_has_no_window_and_refuses() -> Bool {
 
 // AN UPSTREAM READING THAT SAYS LESS SHRINKS THE POOL AS AN ENCUMBRANCE, and a reading that says
 // more changes nothing: the ledger's own outstanding leases are what the upstream cannot see.
-test fn an_upstream_remaining_below_the_prediction_shrinks_headroom_and_above_it_does_not() -> Bool {
+test fn an_upstream_remaining_below_the_prediction_shrinks_headroom_and_above_it_does_not() -> Bool  {
   match w_advanced(o: pool_acquire(pool: w_core_pool(), reference: "belt-tick-1" as NonEmptyStr, amount: w_seats(n: 4000), at: 100, term_seconds: 600)) {
     Absent => false
     Present { value: p } =>

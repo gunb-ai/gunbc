@@ -52,7 +52,7 @@ fn isolated_release_parent() -> FilePath? {
   }
 }
 
-test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
+test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
@@ -78,7 +78,7 @@ test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
   }
 }
 
-test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool {
+test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool  {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match observe_codex_npm_runtime_target() {
@@ -113,7 +113,7 @@ test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool {
   }
 }
 
-test fn materialize_codex_runtime_bundle_produces_native_executable_holds() -> Bool {
+test fn materialize_codex_runtime_bundle_produces_native_executable_holds() -> Bool  {
   match isolated_release_parent() {
     Absent => false
     Present { value: release_parent } =>
@@ -185,7 +185,7 @@ fn materialize_identical_input_twice_reuses_same_release_identity_failure_receip
   }
 }
 
-test fn materialize_identical_input_twice_reuses_same_release_identity_holds() -> Bool {
+test fn materialize_identical_input_twice_reuses_same_release_identity_holds() -> Bool  {
   match isolated_release_parent() {
     Absent => false
     Present { value: release_parent } => {

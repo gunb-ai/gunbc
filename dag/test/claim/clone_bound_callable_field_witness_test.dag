@@ -71,18 +71,18 @@ fn a_callable_over_unbounded_parameters_stays_bare() -> Bool {
   )
 }
 
-test fn a_plain_field_still_carries_its_bounds() -> Bool {
+test fn a_plain_field_still_carries_its_bounds() -> Bool  {
   a_plain_field_carries_the_declared_types_bounds()
 }
 
-test fn a_callable_argument_position_carries_its_bounds() -> Bool {
+test fn a_callable_argument_position_carries_its_bounds() -> Bool  {
   a_callable_argument_carries_the_declared_types_bounds()
 }
 
-test fn a_callable_return_position_carries_its_bounds() -> Bool {
+test fn a_callable_return_position_carries_its_bounds() -> Bool  {
   a_callable_return_carries_the_declared_types_bounds()
 }
 
-test fn a_callable_over_unbounded_parameters_gains_no_bound() -> Bool {
+test fn a_callable_over_unbounded_parameters_gains_no_bound() -> Bool  {
   a_callable_over_unbounded_parameters_stays_bare()
 }

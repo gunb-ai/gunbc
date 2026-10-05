@@ -94,26 +94,26 @@ fn a_nonsense_qualifier_binds_the_same_local_declaration() -> Bool {
   )
 }
 
-test fn a_bare_generic_head_carries_its_clone_bounds() -> Bool {
+test fn a_bare_generic_head_carries_its_clone_bounds() -> Bool  {
   bare_head_emits_clone_bounds()
 }
 
-test fn a_qualified_generic_head_carries_the_same_clone_bounds() -> Bool {
+test fn a_qualified_generic_head_carries_the_same_clone_bounds() -> Bool  {
   qualified_head_emits_the_same_clone_bounds()
 }
 
-test fn a_qualified_generic_head_does_not_emit_a_refusal() -> Bool {
+test fn a_qualified_generic_head_does_not_emit_a_refusal() -> Bool  {
   qualified_head_no_longer_refuses()
 }
 
-test fn a_head_that_resolves_nowhere_still_refuses() -> Bool {
+test fn a_head_that_resolves_nowhere_still_refuses() -> Bool  {
   an_unresolvable_qualified_head_still_refuses()
 }
 
-test fn a_bare_head_binds_a_colliding_local_declaration() -> Bool {
+test fn a_bare_head_binds_a_colliding_local_declaration() -> Bool  {
   a_bare_head_binds_the_local_declaration()
 }
 
-test fn a_nonsense_qualifier_binds_the_same_colliding_declaration() -> Bool {
+test fn a_nonsense_qualifier_binds_the_same_colliding_declaration() -> Bool  {
   a_nonsense_qualifier_binds_the_same_local_declaration()
 }

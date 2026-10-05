@@ -261,7 +261,7 @@ fn nth_declaration_name(rows: List<EnrollmentWitnessDemand>, row: Int, declarati
   }
 }
 
-test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partitioned() -> Bool {
+test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partitioned() -> Bool  {
   match first_duplicate_commit_check(roster: commit_gate_roster) {
     NoDuplicateCommitCheck => {
       let gates = filter(commit_gate_roster, row => check_is_gate(check: row.check))
@@ -283,7 +283,7 @@ test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partition
   }
 }
 
-test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discovery() -> Bool {
+test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discovery() -> Bool  {
   match project_enrollment_witness_demands(discoveries: []) {
     DemandMissing { check: _, cause: _ } =>
       match project_enrollment_witness_demands(
@@ -302,7 +302,7 @@ test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discover
   }
 }
 
-test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries() -> Bool {
+test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries() -> Bool  {
   let roster = filter(
     commit_gate_roster,
     row => check_is_file_grain_witness(check: row.check)
@@ -326,7 +326,7 @@ test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries(
     }
 }
 
-test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invariant() -> Bool {
+test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invariant() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/synthetic_multi_test.dag",
     check_fns: ["beta_holds", "alpha_holds"]
@@ -385,7 +385,7 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
   }
 }
 
-test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
+test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool  {
   let gate = CommitSpecGate { gate: EmitHostGate }
   let fmt = CommitCargoFmtCheck
   let roster = [
@@ -412,7 +412,7 @@ test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
   }
 }
 
-test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
+test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool  {
   match project_enrollment_witness_demands(
     discoveries: [
       complete_discovery(
@@ -431,7 +431,7 @@ test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
   }
 }
 
-test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
+test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/missing_test.dag",
     check_fns: ["required_holds"]
@@ -455,7 +455,7 @@ test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
   }
 }
 
-test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
+test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/empty_test.dag",
     check_fns: []
@@ -480,7 +480,7 @@ test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
   }
 }
 
-test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
+test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/duplicate_entry_test.dag",
     check_fns: ["holds"]
@@ -509,7 +509,7 @@ test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
   }
 }
 
-test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
+test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool  {
   let first = synthetic_witness_check(
     entry: "dag/test/claim/module_a_test.dag",
     check_fns: ["a_holds"]
@@ -546,7 +546,7 @@ test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
   }
 }
 
-test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
+test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/duplicate_decl_test.dag",
     check_fns: ["same_holds"]
@@ -570,7 +570,7 @@ test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
   }
 }
 
-test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
+test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/incomplete_test.dag",
     check_fns: []
@@ -594,7 +594,7 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
   }
 }
 
-test fn commit_check_demand_duplicate_roster_identity_is_ambiguous() -> Bool {
+test fn commit_check_demand_duplicate_roster_identity_is_ambiguous() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/duplicate_roster_test.dag",
     check_fns: ["holds"]
@@ -607,7 +607,7 @@ test fn commit_check_demand_duplicate_roster_identity_is_ambiguous() -> Bool {
   }
 }
 
-test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool {
+test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool  {
   let first = synthetic_witness_check(
     entry: "dag/test/claim/overlap_test.dag",
     check_fns: ["same_holds"]
@@ -639,7 +639,7 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
   }
 }
 
-test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Bool {
+test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Bool  {
   let gate = CommitSpecGate { gate: EmitHostGate }
   let fmt = CommitCargoFmtCheck
   let roster = [
@@ -668,7 +668,7 @@ test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Boo
     }
 }
 
-test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
+test fn commit_check_demand_rejects_non_whole_discovery() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/wrong_identity_test.dag",
     check_fns: ["holds"]
@@ -697,7 +697,7 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
   }
 }
 
-test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
+test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool  {
   let check = synthetic_witness_check(
     entry: "dag/test/claim/wrong_module_test.dag",
     check_fns: ["holds"]

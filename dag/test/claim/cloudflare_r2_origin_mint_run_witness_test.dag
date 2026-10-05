@@ -129,7 +129,7 @@ import gunbc.cloudflare.r2_token_mint_run {
 // forbidden state is unrepresentable in the ACCEPTED declarations and perfectly representable as a
 // value handed to a pure classifier, so the wall keeps a discriminating red instead of quietly
 // becoming permanently green. Every future fleet credential begins in this arm.
-test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
+test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool  {
   match classify_r2_mint(
     profile: R2OriginObjectRead,
     account: fleet_cloudflare_account_standing(),
@@ -161,7 +161,7 @@ test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
 // requires the container refusal to win anyway. Move the check back below the Create and this goes
 // red. The class is
 // gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect.
-test fn r2_origin_mint_refuses_before_the_create_when_the_custody_container_is_absent() -> Bool {
+test fn r2_origin_mint_refuses_before_the_create_when_the_custody_container_is_absent() -> Bool  {
   match classify_r2_mint(
     profile: R2OriginObjectWrite,
     account: fleet_cloudflare_account_standing(),
@@ -194,7 +194,7 @@ test fn r2_origin_mint_refuses_before_the_create_when_the_custody_container_is_a
 // standing that recorded the container but floated its version would still classify Ready here, and
 // the fetch it authorizes would then be addressed to a moving target -- so the version is part of
 // what this test checks, not incidental to it.
-test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
+test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool  {
   match classify_r2_mint(
     profile: R2OriginObjectRead,
     account: fleet_cloudflare_account_standing(),
@@ -229,7 +229,7 @@ fn declared_bucket_name() -> String {
   }
 }
 
-test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> Bool {
+test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> Bool  {
   match classify_r2_mint(
     profile: R2OriginObjectRead,
     account: fleet_cloudflare_account_standing(),
@@ -264,7 +264,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
 // reach is an arm nobody can trust. Section 4b's question is whether the RED is authorable
 // SOMEWHERE a check can run, and a pure classifier handed an unallocated standing is exactly that
 // place.
-test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
+test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool  {
   match classify_r2_mint(
     profile: R2OriginObjectRead,
     account: CloudflareAccountUnallocated {
@@ -312,7 +312,7 @@ fn bucket_roster_probe_admission(rows: List<BucketRosterProbeRow>) -> Allocation
   )
 }
 
-test fn r2_bucket_allocation_roster_refuses_a_duplicate_allocation() -> Bool {
+test fn r2_bucket_allocation_roster_refuses_a_duplicate_allocation() -> Bool  {
   match build_allocation_roster(
     rows: gunbc_fleet_r2_bucket_allocations,
     primary: row => bucket_purpose_key(purpose: row.purpose),
@@ -344,7 +344,7 @@ test fn r2_bucket_allocation_roster_refuses_a_duplicate_allocation() -> Bool {
 // A COLLIDING ROSTER SERVES NOTHING RATHER THAN A WINNER, asserted through the fused lookup because
 // that is the shape production uses. With the carrier unable to hold a duplicate, this is what the
 // refused BUILD does at the one fallible ingress.
-test fn r2_bucket_colliding_roster_serves_no_value() -> Bool {
+test fn r2_bucket_colliding_roster_serves_no_value() -> Bool  {
   match allocated_value(
     rows: [
       bucket_roster_probe(left: "p1", right: "shared"),
@@ -363,7 +363,7 @@ test fn r2_bucket_colliding_roster_serves_no_value() -> Bool {
 // THE ORIGIN DECLARATION ITSELF, asserted so that a later edit that repoints the read credential
 // somewhere other than the container the mint writes is caught. The two are one fact and they are
 // spelled in one place; this is the join that proves it stayed that way.
-test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
+test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool  {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
@@ -391,7 +391,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
 // the unminted-write test was retired when run_object_write executed and its version was pinned
 // (2026-09-19). Same join: the secret the mint stores into, this project, an exact non-latest
 // version, and the access key id the mint's receipt reported.
-test fn r2_origin_bucket_write_credential_is_the_minted_container() -> Bool {
+test fn r2_origin_bucket_write_credential_is_the_minted_container() -> Bool  {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
@@ -415,7 +415,7 @@ test fn r2_origin_bucket_write_credential_is_the_minted_container() -> Bool {
 // module, the bucket resource from the origin, the account from the account standing; if the
 // profile dispatch handed the write entry the read request, the group check fails while the
 // classification still says Ready.
-test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> Bool {
+test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> Bool  {
   match classify_r2_mint(
     profile: R2OriginObjectWrite,
     account: fleet_cloudflare_account_standing(),
@@ -458,7 +458,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
 // where it runs is a decoration -- permanently green, carrying no information, and worse than absent
 // because it gets cited as coverage. Restating this row downward would have satisfied the finding and
 // left the wall unbuilt.
-test fn r2_origin_read_pin_names_this_project_version() -> Bool {
+test fn r2_origin_read_pin_names_this_project_version() -> Bool  {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
@@ -483,7 +483,7 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
 // same version in ANOTHER project, supplied rather than rebuilt from the locus. This is the only row
 // here whose red depends on the join comparing projects at all -- deleting the project comparison
 // from resolve_returned_version leaves the exact-arm row above green and turns this one red.
-test fn r2_origin_read_pin_refuses_a_foreign_project_answer() -> Bool {
+test fn r2_origin_read_pin_refuses_a_foreign_project_answer() -> Bool  {
   match fabric_durable_origin_standing() {
     R2OriginUnallocated { purpose: _ } => false
     R2OriginAllocated { bucket: bucket } =>
@@ -532,7 +532,7 @@ fn origin_with_latest_read_pin() -> R2OriginStanding {
 // THE DISCRIMINATING RED IS A FIXTURE, same move as the absent-bootstrap-custody test. latest is
 // representable as a standing handed to the classifier even though the accepted origin pin is
 // exact. origin_read_pin_is_exact on the declared standing is the positive control.
-test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool {
+test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool  {
   !origin_read_pin_is_exact(origin: origin_with_latest_read_pin())
     && origin_read_pin_is_exact(origin: fabric_durable_origin_standing())
 }
@@ -542,7 +542,7 @@ test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool {
 // interventions rather than restated, so this asserts the derivation reaches the dashboard ceremony's
 // words. A row dissolved on a trigger nothing executes is the section 4b(3) failure; this is the
 // executed half of that claim.
-test fn r2_origin_mint_refusal_prices_the_dashboard_bootstrap() -> Bool {
+test fn r2_origin_mint_refusal_prices_the_dashboard_bootstrap() -> Bool  {
   string_contains(s: bootstrap_burden_text(), pattern: "Super Administrator")
     && string_contains(s: bootstrap_burden_text(), pattern: "Account API Tokens Write")
 }
@@ -550,7 +550,7 @@ test fn r2_origin_mint_refusal_prices_the_dashboard_bootstrap() -> Bool {
 // THE ACCOUNT STANDING CITES THE VENDOR ENTITY, which is the dissolution this change claims for
 // vendor_cloudflare_frontier_rows: a gunbc declaration that names this fleet's Cloudflare account and
 // cites extdeps.vendor.cloudflare as the company.
-test fn r2_origin_account_standing_cites_the_cloudflare_vendor_entity() -> Bool {
+test fn r2_origin_account_standing_cites_the_cloudflare_vendor_entity() -> Bool  {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: company, intervention: _ } =>
       company.legal_name == cloudflare.legal_name
@@ -565,7 +565,7 @@ test fn r2_origin_account_standing_cites_the_cloudflare_vendor_entity() -> Bool 
 // either side is edited without the other -- the pin changed, or the observation re-recorded from a
 // different account -- this join fails, which is the only thing that makes recording the observation
 // worth more than a note.
-test fn r2_observed_permission_groups_agree_with_the_pinned_read_id() -> Bool {
+test fn r2_observed_permission_groups_agree_with_the_pinned_read_id() -> Bool  {
   match observed_permission_group_by_id(id: workers_r2_storage_bucket_item_read_permission_group_id as String) {
     Present { value: observed } =>
       observed.name == "Workers R2 Storage Bucket Item Read"
@@ -581,7 +581,7 @@ test fn r2_observed_permission_groups_agree_with_the_pinned_read_id() -> Bool {
 // disaster without recording the one fact needed to undo it. This is the discriminating red for that
 // path: it goes red if the id is dropped from the orphan receipt, which is the state this PR shipped
 // for one revision.
-test fn the_orphan_receipt_names_the_live_token_id() -> Bool {
+test fn the_orphan_receipt_names_the_live_token_id() -> Bool  {
   let content = r2_orphan_receipt_content(
     token: CreatedAccountToken {
       id: "3f43e1c7f8fbcfc97139cb5d9dc4e984" as NonEmptyStr,
@@ -603,7 +603,7 @@ test fn the_orphan_receipt_names_the_live_token_id() -> Bool {
 // token value reaching it would publish the credential to everyone who can read the run. The id is
 // not a secret -- it is what the account's own token listing shows -- and it is the only field here
 // that could be confused for one.
-test fn the_orphan_receipt_carries_no_secret_value() -> Bool {
+test fn the_orphan_receipt_carries_no_secret_value() -> Bool  {
   let content = r2_orphan_receipt_content(
     token: CreatedAccountToken {
       id: "abc123" as NonEmptyStr,
@@ -621,7 +621,7 @@ test fn the_orphan_receipt_carries_no_secret_value() -> Bool {
 
 // BOTH ARMS WRITE THE SAME PATH, BECAUSE THE UPLOADER GLOBS ONE PATH. An orphan receipt written
 // anywhere else is invisible to exactly the run it was written for.
-test fn the_orphan_receipt_lands_where_the_uploader_looks() -> Bool {
+test fn the_orphan_receipt_lands_where_the_uploader_looks() -> Bool  {
   let path = r2_mint_receipt_path_in(
     scope: R2MintReceiptUnscoped,
     request: CreateAccountTokenRequest {
@@ -653,7 +653,7 @@ fn witness_minted_token() -> CreatedAccountToken {
   }
 }
 
-test fn an_unknown_write_outcome_is_not_reported_as_a_lost_value() -> Bool {
+test fn an_unknown_write_outcome_is_not_reported_as_a_lost_value() -> Bool  {
   let content = r2_orphan_receipt_content(
     token: witness_minted_token(),
     cause: "THE TOKEN WAS MINTED AND THE VERSION OUTCOME IS UNKNOWN: timeout" as NonEmptyStr,
@@ -667,7 +667,7 @@ test fn an_unknown_write_outcome_is_not_reported_as_a_lost_value() -> Bool {
 
 // A VERSION THAT LANDED IS NAMED, AND THE REMEDY IS DISABLE RATHER THAN REVOKE. Reporting this as
 // stored=no would send an operator to revoke a token whose value IS in custody at a known version.
-test fn a_landed_unverified_version_is_named_and_disabled_not_revoked() -> Bool {
+test fn a_landed_unverified_version_is_named_and_disabled_not_revoked() -> Bool  {
   let content = r2_orphan_receipt_content(
     token: witness_minted_token(),
     cause: "A VERSION LANDED BUT DID NOT VERIFY" as NonEmptyStr,
@@ -686,7 +686,7 @@ test fn a_landed_unverified_version_is_named_and_disabled_not_revoked() -> Bool 
 // secret whose absence is exactly what it exists to clean up after -- and on the read profile, one
 // the mint's own grant cells do not cover. The waiver is a claim about the caller's effects, so it
 // is asserted here rather than trusted.
-test fn a_non_writing_entry_waives_the_container_with_a_stated_reason() -> Bool {
+test fn a_non_writing_entry_waives_the_container_with_a_stated_reason() -> Bool  {
   match CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason } {
     CustodyContainerNotNeeded { reason: reason } =>
       string_contains(s: reason as String, pattern: "writes no Secret Manager version")
@@ -715,7 +715,7 @@ fn witness_write_request() -> CreateAccountTokenRequest {
 
 // The assertion is two-part on purpose: the stale path must be a REAL receipt (so the test cannot
 // pass by the path being malformed) and must lie OUTSIDE the directory this attempt uploads.
-test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bool {
+test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bool  {
   let stale = r2_mint_receipt_path_in(
     scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1") },
     request: witness_write_request(),
@@ -730,7 +730,7 @@ test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bo
 // AND THE UNSCOPED RECEIPT IS COLLECTED BY NOTHING RATHER THAN BY THE WRONG ATTEMPT. A workflow run
 // whose environment lacked the identity writes to the root; the uploader names an attempt directory,
 // so that file is not evidence for any attempt instead of being evidence for this one.
-test fn an_unscoped_receipt_lies_outside_every_attempt_glob() -> Bool {
+test fn an_unscoped_receipt_lies_outside_every_attempt_glob() -> Bool  {
   let unscoped = r2_mint_receipt_path_in(scope: R2MintReceiptUnscoped, request: witness_write_request())
   let attempt_dir = r2_mint_receipt_dir(
     scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1") },
@@ -741,7 +741,7 @@ test fn an_unscoped_receipt_lies_outside_every_attempt_glob() -> Bool {
 // THE UPLOADER'S GLOB NAMES A DIRECTORY, NOT A WILDCARD ONE. The bucket name stays a wildcard
 // because it is unknowable at emit time; the attempt is not, and that is what makes the exclusion
 // structural rather than probabilistic.
-test fn the_uploaded_glob_pins_the_attempt_and_wildcards_only_the_bucket() -> Bool {
+test fn the_uploaded_glob_pins_the_attempt_and_wildcards_only_the_bucket() -> Bool  {
   let g = r2_mint_receipt_glob_in(
     scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "2") },
     profile: R2OriginObjectWrite,
@@ -761,7 +761,7 @@ test fn the_uploaded_glob_pins_the_attempt_and_wildcards_only_the_bucket() -> Bo
 // is strictly deeper than the root, so it cannot be assumed to exist. It goes red if someone
 // flattens the path back and leaves the ensure in place looking like ceremony, or removes the
 // nesting reasoning while keeping the nesting.
-test fn a_scoped_receipt_needs_a_directory_deeper_than_the_root() -> Bool {
+test fn a_scoped_receipt_needs_a_directory_deeper_than_the_root() -> Bool  {
   let scoped = r2_mint_receipt_dir(
     scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34843927208", run_attempt: "1") },
   )
@@ -775,7 +775,7 @@ test fn a_scoped_receipt_needs_a_directory_deeper_than_the_root() -> Bool {
 // profile is routed to a bucket-item grant (it could not create a bucket), if it gains an object
 // grant (it could read or write origin bytes), or if its resource names a bucket instead of the
 // account (bucket creation has no bucket to scope to).
-test fn r2_bucket_admin_mint_is_account_scoped_with_only_the_storage_write_group() -> Bool {
+test fn r2_bucket_admin_mint_is_account_scoped_with_only_the_storage_write_group() -> Bool  {
   match classify_r2_mint(
     profile: R2AccountBucketAdmin,
     account: fleet_cloudflare_account_standing(),
@@ -859,7 +859,7 @@ type R2OriginTokenProfileArg {
   suffix: String
 }
 
-test fn r2_cache_blobs_write_mint_is_scoped_to_the_cache_bucket() -> Bool {
+test fn r2_cache_blobs_write_mint_is_scoped_to_the_cache_bucket() -> Bool  {
   purpose_mint_is_scoped_to_its_bucket(
     profile: R2OriginTokenProfileArg { profile: R2OriginObjectWrite, suffix: "-object-write" },
     purpose: FabricCacheBlobs {},
@@ -883,7 +883,7 @@ test fn r2_cache_blobs_write_mint_is_scoped_to_the_cache_bucket() -> Bool {
     }
 }
 
-test fn r2_boot_origin_read_mint_is_scoped_to_the_boot_bucket() -> Bool {
+test fn r2_boot_origin_read_mint_is_scoped_to_the_boot_bucket() -> Bool  {
   purpose_mint_is_scoped_to_its_bucket(
     profile: R2OriginTokenProfileArg { profile: R2OriginObjectRead, suffix: "-object-read" },
     purpose: FabricBootOrigin {},
@@ -894,7 +894,7 @@ test fn r2_boot_origin_read_mint_is_scoped_to_the_boot_bucket() -> Bool {
 // origin), store into the containers fabric_workspace_standing declares, and the standing names the
 // two run_workspace_* entries the fleet-converge modes dispatch. Its admission is create-only and
 // private, like the durable origin's, and it is a distinct bucket.
-test fn r2_workspace_mints_are_scoped_to_the_workspace_bucket() -> Bool {
+test fn r2_workspace_mints_are_scoped_to_the_workspace_bucket() -> Bool  {
   purpose_mint_is_scoped_to_its_bucket(
     profile: R2OriginTokenProfileArg { profile: R2OriginObjectRead, suffix: "-object-read" },
     purpose: FabricWorkspace {},
@@ -907,7 +907,7 @@ test fn r2_workspace_mints_are_scoped_to_the_workspace_bucket() -> Bool {
     && purpose_bucket_name(purpose: FabricWorkspace {}) != purpose_bucket_name(purpose: FabricCacheBlobs {})
 }
 
-test fn r2_workspace_standing_names_its_mint_entries_and_custody() -> Bool {
+test fn r2_workspace_standing_names_its_mint_entries_and_custody() -> Bool  {
   let read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: fabric_workspace_standing())
   let write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: fabric_workspace_standing())
   let entries = match fabric_workspace_standing() {
@@ -939,7 +939,7 @@ test fn r2_workspace_standing_names_its_mint_entries_and_custody() -> Bool {
 // THE CUSTODY SECRET IS THE ONE THE PURPOSE'S STANDING DECLARES. The durable rows keep their ids
 // byte-identical (read through their pinned loci); the cache and boot rows read their Unminted
 // standings; an unallocated origin yields none rather than a borrowed id.
-test fn r2_mint_custody_secret_is_derived_from_the_purpose_standing() -> Bool {
+test fn r2_mint_custody_secret_is_derived_from_the_purpose_standing() -> Bool  {
   let durable_read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: fabric_durable_origin_standing())
   let durable_write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: fabric_durable_origin_standing())
   let cache_write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}))

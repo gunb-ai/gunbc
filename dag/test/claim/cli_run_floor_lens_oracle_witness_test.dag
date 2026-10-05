@@ -12,17 +12,17 @@ import gunbc.cli_run_floor_lens_oracle_scaffold {
 }
 
 
-test fn floor_lens_hand_rust_production_arms_are_declared_scaffolds() -> Bool {
+test fn floor_lens_hand_rust_production_arms_are_declared_scaffolds() -> Bool  {
   !disposition_is_terminal(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold) &&
     !disposition_is_terminal(d: cli_run_floor_lens_observation_hand_rust_scaffold)
 }
 
-test fn floor_lens_scaffold_shape_reader_discriminates() -> Bool {
+test fn floor_lens_scaffold_shape_reader_discriminates() -> Bool  {
   !disposition_is_terminal(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold)
     && disposition_is_terminal(d: cli_run_floor_lens_scaffold_shape_red_control)
 }
 
-test fn floor_lens_hand_rust_trigger_names_sites_and_ticket() -> Bool {
+test fn floor_lens_hand_rust_trigger_names_sites_and_ticket() -> Bool  {
   string_contains(
     s: dissolution_description(condition: cli_run_floor_lens_hand_rust_dissolve_trigger),
     pattern: "refuse_on_module_graph_read_refusals"
@@ -41,7 +41,7 @@ test fn floor_lens_hand_rust_trigger_names_sites_and_ticket() -> Bool {
     )
 }
 
-test fn floor_lens_oracle_executing_receipt_named() -> Bool {
+test fn floor_lens_oracle_executing_receipt_named() -> Bool  {
   string_contains(
     s: cli_run_floor_lens_oracle_read_refusal_receipt_test,
     pattern: "read_refusal_not_an_absence"

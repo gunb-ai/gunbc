@@ -312,7 +312,7 @@ fn labels_of(fixture_roles: List<MtCollinsChannelPopulationRole>, rows: List<Sup
 // upstream geometry is per socket. A dual-socket Mt. Collins over a sixteen-slot
 // per-socket population is two processors and thirty-two modules, not one and
 // sixteen.
-test fn w_bom_counts_concrete_acquisition_positions() -> Bool {
+test fn w_bom_counts_concrete_acquisition_positions() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -325,7 +325,7 @@ test fn w_bom_counts_concrete_acquisition_positions() -> Bool {
   }
 }
 
-test fn w_single_socket_bom_is_not_multiplied() -> Bool {
+test fn w_single_socket_bom_is_not_multiplied() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -337,7 +337,7 @@ test fn w_single_socket_bom_is_not_multiplied() -> Bool {
 
 // --- WALL: owned stock is drawn through the ledger's own admission --------------------------------
 
-test fn w_owned_stock_resolves_to_a_reservation_against_the_lot() -> Bool {
+test fn w_owned_stock_resolves_to_a_reservation_against_the_lot() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -402,7 +402,7 @@ fn refuses_with_unreconciled_ledger(fixture_roles: List<MtCollinsChannelPopulati
   })
 }
 
-test fn w_a_broken_ledger_refuses_the_line_rather_than_buying() -> Bool {
+test fn w_a_broken_ledger_refuses_the_line_rather_than_buying() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -416,7 +416,7 @@ test fn w_a_broken_ledger_refuses_the_line_rather_than_buying() -> Bool {
 // The conflated case: the ledger's OWN refusal cause is InsufficientStock, which
 // is byte-identical to what a real shortfall produces one layer up. If this
 // resolves to NewPurchase, the balance-first ordering has been lost.
-test fn w_an_unreconciled_ledger_whose_cause_is_insufficient_stock_still_refuses() -> Bool {
+test fn w_an_unreconciled_ledger_whose_cause_is_insufficient_stock_still_refuses() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -431,7 +431,7 @@ test fn w_an_unreconciled_ledger_whose_cause_is_insufficient_stock_still_refuses
 // policy — specific identification, FIFO, cheapest-first — and this module will
 // not choose one silently (operator ruling, 2026-08-19). DISSOLVES ON: a caller
 // supplying a DECLARED policy parameter, never on a default.
-test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool {
+test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -460,7 +460,7 @@ test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool {
 
 // --- WALL: an insufficient lot falls through to the market, carrying the held number --------------
 
-test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool {
+test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -486,7 +486,7 @@ test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool {
 
 // --- WALL: an unread compatibility is pending evidence, never a candidate -------------------------
 
-test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
+test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -529,7 +529,7 @@ test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
 
 // --- WALL: an included component subtracts from nothing -------------------------------------------
 
-test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
+test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -567,7 +567,7 @@ test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
 // RED CONTROL: the SAME recipe without the inclusion draws the same two
 // processors from the lot. So the claim above is about the inclusion, not about
 // a supply that happened to be empty.
-test fn w_without_the_inclusion_the_same_processors_are_drawn() -> Bool {
+test fn w_without_the_inclusion_the_same_processors_are_drawn() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -584,7 +584,7 @@ test fn w_without_the_inclusion_the_same_processors_are_drawn() -> Bool {
 
 // --- WALL: candidate resolution is order-invariant --------------------------------------------------
 
-test fn w_resolution_is_invariant_under_supply_order() -> Bool {
+test fn w_resolution_is_invariant_under_supply_order() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -615,7 +615,7 @@ fn joined(labels: List<NonEmptyStr>) -> String {
 // A part listed twice REFUSES rather than resolving first-one-wins, and a part
 // with no supply row at all refuses rather than reporting SupplyMissing: an unread
 // supply is not an observed stockout.
-test fn w_duplicate_supply_row_refuses() -> Bool {
+test fn w_duplicate_supply_row_refuses() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -636,7 +636,7 @@ test fn w_duplicate_supply_row_refuses() -> Bool {
   }
 }
 
-test fn w_absent_supply_row_refuses_rather_than_reporting_missing() -> Bool {
+test fn w_absent_supply_row_refuses_rather_than_reporting_missing() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -658,7 +658,7 @@ test fn w_absent_supply_row_refuses_rather_than_reporting_missing() -> Bool {
 // thirty-two modules and the one board are bought and contribute all of it.
 // The discriminating number is that the processors' 620,000,000-micro lot does
 // not appear in this total anywhere.
-test fn w_cash_counts_purchases_only_and_owned_draws_report_zero_cash() -> Bool {
+test fn w_cash_counts_purchases_only_and_owned_draws_report_zero_cash() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -679,7 +679,7 @@ test fn w_cash_counts_purchases_only_and_owned_draws_report_zero_cash() -> Bool 
 // EVERY LINE OWNED: no money moves, and the answer is its own arm rather than
 // a zero in some currency nobody priced. A zero-micro CashDerived would be a
 // figure a later cross-currency comparison could succeed against.
-test fn w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero() -> Bool {
+test fn w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -700,7 +700,7 @@ test fn w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero() -> Bool {
 // A line that could not be filled REFUSES the cash answer. Summing the lines
 // that did resolve would report a build price for a build that cannot be
 // built — the partial answer mistaken for the answer.
-test fn w_an_unfillable_line_refuses_the_cash_answer() -> Bool {
+test fn w_an_unfillable_line_refuses_the_cash_answer() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -717,7 +717,7 @@ test fn w_an_unfillable_line_refuses_the_cash_answer() -> Bool {
   }
 }
 
-test fn w_cross_currency_purchase_refuses_rather_than_summing() -> Bool {
+test fn w_cross_currency_purchase_refuses_rather_than_summing() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -744,7 +744,7 @@ test fn w_cross_currency_purchase_refuses_rather_than_summing() -> Bool {
 // processors landed at 620,000,000 micros allocate exactly (10,000,000 each), so
 // drawing two is 20,000,000. The odd lot below does not divide, and the answer
 // is a located refusal rather than a floor.
-test fn w_basis_is_exact_under_a_named_policy() -> Bool {
+test fn w_basis_is_exact_under_a_named_policy() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -767,7 +767,7 @@ test fn w_basis_is_exact_under_a_named_policy() -> Bool {
 // three-unit lot landed at 1,000,000 micros is 666,666 micros plus 2 micros the
 // division could not place — and 666,666*3 + 2 is exactly what was paid, which a
 // floor alone would not be.
-test fn w_inexact_allocation_retains_its_remainder() -> Bool {
+test fn w_inexact_allocation_retains_its_remainder() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -794,7 +794,7 @@ test fn w_inexact_allocation_retains_its_remainder() -> Bool {
   }
 }
 
-test fn w_unsettled_landed_cost_refuses_the_basis_rather_than_reading_zero() -> Bool {
+test fn w_unsettled_landed_cost_refuses_the_basis_rather_than_reading_zero() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -839,7 +839,7 @@ fn ceiling_builds(fixture_roles: List<MtCollinsChannelPopulationRole>, cpu_units
   }
 }
 
-test fn w_sixty_two_processors_ceiling_thirty_one_and_sixty_gives_thirty() -> Bool {
+test fn w_sixty_two_processors_ceiling_thirty_one_and_sixty_gives_thirty() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -848,7 +848,7 @@ test fn w_sixty_two_processors_ceiling_thirty_one_and_sixty_gives_thirty() -> Bo
   }
 }
 
-test fn w_the_ceiling_names_the_line_that_stops_the_next_build() -> Bool {
+test fn w_the_ceiling_names_the_line_that_stops_the_next_build() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -872,7 +872,7 @@ test fn w_the_ceiling_names_the_line_that_stops_the_next_build() -> Bool {
 // An unread market depth REFUSES the ceiling. Treating it as zero would report
 // a stockout nobody observed; treating it as unlimited would report a ceiling
 // nobody can supply.
-test fn w_unread_market_depth_refuses_the_ceiling() -> Bool {
+test fn w_unread_market_depth_refuses_the_ceiling() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -896,7 +896,7 @@ test fn w_unread_market_depth_refuses_the_ceiling() -> Bool {
 
 // The same unread depth also refuses the LINE, and with its own cause: the
 // ceiling's refusal is not a restatement of the line's.
-test fn w_unread_market_depth_refuses_the_line() -> Bool {
+test fn w_unread_market_depth_refuses_the_line() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -923,7 +923,7 @@ test fn w_unread_market_depth_refuses_the_line() -> Bool {
 
 // Every line included in a whole system: no line bounds the count, and the
 // answer says exactly that rather than inventing a number.
-test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool {
+test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -957,7 +957,7 @@ test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool {
 // not, and product.inventory's own sum_landed_cost refuses exactly this; so does
 // this, with the same shape. Found by review 53754's push to consume
 // std.measure rather than fork it.
-test fn w_basis_across_lots_in_two_currencies_refuses() -> Bool {
+test fn w_basis_across_lots_in_two_currencies_refuses() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -993,7 +993,7 @@ test fn w_basis_across_lots_in_two_currencies_refuses() -> Bool {
 
 // POSITIVE CONTROL: the same two lots landed in ONE currency sum, so the
 // refusal above is about the currencies and not about drawing two lots.
-test fn w_basis_across_two_lots_in_one_currency_sums() -> Bool {
+test fn w_basis_across_two_lots_in_one_currency_sums() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
