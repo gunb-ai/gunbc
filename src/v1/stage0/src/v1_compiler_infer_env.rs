@@ -1144,7 +1144,14 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
                         Some(bh) => {
                             if (bh.clone() == seg.clone()) {
                                 Rc::new(SegmentLcpScan {
-                                    remaining: Rc::new(v1_rt::list_skip(&acc.remaining.clone(), 1)),
+                                    remaining: Rc::new(
+                                        acc.remaining
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .collect::<Vec<_>>(),
+                                    ),
                                     matched: v1_rt::int_add(acc.matched.clone(), 1),
                                     live: true,
                                 })
@@ -1628,10 +1635,13 @@ pub fn qualified_all_but_last(name: String) -> String {
             "".to_string()
         } else {
             {
-                let scan = Rc::new(v1_rt::list_take(
-                    &segs.clone(),
-                    v1_rt::int_sub(seg_count.clone(), 1),
-                ))
+                let scan = Rc::new(
+                    segs.clone()
+                        .iter()
+                        .cloned()
+                        .take(v1_rt::int_sub(seg_count.clone(), 1) as usize)
+                        .collect::<Vec<_>>(),
+                )
                 .iter()
                 .cloned()
                 .fold("".to_string(), |acc: String, seg: String| {
@@ -3179,6 +3189,46 @@ pub fn text_representation_is_text_arm(r: TextRepresentation) -> bool {
         TextRepresentation::CodePointSequence => true,
         TextRepresentation::NotText => false,
         TextRepresentation::TextRepresentationUnidentified => false,
+    }
+}
+
+pub fn host_text_into_structural_sequence(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    unpeeled_actual: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    {
+        let unpeeled_is_structural =
+            match text_representation_by_identity(unpeeled_actual.clone(), env.clone()) {
+                TextRepresentation::CodePointSequence => true,
+                TextRepresentation::HostText => false,
+                TextRepresentation::NotText => false,
+                TextRepresentation::TextRepresentationUnidentified => false,
+            };
+        if unpeeled_is_structural.clone() {
+            false
+        } else {
+            match text_representation_by_identity(actual.clone(), env.clone()) {
+                TextRepresentation::HostText => match (*type_reference_declaration_reading(
+                    formal.clone(),
+                    env.source_indices.clone(),
+                    env.clone(),
+                ))
+                .clone()
+                {
+                    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                        declaration: d,
+                        ..
+                    } => crate::std_decl_ref::declaration_ref_eq(
+                        d.clone(),
+                        text_identity_std_algebra_free_monoid(),
+                    ),
+                    _ => false,
+                },
+                _ => false,
+            }
+        }
     }
 }
 

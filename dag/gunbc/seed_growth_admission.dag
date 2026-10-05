@@ -121,6 +121,7 @@ import gunbc.floor_route_gap_seed_growth { floor_route_gap_seed_growth_justifica
 import gunbc.floor_cgroup_stat_beat_seed_growth { floor_cgroup_stat_beat_seed_growth_justification }
 import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_growth_justification }
 import gunbc.cross_claim_demand_census_seed_growth { cross_claim_demand_census_seed_growth_justification }
+import gunbc.floor_call_site_demand_seed_growth { floor_call_site_demand_seed_growth_justification }
 import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
 import gunbc.floor_cost_debt_edit_seed_growth { floor_cost_debt_edit_seed_growth_justification }
@@ -276,6 +277,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     derived_row_roster_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
+    floor_call_site_demand_seed_growth_justification,
     frame_independent_symbol_seed_growth_justification,
     floor_cost_debt_standing_seed_growth_justification,
     floor_population_projection_seed_growth_justification,

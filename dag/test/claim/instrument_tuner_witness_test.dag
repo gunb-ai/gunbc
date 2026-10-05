@@ -2,13 +2,8 @@ module test.claim.instrument_tuner_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
-import gunbc.roadmap_component {
-  instrument_tuner_asset_path, instrument_tuner_client_js_source,
-  instrument_tuner_root_class, instrument_reading_class, instrument_depth_btn_class,
-  instrument_mode_btn_class, instrument_subject_class, js_instrument_step_depth_fn,
-  js_instrument_save_fn, js_instrument_seek_depth_fn, js_instrument_handle_wheel_fn,
-  js_instrument_wheel_threshold_const, js_tick_fn,
-}
+import gunbc.roadmap_component { instrument_tuner_asset_path, instrument_tuner_client_js_source, instrument_tuner_root_class, instrument_reading_class, instrument_depth_btn_class, instrument_mode_btn_class, instrument_subject_class, js_instrument_step_depth_fn, js_instrument_save_fn, js_instrument_seek_depth_fn, js_instrument_handle_wheel_fn, js_instrument_wheel_threshold_const }
+import gunbc.site.controls { js_tick_fn }
 import gunbc.design.instrument_camera {
   camera_storage_key, camera_wire, camera_initial, camera_wire_sep,
   ProgramCamera, DepthFront,
