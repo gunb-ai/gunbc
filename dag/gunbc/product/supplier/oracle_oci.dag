@@ -14,7 +14,7 @@ import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, UnobservedSupply }
 import product.fabric.provider_route {
-  ProviderRegionObservation, ProviderRegionUnread, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  ProviderRegionObservation, ProviderRegionRead, ProviderRouteObserved, ProviderRouteRegionUnobserved,
   provider_route_from_region,
 }
 import product.supplier.ubicloud {
@@ -212,14 +212,15 @@ fn oci_service_ref() -> DeclarationRef {
   decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_always_free_resources_authority")
 }
 
-// Nobody has read this tenancy's home region into the tree. The console the operator was using
-// suggested Ashburn, but a guess is not a reading, so the standing observation is the unread arm and
-// every offer refuses on it.
-data oci_home_region_unread_obligation: NonEmptyStr = "The home region of the operator's OCI tenancy has not been read into this tree. Always Free compute must be created there (extdeps.cloud.oracle_oci), so it is the region of every offer this supplier can make. RESOLVED BY the tenancy's home region as shown in the OCI console (Tenancy details), cited as a region row."
+// THE OPERATOR'S TENANCY HOME REGION IS US EAST (ASHBURN), as the operator stated on 2026-10-05.
+// It is a fact about our tenancy and not about Oracle, so it lives here, as an attributable operator
+// statement, and cites the vendor's region row for what us-ashburn-1 is. Always Free compute can be
+// created only in the home region, so this is the region of every offer this supplier makes.
+data oci_tenancy_home_region_statement: NonEmptyStr = "Operator statement, 2026-10-05: the gunbc OCI tenancy's home region is US East (Ashburn), us-ashburn-1. Re-read it from the OCI console's Tenancy details if the tenancy is ever recreated."
 
-fn oci_home_region_unread() -> ProviderRegionObservation {
-  ProviderRegionUnread {
-    obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_home_region_unread_obligation"),
+fn oci_home_region() -> ProviderRegionObservation {
+  ProviderRegionRead {
+    region: decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_region_us_ashburn_1"),
   }
 }
 

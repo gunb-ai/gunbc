@@ -203,3 +203,30 @@ fn oci_idle_rule_reads_memory(shape: OciAlwaysFreeShape) -> Bool {
 type OciTenancyTier
   = AlwaysFreeTenancy
   | PayAsYouGoTenancy
+
+// ── REGIONS ───────────────────────────────────────────────────────────────────────────────────
+//
+// One row per region a consumer has needed. Read 2026-10-05 from the regions page cited below:
+// US East (Ashburn), identifier us-ashburn-1, region key IAD, realm OC1, three availability domains.
+// The domain count matters for the micro rule above, because exactly one of the three can host an
+// E2.1.Micro.
+data oci_regions_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm"
+  }
+}
+
+type OciRegion {
+  identifier: NonEmptyStr
+  region_key: NonEmptyStr
+  realm_key: NonEmptyStr
+  availability_domain_count: Nat
+}
+
+data oci_region_us_ashburn_1: OciRegion = OciRegion {
+  identifier: "us-ashburn-1",
+  region_key: "IAD",
+  realm_key: "OC1",
+  availability_domain_count: 3,
+}

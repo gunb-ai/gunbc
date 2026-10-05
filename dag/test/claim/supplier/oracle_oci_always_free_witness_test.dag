@@ -19,7 +19,7 @@ import product.supplier.oracle_oci {
   CapacityTypeFreeEligibilityUnread,
   ExcessRefusedByVendor, ExcessBilledAtUnreadRate,
   oci_always_free_fit, oci_breach_consequence, bind_oci_always_free_offer,
-  oci_home_region_unread, oci_readiness,
+  oci_home_region, oci_readiness,
 }
 
 // The subject is the allowance fit and the offer seam, at the vendor figures in
@@ -149,16 +149,24 @@ fn refused_with(instance: OciPlannedInstance, fit: OciAllowanceFit, region: Prov
   }
 }
 
-// RED: the state production is in. The home region is unread, so the offer refuses on that
-// obligation, even with the plan fitting and readiness measured.
-test fn production_state_refuses_on_the_unread_home_region() -> Bool {
+// RED: the state production is in. The home region is read (Ashburn) and readiness is not, so the
+// offer refuses on the readiness obligation, even with a plan that fits.
+test fn production_state_refuses_on_unmeasured_readiness() -> Bool {
   let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
-  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: oci_home_region_unread(), readiness: measured(), expected: "oci_home_region_unread_obligation")
+  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: oci_home_region(), readiness: oci_readiness, expected: "oci_readiness_unread_obligation")
 }
 
-test fn production_readiness_refuses_once_the_region_is_read() -> Bool {
+// The production home region yields a route: with readiness measured, the same call binds.
+test fn the_production_home_region_binds_once_readiness_is_measured() -> Bool {
   let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
-  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: read_region(), readiness: oci_readiness, expected: "oci_readiness_unread_obligation")
+  match bind_oci_always_free_offer(
+    principal: "gunbc", executor: "gunbc", instance: i, plan_fit: oci_always_free_fit(plan: [i]),
+    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci",
+    readiness: measured(), region: oci_home_region(),
+  ) {
+    OfferBound { bound } => declaration_ref_eq(a: bound.offer.route.region, b: decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_region_us_ashburn_1"))
+    OfferBindingRefused { runs_on_label, cause } => false
+  }
 }
 
 // A plan over the allowance cannot carry a zero quote, even when region and readiness are both read.
