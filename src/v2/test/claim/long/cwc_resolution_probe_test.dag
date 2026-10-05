@@ -1,269 +1,275 @@
 module v2.test.long.cwc_resolution_probe
 
-import v2.compiler.normalized_tree { NormalizedTree }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.body_lowering_fold { DeclaredRecord }
 import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_modifiers }
 import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_string_literal_node, namespace_graft_module_body_marker_node }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { content_hash, core_edge_label }
+import v2.std.node_query { binder_edge, construct_node, construct_node_elided }
+import v2.std.qualified_name { qualified_name_spine_of_atoms }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
-data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
-data cwc_src_type_review: String = "module probe\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\n"
-
-data cwc_src_type_scalar: String = "module probe\ntype T = Int\n"
+// EACH CLAIM DISCRIMINATES AT ONE INTERFACE (DESIGN section 3). A claim that tokenizes, parses and
+// normalizes its own source costs about twice the required floor's new-witness budget before it
+// asserts anything (v2.workflow.required_floor claim_eval_step_budget_for_identity), so the claims
+// below take their input at the boundary under test as a SUPPLIED value:
+//   - the normalize claim takes a parse tree, built with the four shapes the parser emits
+//     (a production, a sequence, a token, an empty node);
+//   - the resolve claims take normalized roots, built with the constructors normalize itself uses
+//     (binder_edge, declared_signature, construct_node, dag_string_literal_node).
+// One claim runs the real path, cwc_cwc_module_resolve_accepts, and it pairs both kinds of fixture
+// with their producers: the real parser's tree for the malformed source has the supplied parse
+// tree's content hash, and real normalize of the cwc module has the supplied cwc root's content
+// hash. If a fixture drifts from what its producer emits, that claim turns red. It is admitted as a
+// cost row in v2.workflow.floor_cost_debt.
 
 data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int } | B | C\n"
 
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
-fn cwc_norm_of(src: String) -> Outcome<NormalizedTree> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
-    f: fn(toks) {
-      bind_outcome(o: parse(tokens: toks, grammar: lm.grammar), f: fn(ptree) {
-        normalize(parse_tree: ptree)
-      })
+// ---- the parse-tree fixture -------------------------------------------------------------------
+
+fn cwc_pt_empty() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn cwc_pt_token(sym: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn cwc_pt_production(identity: Symbol, captured: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: cwc_pt_token(sym: identity) },
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cwc_pt_seq(left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// `module probe` / `type T = { x: Int } | B | C`, as the parser emits it.
+fn cwc_pt_malformed() -> Node {
+  cwc_pt_production(identity: ^dag_surface_module, captured: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_module_header, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_kw_module), right: cwc_pt_production(identity: ^dag_surface_qualified_name, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^probe), right: cwc_pt_empty())))), right: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_top_level_item, captured: cwc_pt_production(identity: ^dag_surface_type_decl, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_kw_type), right: cwc_pt_seq(left: cwc_pt_token(sym: ^T), right: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_empty()), right: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_eq), right: cwc_pt_production(identity: ^dag_surface_type_alias_rhs_lead, captured: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_production(identity: ^dag_surface_type_alias_rhs, captured: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_type_variant, captured: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_type_expr, captured: cwc_pt_production(identity: ^dag_surface_field_decl_block, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_lbrace), right: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_token(sym: ^x), right: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_colon), right: cwc_pt_production(identity: ^dag_surface_type_expr, captured: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_qualified_name, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^Int), right: cwc_pt_empty())), right: cwc_pt_empty()), right: cwc_pt_empty())))), right: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_empty())), right: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_empty())), right: cwc_pt_token(sym: ^dag_token_rbrace))))), right: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_empty()))), right: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_pipe), right: cwc_pt_production(identity: ^dag_surface_type_variant, captured: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_type_expr, captured: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_qualified_name, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^B), right: cwc_pt_empty())), right: cwc_pt_empty()), right: cwc_pt_empty())), right: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_empty())))), right: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_token(sym: ^dag_token_pipe), right: cwc_pt_production(identity: ^dag_surface_type_variant, captured: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_type_expr, captured: cwc_pt_seq(left: cwc_pt_seq(left: cwc_pt_production(identity: ^dag_surface_qualified_name, captured: cwc_pt_seq(left: cwc_pt_token(sym: ^C), right: cwc_pt_empty())), right: cwc_pt_empty()), right: cwc_pt_empty())), right: cwc_pt_seq(left: cwc_pt_empty(), right: cwc_pt_empty())))), right: cwc_pt_empty()))))))))))))), right: cwc_pt_empty())))
+}
+
+// ---- the normalized-root fixtures -------------------------------------------------------------
+
+fn cwc_atom(identity: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn cwc_node(connective: TypeConnective, children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: connective }, children: children, occurrence_id: OccurrenceSynthetic }
+}
+
+fn cwc_member(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+// `type Name = V1 | V2 ...`, each variant with its own fields (none for a bare variant).
+fn cwc_coproduct(name: Symbol, variants: List<Edge>) -> Edge {
+  cwc_member(name: name, target: cwc_node(connective: Disj, children: variants))
+}
+
+fn cwc_variant(name: Symbol, fields: List<Edge>) -> Edge {
+  cwc_member(name: name, target: cwc_node(connective: Conj, children: fields))
+}
+
+fn cwc_record(name: Symbol, fields: List<Edge>) -> Edge {
+  cwc_member(name: name, target: cwc_node(connective: Conj, children: fields))
+}
+
+fn cwc_field(name: Symbol, type_name: Symbol) -> Edge {
+  binder_edge(name: name, type_node: cwc_atom(identity: type_name))
+}
+
+// `data name: type_name = body`.
+fn cwc_data(name: Symbol, type_name: Symbol, body: Node) -> Edge {
+  let signature = declared_signature(params: [], source: body)
+  cwc_member(name: name, target: cwc_node(connective: Arrow, children: [
+    signature.domain,
+    Edge { label: Positional, target: cwc_atom(identity: type_name) },
+    Edge { label: Positional, target: cwc_atom(identity: type_name) },
+    signature.order,
+    Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+  ]))
+}
+
+fn cwc_headless(fields: List<Edge>) -> Node {
+  construct_node_elided(field_edges: fields, source: cwc_pt_empty())
+}
+
+fn cwc_headed(tag: Symbol, fields: List<Edge>) -> Node {
+  construct_node(reference: qualified_name_spine_of_atoms(atoms: [cwc_atom(identity: tag)], occurrence_id: OccurrenceSynthetic), field_edges: fields, source: cwc_pt_empty())
+}
+
+// `module probe` with `members`, as normalize grafts a one-segment module.
+fn cwc_module_root(members: List<Edge>) -> Node {
+  cwc_node(connective: Conj, children: [
+    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: cwc_atom(identity: ^dag_surface_module) },
+    Edge {
+      label: Authored { name: ^grammar_production_captured_node_projection },
+      target: cwc_node(connective: Conj, children: [
+        Edge {
+          label: Authored { name: ^probe },
+          target: cwc_node(connective: Conj, children: concat(
+            [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+            members
+          ))
+        }
+      ])
     }
+  ])
+}
+
+fn cwc_variant_naming() -> Edge {
+  cwc_coproduct(name: ^VariantNaming, variants: [cwc_variant(name: ^AsAuthored, fields: []), cwc_variant(name: ^ScreamingSnakeCase, fields: [])])
+}
+
+fn cwc_coproduct_wire_contract() -> Edge {
+  cwc_record(name: ^CoproductWireContract, fields: [cwc_field(name: ^coproduct, type_name: ^String), cwc_field(name: ^encoding, type_name: ^VariantEncoding)])
+}
+
+// The cwc module, member for member. The ReviewEvent arms are in the order normalize emits them.
+fn cwc_root_cwc_module() -> Node {
+  cwc_module_root(members: [
+    cwc_variant_naming(),
+    cwc_coproduct(name: ^VariantEncoding, variants: [cwc_variant(name: ^StringVariant, fields: [cwc_field(name: ^naming, type_name: ^VariantNaming)])]),
+    cwc_coproduct_wire_contract(),
+    cwc_coproduct(name: ^ReviewEvent, variants: [
+      cwc_variant(name: ^Approve, fields: []), cwc_variant(name: ^Pending, fields: []),
+      cwc_variant(name: ^Comment, fields: []), cwc_variant(name: ^RequestChanges, fields: [])
+    ]),
+    cwc_data(name: ^review_event_wire_contract, type_name: ^CoproductWireContract, body: cwc_headless(fields: [
+      cwc_member(name: ^coproduct, target: dag_string_literal_node(value: "ReviewEvent", occurrence_id: OccurrenceSynthetic)),
+      cwc_member(name: ^encoding, target: cwc_headed(tag: ^StringVariant, fields: [cwc_member(name: ^naming, target: cwc_atom(identity: ^ScreamingSnakeCase))]))
+    ]))
+  ])
+}
+
+fn cwc_tree(root: Node, records: List<Symbol>) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(
+    import_bindings: no_import_bindings(),
+    type_declaration_kinds: fold(records, init: [], f: fn(acc, name) { list_snoc_item(xs: acc, item: DeclaredRecord { name: name }) }),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
+    root: root,
+    test_markers: test_marker_channel_empty(),
+    diagnostics: None
   )
 }
 
-fn cwc_norm_accepts(src: String) -> Bool {
-  match cwc_norm_of(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
+// The resolve verdict over a supplied root: ACCEPTED, or the fatal refusal reason.
+fn cwc_resolve_verdict(root: Node, records: List<Symbol>) -> Symbol {
+  match cwc_tree(root: root, records: records) {
+    Rejected { diagnostics: _ } => ^cwc_fixture_not_admitted
+    Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
+        Accepted { value: _, diagnostics: _ } => ^ACCEPTED
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// ---- the real path ----------------------------------------------------------------------------
+
+fn cwc_parse_of(src: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex), f: fn(toks) {
+    parse(tokens: toks, grammar: lm.grammar)
+  })
+}
+
+// THE ONE REAL-PATH CLAIM, and the pairing for every fixture above. It asserts the route, not only
+// the answer: the real parser emits the supplied malformed-coproduct parse tree; real normalize of the
+// cwc module emits the supplied cwc root, so its ReviewEvent Disj and the shapes the resolve fixtures
+// are built from are what the producer emits; and resolve accepts that tree. Before gunbc#13333 the
+// last conjunct was red: the single-tree door looked a variant value up from the corpus root and
+// marked no declaration as a record.
+test fn cwc_cwc_module_resolve_accepts() -> Bool {
+  let parse_pairs = match cwc_parse_of(src: cwc_src_type_malformed_coproduct) {
+    Accepted { value: p, diagnostics: _ } => content_hash(n: p) == content_hash(n: cwc_pt_malformed())
+    Rejected { diagnostics: _ } => false
+  }
+  parse_pairs && match bind_outcome(o: cwc_parse_of(src: cwc_src_cwc_module), f: fn(p) { normalize(parse_tree: p) }) {
+    Accepted { value: tree, diagnostics: _ } =>
+      (content_hash(n: tree.root) == content_hash(n: cwc_root_cwc_module()))
+        && match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
+          Accepted { value: _, diagnostics: _ } => true
+          Rejected { diagnostics: _ } => false
+        }
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn cwc_norm_two_variant_accepts() -> Bool {
-  cwc_verdicts().norm_two_variant_accepts
-}
+// ---- normalize, over a supplied parse tree ----------------------------------------------------
 
-test fn cwc_norm_three_variant_accepts() -> Bool {
-  cwc_verdicts().norm_three_variant_accepts
-}
-
-fn cwc_tree_has_disj_algebra() -> NodeFold<Bool> {
-  NodeFold {
-    init: fn(node) {
-      match node.kind {
-        TypeNode { connective: Disj } => true
-        _ => false
-      }
-    },
-    step: fn(acc, _edge, child_acc) {
-      if acc {
-        true
-      } else {
-        child_acc
-      }
-    }
-  }
-}
-
-fn cwc_tree_has_disj(n: Node) -> Bool {
-  fold_node(n: n, algebra: cwc_tree_has_disj_algebra())
-}
-
-fn cwc_disj_arm_count_algebra() -> NodeFold<Int> {
-  NodeFold {
-    init: fn(node) {
-      match node.kind {
-        TypeNode { connective: Disj } => count(node.children)
-        _ => 0
-      }
-    },
-    step: fn(acc, _edge, child_acc) {
-      if acc > 0 {
-        acc
-      } else {
-        child_acc
-      }
-    }
-  }
-}
-
-fn cwc_disj_arm_count(n: Node) -> Int {
-  fold_node(n: n, algebra: cwc_disj_arm_count_algebra())
-}
-
-fn cwc_norm_rejects(src: String) -> Bool {
-  match cwc_norm_of(src: src) {
+// A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
+// RED today: normalize accepts it (gunbc.recurring_failure_mode
+// a_coproduct_arm_without_a_constructor_name_is_accepted; enrolled in v2.workflow.floor_expected_red).
+test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
+  match normalize(parse_tree: cwc_pt_malformed()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
-  cwc_verdicts().non_coproduct_rhs_passes_through
-}
+// ---- resolve on the single-tree door, over supplied roots -------------------------------------
 
-// A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
-// This claim is RED today: normalize and resolve both accept the source. It is the one claim over
-// this shape; its negation used to stand beside it as a second test fn, so one of the pair was red
-// whatever normalize did, and neither discriminated.
-test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
-  cwc_verdicts().malformed_nary_coproduct_normalize_rejects
-}
-
-test fn cwc_norm_review_event_accepts() -> Bool {
-  cwc_verdicts().norm_review_event_accepts
-}
-
-fn cwc_resolve_accepts(src: String) -> Bool {
-  let lm = dag_language_model()
-  match cwc_norm_of(src: src) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match v2.compiler.resolve.resolve(tree: tree, lm: lm) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_cwc_module_resolve_accepts() -> Bool {
-  cwc_verdicts().cwc_module_resolve_accepts
-}
-
-// The single-tree door (v2.compiler.resolve build_program_namespace) binds a module's own variants
-// and record declarations. Each was refused on that door before it carried the module's path and
-// record names: a variant in value position as resolve_reason_unbound_symbol, a headless record
-// literal as resolve_anonymous_record_expected_type_not_record.
-data cwc_src_variant_value: String = "module probe\ntype U = U1 | U2\ndata u: U = U1\n"
-data cwc_src_record_headless: String = "module probe\ntype U = U1 | U2\ntype W { a: U, b: U }\ndata w: W = { a: U1, b: U2 }\n"
-data cwc_src_variant_absent: String = "module probe\ntype U = U1 | U2\ndata u: U = U3\n"
-data cwc_src_headless_at_coproduct: String = "module probe\ntype U = U1 | U2\ndata u: U = { a: U1 }\n"
-
-fn cwc_resolve_refuses_with(src: String, reason: Symbol) -> Bool {
-  let lm = dag_language_model()
-  match cwc_norm_of(src: src) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match v2.compiler.resolve.resolve(tree: tree, lm: lm) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
+// A variant in value position binds to the module's own declaration. Red before gunbc#13333, where
+// the door's lookup started at the corpus root.
 test fn cwc_single_tree_variant_value_resolves() -> Bool {
-  cwc_verdicts().single_tree_variant_value_resolves
+  cwc_resolve_verdict(
+    root: cwc_module_root(members: [cwc_variant_naming(), cwc_data(name: ^naming, type_name: ^VariantNaming, body: cwc_atom(identity: ^ScreamingSnakeCase))]),
+    records: []
+  ) == ^ACCEPTED
 }
 
+// A headless record literal elaborates against a record the module declares. Red before gunbc#13333,
+// where the door marked no declaration as a record.
 test fn cwc_single_tree_headless_record_resolves() -> Bool {
-  cwc_verdicts().single_tree_headless_record_resolves
+  cwc_resolve_verdict(
+    root: cwc_module_root(members: [
+      cwc_variant_naming(),
+      cwc_record(name: ^NamingHolder, fields: [cwc_field(name: ^naming, type_name: ^VariantNaming)]),
+      cwc_data(name: ^holder, type_name: ^NamingHolder, body: cwc_headless(fields: [cwc_member(name: ^naming, target: cwc_atom(identity: ^AsAuthored))]))
+    ]),
+    records: [^NamingHolder]
+  ) == ^ACCEPTED
 }
 
-// Controls: the door still refuses what it should, at the same reasons.
+// Controls: the door still refuses what it should, for the reason it should.
 test fn cwc_single_tree_undeclared_variant_refuses() -> Bool {
-  cwc_verdicts().single_tree_undeclared_variant_refuses
+  cwc_resolve_verdict(
+    root: cwc_module_root(members: [cwc_variant_naming(), cwc_data(name: ^naming, type_name: ^VariantNaming, body: cwc_atom(identity: ^Undeclared))]),
+    records: []
+  ) == ^resolve_reason_unbound_symbol
 }
 
 test fn cwc_single_tree_headless_at_coproduct_refuses() -> Bool {
-  cwc_verdicts().single_tree_headless_at_coproduct_refuses
-}
-
-test fn cwc_review_normalized_has_disj() -> Bool {
-  cwc_verdicts().review_normalized_has_disj
-}
-
-test fn cwc_review_disj_has_four_arms() -> Bool {
-  cwc_verdicts().review_disj_has_four_arms
-}
-
-// EVERY VERDICT IS COMPUTED ONCE. Each source pays a full tokenize -> parse -> normalize (and
-// resolve, for the resolve claims); computed per claim frame, each claim ran over the required
-// floor's new-witness margin (v2.workflow.required_floor claim_eval_step_budget_for_identity).
-// The stored value is Bools only (no Node, no closure), so it is portable, and cwc_verdicts is
-// enrolled warm in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm.
-type CwcVerdicts {
-  norm_two_variant_accepts: Bool,
-  norm_three_variant_accepts: Bool,
-  non_coproduct_rhs_passes_through: Bool,
-  malformed_nary_coproduct_normalize_rejects: Bool,
-  norm_review_event_accepts: Bool,
-  cwc_module_resolve_accepts: Bool,
-  single_tree_variant_value_resolves: Bool,
-  single_tree_headless_record_resolves: Bool,
-  single_tree_undeclared_variant_refuses: Bool,
-  single_tree_headless_at_coproduct_refuses: Bool,
-  review_normalized_has_disj: Bool,
-  review_disj_has_four_arms: Bool,
-}
-
-fn cwc_verdicts() -> CwcVerdicts {
-  CwcVerdicts {
-    norm_two_variant_accepts: cwc_verdict_norm_two_variant_accepts(),
-    norm_three_variant_accepts: cwc_verdict_norm_three_variant_accepts(),
-    non_coproduct_rhs_passes_through: cwc_verdict_non_coproduct_rhs_passes_through(),
-    malformed_nary_coproduct_normalize_rejects: cwc_verdict_malformed_nary_coproduct_normalize_rejects(),
-    norm_review_event_accepts: cwc_verdict_norm_review_event_accepts(),
-    cwc_module_resolve_accepts: cwc_verdict_cwc_module_resolve_accepts(),
-    single_tree_variant_value_resolves: cwc_verdict_single_tree_variant_value_resolves(),
-    single_tree_headless_record_resolves: cwc_verdict_single_tree_headless_record_resolves(),
-    single_tree_undeclared_variant_refuses: cwc_verdict_single_tree_undeclared_variant_refuses(),
-    single_tree_headless_at_coproduct_refuses: cwc_verdict_single_tree_headless_at_coproduct_refuses(),
-    review_normalized_has_disj: cwc_verdict_review_normalized_has_disj(),
-    review_disj_has_four_arms: cwc_verdict_review_disj_has_four_arms(),
-  }
-}
-
-fn cwc_verdict_norm_two_variant_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_two)
-}
-
-fn cwc_verdict_norm_three_variant_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_three)
-}
-
-fn cwc_verdict_non_coproduct_rhs_passes_through() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_scalar) {
-    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn cwc_verdict_malformed_nary_coproduct_normalize_rejects() -> Bool {
-  cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
-}
-
-fn cwc_verdict_norm_review_event_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_review)
-}
-
-fn cwc_verdict_cwc_module_resolve_accepts() -> Bool {
-  cwc_resolve_accepts(src: cwc_src_cwc_module)
-}
-
-fn cwc_verdict_single_tree_variant_value_resolves() -> Bool {
-  cwc_resolve_accepts(src: cwc_src_variant_value)
-}
-
-fn cwc_verdict_single_tree_headless_record_resolves() -> Bool {
-  cwc_resolve_accepts(src: cwc_src_record_headless)
-}
-
-fn cwc_verdict_single_tree_undeclared_variant_refuses() -> Bool {
-  cwc_resolve_refuses_with(src: cwc_src_variant_absent, reason: ^resolve_reason_unbound_symbol)
-}
-
-fn cwc_verdict_single_tree_headless_at_coproduct_refuses() -> Bool {
-  cwc_resolve_refuses_with(src: cwc_src_headless_at_coproduct, reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-fn cwc_verdict_review_normalized_has_disj() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn cwc_verdict_review_disj_has_four_arms() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
-    Rejected { diagnostics: _ } => false
-  }
+  cwc_resolve_verdict(
+    root: cwc_module_root(members: [
+      cwc_variant_naming(),
+      cwc_data(name: ^naming, type_name: ^VariantNaming, body: cwc_headless(fields: [cwc_member(name: ^a, target: cwc_atom(identity: ^AsAuthored))]))
+    ]),
+    records: []
+  ) == ^resolve_anonymous_record_expected_type_not_record
 }
