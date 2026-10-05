@@ -73,13 +73,13 @@ test fn an_unmeasured_base_says_not_measured() -> Bool {
     == "baseline=not-measured cause=report-only"
 }
 
-// ONLY A FAILING HEAD NEEDS THE BASE ARM, and that is the verdict function's own consequence: a
-// passing head never blocks, and a head where the claim is no longer declared is a removal under
-// every base, which blocks nothing. A failing head blocks under some base, so it needs one; an
-// unknown name is never exempt.
-test fn only_a_failing_head_needs_the_base_arm() -> Bool {
+// ONLY A PASSING HEAD SKIPS THE BASE ARM, and that is the verdict function's own consequence: a
+// passing head never blocks. A failing head blocks under some base, and so does a head where the
+// claim is not declared (it blocks when the base does not declare it either, review 76405), so both
+// need a base; an unknown name is never exempt.
+test fn only_a_passing_head_skips_the_base_arm() -> Bool {
   reach_head_cannot_block(head: "passed")
-    && reach_head_cannot_block(head: "not_declared")
+    && !reach_head_cannot_block(head: "not_declared")
     && !reach_head_cannot_block(head: "failed")
     && !reach_head_cannot_block(head: "interrupted")
 }
@@ -131,11 +131,21 @@ fn first_expected_red() -> String {
   }
 }
 
-// A HEAD THAT WAS NOT MEASURED IS NEVER A REGRESSION: a wall interruption at head under host load,
-// beside a passing base, is head_not_measured (the floor's interruption rule refuses the run for
-// it), not regressed; and it needs no base.
-test fn an_unmeasured_head_is_not_a_regression() -> Bool {
+// A HEAD THAT WAS NOT MEASURED IS REFUSED, NEVER REPORTED AS AN ANSWER (review 76405): a wall
+// interruption at head beside a passing base has no verdict to compare, so the differential refuses
+// it typed and located; and it needs no base.
+test fn an_unmeasured_head_is_refused_not_reported() -> Bool {
   verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "passed", head: "not_measured"))
-    == "head_not_measured:reports"
+    == "refused:head not measured: a reached claim has no verdict at head t.unrostered.claim"
     && reach_head_cannot_block(head: "not_measured")
+}
+
+// A CLAIM DECLARED AT NEITHER SIDE IS NOT A REMOVAL (review 76405): a lookup that answered
+// NotDeclared at both base and head is not evidence that anything was deleted, so it blocks; a real
+// removal (declared at base, gone at head) still reports.
+test fn a_claim_declared_at_neither_side_blocks_and_a_removal_reports() -> Bool {
+  verdict_named(v: reach_claim_verdict(identity: "t.c", entry: "t/c.dag", function: "c", base: "not_declared", head: "not_declared"))
+    == "undeclared_at_base_and_head:blocks"
+    && verdict_named(v: reach_claim_verdict(identity: "t.c", entry: "t/c.dag", function: "c", base: "passed", head: "not_declared"))
+    == "removed:reports"
 }

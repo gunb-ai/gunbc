@@ -2541,12 +2541,13 @@ type ClaimDifferential
   | DifferentialRepaired
   | DifferentialNewClaim { head: ClaimStanding }
   | DifferentialRemoved
+  | DifferentialUndeclaredAtBothSides
 
 fn claim_differential(base: ClaimStanding, head: ClaimStanding) -> ClaimDifferential {
   match base {
     StandingNotDeclared =>
       match head {
-        StandingNotDeclared => DifferentialRemoved
+        StandingNotDeclared => DifferentialUndeclaredAtBothSides
         StandingPassed => DifferentialNewClaim { head: head }
         StandingFailed => DifferentialNewClaim { head: head }
       }
@@ -2578,6 +2579,7 @@ fn claim_differential_blocks(d: ClaimDifferential) -> Bool {
     DifferentialStillRed => false
     DifferentialRepaired => false
     DifferentialRemoved => false
+    DifferentialUndeclaredAtBothSides => true
   }
 }
 
@@ -2647,6 +2649,7 @@ fn claim_differential_name(d: ClaimDifferential) -> String {
     DifferentialRepaired => "repaired"
     DifferentialNewClaim { head: _ } => "new_claim"
     DifferentialRemoved => "removed"
+    DifferentialUndeclaredAtBothSides => "undeclared_at_base_and_head"
   }
 }
 
@@ -2705,7 +2708,7 @@ fn reach_claim_verdict(
   head: String,
 ) -> ReachClaimVerdict {
   if head == "not_measured" {
-    ReachVerdict { differential: "head_not_measured", blocks: false }
+    ReachVerdictRefused { reason: concat("head not measured: a reached claim has no verdict at head ", identity) }
   } else if base == "not_measured" {
     base_not_measured_verdict(identity: identity, entry: entry, function: function)
   } else {
@@ -2727,7 +2730,8 @@ fn reach_claim_verdict(
 // WHICH REACHED CLAIMS NEED A BASE STANDING AT ALL. A head standing CANNOT BLOCK when no base
 // standing makes claim_differential_blocks true for it, and then its base is irrelevant to the
 // verdict. That is derived from the verdict function over EVERY base arm, not asserted. Today it
-// holds for StandingPassed and for StandingNotDeclared (a removal blocks nothing under any base),
+// holds for StandingPassed only: a head NotDeclared blocks when the base is NotDeclared too
+// (DifferentialUndeclaredAtBothSides, review 76405), so a removal runs the base arm to prove it was one,
 // so the base arm runs only the claims that FAIL at head: 60 of 1481 for a one-line v2.std.node body edit and 18 of 240 for gunbc#12582's change
 // (neat-boar-16, srv1, 2026-10-01). An unknown head name answers false, so it still goes to the
 // base arm and refuses there rather than being skipped.
@@ -2738,8 +2742,9 @@ fn head_cannot_block(head: ClaimStanding) -> Bool {
 }
 
 // A HEAD THAT WAS NOT MEASURED (a non-verdict at head: a wall interruption under host load) needs
-// no base, because no base standing can make it a regression; the floor's own interruption rule
-// already refuses the run for it. So it is exempt here and named head_not_measured below.
+// no base, because no base standing can turn ignorance into a verdict: reach_claim_verdict REFUSES it,
+// typed and located (review 76405; DESIGN section 5, a failure arm refuses, never widens), rather than
+// reporting it as a non-blocking answer and leaning on the interruption rule elsewhere to refuse.
 fn reach_head_cannot_block(head: String) -> Bool {
   if head == "not_measured" {
     true
