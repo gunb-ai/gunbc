@@ -117,20 +117,43 @@ fn netplan_nm_profile_yaml_path(uuid: NonEmptyStr) -> NonEmptyStr {
 // profile that netplan did not generate is runtime-only: nothing regenerates it and it is gone at
 // reboot, so a setting converged there is not persisted anywhere.
 type NmProfilePersistence
-  = PersistedByNetplanYaml { yaml: NonEmptyStr }
+  = PersistedByNetplanYaml { yaml: NonEmptyStr, definition: NonEmptyStr }
   | PersistedByKeyfile { path: NonEmptyStr }
   | PersistedNowhere { path: NonEmptyStr }
 
 fn nm_profile_persistence(uuid: NonEmptyStr, filename: NonEmptyStr) -> NmProfilePersistence {
   let f = filename as String
-  if starts_with(s: f, prefix: netplan_nm_generated_profile_prefix as String) { PersistedByNetplanYaml { yaml: netplan_nm_profile_yaml_path(uuid: uuid) } }
+  if starts_with(s: f, prefix: netplan_nm_generated_profile_prefix as String) { PersistedByNetplanYaml { yaml: netplan_nm_profile_yaml_path(uuid: uuid), definition: netplan_nm_definition_id(uuid: uuid) } }
   else if starts_with(s: f, prefix: networkmanager_keyfile_profile_dir as String) { PersistedByKeyfile { path: filename } }
   else { PersistedNowhere { path: filename } }
 }
 
-// A passthrough key in the NM YAML, as the word netplan stores (quotes stripped). The key absent is
-// its own reading: netplan omits a passthrough NetworkManager left at its default, so absence is the
-// default, not an unread value.
+// THE 90-NM FILE IS ONE INPUT, NOT THE AUTHORITY. netplan-yaml (netplan.readthedocs.io/en/stable/
+// netplan-yaml/, "General structure"): netplan reads every *.yaml under /lib/netplan, /etc/netplan and
+// /run/netplan; a file in /run shadows a same-named file in /etc, which shadows /lib; the surviving
+// files are applied in lexicographic order of name, a later file's keys overriding an earlier file's.
+// So what the next `netplan generate` renders for the profile is the MERGED value, and a later file
+// (say 99-override.yaml) can override 90-NM-<uuid>.yaml or supply a key that file omits. The 90-NM
+// path is kept as PROVENANCE (which file NetworkManager wrote), never as the verdict.
+//
+// netplan get (netplan.readthedocs.io/en/stable/netplan-get/): "Get a setting by specifying a nested
+// key like 'ethernets.eth0.addresses', or 'all'", answered from netplan's parse of the merged
+// configuration and printed as YAML. The profile's definition is `NM-<uuid>` under `wifis` (the id
+// NetworkManager's netplan backend writes, the stem of 90-NM-<uuid>.yaml); its passthrough subtree is
+// asked for whole, so passthrough keys that themselves contain dots are never spelled into the path.
+// An empty answer means the definition is not in the merged configuration, which a consumer must
+// refuse rather than read as "every key at its default".
+fn netplan_nm_definition_id(uuid: NonEmptyStr) -> NonEmptyStr {
+  join(["NM-", uuid as String], "") as NonEmptyStr
+}
+
+fn netplan_get_wifi_passthrough_argv(definition: NonEmptyStr) -> List<String> {
+  ["netplan", "get", join(["wifis.", definition as String, ".networkmanager.passthrough"], "")]
+}
+
+// A passthrough key in the MERGED passthrough subtree, as the word netplan prints (quotes stripped).
+// The key absent from the merged subtree is its own reading: no layer supplies it, so the generated
+// keyfile omits it and NetworkManager applies its default. Absent from one FILE is not this reading.
 type NetplanPassthroughRead
   = PassthroughValue { word: String }
   | PassthroughKeyAbsent

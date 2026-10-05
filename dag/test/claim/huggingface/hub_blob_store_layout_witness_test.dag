@@ -1,34 +1,33 @@
 module test.claim.huggingface.hub_blob_store_layout_witness
 
-import std.types { Bool, String, NonEmptyStr }
-import extdeps.huggingface.hub {
-  HubBlobStoreLayout, HubSharedBlobStore, RepoLocalBlobs,
-  hub_cli_blob_store_layout, hub_dereferenced_bytes_argv, hub_repo_blob_hard_link_argv,
-}
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.huggingface.hub { hub_dereferenced_bytes_argv, hub_repo_blob_hard_link_argv }
 
-// THE LAYOUT THE FLEET'S hf WRITES (hf 1.33, srv7 2026-10-03): the repo folder's blobs/<hash> is a
-// symlink into the hub-level store, so the row is the shared store and a hard link of a repo blob
-// must follow the link. Flipping the row to RepoLocalBlobs reds the first claim; deleting -L from the
-// shared arm reds the second.
-test fn w_fleet_cli_writes_the_shared_store() -> Bool {
-  match hub_cli_blob_store_layout {
-    HubSharedBlobStore => true
-    RepoLocalBlobs => false
-  }
-}
+// A REPO BLOB ENTRY MAY BE A SHARED-STORE LINK OR A REPO-LOCAL FILE, PER FILE (hf 1.33 on srv7
+// 2026-10-03 wrote links; upstream falls back to repo-local blobs where sharing fails). The byte
+// operations therefore take no layout and dereference every entry: deleting -L from either argv reds
+// the claims below.
 
-test fn w_shared_store_hard_link_follows_the_symlink() -> Bool {
-  join(hub_repo_blob_hard_link_argv(layout: HubSharedBlobStore, repo_blob: "/c/models--o--m/blobs/ab" as NonEmptyStr, destination: "/f/ab" as NonEmptyStr), " ")
+test fn w_hard_link_of_a_repo_blob_dereferences() -> Bool {
+  join(hub_repo_blob_hard_link_argv(repo_blob: "/c/models--o--m/blobs/ab" as NonEmptyStr, destination: "/f/ab" as NonEmptyStr), " ")
     == "ln -fL /c/models--o--m/blobs/ab /f/ab"
 }
 
-// Red control: a repo-local blob is the regular file, so its argv carries no -L -- the two arms are
-// distinguishable, which is what makes the claim above say something.
-test fn red_control_repo_local_blob_links_without_following() -> Bool {
-  join(hub_repo_blob_hard_link_argv(layout: RepoLocalBlobs, repo_blob: "/c/b" as NonEmptyStr, destination: "/f/b" as NonEmptyStr), " ") == "ln -f /c/b /f/b"
+// A MIXED CACHE: one entry a shared-store link, one a repo-local fallback blob. Both go through the
+// same dereferencing argv; nothing about either entry selects a different operation.
+data mixed_cache_entries: List<NonEmptyStr> = [
+  "/c/models--o--m/blobs/linked-into-hub-blobs" as NonEmptyStr,
+  "/c/models--o--m/blobs/repo-local-fallback" as NonEmptyStr,
+]
+
+test fn w_mixed_cache_entries_all_dereference() -> Bool {
+  all(mixed_cache_entries, e => {
+    let argv = hub_repo_blob_hard_link_argv(repo_blob: e, destination: "/f/x" as NonEmptyStr)
+    join(argv, " ") == join(["ln -fL ", e as String, " /f/x"], "")
+  })
 }
 
-// A repo folder's completed bytes are read DEREFERENCED: undereferenced, a folder whose blobs are all
+// A repo folder's completed bytes are read DEREFERENCED: undereferenced, a folder whose blobs are
 // links reads near zero and shrinks as the fetch completes.
 test fn w_completed_bytes_are_read_dereferenced() -> Bool {
   join(hub_dereferenced_bytes_argv(path: "/c/models--o--m" as NonEmptyStr), " ") == "du -sbL /c/models--o--m"

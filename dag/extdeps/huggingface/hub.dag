@@ -139,18 +139,20 @@ fn hub_snapshot_directory(cache_root: NonEmptyStr, repo: HubRepoId, revision: No
   ], "") as NonEmptyStr
 }
 
-// WHERE A COMPLETED BLOB'S BYTES LIVE DEPENDS ON THE CLI, and the CLI the fleet runs moved them. The
-// cache document above describes `blobs/<hash>` inside each repo folder as the regular file. hf 1.33
-// (read by valiant-crab-775 on srv7 2026-10-03, during the GLM-5.3 fetch) keeps a completed LFS file
-// in a HUB-LEVEL shared store, `<cache_root>/blobs/<2 hex>/<sha256>`, and leaves the repo folder's
-// `blobs/<hash>` as a SYMLINK into it; only the in-flight `.incomplete` partials are regular files in
-// the repo folder. Two consequences a consumer owes: the repo folder SHRINKS as files complete, so its
-// undereferenced size is not progress; and the repo folder alone (a mount, a copy, a hard link of the
-// entry) hands out dangling links. The shared store sits under the cache root, so a mount of the
-// cache root carries both.
-type HubBlobStoreLayout = RepoLocalBlobs | HubSharedBlobStore
-
-data hub_cli_blob_store_layout: HubBlobStoreLayout = HubSharedBlobStore
+// A REPO BLOB ENTRY MAY BE A LINK INTO A HUB-LEVEL SHARED STORE, PER FILE. The cache document above
+// describes `blobs/<hash>` inside each repo folder as the regular file. hf 1.33 (read by
+// valiant-crab-775 on srv7 2026-10-03, during the GLM-5.3 fetch) kept completed LFS files in a
+// hub-level store, `<cache_root>/blobs/<2 hex>/<sha256>`, and left the repo folder's `blobs/<hash>`
+// as a SYMLINK into it. Upstream's shared store is CONDITIONAL and decided per file: it applies to
+// Xet-backed files under the symlink cache, can be disabled by environment, and falls back to an
+// ordinary repo-local blob where sharing fails (unsupported filesystem, permissions); with symlinks
+// disabled (HF_HUB_DISABLE_SYMLINKS below) files are copied into `snapshots/` and `blobs/` is unused.
+// So one cache can hold shared-store links beside regular repo-local blobs, and no CLI version fixes
+// one cache-wide layout. What a consumer owes is therefore unconditional: a reader or linker of a
+// repo entry's BYTES dereferences it, which is correct for a link and a no-op for a regular file.
+// The repo folder alone (a mount, a copy, an undereferenced size) can hand out dangling links and
+// SHRINKS as files complete; the shared store sits under the cache root, so a cache-root mount
+// carries both.
 
 // THE BYTES A REPO FOLDER (or its snapshots) HOLDS are read dereferenced: snapshot entries are links
 // in every layout and, in the shared-store layout, so are the repo blobs. GNU du counts an inode once
@@ -159,13 +161,12 @@ fn hub_dereferenced_bytes_argv(path: NonEmptyStr) -> List<String> {
   ["du", "-sbL", path as String]
 }
 
-// A HARD LINK OF A REPO BLOB must land on the bytes. In the shared-store layout the entry is a
-// symlink, and `ln` without -L links the symlink itself, a dangling pointer once moved; -L follows it.
-fn hub_repo_blob_hard_link_argv(layout: HubBlobStoreLayout, repo_blob: NonEmptyStr, destination: NonEmptyStr) -> List<String> {
-  match layout {
-    HubSharedBlobStore => ["ln", "-fL", repo_blob as String, destination as String]
-    RepoLocalBlobs => ["ln", "-f", repo_blob as String, destination as String]
-  }
+// A HARD LINK OF A REPO BLOB must land on the bytes, whichever kind the entry is. ln(1) (GNU
+// coreutils): -L, --logical "dereference TARGETs that are symbolic links"; on a regular file it links
+// that file. So -L is right for a shared-store link and for a repo-local blob alike, and the argv
+// needs no guess about which this entry is; without it a link entry is hard-linked as a dangling pointer.
+fn hub_repo_blob_hard_link_argv(repo_blob: NonEmptyStr, destination: NonEmptyStr) -> List<String> {
+  ["ln", "-fL", repo_blob as String, destination as String]
 }
 
 // A REVISION IS AN IMMUTABLE COMMIT AND A BRANCH NAME IS NOT. `refs/<branch>` holds the commit the
