@@ -4,7 +4,13 @@ import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.gate_closure_decline_census { gate_closure_decline_census_lines }
+import gunbc.gate_closure_decline_census {
+  gate_closure_decline_census_lines,
+  gate_closure_declined_identities,
+  DispositionRosterRead,
+  DispositionRosterRows,
+  DispositionRosterRefused
+}
 
 // THE CENSUS OF WITNESSES THE REQUIRED FLOOR NEVER ASKS, re-derived from one floor run's own
 // admission roster. The recipe:
@@ -23,9 +29,11 @@ fn gate_closure_decline_census(root: String, run: String) -> CliWireResponse {
   if !read.success {
     CliWirePrintable { bytes: "", exit: exit_failure(reason: "gate closure decline census: unreadable " + path) }
   } else {
-    CliWirePrintable {
-      bytes: join(gate_closure_decline_census_lines(lines: split(s: read.content, delimiter: "\n")), "\n") + "\n",
-      exit: ExitSuccess,
+    match gate_closure_declined_identities(lines: split(s: read.content, delimiter: "\n")) {
+      DispositionRosterRefused { line_number, line, cause } =>
+        CliWirePrintable { bytes: "", exit: exit_failure(reason: "gate closure decline census: " + path + " line " + to_string(line_number) + " refused (" + cause + "): " + line) }
+      DispositionRosterRows { identities } =>
+        CliWirePrintable { bytes: join(gate_closure_decline_census_lines(identities: identities), "\n") + "\n", exit: ExitSuccess }
     }
   }
 }
