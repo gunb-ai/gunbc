@@ -17,7 +17,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // lanes render corpus modules for real.
 //
 // WHY THAT BOUNDARY DOES NOT HOLD, BY NAME. The only required phase that renders corpus modules
-// through the rust emitter is generated-artifact's stage0-mirrors half (and regen-fixed-point),
+// through the rust emitter is generated-artifact's stage0-mirrors half (regen-fixed-point was deleted by operator ruling 2026-10-04),
 // both in the build lane (gunbc.compiler_gate_workflow). Its population is the v1 SEED closure:
 // the modules named by a `// Source module:` header under src/v1/stage0/src.
 // On a pull request it renders only the AFFECTED mirrors (v1_compiler.required_regen_host
