@@ -1329,21 +1329,21 @@ struct DeclarationTextAttribution {
     changed: HashSet<usize>,
 }
 
-/// A declaration's OWN text: from its first line up to the next declaration, without the
-/// trailing blank and `//` lines. Those trailing lines are the NEXT declaration's leading
-/// annotation (DESIGN §4c: an annotation is not program data), so deleting a neighbour and its
-/// comment never changes this declaration's text.
+/// A declaration's OWN text, ANNOTATION-ERASED: from its first line up to the next declaration,
+/// with every `//` line removed and the trailing blank lines dropped. DESIGN §4c: semantic passes
+/// receive only the annotation-erased projection, so adding, deleting, editing or moving a `//`
+/// block -- a declaration's leading annotation, or one that drifts across a neighbour -- never
+/// changes this text and never charges the declaration. Whitespace is otherwise compared as is.
 fn declaration_own_text(lines: &[String], start: usize, next: usize) -> String {
-    let mut end = next.min(lines.len());
-    while end > start {
-        let t = lines[end - 1].trim();
-        if t.is_empty() || t.starts_with("//") {
-            end -= 1;
-        } else {
-            break;
-        }
+    let mut kept: Vec<&str> = lines[start..next.min(lines.len()).max(start)]
+        .iter()
+        .map(String::as_str)
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect();
+    while kept.last().is_some_and(|l| l.trim().is_empty()) {
+        kept.pop();
     }
-    lines[start..end].join("\n")
+    kept.join("\n")
 }
 
 /// Whether a line REMOVED by the diff opens a declaration at the base. Removed lines are not
@@ -1413,8 +1413,8 @@ fn declaration_text_attribution(
     base_opens.dedup_by_key(|(b, _)| *b);
     let first_head = (decls[0].0 - 1).max(0) as usize;
     let first_base = base_opens.first().map(|(b, _)| *b).unwrap_or(base.len());
-    let pre_declaration_changed =
-        head_owned[..first_head.min(head_owned.len())] != base[..first_base.min(base.len())];
+    let pre_declaration_changed = declaration_own_text(&head_owned, 0, first_head)
+        != declaration_own_text(&base, 0, first_base);
     let module_line_changed = head_owned.first() != base.first();
     let mut changed = HashSet::new();
     for (i, (line, name)) in decls.iter().enumerate() {

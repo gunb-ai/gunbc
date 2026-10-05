@@ -27959,6 +27959,56 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         );
     }
 
+    // DESIGN §4c: an annotation is not program data, so a `//` edit charges no witness. Lines:
+    // 3 `// note a`, 4-7 `a`, 9 `// note c`, 10-13 `c` (whose body carries a `//` line).
+    const NOTE_HEAD: &str = "module m.note\n\n// note a\ntest fn a() -> Bool {\n  true\n}\n\n// note c new\ntest fn c() -> Bool {\n  // body note new\n  true\n}\n";
+    const NOTE_PATH: &str = "src/v2/test/claim/note_fixture_test.dag";
+
+    fn note_diff(hunks: &str) -> String {
+        let path = NOTE_PATH;
+        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}")
+    }
+
+    #[test]
+    fn a_leading_annotation_edit_charges_no_witness() {
+        let diff = note_diff("@@ -8 +8 @@\n-// note c old\n+// note c new\n@@ -10 +10 @@\n-  // body note old\n+  // body note new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "editing only `//` lines changes no declaration's annotation-erased text"
+        );
+    }
+
+    #[test]
+    fn a_body_edit_beside_an_annotation_still_charges_it() {
+        let diff = note_diff("@@ -11 +11 @@\n-  false\n+  true\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::from(["c".to_string()]),
+            "a non-annotation line edited inside `c` edits `c`"
+        );
+    }
+
+    #[test]
+    fn a_moved_annotation_block_charges_neither_declaration() {
+        // Base: `// note c new` sat inside `a`'s body; the head moved it above `c`.
+        let diff = note_diff("@@ -5 +4,0 @@\n-// note c new\n@@ -8,0 +8 @@\n+// note c new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "moving a `//` block between two declarations charges neither"
+        );
+    }
+
     #[test]
     fn a_genuinely_edited_claim_is_still_charged() {
         let path = GAP_PATH;
