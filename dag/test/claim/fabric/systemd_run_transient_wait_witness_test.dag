@@ -130,7 +130,7 @@ test fn the_user_wait_builder_renders_the_old_order() -> Bool {
         left: argv_words(command: command),
         right: [
           "systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=fci1-user.service",
-          "--property=MemoryMax=17179869184", "--setenv=A=c", "--", "/bin/true",
+          "-p", "MemoryMax=17179869184", "--setenv=A=c", "--", "/bin/true",
         ],
       )
   }
