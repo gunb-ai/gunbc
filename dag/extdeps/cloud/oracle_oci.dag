@@ -2,7 +2,6 @@ module extdeps.cloud.oracle_oci
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import std.measure { Gigabyte, gigabyte }
 import std.types { NonEmptyStr }
 import std.nat { Nat }
@@ -51,22 +50,10 @@ fn oci_shape_wire_name(shape: OciAlwaysFreeShape) -> NonEmptyStr {
   }
 }
 
-fn oci_shape_architecture(shape: OciAlwaysFreeShape) -> Architecture {
-  match shape {
-    VmStandardA1Flex => Aarch64
-    VmStandardE21Micro => X86_64
-  }
-}
-
 // From the compute shapes page: "1 OCPU on Arm A1 (Compute) = 1 core on Arm A1 (Compute) or 1 vCPU",
-// and "1 OCPU on x86 (AMD and Intel) = 2 vCPUs". This is the denominator the allowance is written in.
-// Without it, "2 OCPUs" on A1 and on E2 would look like the same amount of compute, and they are not.
-fn oci_vcpus_per_ocpu(shape: OciAlwaysFreeShape) -> Nat {
-  match shape {
-    VmStandardA1Flex => 1
-    VmStandardE21Micro => 2
-  }
-}
+// and "1 OCPU on x86 (AMD and Intel) = 2 vCPUs". A1.Flex is Aarch64 and E2.1.Micro is X86_64. These
+// enter as typed rows with their consumer, the fabric offer shape, when a zero-priced offer can be
+// minted (product.supplier.oracle_oci oci_tenancy_allocation_unread_obligation).
 
 // The compute shapes page names the A1.Flex processor as Ampere Altra Q80-30, which is the catalog row
 // extdeps.cpu.ampere altra_q8030_catalog. No consumer here needs the processor, so the row is named in

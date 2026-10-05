@@ -4,45 +4,25 @@ import std.types { Bool, List, NonEmptyStr }
 import v2.std.optional { Absent, Present }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure {
-  Gigabyte, gigabyte, gigabyte_count, Second, second,
-  byte_size, hardware_thread_count, money_amount_micro, MoneyPerHour,
-}
-import extdeps.currency.currency { Usd }
-import product.fabric.identity { FabricIdentity }
-import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
-import product.fabric.envelope { cpu_memory_envelope }
-import product.fabric.isolation { IsolationProfile }
-import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, UnobservedSupply }
-import product.fabric.provider_route {
-  ProviderRegionObservation, ProviderRegionRead, ProviderRouteObserved, ProviderRouteRegionUnobserved,
-  provider_route_from_region,
-}
-import product.supplier.ubicloud {
-  SupplierOfferProjection, UnexpressedSupplyFact, IsolationNotObserved,
-  ReadinessObservation, ReadinessMeasured, ReadinessUnmeasured,
-  OfferBinding, OfferBound, OfferBindingRefused,
-}
+import std.measure { Gigabyte, gigabyte, gigabyte_count }
+import product.supplier.ubicloud { OfferBinding, OfferBindingRefused }
 import extdeps.cloud.oracle_oci {
   OciAlwaysFreeShape, VmStandardA1Flex, VmStandardE21Micro,
   OciCapacityType, OnDemandCapacity, PreemptibleCapacity, CapacityReservation,
   DedicatedVirtualMachineHost, ComputeCluster,
   OciTenancyTier, AlwaysFreeTenancy, PayAsYouGoTenancy,
+  OciRegion, oci_region_us_ashburn_1,
   oci_a1_flex_allowance, oci_e2_micro_allowance, oci_block_volume_allowance,
-  oci_shape_wire_name, oci_shape_architecture, oci_vcpus_per_ocpu,
 }
 
 // ORACLE'S ALWAYS FREE ALLOWANCE AS A FABRIC SUPPLIER: TWO QUESTIONS, ASKED IN ORDER.
 //
-// First: does a planned set of instances fit the allowance? oci_always_free_fit answers that, and it
-// is what makes a $0 price true. A zero quote is honest only inside the allowance, so no offer from
-// this module carries one unless the plan it belongs to has fit. Second: how does one planned
-// instance become a SupplierOffer? bind_oci_always_free_offer answers that, using the same refusals
-// as product.supplier.ubicloud. A route needs the tenancy's home region to have been read, and a
-// ranked offer needs a measured readiness. Those types are imported from that module rather than
-// re-minted, because a second OfferBinding beside the first would be the fork DESIGN section 3
-// forbids.
+// First: does a planned set of instances fit the allowance? oci_always_free_fit answers that for a
+// plan alone, and oci_always_free_fit_beside answers it beside other usage. Second: can one planned
+// instance become a zero-priced SupplierOffer? bind_oci_always_free_offer answers that, and today the
+// answer is a typed refusal naming the evidence a zero quote needs. Its OfferBinding is the one
+// product.supplier.ubicloud declares, not a second, because a second would be the fork DESIGN
+// section 3 forbids.
 //
 // Every vendor figure comes from extdeps.cloud.oracle_oci. Nothing here restates it.
 
@@ -225,99 +205,31 @@ fn oci_breach_consequence(tier: OciTenancyTier) -> OciBreachConsequence {
 }
 
 // ── THE OFFER ─────────────────────────────────────────────────────────────────────────────────
+//
+// THE OPERATOR'S TENANCY HOME REGION IS US EAST (ASHBURN), as the operator stated on 2026-10-05. It
+// is a fact about our tenancy and not about Oracle, so it lives here as an attributable operator
+// statement, bound to the vendor's region row. Always Free compute can be created only in the home
+// region, and identity calls must go there, so gunbc.oracle_oci.api derives its endpoint hosts from
+// this row. If the tenancy is ever recreated, re-read it from the OCI console's Tenancy details.
+data oci_tenancy_home_region: OciRegion = oci_region_us_ashburn_1
 
-fn oci_provider_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "extdeps_external_authority_anchor")
-}
+// A ZERO-PRICED OFFER IS NOT AVAILABLE YET, AND THE BINDING SAYS SO RATHER THAN MINTING ONE (review on
+// gunbc#13335). A zero quote is true only if the offered plan fits the allowance beside everything else
+// the tenancy holds, and that needs two pieces of evidence nothing here can admit yet:
+//   - usage outside the plan, observed RELATIVE TO THAT PLAN. "Outside the plan" is a relation between
+//     an inventory and one plan, so an observation that does not carry the plan it excluded can be
+//     truthful for one plan and reused for another;
+//   - A1's monthly meter. The allowance is 1,500 OCPU-hours and 9,000 GB-hours a month, and a current
+//     inventory does not say how much of this month's credit is already spent.
+// So the binding decides everything it can decide (the member is in the plan, the plan fits nominally,
+// which includes the home-region rule) and then refuses with the obligation that names both. The nominal
+// calculator stays, because the instance converge uses it, beside tenancy usage it observes itself, to
+// decide whether a launch is possible at all. That is a different claim from a price.
+data oci_tenancy_allocation_unread_obligation: NonEmptyStr = "A zero-priced Always Free offer needs two pieces of evidence this repository cannot yet admit. (1) The tenancy's usage outside the offered plan, derived against THAT plan's member identities, so that an observation made for one plan cannot be reused for another. (2) The A1 month-to-date meter, OCPU-hours and GB-hours consumed in the current billing month against the 1,500 / 9,000 allowance, because a current inventory does not establish remaining credit. RESOLVED BY an allocation observation that carries the excluded plan's identity and the billing month's consumption, and a binding that checks both before minting a quote."
 
-fn oci_service_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_always_free_resources_authority")
-}
+data oci_member_not_in_plan_refusal: NonEmptyStr = "The requested member is not an instance of the offered plan, so nothing can be bound for it under that plan."
 
-// THE OPERATOR'S TENANCY HOME REGION IS US EAST (ASHBURN), as the operator stated on 2026-10-05.
-// It is a fact about our tenancy and not about Oracle, so it lives here, as an attributable operator
-// statement, and cites the vendor's region row for what us-ashburn-1 is. Always Free compute can be
-// created only in the home region, so this is the region of every offer this supplier makes.
-data oci_tenancy_home_region_statement: NonEmptyStr = "Operator statement, 2026-10-05: the gunbc OCI tenancy's home region is US East (Ashburn), us-ashburn-1. Re-read it from the OCI console's Tenancy details if the tenancy is ever recreated."
-
-fn oci_home_region() -> ProviderRegionObservation {
-  ProviderRegionRead {
-    region: decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_region_us_ashburn_1"),
-  }
-}
-
-data oci_readiness_unread_obligation: NonEmptyStr = "Provisioning delay from an OCI launch request to an Always Free instance accepting work has not been measured. Out-of-capacity refusals are common on A1 in many home regions, so the delay may be unbounded. RESOLVED BY a launch receipt recording request and first-heartbeat timestamps per shape."
-
-data oci_readiness: ReadinessObservation = ReadinessUnmeasured {
-  obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_readiness_unread_obligation"),
-}
-
-// An instance that fits the allowance is not yet supply. Until one is launched and observed, its
-// evidence is the unobserved arm, which product.fabric.failure_scenario_admission refuses by name.
-data oci_instance_unlaunched_obligation: NonEmptyStr = "No Always Free instance has been launched and observed for this offer. RESOLVED BY a launch receipt naming the instance OCID, shape and home region."
-
-// The quote is zero, and that is only true inside a plan that fit. The binding takes the fit as an
-// argument and refuses when the fit is not FitsAlwaysFree, so a zero cannot outlive the plan that
-// earned it.
-fn oci_zero_quote() -> OfferQuote {
-  QuotedPerHour(MoneyPerHour { amount: money_amount_micro(count: 0), currency: Usd })
-}
-
-// Oracle meters the allowance in OCPU-hours and GB-hours. Above the allowance a free tenancy never
-// bills, so the quantum is never consulted on a zero quote. It is stated as an hour because that is
-// the unit the allowance is denominated in.
-data oci_billing_quantum: Second = second(count: 3600)
-
-// E2MicroSize is 1/8 OCPU with burst, carried as one hardware thread. The fractional baseline
-// cannot be written in a thread count.
-fn oci_vcpus(size: OciInstanceSize) -> Nat {
-  match size {
-    A1FlexSize { ocpus, memory } => ocpus * oci_vcpus_per_ocpu(shape: VmStandardA1Flex)
-    E2MicroSize => 1
-  }
-}
-
-fn oci_memory(size: OciInstanceSize) -> Gigabyte {
-  match size {
-    A1FlexSize { ocpus, memory } => memory
-    E2MicroSize => oci_e2_micro_allowance.memory_per_instance
-  }
-}
-
-// Gigabytes are held as the vendor writes them, with no stated basis. The envelope needs bytes, so
-// the DECIMAL reading is taken, which is the smaller of the two possible readings. An offer that
-// promises less memory than the instance has can only refuse work it could have run. It can never
-// admit work the instance cannot hold.
-fn oci_shape(size: OciInstanceSize) -> Shape {
-  Shape {
-    hard: HardRequirements { threads: hardware_thread_count(count: oci_vcpus(size: size)) },
-    envelope: cpu_memory_envelope(
-      min_threads: hardware_thread_count(count: oci_vcpus(size: size)),
-      architecture: oci_shape_architecture(shape: oci_instance_shape(size: size)),
-      min_bytes: byte_size(count: gigabyte_count(g: oci_memory(size: size)) * 1000000000),
-    ),
-  }
-}
-
-// THE TENANCY'S OTHER USAGE MUST BE OBSERVED BEFORE A ZERO QUOTE IS TRUE. Nothing reads it today:
-// no converge lists the tenancy's volumes and instances outside the plan, and A1 consumption is a
-// monthly meter that no observation here carries. So the production standing is the unread arm, and
-// the binding refuses on it.
-type OciTenancyAllocation
-  = TenancyAllocationUnread { obligation: DeclarationRef }
-  | TenancyAllocationObserved { other: OciOtherUsage, receipt: ObservationReceiptRef }
-
-data oci_tenancy_allocation_unread_obligation: NonEmptyStr = "What the operator's OCI tenancy already holds outside an offered plan (block and boot volumes in every compartment, A1 OCPUs and memory, E2 micro instances) has not been observed. The Always Free allowance is tenancy-wide, so without it a plan's fit is nominal and a zero quote would not be established. RESOLVED BY a receipt from a converge that lists the tenancy's instances, boot volumes and block volumes across compartments, sufficient to fill OciOtherUsage. A1 monthly consumption above steady-state allocation is not carried by OciOtherUsage, and is a further obligation of that receipt."
-
-data oci_tenancy_allocation: OciTenancyAllocation = TenancyAllocationUnread {
-  obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_tenancy_allocation_unread_obligation"),
-}
-
-data oci_always_free_fit_refusal: NonEmptyStr = "The plan does not fit the Always Free allowance beside the tenancy's observed other usage (oci_always_free_fit_beside), so a zero quote for any of its members would be false."
-
-data oci_member_not_in_plan_refusal: NonEmptyStr = "The requested member is not an instance of the admitted plan. A zero quote is established only for a member of the plan whose fit was decided, so nothing else can be bound under it."
-
-data oci_member_outside_home_region_refusal: NonEmptyStr = "The member is not placed in the tenancy's home region, so it is not Always Free compute and has no zero-quoted route."
+data oci_plan_exceeds_refusal: NonEmptyStr = "The offered plan does not fit the Always Free allowance even on its own (oci_always_free_fit), so no member of it can be free."
 
 fn oci_plan_member(plan: List<OciPlannedInstance>, member: NonEmptyStr) -> OciPlannedInstance? {
   match filter(plan, i => (i.name as String) == (member as String)).first() {
@@ -330,66 +242,18 @@ fn oci_refused_binding<P>(member: NonEmptyStr, cause_decl: String) -> OfferBindi
   OfferBindingRefused { runs_on_label: member, cause: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: cause_decl) }
 }
 
-// THE FIT IS DECIDED HERE, NOT HANDED IN (review on gunbc#13335). The binding takes the plan and the
-// NAME of the member to offer, decides the fit of that plan beside the tenancy's observed other usage,
-// and derives both the offered instance and its route from the admitted member. A success computed for
-// one plan cannot be carried onto another instance, because no success value crosses this boundary,
-// and the route cannot disagree with the member's placement, because nothing supplies it separately.
-fn bind_oci_always_free_offer<P>(
-  principal: P,
-  executor: P,
-  plan: List<OciPlannedInstance>,
-  member: NonEmptyStr,
-  allocation: OciTenancyAllocation,
-  capabilities: CapabilityManifestRef,
-  trust_domain: TrustDomainRef,
-  readiness: ReadinessObservation,
-) -> OfferBinding<P> {
-  match allocation {
-    TenancyAllocationUnread { obligation } => OfferBindingRefused { runs_on_label: member, cause: obligation },
-    TenancyAllocationObserved { other, receipt } =>
-    match oci_always_free_fit_beside(plan: plan, other: other) {
-      ExceedsAlwaysFree { breaches } => oci_refused_binding(member: member, cause_decl: "oci_always_free_fit_refusal"),
-      FitsAlwaysFree =>
-      match oci_plan_member(plan: plan, member: member) {
-        Absent => oci_refused_binding(member: member, cause_decl: "oci_member_not_in_plan_refusal"),
-        Present { value: instance } =>
-        match instance.region {
-          OutsideHomeRegion => oci_refused_binding(member: member, cause_decl: "oci_member_outside_home_region_refusal"),
-          InHomeRegion =>
-          match provider_route_from_region(provider: oci_provider_ref(), service: oci_service_ref(), region: oci_home_region()) {
-            ProviderRouteRegionUnobserved { obligation } =>
-              OfferBindingRefused { runs_on_label: member, cause: obligation },
-            ProviderRouteObserved { route: bound_route } =>
-            match readiness {
-              ReadinessUnmeasured { obligation } =>
-                OfferBindingRefused { runs_on_label: member, cause: obligation },
-              ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
-                OfferBound {
-                  bound: SupplierOfferProjection {
-                    offer: SupplierOffer {
-                      id: FabricIdentity { principal: principal, key: instance.name },
-                      executor: executor,
-                      route: bound_route,
-                      shape: oci_shape(size: instance.size),
-                      capabilities: capabilities,
-                      trust_domain: trust_domain,
-                      isolation: IsolationProfile { guarantees: [] },
-                      quantity_bound: 1,
-                      ready_at: ready_at,
-                      quote: oci_zero_quote(),
-                      billing_quantum: oci_billing_quantum,
-                      evidence: UnobservedSupply {
-                        obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_instance_unlaunched_obligation"),
-                      },
-                    },
-                    unexpressed: [IsolationNotObserved],
-                  },
-                },
-            },
-          },
-        },
-      },
+// The member is selected from the plan and the plan's nominal fit is decided here, so neither can be
+// supplied separately and disagree. A member outside the home region never reaches the final arm,
+// because the fit refuses it as NotInHomeRegion. Past
+// them, the binding refuses on the allocation obligation above. It is the offer's single entry point,
+// so the evidence lands here when it exists, rather than in a caller.
+fn bind_oci_always_free_offer<P>(plan: List<OciPlannedInstance>, member: NonEmptyStr) -> OfferBinding<P> {
+  match oci_plan_member(plan: plan, member: member) {
+    Absent => oci_refused_binding(member: member, cause_decl: "oci_member_not_in_plan_refusal"),
+    Present { value: chosen } =>
+    match oci_always_free_fit(plan: plan) {
+      ExceedsAlwaysFree { breaches } => oci_refused_binding(member: member, cause_decl: "oci_plan_exceeds_refusal"),
+      FitsAlwaysFree => oci_refused_binding(member: member, cause_decl: "oci_tenancy_allocation_unread_obligation"),
     },
   }
 }
