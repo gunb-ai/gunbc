@@ -130,6 +130,8 @@ import gunbc.roadmap_presentation {
   issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_build_meter { build_meter_view }
+import gunbc.site.element.build_meter { BuildMeter, build_meter }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
   issue_results_sort_key_wire, issue_results_sort_numeric,
@@ -2449,9 +2451,10 @@ fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<Pr
 fn issue_metadata_rail_node(view: WorkRowView, hierarchy: IssueHierarchyView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   let assignment = roadmap_issue_assignment(envs: events)
   let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
-  el_class("aside", "issue-rail", [
+  el_class("aside", "issue-rail", concat([
     issue_field_row(label: "status", value: [issue_status_node(view: view, events: events)]),
     issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+  ], concat(issue_rail_build_meter_nodes(view: view, attempts: attempts, assignment: assignment), [
     issue_field_text_row(label: "reporter", value: issue_reporter_value(events: events)),
     issue_field_text_row(label: "component", value: issue_component_value(view: view)),
     issue_field_row(label: "parent", value: issue_parent_value(parent: hierarchy.membership.parent)),
@@ -2461,7 +2464,7 @@ fn issue_metadata_rail_node(view: WorkRowView, hierarchy: IssueHierarchyView, at
     issue_rail_return_to_row(view: view, assignment: assignment),
     issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
     issue_rail_optional_row(label: "observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
-  ])
+  ])))
 }
 
 // Status detail keeps the latest ledger standing alongside the observed planning facts.
@@ -2482,6 +2485,36 @@ fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProg
   issue_field_row(label: "assignee", value: [el_class("details", "issue-assignee-disclosure", concat([
     el_attrs("summary", [attr(name: "aria-label", value: concat("Change assignee: ", label))], [face, el_class("span", "issue-assignee-identity", [txt(label)])]),
   ], issue_detail_action_bar_nodes(view: view, current_assignee: if label == "Unassigned" { "" } else { label }, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))])
+}
+
+// THE BUILD METER, DIRECTLY UNDER THE ASSIGNEE, AND ONLY FOR FABRIC'S WORK. When the issue is held
+// by the Fabric workflow and has an attempt, the rail shows the latest attempt's recorded progress
+// as the BuildMeter element (gunbc.site.element.build_meter) over the one view derived from that
+// attempt (gunbc.roadmap.roadmap_build_meter build_meter_view). It is a link to this issue's Work
+// tab, where the attempt's receipts are listed, and it carries the tab chip so the page's tab
+// control opens that tab in place. Held by anyone else, or with no attempt, there is nothing to
+// show and nothing is rendered: no row, no placeholder.
+data issue_rail_meter_class: String = "issue-rail-meter"
+data issue_work_tab_key: String = "work"
+
+fn issue_rail_build_meter_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection) -> List<Fragment> {
+  match assignment.holder {
+    Absent => []
+    Present { value: holder } =>
+      if !event_principal_is_fabric(p: holder) { [] } else {
+        match attempts.first() {
+          Absent => []
+          Present { value: latest } => [
+            el_class("div", issue_rail_meter_class, [build_meter(input: BuildMeter {
+              view: build_meter_view(progress: latest),
+              subject: view.node_id,
+              href: issue_anchor_path(node_id: view.node_id, anchor: issue_work_tab_key),
+              link_attributes: [attr(name: "data-tab-chip", value: issue_work_tab_key)],
+            })]),
+          ]
+        }
+      }
+  }
 }
 
 // THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's

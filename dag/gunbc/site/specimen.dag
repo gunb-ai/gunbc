@@ -1,6 +1,6 @@
 module gunbc.site.specimen
 
-import std.types { Int, List, String }
+import std.types { Int, List, String, NonEmptyStr }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { el_attrs, txt }
 import gunbc.site.document { SiteStyles, site_document, site_styles, site_extend_styles }
@@ -42,10 +42,21 @@ import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
 import gunbc.site.element.node_row { NodeRow, NodeRowFlat, NodeRowDensityGrid, node_row, node_row_header }
 import gunbc.site.element.relation_table { RelationTable, relation_table }
 import gunbc.site.element.node_chain { node_chain }
+import gunbc.site.element.build_meter { BuildMeter, BuildMeterView, build_meter }
+import gunbc.roadmap.roadmap_build_meter { build_meter_view_of }
+import gunbc.roadmap_issue_location { issue_anchor_path }
+import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
+  VerificationWorkflowSegment, PublicationWorkflowSegment,
+}
+import gunbc.roadmap.roadmap_submission { CandidateHandoffState, HandoffAwaitingWorker, HandoffVerificationFailed, HandoffPublished }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, BorderCollapse, BorderRadius, BoxShadow, Display, FlexDirection, FlexWrap, Gap, GridTemplateColumns,
-  Height, Margin, MinHeight, Padding, Width, RawProperty,
+  Height, Margin, MinHeight, MinWidth, Padding, Width, RawProperty,
 }
 
 // The specimen: every element of the internal tools frontend in every variant, built only from
@@ -391,11 +402,129 @@ fn specimen_issue_composite() -> List<Fragment> {
   ]
 }
 
+// The build meter, over planted attempts. Each fixture is a ledger and a set of stage states put
+// through the production derivation (gunbc.roadmap.roadmap_build_meter build_meter_view_of), so
+// what is shown is what an attempt with those records would show. The records are invented; the
+// derivation and the element are the real ones.
+data specimen_meter_class: String = "specimen-meter"
+data specimen_meters_class: String = "specimen-meters"
+data specimen_meter_first_round_ms: Int = 1790694000000
+data specimen_meter_round_ms: Int = 47000
+
+fn specimen_meter_round(step: Int, tool_calls: Int, files_changed: Int, output_tokens: Int) -> RoundObservation {
+  RoundObservation {
+    step: step,
+    input_tokens: 9000 + step * 650,
+    output_tokens: output_tokens,
+    epoch_ms: specimen_meter_first_round_ms + step * specimen_meter_round_ms,
+    files_changed: Present { value: files_changed },
+    tool_calls: Present { value: tool_calls },
+  }
+}
+
+// Six rounds of ordinary work: mostly tool calls, one round of reasoning alone, two writes.
+fn specimen_meter_spell(base: Int, files: Int) -> List<RoundObservation> {
+  [
+    specimen_meter_round(step: base + 1, tool_calls: 3, files_changed: files, output_tokens: 420),
+    specimen_meter_round(step: base + 2, tool_calls: 1, files_changed: files, output_tokens: 180),
+    specimen_meter_round(step: base + 3, tool_calls: 2, files_changed: files + 1, output_tokens: 2600),
+    specimen_meter_round(step: base + 4, tool_calls: 0, files_changed: files + 1, output_tokens: 5200),
+    specimen_meter_round(step: base + 5, tool_calls: 4, files_changed: files + 1, output_tokens: 900),
+    specimen_meter_round(step: base + 6, tool_calls: 1, files_changed: files + 2, output_tokens: 1300),
+  ]
+}
+
+fn specimen_meter_spells(spells: Int) -> List<RoundObservation> {
+  flat_map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].take(n: spells), i => specimen_meter_spell(base: i * 6, files: i * 2))
+}
+
+// Every round changes more of the tree than the one before.
+fn specimen_meter_write_heavy() -> List<RoundObservation> {
+  map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], i =>
+    specimen_meter_round(step: i, tool_calls: 2 + i / 5, files_changed: i * 2 - i / 3, output_tokens: 300 * i))
+}
+
+fn specimen_meter_stage(state: WorkflowSegmentState, detail: String) -> List<WorkflowSegment> {
+  [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: state, detail: detail },
+    WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+  ]
+}
+
+fn specimen_meter_stages_through(verification: WorkflowSegmentState, verification_detail: String, publication: WorkflowSegmentState) -> List<WorkflowSegment> {
+  [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: verification, detail: verification_detail },
+    WorkflowSegment { kind: PublicationWorkflowSegment, state: publication, detail: "" },
+  ]
+}
+
+type SpecimenMeter {
+  caption: String
+  view: BuildMeterView
+}
+
+fn specimen_meter_running() -> ProviderExecutionState {
+  ProviderRunning { activity: "Agent working" }
+}
+
+fn specimen_meters() -> List<SpecimenMeter> {
+  [
+    SpecimenMeter { caption: "Working, a few rounds", view: build_meter_view_of(
+      attempt_key: "5f1c9a2e77d04b13", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 1) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
+    SpecimenMeter { caption: "A long run, 60 rounds", view: build_meter_view_of(
+      attempt_key: "a3e07c5d1b9f4462", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 10) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
+    SpecimenMeter { caption: "Waiting for a seat", view: build_meter_view_of(
+      attempt_key: "0bd4418ce2a75f90", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 1).take(n: 3) }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker) },
+    SpecimenMeter { caption: "Rounds unobserved", view: build_meter_view_of(
+      attempt_key: "c81e3f6a9d2047b5", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
+      rounds: RoundsUnobserved { reason: "round 7 carries an output token count that is not a number" as NonEmptyStr }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
+    SpecimenMeter { caption: "Stopped: verification failed", view: build_meter_view_of(
+      attempt_key: "7742b0e19c3d5a68", segments: specimen_meter_stages_through(verification: WorkflowSegmentFailed, verification_detail: "3 of 41 claims red", publication: WorkflowSegmentPending),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 3) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "9c41d07", verdict_key: "failed" }) },
+    SpecimenMeter { caption: "Published", view: build_meter_view_of(
+      attempt_key: "e69a15d83f0c2b74", segments: specimen_meter_stages_through(verification: WorkflowSegmentComplete, verification_detail: "", publication: WorkflowSegmentComplete),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 4).take(n: 21) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }) },
+    SpecimenMeter { caption: "A write-heavy run", view: build_meter_view_of(
+      attempt_key: "2d5b8f04a1c7e936", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
+      rounds: RoundsObserved { rounds: specimen_meter_write_heavy() }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
+  ]
+}
+
+fn specimen_meter_node(row: SpecimenMeter) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: specimen_meter_class)], [
+    specimen_note(text: row.caption),
+    build_meter(input: BuildMeter {
+      view: row.view,
+      subject: join(["specimen-", row.view.attempt_key], ""),
+      href: issue_anchor_path(node_id: "frontend-elements", anchor: "work"),
+      link_attributes: [],
+    }),
+  ])
+}
+
+fn specimen_meter_section() -> Fragment {
+  specimen_section(label: "BuildMeter", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_meters_class)], map(specimen_meters(), m => specimen_meter_node(row: m))),
+  ])
+}
+
 fn specimen_content() -> List<Fragment> {
   [
     el_attrs("main", [attr(name: "class", value: specimen_page_class)], concat(
       concat([specimen_source_section(), specimen_composite()], specimen_issue_composite()),
       [
+        specimen_meter_section(),
         specimen_chain_section(),
         specimen_relation_section(),
         specimen_grid_row_section(),
@@ -458,6 +587,19 @@ fn specimen_layout_rules() -> List<BuildRule> {
       decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
     ] },
     StaticRule { selector: ClassSelector { name: specimen_note_class }, decls: element_text_decls(role: ElementLabel) },
+    StaticRule { selector: ClassSelector { name: specimen_meters_class }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "repeat(auto-fill, minmax(min(100%, 30ch), 1fr))"),
+      decl(prop: AlignItems, value: "start"),
+      decl(prop: Gap, value: scale_var(t: card_outer_margin)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_meter_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
     StaticRule { selector: ClassSelector { name: specimen_issue_header_class }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),

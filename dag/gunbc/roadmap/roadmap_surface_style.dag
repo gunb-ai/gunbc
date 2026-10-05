@@ -1155,6 +1155,10 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontSize, value: "var(--text-12)")
     ] },
+    StaticRule { selector: RawSelector { text: ".issue-rail-meter" }, decls: [
+      decl(prop: Margin, value: "var(--space-4) 0 var(--space-8)"),
+      decl(prop: MinWidth, value: "0")
+    ] },
     StaticRule { selector: RawSelector { text: ".issue-rail .issue-field" }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: "10ch minmax(0, 1fr)"),
