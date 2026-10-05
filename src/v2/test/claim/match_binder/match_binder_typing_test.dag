@@ -288,7 +288,9 @@ data mbt_arms: String = "    Rejected { diagnostics: r } => fallback.tree\n    A
 
 data mbt_positive_src: String = mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: mbt_arms)
 
-// THE WARM PRODUCERS, one per fixture program; each is listed in floor_cross_claim_pure_producers_warm.
+// THE FIXTURE PRODUCERS, one per fixture program, nullary so the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills one once wherever two or
+// more declared claims read it; one read by a single claim is that claim's own cost.
 fn mbt_positive_reading() -> MbtReading { mbp_reading(src: mbt_positive_src) }
 
 // (1) THE BINDER IS TYPED ParseArtifact FROM Outcome<ParseArtifact>'s Accepted.value -- the argument

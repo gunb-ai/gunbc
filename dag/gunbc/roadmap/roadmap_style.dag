@@ -1,9 +1,13 @@
 module gunbc.roadmap_style
+import gunbc.site.status { status_palette }
+import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
+import gunbc.roadmap_surface_style { roadmap_surface_rules }
+import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css }
 
 import gunbc.site.robot_mark { robot_mark_badge_background, robot_mark_ink }
 import std.types { List, String, Int, Bool }
 import gunbc.design.material {
-  BuildRule, StaticRule, CssDecl, decl, css_block,
+  BuildRule, StaticRule, ResponseRule, SelfResponse, WithinSubject, OnHover, OnFocusVisible, respond_fast, CssDecl, decl, css_block,
   serialize_rules, reduced_motion_block,
 }
 import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
@@ -16,7 +20,7 @@ import gunbc.design.scale {
   space_0, space_1, space_2, space_3, space_4, space_6, space_8, space_12, space_16, space_20, space_24,
   text_10, text_11, text_12, text_13, text_14, text_15, text_18,
   font_sans, font_mono,
-  radius_3, radius_999, border_1, border_2, height_control, width_status,
+  radius_surface, radius_999, border_1, border_2, height_control, width_status,
 }
 import gunbc.design.theme {
   Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
@@ -40,21 +44,7 @@ import gunbc.fleet_hardware_standing_panel {
 import gunbc.fleet_capacity_panel {
   capacity_subject_reserved_width, capacity_metric_reserved_width,
 }
-import gunbc.roadmap_component {
-  dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
-  sound_toggle_class, sound_toggle_reserved_width,
-  disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
-  roadmap_row_height, roadmap_row_gutter,
-  workflow_controls_class,
-  node_activity_class, activity_summary_class, activity_detail_class,
-  activity_ledger_class, activity_obligation_class,
-  activity_evidence_class, activity_evidence_row_class,
-  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
-  activity_located_reason_class, session_facts_class,
-  stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class,
-  dashboard_instance_class,
-  node_attempt_stale_class,
-}
+import gunbc.roadmap_component { dispatch_reserved_width, disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width, roadmap_row_height, roadmap_row_gutter, workflow_controls_class, node_activity_class, activity_summary_class, activity_detail_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, activity_located_reason_class, session_facts_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class, dashboard_instance_class, node_attempt_stale_class }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.google.issue_tracker { issue_tracker_visual_tokens, issue_tracker_visual_tokens_dark, IssueTrackerVisualTokens, issue_results_row_tracks }
 import std.integer { uint8_channel_inclusive_max_value_derived }
@@ -329,7 +319,6 @@ fn band_root_css() -> String {
   )
 }
 
-
 // The round strip: a flex row of time-weighted segments. Read rounds take the dim text material so
 // they recede; a write round takes the figure material so it reads at a glance as the event it is;
 // a reasoning round (no tool call) takes the figure halo, the palette's softest figure member, so
@@ -416,7 +405,7 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: activity_round_remaining_class }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Background, value: "transparent"),
-      decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
+      decl(prop: BoxShadow, value: "inset 0 0 0 var(--border-1) currentColor"),
       decl(prop: Opacity, value: "0.12"),
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: [
@@ -436,7 +425,7 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     ] },
     StaticRule { selector: RawSelector { text: join([".", activity_round_strip_class, " .", activity_line_prefix_class, "neutral"], "") }, decls: [
       decl(prop: Background, value: "transparent"),
-      decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
+      decl(prop: BoxShadow, value: "inset 0 0 0 var(--border-1) currentColor"),
       decl(prop: Opacity, value: "0.35"),
     ] },
     AmbientRule { selector: ClassSelector { name: activity_round_read_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
@@ -559,17 +548,14 @@ fn action_prominence_rules() -> List<BuildRule> {
         decl(prop: BorderColor, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
       ],
     },
-    StaticRule {
-      selector: RawSelector { text: "li.node:focus-visible" },
-      decls: [
-        decl(prop: Outline, value: scale_border(w: border_2, color_var: "var(--focus)")),
-      ],
-    },
+    ResponseRule { subject: RawSelector { text: "li.node" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Outline, value: scale_border(w: border_2, color_var: "var(--focus)"))
+    ] },
   ]
 }
 
 fn roadmap_instance_rules() -> List<BuildRule> {
-  concat(roadmap_instance_rules_head(),
+  concat(concat(roadmap_instance_rules_head(), roadmap_surface_rules()),
     concat(action_prominence_rules(),
       concat(state_paint_rules(f: dispatch_state_family, channels: dispatch_stateful_channels),
         roadmap_instance_rules_tail())))
@@ -583,8 +569,8 @@ fn roadmap_instance_rules() -> List<BuildRule> {
 // VERIFIED in docs/plans/buganizer-visual-contract.md). The values are the product's own,
 // consumed from extdeps.google.issue_tracker (the interface model) and emitted as scoped custom
 // properties — the rules below reference the vars, so a re-capture retunes the surface in ONE
-// place. This is deliberately a SURFACE-scoped mapping, not a theme fork: the rest of the
-// dashboard keeps its theme roles.
+// place. Only issue content rules consume these variables. The shared shell, identity
+// controls, and focus responses use theme roles and never fall back through this palette.
 // BOTH SCHEMES (owner defect fix 2026-09-23): the capture is light-only, and dark mode painted
 // the light tokens on dark ground. The same token set now resolves under BOTH schemes, emitted
 // with the theme machinery's own three-block grammar (:root base, [data-theme] override,
@@ -604,8 +590,8 @@ fn issue_token_decls(t: IssueTrackerVisualTokens) -> List<CssDecl> {
     decl(prop: CustomProperty { name: "issue-error" }, value: swatch_paint(sw: Swatch { name: "issue-error", color: t.error })),
     decl(prop: CustomProperty { name: "fabric-badge-bg" }, value: swatch_paint(sw: robot_mark_badge_background)),
     decl(prop: CustomProperty { name: "fabric-badge-ink" }, value: swatch_paint(sw: robot_mark_ink)),
-    decl(prop: CustomProperty { name: "issue-font" }, value: t.font_body),
-    decl(prop: CustomProperty { name: "issue-font-heading" }, value: t.font_heading),
+    decl(prop: CustomProperty { name: "issue-font" }, value: scale_var(t: font_sans)),
+    decl(prop: CustomProperty { name: "issue-font-heading" }, value: scale_var(t: font_sans)),
   ]
 }
 
@@ -650,71 +636,28 @@ fn issue_tracker_root_css() -> String {
 // /roadmap taskbar still render project chains, taskbars, and dispatch controls).
 
 // THE AVATAR IMAGE LAYERS OVER THE INITIALS inside the same chip (2026-09-27 avatar lane): the
-// chip gains position:relative + overflow:hidden, and the .issue-avatar img rule paints any
+// chip gains position:relative + overflow:hidden, and the .site-avatar img rule paints any
 // image inside a chip absolute / inset 0 / 100% x 100% / object-fit cover — the never-blocks
 // law rendered (the initials stay in the span, so a slow or failed image renders them; the
 // client's alt="" keeps a broken image invisible). The DESCENDANT SELECTOR is the projection
-// the assignee avatar slots reuse: any <img> inside an .issue-avatar chip paints the same way
+// the assignee avatar slots reuse: any <img> inside an .site-avatar chip paints the same way
 // when the resolution chain lands their pictures. object-fit rides RawProperty — the one
 // property outside the modeled set this rule needs (same escape the repo-atlas stroke-width
 // rows use).
-data issue_avatar_image_note: String = "THE AVATAR IMAGE LAYERS OVER THE INITIALS inside the same chip (2026-09-27 avatar lane): the chip gains position:relative + overflow:hidden, and .issue-avatar img paints any image inside a chip absolute / inset 0 / 100% x 100% / object-fit cover — the never-blocks law rendered (the initials stay in the span, so a slow or failed image renders them; the client's alt=\"\" keeps a broken image invisible). The descendant selector is the projection the assignee avatar slots reuse, and object-fit rides RawProperty — the one property outside the modeled set this rule needs (same escape the repo-atlas stroke-width rows use)."
+data issue_avatar_image_note: String = "THE AVATAR IMAGE LAYERS OVER THE INITIALS inside the same chip (2026-09-27 avatar lane): the chip gains position:relative + overflow:hidden, and .site-avatar img paints any image inside a chip absolute / inset 0 / 100% x 100% / object-fit cover — the never-blocks law rendered (the initials stay in the span, so a slow or failed image renders them; the client's alt=\"\" keeps a broken image invisible). The descendant selector is the projection the assignee avatar slots reuse, and object-fit rides RawProperty — the one property outside the modeled set this rule needs (same escape the repo-atlas stroke-width rows use)."
 
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
-    StaticRule { selector: RawSelector { text: "*" }, decls: [
-      decl(prop: BoxSizing, value: "border-box"),
-      decl(prop: Margin, value: scale_var(t: space_0)),
-      decl(prop: Padding, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_sans)),
-      decl(prop: FontSize, value: scale_var(t: text_14)),
-      decl(prop: LineHeight, value: "1.5"),
-      role_decl(prop: Color, r: TextRole),
-      role_decl(prop: Background, r: CanvasRole),
-    ] },
-    StaticRule { selector: ElementSelector { tag: "header" }, decls: [
-      decl(prop: Padding, value: scale_pair(a: space_12, b: space_24)),
-      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--border)")),
-      role_decl(prop: Background, r: SurfaceRole),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-inner" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_12)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "surface-link" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: TextDecoration, value: "none"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
-      decl(prop: FontWeight, value: "600"),
-      decl(prop: FontSize, value: scale_var(t: text_15)),
-      decl(prop: LetterSpacing, value: "0.02em"),
-      role_decl(prop: Color, r: TextRole),
-    ] },
-    StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_18)),
-      decl(prop: FontWeight, value: "500"),
-    ] },
-    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_15)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: Margin, value: scale_triple(a: space_16, b: space_0, c: space_8)),
-    ] },
+
     StaticRule { selector: RawSelector { text: "h3.group-label" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: FontWeight, value: "500"),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: Margin, value: scale_triple(a: space_12, b: space_0, c: space_4)),
     ] },
-    StaticRule { selector: ClassSelector { name: "roadmap" }, decls: [
-      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
-    ] },
+
     StaticRule { selector: RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
-      decl(prop: MarginTop, value: scale_var(t: space_20)),
+      decl(prop: MarginTop, value: scale_var(t: space_12)),
     ] },
     StaticRule { selector: RawSelector { text: "details.section-fold > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
@@ -729,7 +672,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_8)),
       decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
       role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
     ] },
     StaticRule { selector: RawSelector { text: ".section-band h2" }, decls: [
       decl(prop: Margin, value: scale_var(t: space_0)),
@@ -753,7 +696,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
       decl(prop: TextAlign, value: "center"),
       decl(prop: MarginRight, value: scale_var(t: space_6)),
@@ -800,14 +743,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: PseudoSuffix { base: "a", pseudo: "hover" }, decls: [
       decl(prop: TextDecoration, value: "underline"),
     ] },
-    StaticRule { selector: ElementSelector { tag: "code" }, decls: [
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-    ] },
     StaticRule { selector: ClassSelector { name: "prose" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontSize, value: scale_var(t: text_13)),
@@ -821,7 +756,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "fleet-hardware-standing" }, decls: [
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-heading" }, decls: [
@@ -837,7 +772,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: MarginBottom, value: scale_var(t: space_8)),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-outstanding" }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontWeight, value: "600"),
@@ -868,24 +803,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-refused" }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-misfiled" }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
     ] },
     StaticRule { selector: ClassSelector { name: "hardware-unread" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontStyle, value: "italic"),
     ] },
-    StaticRule { selector: ClassSelector { name: "hardware-detail" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-    ] },
-    StaticRule { selector: ClassSelector { name: "fleet-capacity-panel" }, decls: [
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "capacity-title" }, decls: [
       role_decl(prop: Color, r: TextRole),
       decl(prop: FontSize, value: scale_var(t: text_13)),
@@ -933,67 +860,28 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontStyle, value: "italic"),
       decl(prop: MarginTop, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "daily-workspace" }, decls: [
-      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "roadmap-frontier" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_20)),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-controls" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_6)),
-      decl(prop: FlexWrap, value: "wrap"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-search" }, decls: [
-      decl(prop: Flex, value: "1"),
-      decl(prop: MinWidth, value: scale_var(t: width_status)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: FontFamily, value: scale_var(t: font_sans)),
-      role_decl(prop: Color, r: TextRole),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
-      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "chip" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      role_decl(prop: Color, r: TextDimRole),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: TextTransform, value: "lowercase"),
-      decl(prop: LetterSpacing, value: "0.03em"),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "chip-on" }, decls: [
       role_decl(prop: Color, r: TextRole),
       decl(prop: BorderColor, value: "var(--focus)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-table" }, decls: [
-      decl(prop: Display, value: "grid"),
-      decl(prop: GridTemplateColumns, value: issue_results_row_tracks()),
-      decl(prop: Gap, value: join([scale_var(t: space_6), " ", scale_var(t: space_8)], "")),
-      decl(prop: AlignItems, value: "stretch"),
-    ] },
+
     StaticRule { selector: RawSelector { text: ".issue-table ul" }, decls: [
       decl(prop: Display, value: "contents"),
     ] },
     StaticRule { selector: RawSelector { text: ".issue-table li" }, decls: [
       decl(prop: Display, value: "contents"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-table-header" }, decls: [
+    StaticRule { selector: ClassSelector { name: "issue-table-header" }, decls: concat([
       decl(prop: Display, value: "contents"),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontWeight, value: "500"),
       decl(prop: Color, value: "var(--issue-text-dim)"),
-    ] },
+    ], interface_text_decls(role: InterfaceLabel)) },
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"active\"] .view-table li.node:not([data-band=\"active\"])" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
@@ -1012,18 +900,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".taskbar-sub:empty, .taskbar-signal:empty, .taskbar-count:empty" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-line" }, decls: [
+    StaticRule { selector: ClassSelector { name: "issue-line" }, decls: concat([
       decl(prop: Display, value: "contents"),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: Color, value: "var(--issue-text)"),
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: ClassSelector { name: "issue-col" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
       decl(prop: WhiteSpace, value: "nowrap"),
       decl(prop: TextOverflow, value: "ellipsis"),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
     ] },
     StaticRule { selector: RawSelector { text: ".issue-sort, .issue-inline-assign" }, decls: [
@@ -1036,9 +922,34 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
       decl(prop: MaxWidth, value: "100%"),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-sort:hover, .issue-sort:focus-visible, .issue-inline-assign:focus-visible" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
-      decl(prop: TextDecoration, value: "underline"),
+    StaticRule { selector: ClassSelector { name: "issue-inline-assign" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: TextAlign, value: "left"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-inline-editor" }, decls: [
+      decl(prop: Position, value: "fixed"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: Border, value: "0"),
+      decl(prop: Overflow, value: "visible"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-sort" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Color, value: "var(--issue-action-hover)"),
+      decl(prop: TextDecoration, value: "underline")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-sort" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Color, value: "var(--issue-action-hover)"),
+      decl(prop: TextDecoration, value: "underline")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-inline-assign" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Color, value: "var(--issue-action-hover)"),
+      decl(prop: TextDecoration, value: "underline")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-inline-assign:disabled, .issue-sort-undo:disabled" }, decls: [
       decl(prop: Cursor, value: "default"),
@@ -1060,34 +971,33 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text)"),
       decl(prop: Background, value: "var(--issue-bg-hover)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-sort-status" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_11)),
+    StaticRule { selector: ClassSelector { name: "issue-sort-status" }, decls: concat([
       decl(prop: Color, value: "var(--issue-text-dim)"),
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: ClassSelector { name: "issue-cell" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
       decl(prop: WhiteSpace, value: "nowrap"),
       decl(prop: TextOverflow, value: "ellipsis"),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
-      decl(prop: LineHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: LineHeight, value: scale_var(t: height_control)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-cell-title" }, decls: [
       decl(prop: Color, value: "var(--issue-text)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-title-link" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: TextDecoration, value: "none"),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-title-link:hover" }, decls: [
-      decl(prop: TextDecoration, value: "underline"),
+    ResponseRule { subject: RawSelector { text: ".issue-title-link" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: TextDecoration, value: "underline")
     ] },
     StaticRule { selector: ClassSelector { name: "issue-cell-assignee" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center"),
+      decl(prop: JustifyContent, value: "flex-start"),
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
     ] },
@@ -1096,32 +1006,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: Color, value: "var(--issue-text-dim)"),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-line:hover .issue-cell" }, decls: [
-      decl(prop: Background, value: "var(--issue-bg-hover)"),
+    ResponseRule { subject: RawSelector { text: ".issue-line" }, shape: WithinSubject { target: ".issue-cell" }, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--issue-bg-hover)")
     ] },
     StaticRule { selector: ClassSelector { name: "issue-id" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: MinWidth, value: scale_var(t: width_status)),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-line .taskbar-signal" }, decls: [
-      decl(prop: MarginLeft, value: "auto"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-table-heading" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
-      decl(prop: FontSize, value: scale_var(t: text_15)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: MarginBottom, value: scale_var(t: space_8)),
-      decl(prop: GridColumn, value: "1 / -1"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-empty" }, decls: [
-      decl(prop: Display, value: "none"),
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: Padding, value: scale_pair(a: space_12, b: space_8)),
-      decl(prop: GridColumn, value: "1 / -1"),
-    ] },
+
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-empty=\"1\"] .issue-empty" }, decls: [
       decl(prop: Display, value: "block"),
     ] },
@@ -1137,38 +1031,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-detail[data-tab=\"history\"] .panel-comments, .issue-detail[data-tab=\"history\"] .panel-dependencies, .issue-detail[data-tab=\"history\"] .panel-work" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-body" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_16)),
-      decl(prop: AlignItems, value: "flex-start"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-panels" }, decls: [
-      decl(prop: Flex, value: "1"),
-      decl(prop: MinWidth, value: "0"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-rail" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: Width, value: "34ch"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_8, b: space_12)),
-      role_decl(prop: Background, r: SurfaceRole),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-type-chip" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-deps-section" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_2)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-deps-heading" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
@@ -1179,72 +1051,24 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-deps-body" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-detail" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_12)),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-detail-head" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "baseline"),
-      decl(prop: FlexWrap, value: "wrap"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-detail-title" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
-      decl(prop: FontSize, value: scale_var(t: text_18)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: Margin, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-status" }, decls: [
-      decl(prop: MarginLeft, value: "auto"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-tabs" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_6)),
-      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-panels" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_12)),
-    ] },
+
+
     StaticRule { selector: ClassSelector { name: "issue-fields" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_8, b: space_12)),
       role_decl(prop: Background, r: SurfaceRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-field" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-field-label" }, decls: [
-      decl(prop: MinWidth, value: scale_var(t: width_status)),
-      decl(prop: Flex, value: "none"),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-field-value" }, decls: [
-      decl(prop: Flex, value: "1"),
-      decl(prop: MinWidth, value: "0"),
-      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-link" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: TextDecoration, value: "none"),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-link:hover" }, decls: [
-      decl(prop: TextDecoration, value: "underline"),
+    ResponseRule { subject: RawSelector { text: ".issue-link" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: TextDecoration, value: "underline")
     ] },
     StaticRule { selector: ClassSelector { name: "issue-work-history" }, decls: [
       decl(prop: Display, value: "flex"),
@@ -1257,26 +1081,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "work-history-step" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: MinWidth, value: scale_var(t: width_status)),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-action" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
-      decl(prop: MinHeight, value: scale_var(t: height_control)),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "transparent")),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: WhiteSpace, value: "nowrap"),
-    ] },
+
     StaticRule { selector: RawSelector { text: ".issue-action-contained" }, decls: [
       decl(prop: Background, value: "var(--issue-action)"),
       decl(prop: Color, value: "var(--issue-bg-subtle)"),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-action-contained:hover" }, decls: [
-      decl(prop: Background, value: "var(--issue-action-hover)"),
+    ResponseRule { subject: RawSelector { text: ".issue-action-contained" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--issue-action-hover)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-action.is-disabled, .issue-action:disabled" }, decls: [
       decl(prop: Background, value: "transparent"),
@@ -1285,99 +1099,30 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Cursor, value: "default"),
     ] },
     StaticRule { selector: RawSelector { text: ".issue-action-text" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)"))
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-action-text:hover" }, decls: [
+    ResponseRule { subject: RawSelector { text: ".issue-action-text" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
       decl(prop: Background, value: "var(--issue-bg-hover)"),
+      decl(prop: BorderColor, value: "var(--issue-action)")
     ] },
     StaticRule { selector: ClassSelector { name: "issue-action-bar" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: MarginLeft, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-form" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: FlexWrap, value: "wrap"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-input" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_2, b: space_4)),
-      decl(prop: MinWidth, value: "0"),
-      decl(prop: Flex, value: "1"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-assign-submit, .issue-comment-submit" }, decls: [
-      decl(prop: Width, value: "fit-content"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-action-text" }, decls: [
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Color, value: "var(--issue-action)"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-action-text:hover" }, decls: [
-      decl(prop: BorderColor, value: "var(--issue-action)"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-suggestions" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-suggestion" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-name" }, decls: [
-      decl(prop: FontWeight, value: "500"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-email" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-assign-kind" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-avatar" }, decls: [
-      decl(prop: Display, value: "inline-flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center"),
-      decl(prop: Width, value: scale_var(t: space_24)),
-      decl(prop: Height, value: scale_var(t: space_24)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: Color, value: "var(--issue-bg-subtle)"),
-      decl(prop: Background, value: "var(--issue-text-dim)"),
-      decl(prop: Position, value: "relative"),
-      decl(prop: Overflow, value: "hidden"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-avatar img" }, decls: [
-      decl(prop: Position, value: "absolute"),
-      decl(prop: Inset, value: "0"),
-      decl(prop: Width, value: "100%"),
-      decl(prop: Height, value: "100%"),
-      decl(prop: RawProperty { name: "object-fit" }, value: "cover"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-avatar-mark" }, decls: [
-      decl(prop: Display, value: "block"),
-      decl(prop: Width, value: scale_var(t: space_16)),
-      decl(prop: Height, value: scale_var(t: space_16)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-avatar-workflow" }, decls: [
-      decl(prop: Background, value: "var(--fabric-badge-bg)"),
-      decl(prop: Color, value: "var(--fabric-badge-ink)"),
-    ] },
+
+
+
+
+
+
+
     StaticRule { selector: ClassSelector { name: "issue-rail-link" }, decls: [
       decl(prop: FontFamily, value: "inherit"),
       decl(prop: FontSize, value: "inherit"),
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: Background, value: "transparent"),
       decl(prop: Border, value: "0"),
       decl(prop: Padding, value: scale_var(t: space_0)),
@@ -1392,37 +1137,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: TextOverflow, value: "ellipsis"),
       decl(prop: MinWidth, value: "0"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-event-history" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-event-row" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-event-author" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-action)"),
-      decl(prop: MinWidth, value: scale_var(t: width_status)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-event-text" }, decls: [
       decl(prop: Color, value: "var(--issue-text)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-event-at" }, decls: [
-      decl(prop: MarginLeft, value: "auto"),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-description" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-description-heading" }, decls: [
       decl(prop: FontFamily, value: "var(--issue-font-heading)"),
       decl(prop: FontSize, value: scale_var(t: text_15)),
@@ -1444,32 +1163,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-comment" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: Padding, value: scale_pair(a: space_4, b: space_0)),
-      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-comment-deleted" }, decls: [
       decl(prop: Color, value: "var(--issue-text-dim)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-comment-main" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_2)),
-      decl(prop: MinWidth, value: "0"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-comment-head" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-comment-author" }, decls: [
       decl(prop: FontWeight, value: "500"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-comment-ref" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: TextDecoration, value: "none"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-comment-at" }, decls: [
@@ -1488,167 +1191,22 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-comment-reply:empty" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-comment-body" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-authored" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-authored-section" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-authored-heading" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: Margin, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-authored-details" }, decls: [
-      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--issue-border)")),
-      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-authored-details" }, decls: [
-      decl(prop: MarginTop, value: scale_var(t: space_2)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-authored-details > summary" }, decls: [
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "ticket-field-code" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: WhiteSpace, value: "pre-wrap"),
-      decl(prop: Overflow, value: "hidden"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Margin, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-slot" }, decls: [
-      decl(prop: MarginLeft, value: "auto"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account" }, decls: [
-      decl(prop: Display, value: "inline-flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-session[hidden], .header-account-signin[hidden]" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-signin" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
-      decl(prop: TextDecoration, value: "none"),
-      decl(prop: FontWeight, value: "500"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-signin:hover" }, decls: [
-      decl(prop: TextDecoration, value: "underline"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-name" }, decls: [
-      decl(prop: FontWeight, value: "500"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-signout" }, decls: [
-      decl(prop: Display, value: "inline"),
-      decl(prop: Margin, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-signout-btn" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
-      decl(prop: Cursor, value: "pointer"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-session" }, decls: [
-      decl(prop: Position, value: "relative"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-trigger" }, decls: [
-      decl(prop: Display, value: "inline-flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Border, value: "none"),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
-      decl(prop: Cursor, value: "pointer"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-trigger:hover" }, decls: [
-      decl(prop: Background, value: "var(--issue-bg-subtle)"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-menu" }, decls: [
-      decl(prop: Position, value: "absolute"),
-      decl(prop: Inset, value: "100% 0 auto auto"),
-      decl(prop: MarginTop, value: scale_var(t: space_2)),
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: MinWidth, value: "11rem"),
-      decl(prop: Background, value: "var(--issue-bg-subtle)"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: BoxShadow, value: "0 4px 16px rgba(0, 0, 0, 0.18)"),
-      decl(prop: Padding, value: scale_var(t: space_2)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-menu[hidden]" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-menu-item" }, decls: [
-      decl(prop: Display, value: "block"),
-      decl(prop: Width, value: "100%"),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Border, value: "none"),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
-      decl(prop: TextAlign, value: "left"),
-      decl(prop: TextDecoration, value: "none"),
-      decl(prop: Cursor, value: "pointer"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-menu-item:hover" }, decls: [
-      decl(prop: Background, value: "var(--issue-bg-subtle)"),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-publication" }, decls: [
       decl(prop: Background, value: "var(--issue-bg-subtle)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-comment-form" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "issue-comment-input" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_4, b: space_4)),
-      decl(prop: MinHeight, value: scale_var(t: space_24)),
-    ] },
+
     StaticRule { selector: ClassSelector { name: "issue-not-found" }, decls: [
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
-    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
+    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: concat([
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_6)),
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: ClassSelector { name: "program-progress" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
@@ -1658,12 +1216,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontWeight, value: "500"),
       decl(prop: FontSize, value: scale_var(t: text_14)),
     ] },
-    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
+    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: ClassSelector { name: "finish-line-counts" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -1688,7 +1244,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
       decl(prop: TextAlign, value: "center"),
       role_decl(prop: Color, r: TextDimRole),
@@ -1718,21 +1274,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
     ] },
     StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
-    StaticRule { selector: ClassSelector { name: sound_toggle_class }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      role_decl(prop: Color, r: TextDimRole),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: MarginLeft, value: "auto"),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: MinWidth, value: sound_toggle_reserved_width()),
-      decl(prop: TextAlign, value: "center"),
-      decl(prop: TextTransform, value: "lowercase"),
-      decl(prop: LetterSpacing, value: "0.03em"),
-    ] },
     StaticRule { selector: ClassSelector { name: "taskbar" }, decls: [
       decl(prop: Position, value: "relative"),
       decl(prop: Display, value: "flex"),
@@ -1740,7 +1281,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: MinHeight, value: scale_var(t: height_taskbar)),
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Overflow, value: "hidden"),
     ] },
     StaticRule { selector: ClassSelector { name: "taskbar-fill" }, decls: [
@@ -1778,16 +1319,14 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontWeight, value: "500"),
       decl(prop: MarginRight, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "taskbar-signal" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+    StaticRule { selector: ClassSelector { name: "taskbar-signal" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole),
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: RawSelector { text: join([".taskbar-signal.", activity_line_prefix_class, "done"], "") }, decls: [
       role_decl(prop: Color, r: FigureRole),
     ] },
     StaticRule { selector: RawSelector { text: join([".taskbar-signal.", activity_line_prefix_class, "error-refusal"], "") }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
       decl(prop: FontWeight, value: "600"),
     ] },
     StaticRule { selector: ClassSelector { name: "taskbar-count" }, decls: [
@@ -1814,7 +1353,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
     ] },
     StaticRule { selector: RawSelector { text: ".taskbar-error .taskbar-count" }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
       decl(prop: FontWeight, value: "600"),
     ] },
     StaticRule { selector: RawSelector { text: join([".", node_attempt_stale_class, " .taskbar-inspect"], "") }, decls: [
@@ -1890,7 +1429,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: join([
       ".", activity_obligation_class, "[data-state=\"refused\"]",
     ], "") }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
       decl(prop: FontWeight, value: "600"),
     ] },
     StaticRule { selector: RawSelector { text: join([
@@ -1924,7 +1463,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Height, value: scale_var(t: space_8)),
       decl(prop: MarginTop, value: scale_var(t: space_2)),
       decl(prop: MarginBottom, value: scale_var(t: space_1)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Overflow, value: "hidden"),
     ] },
     StaticRule { selector: ClassSelector { name: stage_segment_class }, decls: [
@@ -1961,7 +1500,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: FigureRole),
     ] },
     StaticRule { selector: RawSelector { text: join([".", activity_summary_class, ".", activity_line_prefix_class, "error-refusal"], "") }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: Color, value: "color-mix(in srgb, var(--band-loud) 65%, var(--text))"),
       decl(prop: FontWeight, value: "600"),
     ] },
     StaticRule { selector: ClassSelector { name: "workspace-observation" }, decls: [
@@ -2068,7 +1607,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
       decl(prop: MarginLeft, value: scale_var(t: space_2)),
       decl(prop: Cursor, value: "pointer"),
@@ -2110,37 +1649,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextRole),
       decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_3)),
     ] },
-    StaticRule { selector: ClassSelector { name: "ticket-field" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_6)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "ticket-field-label" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "ticket-updates" }, decls: [
-      decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_1)),
-      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
-      decl(prop: BorderLeft, value: scale_border(w: border_1, color_var: "var(--border)")),
-    ] },
-    StaticRule { selector: ClassSelector { name: "ticket-updates-head" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "ticket-update" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "ticket-update-date" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: MarginRight, value: scale_var(t: space_6)),
-    ] },
   ]
 }
 
@@ -2152,7 +1660,7 @@ fn roadmap_instance_rules_tail() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
       decl(prop: Cursor, value: "pointer"),
       decl(prop: MinWidth, value: swatch_toggle_reserved_width()),
@@ -2160,33 +1668,16 @@ fn roadmap_instance_rules_tail() -> List<BuildRule> {
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
-    StaticRule { selector: ClassSelector { name: theme_toggle_class }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      role_decl(prop: Color, r: TextDimRole),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: MarginLeft, value: scale_var(t: space_2)),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: MinWidth, value: theme_toggle_reserved_width()),
-      decl(prop: TextAlign, value: "center"),
-      decl(prop: TextTransform, value: "lowercase"),
-      decl(prop: LetterSpacing, value: "0.03em"),
-    ] },
   ]
 }
 
-fn roadmap_css() -> String {
-  let rules = roadmap_rules()
-  join([
-    scale_root_css(),
-    theme_root_css(base: day_theme, alternate: night_theme),
-    issue_tracker_root_css(),
-    band_root_css(),
-    auditioner_root_css(),
-    serialize_rules(rules: rules),
-    reduced_motion_block(rules: rules),
-  ], "\n")
+fn roadmap_styles() -> SiteStyles {
+  SiteStyles { rules: concat(roadmap_rules(), flat_map(audition_sets, a =>
+    if audition_set_resolved(a: a) { [StaticRule { selector: RawSelector { text: join([":root[data-swatch-set=\"", a.set_name, "\"]"], "") }, decls: band_var_decls(rows: audition_paints(a: a)) }] } else { [] })),
+    themes: [
+      SiteThemeDecls { day: status_palette(night: false), night: status_palette(night: true) },
+      SiteThemeDecls { day: issue_token_decls(t: issue_tracker_visual_tokens), night: issue_token_decls(t: issue_tracker_visual_tokens_dark) },
+      SiteThemeDecls { day: band_var_decls(rows: workspace_band_paints()), night: band_var_decls(rows: workspace_band_paints()) },
+    ] }
 }
+fn roadmap_css() -> String { site_styles_css(styles: roadmap_styles()) }
