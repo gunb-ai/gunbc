@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A LINE COMMENT ADVANCES THE LEXER BY ITS OWN LENGTH, AND ITS CAPTURED TEXT IS ITSELF.
 //
 // The `.dag` line-comment rule is Sequence(Literal "//", Repeat(LineCommentTextChar)), and the
-// sequence arm of v2.compiler.tokenize lex_rule_thunk joins the two lexemes with list_append. The
+// sequence arm of v2.compiler.tokenize lex_match_pattern joins the two lexemes with list_append. The
 // literal matcher answered the pattern's own text -- a native String on the seed -- beside the
 // repeat's codepoint list, and the seed's concat renders a list it cannot tell from data: `// ab`
 // became the text `//[32, 97, 98]` and a bare `//` became `//Empty`. lex_walk_step advances every

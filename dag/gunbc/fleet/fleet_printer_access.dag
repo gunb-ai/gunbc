@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
@@ -193,7 +193,7 @@ data no_printer_materializations: List<VerifiedVersionForAttempt> = []
 // THE MEASUREMENT THAT UNBLOCKED IT, since an earlier read of this same question got it wrong:
 // gcp.SecretManager.GetSecret was already declared in extdeps and had zero callers. Censusing call
 // sites and reporting existence is what produced the wrong answer; the operation was there, and all
-// it lacked was the RestOutcome declaration that stops dispatch_rest raising its 404 as a TypeError.
+// it lacked was a typed refusal: its 404 now arrives as the RestRefused arm of RestResult.
 //
 // RUNG: mitigation, and honestly so -- this is an external fact observed at a boundary, which is its
 // ceiling; it never becomes construction. What changed is that the boundary is now a real read whose
@@ -249,7 +249,7 @@ type PrinterCredentialResolution
 // network func keeps the transport and this keeps the fact, which is also the layering the substrate
 // asks for: dispatch is realization, and the classification is the thing being realized.
 //
-// THE RestOk ARM: A CONTAINER THAT EXISTS IS NOT THE SAME AS KNOWING WHICH VERSION TO READ. Routing
+// THE RestAnswered ARM: A CONTAINER THAT EXISTS IS NOT THE SAME AS KNOWING WHICH VERSION TO READ. Routing
 // that case back through the receipt roster unmodified would answer ProvisionRequired for a secret
 // that demonstrably exists -- absence and unknown-version collapsed into one arm wearing the wrong
 // remedy -- so it reaches PrinterCredentialVersionUnrecorded instead.
@@ -279,17 +279,17 @@ type PrinterCredentialResolution
 fn classify_container_observation(
   printer: PhysicalAssetIdentity,
   desired: SecretRef,
-  outcome: RestOutcome,
-  container_name: String,
+  outcome: RestResult<String>,
   record: PrinterMaterializationRecord,
 ) -> PrinterCredentialResolution {
   match outcome {
-    RestOk =>
+    RestAnswered { answer: container_name } =>
       match record {
         NoRecordedMaterialization =>
           PrinterCredentialVersionUnrecorded { printer: printer, container: container_name }
         RecordedMaterialization { exact_ref: e } => PrinterCredentialProvisioned { exact: e }
       }
+    RestRefused { refusal } => match refusal {
     RestStatusRefused { status: s, body: b } =>
       if s == 404 {
         match record {
@@ -322,6 +322,7 @@ fn classify_container_observation(
           " and the body beneath it could not be read, so the answer is unknown rather than absent: "),
           c as String) as NonEmptyStr,
       }
+    }
   }
 }
 
@@ -381,8 +382,10 @@ fn observe_printer_secret_container(
       classify_container_observation(
         printer: printer,
         desired: desired,
-        outcome: observed.outcome,
-        container_name: observed.name,
+        outcome: match observed {
+          RestAnswered { answer } => RestAnswered { answer: answer.name }
+          RestRefused { refusal } => RestRefused { refusal: refusal }
+        },
         record: record,
       )
     }

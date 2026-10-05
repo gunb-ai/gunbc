@@ -1,7 +1,7 @@
 module gunbc.auth.gcp_iam_bootstrap_authority
 
 import std.types { String, Timestamp, Bool, List, NonEmptyStr, Int, path_segment_is_safe }
-import extdeps.transports.rest { RestOutcome, RestStatusRefused, mutation_status_is_commit_ambiguous }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, mutation_status_is_commit_ambiguous }
 import extdeps.auth.oidc { OidcStandardClaims }
 import std.decimal { decimal_digits_only }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
@@ -92,18 +92,17 @@ fn bootstrap_parent_name_valid(name: String, kind: String) -> Bool {
 
 // Reuse the transport authority's distinction: a received 4xx rejects the mutation;
 // a transport fault, undecodable success, or server error does not establish non-commit.
-fn bootstrap_authority_publication_refused(outcome: RestOutcome) -> Bool {
-  match outcome {
+fn bootstrap_authority_publication_refused(refusal: RestRefusal) -> Bool {
+  match refusal {
     RestStatusRefused { status, body: _ } => (status as Int) >= 400 && !mutation_status_is_commit_ambiguous(status: status)
-    RestOk => false
     RestTransportRefused { cause: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
   }
 }
 
 
-fn bootstrap_deny_retry_admitted(outcome: RestOutcome, remaining: Int, live: Bool) -> Bool {
-  remaining > 1 && live && match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestOk => false  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+fn bootstrap_deny_retry_admitted(refusal: RestRefusal, remaining: Int, live: Bool) -> Bool {
+  remaining > 1 && live && match refusal { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
 
 

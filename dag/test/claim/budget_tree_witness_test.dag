@@ -1,6 +1,33 @@
 module test.claim.budget_tree_witness
 
 import std.measure { Memory, One, byte_size }
+import extdeps.accounting.budget {
+  Appropriation,
+  Balanced,
+  Deficit,
+  LineItem,
+  Surplus,
+  ZeroBased,
+  admit_all,
+  within_appropriation,
+}
+import product.budget_tree {
+  AllSatisfied,
+  BestEffort,
+  BudgetClaim,
+  BudgetNode,
+  BudgetPriority,
+  BudgetReconciliation,
+  Evicted,
+  Guaranteed,
+  GuaranteedShortfall,
+  budget_tree_method,
+  claim_items,
+  node_balance,
+  node_conserves,
+  node_conserves_local,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

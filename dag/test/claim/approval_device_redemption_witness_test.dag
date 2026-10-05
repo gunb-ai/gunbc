@@ -7,7 +7,7 @@ import std.measure { byte_size }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
 import extdeps.apple.apns { apns_send_outcome_of }
 import extdeps.apple.app_attest {
   AppAttestProduction, AttestationVerification, AssertionVerification, AssertionSignatureInvalid, AttestationNonceMismatch,
@@ -51,21 +51,21 @@ data sig: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1
 
 // 410 IS THE ONE STATUS THAT IS NOT A RETRY: the registration is dead.
 test fn witness_apns_410_becomes_registration_invalid() -> Bool {
-  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestStatusRefused { status: 410, body: "{\"reason\":\"Unregistered\"}" }, apns_id: "")) {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestRefused { refusal: RestStatusRefused { status: 410, body: "{\"reason\":\"Unregistered\"}" } })) {
     PushRegistrationInvalid { provider: _, detail } => detail != ""
     _ => false
   }
 }
 
 test fn witness_apns_429_stays_a_retryable_refusal_carrying_its_status() -> Bool {
-  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestStatusRefused { status: 429, body: "{\"reason\":\"TooManyRequests\"}" }, apns_id: "")) {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestRefused { refusal: RestStatusRefused { status: 429, body: "{\"reason\":\"TooManyRequests\"}" } })) {
     PushProviderRefused { provider: _, status, detail: _, retryable } => status == 429 && retryable
     _ => false
   }
 }
 
 test fn witness_apns_ok_carries_apns_id() -> Bool {
-  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestOk, apns_id: "id-7")) {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestAnswered { answer: "id-7" })) {
     PushProviderAccepted { provider: _, receipt } => receipt as String == "id-7"
     _ => false
   }
@@ -73,14 +73,14 @@ test fn witness_apns_ok_carries_apns_id() -> Bool {
 
 // A 200 WITHOUT apns-id IS NOT AN ACCEPTANCE: it must not become PushProviderAccepted on an empty id.
 test fn witness_apns_ok_without_apns_id_is_undecodable() -> Bool {
-  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestOk, apns_id: "")) {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestAnswered { answer: "" })) {
     PushProviderUndecodable { provider: _, status, cause: _ } => status == 200
     _ => false
   }
 }
 
 test fn witness_apns_transport_refusal_has_no_status() -> Bool {
-  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestTransportRefused { cause: "connect refused" }, apns_id: "")) {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestRefused { refusal: RestTransportRefused { cause: "connect refused" } })) {
     PushProviderUnreached { provider: _, cause } => cause == "connect refused"
     _ => false
   }

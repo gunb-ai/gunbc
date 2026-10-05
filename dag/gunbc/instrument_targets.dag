@@ -227,6 +227,18 @@ fn v2_native_cli_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-cli" } }
 }
 
+// THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
+// reader of these entries -- the required-lane resolution census, and the seed's native lane runner
+// whose constants test.claim.compiler_gate_emit_build_lane_witness_test holds against these rows --
+// takes them from here, so a moved subject cannot leave a stale closure reported as covered.
+fn self_host_entry() -> String {
+  "src/v2/compiler/00_compile.dag"
+}
+
+fn v2_native_cli_entry() -> String {
+  "src/v2/cli/compile_cli.dag"
+}
+
 // THE NATIVE FRONTIER INSTRUMENT: the same adjudicating run as the native route, over the whole
 // v2.test.* universe, answered by gunbc.native_frontier_ratchet instead of by the lane's route
 // qualification. The two are different questions. Qualification asks whether this run was a sound
