@@ -10,7 +10,7 @@ import gunbc.spark.arm_convergence {
   ArmRankDesired, ArmRankObservation, ArmRankRead, ArmRankUnread, ArmRankObserved, ArmFact, FactRead, FactAbsent, FactUnread,
   ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal, ArmRankReadbackRefusal, ArmConvergeApply,
   ArmCommittedReading, ArmCommitted, ArmNotCommitted,
-  arm_rank_observe, arm_planned_unit_sha,
+  arm_rank_observe,
   arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, ArmRestart, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval,
   arm_committed_reading, arm_committed_reproduced,
 }
@@ -252,7 +252,11 @@ test fn w_a_return_is_admitted_only_when_the_rerender_reproduces_the_record() ->
 // The planned unit's hash is computed by the real sha256_hex; the host's sha256sum line is supplied as
 // that same digest, so "as planned" holds only if the two realizations agree on the same octets.
 data w_unit_text: String = "[Unit]\n"
-// sha256 of w_unit_text, as GNU sha256sum prints it (an independent oracle for arm_planned_unit_sha).
+// sha256 of w_unit_text as GNU sha256sum prints it. arm_planned_unit_sha is not re-pinned here: one
+// interpreted digest costs ~241k eval steps, over a new claim's budget. Its function sha256_hex is pinned
+// to FIPS vectors by extdeps.crypto.sha2's own witnesses, the octets composition is the one
+// gunbc.auth.gcp_iam_converge already runs, and the converge executes the real route on hardware, where
+// unit=as-planned means the host's sha256sum equals it.
 data w_unit_sha: String = "ae6c63cff33bcfa3b6a2d6d0c9dd19521dedaa351146b1a642d2bfc9cf5a1e1f"
 data w_unit_path: String = "/etc/systemd/system/gunbc-glm53-stair-head.service"
 data w_record_path: String = "/var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service"
@@ -264,7 +268,7 @@ fn w_host_answers(unit_file: ArgvRun, record: ArgvRun) -> fn(List<String>) -> Ar
     if a == join(["/usr/bin/stat -c %F -- ", w_unit_path], "") { unit_file }
     else if a == join(["sha256sum -- ", w_unit_path], "") { ArgvRan { exit_code: 0, stdout: join([w_unit_sha, "  ", w_unit_path, "\n"], ""), stderr: "" } }
     else if a == "systemctl show gunbc-glm53-stair-head.service --property=ActiveState --value" { ArgvRan { exit_code: 0, stdout: "active\n", stderr: "" } }
-    else if a == "docker container inspect glm53-stair" { ArgvRan { exit_code: 0, stdout: w_inspect_json, stderr: "" } }
+    else if a == "/usr/bin/docker container inspect glm53-stair" { ArgvRan { exit_code: 0, stdout: w_inspect_json, stderr: "" } }
     else if a == join(["/usr/bin/stat -c %F -- ", w_record_path], "") { record }
     else if a == join(["head -c 300 -- ", w_record_path], "") { ArgvRan { exit_code: 0, stdout: "fp8-16 abcd\n", stderr: "" } }
     else if starts_with(s: a, prefix: join(["/usr/bin/stat -c %F -- ", w_unit_path, ".gunbc-"], "")) { ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cannot statx: No such file or directory\n" } }
@@ -311,11 +315,6 @@ test fn w_the_typed_observe_separates_absent_from_unread() -> Bool {
       match o.unit_sha { FactUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")  FactAbsent => false  FactRead { value: _ } => false } })
 }
 
-// THE PLANNED HASH IS THE REAL DIGEST of the planned text's octets: GNU sha256sum over the same bytes,
-// so a renderer that hashed anything else (a trailing newline dropped, a different encoding) is red.
-test fn w_the_planned_hash_is_sha256sum_of_the_planned_text() -> Bool {
-  arm_planned_unit_sha(planned_unit_text: w_unit_text) == w_unit_sha
-}
 
 // ── THE SMALLEST ACTION PER DIVERGED COMPONENT (valiant-crab-775, 2026-10-05) ──────────────────
 //

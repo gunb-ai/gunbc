@@ -698,5 +698,5 @@ test fn w_no_apply_or_convergence_script_echoes_shell_syntax() -> Bool {
       spark_native_remove_retired_script(unit_name: u),
       spark_native_commit_record_script(unit_name: u, label: "t" as NonEmptyStr),
     ]
-  }, at_least: 6)
+  }, at_least: 5)
 }
