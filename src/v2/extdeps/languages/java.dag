@@ -1338,7 +1338,7 @@ fn java_grammar_root() -> GrammarRoot {
     expression: java_grammar_result_expr(),
     emitted: ^java_surface_result
   )
-  let type = java_grammar_production(
+  let type_production = java_grammar_production(
     name: ^java_production_type,
     expression: java_grammar_type_expr(),
     emitted: ^java_surface_type
@@ -1418,7 +1418,7 @@ fn java_grammar_root() -> GrammarRoot {
       field_declaration,
       primitive_type,
       result,
-      type,
+      type_production,
       formal_parameter_list,
       method_declarator,
       block,

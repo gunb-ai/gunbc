@@ -224,7 +224,15 @@ fn publication_request_decode_document(doc: JsonValue) -> PublicationRequestDeco
                   ReceiptMemberRead { value: worktree } => RequestDecoded { subject: subject, worktree: worktree }
                 }
             }
-          _ =>
+          JsonMemberAbsent =>
+            RequestUndecodable {
+              reason: "publication request subject member is absent or duplicated",
+            }
+          JsonMemberDuplicated { count: _ } =>
+            RequestUndecodable {
+              reason: "publication request subject member is absent or duplicated",
+            }
+          JsonMemberNotAnObject =>
             RequestUndecodable {
               reason: "publication request subject member is absent or duplicated",
             }

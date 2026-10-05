@@ -1,5 +1,8 @@
 module gunbc.managed_host_unit_hold
 
+import gunbc.process_hold_identity {
+  process_hold_text, process_hold_marker, process_hold_decode, text_at, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
+}
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
@@ -271,60 +274,13 @@ fn unit_hold_owner_tag(o: UnitHoldOwner) -> String {
   }
 }
 
-// THE PROCESS PART OF A BOOT OWNER, rendered after the run id and decoded back here and nowhere else:
-// `@boot=<boot_id>,pid=<pid>,start=<starttime ticks>,pidns=<namespace link target>`.
-data unit_hold_process_marker: String = "@boot="
-
-fn unit_hold_process_text(p: ProcessIdentity, pid_namespace: NonEmptyStr) -> String {
-  join([unit_hold_process_marker, p.boot_id as String, ",pid=", to_string(p.pid), ",start=", p.start_time as String, ",pidns=", pid_namespace as String], "")
-}
-
-type UnitHoldHolderProcess {
-  process: ProcessIdentity
-  pid_namespace: NonEmptyStr
-}
-
-fn text_at(xs: List<String>, i: Int) -> String {
-  match xs.skip(n: i).first() {
-    Present { value: v } => v
-    Absent => ""
-  }
-}
-
-fn unit_hold_process_decode(text: String) -> UnitHoldHolderProcess? {
-  let parts = split(s: text, delimiter: ",")
-  if count(parts) != 4 {
-    none
-  } else {
-    let b = text_at(xs: parts, i: 0)
-    let pid_text = text_at(xs: parts, i: 1)
-    let start_text = text_at(xs: parts, i: 2)
-    let ns_text = text_at(xs: parts, i: 3)
-    if !starts_with(s: b, prefix: "boot=") || !starts_with(s: pid_text, prefix: "pid=") || !starts_with(s: start_text, prefix: "start=") || !starts_with(s: ns_text, prefix: "pidns=") {
-      none
-    } else {
-      let boot = substring(s: b, start: 5, end: string_length(b))
-      let start = substring(s: start_text, start: 6, end: string_length(start_text))
-      let ns = substring(s: ns_text, start: 6, end: string_length(ns_text))
-      match parse_int(s: substring(s: pid_text, start: 4, end: string_length(pid_text))) {
-        Absent => none
-        Present { value: n } =>
-          match checked_int_to_nat(n: n) {
-            Absent => none
-            Present { value: pid } =>
-              if boot == "" || start == "" || ns == "" { none } else { Present { value: UnitHoldHolderProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: start as NonEmptyStr }, pid_namespace: ns as NonEmptyStr } } }
-          }
-      }
-    }
-  }
-}
 
 fn unit_hold_owner_detail(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: r } => r as String
-    BootRun { run_id: r, process: p, pid_namespace: n } => concat(r as String, unit_hold_process_text(p: p, pid_namespace: n))
+    BootRun { run_id: r, process: p, pid_namespace: n } => concat(r as String, process_hold_text(p: p, pid_namespace: n))
     HostResetReturn { attempt: a } => a as String
-    KvmObserverProbe { run_id: r, process: p, pid_namespace: n } => concat(r as String, unit_hold_process_text(p: p, pid_namespace: n))
+    KvmObserverProbe { run_id: r, process: p, pid_namespace: n } => concat(r as String, process_hold_text(p: p, pid_namespace: n))
   }
 }
 
@@ -364,11 +320,11 @@ fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
     match unit_hold_owner_detail_after(raw: raw, tag: boot) {
       Absent => UnitHoldOwnerUnrecognized { raw: raw }
       Present { value: d } => {
-        let halves = split(s: d as String, delimiter: unit_hold_process_marker)
+        let halves = split(s: d as String, delimiter: process_hold_marker)
         if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
           UnitHoldOwnerUnrecognized { raw: raw }
         } else {
-          match unit_hold_process_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
+          match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
             Present { value: h } => UnitHoldOwnerDecoded { owner: BootRun { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
             Absent => UnitHoldOwnerUnrecognized { raw: raw }
           }
@@ -379,11 +335,11 @@ fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
     match unit_hold_owner_detail_after(raw: raw, tag: probe) {
       Absent => UnitHoldOwnerUnrecognized { raw: raw }
       Present { value: d } => {
-        let halves = split(s: d as String, delimiter: unit_hold_process_marker)
+        let halves = split(s: d as String, delimiter: process_hold_marker)
         if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
           UnitHoldOwnerUnrecognized { raw: raw }
         } else {
-          match unit_hold_process_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
+          match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
             Present { value: h } => UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
             Absent => UnitHoldOwnerUnrecognized { raw: raw }
           }
@@ -446,152 +402,6 @@ fn unit_hold_refusal(outcome: FileHoldAcquireOutcome) -> NonEmptyStr? {
       Present { value: join(["unit hold ", k as String, " undecodable (", d as String, "); controller untouched"], "") as NonEmptyStr }
     FileHoldKeyNotSlotAddressable { slot_key: k } =>
       Present { value: join(["unit hold key ", k as String, " is not slot-addressable; controller untouched"], "") as NonEmptyStr }
-  }
-}
-
-// ── WHETHER A HOLDING PROCESS STILL RUNS, OBSERVED ─────────────────────────────────────────────
-// The store and every holder that can be recovered run on one host (the admitted subject's
-// store_host; each hold-owning root refuses any other), so the holder's process is observable through this host's
-// procfs. Three reads decide it, each typed by the host's own error kind:
-//   - /proc/sys/kernel/random/boot_id differs from the holder's boot -> the host rebooted since, so
-//     every process of that boot is gone: OBSERVED DEAD;
-//   - same boot, /proc/<pid>/stat is ABSENT (the host answered NotFound) -> no such process: DEAD;
-//   - same boot, the stat reads and its starttime differs -> the pid was reused: DEAD;
-//   - same boot, same starttime -> the holder runs: LIVE.
-// Any read the host refused for another reason, and any content that does not parse, is
-// UNOBSERVABLE: the holder may well be alive, and nothing here concludes otherwise from a failed look.
-data proc_boot_id_path: String = "/proc/sys/kernel/random/boot_id"
-
-data proc_self_stat_path: String = "/proc/self/stat"
-
-// THE READER'S PID NAMESPACE (namespaces(7), pid_namespaces(7)): /proc/self/ns/pid is a symbolic link
-// whose target, `pid:[<inode>]`, identifies the namespace; two processes share a pid namespace exactly
-// when the targets are equal. It is read with readlink(1), because the link is not a readable file.
-data proc_self_pid_namespace_path: String = "/proc/self/ns/pid"
-
-type PidNamespaceReading
-  = PidNamespaceRead { namespace: NonEmptyStr }
-  | PidNamespaceUnread { cause: NonEmptyStr }
-
-fn own_pid_namespace() -> PidNamespaceReading {
-  match run_shell_command_capture(command: readlink_command(path: proc_self_pid_namespace_path), transport: LocalExec) {
-    ProcessOutputPresent { text: t } =>
-      if trim(s: t) == "" { PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr } }
-      else { PidNamespaceRead { namespace: trim(s: t) as NonEmptyStr } }
-    ProcessOutputAbsent => PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr }
-    ProcessRefused { exit_code: c, stderr: e } => PidNamespaceUnread { cause: join(["readlink /proc/self/ns/pid exited ", to_string(c), ": ", e], "") as NonEmptyStr }
-  }
-}
-
-fn exact_read_of(path: String) -> FilesystemExactRead {
-  let read = Filesystem.Read(path: path)
-  filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind)
-}
-
-type ExactText
-  = ExactTextRead { text: String }
-  | ExactTextAbsent
-  | ExactTextUnread { cause: NonEmptyStr }
-
-fn exact_text(path: String) -> ExactText {
-  match exact_read_of(path: path) {
-    FilesystemExactPathRead { path: _, content: c } => ExactTextRead { text: c }
-    FilesystemExactPathAbsent { path: _ } => ExactTextAbsent
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ExactTextUnread { cause: join([path, " could not be read: ", e], "") as NonEmptyStr }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ExactTextUnread { cause: join([path, " failed with an unrecognized error kind ", o, ": ", e], "") as NonEmptyStr }
-  }
-}
-
-fn start_time_text(stat: String) -> String? {
-  match proc_pid_stat_start_time(content: stat) {
-    StartTimeObserved { ticks_since_boot: t } => Present { value: to_string(t) }
-    _ => none
-  }
-}
-
-// THE NAMESPACE GATE COMES FIRST: only a reader in the holder's own pid namespace can conclude
-// anything from a pid, so a reader elsewhere -- or one that cannot name its namespace -- cannot look.
-fn holder_process_liveness(p: ProcessIdentity, pid_namespace: NonEmptyStr) -> DurableHoldHolderLiveness {
-  match own_pid_namespace() {
-    PidNamespaceUnread { cause: c } => HolderLivenessUnobservable { cause: c }
-    PidNamespaceRead { namespace: mine } =>
-      if (mine as String) != (pid_namespace as String) {
-        HolderLivenessUnobservable { cause: join(["the holder's pid namespace is ", pid_namespace as String, " and this reader's is ", mine as String, "; its pid cannot be looked up from here"], "") as NonEmptyStr }
-      } else {
-        holder_process_liveness_in_namespace(p: p)
-      }
-  }
-}
-
-fn holder_process_liveness_in_namespace(p: ProcessIdentity) -> DurableHoldHolderLiveness {
-  match exact_text(path: proc_boot_id_path) {
-    ExactTextAbsent => HolderLivenessUnobservable { cause: concat(proc_boot_id_path, " is absent on this host") as NonEmptyStr }
-    ExactTextUnread { cause: c } => HolderLivenessUnobservable { cause: c }
-    ExactTextRead { text: t } => {
-      let now = trim(s: t)
-      if now == "" {
-        HolderLivenessUnobservable { cause: concat(proc_boot_id_path, " was empty") as NonEmptyStr }
-      } else if now != (p.boot_id as String) {
-        HolderObservedDead { evidence: join(["the host has booted since the holder started (boot ", p.boot_id as String, ", now ", now, ")"], "") as NonEmptyStr }
-      } else {
-        let stat_path = join(["/proc/", to_string(p.pid), "/stat"], "")
-        match exact_text(path: stat_path) {
-          ExactTextAbsent => HolderObservedDead { evidence: join(["no process ", to_string(p.pid), " on the holder's boot (", stat_path, " not found)"], "") as NonEmptyStr }
-          ExactTextUnread { cause: c } => HolderLivenessUnobservable { cause: c }
-          ExactTextRead { text: stat } =>
-            match start_time_text(stat: stat) {
-              Absent => HolderLivenessUnobservable { cause: concat(stat_path, " carried no readable starttime") as NonEmptyStr }
-              Present { value: st } =>
-                if st == (p.start_time as String) {
-                  HolderObservedLive { evidence: join(["process ", to_string(p.pid), " started at tick ", st, " still runs"], "") as NonEmptyStr }
-                } else {
-                  HolderObservedDead { evidence: join(["pid ", to_string(p.pid), " now names another process (start tick ", st, ", holder's ", p.start_time as String, ")"], "") as NonEmptyStr }
-                }
-            }
-        }
-      }
-    }
-  }
-}
-
-// THIS PROCESS'S OWN IDENTITY, read from the same procfs a successor will read it back through: the
-// boot id, and pid and starttime from ONE read of /proc/self/stat. A boot that cannot name itself does
-// not take the unit -- a hold it could never be shown dead in is the lockout this replaces.
-type SelfProcessIdentity
-  = SelfIdentified { process: ProcessIdentity, pid_namespace: NonEmptyStr }
-  | SelfUnidentified { cause: NonEmptyStr }
-
-fn self_process_identity() -> SelfProcessIdentity {
-  match exact_text(path: proc_boot_id_path) {
-    ExactTextAbsent => SelfUnidentified { cause: concat(proc_boot_id_path, " is absent on this host") as NonEmptyStr }
-    ExactTextUnread { cause: c } => SelfUnidentified { cause: c }
-    ExactTextRead { text: b } => {
-      let boot = trim(s: b)
-      match exact_text(path: proc_self_stat_path) {
-        ExactTextAbsent => SelfUnidentified { cause: concat(proc_self_stat_path, " is absent on this host") as NonEmptyStr }
-        ExactTextUnread { cause: c } => SelfUnidentified { cause: c }
-        ExactTextRead { text: stat } =>
-          match proc_pid_stat_pid(content: stat) {
-            PidUnparseable { field: f } => SelfUnidentified { cause: concat("/proc/self/stat carried no pid: ", f) as NonEmptyStr }
-            PidObserved { pid: n } =>
-              match start_time_text(stat: stat) {
-                Absent => SelfUnidentified { cause: "/proc/self/stat carried no readable starttime" as NonEmptyStr }
-                Present { value: st } =>
-                  match checked_int_to_nat(n: n) {
-                    Absent => SelfUnidentified { cause: "/proc/self/stat pid is not a natural number" as NonEmptyStr }
-                    Present { value: pid } =>
-                      if boot == "" { SelfUnidentified { cause: concat(proc_boot_id_path, " was empty") as NonEmptyStr } }
-                      else {
-                        match own_pid_namespace() {
-                          PidNamespaceUnread { cause: c } => SelfUnidentified { cause: c }
-                          PidNamespaceRead { namespace: n } => SelfIdentified { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: st as NonEmptyStr }, pid_namespace: n }
-                        }
-                      }
-                  }
-              }
-          }
-      }
-    }
   }
 }
 
