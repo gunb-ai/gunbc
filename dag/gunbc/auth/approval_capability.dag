@@ -1,5 +1,6 @@
 module gunbc.auth.approval_capability
 
+import std.unicode.scalar { char_text }
 import std.types { NonEmptyStr, String, Int, Timestamp }
 import std.decimal { decimal_digit_char }
 import std.logic { Bool }
@@ -136,7 +137,7 @@ type CapabilityExpectation {
 // The fields are joined by a unit separator rather than a comma or a colon precisely so that no
 // value can forge a boundary: an escalation id containing a comma would otherwise let one envelope
 // serialize identically to a different one, which is a signature collision authored in the data.
-data signing_field_separator: String = from_code_point(cp: 31)
+data signing_field_separator: String = char_text(c: 31)
 
 fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr {
   join(

@@ -1,5 +1,6 @@
 module test.claim.terminal_wire_projection_witness_test
 
+import std.unicode.scalar { char_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool }
 import std.symbols { Ascii }
@@ -259,8 +260,8 @@ test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
   ansi_c1_controls.count() == 32 &&
   scan.next_index == 65 &&
   scan.first_failure == -1 &&
-  ansi_text_contains_cursor_control(text: from_code_point(cp: 128))
-    && ansi_text_contains_cursor_control(text: from_code_point(cp: 159))
+  ansi_text_contains_cursor_control(text: char_text(c: 128))
+    && ansi_text_contains_cursor_control(text: char_text(c: 159))
     && !ansi_text_contains_cursor_control(text: "\\u{0080}")
 }
 

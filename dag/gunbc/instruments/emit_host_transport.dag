@@ -1,5 +1,6 @@
 module tools.emit_host_transport
 
+import std.unicode.scalar { char_text }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -59,7 +60,7 @@ data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nvers
 // go.Toolchain.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count
 // check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable
 // output could pass a count check with wrong content; the expected string is built in-substrate from
-// the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the
+// the same stdout_byte_count authority (repeat_string of char_text(c: 0)), and NULs survive the
 // transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked
 // the tempdir on mid-script failure).
 //
@@ -90,7 +91,7 @@ data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nvers
 data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: hermetic TypeScript compilation — run_ts_smoke now routes through typed Filesystem.Write, shell.Mktemp/Remove, typescript.Compiler.Compile and node.Runtime.RunFile; its concatenated heredoc and conditional node provisioning are dissolved. typescript.Compiler.Compile still uses npx to fetch typescript@5.9.2 at runtime: typing the operation does not discharge this compile hermeticity gap. DISSOLVES WHEN a hermetic TypeScript compilation authority compiles the fixture without runtime package fetch and run_ts_smoke consumes it.")
 
 fn expected_stdout_nul_run() -> String {
-  repeat_string(s: from_code_point(0), n: byte_size_count(stdout_byte_count))
+  repeat_string(s: char_text(c: 0), n: byte_size_count(stdout_byte_count))
 }
 
 fn run_rust_smoke() -> Bool {
@@ -178,7 +179,7 @@ fn run_ts_smoke() -> Bool {
   )
   let run = node.Runtime.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.js"))
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  let expected = concat(from_code_point(ts_host_fixture_expected_sum), repeat_string(s: from_code_point(0), n: byte_size_count(ts_signed_i32_le_byte_count) - 1))
+  let expected = concat(char_text(c: ts_host_fixture_expected_sum), repeat_string(s: char_text(c: 0), n: byte_size_count(ts_signed_i32_le_byte_count) - 1))
   dir.success && src.success && compile.success && run.success && cleanup.success
     && (run.stdout == expected)
 }

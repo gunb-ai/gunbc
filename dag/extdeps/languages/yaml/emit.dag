@@ -1,5 +1,6 @@
 module extdeps.languages.yaml.emit
 
+import std.unicode.scalar { char_text }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.algebra { trim }
@@ -321,7 +322,7 @@ fn yaml_emitted_text(text: String) -> YamlEmitResult {
   if yaml_contains_refused_character(text: text) {
     let cp = yaml_first_refused_character(text: text)
     YamlEmitRefused {
-      path: join(["line ", to_string(yaml_line_containing(lines: yaml_source_lines(src: text), pattern: from_code_point(cp: cp), index: 0)), " of the emitted text"], ""),
+      path: join(["line ", to_string(yaml_line_containing(lines: yaml_source_lines(src: text), pattern: char_text(c: cp), index: 0)), " of the emitted text"], ""),
       reason: yaml_refused_character_reason(cp: cp),
     }
   } else {
