@@ -47,6 +47,9 @@ service Clock {
       0 => Unit
       nonzero => String "date command failed"
     }
+    mock_response {
+      0 => { unix_millis: "" } "hermetic: no host clock; clock_unix_millis_read refuses the empty reading rather than fabricate an instant"
+    }
   }
 
   operation UnixSecs {

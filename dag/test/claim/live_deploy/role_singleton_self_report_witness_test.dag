@@ -282,7 +282,8 @@ test fn the_real_producers_report_decodes_as_itself() -> Bool {
     }
 }
 
-// THE REAL OBSERVATION RUNS THE REAL FETCH. observe_role_singletons_by_self_report is the observation
+// THE REAL OBSERVATION RUNS THE REAL READER. On a hermetic route the clock refuses (Clock.UnixMillis
+// mock), so the reader's own clock-unreadable arm answers; on a live route the fetch runs. observe_role_singletons_by_self_report is the observation
 // the canonical assessor (assess_and_admit_rostered, sealed to its callers) decides over. With no granted
 // reach the fetch is unserved, or the served document carries no report, so it refuses as unobservable
 // with the self-report reader's own cause prefix -- the ROUTE asserted, not only the verdict: an
