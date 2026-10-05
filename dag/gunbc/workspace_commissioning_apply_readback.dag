@@ -1,0 +1,321 @@
+module gunbc.workspace_commissioning_apply_readback
+
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_path }
+
+import std.types { Bool, String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { CasGeneration }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, WorkspaceExecutorPhase, ExecutorReadbackAccepted, ExecutorReleaseObserved,
+}
+import gunbc.workspace_commissioning_executor_store {
+  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished, WorkspaceExecutorJournalConflict, WorkspaceExecutorJournalRefused, WorkspaceExecutorJournalUnreadable,
+}
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathUnreadable }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepared, WorkspaceCommissioningRecordUnreadable }
+import gunbc.workspace_slot_mutation {
+  WorkspaceSlotMutationLease, WorkspaceSlotMutationLeaseHeld, workspace_slot_mutation_still_owned,
+  workspace_slot_mutation_key, workspace_commissioning_mutation_owner, workspace_slot_mutation_release_fenced,
+  workspace_commissioning_mutation_recover, WorkspaceCommissioningMutationRetained,
+  WorkspaceCommissioningMutationReleased, WorkspaceCommissioningMutationRecoveryRefused,
+}
+
+import v2.std.algebra { filter }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
+import gunbc.runner_microvm_slot_controller { slot_controller_receipt_prefix, outcome_text, SlotControllerCommissioned }
+import gunbc.runner_microvm_slot_start {
+  MicrovmSlotStartRun, SlotStartCompleted, UnitPropertyRead, ControllerReceiptRead,
+  MicrovmUnitStartSubject, microvm_unit_start_observed, microvm_invocation_observe, InvocationTerminated,
+  SlotStartWrongHost, SlotStartRefused, SlotStartAlreadyActive, SlotStartInvocationUnread, SlotStartInvocationUnchanged, SlotStartStillActiveAtBound, UnitPropertyUnread, ControllerReceiptUnreadable, InvocationWaitRefused,
+}
+import gunbc.workspace_commissioning_transaction {
+  WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordRead, WorkspaceCommissioningCommitted,
+}
+import gunbc.workspace_commissioning_store {
+  workspace_commissioning_store_root, workspace_commissioning_store_observe,
+  WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused,
+}
+import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
+import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
+import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
+import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import product.fabric.sanitation { CellReady }
+
+// This readback is necessary before credential removal, not a fleet-apply terminal. Its caller
+// must retain the shared mutation exclusion through removal, absence readback and settlement.
+// Only actual host reads can construct it; fixture observations cannot mint the result.
+type WorkspaceCommissioningApplyReadback sole_constructor {
+  provenance: WorkspaceCommissioningProvenance
+  invocation: NonEmptyStr
+}
+
+type WorkspaceCommissioningApplyReadbackResult
+  = WorkspaceCommissioningApplyObserved { readback: WorkspaceCommissioningApplyReadback }
+  | WorkspaceCommissioningApplyReadbackRefused { reason: String }
+
+// The slot controller unit and receipt location a commissioning invocation is observed through.
+fn workspace_commissioning_controller_start_subject(instance: String) -> MicrovmUnitStartSubject {
+  MicrovmUnitStartSubject {
+    unit: microvm_slot_unit_instance_name(slot_instance: instance),
+    receipt_prefix: slot_controller_receipt_prefix(instance: instance), bound: microvm_slot_unit_timeout_stop(),
+  }
+}
+
+fn workspace_commissioning_terminal_succeeded(instance: String,
+  invocation: NonEmptyStr, result: MicrovmSlotStartRun) -> Bool {
+  match result {
+    SlotStartCompleted { unit, invocation_id, exec_main_status, controller_receipt } =>
+      unit == microvm_slot_unit_instance_name(slot_instance: instance)
+        && invocation_id == invocation
+        && (match exec_main_status { UnitPropertyRead { value } => value == "0" UnitPropertyUnread { property: _, detail: _ } => false })
+        && (match controller_receipt {
+          ControllerReceiptRead { path: _, text } => text == outcome_text(o: SlotControllerCommissioned)
+          ControllerReceiptUnreadable { path: _, detail: _ } => false
+        })
+    SlotStartWrongHost { detail: _ } => false
+    SlotStartRefused { unit: _, detail: _ } => false
+    SlotStartAlreadyActive { unit: _, invocation: _ } => false
+    SlotStartInvocationUnread { unit: _, detail: _ } => false
+    SlotStartInvocationUnchanged { unit: _, invocation_id: _ } => false
+    SlotStartStillActiveAtBound { unit: _, invocation_id: _, bound: _ } => false
+  }
+}
+
+// Initial apply must reread generation ZERO. The ordinary supply reader permits later settled
+// generations for subsequent allocations and therefore cannot discharge this commissioning gate.
+fn workspace_commissioning_initial_ready(slot: RunnerSlotIdentity, reading: CellReadinessStoreRead) -> Bool {
+  let cell = runner_slot_instance_name(slot: slot) as String
+  match reading {
+    StoreRead { ownership: StoreRootOwned, records } => {
+      let own = filter(records, r => (record_cell(record: r) as String) == cell)
+      own.count() == 1 && (match own.first() {
+        Absent => false
+        Present { value: record } => match record_ready_cell_at(record: record, generation: 0) {
+          Present { value: ready } => (ready as String) == cell
+          Absent => false
+        }
+      })
+    }
+    StoreRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ }, records: _ } => false
+    StoreUnreadable { reason: _ } => false
+  }
+}
+
+fn workspace_commissioning_apply_observe(provenance: WorkspaceCommissioningProvenance,
+  release_dir: NonEmptyStr, login: NonEmptyStr, network: SlotNetworkSanitationSubject,
+  invocation: NonEmptyStr) -> WorkspaceCommissioningApplyReadbackResult {
+  let subject = workspace_commissioning_controller_start_subject(instance: runner_slot_instance_name(slot: provenance.slot) as String)
+  let terminal = microvm_unit_start_observed(subject: subject, invocation: invocation)
+  if !workspace_commissioning_terminal_succeeded(instance: runner_slot_instance_name(slot: provenance.slot) as String, invocation: invocation, result: terminal) {
+    WorkspaceCommissioningApplyReadbackRefused { reason: "the exact controller invocation has no successful commissioning terminal" }
+  } else { match workspace_commissioning_runtime_refusal(provenance: provenance, release_dir: release_dir, login: login) {
+    Present { value: reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }
+    Absent => match workspace_commissioning_no_hold_refusal(provenance: provenance) {
+      Present { value: reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }
+      Absent => match workspace_observe_initial_sanitation(subject: network) {
+        WorkspaceInitialSanitationReadback { observation } => if observation.slot != provenance.slot
+          || observation.observation_identity != provenance.sanitation_observation {
+          WorkspaceCommissioningApplyReadbackRefused { reason: "post-controller sanitation does not match the reviewed slot subject" }
+        } else { match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+          WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }
+          WorkspaceCommissioningStoreObserved { snapshot } => match snapshot.reading {
+            WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningCommitted { provenance: stored } } =>
+              if stored != provenance || !workspace_commissioning_initial_ready(slot: provenance.slot, reading: read_cell_readiness_store()) {
+                WorkspaceCommissioningApplyReadbackRefused { reason: "committed provenance and generation-zero readiness do not agree" }
+              } else { match microvm_invocation_observe(unit: subject.unit, invocation: invocation) {
+                InvocationTerminated => WorkspaceCommissioningApplyObserved { readback: WorkspaceCommissioningApplyReadback {
+                  provenance: provenance, invocation: invocation,
+                } }
+                InvocationStillRunning => WorkspaceCommissioningApplyReadbackRefused { reason: "controller invocation changed or became unreadable during protected readback" }
+                InvocationWaitRefused { detail: _ } => WorkspaceCommissioningApplyReadbackRefused { reason: "controller invocation changed or became unreadable during protected readback" }
+              } }
+            WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningApplyReadbackRefused { reason: "commissioning journal is not committed" }
+            WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningPrepared { provenance: _ } } => WorkspaceCommissioningApplyReadbackRefused { reason: "commissioning journal is not committed" }
+            WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningApplyReadbackRefused { reason: "commissioning journal is not committed" }
+          }
+        } }
+        WorkspaceInitialSanitationUnavailable { reason: _ } => WorkspaceCommissioningApplyReadbackRefused { reason: "post-controller sanitation is unreadable" }
+      }
+    }
+  } }
+}
+
+// This result is constructed only after independent readback, exact credential removal and
+// generation-fenced exclusion release. The enclosing fleet apply still owns its generation gate.
+type WorkspaceCommissioningApplyCompleted sole_constructor {
+  provenance: WorkspaceCommissioningProvenance
+  invocation: NonEmptyStr
+}
+
+type WorkspaceCommissioningApplyFinish
+  = WorkspaceCommissioningApplyFinished { completed: WorkspaceCommissioningApplyCompleted }
+  | WorkspaceCommissioningApplyFinishRefused { reason: String }
+
+fn workspace_commissioning_credential_absent(path: String) -> Bool {
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => true
+    FilesystemExactPathRead { path: _, content: _ } => false
+    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => false
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+}
+
+fn workspace_commissioning_credential_remove(provenance: WorkspaceCommissioningProvenance) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_finish")]
+{
+  let path = workspace_launch_credential_source_path(instance: runner_slot_instance_name(slot: provenance.slot) as String)
+  if !workspace_commissioning_submitter_remove(provenance: provenance) { false } else {
+    let read = Filesystem.Read(path: path)
+    match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+      FilesystemExactPathAbsent { path: _ } => true
+      FilesystemExactPathRead { path: _, content } => if content != (workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String) { false }
+        else { match read_store_ownership(path: path) {
+          OwnershipRead { ownership: StoreRootOwned } => {
+            let removed = Filesystem.Delete(path: path)
+            removed.success && workspace_commissioning_credential_absent(path: path)
+          }
+          OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+          OwnershipUnread { reason: _ } => false
+        } }
+      FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => false
+      FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => false
+    }
+  }
+}
+
+// Only the effect-owning finalizer may publish these obligations. The sealed readback joins
+// the actual successful invocation to its protected executor record; the store then enforces
+// adjacent CAS transitions. Failure retains the outstanding obligation for recovery.
+fn workspace_commissioning_executor_settlement(readback: WorkspaceCommissioningApplyReadback,
+  acquired: CasGeneration, phase: WorkspaceExecutorPhase) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_finish"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_recover_completed"),
+  ]
+{
+  if phase != ExecutorReadbackAccepted && phase != ExecutorReleaseObserved { false } else {
+    match workspace_executor_journal_observe(slot_key: runner_slot_instance_name(slot: readback.provenance.slot)) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: record } => if record.subject.plan_hash != readback.provenance.plan_hash
+          || record.subject.mutation_generation != acquired || record.invocation != (readback.invocation as String) { false }
+          else { match workspace_executor_journal_publish(snapshot: snapshot, record: WorkspaceExecutorRecord {
+            subject: record.subject, submitter: record.submitter, previous_invocation: record.previous_invocation,
+            invocation: record.invocation, phase: phase,
+          }) {
+            WorkspaceExecutorJournalPublished { snapshot: _ } => true
+            WorkspaceExecutorJournalConflict => false
+            WorkspaceExecutorJournalRefused { reason: _ } => false
+          } }
+        Absent => false
+      }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => false
+    }
+  }
+}
+
+fn workspace_commissioning_apply_finish(readback: WorkspaceCommissioningApplyReadback,
+  lease: WorkspaceSlotMutationLease, release_dir: NonEmptyStr, login: NonEmptyStr,
+  network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningApplyFinish {
+  let provenance = readback.provenance
+  match lease {
+    WorkspaceSlotMutationLeaseHeld { held } => if held.key != workspace_slot_mutation_key(slot_key: runner_slot_instance_name(slot: provenance.slot))
+      || held.owner != workspace_commissioning_mutation_owner(plan_hash: provenance.plan_hash)
+      || !workspace_slot_mutation_still_owned(held: held) {
+      WorkspaceCommissioningApplyFinishRefused { reason: "commissioning no longer owns its exact mutation exclusion" }
+    } else { match workspace_commissioning_apply_observe(provenance: provenance, release_dir: release_dir,
+      login: login, network: network, invocation: readback.invocation) {
+      WorkspaceCommissioningApplyReadbackRefused { reason } => WorkspaceCommissioningApplyFinishRefused { reason: reason }
+      WorkspaceCommissioningApplyObserved { readback: fresh } => if !workspace_commissioning_credential_remove(provenance: provenance) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "canonical commissioning credential could not be removed and read back absent; exclusion retained" }
+      } else if !workspace_slot_mutation_still_owned(held: held) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "commissioning exclusion changed during credential removal" }
+      } else if !workspace_commissioning_executor_settlement(readback: fresh, acquired: held.generation,
+        phase: ExecutorReadbackAccepted) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "accepted readback could not be durably recorded; exclusion retained" }
+      } else if !workspace_slot_mutation_release_fenced(lease: lease) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "commissioning exclusion release is unsettled; recover before reporting FullyApplied" }
+      } else if !workspace_commissioning_executor_settlement(readback: fresh, acquired: held.generation,
+        phase: ExecutorReleaseObserved) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "release occurred but executor settlement is outstanding; recover before reporting FullyApplied" }
+      } else { WorkspaceCommissioningApplyFinished { completed: WorkspaceCommissioningApplyCompleted {
+        provenance: provenance, invocation: fresh.invocation,
+      } } }
+    } }
+    WorkspaceSlotMutationNotApplicable => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning has no exclusive slot mutation authority" }
+  }
+}
+
+// This entry never starts a controller. The enclosing durable fleet transaction must supply
+// its recorded acquired generation and invocation, not infer them from whichever actor is live.
+// A still-running, failed or changed invocation refuses through the ordinary strong readback.
+fn workspace_commissioning_apply_recover_completed(provenance: WorkspaceCommissioningProvenance,
+  acquired: CasGeneration, invocation: NonEmptyStr, release_dir: NonEmptyStr, login: NonEmptyStr,
+  network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningApplyFinish {
+  match workspace_commissioning_apply_observe(provenance: provenance, release_dir: release_dir,
+    login: login, network: network, invocation: invocation) {
+    WorkspaceCommissioningApplyReadbackRefused { reason } => WorkspaceCommissioningApplyFinishRefused { reason: reason }
+    WorkspaceCommissioningApplyObserved { readback } => {
+      let slot_key = runner_slot_instance_name(slot: provenance.slot)
+      match workspace_commissioning_mutation_recover(slot_key: slot_key, plan_hash: provenance.plan_hash, acquired: acquired) {
+        WorkspaceCommissioningMutationRetained { lease } => workspace_commissioning_apply_finish(
+          readback: readback, lease: lease, release_dir: release_dir, login: login, network: network)
+        WorkspaceCommissioningMutationReleased => if !workspace_commissioning_credential_absent(
+          path: workspace_launch_credential_source_path(instance: slot_key as String))
+          || !workspace_commissioning_credential_absent(path: workspace_commissioning_submitter_path(instance: slot_key as String)) {
+          WorkspaceCommissioningApplyFinishRefused { reason: "released commissioning still has a credential or unreadable credential path" }
+        } else { match workspace_commissioning_mutation_recover(slot_key: slot_key,
+          plan_hash: provenance.plan_hash, acquired: acquired) {
+          WorkspaceCommissioningMutationReleased => if workspace_commissioning_executor_settlement(
+            readback: readback, acquired: acquired, phase: ExecutorReleaseObserved) {
+            WorkspaceCommissioningApplyFinished {
+              completed: WorkspaceCommissioningApplyCompleted { provenance: provenance, invocation: readback.invocation },
+            }
+          } else { WorkspaceCommissioningApplyFinishRefused { reason: "released mutation has no matching durable accepted-readback obligation" } }
+          WorkspaceCommissioningMutationRetained { lease: _ } => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning mutation changed during completed-release recovery" }
+          WorkspaceCommissioningMutationRecoveryRefused => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning mutation changed during completed-release recovery" }
+        } }
+        WorkspaceCommissioningMutationRecoveryRefused => WorkspaceCommissioningApplyFinishRefused { reason: "recorded commissioning exclusion is absent, changed or unreadable; no recovery authority established" }
+      }
+    }
+  }
+}
+
+// Remove only this protected journal's submitting identity. Removing the start credential
+// before the provenance credential prevents late workers from inheriting launch authority.
+fn workspace_commissioning_submitter_remove(provenance: WorkspaceCommissioningProvenance) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_credential_remove")]
+{
+  let slot = runner_slot_instance_name(slot: provenance.slot)
+  match workspace_executor_journal_observe(slot_key: slot) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => if record.subject.plan_hash != provenance.plan_hash { false } else {
+        let path = workspace_commissioning_submitter_path(instance: slot as String)
+        let read = Filesystem.Read(path: path)
+        match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+          FilesystemExactPathAbsent { path: _ } => true
+          FilesystemExactPathRead { path: _, content } => if content != (record.submitter as String) { false }
+            else { match read_store_ownership(path: path) {
+              OwnershipRead { ownership: StoreRootOwned } => {
+                let removed = Filesystem.Delete(path: path)
+                removed.success && workspace_commissioning_credential_absent(path: path)
+              }
+              OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+              OwnershipUnread { reason: _ } => false
+            } }
+          FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => false
+          FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => false
+        }
+      }
+      Absent => false
+    }
+    WorkspaceExecutorJournalUnreadable { reason: _ } => false
+  }
+}

@@ -9,7 +9,7 @@ import extdeps.os.ubuntu_autoinstall {
   NoCloudLocal,
   NoCloudNet,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 type TargetDiskState
   = EmptyDisk

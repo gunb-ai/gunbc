@@ -46,6 +46,7 @@ import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_mo
 import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
+import gunbc.guarantee_stall.self_host_program_assembly_contract_floor_enrollment_stall { self_host_program_assembly_contract_floor_enrollment_stall }
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
 import gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall { trigger_capability_referent_free_by_construction_stall }
 import gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall { axis_list_re_enumerates_its_variant_type_stall }
@@ -206,6 +207,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
   roster_re_enumerates_its_own_rows_stall,
+  self_host_program_assembly_contract_floor_enrollment_stall,
   self_host_wet_route_receipt_lifetime_stall,
   trigger_capability_referent_free_by_construction_stall,
   runner_activation_reachability_stall,
