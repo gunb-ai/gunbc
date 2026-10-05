@@ -13,6 +13,7 @@ import v2.std.grammar {
   GrammarExprFold,
   GrammarProduction,
   GrammarRoot,
+  InfixTable,
   LiteralTerminal,
   ModeledGrammar,
   Nonterminal,
@@ -35,6 +36,7 @@ import v2.std.parse_refusal_reason {
   KeywordAsValueName,
   LayoutUnknownWithoutSource,
   NewlineBeforeDualRoleOperator,
+  NonAssociativeOperatorChain,
   ParseRefusalReason
 }
 import v2.std.integer { Int }
@@ -51,9 +53,9 @@ import v2.test.parse.newline_dual_role_operator_parse {
 // replaced by a terminal no token carries -- an alternative that can never match -- and asserts that
 // such arms exist. Only that reason is stripped, so the mutant differs from the live grammar in that
 // refusal and nothing else by construction, whatever other refusal rows the grammar carries (the
-// declared-path keyword refusal, v2.extdeps.languages.dag dag_grammar_declared_path_expr, is one). There is more than one arm because the additive row
-// is a helper inlined into each operand position of the comparison and equality rows; it is one
-// authored row. Under the mutant the
+// declared-path keyword refusal, v2.extdeps.languages.dag dag_grammar_declared_path_expr, is one). The
+// arm is the continuation guard of the binary operator table (v2.extdeps.languages.dag
+// dag_grammar_binary_expr_expr), one authored row. Under the mutant the
 // next-line sources parse again (the silent merge into one subtraction is back); under the live
 // grammar they refuse (the controls in v2.test.parse.newline_dual_role_operator_parse). The
 // same-line form parses under both.
@@ -83,7 +85,8 @@ fn strip_refusals(expr: GrammarExpr) -> GrammarExpr {
         }
       },
       after_line_break: fn(e) { AfterLineBreak { element: e } },
-      not_predicate: fn(e) { NotPredicate { element: e } }
+      not_predicate: fn(e) { NotPredicate { element: e } },
+      infix_table: fn(operand, guard, operators) { InfixTable { operand: operand, continuation_guard: guard, operators: operators } }
     }
   )
 }
@@ -99,6 +102,7 @@ fn is_newline_refusal(reason: ParseRefusalReason) -> Bool {
     DeclarationMarkerNotTest => false
     KeywordAsValueName => false
     TokenStartsNotIncreasing => false
+    NonAssociativeOperatorChain => false
   }
 }
 
@@ -116,7 +120,8 @@ fn newline_refusal_arm_count(expr: GrammarExpr) -> Int {
       expect: fn(e, _reason) { e },
       refuse_on_match: fn(e, reason) { if is_newline_refusal(reason: reason) { e + 1 } else { e } },
       after_line_break: fn(e) { e },
-      not_predicate: fn(e) { e }
+      not_predicate: fn(e) { e },
+      infix_table: fn(operand, guard, _operators) { operand + guard }
     }
   )
 }

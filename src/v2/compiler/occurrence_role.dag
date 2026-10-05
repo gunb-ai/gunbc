@@ -293,7 +293,8 @@ fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
     expect: fn(a, _reason) { a },
     refuse_on_match: fn(a, _reason) { a },
     after_line_break: fn(a) { a },
-    not_predicate: fn(_a) { false }
+    not_predicate: fn(_a) { false },
+    infix_table: fn(a, _guard, _operators) { a }
   })
 }
 
