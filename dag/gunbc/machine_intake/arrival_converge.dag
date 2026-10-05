@@ -44,6 +44,8 @@ import gunbc.machine_intake_phase {
 import gunbc.machine_intake_subject {
   AssemblyManifest,
   BoardSerialObservation,
+  BmcFru,
+  HostSmbios,
   FirmwareEntry,
   FirmwareManifest,
   IntakeAttemptId,
@@ -64,8 +66,21 @@ import gunbc.machine_intake_mtjade1_access_observation {
   RecordedManagerCaptureGap,
   RecordedManagerDecoded,
   RecordedManagerRefused,
-  mtjade1_board_serial_observations,
+  FruRead,
+  FruObserved,
+  FruReadRefused,
+  RecordedFruObservation,
+  SmbiosRead,
+  SmbiosObserved,
+  SmbiosReadRefused,
+  RecordedSmbiosObservation,
+  fru_gap_text,
+  smbios_gap_text,
+  sol_session_controller,
+  provisional_assembly_of_fru,
   read_mtjade1_current_manager_read,
+  read_mtjade1_fru,
+  read_mtjade1_smbios_type2,
 }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
 import gunbc.machine_intake_bmc_rotation_route {
@@ -207,7 +222,7 @@ fn decide_access(assessment: GoalAssessment<AccessObservation, AccessDeviation, 
   decide_read_only(assessment: assessment)
 }
 
-fn decide_identity(assessment: GoalAssessment<MachineIntakeSubject, NonEmptyStr, NonEmptyStr, NonEmptyStr>) -> UpsertDecision<ReadOnlyPhaseRemedy> {
+fn decide_identity(assessment: GoalAssessment<ProvisionalIdentity, NonEmptyStr, NonEmptyStr, NonEmptyStr>) -> UpsertDecision<ReadOnlyPhaseRemedy> {
   decide_read_only(assessment: assessment)
 }
 
@@ -241,15 +256,16 @@ fn current_route_standing_of(access: AccessObservation) -> BmcRotationRouteStand
 
 // ── IDENTITYBINDPROVISIONAL ────────────────────────────────────────────────────────────────────
 
-// What the unit supplies from its committed observations: board serials (FRU, SMBIOS), the unit keys
-// already bound elsewhere in the fleet, and the provisional assembly readable before boot. The access
-// receipt is the step's precondition and is the one input the fold checks against the ledger.
-// SEALED. Constructed only in this module, by the per-unit function that reads the unit's committed
-// evidence (mtjade1_identity_bind_inputs). No supplied-value path reaches the step.
+// WHAT THE UNIT SUPPLIES, SEALED: its two board-serial reads, each a sealed observation minted only
+// by its own fail-closed file read (gunbc.machine_intake_mtjade1_access_observation read_mtjade1_fru
+// and read_mtjade1_smbios_type2), and the unit keys already bound elsewhere in the fleet. Constructed
+// only in this module, by the per-unit function that performs those reads. No supplied-value path
+// reaches the step: the supplied-value controls go to classify_board_serial_agreement, which returns
+// no carrier. The access receipt is the step's precondition and is checked against the ledger.
 type IdentityBindInputs sole_constructor {
-  board_serials: List<BoardSerialObservation>
+  fru: FruRead
+  smbios: SmbiosRead
   other_units: List<UnitKey>
-  assembly: AssemblyManifest?
 }
 
 type IdentityBindRequest {
@@ -257,10 +273,59 @@ type IdentityBindRequest {
   inputs: IdentityBindInputs
 }
 
+// WHY THE TWO SOURCES DO NOT AGREE ABOUT THIS UNIT. Pure, over supplied values, so every arm is
+// exercisable; its only production consumer is observe_identity below, over sealed observations.
+type BoardSerialAgreementRefusal
+  = FruCaptureUnread { cause: NonEmptyStr }
+  | SmbiosCaptureUnread { cause: NonEmptyStr }
+  | FruObservedForAnotherUnit { subject: NonEmptyStr }
+  | SmbiosObservedForAnotherUnit { subject: NonEmptyStr }
+  | SmbiosSessionForAnotherController { attested: BmcControllerEndpoint, accessed: BmcControllerEndpoint }
+  | BoardSerialsDisagree { fru: NonEmptyStr, smbios: NonEmptyStr }
+
+fn classify_board_serial_agreement(
+  unit: StepSubjectKey,
+  accessed: BmcControllerEndpoint,
+  fru_subject: NonEmptyStr,
+  fru_serial: NonEmptyStr,
+  smbios_subject: NonEmptyStr,
+  smbios_controller: BmcControllerEndpoint,
+  smbios_serial: NonEmptyStr,
+) -> BoardSerialAgreementRefusal? {
+  if (fru_subject as String) != ((unit as NonEmptyStr) as String) {
+    Present { value: FruObservedForAnotherUnit { subject: fru_subject } }
+  } else if (smbios_subject as String) != ((unit as NonEmptyStr) as String) {
+    Present { value: SmbiosObservedForAnotherUnit { subject: smbios_subject } }
+  } else if (smbios_controller.host as String) != (accessed.host as String) {
+    Present { value: SmbiosSessionForAnotherController { attested: smbios_controller, accessed: accessed } }
+  } else if (fru_serial as String) != (smbios_serial as String) {
+    Present { value: BoardSerialsDisagree { fru: fru_serial, smbios: smbios_serial } }
+  } else {
+    none
+  }
+}
+
+// THE TWO-SOURCE AGREEMENT, SEALED and minted only in observe_identity: exactly one BMC FRU and one
+// host SMBIOS observation, both of this unit, the SMBIOS session attested to the controller this run's
+// AccessDiscover read, and equal board serials. IdentityBoundProvisional retains it, so a consumer can
+// tell a two-source key from a one-source one; without both observations there is no agreement and
+// the step does not converge.
+type BoardSerialAgreement sole_constructor {
+  fru: RecordedFruObservation
+  smbios: RecordedSmbiosObservation
+  serial: NonEmptyStr
+}
+
 type IdentityObservation {
   unit_key: UnitKey
+  agreement: BoardSerialAgreement
   assembly: AssemblyManifest
   firmware: FirmwareManifest
+}
+
+type ProvisionalIdentity {
+  subject: MachineIntakeSubject
+  agreement: BoardSerialAgreement
 }
 
 type IdentityBindGoal {
@@ -268,8 +333,8 @@ type IdentityBindGoal {
 }
 
 type IdentityObserveRefusal
-  = UnitKeyNotBound { cause: UnitKeyRefusalCause }
-  | ProvisionalAssemblyUnobserved
+  = BoardSerialsNotInAgreement { cause: BoardSerialAgreementRefusal }
+  | UnitKeyNotBound { cause: UnitKeyRefusalCause }
 
 // THE LIVE FIRMWARE MANIFEST: the build the controller reported in this run's AccessDiscover read.
 // Only the BMC build is read before boot; host firmware and configuration digests join the manifest
@@ -282,33 +347,65 @@ fn live_firmware_manifest(access: AccessDiscoverEstablished) -> FirmwareManifest
 }
 
 fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
-  let inputs = UnitIdentityInputs {
-    bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
-    board_serial_observations: request.inputs.board_serials,
-  }
-  match bind_unit_key(inputs: inputs, other_units: request.inputs.other_units) {
-    UnitKeyRefused { cause: c } => ObservationRefused { cause: UnitKeyNotBound { cause: c } }
-    UnitKeyBound { key: k } =>
-      match request.inputs.assembly {
-        Absent => ObservationRefused { cause: ProvisionalAssemblyUnobserved }
-        Present { value: a } =>
-          ObservationEstablished {
-            observed: IdentityObservation { unit_key: k, assembly: a, firmware: live_firmware_manifest(access: request.access) },
+  match request.inputs.fru {
+    FruReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: FruCaptureUnread { cause: fru_gap_text(gap: g) } } }
+    FruObserved { observation: fru } =>
+      match request.inputs.smbios {
+        SmbiosReadRefused { gap: g } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: SmbiosCaptureUnread { cause: smbios_gap_text(gap: g) } } }
+        SmbiosObserved { observation: smbios } =>
+          match classify_board_serial_agreement(
+            unit: key.subject,
+            accessed: request.access.access.endpoint,
+            fru_subject: fru.subject,
+            fru_serial: fru.fields.board_serial,
+            smbios_subject: smbios.subject,
+            smbios_controller: sol_session_controller(a: smbios.sol_session),
+            smbios_serial: smbios.serial,
+          ) {
+            Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
+            Absent => observe_identity_from_agreement(request: request, agreement: BoardSerialAgreement { fru: fru, smbios: smbios, serial: fru.fields.board_serial })
           }
       }
   }
 }
 
-fn assess_identity(goal: IdentityBindGoal, observed: IdentityObservation) -> GoalAssessment<MachineIntakeSubject, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+// The unit key through gunbc.machine_intake_subject bind_unit_key, unchanged, over the agreement's two
+// observations; it still refuses a serial already bound to another unit.
+fn observe_identity_from_agreement(request: IdentityBindRequest, agreement: BoardSerialAgreement) -> ObservationAttempt<IdentityObservation, IdentityObserveRefusal> {
+  let inputs = UnitIdentityInputs {
+    bmc_endpoint: BmcEndpoint { host: request.access.access.endpoint.host, protocol: Redfish },
+    board_serial_observations: [
+      BoardSerialObservation { source: BmcFru, serial: agreement.fru.fields.board_serial },
+      BoardSerialObservation { source: HostSmbios, serial: agreement.smbios.serial },
+    ],
+  }
+  match bind_unit_key(inputs: inputs, other_units: request.inputs.other_units) {
+    UnitKeyRefused { cause: c } => ObservationRefused { cause: UnitKeyNotBound { cause: c } }
+    UnitKeyBound { key: k } =>
+      ObservationEstablished {
+        observed: IdentityObservation {
+          unit_key: k,
+          agreement: agreement,
+          assembly: provisional_assembly_of_fru(fru: agreement.fru),
+          firmware: live_firmware_manifest(access: request.access),
+        },
+      }
+  }
+}
+
+fn assess_identity(goal: IdentityBindGoal, observed: IdentityObservation) -> GoalAssessment<ProvisionalIdentity, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
   GoalSatisfied {
-    evidence: MachineIntakeSubject {
-      subject: qualification_subject_of(unit_key: observed.unit_key, assembly: observed.assembly, firmware: observed.firmware),
-      attempt_id: goal.attempt,
+    evidence: ProvisionalIdentity {
+      subject: MachineIntakeSubject {
+        subject: qualification_subject_of(unit_key: observed.unit_key, assembly: observed.assembly, firmware: observed.firmware),
+        attempt_id: goal.attempt,
+      },
+      agreement: observed.agreement,
     },
   }
 }
 
-fn identity_bind_projection() -> HostEffectDomainProjection<StepInstanceKey, IdentityBindGoal, IdentityBindRequest, IdentityObservation, MachineIntakeSubject, NonEmptyStr, NonEmptyStr, IdentityObserveRefusal, NonEmptyStr, ReadOnlyPhaseRemedy> {
+fn identity_bind_projection() -> HostEffectDomainProjection<StepInstanceKey, IdentityBindGoal, IdentityBindRequest, IdentityObservation, ProvisionalIdentity, NonEmptyStr, NonEmptyStr, IdentityObserveRefusal, NonEmptyStr, ReadOnlyPhaseRemedy> {
   HostEffectDomainProjection {
     observe: observe_identity,
     assess: assess_identity,
@@ -317,11 +414,13 @@ fn identity_bind_projection() -> HostEffectDomainProjection<StepInstanceKey, Ide
 }
 
 // THE IDENTITYBINDPROVISIONAL RECEIPT, SEALED. It names the AccessDiscover instance it consumed, so
-// the fold can refuse a subject bound from another unit's or another run's access receipt.
+// the fold can refuse a subject bound from another unit's or another run's access receipt, and it
+// retains the two-source agreement the unit key was bound from.
 type IdentityBoundProvisional sole_constructor {
   key: StepInstanceKey
   consumed_access: StepInstanceKey
   subject: MachineIntakeSubject
+  agreement: BoardSerialAgreement
 }
 
 // ONE INTAKE ATTEMPT PER RUN, BY CONSTRUCTION: the attempt identity is the run identity.
@@ -422,7 +521,7 @@ fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablis
             GoalSatisfied { evidence: s } =>
               StepEstablished {
                 receipt: IdentityBindReceipt {
-                  receipt: IdentityBoundProvisional { key: key, consumed_access: access.key, subject: s },
+                  receipt: IdentityBoundProvisional { key: key, consumed_access: access.key, subject: s.subject, agreement: s.agreement },
                 },
               }
             GoalDiverged { deviations: _ } => StepRefused { key: key, cause: read_only_refusal(phase: IdentityBindProvisional, decision: decision) }
@@ -553,12 +652,16 @@ fn arrival_bound_unit_keys() -> List<UnitKey> {
   }
 }
 
-// mtjade1 FROM ITS COMMITTED EVIDENCE AND NOTHING ELSE. Its current read is the 2026-10-04 Manager
-// capture at 192.168.1.246; it has no committed board-serial observation and no committed provisional
-// assembly. So the honest run establishes AccessDiscover (with a candidate route standing) and stops at
-// IdentityBindProvisional with UnitKeyNotBound BoardSerialAbsent.
-fn mtjade1_identity_bind_inputs() -> IdentityBindInputs {
-  IdentityBindInputs { board_serials: mtjade1_board_serial_observations, other_units: arrival_bound_unit_keys(), assembly: none }
+// mtjade1 FROM ITS COMMITTED EVIDENCE AND NOTHING ELSE (all 2026-10-04, at 192.168.1.246):
+// - AccessDiscover: the Redfish Manager capture (firmware 2.11.104000, MegaRAC, candidate route);
+// - board serials: the BMC FRU capture (bound to the unit by Board Extra) and the host SMBIOS Type 2
+//   capture (bound by an operator-attested SOL session to this controller), which agree
+//   (B810301000412080005AJ0C1), so the step mints the two-source agreement and binds the unit key;
+// - provisional assembly: from the FRU capture, chassis part number B60.0300E.0001 with the chassis
+//   (serial 21000012N0A1) as its one component;
+// - live firmware manifest: the bmc entry 2.11.104000 from this run's Manager read, nothing else.
+fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
+  IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys() }
 }
 
 fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {

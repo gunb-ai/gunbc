@@ -1,0 +1,176 @@
+module test.claim.roadmap.roadmap_belt_stale_line_witness_test
+
+// A HEAD LINE THAT INTEGRATED A STALE CAPTURE IS NEITHER INTEGRATED INTO NOR PUBLISHED (2026-10-03).
+// The planted repository is srv2 shell-typed-invocation's shape: commit 0 the seeded base
+// ('project base: <R>'), commit 1 a dispatch candidate, commit 2 the squash integration of 1 into 0.
+// The derivation's pure half -- the integrated sources on the head's line, and the verdict over
+// their observed capture bases -- is witnessed here with the bases supplied as values; the effectful
+// shell (belt_head_line_standing) only reads each source attempt's spawn-destination base_sha.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope { RepositoryEnvelope }
+import gunbc.scm.squash_merge { squash_merge, SquashMerged }
+import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message, belt_candidate_commit_subject, CandidateCommitSubject }
+import gunbc.roadmap_belt_actuate {
+  belt_line_integrated_sources, LineSourcesRead, LineSourcesUnreadable,
+  belt_line_standing, BeltObservedLineSource, BeltLineSource,
+  LineClean, LineIntegratesStale, LineStandingUnderivable,
+  BaseShaObserved, BaseShaUnobserved,
+  belt_publish_plan, belt_publish_apply, belt_publish_tree_of, belt_publish_binds, belt_publish_deletes, PublishBind,
+}
+import gunbc.scm.object_store { CorpusManifestEntry, AuthoredSourceTarget, scm_object_identity, authored_source_object }
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data stale_line_repository_base: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
+data stale_line_captured_base: String = "b7f9070ca82026ba63fbf55960a9e3a0266b3285"
+
+type PlantedLine {
+  repository: RepositoryEnvelope
+  head: RepositoryCommitRef
+}
+
+fn planted_line() -> PlantedLine? {
+  let base = mb_commit(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at the base"), message: join(["project base: ", stale_line_repository_base], ""))
+  match mb_head(build: base) {
+    Absent => none
+    Present { value: root } => {
+      let candidate = mb_commit(
+        build: mb_stage(build: base, path: "src/a.dag", text: "A as the worker left it"),
+        message: belt_candidate_commit_message(node_id: "shell-dag-cron-entry-line-builder", attempt_key: "21f8ff0a982557dc") as String,
+      )
+      match candidate {
+        MbSetupFailed => none
+        MbBuilt { repository, at } =>
+          match at {
+            Absent => none
+            Present { value: source } =>
+              match squash_merge(repository: repository, target: root, source: source, message: "integrate 2ccf4dc into shell-typed-invocation") {
+                SquashMerged { repository: merged, reference } => Present { value: PlantedLine { repository: merged, head: reference } }
+                _ => none
+              }
+          }
+      }
+    }
+  }
+}
+
+fn observed_with(sources: List<BeltLineSource>, base_sha: String) -> List<BeltObservedLineSource> {
+  map(sources, s => BeltObservedLineSource { line: s, captured: BaseShaObserved { base_sha: base_sha } })
+}
+
+// THE STALE LINE REFUSES, naming the integration and the source: commit 2 integrated candidate 1,
+// captured against b7f9070 into a repository based at d012e00.
+test fn a_line_integrating_a_stale_capture_is_refused() -> Bool {
+  match planted_line() {
+    Absent => false
+    Present { value: line } =>
+      match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
+        LineSourcesUnreadable { detail: _ } => false
+        LineSourcesRead { sources } =>
+          count(sources) == 1
+            && match belt_line_standing(repository_base_message: join(["project base: ", stale_line_repository_base], ""), observed: observed_with(sources: sources, base_sha: stale_line_captured_base)) {
+              LineIntegratesStale { integration, source, captured_against, repository_base: _ } =>
+                integration == 2 && source == 1 && captured_against == stale_line_captured_base
+              LineClean => false
+              LineStandingUnderivable { detail: _ } => false
+            }
+      }
+  }
+}
+
+// THE CLEAN LINE PASSES: the same graph, its source captured on the repository's own base.
+test fn a_line_whose_sources_share_the_repository_base_is_clean() -> Bool {
+  match planted_line() {
+    Absent => false
+    Present { value: line } =>
+      match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
+        LineSourcesUnreadable { detail: _ } => false
+        LineSourcesRead { sources } =>
+          match belt_line_standing(repository_base_message: join(["project base: ", stale_line_repository_base], ""), observed: observed_with(sources: sources, base_sha: stale_line_repository_base)) {
+            LineClean => true
+            LineIntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
+            LineStandingUnderivable { detail: _ } => false
+          }
+      }
+  }
+}
+
+// AN UNOBSERVABLE CAPTURE BASE IS UNDERIVABLE, NOT CLEAN.
+test fn an_unobservable_capture_base_is_underivable_not_clean() -> Bool {
+  match planted_line() {
+    Absent => false
+    Present { value: line } =>
+      match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
+        LineSourcesUnreadable { detail: _ } => false
+        LineSourcesRead { sources } =>
+          match belt_line_standing(
+            repository_base_message: join(["project base: ", stale_line_repository_base], ""),
+            observed: map(sources, s => BeltObservedLineSource { line: s, captured: BaseShaUnobserved { reason: "spawn origin unreadable" } }),
+          ) {
+            LineStandingUnderivable { detail: _ } => true
+            LineClean => false
+            LineIntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
+          }
+      }
+  }
+}
+
+// THE ATTEMPT IS READ BACK FROM ITS ONE PRODUCER'S MESSAGE, and only that producer's: a message it
+// could not have written names no attempt.
+test fn the_candidate_message_reads_back_its_attempt_and_nothing_else() -> Bool {
+  let round_trip = match belt_candidate_commit_subject(message: belt_candidate_commit_message(node_id: "shell-dag-ci-fmt-gate-line", attempt_key: "2e3b67b4c3e38701") as String) {
+    Present { value: subject } => subject.node_id == "shell-dag-ci-fmt-gate-line" && subject.attempt_key == "2e3b67b4c3e38701"
+    Absent => false
+  }
+  let foreign = match belt_candidate_commit_subject(message: "integrate 2ccf4dc into shell-typed-invocation") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  round_trip && foreign
+}
+
+// PUBLICATION REALIZES THE HEAD'S TREE EXACTLY (ruling on #13111): the base tree with the publish plan
+// applied equals the head's tree for an add, a modify, a delete, a rename (delete + bind) and a
+// delete below a nested directory. The discriminating control applies the binds alone -- the earlier
+// revision's behaviour -- and does NOT reach the head: the deleted and renamed-away paths resurrect.
+fn publish_entry(path: String, text: String) -> CorpusManifestEntry {
+  CorpusManifestEntry {
+    path: path as NonEmptyStr,
+    source: AuthoredSourceTarget { locator: scm_object_identity(object: authored_source_object(text: text)) },
+  }
+}
+
+fn publish_base() -> List<CorpusManifestEntry> {
+  [
+    publish_entry(path: "src/kept.dag", text: "kept"),
+    publish_entry(path: "src/modified.dag", text: "before"),
+    publish_entry(path: "src/deleted.dag", text: "gone"),
+    publish_entry(path: "src/old_name.dag", text: "moved"),
+    publish_entry(path: "src/deep/nested/leaf.dag", text: "nested"),
+  ]
+}
+
+fn publish_head() -> List<CorpusManifestEntry> {
+  [
+    publish_entry(path: "src/kept.dag", text: "kept"),
+    publish_entry(path: "src/modified.dag", text: "after"),
+    publish_entry(path: "src/new_name.dag", text: "moved"),
+    publish_entry(path: "src/added.dag", text: "new"),
+  ]
+}
+
+test fn publication_applies_binds_and_deletes_to_reach_the_heads_tree() -> Bool {
+  let plan = belt_publish_plan(head: publish_head(), root: publish_base())
+  belt_publish_apply(base: publish_base(), plan: plan) == belt_publish_tree_of(entries: publish_head())
+    && count(belt_publish_deletes(plan: plan)) == 3
+    && count(belt_publish_binds(plan: plan)) == 3
+}
+
+test fn publication_without_deletes_resurrects_removed_paths() -> Bool {
+  let binds_only = map(belt_publish_binds(plan: belt_publish_plan(head: publish_head(), root: publish_base())), e => PublishBind { entry: e })
+  belt_publish_apply(base: publish_base(), plan: binds_only) != belt_publish_tree_of(entries: publish_head())
+}
