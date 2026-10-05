@@ -2128,32 +2128,38 @@ fn receipt_measurement(class: ArmMeasurementClass) -> ArmMeasurement {
 
 // THE FIELD SETTER, exhaustive over the component coproduct -- the join's route back into the
 // record, so a receipt can replace exactly the field it names and no other.
-fn share_with_measurement(sh: ArmTierShare, tier: SystemMemoryComponent, class: ArmMeasurementClass) -> ArmTierShare {
+fn share_with_measurement(sh: ArmTierShare, tier: SystemMemoryComponent, measured: ArmMeasurementClass) -> ArmTierShare {
   if system_memory_component_same(a: sh.tier, b: tier) {
-    ArmTierShare { tier: sh.tier, bound: arm_apply_measurement(current: sh.bound, class: class) }
+    ArmTierShare { tier: sh.tier, bound: arm_apply_measurement(current: sh.bound, class: measured) }
   } else {
     sh
   }
 }
 
-fn placement_with_measurement(p: ArmComponentPlacement, tier: SystemMemoryComponent, class: ArmMeasurementClass) -> ArmComponentPlacement {
+fn placement_with_measurement(p: ArmComponentPlacement, tier: SystemMemoryComponent, measured: ArmMeasurementClass) -> ArmComponentPlacement {
   ArmComponentPlacement {
-    held: share_with_measurement(sh: p.held, tier: tier, class: class),
-    also: map(p.also, sh => share_with_measurement(sh: sh, tier: tier, class: class)),
+    held: share_with_measurement(sh: p.held, tier: tier, measured: measured),
+    also: map(p.also, sh => share_with_measurement(sh: sh, tier: tier, measured: measured)),
   }
 }
 
-fn rank_with_measurement(rd: ArmRankDemand, component: ArmMemoryComponent, tier: SystemMemoryComponent, class: ArmMeasurementClass) -> ArmRankDemand {
+// The comparison sits inside a call so the brace after it opens the branch, not a record literal of
+// the variant.
+fn component_is(c: ArmMemoryComponent, d: ArmMemoryComponent) -> Bool {
+  c == d
+}
+
+fn rank_with_measurement(rd: ArmRankDemand, component: ArmMemoryComponent, tier: SystemMemoryComponent, measured: ArmMeasurementClass) -> ArmRankDemand {
   ArmRankDemand {
     rank: rd.rank,
-    checkpoint_residency: if component == ArmCheckpointResidency { placement_with_measurement(p: rd.checkpoint_residency, tier: tier, class: class) } else { rd.checkpoint_residency },
-    loader_transform: if component == ArmLoaderTransform { placement_with_measurement(p: rd.loader_transform, tier: tier, class: class) } else { rd.loader_transform },
-    runtime_fixed: if component == ArmRuntimeFixed { placement_with_measurement(p: rd.runtime_fixed, tier: tier, class: class) } else { rd.runtime_fixed },
-    collective_workspace: if component == ArmCollectiveWorkspace { placement_with_measurement(p: rd.collective_workspace, tier: tier, class: class) } else { rd.collective_workspace },
-    activation_workspace: if component == ArmActivationWorkspace { placement_with_measurement(p: rd.activation_workspace, tier: tier, class: class) } else { rd.activation_workspace },
-    graph_capture: if component == ArmGraphCapture { placement_with_measurement(p: rd.graph_capture, tier: tier, class: class) } else { rd.graph_capture },
-    kv_cache: if component == ArmKvCache { placement_with_measurement(p: rd.kv_cache, tier: tier, class: class) } else { rd.kv_cache },
-    fragmentation_allowance: if component == ArmFragmentationAllowance { placement_with_measurement(p: rd.fragmentation_allowance, tier: tier, class: class) } else { rd.fragmentation_allowance },
+    checkpoint_residency: if component_is(c: component, d: ArmCheckpointResidency) { placement_with_measurement(p: rd.checkpoint_residency, tier: tier, measured: measured) } else { rd.checkpoint_residency },
+    loader_transform: if component_is(c: component, d: ArmLoaderTransform) { placement_with_measurement(p: rd.loader_transform, tier: tier, measured: measured) } else { rd.loader_transform },
+    runtime_fixed: if component_is(c: component, d: ArmRuntimeFixed) { placement_with_measurement(p: rd.runtime_fixed, tier: tier, measured: measured) } else { rd.runtime_fixed },
+    collective_workspace: if component_is(c: component, d: ArmCollectiveWorkspace) { placement_with_measurement(p: rd.collective_workspace, tier: tier, measured: measured) } else { rd.collective_workspace },
+    activation_workspace: if component_is(c: component, d: ArmActivationWorkspace) { placement_with_measurement(p: rd.activation_workspace, tier: tier, measured: measured) } else { rd.activation_workspace },
+    graph_capture: if component_is(c: component, d: ArmGraphCapture) { placement_with_measurement(p: rd.graph_capture, tier: tier, measured: measured) } else { rd.graph_capture },
+    kv_cache: if component_is(c: component, d: ArmKvCache) { placement_with_measurement(p: rd.kv_cache, tier: tier, measured: measured) } else { rd.kv_cache },
+    fragmentation_allowance: if component_is(c: component, d: ArmFragmentationAllowance) { placement_with_measurement(p: rd.fragmentation_allowance, tier: tier, measured: measured) } else { rd.fragmentation_allowance },
   }
 }
 
@@ -2189,7 +2195,7 @@ fn roster_has_share(ranks: List<ArmRankDemand>, rank: Nat, component: ArmMemoryC
 fn apply_receipt_to_ranks(ranks: List<ArmRankDemand>, r: ArmComponentReceipt) -> List<ArmRankDemand> {
   map(ranks, rd =>
     if rd.rank == r.rank {
-      rank_with_measurement(rd: rd, component: r.component, tier: r.tier, class: r.class)
+      rank_with_measurement(rd: rd, component: r.component, tier: r.tier, measured: r.class)
     } else {
       rd
     })
