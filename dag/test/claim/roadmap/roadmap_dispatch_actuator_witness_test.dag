@@ -166,8 +166,10 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
+  srv2_lab_dashboard_instance,
   dashboard_instance_provider_executable,
 }
+import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
 import gunbc.roadmap.roadmap_attempt_continuation {
   ContinueFromAttempt, FreshFromBase,
   continuation_alignment_l0_pointer, continuation_alignment_ask,
@@ -447,9 +449,9 @@ fn codex_tmux_arm_shape_holds(spawn: HostExecArgv, provider_start: HostExecArgv,
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
   match dispatch_spawn_commands_for_inventory(
-    instance: srv1_live_dashboard_instance(),
+    instance: srv2_lab_dashboard_instance(),
     inventory: fixture_inventory_codex_only_available(
-      instance: srv1_live_dashboard_instance(),
+      instance: srv2_lab_dashboard_instance(),
     ),
     node: node,
     session_uuid: "uuid-unused-by-codex",
@@ -468,7 +470,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
       codex_tmux_command_shape_holds(
         cmds: cmds,
         codex_executable: match dashboard_instance_provider_executable(
-          instance: srv1_live_dashboard_instance(),
+          instance: srv2_lab_dashboard_instance(),
         ) {
           Present { value: executable } => executable as String
           Absent => ""
@@ -486,10 +488,6 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDa
 }
 
 fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance, spawn: HostExecArgv, event_pipe: HostExecArgv, provider_start: HostExecArgv) -> Bool {
-  match dashboard_instance_provider_executable(instance: lab) {
-    Absent => false
-    Present { value: codex_path } => {
-  let codex_executable = codex_path as String
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
   let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
@@ -523,39 +521,46 @@ fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashb
       s: pipe_wire,
       pattern: "provider-events.jsonl",
     )
-    && string_contains(
-      s: provider_wire,
-      pattern: concat("\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0", codex_executable),
-    )
-    }
-  }
+    && string_contains(s: provider_wire, pattern: claude_code_oauth_harness_host_path as String)
 }
 
-test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
+// THE LAB INSTANCE MOVES ITS REPO, TMUX SERVER AND ATTEMPT STATE TOGETHER, shown with the Claude
+// spawn (its credential is held on srv1). It no longer moves a codex state root with it: codex worker
+// turns run on the one credential held on its custody host (gunbc.codex_harness_credential, operator
+// ruling 2026-10-05), so the same lab refuses a codex spawn at the custody-host step -- the control
+// that a codex turn cannot fall back to the lab's ambient codex login.
+test fn witness_lab_instance_moves_repo_tmux_and_attempt_state_together() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  match dispatch_spawn_commands_for_inventory(
+  let node = sized_derivable(id: "ts-dispatch-provider-events", prs: [], title: "Provider execution facts")
+  let claude_moves = match dispatch_spawn_commands_for_resolved_instance(
     instance: lab,
-    inventory: fixture_inventory_codex_only_available(instance: lab),
-    node: sized_derivable(
-      id: "ts-dispatch-provider-events",
-      prs: [],
-      title: "Provider execution facts",
-    ),
+    node: node,
     session_uuid: "00000000-0000-4000-8000-000000000001",
     attempt_key: "feedfacefeedface",
-    request: SelectCodex {
-      profile: ProfileAutomatic,
-      account: codex_roadmap_account_selection(),
-      model: dispatch_codex_default_model,
-      effort: ReasoningMedium,
-      operator_asserted_native_limit_bucket: Absent,
-    },
+    provider: ClaudeCodeProvider,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+    origin: FreshFromBase,
     resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
-    DispatchSpawnReady { commands } =>
-      lab_instance_command_shape_holds(commands: commands, lab: lab)
+    DispatchSpawnReady { commands } => lab_instance_command_shape_holds(commands: commands, lab: lab)
   }
+  let codex_refused = match dispatch_spawn_commands_for_resolved_instance(
+    instance: lab,
+    node: node,
+    session_uuid: "00000000-0000-4000-8000-000000000001",
+    attempt_key: "feedfacefeedface",
+    provider: CodexDispatchProvider,
+    effort: ReasoningMedium,
+    model: dispatch_codex_default_model,
+    origin: FreshFromBase,
+    resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
+  ) {
+    DispatchSpawnRefused { step, detail: _ } => step as String == "codex-credential-custody-host"
+    DispatchSpawnReady { commands: _ } => false
+  }
+  claude_moves && codex_refused
 }
 
 test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
@@ -1202,9 +1207,9 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
     node: sized_derivable(id: "ts-continuation-origin", prs: [], title: "Continuation origin wiring"),
     session_uuid: "00000000-0000-4000-8000-000000000002",
     attempt_key: "feedfacefeedface",
-    provider: CodexDispatchProvider,
+    provider: ClaudeCodeProvider,
     effort: ReasoningMedium,
-    model: dispatch_codex_default_model,
+    model: ProviderAccountDefaultModel,
     origin: ContinueFromAttempt {
       parent_attempt_key: "deadbeefdeadbeef",
       branch: "roadmap/ts-continuation-origin/deadbeefdeadbeef",
