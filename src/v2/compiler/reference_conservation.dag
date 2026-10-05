@@ -34,14 +34,16 @@ import v2.std.diagnostic {
   Rejected,
   Textual,
   WholeFile,
-  bind_outcome
+  bind_outcome,
+  diagnostics_fatal
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.normalize { normalize }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, symbol_lexeme }
-import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
+import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
 import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
@@ -153,6 +155,18 @@ type ReferenceConservationUnmeasured
 //     resolve to.
 // `role_not_yet_read` and `role_reader_refused` carry the role producer's own gaps, so a binder the
 // producer could not read is a number here too; such a binder stays in `locus_erased`.
+// `normalize_refusal` is WHY a module whose parse was accepted has a `refused` number at all: the
+// fatal diagnostic of the normalization that refused it, and its located text rendered once, while
+// this module's span index is in hand, by v2.std.lens_verdict lens_verdict_diagnostic_located_text_in_spans
+// (the one rendering of a diagnostic's locus; a node locus becomes file + bytes where the index has it). conservation_against_refusal used to
+// consume the diagnostics only as a cover, so a refused module reported `refusal-not-at-or-above`
+// per atom and named no cause (gunbc.recurring_failure_mode
+// census_counts_a_stage_refusal_without_naming_its_cause). Absent on every other arm.
+type ReferenceConservationNormalizeRefusal {
+  fatal: Diagnostic
+  located: String
+}
+
 type ReferenceConservationReport {
   path: String
   authored: Int
@@ -166,6 +180,7 @@ type ReferenceConservationReport {
   import_channel: Int
   dropped: FreeMonoid<DroppedReference>
   unmeasured: FreeMonoid<ReferenceConservationUnmeasured>
+  normalize_refusal: Optional<ReferenceConservationNormalizeRefusal>
 }
 
 fn reference_conservation_holds(report: ReferenceConservationReport) -> Bool {
@@ -567,7 +582,8 @@ fn report_from_population(path: String, population: AuthoredAtomPopulation) -> R
     refused: 0,
     import_channel: population.import_channel,
     dropped: Empty,
-    unmeasured: population.unreadable
+    unmeasured: population.unreadable,
+    normalize_refusal: optional_absent()
   }
 }
 
@@ -584,7 +600,8 @@ fn report_snoc_drop(report: ReferenceConservationReport, atom: AuthoredAtom, cau
     refused: report.refused,
     import_channel: report.import_channel,
     dropped: list_snoc_item(xs: report.dropped, item: DroppedReference { atom: atom, cause: cause }),
-    unmeasured: report.unmeasured
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -601,7 +618,8 @@ fn report_count_conserved(report: ReferenceConservationReport) -> ReferenceConse
     refused: report.refused,
     import_channel: report.import_channel,
     dropped: report.dropped,
-    unmeasured: report.unmeasured
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -618,7 +636,8 @@ fn report_count_refused(report: ReferenceConservationReport) -> ReferenceConserv
     refused: report.refused + 1,
     import_channel: report.import_channel,
     dropped: report.dropped,
-    unmeasured: report.unmeasured
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -635,7 +654,8 @@ fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceCo
     refused: report.refused,
     import_channel: report.import_channel,
     dropped: report.dropped,
-    unmeasured: report.unmeasured
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -917,7 +937,8 @@ fn report_with_channels(report: ReferenceConservationReport, role_excluded: Int,
     refused: report.refused,
     import_channel: report.import_channel,
     dropped: report.dropped,
-    unmeasured: report.unmeasured
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -945,7 +966,8 @@ fn report_with_role_gaps(report: ReferenceConservationReport, roles: OccurrenceR
     refused: report.refused,
     import_channel: report.import_channel,
     dropped: report.dropped,
-    unmeasured: report.unmeasured
+    unmeasured: report.unmeasured,
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -1007,11 +1029,19 @@ fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, t
   ).report
 }
 
-fn conservation_against_refusal(path: String, population: AuthoredAtomPopulation, diagnostics: NonEmptyDiagnostics) -> ReferenceConservationReport {
+fn conservation_normalize_refusal_of(diagnostics: NonEmptyDiagnostics, spans: SpanIndex) -> ReferenceConservationNormalizeRefusal {
+  let fatal = diagnostics_fatal(d: diagnostics)
+  ReferenceConservationNormalizeRefusal { fatal: fatal, located: lens_verdict_diagnostic_located_text_in_spans(d: fatal, index: spans) }
+}
+
+fn conservation_against_refusal(path: String, population: AuthoredAtomPopulation, diagnostics: NonEmptyDiagnostics, spans: SpanIndex) -> ReferenceConservationReport {
   let cover = refusal_cover_from(diagnostics: diagnostics)
   fold_list(
     xs: population.atoms,
-    empty: report_from_population(path: path, population: population),
+    empty: report_with_normalize_refusal(
+      report: report_from_population(path: path, population: population),
+      refusal: conservation_normalize_refusal_of(diagnostics: diagnostics, spans: spans)
+    ),
     cons: fn(report, atom) {
       if refusal_covers(cover: cover, atom: atom) {
         report_count_refused(report: report)
@@ -1035,7 +1065,8 @@ fn reference_conservation_unmeasured(path: String, diagnostics: NonEmptyDiagnost
     refused: 0,
     import_channel: 0,
     dropped: Empty,
-    unmeasured: Cons { head: TokenizeOrParseRefused { diagnostics: diagnostics }, tail: Empty }
+    unmeasured: Cons { head: TokenizeOrParseRefused { diagnostics: diagnostics }, tail: Empty },
+    normalize_refusal: optional_absent()
   }
 }
 
@@ -1097,7 +1128,8 @@ fn reference_conservation_role_table_unadmitted(path: String, unlisted: List<Sym
     refused: 0,
     import_channel: 0,
     dropped: Empty,
-    unmeasured: Cons { head: OccurrenceRoleTableUnadmitted { unlisted: unlisted, unknown: unknown, unkeyed: unkeyed }, tail: Empty }
+    unmeasured: Cons { head: OccurrenceRoleTableUnadmitted { unlisted: unlisted, unknown: unknown, unkeyed: unkeyed }, tail: Empty },
+    normalize_refusal: optional_absent()
   }
 }
 
@@ -1129,13 +1161,31 @@ fn reference_conservation_of_subject_admitted(
               reference_conservation_role_table_unadmitted(path: subject.path, unlisted: u, unknown: k, unkeyed: x)
           }
         Rejected { diagnostics: d } =>
-          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d)
+          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: artifact.span_index)
           match roles {
             OccurrenceRolesRead { roles: r } => report_with_role_gaps(report: refused, roles: r)
             OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
               report_snoc_unmeasured(report: refused, item: OccurrenceRoleTableUnadmitted { unlisted: u, unknown: k, unkeyed: x })
           }
       }
+  }
+}
+
+fn report_with_normalize_refusal(report: ReferenceConservationReport, refusal: ReferenceConservationNormalizeRefusal) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured,
+    normalize_refusal: optional_present(value: refusal)
   }
 }
 
@@ -1152,7 +1202,8 @@ fn report_snoc_unmeasured(report: ReferenceConservationReport, item: ReferenceCo
     refused: report.refused,
     import_channel: report.import_channel,
     dropped: report.dropped,
-    unmeasured: list_snoc_item(xs: report.unmeasured, item: item)
+    unmeasured: list_snoc_item(xs: report.unmeasured, item: item),
+    normalize_refusal: report.normalize_refusal
   }
 }
 
@@ -1230,8 +1281,33 @@ fn dropped_reference_line(path: String, row: DroppedReference) -> String {
   path + ":" + authored_atom_extent_text(atom: row.atom) + " " + symbol_lexeme(sym: row.atom.identity) + " " + dropped_reference_cause_word(cause: row.cause) + " " + authored_atom_context_text(atom: row.atom)
 }
 
+// THE STAGE REFUSAL, ON THE SUMMARY LINE: `refusal=<stage>:<fatal reason> @ <locus>`, or `refusal=none`,
+// LAST on the line because the located text carries spaces.
+// A module refused at normalize reads it from the report's normalize_refusal; one refused at
+// tokenize or parse reads it from the TokenizeOrParseRefused row the report already carries. It is
+// always printed, so a refused module and an accepted one differ on the line a reader joins by.
+fn conservation_stage_refusal_text(stage: String, located: String) -> String {
+  stage + ":" + located
+}
+
+fn reference_conservation_refusal_text(report: ReferenceConservationReport) -> String {
+  match report.normalize_refusal {
+    Present { value: r } => conservation_stage_refusal_text(stage: "normalize", located: r.located)
+    Absent =>
+      fold_list(xs: report.unmeasured, empty: "none", cons: fn(acc, item) {
+        match item {
+          TokenizeOrParseRefused { diagnostics: d } =>
+            conservation_stage_refusal_text(stage: "tokenize_or_parse", located: lens_verdict_diagnostic_located_text_in_spans(d: diagnostics_fatal(d: d), index: span_index_empty()))
+          AtomExtentUnreadable { occurrence: _ } => acc
+          StringLiteralValueUncarried { occurrence: _ } => acc
+          OccurrenceRoleTableUnadmitted { unlisted: _, unknown: _, unkeyed: _ } => acc
+        }
+      })
+  }
+}
+
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
-  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
+  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured)) + " refusal=" + reference_conservation_refusal_text(report: report)
   fold_list(
     xs: report.dropped,
     empty: Cons { head: summary, tail: Empty },

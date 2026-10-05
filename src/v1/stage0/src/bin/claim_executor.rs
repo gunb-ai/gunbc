@@ -213,7 +213,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
-    let mut required_regen_fixed_point_mode = false;
     let mut regen_round_cost_mode = false;
     let mut regen_affected_set_mode = false;
     let mut regen_affected_scope = false;
@@ -327,9 +326,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--write" => {
                 emit_partition_crates_write = true;
-            }
-            "--required-regen-fixed-point" => {
-                required_regen_fixed_point_mode = true;
             }
             // ONE PRICED REGEN ROUND: seed build, the same `--required-regen` emit, install of
             // what drifted, rebuild from the installed seed, diff — every phase on two clocks,
@@ -492,7 +488,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // reported as SKIPPED — because a phase that always reports the same non-verdict is the
     // absorbing fallback wearing a phase's clothes (DESIGN §5): its deficit frequency is zero by
     // construction and it reads as coverage on the ledger. The capabilities themselves survive
-    // where they had their own entry points and consumers: `--required-regen-fixed-point`,
+    // where they had their own entry points and consumers.
     // The three behavioral producers now run only through their `gunbc test` labels. Their old
     // flags are deleted in the same change as those bindings, so no dual-authority interval exists.
     //
@@ -930,64 +926,27 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("generated-artifact");
         }
 
-        // PHASE 2b — regen SECOND generation: does the emit reproduce itself.
-        //
-        // WHAT THIS PHASE CAN AND CANNOT SEE, stated here because the honest claim is much
-        // narrower than "the fixed point is now checked". When the first generation EQUALS the
-        // committed mirrors, this pass is green by construction: the tree it re-emits from is the
-        // one that produced the first generation, so only a NONDETERMINISTIC emit can separate
-        // them. It therefore catches emit nondeterminism and nothing else. In particular it
-        // cannot see a self-consistently wrong seed -- a producer built from a wrong mirror emits
-        // that same wrong mirror and every generation agrees -- and enrolling it must not be read
-        // as closing that gap. `gunbc.rung_drop` `floor_cut_regen_second_generation_agreement`
-        // states the same bound: a repeatability comparison sees a GENERATION DISAGREEMENT, never
-        // deterministic wrongness.
-        //
-        // IT IS ENROLLED ANYWAY BECAUSE IT IS NEARLY FREE AND ITS RED IS REAL. One extra emit, no
-        // install and no rebuild -- the expensive variant that installs the generation and
-        // rebuilds the producer buys only BUILD nondeterminism on top, at the price of a crate
-        // build per required run, and is deliberately not what this enrols.
-        if required_ci_phase_selected(RequiredCiPhase::RegenFixedPoint, required_ci_lane) {
-            eprintln!("required-ci: phase regen-fixed-point (second generation vs first)");
-            match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None) {
-                Ok(outcome) => {
-                    // `unmeasured` rather than a plausible default: a None here means the pass
-                    // built the wrong receipt variant, which is a defect to report and not a
-                    // verdict to substitute.
-                    let fpe = outcome
-                        .receipt
-                        .fixed_point_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string());
-                    eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
-                    for failure in &outcome.failures {
-                        eprintln!("required-ci: regen-fixed-point FAIL {failure}");
-                    }
-                    if !outcome.failures.is_empty() {
-                        phase_failures.push("regen-fixed-point".to_string());
-                    } else if outcome.receipt.fixed_point_equal() != Some(true) {
-                        eprintln!(
-                            "required-ci: regen-fixed-point REFUSED — no fixed_point_equal was                              measured, so this run has no second-generation verdict to report"
-                        );
-                        phase_failures.push("regen-fixed-point (unmeasured)".to_string());
-                    }
-                }
-                // A PASS THAT CANNOT RUN REFUSES RATHER THAN SKIPS. The reachable causes are an
-                // absent or unparseable prior receipt and a prior measured at a different commit,
-                // and every one of them means this run holds NO second-generation evidence.
-                // Treating "could not check" as "checked" is the absorbing fallback exactly.
-                Err(e) => {
-                    eprintln!("required-ci: regen-fixed-point REFUSED {e}");
-                    phase_failures.push(format!("regen-fixed-point ({e})"));
-                }
-            }
-
-            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THIS PHASE, for the reason
-            // the rostered-row join rides the parse: it is the SAME QUESTION this phase already
-            // asks -- re-run the producer over an unchanged tree, compare the bytes -- one
-            // artifact over, and the roster of required jobs is closed to growth. It is a rider,
-            // not a phase, so `RequiredCiPhase::RegenFixedPoint`'s lane ownership answers for it
-            // and no second routing fact exists to drift.
+        // PHASE 2b — THE SECOND-GENERATION RE-EMIT IS GONE (operator ruling 2026-10-04: "we
+        // don't need to run multiple times - we are not that particular about determinism in v1
+        // anymore"). It re-emitted with the SAME binary the generated-artifact phase had just
+        // run, so it could separate the two generations only on a NONDETERMINISTIC emit -- it
+        // was a determinism check and nothing else, and determinism is what the ruling waives.
+        // What the build lane asserts is now exactly one sentence: the committed mirrors equal
+        // ONE emission of the current .dag sources by the seed built from those mirrors (the
+        // generated-artifact phase above). The ruling does NOT waive CONVERGENCE, and that
+        // assertion is what still enforces it: a change to the emitter's own closure (infer,
+        // emit_rust) emitted by a binary that predates it is refused there, because the seed CI
+        // builds from the committed mirrors emits differently. The declared drop of the
+        // determinism capability stays `gunbc.rung_drop`
+        // `floor_cut_regen_second_generation_agreement`.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THE GENERATED-ARTIFACT PHASE.
+            // It rode the deleted second-generation phase until 2026-10-04 and moved here rather
+            // than lapsing: it is a fixture-sized emitter property (registry-key order in one
+            // artifact), not the corpus re-emit the ruling waives, and the roster of required
+            // jobs is closed to growth. It is a rider, not a phase, so
+            // `RequiredCiPhase::GeneratedArtifact`'s lane ownership answers for it and no second
+            // routing fact exists to drift.
             //
             // ITS COST IS THREE EMISSIONS OF A SIXTEEN-DECLARATION FIXTURE, not of the corpus.
             // The class it catches is a property of the EMITTER, so the smallest specimen that
@@ -1013,7 +972,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                     phase_failures.push("dag-artifact-identity (subject unobtainable)".to_string());
                 }
             }
-            ran.push("regen-fixed-point");
         }
 
         // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
@@ -1373,49 +1331,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eprintln!(
                     "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
                 );
-                Err(ExitCode::from(1))
-            }
-        };
-    }
-
-    if required_regen_fixed_point_mode {
-        return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
-        {
-            Ok(outcome) => {
-                // The provenance is printed, not just carried. This line previously read
-                // `first_generation_equal={}` off the receipt as though the fixed-point pass had
-                // measured it; it never does. Labelling it `referenced_` and naming the commit it
-                // came from means the log itself distinguishes measured from quoted -- and since
-                // the host refuses a cross-tree reference, `referenced_at` equals HEAD on every
-                // line that is allowed to print.
-                let (referenced_fge, referenced_at) = match outcome.receipt.prior() {
-                    Some(prior) => (
-                        prior.first_generation_equal.to_string(),
-                        prior.commit_sha.clone(),
-                    ),
-                    None => ("unavailable".to_string(), "unavailable".to_string()),
-                };
-                eprintln!(
-                    "required-regen-fixed-point: fixed_point_equal={} referenced_first_generation_equal={} referenced_at={}",
-                    outcome
-                        .receipt
-                        .fixed_point_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string()),
-                    referenced_fge,
-                    referenced_at
-                );
-                for failure in &outcome.failures {
-                    eprintln!("required-regen-fixed-point: FAIL {failure}");
-                }
-                if outcome.failures.is_empty() {
-                    Ok(ExitCode::SUCCESS)
-                } else {
-                    Err(ExitCode::from(1))
-                }
-            }
-            Err(e) => {
-                eprintln!("required-regen-fixed-point: refused: {e}");
                 Err(ExitCode::from(1))
             }
         };
@@ -1830,7 +1745,6 @@ enum RequiredCiPhase {
     Parse,
     PrimitiveRuntimeBody,
     GeneratedArtifact,
-    RegenFixedPoint,
     BareReferenceAdmission,
     Floor,
 }
@@ -1840,7 +1754,6 @@ impl RequiredCiPhase {
         match self {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
-            RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::BareReferenceAdmission => "bare-reference-admission",
             RequiredCiPhase::Floor => "floor",
@@ -1862,12 +1775,6 @@ impl RequiredCiPhase {
             // the floor then prepares from, so the heads census is read once.
             RequiredCiPhase::BareReferenceAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
-            // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
-            // the receipt that phase's stage0-mirror adjudicator wrote at
-            // `target/stage0-regen-receipt.json`, and target/ does not
-            // survive checkout, so a lane boundary between them would leave it with no prior
-            // measurement to reference and nothing to compare.
-            RequiredCiPhase::RegenFixedPoint => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
@@ -1884,12 +1791,14 @@ impl RequiredCiPhase {
 // is gunbc.rung_drop v2_native_route_off_the_merge_path. The namespace wave-admission phase
 // (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
 // refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
-// namespace_wave_admission_wall_removed.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
+// namespace_wave_admission_wall_removed. The regen-fixed-point phase (a same-binary second
+// emit, catching only nondeterminism) left by operator ruling 2026-10-04 ("we are not that
+// particular about determinism in v1 anymore"); the drop stays gunbc.rung_drop
+// floor_cut_regen_second_generation_agreement.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
-    RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::BareReferenceAdmission,
     RequiredCiPhase::Floor,
 ];
@@ -1903,11 +1812,10 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
     "ParsePhase",
     "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
-    "RegenFixedPointPhase",
     "BareReferenceAdmissionPhase",
     "FloorPhase",
 ];
@@ -2528,7 +2436,6 @@ mod tests {
             lane_phase_row("witnesses", "parse"),
             lane_phase_row("witnesses", "primitive-runtime-body"),
             lane_phase_row("build", "generated-artifact"),
-            lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
         ]
     }
@@ -2561,7 +2468,6 @@ mod tests {
         let mut rows = standing_authority_rows();
         rows.retain(|r| r.lane != "build");
         rows.push(lane_phase_row("witnesses", "generated-artifact"));
-        rows.push(lane_phase_row("witnesses", "regen-fixed-point"));
         let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
         assert!(
             findings
@@ -2590,12 +2496,7 @@ mod tests {
         let rows = standing_authority_rows();
         assert_eq!(
             expected_lane_phases(&rows, Some(RequiredCiLane::Build)),
-            [
-                "generated-artifact".to_string(),
-                "regen-fixed-point".to_string()
-            ]
-            .into_iter()
-            .collect()
+            ["generated-artifact".to_string()].into_iter().collect()
         );
         assert_eq!(
             expected_lane_phases(&rows, None),
@@ -2929,7 +2830,6 @@ mod tests {
 // ---------------------------------------------------------------------------
 //
 // WHAT THIS ANSWERS THAT NOTHING ELSE DOES. `--required-regen` proves the committed mirrors
-// equal what the authority emits, and `--required-regen-fixed-point` proves the emit repeats.
-// Neither ever COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
+// equal what the authority emits. It never COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
 // rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and DESIGN §7 says in
 // as many words that a byte-identical fixed point is NOT the goal, because matching bytes forces
