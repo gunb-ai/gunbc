@@ -1,0 +1,187 @@
+module test.claim.roadmap.roadmap_belt_supersession_witness_test
+
+// THE LEGACY CONVERSION AND THE CORRECTIVE SUPERSESSION (parent ruling on gunbc#13402: no re-seed;
+// the corrective squash goes into head 2 and records the correction). The scene is srv2's
+// shell-typed-invocation built by the production verbs and aged through a real v8 document
+// (test.fixture.legacy_intake_scene). Claims, at the interfaces they are about:
+//   * the conversion types the pre-intake line in place and the stale standings are then TYPED --
+//     IntegratesStale for head 2 with no spawn origin read; an unobservable base refuses the whole
+//     conversion; a second run is the no-op;
+//   * the positive: stale -> superseded -> publishable, the publish base being the corrective
+//     source's intake (R1);
+//   * one red per guard on the supersession: a commit not on the line, a commit that integrated
+//     nothing, an integration that is not stale, an integration already superseded, a source that is
+//     not fresh.
+
+import std.types { Bool, String, List, Int }
+import std.minted_identity { minted_id_ordinal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
+  SupersessionRefusal, SupersessionNotOnLine, SupersessionNotAnIntegration, SupersessionNotStale,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionLineUnreadable,
+}
+import gunbc.scm.squash_merge { squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused }
+import gunbc.roadmap_belt_actuate {
+  belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
+  belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
+  BaseShaObserved, BaseShaUnobserved,
+  belt_publish_base, PublishBaseDerived, PublishBaseUnderivable,
+}
+import test.fixture.legacy_intake_scene {
+  legacy_unconverted, legacy_converted, legacy_observed, legacy_corrective_scene, legacy_ref,
+  legacy_r0_hex, legacy_r1_hex,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn standing_text(repository: RepositoryEnvelope, head: Int) -> String {
+  match belt_line_standing(commits: repository.commits, head: legacy_ref(ordinal: head)) {
+    LineClean => "clean"
+    LineStandingUnderivable { detail: _ } => "underivable"
+    IntegratesStale { integration, source, captured_against, repository_base } =>
+      join(["integrates_stale ", to_string(integration), " ", to_string(source), " ", captured_against, " ", repository_base], "")
+  }
+}
+
+// BEFORE CONVERSION THE LINE IS UNDERIVABLE, NEVER CLEAN; AFTER IT, head 2 IS IntegratesStale --
+// from typed members alone, so no attempt is observed when a belt reads it.
+test fn the_conversion_types_the_stale_line_in_place() -> Bool {
+  let before = match legacy_unconverted() {
+    Absent => false
+    Present { value: legacy } => standing_text(repository: legacy, head: 2) == "underivable"
+  }
+  let after = match legacy_converted(observed: legacy_observed(c1: legacy_r1_hex, c3: legacy_r1_hex)) {
+    Absent => false
+    Present { value: converted } =>
+      standing_text(repository: converted, head: 2) == join(["integrates_stale 2 1 ", legacy_r1_hex, " ", legacy_r0_hex], "")
+  }
+  before && after
+}
+
+// A CANDIDATE WHOSE ATTEMPT BRANCHED FROM THE LINE'S OWN BASE CONVERTS ON BASE: the line is clean.
+test fn a_candidate_captured_on_its_lines_base_converts_clean() -> Bool {
+  match legacy_converted(observed: legacy_observed(c1: legacy_r0_hex, c3: legacy_r0_hex)) {
+    Absent => false
+    Present { value: converted } => standing_text(repository: converted, head: 2) == "clean"
+  }
+}
+
+// AN UNOBSERVABLE CAPTURE BASE REFUSES THE WHOLE CONVERSION -- a half-typed line no reader could
+// stand on -- and a converted repository converts to nothing the second time.
+test fn the_conversion_refuses_unread_evidence_and_is_idempotent() -> Bool {
+  let refused = match legacy_unconverted() {
+    Absent => false
+    Present { value: legacy } =>
+      match belt_legacy_intake_plan(commits: legacy.commits, observed: [
+        BeltLegacyCaptureBase { commit: 1, base: BaseShaObserved { base_sha: legacy_r1_hex } },
+        BeltLegacyCaptureBase { commit: 3, base: BaseShaUnobserved { reason: "spawn origin unreadable" } },
+      ]) {
+        LegacyIntakePlanRefused { detail: _ } => true
+        LegacyIntakePlanned { records: _ } => false
+      }
+  }
+  let idempotent = match legacy_converted(observed: legacy_observed(c1: legacy_r1_hex, c3: legacy_r1_hex)) {
+    Absent => false
+    Present { value: converted } =>
+      match record_legacy_intakes(repository: converted, records: []) {
+        LegacyIntakesNothingUnrecorded => true
+        LegacyIntakesRecorded { repository: _ } => false
+        LegacyIntakesRefused { cause: _ } => false
+      }
+  }
+  refused && idempotent
+}
+
+// THE POSITIVE: stale -> superseded -> publishable. The fresh recapture (c5, on the R0..R1 advance)
+// squashed into head 2 superseding commit 2 leaves a clean line whose publish base is the advance.
+test fn a_superseded_stale_line_is_clean_and_publishes_from_the_correction() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } =>
+      standing_text(repository: scene, head: 2) != "clean"
+        && match squash_merge_superseding(repository: scene, target: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), supersedes: legacy_ref(ordinal: 2), message: "correct 2") {
+          SupersedingSquashRefused { cause: _ } => false
+          SupersedingSquashMerged(outcome) =>
+            match outcome {
+              SquashMerged { repository: corrected, reference: head } =>
+                match belt_line_standing(commits: corrected.commits, head: head) {
+                  LineClean =>
+                    match belt_publish_base(commits: corrected.commits, head: head) {
+                      PublishBaseDerived { base } => repository_commit_ref_eq(left: base.commit.reference, right: legacy_ref(ordinal: 4)) && base.sha == legacy_r1_hex
+                      PublishBaseUnderivable { detail: _ } => false
+                    }
+                  IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
+                  LineStandingUnderivable { detail: _ } => false
+                }
+              _ => false
+            }
+        }
+  }
+}
+
+fn supersession_refusal(scene: RepositoryEnvelope, target: Int, source: Int, supersedes: Int) -> String {
+  match squash_merge_superseding(repository: scene, target: legacy_ref(ordinal: target), source: legacy_ref(ordinal: source), supersedes: legacy_ref(ordinal: supersedes), message: "correct") {
+    SupersedingSquashMerged(_) => "merged"
+    SupersedingSquashRefused { cause } =>
+      match cause {
+        SupersessionNotOnLine { named: _ } => "not_on_line"
+        SupersessionNotAnIntegration { named: _ } => "not_an_integration"
+        SupersessionNotStale { named: _ } => "not_stale"
+        SupersessionAlreadySuperseded { named: _, by: _ } => "already_superseded"
+        SupersessionSourceNotFresh { source: _ } => "source_not_fresh"
+        SupersessionLineUnreadable { at: _ } => "line_unreadable"
+      }
+  }
+}
+
+// THE GUARDS, ONE RED EACH. c1 is a stale capture but not on head 2's line (2 descends from 0); c0
+// integrated nothing; c3 is stale and so cannot be a corrective source.
+test fn a_supersession_naming_a_commit_off_the_line_or_not_an_integration_refuses() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } =>
+      supersession_refusal(scene: scene, target: 2, source: 5, supersedes: 1) == "not_on_line"
+        && supersession_refusal(scene: scene, target: 2, source: 5, supersedes: 0) == "not_an_integration"
+  }
+}
+
+test fn a_supersession_from_a_stale_source_refuses() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => supersession_refusal(scene: scene, target: 2, source: 3, supersedes: 2) == "source_not_fresh"
+  }
+}
+
+// A FRESH INTEGRATION IS NOT STALE, AND A SUPERSEDED ONE IS NOT SUPERSEDED TWICE: c5 squashed plainly
+// into head 2 makes c7, an integration of a fresh source; then c2 superseded once by c6's correction
+// cannot be superseded again.
+test fn a_supersession_of_a_fresh_or_already_superseded_integration_refuses() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => {
+      let not_stale = match squash_merge(repository: scene, target: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), message: "plain") {
+        SquashMerged { repository: plain, reference: head } =>
+          supersession_refusal(scene: plain, target: minted_ordinal_of(r: head), source: 6, supersedes: minted_ordinal_of(r: head)) == "not_stale"
+        _ => false
+      }
+      let twice = match squash_merge_superseding(repository: scene, target: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), supersedes: legacy_ref(ordinal: 2), message: "correct 2") {
+        SupersedingSquashRefused { cause: _ } => false
+        SupersedingSquashMerged(outcome) =>
+          match outcome {
+            SquashMerged { repository: corrected, reference: head } =>
+              supersession_refusal(scene: corrected, target: minted_ordinal_of(r: head), source: 6, supersedes: 2) == "already_superseded"
+            _ => false
+          }
+      }
+      not_stale && twice
+    }
+  }
+}
+
+fn minted_ordinal_of(r: RepositoryCommitRef) -> Int {
+  minted_id_ordinal(id: r.identity)
+}
+

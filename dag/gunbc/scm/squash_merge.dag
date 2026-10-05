@@ -29,6 +29,11 @@ import gunbc.scm.integration { SquashIntegrated }
 import gunbc.scm.repository_envelope {
   AdmittedMergeSubject,
   admit_merge_subject,
+  admit_merge_subject_for,
+  MergeSubjectAdmission,
+  MergeSubjectAdmitted, MergeSubjectSideRootMissing, MergeSubjectSideRootIsAuthoredSource, MergeSubjectSideRootIsSemanticNode, MergeSubjectConflicted,
+  SupersedingSquash,
+  admit_supersession, SupersessionAdmitted, SupersessionRefused, SupersessionRefusal,
   MergeSideName,
   MergeSubjectSourceUnrecoverable,
   MergeBaseOutcome,
@@ -233,8 +238,38 @@ fn squash_merge(
 ) -> SquashMergeOutcome {
   match merge_base(repository: repository, target: target, source: source) {
     MergeBaseNotDerived { refusal: refusal } => SquashMergeBaseRefused { refusal: refusal }
+    MergeBaseDerived { anchors: anchors } => squash_merge_subject(admission: admit_merge_subject(anchors: anchors), message: message)
+  }
+}
+
+// THE CORRECTIVE SQUASH: the same merge, recorded as superseding one stale integration on the target's
+// line. Its one extra question is the supersession admission (gunbc.scm.repository_envelope
+// admit_supersession), asked of the very anchors the merge then uses; every merge refusal is the
+// plain squash's, carried one-to-one.
+type SupersedingSquashOutcome
+  = SupersedingSquashMerged(SquashMergeOutcome)
+  | SupersedingSquashRefused { cause: SupersessionRefusal }
+
+fn squash_merge_superseding(
+  repository: RepositoryEnvelope,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  supersedes: RepositoryCommitRef,
+  message: String,
+) -> SupersedingSquashOutcome {
+  match merge_base(repository: repository, target: target, source: source) {
+    MergeBaseNotDerived { refusal: refusal } => SupersedingSquashMerged(SquashMergeBaseRefused { refusal: refusal })
     MergeBaseDerived { anchors: anchors } =>
-      match admit_merge_subject(anchors: anchors) {
+      match admit_supersession(anchors: anchors, supersedes: supersedes) {
+        SupersessionRefused { cause } => SupersedingSquashRefused { cause: cause }
+        SupersessionAdmitted(admitted) =>
+          SupersedingSquashMerged(squash_merge_subject(admission: admit_merge_subject_for(intent: SupersedingSquash(admitted)), message: message))
+      }
+  }
+}
+
+fn squash_merge_subject(admission: MergeSubjectAdmission, message: String) -> SquashMergeOutcome {
+      match admission {
         MergeSubjectSideRootMissing { side: sd, root: r } =>
           SquashMergeRootMissing { side: sd, root: r }
         MergeSubjectSideRootIsAuthoredSource { side: sd, root: r } =>
@@ -246,5 +281,4 @@ fn squash_merge(
         MergeSubjectAdmitted(admitted) =>
           commit_merged_manifest(admitted: admitted, message: message)
       }
-  }
 }

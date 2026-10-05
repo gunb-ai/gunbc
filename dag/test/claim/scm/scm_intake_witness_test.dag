@@ -247,6 +247,7 @@ fn intakes_of(commits: List<RepositoryCommit>) -> List<String> {
   map(commits, c => match c.intake {
     IntakeNone => "none"
     IntakeUnrecordedByFormat => "unrecorded"
+    IntakeStaleCapture { captured_against: _ } => "stale_capture"
     IntakeBase { revision: _ } => "base"
     IntakeAdvance { from: _, to: _ } => "advance"
   })
@@ -342,6 +343,7 @@ test fn a_damaged_intake_member_refuses() -> Bool {
             IntakeNone => false
             IntakeBase { revision: _ } => false
             IntakeUnrecordedByFormat => false
+            IntakeStaleCapture { captured_against: _ } => false
           }
         CommitIntakeRefused { cause: _ } => false
       }

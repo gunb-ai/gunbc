@@ -20,6 +20,13 @@ module gunbc.scm.intake
 // the v8 belt wrote base commits whose message names a revision, so reading that format's silence as
 // "no intake" would assert a fact the document does not carry. Only the decoder produces it, and the
 // intake admission in gunbc.scm.repository_envelope refuses it as a mint argument.
+//
+// `IntakeStaleCapture` is the typed reading of a pre-intake commit whose content was computed against
+// an external revision OTHER than the one its line stands at: srv2's candidates captured from
+// attempts on b7f9070 and d7005ab into a line based at d012e00. It does not move the line; it records
+// that this commit's tree is not its line's base plus its work. Only the legacy conversion
+// (gunbc.scm.repository_envelope record_legacy_intakes) writes it -- a fresh capture cannot be stale,
+// because it descends from the intake commit of the revision it was computed against.
 
 import std.types { String, List, Bool }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq }
@@ -41,6 +48,7 @@ type CommitIntake
   = IntakeNone
   | IntakeBase { revision: IntakeRevision }
   | IntakeAdvance { from: IntakeRevision, to: IntakeRevision }
+  | IntakeStaleCapture { captured_against: IntakeRevision }
   | IntakeUnrecordedByFormat
 
 fn intake_revision_eq(left: IntakeRevision, right: IntakeRevision) -> Bool {
@@ -80,6 +88,7 @@ fn intake_line_mark(intake: CommitIntake) -> IntakeLineMark {
     IntakeNone => LineNotMarked
     IntakeBase { revision } => LineMarkedAt { revision: revision }
     IntakeAdvance { from: _, to } => LineMarkedAt { revision: to }
+    IntakeStaleCapture { captured_against: _ } => LineNotMarked
     IntakeUnrecordedByFormat => LineMarkUnrecorded
   }
 }
@@ -106,6 +115,11 @@ fn encode_commit_intake(intake: CommitIntake) -> JsonValue {
         json_kv(key: "kind", value: json_string(s: "advance")),
         json_kv(key: "from", value: json_string(s: intake_revision_wire(revision: from))),
         json_kv(key: "to", value: json_string(s: intake_revision_wire(revision: to))),
+      ])
+    IntakeStaleCapture { captured_against } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "stale_capture")),
+        json_kv(key: "captured_against", value: json_string(s: intake_revision_wire(revision: captured_against))),
       ])
   }
 }
@@ -148,6 +162,12 @@ fn decode_commit_intake_object(value: JsonValue) -> CommitIntakeDecode {
               IntakeRevisionMemberRead { revision: to } =>
                 intake_members_closed(value: value, allowed: ["kind", "from", "to"], intake: IntakeAdvance { from: from, to: to })
             }
+        }
+      } else if kind == "stale_capture" {
+        match decode_intake_revision_member(value: value, key: "captured_against") {
+          IntakeRevisionMemberRefused { cause } => CommitIntakeRefused { cause: cause }
+          IntakeRevisionMemberRead { revision } =>
+            intake_members_closed(value: value, allowed: ["kind", "captured_against"], intake: IntakeStaleCapture { captured_against: revision })
         }
       } else {
         CommitIntakeRefused { cause: MemberReadWrongShape { key: "kind" } }

@@ -49,7 +49,7 @@ import extdeps.languages.json.emit {
 }
 
 import gunbc.scm.intake {
-  CommitIntake, IntakeNone, IntakeBase, IntakeAdvance, IntakeUnrecordedByFormat,
+  CommitIntake, IntakeNone, IntakeBase, IntakeAdvance, IntakeStaleCapture, IntakeUnrecordedByFormat,
   IntakeRevision, intake_revision_eq,
   IntakeLineMark, LineMarkedAt, LineNotMarked, LineMarkUnrecorded, intake_line_mark,
   encode_commit_intake, decode_commit_intake, CommitIntakeDecoded, CommitIntakeRefused,
@@ -58,6 +58,7 @@ import gunbc.scm.integration {
   CommitIntegration,
   NoSquashIntegration,
   SquashIntegrated,
+  SquashIntegratedSuperseding,
   chain_contains,
 }
 import gunbc.scm.ancestry {
@@ -938,6 +939,7 @@ fn intake_advance_from(commits: List<RepositoryCommit>, from: IntakeRevision) ->
     IntakeNone => false
     IntakeBase { revision: _ } => false
     IntakeUnrecordedByFormat => false
+    IntakeStaleCapture { captured_against: _ } => false
   })).first()
 }
 
@@ -961,6 +963,7 @@ fn intake_tip(commits: List<RepositoryCommit>) -> IntakeTip? {
       IntakeNone => false
       IntakeBase { revision: _ } => false
       IntakeUnrecordedByFormat => false
+      IntakeStaleCapture { captured_against: _ } => false
     }))).first()
 }
 
@@ -1105,6 +1108,145 @@ fn mint_intake_advance(
         }
     }
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Recording the intakes a pre-intake repository never wrote
+// ------------------------------------------------------------------------------------------------
+
+// THE TYPED READING OF A REPOSITORY WRITTEN BEFORE THE INTAKE MEMBER EXISTED, recorded once and in
+// place (the parent ruling on gunbc#13402: no re-seed; srv2's shell-typed-invocation keeps its
+// history). Its commits read back IntakeUnrecordedByFormat, so this admission is the one route by
+// which an unrecorded commit acquires a recorded intake, and it asserts nothing the history cannot
+// support: every unrecorded commit is covered exactly once and no recorded commit is touched; a
+// root commit (and only a root) records the base its producer froze; every other commit records
+// IntakeNone, or IntakeStaleCapture when its content was computed against a revision OTHER than its
+// line's base -- and a "stale" capture against its own line's base refuses, because that would brand
+// an on-base commit stale. What the revisions ARE is the caller's evidence (the belt reads them from
+// its own legacy records); what may be RECORDED from them is this module's.
+type LegacyIntakeRecord {
+  commit: RepositoryCommitRef
+  intake: CommitIntake
+}
+
+type LegacyIntakeRefusal
+  = LegacyIntakeUnknownCommit { commit: RepositoryCommitRef }
+  | LegacyIntakeAlreadyRecorded { commit: RepositoryCommitRef }
+  | LegacyIntakeDuplicated { commit: RepositoryCommitRef }
+  | LegacyIntakeUncovered { commit: RepositoryCommitRef }
+  | LegacyIntakeRootNotBase { commit: RepositoryCommitRef }
+  | LegacyIntakeBaseNotRoot { commit: RepositoryCommitRef }
+  | LegacyIntakeNotRecordable { commit: RepositoryCommitRef }
+  | LegacyStaleCaptureOnItsOwnBase { commit: RepositoryCommitRef }
+  | LegacyIntakeLineUnreadable { commit: RepositoryCommitRef }
+
+type LegacyIntakeRecording
+  = LegacyIntakesRecorded { repository: RepositoryEnvelope }
+  | LegacyIntakesNothingUnrecorded
+  | LegacyIntakesRefused { cause: LegacyIntakeRefusal }
+
+fn intake_is_unrecorded(intake: CommitIntake) -> Bool {
+  match intake {
+    IntakeUnrecordedByFormat => true
+    IntakeNone => false
+    IntakeBase { revision: _ } => false
+    IntakeAdvance { from: _, to: _ } => false
+    IntakeStaleCapture { captured_against: _ } => false
+  }
+}
+
+fn legacy_record_shape_refusal(commit: RepositoryCommit, intake: CommitIntake) -> LegacyIntakeRefusal? {
+  let is_root = match commit.ancestry {
+    RootCommit => true
+    DescendsFrom { parent: _ } => false
+  }
+  match intake {
+    IntakeBase { revision: _ } => if is_root { none } else { Present { value: LegacyIntakeBaseNotRoot { commit: commit.reference } } }
+    IntakeNone => if is_root { Present { value: LegacyIntakeRootNotBase { commit: commit.reference } } } else { none }
+    IntakeStaleCapture { captured_against: _ } => if is_root { Present { value: LegacyIntakeRootNotBase { commit: commit.reference } } } else { none }
+    IntakeAdvance { from: _, to: _ } => Present { value: LegacyIntakeNotRecordable { commit: commit.reference } }
+    IntakeUnrecordedByFormat => Present { value: LegacyIntakeNotRecordable { commit: commit.reference } }
+  }
+}
+
+type LegacyRecordAcc {
+  by_ordinal: Map<Int, CommitIntake>
+  refused: LegacyIntakeRefusal?
+}
+
+fn record_legacy_intakes(repository: RepositoryEnvelope, records: List<LegacyIntakeRecord>) -> LegacyIntakeRecording {
+  let unrecorded = repository.commits |> filter(c => intake_is_unrecorded(intake: c.intake))
+  if count(unrecorded) == 0 {
+    LegacyIntakesNothingUnrecorded
+  } else {
+    let empty: Map<Int, CommitIntake> = empty_map()
+    let acc = fold(records, init: LegacyRecordAcc { by_ordinal: empty, refused: none }, f: (acc, r) =>
+      match acc.refused {
+        Present { value: _ } => acc
+        Absent =>
+          match commit_at_reference(commits: repository.commits, reference: r.commit) {
+            Absent => LegacyRecordAcc { by_ordinal: acc.by_ordinal, refused: Present { value: LegacyIntakeUnknownCommit { commit: r.commit } } }
+            Present { value: c } =>
+              if !intake_is_unrecorded(intake: c.intake) {
+                LegacyRecordAcc { by_ordinal: acc.by_ordinal, refused: Present { value: LegacyIntakeAlreadyRecorded { commit: r.commit } } }
+              } else if map_contains_key(acc.by_ordinal, minted_id_ordinal(id: r.commit.identity)) {
+                LegacyRecordAcc { by_ordinal: acc.by_ordinal, refused: Present { value: LegacyIntakeDuplicated { commit: r.commit } } }
+              } else {
+                match legacy_record_shape_refusal(commit: c, intake: r.intake) {
+                  Present { value: cause } => LegacyRecordAcc { by_ordinal: acc.by_ordinal, refused: Present { value: cause } }
+                  Absent => LegacyRecordAcc { by_ordinal: map_insert(acc.by_ordinal, minted_id_ordinal(id: r.commit.identity), r.intake), refused: none }
+                }
+              }
+          }
+      })
+    match acc.refused {
+      Present { value: cause } => LegacyIntakesRefused { cause: cause }
+      Absent =>
+        match (unrecorded |> filter(c => !map_contains_key(acc.by_ordinal, minted_id_ordinal(id: c.reference.identity)))).first() {
+          Present { value: missed } => LegacyIntakesRefused { cause: LegacyIntakeUncovered { commit: missed.reference } }
+          Absent => {
+            let recorded = RepositoryEnvelope {
+              store: repository.store,
+              commits: map(repository.commits, c => match map_lookup(m: acc.by_ordinal, key: minted_id_ordinal(id: c.reference.identity)) {
+                Absent => c
+                Present { value: intake } => RepositoryCommit { reference: c.reference, root: c.root, message: c.message, ancestry: c.ancestry, integration: c.integration, intake: intake }
+              }),
+              commit_allocator: repository.commit_allocator,
+              checked_out: repository.checked_out,
+              staged: repository.staged,
+            }
+            match legacy_stale_on_own_base(commits: recorded.commits) {
+              Present { value: cause } => LegacyIntakesRefused { cause: cause }
+              Absent => LegacyIntakesRecorded { repository: recorded }
+            }
+          }
+        }
+    }
+  }
+}
+
+// A STALE CAPTURE MUST BE STALE AGAINST THE LINE IT NOW STANDS ON: checked after recording, because
+// the line's base is itself one of the records.
+fn legacy_stale_on_own_base(commits: List<RepositoryCommit>) -> LegacyIntakeRefusal? {
+  fold(commits, init: none, f: (found, c) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match c.intake {
+          IntakeStaleCapture { captured_against } =>
+            match line_intake(commits: commits, head: c.reference) {
+              LineIntakeAt { commit: _, revision } =>
+                if intake_revision_eq(left: revision, right: captured_against) { Present { value: LegacyStaleCaptureOnItsOwnBase { commit: c.reference } } } else { none }
+              LineIntakeAbsent => Present { value: LegacyIntakeLineUnreadable { commit: c.reference } }
+              LineIntakeUnrecorded { commit: _ } => Present { value: LegacyIntakeLineUnreadable { commit: c.reference } }
+              LineIntakeUnreadable { at: _ } => Present { value: LegacyIntakeLineUnreadable { commit: c.reference } }
+            }
+          IntakeNone => none
+          IntakeBase { revision: _ } => none
+          IntakeAdvance { from: _, to: _ } => none
+          IntakeUnrecordedByFormat => none
+        }
+    })
 }
 
 fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
@@ -1357,7 +1499,115 @@ fn admit_commit_presence(
 type AdmittedMergeSubject sole_constructor {
   anchors: ResolvedMergeAnchors
   merged: MergedManifestEntries
+  supersedes: RepositoryCommitRef?
 }
+
+// A CORRECTIVE SQUASH NAMES THE STALE INTEGRATION IT SUPERSEDES, AND THE NAMING IS ADMITTED, NOT
+// ACCEPTED. The parent ruling on gunbc#13402: supersession must name the EXACT stale commit, by
+// identity, ON THE TARGET'S LINE; it must actually be stale (an integration whose consumed source
+// carries IntakeStaleCapture); it must not already be superseded on that line; and the new source
+// must itself be fresh against its intake (typed line, no stale capture of its own). The admission
+// carries the anchors it judged, so the merge it authorizes cannot be paired with other anchors.
+type AdmittedSupersession sole_constructor {
+  anchors: ResolvedMergeAnchors
+  supersedes: RepositoryCommitRef
+}
+
+type SupersessionRefusal
+  = SupersessionNotOnLine { named: RepositoryCommitRef }
+  | SupersessionNotAnIntegration { named: RepositoryCommitRef }
+  | SupersessionNotStale { named: RepositoryCommitRef }
+  | SupersessionAlreadySuperseded { named: RepositoryCommitRef, by: RepositoryCommitRef }
+  | SupersessionSourceNotFresh { source: RepositoryCommitRef }
+  | SupersessionLineUnreadable { at: RepositoryCommitRef }
+
+type SupersessionAdmission
+  = SupersessionAdmitted(AdmittedSupersession)
+  | SupersessionRefused { cause: SupersessionRefusal }
+
+// WHETHER A COMMIT'S CONTENT IS A STALE CAPTURE: its own typed intake says so.
+fn commit_is_stale_capture(commit: RepositoryCommit) -> Bool {
+  match commit.intake {
+    IntakeStaleCapture { captured_against: _ } => true
+    IntakeNone => false
+    IntakeBase { revision: _ } => false
+    IntakeAdvance { from: _, to: _ } => false
+    IntakeUnrecordedByFormat => false
+  }
+}
+
+// THE INTEGRATION A LINE COMMIT RECORDS, AS (source, superseded) -- the one reading every line
+// standing and every supersession admission shares.
+type LineIntegration {
+  at: RepositoryCommitRef
+  source: RepositoryCommitRef
+  supersedes: RepositoryCommitRef?
+}
+
+fn line_integration_of(commit: RepositoryCommit) -> LineIntegration? {
+  match commit.integration {
+    NoSquashIntegration => none
+    SquashIntegrated { source } => Present { value: LineIntegration { at: commit.reference, source: source, supersedes: none } }
+    SquashIntegratedSuperseding { source, supersedes } =>
+      Present { value: LineIntegration { at: commit.reference, source: source, supersedes: Present { value: supersedes } } }
+  }
+}
+
+fn admit_supersession(anchors: ResolvedMergeAnchors, supersedes: RepositoryCommitRef) -> SupersessionAdmission {
+  let commits = anchors.repository.commits
+  let target = anchors.target.commit.reference
+  let source_commit = anchors.source.commit
+  match ancestry_walk(start: target, history: repository_history(commits: commits)) {
+    AncestryBrokenAt { commit, missing_parent: _ } => SupersessionRefused { cause: SupersessionLineUnreadable { at: commit } }
+    AncestryStartNotInHistory { start } => SupersessionRefused { cause: SupersessionLineUnreadable { at: start } }
+    AncestryRevisitsACommit { detected_from } => SupersessionRefused { cause: SupersessionLineUnreadable { at: detected_from } }
+    AncestryTraced { chain } =>
+      if !chain_contains(chain: chain, target: supersedes) {
+        SupersessionRefused { cause: SupersessionNotOnLine { named: supersedes } }
+      } else {
+        let line = chain |> flat_map(r => match commit_at_reference(commits: commits, reference: r) {
+          Absent => []
+          Present { value: c } => match line_integration_of(commit: c) { Absent => [] Present { value: i } => [i] }
+        })
+        match (line |> filter(i => repository_commit_ref_eq(left: i.at, right: supersedes))).first() {
+          Absent => SupersessionRefused { cause: SupersessionNotAnIntegration { named: supersedes } }
+          Present { value: named } =>
+            match commit_at_reference(commits: commits, reference: named.source) {
+              Absent => SupersessionRefused { cause: SupersessionNotStale { named: supersedes } }
+              Present { value: named_source } =>
+                if !commit_is_stale_capture(commit: named_source) {
+                  SupersessionRefused { cause: SupersessionNotStale { named: supersedes } }
+                } else {
+                  match (line |> filter(i => match i.supersedes {
+                    Absent => false
+                    Present { value: x } => repository_commit_ref_eq(left: x, right: supersedes)
+                  })).first() {
+                    Present { value: earlier } => SupersessionRefused { cause: SupersessionAlreadySuperseded { named: supersedes, by: earlier.at } }
+                    Absent =>
+                      if commit_is_stale_capture(commit: source_commit) {
+                        SupersessionRefused { cause: SupersessionSourceNotFresh { source: source_commit.reference } }
+                      } else {
+                        match line_intake(commits: commits, head: source_commit.reference) {
+                          LineIntakeAt { commit: _, revision: _ } =>
+                            SupersessionAdmitted(AdmittedSupersession { anchors: anchors, supersedes: supersedes })
+                          LineIntakeAbsent => SupersessionRefused { cause: SupersessionSourceNotFresh { source: source_commit.reference } }
+                          LineIntakeUnrecorded { commit: _ } => SupersessionRefused { cause: SupersessionSourceNotFresh { source: source_commit.reference } }
+                          LineIntakeUnreadable { at: _ } => SupersessionRefused { cause: SupersessionSourceNotFresh { source: source_commit.reference } }
+                        }
+                      }
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+// WHAT A MERGE IS ASKED TO RECORD: a plain squash over derived anchors, or a corrective squash over an
+// admitted supersession -- which carries its own anchors, so the two cannot be paired apart.
+type MergeIntent
+  = PlainSquash { anchors: ResolvedMergeAnchors }
+  | SupersedingSquash(AdmittedSupersession)
 
 // THE SIDES ARE NAMED HERE BECAUSE THE READ THAT NEEDS THEM IS HERE.
 type MergeSideName
@@ -1442,6 +1692,18 @@ fn read_anchor_manifest(
 // The pairing is not validated; it is unwritable.
 
 fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
+  admit_merge_subject_for(intent: PlainSquash { anchors: anchors })
+}
+
+fn admit_merge_subject_for(intent: MergeIntent) -> MergeSubjectAdmission {
+  let anchors = match intent {
+    PlainSquash { anchors: a } => a
+    SupersedingSquash(admitted) => admitted.anchors
+  }
+  let supersedes = match intent {
+    PlainSquash { anchors: _ } => none
+    SupersedingSquash(admitted) => Present { value: admitted.supersedes }
+  }
   let repository = anchors.repository
   match read_anchor_manifest(
     repository: repository,
@@ -1479,7 +1741,7 @@ fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
                       MergeSubjectSourceUnrecoverable { cause: c }
                     CorpusSourcesComplete =>
                       MergeSubjectAdmitted(
-                        AdmittedMergeSubject { anchors: anchors, merged: e },
+                        AdmittedMergeSubject { anchors: anchors, merged: e, supersedes: supersedes },
                       )
                   }
               }
@@ -1524,7 +1786,10 @@ fn store_and_admit_merge_basis(subject: AdmittedMergeSubject) -> MergeStoreOutco
         AdmittedCommitBasis {
           subject: stored_root,
           ancestry: DescendsFrom { parent: parent.commit.reference },
-          integration: SquashIntegrated { source: source.commit.reference },
+          integration: match subject.supersedes {
+            Absent => SquashIntegrated { source: source.commit.reference }
+            Present { value: x } => SquashIntegratedSuperseding { source: source.commit.reference, supersedes: x }
+          },
         }
       )
   }
@@ -1702,7 +1967,7 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit, commit_policy:
     json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root.locator)),
     json_kv(key: "message", value: json_string(s: commit.message)),
     json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
-    json_kv(key: "integration", value: encode_integration(integration: commit.integration)),
+    json_kv(key: "integration", value: encode_integration(integration: commit.integration, commit_policy: commit_policy)),
   ]
   match commit_policy {
     CommitIntakeDeclared =>
@@ -1716,10 +1981,23 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit, commit_policy:
 // so a damaged document cannot silently become an unintegrated commit. It is deliberately the SAME
 // spelling `encode_ancestry` uses for the same kind of thing -- an optional commit reference into
 // this document's own commit table -- because a second spelling for one wire concept is a nickname.
-fn encode_integration(integration: CommitIntegration) -> JsonValue {
+// v9 ADDS ONE SHAPE: a corrective integration is an object naming its source and the stale
+// integration it supersedes. A pre-v9 writer has no spelling for it and writes the source alone; the
+// checked whole route refuses such a repository rather than drop the supersession silently.
+fn encode_integration(integration: CommitIntegration, commit_policy: CommitMemberPolicy) -> JsonValue {
   match integration {
     NoSquashIntegration => JsonNull
     SquashIntegrated { source: s } => json_int(n: minted_id_ordinal(id: s.identity))
+    SquashIntegratedSuperseding { source: s, supersedes: x } =>
+      match commit_policy {
+        CommitIntakeDeclared =>
+          json_object(members: [
+            json_kv(key: "source", value: json_int(n: minted_id_ordinal(id: s.identity))),
+            json_kv(key: "supersedes", value: json_int(n: minted_id_ordinal(id: x.identity))),
+          ])
+        CommitIntegrationDeclared => json_int(n: minted_id_ordinal(id: s.identity))
+        CommitIntegrationAbsentByFormat => json_int(n: minted_id_ordinal(id: s.identity))
+      }
   }
 }
 
@@ -2225,8 +2503,8 @@ fn an_uncontained_target(census: ClosureCensus) -> ObjectId? {
 // envelope type is shared by every SCM verb, so the encoder can be handed one, and writing it whole
 // would roster away every object it does not hold. The append-only writer
 // (encode_repository_appended_checked) is the only route that writes a partial store.
-// THE WHOLE SAVE ROUTE WRITES v6, WHICH HAS NO `intake` MEMBER. A commit whose intake is a base or an
-// advance would be written without the one fact that makes it one, and read back unrecorded, so it
+// THE WHOLE SAVE ROUTE WRITES v6, WHICH HAS NO `intake` MEMBER. A commit whose intake is a base, an
+// advance or a stale capture would be written without the one fact that makes it one, and read back unrecorded, so it
 // refuses here by name. IntakeNone is written as the format's silence and reads back
 // IntakeUnrecordedByFormat: a weaker claim than the writer held, never a different one.
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
@@ -2235,6 +2513,11 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
     IntakeAdvance { from: _, to: _ } => true
     IntakeNone => false
     IntakeUnrecordedByFormat => false
+    IntakeStaleCapture { captured_against: _ } => true
+  } || match c.integration {
+    SquashIntegratedSuperseding { source: _, supersedes: _ } => true
+    SquashIntegrated { source: _ } => false
+    NoSquashIntegration => false
   })).first() {
     Present { value: c } => RepositoryEncodeRefused { cause: RepositoryEncodeIntakeNotInWholeFormat { commit: c.reference } }
     Absent => encode_repository_census_checked(repo: repo)
@@ -2459,6 +2742,8 @@ fn integration_anchor_previously_admitted(seen: Map<Int, Bool>, integration: Com
   match integration {
     NoSquashIntegration => true
     SquashIntegrated { source: s } => map_contains_key(seen, minted_id_ordinal(id: s.identity))
+    SquashIntegratedSuperseding { source: s, supersedes: x } =>
+      map_contains_key(seen, minted_id_ordinal(id: s.identity)) && map_contains_key(seen, minted_id_ordinal(id: x.identity))
   }
 }
 
@@ -2466,6 +2751,7 @@ fn integration_anchor_or(integration: CommitIntegration, fallback: RepositoryCom
   match integration {
     NoSquashIntegration => fallback
     SquashIntegrated { source: s } => s
+    SquashIntegratedSuperseding { source: s, supersedes: _ } => s
   }
 }
 
@@ -2871,12 +3157,12 @@ fn read_pending_integration(
 ) -> PendingIntegrationRead {
   match commit_policy {
     CommitIntegrationAbsentByFormat => PendingIntegrationRead { integration: NoSquashIntegration }
-    CommitIntegrationDeclared => read_declared_pending_integration(value: value)
-    CommitIntakeDeclared => read_declared_pending_integration(value: value)
+    CommitIntegrationDeclared => read_declared_pending_integration(value: value, superseding_admitted: false)
+    CommitIntakeDeclared => read_declared_pending_integration(value: value, superseding_admitted: true)
   }
 }
 
-fn read_declared_pending_integration(value: JsonValue) -> PendingIntegrationRead {
+fn read_declared_pending_integration(value: JsonValue, superseding_admitted: Bool) -> PendingIntegrationRead {
   match read_member_value(v: value, key: "integration") {
     MemberLookupFailed { cause: c } =>
       PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -2887,7 +3173,31 @@ fn read_declared_pending_integration(value: JsonValue) -> PendingIntegrationRead
         JsonNumber { lexeme: _ } => pending_integration_of_declared_reference(found: found)
         JsonString { value: _ } => pending_integration_of_declared_reference(found: found)
         JsonArray { elements: _ } => pending_integration_of_declared_reference(found: found)
-        JsonObject { members: _ } => pending_integration_of_declared_reference(found: found)
+        JsonObject { members: _ } =>
+          if superseding_admitted { pending_superseding_integration(found: found) } else { pending_integration_of_declared_reference(found: found) }
+      }
+  }
+}
+
+fn pending_superseding_integration(found: JsonValue) -> PendingIntegrationRead {
+  match unexpected_member_key(v: found, allowed: ["source", "supersedes"]) {
+    Present { value: _ } => PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } } }
+    Absent =>
+      match read_member_value(v: found, key: "source") {
+        MemberLookupFailed { cause: c } => PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: c } }
+        MemberValue { value: sv } =>
+          match read_member_value(v: found, key: "supersedes") {
+            MemberLookupFailed { cause: c } => PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: c } }
+            MemberValue { value: xv } =>
+              match repository_commit_ref_from_json(value: sv) {
+                Absent => PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } } }
+                Present { value: s } =>
+                  match repository_commit_ref_from_json(value: xv) {
+                    Absent => PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } } }
+                    Present { value: x } => PendingIntegrationRead { integration: SquashIntegratedSuperseding { source: s, supersedes: x } }
+                  }
+              }
+          }
       }
   }
 }
@@ -4092,6 +4402,12 @@ fn consumed_join_step(
           match c.integration {
             NoSquashIntegration => found
             SquashIntegrated { source: anchor } =>
+              if chain_contains(chain: source_chain, target: anchor) {
+                ConsumedJoinFound { recorded_at: target_commit_ref, consumed: anchor }
+              } else {
+                found
+              }
+            SquashIntegratedSuperseding { source: anchor, supersedes: _ } =>
               if chain_contains(chain: source_chain, target: anchor) {
                 ConsumedJoinFound { recorded_at: target_commit_ref, consumed: anchor }
               } else {

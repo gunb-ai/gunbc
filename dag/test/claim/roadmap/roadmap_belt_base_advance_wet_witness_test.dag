@@ -114,6 +114,7 @@ fn advanced_reaches_s1(advanced: RepositoryEnvelope, reference: gunbc.scm.ancest
         IntakeNone => false
         IntakeBase { revision: _ } => false
         IntakeUnrecordedByFormat => false
+        IntakeStaleCapture { captured_against: _ } => false
       } && match c.ancestry {
         DescendsFrom { parent } => repository_commit_ref_eq(left: parent, right: base_ref)
         RootCommit => false
