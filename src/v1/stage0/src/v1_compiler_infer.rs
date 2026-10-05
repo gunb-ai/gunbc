@@ -121,13 +121,17 @@ pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
+use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
+    TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
+};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
-    empty_type_env, lookup_emit_type_summary, type_decl_index_with_qualified_names,
+    empty_type_env, empty_type_summary_index, is_enum_in_summaries, lookup_emit_type_summary,
+    type_decl_index_with_qualified_names, type_summary_lookup,
 };
 pub use crate::v1_compiler_infer_emit_info::{
-    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
+    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
@@ -31205,18 +31209,14 @@ pub fn enum_variant_shape_sets_for_item(
     acc: Rc<EnumVariantShapeSets>,
     item: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<EnumVariantShapeSets> {
     {
         let item_name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
-        let is_enum = match v1_rt::map_get(&type_summaries, item_name.clone()) {
-            Some(summary) => match (*summary.repr.clone()).clone() {
-                TypeRepr::EnumRepr { unit_only: _, .. } => true,
-                _ => false,
-            },
-            std::option::Option::None => false,
-        };
-        if is_enum.clone() {
+        if crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
+            type_summaries.clone(),
+            item_name.clone(),
+        ) {
             item.children.clone().iter().cloned().fold(
                 acc,
                 |vacc: Rc<EnumVariantShapeSets>, variant: Rc<Node>| {
@@ -31258,7 +31258,7 @@ pub fn enum_variant_shape_sets_for_item(
 
 pub fn build_enum_variant_shape_sets(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<EnumVariantShapeSets> {
     modules.iter().cloned().fold(
         Rc::new(EnumVariantShapeSets {
@@ -31383,7 +31383,7 @@ pub fn build_emit_graph_info(
             std::option::Option::None => crate::v1_compiler_infer_env::empty_symbol_index(),
         };
         let init = Rc::new(EmitInfoBuildState {
-            type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+            type_summaries: crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
             type_decl_items:
                 crate::v1_compiler_infer_emit_info::type_decl_index_with_qualified_names(
                     crate::v1_compiler_infer_emit_info::empty_type_decl_index(),

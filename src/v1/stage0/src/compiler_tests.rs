@@ -4467,8 +4467,23 @@ mod compiler_tests {
             )
         );
         assert!(
-            crate::v1_compiler_emit_rust::is_grounded_coproduct_native_alias(
+            crate::v1_compiler_emit_rust::declaration_is_grounded_coproduct_native_alias(
+                "v2.std.diagnostic".to_string(),
                 "Diagnostics".to_string()
+            )
+        );
+        // The host option is a DECLARATION, not a name: the kernel optional's declaration is it, and a
+        // coproduct another module declares as Optional is not.
+        assert!(
+            crate::v1_compiler_emit_rust::declaration_is_grounded_coproduct_native_alias(
+                "v2.std.optional".to_string(),
+                "Optional".to_string()
+            )
+        );
+        assert!(
+            !crate::v1_compiler_emit_rust::declaration_is_grounded_coproduct_native_alias(
+                "gunbc.instruments.native_emission_controls_optional_collision".to_string(),
+                "Optional".to_string()
             )
         );
         let empty_shared = std::rc::Rc::new(im::OrdSet::new());
@@ -5518,6 +5533,57 @@ mod compiler_tests {
             control.contains("pub struct Odd<K: Clone>")
                 && !control.contains("more than one module of this closure declares"),
             "a sole declarer resolves by spelling:\n{control}"
+        );
+    }
+
+    // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel
+    // optional's Absent; hom.edge declares an unrelated enum that also has an Absent variant. With the
+    // leaf-keyed type summaries, adding hom.coll (a coproduct it declares as Optional) replaced the
+    // kernel Optional's summary, so Absent stopped being an Optional variant and hom.user emitted
+    // Rc::new(Lookup::Absent) where it had emitted None. Keyed by declaration, both summaries stand:
+    // hom.user's file is byte-identical with and without hom.coll, and its Absent is the host None.
+    #[test]
+    fn same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged() {
+        use crate::v1_compiler_compile::SourceFile;
+        let src = |path: &str, content: &str| {
+            std::rc::Rc::new(SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        let optional = || {
+            src("fixtures/same_leaf_optional/optional.dag", "module v2.std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n")
+        };
+        let edge = || {
+            src("fixtures/same_leaf_optional/edge.dag", "module hom.edge\n\nimport std.types { Int }\n\ntype Lookup\n  = Found { at: Int }\n  | Absent\n")
+        };
+        let user = || {
+            src("fixtures/same_leaf_optional/user.dag", "module hom.user\n\nimport std.types { Int }\nimport v2.std.optional { Optional, Present, Absent }\n\nfn first_positive(x: Int) -> Optional<Int> {\n  if x > 0 { Present { value: x } } else { Absent }\n}\n")
+        };
+        let coll = || {
+            src("fixtures/same_leaf_optional/coll.dag", "module hom.coll\n\nimport std.types { Int }\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n")
+        };
+        let emitted_user = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {
+            let result = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(sources.into()),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            result
+                .files
+                .iter()
+                .find(|f| f.path.contains("hom_user"))
+                .map(|f| f.content.clone())
+                .unwrap_or_default()
+        };
+        let without = emitted_user(vec![optional(), edge(), user()]);
+        let with = emitted_user(vec![optional(), edge(), user(), coll()]);
+        assert!(
+            without.contains("None") && !without.contains("Lookup::Absent"),
+            "the control: hom.user's Absent is the host None:\n{without}"
+        );
+        assert_eq!(
+            with, without,
+            "adding a same-leaf Optional elsewhere changed hom.user's emission"
         );
     }
 

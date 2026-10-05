@@ -227,15 +227,20 @@ use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{
     TypeDeclKernelSpellingUndecided, TypeDeclLeafAmbiguous, TypeDeclNotDeclared, TypeDeclResolved,
 };
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
+use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
+    TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
+};
 pub use crate::v1_compiler_infer_emit_info::{
     collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences,
     emit_info_with_expected_type, emit_info_with_fn_return, emit_info_with_fn_type_context,
     empty_emit_graph_info, find_variant_parent, is_enum_in_summaries, is_known_variant,
-    lookup_emit_type_summary, resolve_type_decl_reference, type_decl_identity,
-    variant_belongs_to_enum, variant_summary_key,
+    lookup_emit_type_summary, resolve_type_decl_reference, summary_is_enum_with_variant,
+    type_decl_identity, type_summary_answer_or_false, type_summary_decided, type_summary_lookup,
+    type_summary_of_reference, type_summary_values, variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
-    EmitGraphInfo, TypeDeclIndex, TypeDeclResolution, TypeRepr, TypeSummary, TypeSurfaceOccurrence,
+    EmitGraphInfo, TypeDeclIndex, TypeDeclResolution, TypeRepr, TypeSummary, TypeSummaryIndex,
+    TypeSummaryLookup, TypeSurfaceOccurrence,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
@@ -897,10 +902,6 @@ pub fn is_host_freemonoid_vec_alias(name: String) -> bool {
     (name.clone() == "FreeMonoid".to_string())
 }
 
-pub fn is_host_optional_carrier_alias(name: String) -> bool {
-    (name.clone() == kernel_optional_mint_name())
-}
-
 pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
     {
         let mut __found = false;
@@ -914,9 +915,39 @@ pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
     }
 }
 
-pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
-    ((is_host_freemonoid_vec_alias(name.clone()) || is_host_optional_carrier_alias(name.clone()))
-        || is_host_diagnostics_carrier_alias(name.clone()))
+pub fn declaration_is_grounded_coproduct_native_alias(
+    module_path: String,
+    decl_name: String,
+) -> bool {
+    ((is_host_freemonoid_vec_alias(decl_name.clone())
+        || declaration_owns_host_option(module_path.clone(), decl_name.clone()))
+        || crate::std_decl_ref::declaration_ref_in_list(
+            crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+            rust_host_option_carrier_declarations(),
+        ))
+}
+
+pub fn summary_declares_grounded_coproduct_native_alias(summary: Rc<TypeSummary>) -> bool {
+    {
+        let segments = Rc::new(
+            summary
+                .key
+                .clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        let module_path = Rc::new(
+            segments
+                .clone()
+                .iter()
+                .cloned()
+                .take(v1_rt::int_sub((segments.clone().len() as i64), 1) as usize)
+                .collect::<Vec<_>>(),
+        )
+        .join(&".".to_string());
+        declaration_is_grounded_coproduct_native_alias(module_path.clone(), summary.name.clone())
+    }
 }
 
 pub fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name: String) -> bool {
@@ -934,13 +965,37 @@ pub fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name:
     }
 }
 
+pub fn declaration_owns_host_option(module_path: String, decl_name: String) -> bool {
+    match (*crate::std_literal_elaboration::kernel_mint_ownership(
+        kernel_mint_declaration_rows(),
+        kernel_optional_mint_name(),
+        crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+    ))
+    .clone()
+    {
+        KernelMintOwnership::DeclarationOwnsTheMint => true,
+        KernelMintOwnership::DeclarationDoesNotOwnTheMint => false,
+        KernelMintOwnership::KernelMintOwnershipAmbiguous { row_count: _, .. } => false,
+    }
+}
+
 pub fn is_host_optional_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-        == "Optional".to_string())
-        && ((n.children.clone().len() as i64) > 0))
+    match n.declaration.clone() {
+        Some(d) => match (*d.field.clone()).clone() {
+            DeclField::WholeDeclaration => {
+                declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone())
+            }
+            _ => false,
+        },
+        std::option::Option::None => {
+            ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+                == kernel_optional_mint_name())
+                && ((n.children.clone().len() as i64) > 0))
+        }
+    }
 }
 
 pub fn is_host_diagnostics_carrier_type(
@@ -6077,7 +6132,10 @@ pub fn rust_qualify_type_leaf_name(
     match v1_rt::map_get(&variant_to_enum, name.clone()) {
         Some(parent) => {
             if (parent.clone() != "".to_string()) {
-                rust_variant_path(parent.clone(), name.clone())
+                rust_variant_path(
+                    crate::v1_std_core::qualified_last_segment(parent.clone()),
+                    name.clone(),
+                )
             } else {
                 name.clone()
             }
@@ -6368,7 +6426,7 @@ pub fn maybe_mark_shared_type(
                     ..
                 } => (unit_only.clone() == false),
             });
-        if is_grounded_coproduct_native_alias(summary.name.clone()) {
+        if summary_declares_grounded_coproduct_native_alias(summary.clone()) {
             acc.clone()
         } else {
             if (needs_sharing.clone()
@@ -6383,26 +6441,27 @@ pub fn maybe_mark_shared_type(
 }
 
 pub fn build_shared_types(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     recursive_type_set: Rc<BTreeSet<String>>,
     target: RenderTarget,
 ) -> Rc<BTreeSet<String>> {
     {
         let sharing = crate::v1_compiler_languages::sharing_for_target(target.clone());
-        let user_shared = Rc::new(v1_rt::map_values(&type_summaries))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
-                    maybe_mark_shared_type(
-                        acc,
-                        summary.clone(),
-                        recursive_type_set.clone(),
-                        sharing.needs_sharing.clone(),
-                    )
-                },
-            );
+        let user_shared =
+            crate::v1_compiler_infer_emit_info::type_summary_values(type_summaries.clone())
+                .iter()
+                .cloned()
+                .fold(
+                    v1_rt::rc_empty_set::<String>(),
+                    |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
+                        maybe_mark_shared_type(
+                            acc,
+                            summary.clone(),
+                            recursive_type_set.clone(),
+                            sharing.needs_sharing.clone(),
+                        )
+                    },
+                );
         let collection_keys = Rc::new({
             let mut __result = Vec::new();
             for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
@@ -7966,7 +8025,7 @@ pub fn emit_inferred_type_leaf_name(
 pub fn anonymous_record_lit_surface_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> String {
     {
         let lit_field_names = Rc::new({
@@ -8016,7 +8075,10 @@ pub fn anonymous_record_lit_surface_name(
                     let rt_name =
                         crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
                     if ((rt.ident_span.clone() != std::option::Option::None)
-                        && v1_rt::map_contains_key(&type_summaries, rt_name.clone()))
+                        && (crate::v1_compiler_infer_emit_info::type_summary_decided(
+                            type_summaries.clone(),
+                            rt_name.clone(),
+                        ) != std::option::Option::None))
                     {
                         rt_name.clone()
                     } else {
@@ -8031,7 +8093,7 @@ pub fn anonymous_record_lit_surface_name(
 pub fn record_lit_variant_payload_struct_surfaces(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<String>> {
     {
@@ -8053,8 +8115,8 @@ pub fn record_lit_variant_payload_struct_surfaces(
                 if (enum_name.clone() == "".to_string()) {
                     Rc::new(vec![])
                 } else {
-                    match v1_rt::map_get(
-                        &type_summaries,
+                    match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                        type_summaries.clone(),
                         crate::v1_compiler_infer_emit_info::variant_summary_key(
                             enum_name.clone(),
                             variant_name.clone(),
@@ -8066,17 +8128,13 @@ pub fn record_lit_variant_payload_struct_surfaces(
                                 .iter()
                                 .cloned()
                             {
-                                if ((ft.clone() != "".to_string())
-                                    && match v1_rt::map_get(&type_summaries, ft.clone()) {
-                                        Some(fts) => match (*fts.repr.clone()).clone() {
-                                            TypeRepr::StructRepr => true,
-                                            _ => false,
-                                        },
-                                        std::option::Option::None => false,
-                                    })
-                                {
-                                    __result.push(ft);
-                                }
+                                if ((ft.clone() != "".to_string()) && match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), ft.clone()) {
+    Some(fts) => match (*fts.repr.clone()).clone() {
+    TypeRepr::StructRepr => true,
+    _ => false,
+},
+    std::option::Option::None => false,
+}) { __result.push(ft); }
                             }
                             __result
                         }),
@@ -8115,7 +8173,7 @@ pub fn record_lit_field_type_hints(
 pub fn record_lit_resolved_ctor_import_names(
     type_name: String,
     n: Rc<Node>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
@@ -8184,7 +8242,7 @@ pub fn record_lit_resolved_ctor_import_names(
 pub fn record_lit_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<String>> {
     match (*n.expr_data.clone()).clone() {
@@ -8269,7 +8327,7 @@ pub fn record_lit_ref_names(
 pub fn collect_anonymous_record_lit_heads(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_head = match (*n.expr_data.clone()).clone() {
@@ -8281,7 +8339,10 @@ pub fn collect_anonymous_record_lit_heads(
                         let inferred =
                             emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
                         if ((inferred.clone() != "".to_string())
-                            && v1_rt::map_contains_key(&type_summaries, inferred.clone()))
+                            && (crate::v1_compiler_infer_emit_info::type_summary_decided(
+                                type_summaries.clone(),
+                                inferred.clone(),
+                            ) != std::option::Option::None))
                         {
                             Rc::new(vec![inferred.clone()])
                         } else {
@@ -8415,19 +8476,19 @@ pub fn collect_items_field_import_surface_names(
             let mut __result = Vec::new();
             for type_name in surface_names.iter().cloned() {
                 __result.extend((*{
-            let summary_lookup = match v1_rt::map_get(&type_summaries, type_name.clone()) {
+            let summary_lookup = match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), type_name.clone()) {
     Some(summary) => Some(summary.clone()),
     std::option::Option::None => match v1_rt::map_get(&variant_to_enum, type_name.clone()) {
     Some(enum_name) => if (enum_name.clone() == "".to_string()) {
                 std::option::Option::None
             } else {
-                v1_rt::map_get(&type_summaries, crate::v1_compiler_infer_emit_info::variant_summary_key(enum_name.clone(), type_name.clone()))
+                crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), crate::v1_compiler_infer_emit_info::variant_summary_key(enum_name.clone(), type_name.clone()))
             },
     std::option::Option::None => std::option::Option::None,
 },
 };
 match summary_lookup.clone() {
-    Some(summary) => Rc::new({ let mut __result = Vec::new(); for field_type in summary.field_import_surface_names.clone().iter().cloned() { if ((field_type.clone() != "".to_string()) && match v1_rt::map_get(&type_summaries, field_type.clone()) {
+    Some(summary) => Rc::new({ let mut __result = Vec::new(); for field_type in summary.field_import_surface_names.clone().iter().cloned() { if ((field_type.clone() != "".to_string()) && match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), field_type.clone()) {
     Some(ft) => match (*ft.repr.clone()).clone() {
     TypeRepr::StructRepr => true,
     _ => false,
@@ -8445,7 +8506,7 @@ match summary_lookup.clone() {
 
 pub fn collect_pattern_ref_names(
     pattern: Rc<MatchPattern>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
@@ -8496,7 +8557,7 @@ pub fn collect_pattern_ref_names(
 pub fn collect_value_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -8759,7 +8820,7 @@ pub fn emit_scrutinee_type_name(
 pub fn collect_pattern_rc_prelude_parent_enums(
     pattern: Rc<MatchPattern>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<Vec<String>> {
     match (*pattern.clone()).clone() {
         MatchPattern::VariantPattern {
@@ -9018,7 +9079,7 @@ pub fn collect_record_lit_field_struct_surfaces(
     parent: Rc<Node>,
     field_init: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<String>> {
     {
@@ -9039,30 +9100,23 @@ pub fn collect_record_lit_field_struct_surfaces(
                         if (summary_key.clone() == "".to_string()) {
                             Rc::new(vec![])
                         } else {
-                            match v1_rt::map_get(&type_summaries, summary_key.clone()) {
-                                Some(summary) => match v1_rt::map_get(
-                                    &summary.field_type_map.clone(),
-                                    field_name.clone(),
-                                ) {
-                                    Some(ft) => {
-                                        if ((ft.clone() != "".to_string())
-                                            && match v1_rt::map_get(&type_summaries, ft.clone()) {
-                                                Some(fts) => match (*fts.repr.clone()).clone() {
-                                                    TypeRepr::StructRepr => true,
-                                                    _ => false,
-                                                },
-                                                std::option::Option::None => false,
-                                            })
-                                        {
-                                            Rc::new(vec![ft.clone()])
-                                        } else {
-                                            Rc::new(vec![])
-                                        }
-                                    }
-                                    std::option::Option::None => Rc::new(vec![]),
-                                },
-                                std::option::Option::None => Rc::new(vec![]),
-                            }
+                            match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), summary_key.clone()) {
+    Some(summary) => match v1_rt::map_get(&summary.field_type_map.clone(), field_name.clone()) {
+    Some(ft) => if ((ft.clone() != "".to_string()) && match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), ft.clone()) {
+    Some(fts) => match (*fts.repr.clone()).clone() {
+    TypeRepr::StructRepr => true,
+    _ => false,
+},
+    std::option::Option::None => false,
+}) {
+                            Rc::new(vec![ft.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        },
+    std::option::Option::None => Rc::new(vec![]),
+},
+    std::option::Option::None => Rc::new(vec![]),
+}
                         }
                     }
                     _ => Rc::new(vec![]),
@@ -9113,7 +9167,9 @@ pub fn collect_value_emit_type_surface_names(
                 let from_variant = match v1_rt::map_get(&variant_to_enum, nm.clone()) {
                     Some(parent) => {
                         if (parent.clone() != "".to_string()) {
-                            Rc::new(vec![parent.clone()])
+                            Rc::new(vec![crate::v1_std_core::qualified_last_segment(
+                                parent.clone(),
+                            )])
                         } else {
                             Rc::new(vec![])
                         }
@@ -9377,55 +9433,29 @@ pub fn reference_derived_use_lines_note() -> String {
 
 pub fn expand_variant_payload_struct_imports(
     names: Rc<Vec<String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in names.iter().cloned() {
-            __result.extend(
-                (*match v1_rt::map_get(&variant_to_enum, n.clone()) {
-                    Some(enum_name) => {
-                        if (enum_name.clone() == "".to_string()) {
-                            Rc::new(vec![])
-                        } else {
-                            match v1_rt::map_get(
-                                &type_summaries,
-                                crate::v1_compiler_infer_emit_info::variant_summary_key(
-                                    enum_name.clone(),
-                                    n.clone(),
-                                ),
-                            ) {
-                                Some(summary) => Rc::new({
-                                    let mut __result = Vec::new();
-                                    for ft in
-                                        Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
-                                            .iter()
-                                            .cloned()
-                                    {
-                                        if ((ft.clone() != "".to_string())
-                                            && match v1_rt::map_get(&type_summaries, ft.clone()) {
-                                                Some(fts) => match (*fts.repr.clone()).clone() {
-                                                    TypeRepr::StructRepr => true,
-                                                    _ => false,
-                                                },
-                                                std::option::Option::None => false,
-                                            })
-                                        {
-                                            __result.push(ft);
-                                        }
-                                    }
-                                    __result
-                                }),
-                                std::option::Option::None => Rc::new(vec![]),
-                            }
-                        }
-                    }
-                    std::option::Option::None => Rc::new(vec![]),
-                })
-                .iter()
-                .cloned(),
-            );
+            __result.extend((*match v1_rt::map_get(&variant_to_enum, n.clone()) {
+    Some(enum_name) => if (enum_name.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), crate::v1_compiler_infer_emit_info::variant_summary_key(enum_name.clone(), n.clone())) {
+    Some(summary) => Rc::new({ let mut __result = Vec::new(); for ft in Rc::new(v1_rt::map_values(&summary.field_type_map.clone())).iter().cloned() { if ((ft.clone() != "".to_string()) && match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), ft.clone()) {
+    Some(fts) => match (*fts.repr.clone()).clone() {
+    TypeRepr::StructRepr => true,
+    _ => false,
+},
+    std::option::Option::None => false,
+}) { __result.push(ft); } } __result }),
+    std::option::Option::None => Rc::new(vec![]),
+}
+    },
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
         }
         __result
     })
@@ -9477,10 +9507,13 @@ pub fn reference_is_host_realized_builtin(name: String) -> bool {
 pub fn reference_derived_variant_induced_parent_spelled(
     module_source: String,
     enum_name: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> bool {
-    match v1_rt::map_get(&type_summaries, enum_name.clone()) {
+    match crate::v1_compiler_infer_emit_info::type_summary_decided(
+        type_summaries.clone(),
+        enum_name.clone(),
+    ) {
         Some(summary) => match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr { unit_only: _, .. } => {
                 let mut __found = false;
@@ -9490,7 +9523,11 @@ pub fn reference_derived_variant_induced_parent_spelled(
                 {
                     if match v1_rt::map_get(&variant_to_enum, vn.clone()) {
                         Some(parent) => {
-                            ((parent.clone() == enum_name.clone())
+                            (((parent.clone() != "".to_string())
+                                && (crate::v1_std_core::qualified_last_segment(parent.clone())
+                                    == crate::v1_std_core::qualified_last_segment(
+                                        enum_name.clone(),
+                                    )))
                                 && reference_derived_candidate_spelled_in_module(
                                     module_source.clone(),
                                     vn.clone(),
@@ -9513,7 +9550,7 @@ pub fn reference_derived_variant_induced_parent_spelled(
 pub fn reference_derived_candidate_authored(
     module_source: String,
     name: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> bool {
     (reference_derived_candidate_spelled_in_module(module_source.clone(), name.clone())
@@ -9812,7 +9849,7 @@ pub fn reference_derived_candidate_disposition(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
     in_type_position: bool,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
@@ -9826,7 +9863,7 @@ pub fn reference_derived_candidate_disposition(
                 } else {
                     Rc::new(
                         ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
-                            parent_enum: parent.clone(),
+                            parent_enum: crate::v1_std_core::qualified_last_segment(parent.clone()),
                         },
                     )
                 }
@@ -11217,7 +11254,8 @@ pub fn emit_module_full(
                 for item in typed_module.items.clone().iter().cloned() {
                     if ((((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         && crate::v1_compiler_infer_types::is_coproduct_type(item.clone()))
-                        && !is_grounded_coproduct_native_alias(
+                        && !declaration_is_grounded_coproduct_native_alias(
+                            scope.type_env.clone().module_path.clone(),
                             crate::v1_compiler_infer_env::authored_name(
                                 scope.type_env.clone(),
                                 item.clone(),
@@ -11419,7 +11457,7 @@ pub fn is_import_graph_type_name(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -12098,7 +12136,7 @@ continue;
 pub fn import_module_enum_scope(
     import_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12645,7 +12683,7 @@ pub fn reexport_variant_parent_in_import_module(
     mut __tco_loop_variant_name: String,
     mut __tco_loop_import_module: String,
     mut __tco_loop_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut __tco_loop_type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    mut __tco_loop_type_summaries: Rc<TypeSummaryIndex>,
     mut __tco_loop_typed_modules: Rc<Vec<Rc<TypedModule>>>,
     mut __tco_loop_export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13534,7 +13572,7 @@ pub fn import_variant_parent_for_name(
     n: String,
     import_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -14527,7 +14565,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.iter().cloned() {
-                        __result.extend((*if (is_grounded_coproduct_native_alias(parent.clone()) || rust_declaration_realizes_as_native_alias(import_module.clone(), parent.clone())) {
+                        __result.extend((*if (declaration_is_grounded_coproduct_native_alias(import_module.clone(), parent.clone()) || rust_declaration_realizes_as_native_alias(import_module.clone(), parent.clone())) {
                     Rc::new(vec![])
                 } else {
                     {
@@ -14600,7 +14638,10 @@ Rc::new(vec![Rc::new(RustUseLine {
                                 }
                                 __found
                             } == false)
-                                && !is_grounded_coproduct_native_alias(en.clone()))
+                                && !declaration_is_grounded_coproduct_native_alias(
+                                    import_module.clone(),
+                                    en.clone(),
+                                ))
                                 && !rust_declaration_realizes_as_native_alias(
                                     import_module.clone(),
                                     en.clone(),
@@ -15395,7 +15436,7 @@ pub fn data_field_struct_import_provider_note() -> String {
 
 pub fn module_data_field_struct_import_names(
     items: Rc<Vec<Rc<Node>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     import_module: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
@@ -15416,54 +15457,26 @@ pub fn module_data_field_struct_import_names(
         .iter()
         .cloned()
         {
-            __result.extend(
-                (*{
-                    let type_name = match item.type_annotation.clone() {
-                        Some(ta) => {
-                            crate::v1_std_core::authored_name_at(source_indices.clone(), ta.clone())
-                        }
-                        std::option::Option::None => "".to_string(),
-                    };
-                    if (type_name.clone() == "".to_string()) {
-                        Rc::new(vec![])
-                    } else {
-                        match v1_rt::map_get(&type_summaries, type_name.clone()) {
-                            Some(summary) => Rc::new({
-                                let mut __result = Vec::new();
-                                for field_type in
-                                    summary.field_import_surface_names.clone().iter().cloned()
-                                {
-                                    if (((field_type.clone() != "".to_string())
-                                        && name_in_transitive_export_surface(
-                                            field_type.clone(),
-                                            import_module.clone(),
-                                            Rc::new(vec![]),
-                                            export_sets.clone(),
-                                            typed_modules.clone(),
-                                            source_indices.clone(),
-                                            module_index.clone(),
-                                        ))
-                                        && match v1_rt::map_get(&type_summaries, field_type.clone())
-                                        {
-                                            Some(ft) => match (*ft.repr.clone()).clone() {
-                                                TypeRepr::StructRepr => true,
-                                                _ => false,
-                                            },
-                                            std::option::Option::None => false,
-                                        })
-                                    {
-                                        __result.push(field_type);
-                                    }
-                                }
-                                __result
-                            }),
-                            std::option::Option::None => Rc::new(vec![]),
-                        }
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
+            __result.extend((*{
+        let type_name = match item.type_annotation.clone() {
+    Some(ta) => crate::v1_std_core::authored_name_at(source_indices.clone(), ta.clone()),
+    std::option::Option::None => "".to_string(),
+};
+if (type_name.clone() == "".to_string()) {
+            Rc::new(vec![])
+        } else {
+            match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), type_name.clone()) {
+    Some(summary) => Rc::new({ let mut __result = Vec::new(); for field_type in summary.field_import_surface_names.clone().iter().cloned() { if (((field_type.clone() != "".to_string()) && name_in_transitive_export_surface(field_type.clone(), import_module.clone(), Rc::new(vec![]), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone())) && match crate::v1_compiler_infer_emit_info::type_summary_decided(type_summaries.clone(), field_type.clone()) {
+    Some(ft) => match (*ft.repr.clone()).clone() {
+    TypeRepr::StructRepr => true,
+    _ => false,
+},
+    std::option::Option::None => false,
+}) { __result.push(field_type); } } __result }),
+    std::option::Option::None => Rc::new(vec![]),
+}
+        }
+}).iter().cloned());
         }
         __result
     }))
@@ -16429,7 +16442,7 @@ pub fn emit_type_def_from_connective(
                 }
             }
         } else {
-            if is_host_optional_carrier_alias(item_text.clone()) {
+            if declaration_owns_host_option(env.module_path.clone(), item_text.clone()) {
                 {
                     let type_params =
                         emit_type_params(item.params.clone(), env.source_indices.clone());
@@ -16731,7 +16744,10 @@ pub fn rust_phantom_field_name() -> String {
 }
 
 pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
-    match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
+    match crate::v1_compiler_infer_emit_info::type_summary_decided(
+        emit_info.type_summaries.clone(),
+        name.clone(),
+    ) {
         Some(ts) => ts.has_fn_fields.clone(),
         std::option::Option::None => false,
     }
@@ -21480,7 +21496,7 @@ pub fn pattern_parent_enum(
     name: String,
     parent_enum: Option<String>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Option<String> {
     {
         let scrut_is_known_enum = ((scrut_type.clone() != "".to_string())
@@ -21498,30 +21514,31 @@ pub fn pattern_parent_enum(
 }
 
 pub fn unique_variant_parent(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     variant_name: String,
 ) -> Option<String> {
     {
         let parent_matches = Rc::new({
             let mut __result = Vec::new();
-            for type_name in Rc::new(v1_rt::sorted_map_keys(&type_summaries))
-                .iter()
-                .cloned()
+            for summary in
+                crate::v1_compiler_infer_emit_info::type_summary_values(type_summaries.clone())
+                    .iter()
+                    .cloned()
             {
-                if (is_enum_type_name(type_name.clone(), type_summaries.clone())
-                    && crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                        type_summaries.clone(),
-                        variant_name.clone(),
-                        type_name.clone(),
-                    ))
-                {
-                    __result.push(type_name);
+                if crate::v1_compiler_infer_emit_info::summary_is_enum_with_variant(
+                    summary.clone(),
+                    variant_name.clone(),
+                ) {
+                    __result.push(summary);
                 }
             }
             __result
         });
         if ((parent_matches.clone().len() as i64) == 1) {
-            parent_matches.clone().first().cloned()
+            match parent_matches.clone().first().cloned() {
+                Some(summary) => Some(summary.name.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
         } else {
             std::option::Option::None
         }
@@ -22200,13 +22217,15 @@ pub fn analyze_rc_pattern(
                             Some(enum_name) => {
                                 v1_rt::set_contains(&shared_types, enum_name.clone())
                             }
-                            std::option::Option::None => match v1_rt::map_get(
-                                &emit_info.type_summaries.clone(),
-                                bare_n.clone(),
-                            ) {
-                                Some(_) => v1_rt::set_contains(&shared_types, bare_n.clone()),
-                                std::option::Option::None => false,
-                            },
+                            std::option::Option::None => {
+                                match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                                    emit_info.type_summaries.clone(),
+                                    bare_n.clone(),
+                                ) {
+                                    Some(_) => v1_rt::set_contains(&shared_types, bare_n.clone()),
+                                    std::option::Option::None => false,
+                                }
+                            }
                         };
                         let ref_bound_fields = Rc::new({
                             let mut __result = Vec::new();
@@ -23037,7 +23056,10 @@ pub fn rust_as_ref_let_is_irrefutable(
                 );
                 match resolved.clone() {
                     Some(enum_name) => {
-                        match v1_rt::map_get(&emit_info.type_summaries.clone(), enum_name.clone()) {
+                        match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                            emit_info.type_summaries.clone(),
+                            enum_name.clone(),
+                        ) {
                             Some(summary) => {
                                 ((Rc::new(v1_rt::sorted_map_keys(&summary.variant_name_set.clone()))
                                     .len() as i64)
@@ -23360,7 +23382,9 @@ pub fn freemonoid_empty_from_variant_parent(leaf_name: String, enum_name: String
 pub fn freemonoid_empty_from_emit_info(leaf_name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     ((leaf_name.clone() == "Empty".to_string())
         && match v1_rt::map_get(&emit_info.variant_to_enum.clone(), "Empty".to_string()) {
-            Some(p) => (p.clone() == "FreeMonoid".to_string()),
+            Some(p) => {
+                (crate::v1_std_core::qualified_last_segment(p.clone()) == "FreeMonoid".to_string())
+            }
             std::option::Option::None => false,
         })
 }
@@ -23440,7 +23464,7 @@ pub fn effective_variant_parent(
         let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
             Some(p) => {
                 if (p.clone() != "".to_string()) {
-                    Some(p.clone())
+                    Some(crate::v1_std_core::qualified_last_segment(p.clone()))
                 } else {
                     std::option::Option::None
                 }
@@ -25772,10 +25796,7 @@ pub fn emit_cloned_arg(
     )
 }
 
-pub fn is_enum_type_name(
-    type_name: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> bool {
+pub fn is_enum_type_name(type_name: String, type_summaries: Rc<TypeSummaryIndex>) -> bool {
     crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
         type_summaries.clone(),
         type_name.clone(),
@@ -30063,7 +30084,7 @@ pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Opt
 pub fn arm_resolved_parent_enum(
     arm: Rc<Node>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Option<String> {
     match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
         MatchPattern::VariantPattern {
@@ -30110,7 +30131,7 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
 pub fn arms_are_freemonoid_coproduct(
     arms: Rc<Vec<Rc<Node>>>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> bool {
     {
         let has_empty = match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
@@ -32818,7 +32839,7 @@ pub fn record_field_expected_type(
 
 pub fn struct_candidates_by_field_names(
     field_names: Rc<Vec<String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let n_fields = (field_names.clone().len() as i64);
@@ -32827,7 +32848,11 @@ pub fn struct_candidates_by_field_names(
         }
         Rc::new({
             let mut __result = Vec::new();
-            for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
+            for summary in
+                crate::v1_compiler_infer_emit_info::type_summary_values(type_summaries.clone())
+                    .iter()
+                    .cloned()
+            {
                 if match (*summary.repr.clone()).clone() {
                     TypeRepr::StructRepr => {
                         ({
@@ -32933,7 +32958,7 @@ pub fn effectful_self_recursion_diagnostics(
 pub fn anonymous_record_struct_candidates(
     field_names: Rc<Vec<String>>,
     field_type_hints: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let candidates =
@@ -32984,7 +33009,7 @@ pub fn anonymous_record_struct_candidates(
 
 pub fn ambiguous_anonymous_record_literal_diagnostics(
     n: Rc<Node>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -33168,7 +33193,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
 pub fn find_struct_name_by_fields(
     field_names: Rc<Vec<String>>,
     field_type_hints: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Option<String> {
     {
         let candidates = anonymous_record_struct_candidates(
@@ -33189,7 +33214,7 @@ pub fn find_struct_name_by_fields(
 
 pub fn find_unique_struct_name_by_fields(
     field_names: Rc<Vec<String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
 ) -> Option<String> {
     {
         let candidates =
@@ -33231,7 +33256,10 @@ pub fn emit_typed_record_lit(
                     resolved_type.clone(),
                 );
                 if ((resolved_type.ident_span.clone() != std::option::Option::None)
-                    && v1_rt::map_contains_key(&emit_info.type_summaries.clone(), rt_name.clone()))
+                    && (crate::v1_compiler_infer_emit_info::type_summary_decided(
+                        emit_info.type_summaries.clone(),
+                        rt_name.clone(),
+                    ) != std::option::Option::None))
                 {
                     Some(rt_name.clone())
                 } else {
@@ -33500,8 +33528,10 @@ pub fn emit_typed_record_lit(
                 ) {
                     return "panic!(\"record-shaped carrier has no realization in the selected Rust target inhabitant\")".to_string();
                 }
-                let tn_is_known_struct =
-                    v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
+                let tn_is_known_struct = (crate::v1_compiler_infer_emit_info::type_summary_decided(
+                    emit_info.type_summaries.clone(),
+                    tn.clone(),
+                ) != std::option::Option::None);
                 let ctor_name = if tn_is_known_struct.clone() {
                     tn.clone()
                 } else {
