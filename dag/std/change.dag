@@ -106,15 +106,15 @@ fn keyed_three_way_patch_append<K, V>(
   })
 }
 
+// A MAP AND ONE MEMBERSHIP TEST, NOT A FOLD THAT RE-COPIES ITS ENTRIES: concat(state.entries, [x])
+// per entry copied the accumulator on every step (quadratic in the patch). The entry whose key
+// matches is joined in place; an unmatched entry is appended once, after the walk.
 fn keyed_three_way_patch_insert_entry<K, V>(
   patch: KeyedThreeWayPatch<K, V>,
   entry: KeyedThreeWayEntry<K, V>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedThreeWayPatch<K, V> {
-  // A MAP AND ONE MEMBERSHIP TEST, NOT A FOLD THAT RE-COPIES ITS ENTRIES: concat(state.entries, [x])
-  // per entry copied the accumulator on every step (quadratic in the patch). The entry whose key
-  // matches is joined in place; an unmatched entry is appended once, after the walk.
   let replaced = patch.entries |> any(existing => key_eq(existing.entry_key, entry.entry_key))
   let entries = map(patch.entries, fn(existing) {
     if key_eq(existing.entry_key, entry.entry_key) {
@@ -222,15 +222,15 @@ fn keyed_leaf_verdict_join<V>(
   }
 }
 
+// The rows `right` adds are collected newest-first and appended to `left` once: concat(acc, [row])
+// per row copied the whole merged list on every step. A row is new when its key is in neither
+// `left` nor an earlier added row -- the same set the old accumulator held -- and the reverse
+// restores right's order, so the result is unchanged.
 fn keyed_merge_row_lists<K, V>(
   left: List<KeyedRow<K, V>>,
   right: List<KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<KeyedRow<K, V>> {
-  // The rows `right` adds are collected newest-first and appended to `left` once: concat(acc, [row])
-  // per row copied the whole merged list on every step. A row is new when its key is in neither
-  // `left` nor an earlier added row -- the same set the old accumulator held -- and the reverse
-  // restores right's order, so the result is unchanged.
   let added = fold(right, init: [], f: fn(acc, row) {
     match keyed_row_find(rows: left, wanted_key: row.row_key, key_eq: key_eq) {
       Present { value: _ } => acc
