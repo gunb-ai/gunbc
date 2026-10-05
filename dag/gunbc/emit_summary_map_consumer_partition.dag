@@ -917,7 +917,7 @@ fn collision_row_colliding_names(r: CollisionPopulation) -> Int {
 fn collision_row_is_pool_measured(r: CollisionPopulation) -> Bool {
   match r {
     PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: _, specimens: _ } => true
-    _ => false
+    WholeTreeUpperBound { distinct_colliding_names: _, total_type_declarations: _, measurement: _, why_not_the_refusal_population: _ } => false
   }
 }
 

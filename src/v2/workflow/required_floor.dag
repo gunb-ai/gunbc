@@ -737,6 +737,8 @@ fn fixture_home_prefixes() -> List<String> {
 // "test.claim.if_join_pool_binding_witness_test", "test.claim.runner_slot_provision".
 fn required_gate_prefixes() -> List<String> {
   [
+    "test.claim.printer_",
+    "test.claim.approval_request_client_witness",
     "test.claim.infer_",
     "test.claim.occurrence_binding_",
     "test.claim.declared_type_",

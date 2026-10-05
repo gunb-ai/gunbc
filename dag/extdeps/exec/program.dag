@@ -62,6 +62,8 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_program"),
     decl_ref(module_path: "extdeps.tools.conntrack", decl_name: "conntrack_program"),
     decl_ref(module_path: "extdeps.tools.mosquitto_pub", decl_name: "mosquitto_pub_program"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_sub", decl_name: "mosquitto_sub_program"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_rr", decl_name: "mosquitto_rr_program"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_tftpd_over_udpsvd_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_dd_sparse_image_command"),

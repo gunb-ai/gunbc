@@ -1,5 +1,7 @@
 module gunbc.fleet_printer_access
 
+import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity}
+import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource, gcp_resource_names_this_secret }
@@ -486,4 +488,31 @@ fn materialization_lookup_for(
         }
     }
   }
+}
+
+// Existing-version reads are NOT provisioning evidence. The requested numeric version
+// remains intent until Secret Manager returns that exact identity and nonempty bytes.
+// This separate seal records a performed read, never PrinterCredentialProvisioned or
+// VerifiedVersionForAttempt. One session supplies status, upload and start without refetch.
+type PrinterCredentialSession sole_constructor {
+ printer:PhysicalAssetIdentity, version:NonEmptyStr, credential:Secret, resolved:SmResolvedVersionIdentity,
+}
+type PrinterSessionRead = PrinterSessionReady {session:PrinterCredentialSession} | PrinterSessionRefused {cause:NonEmptyStr}
+fn session_printer(s:PrinterCredentialSession) -> PhysicalAssetIdentity {s.printer}
+fn session_version(s:PrinterCredentialSession) -> NonEmptyStr {s.version}
+fn session_credential(s:PrinterCredentialSession) -> Secret {s.credential}
+fn session_resolved_version(s:PrinterCredentialSession) -> SmResolvedVersionIdentity {s.resolved}
+fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyStr,token_source:AccessTokenSource) -> PrinterSessionRead {
+ if !sm_version_id_is_number(version:version as String) { return PrinterSessionRefused {cause:"An existing-session read requires an exact numeric version"} }
+ match printer_access_code_locus(printer:printer) {
+  PrinterAccessCodeDesiredLocusFound {locus:locus} =>
+   match fetch_secret_ref_credential(secret_ref:secret_ref_pin_version(ref:locus.secret,version:version),token_source:token_source) {
+    SecretCredentialReady {credential:c,resolved_version:r} => if (c as String)=="" {PrinterSessionRefused {cause:"Empty printer credential"}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:c,resolved:r}}}
+    SecretCredentialFetchRefused {reason:r}=>PrinterSessionRefused {cause:r}
+    SecretCredentialAccessUpsertRequired {plan:_}=>PrinterSessionRefused {cause:"Existing-session read requires credential access; it does not provision access"}
+    SecretCredentialWireDecodeRefused {identity_cause:_,payload_cause:_}=>PrinterSessionRefused {cause:"Credential response did not decode"}
+    SecretCredentialResolvedVersionMismatch {requested:_,resolved:_}=>PrinterSessionRefused {cause:"Credential response names another exact version"}
+   }
+  _=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}
+ }
 }

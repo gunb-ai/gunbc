@@ -1,0 +1,29 @@
+module gunbc.fleet.printer_receipt
+import gunbc.fleet.printer_setup_reports {printer_filament_report,PrinterFilamentReported}
+import std.types {String}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import gunbc.fleet_asset_identity {PhysicalAssetIdentity}
+import gunbc.auth.access_token_source {AccessTokenSource,WorkloadIdentityToken,OperatorSuppliedToken,GcloudPrintToken}
+import gunbc.actions_run_binding {actions_variable_trimmed}
+import gunbc.fleet.printer_workflow_artifact {printer_workflow_receipt_path}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.languages.json.emit {json_object,json_kv,json_string,json_null,serialize_json}
+fn execution_source(token_source:AccessTokenSource) -> String {
+ match token_source { WorkloadIdentityToken=>"github-actions" OperatorSuppliedToken {token:_}=>"operator-token-file" GcloudPrintToken=>"operator-gcloud" }
+}
+fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, token_source: AccessTokenSource) -> ProcessExit {
+  let content = serialize_json(v: json_object(members: [
+    json_kv(key: "execution_source", value: json_string(s: execution_source(token_source:token_source))),
+    json_kv(key: "printer", value: json_string(s: printer as String)),
+    json_kv(key:"reported_filament",value:match printer_filament_report(printer:printer) {PrinterFilamentReported {report:r}=>json_string(s:r.product.packaging as String) _=>json_null()}),
+    json_kv(key: "standing", value: json_string(s: standing)),
+    json_kv(key: "credential_version", value: json_string(s: version)),
+    json_kv(key: "remote_name", value: json_string(s: remote)),
+    json_kv(key: "project_sha256", value: json_string(s: digest)),
+    json_kv(key: "run_id", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ID"))),
+    json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
+    json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
+  ]))
+  let written = Filesystem.Write(path: printer_workflow_receipt_path, content: content)
+  if written.success { ExitSuccess } else { exit_failure(reason: "Printer operation completed but receipt write failed; do not replay a start") }
+}

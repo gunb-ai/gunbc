@@ -1,5 +1,8 @@
 module gunbc.auth.approval_request_client
 
+import gunbc.auth.approval_cutover_posture { ApprovalCutoverPosture, approval_cutover_posture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone }
+import gunbc.auth.approval_broker_endpoint { approval_broker_loopback_base_url, approval_broker_listen_port, approval_broker_submit_path }
+
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
@@ -18,14 +21,23 @@ import gunbc.auth.approval_request_submission {
 import gunbc.fleet_posix_accounts { fleet_operator_email }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 
-data approval_request_submit_path: NonEmptyStr = "/approvals"
+data approval_request_submit_path: NonEmptyStr = approval_broker_submit_path
+
+// Local submissions must follow the same cutover posture as writer authority. The
+// roadmap endpoint deliberately refuses store writes after the broker takes ownership.
+fn approval_loopback_origin_for(posture: ApprovalCutoverPosture) -> NonEmptyStr {
+  match posture {
+    RoadmapServesAndWrites => {
+      let instance = srv1_live_dashboard_instance()
+      concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port))) as NonEmptyStr
+    }
+    BrokerServesAndWrites => approval_broker_loopback_base_url(port: approval_broker_listen_port)
+    BrokerOwnsAlone => approval_broker_loopback_base_url(port: approval_broker_listen_port)
+  }
+}
 
 fn approval_loopback_origin() -> NonEmptyStr {
-  let instance = srv1_live_dashboard_instance()
-  concat(
-    concat("http://", instance.listen_host as String),
-    concat(":", to_string(instance.listen_port)),
-  ) as NonEmptyStr
+  approval_loopback_origin_for(posture: approval_cutover_posture)
 }
 
 fn approval_submit_url() -> NonEmptyStr {

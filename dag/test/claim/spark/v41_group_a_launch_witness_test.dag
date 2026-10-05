@@ -31,10 +31,13 @@ import gunbc.spark.native_serving_realization { GlmNativeUnitRender, GlmNativeUn
 import gunbc.spark.serving_capacity_intent {
   uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
+import gunbc.spark.group_arm_launch {
+  GroupArmHostOccupancy, group_arm_dry_run_occupancy,
+  GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmittedForAdoptionOnly, ArmOwnFence, ArmOwnFenceHeld, ArmOwnFenceAbsent, GroupArmLaunchAdmissionRefused,
+}
 import gunbc.spark.v41_group_a_launch {
-  V41GroupALaunchInputs, V41HostOccupancy, v41_dry_run_occupancy,
+  V41GroupALaunchInputs,
   V41GroupALaunchPlan, V41GroupALaunchPlanned, V41GroupALaunchUnestablished, V41GroupALaunchRefused,
-  V41LaunchAdmission, V41LaunchAdmitted, V41LaunchAdmissionRefused,
   v41_group_a_launch_plan, v41_group_a_live_inputs, v41_group_a_unit_renders, v41_serving_runtime,
   V41HeldRuntimeStanding, V41RuntimeHeldOnHosts, V41RuntimeHeldUnestablished, V41RuntimeHeldRefused,
   v41_admit_held_runtime, v41_registry_reading_of, v41_group_a_memory_need,
@@ -317,7 +320,7 @@ test fn w_the_live_route_reaches_the_planner_and_names_every_gap() -> Bool {
   match v41_group_a_launch_plan(inputs: v41_group_a_live_inputs(manifest: V41StoreManifestDerived { text: w_manifest, stores: 0 })) {
     V41GroupALaunchUnestablished { obligations: o } =>
       length(o) == 1
-        && any(o, x => string_contains(s: x, pattern: "the V4.1 image") && string_contains(s: x, pattern: "v41_group_a_launch_ci_wet"))
+        && any(o, x => string_contains(s: x, pattern: "the V4.1 image") && string_contains(s: x, pattern: "arm_group_launch_ci_wet"))
         && !any(o, x => string_contains(s: x, pattern: "manifest"))
     V41GroupALaunchPlanned { lines: _, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => false
     V41GroupALaunchRefused { causes: _ } => false
@@ -350,21 +353,22 @@ fn w_candidate(runtime_key: ContentHash, candidate: ContentHash) -> V41Candidate
   }
 }
 
-fn w_refused_with(a: V41LaunchAdmission, fragment: String) -> Bool {
+fn w_refused_with(a: GroupArmLaunchAdmission, fragment: String) -> Bool {
   match a {
-    V41LaunchAdmitted => false
-    V41LaunchAdmissionRefused { causes: c } => any(c, x => string_contains(s: x, pattern: fragment))
+    GroupArmLaunchAdmitted => false
+    GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => false
+    GroupArmLaunchAdmissionRefused { causes: c } => any(c, x => string_contains(s: x, pattern: fragment))
   }
 }
 
-fn w_vacant() -> List<V41HostOccupancy> {
-  map(fabric_group_hosts(g: FabricGroupA), h => V41HostOccupancy { host: h, admission: HostUnoccupied { available: kibibyte(count: 120000000) } })
+fn w_vacant() -> List<GroupArmHostOccupancy> {
+  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, own_fence: ArmOwnFenceAbsent, admission: HostUnoccupied { available: kibibyte(count: 120000000) } })
 }
 
 // THE HOSTS STILL RUNNING THE V4 PAIR WORKER: the srv8 state of 2026-09-26 (99.7 GB held by
 // gunbc-spark-pair-worker.service). It is occupancy to refuse on, never something this launch stops.
-fn w_hosts_running_the_pair_worker() -> List<V41HostOccupancy> {
-  map(fabric_group_hosts(g: FabricGroupA), h => V41HostOccupancy { host: h, admission: HostOccupiedBy {
+fn w_hosts_running_the_pair_worker() -> List<GroupArmHostOccupancy> {
+  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, own_fence: ArmOwnFenceAbsent, admission: HostOccupiedBy {
     occupant: ServingUnitActive { unit: "gunbc-spark-pair-worker.service" as NonEmptyStr, state: Active },
     others: [], gpu_used: mebibyte(count: 99700) } })
 }
@@ -374,8 +378,9 @@ fn w_hosts_running_the_pair_worker() -> List<V41HostOccupancy> {
 test fn w_a_suspension_for_this_candidate_admits() -> Bool {
   with_w_plan(f: fn(p, rk, ck) {
     match v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: ck, stale: false) }, candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA), occupancy: w_vacant()) {
-      V41LaunchAdmitted => true
-      V41LaunchAdmissionRefused { causes: _ } => false
+      GroupArmLaunchAdmitted => true
+      GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => false
+      GroupArmLaunchAdmissionRefused { causes: _ } => false
     }
   })
 }
@@ -445,7 +450,7 @@ test fn w_an_unread_host_is_never_vacant() -> Bool {
       fragment: "no occupancy reading was supplied")
     && w_refused_with(
       a: v41_group_a_launch_admission(plan: p, authority: Present { value: w_suspended_for(successor: ck, stale: false) },
-        candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA), occupancy: v41_dry_run_occupancy()),
+        candidate: w_candidate(runtime_key: rk, candidate: ck), held: fabric_group_hosts(g: FabricGroupA), occupancy: group_arm_dry_run_occupancy(group: FabricGroupA)),
       fragment: "could not be read for occupancy")
   })
 }
@@ -453,7 +458,7 @@ test fn w_an_unread_host_is_never_vacant() -> Bool {
 // ── THE DRY RUN RENDERS EVERY HOST'S UNIT, LINE AND SCRIPTS ──────────────────────────────────
 test fn w_the_dry_run_renders_all_four_hosts() -> Bool {
   with_w_plan(f: fn(p, rk, ck) {
-    let report = v41_group_a_dry_run_report(plan: p, admission: V41LaunchAdmitted)
+    let report = v41_group_a_dry_run_report(plan: p, admission: GroupArmLaunchAdmitted)
     length(split(report, "=== host ")) == 5
       && length(split(report, "--- engram staging")) == 5
       && length(split(report, "--- preflight")) == 5
@@ -503,7 +508,7 @@ test fn w_every_host_holding_the_receipt_digest_is_held() -> Bool {
 test fn w_a_host_holding_nothing_is_an_obligation_to_distribute() -> Bool {
   match w_admit(reads: w_reads(state_of: fn(h) { VllmImageTargetRead { host: h, state: if (h as String) == "srv7" { VllmImageTargetNeeds } else { VllmImageTargetHolds } } })) {
     V41RuntimeHeldUnestablished { obligations: o } =>
-      length(o) == 1 && any(o, x => string_contains(s: x, pattern: "srv7") && string_contains(s: x, pattern: "v41_runtime_image_distribute_ci_wet"))
+      length(o) == 1 && any(o, x => string_contains(s: x, pattern: "srv7") && string_contains(s: x, pattern: "runtime_image_distribute_ci_wet"))
     V41RuntimeHeldOnHosts { specification_runtime_key: _, image: _, subject: _ } => false
     V41RuntimeHeldRefused { defects: _ } => false
   }
