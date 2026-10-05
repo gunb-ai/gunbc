@@ -605,21 +605,31 @@ fn lowered_arg_port_reading(arg: Node) -> v2.lens.complexity_accumulator_copy.Po
 // actuals are the call's edges and not only its positional children -- reading positional children alone
 // saw no port on `list_append(left: x, right: acc)` and the copied port went missing on every planted copy.
 fn lowered_transform_actuals(node: Node) -> List<Edge> {
-  edges_after_operator(es: node.children)
+  v2.std.algebra.list_reverse(xs: fold(node.children, init: LoweredActualsWalk { saw_operator: false, reversed: std.algebra.Empty }, f: fn(acc, e) {
+    if acc.saw_operator {
+      LoweredActualsWalk { saw_operator: true, reversed: Cons { head: e, tail: acc.reversed } }
+    } else {
+      match e.label {
+        Positional => LoweredActualsWalk { saw_operator: true, reversed: acc.reversed }
+        Authored { name: _ } => LoweredActualsWalk { saw_operator: false, reversed: Cons { head: e, tail: acc.reversed } }
+        StructuralLabel { label: _ } => LoweredActualsWalk { saw_operator: false, reversed: Cons { head: e, tail: acc.reversed } }
+      }
+    }
+  }).reversed)
 }
 
-// The operator is the first Positional edge; every other edge, in authored order, is an actual. A
-// structural recursion, so the actuals are the tail it already holds and nothing is copied per edge.
-fn edges_after_operator(es: List<Edge>) -> List<Edge> {
-  match es {
-    std.algebra.Empty => std.algebra.Empty
-    Cons { head: e, tail: rest } =>
-      match e.label {
-        Positional => rest
-        Authored { name: _ } => Cons { head: e, tail: edges_after_operator(es: rest) }
-        StructuralLabel { label: _ } => Cons { head: e, tail: edges_after_operator(es: rest) }
-      }
-  }
+// The operator is the first Positional edge; every other edge, in authored order, is an actual. The
+// walk prepends and reverses once, so no step copies what it has already collected.
+type LoweredActualsWalk {
+  saw_operator: Bool
+  reversed: List<Edge>
+}
+
+// Every actual's port reading, in authored order, by the same prepend-then-reverse walk.
+fn lowered_actual_port_readings(actuals: List<Edge>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_reverse(xs: fold(actuals, init: std.algebra.Empty, f: fn(acc, e) {
+    Cons { head: lowered_arg_port_reading(arg: e.target), tail: acc }
+  }))
 }
 
 // THE PORTS A CALL FILLS. For a combiner with a copied-port citation the ports are its declared parameters
@@ -634,7 +644,7 @@ fn lowered_transform_port_readings(node: Node, combiner: Symbol) -> List<v2.lens
     ComputationNode { behavior: Transform } =>
       let actuals = lowered_transform_actuals(node: node)
       match v2.lens.cost.copied_port_citations.copied_port_citation_arrow_of(combiner: combiner) {
-        Absent => v2.std.algebra.list_map(xs: actuals, f: fn(e) { lowered_arg_port_reading(arg: e.target) })
+        Absent => lowered_actual_port_readings(actuals: actuals)
         Present { value: arrow } =>
           match v2.std.arrow_signature.application_binding_plan(arrow: arrow, actuals: actuals) {
             v2.std.arrow_signature.ApplicationBindingRefused { reason: _, at: _ } => std.algebra.Empty
@@ -804,8 +814,8 @@ fn analyze_absent_primary_expr(
           let here = if iterating {
             if v2.lens.complexity_accumulator_copy.any_port_carries_carrier(
               ports: v2.std.algebra.list_map(
-                xs: lowered_transform_actuals(node: node),
-                f: fn(e) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: lowered_arg_port_reading(arg: e.target), bindings: bindings) }
+                xs: lowered_actual_port_readings(actuals: lowered_transform_actuals(node: node)),
+                f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
               ),
               carriers: carriers
             ) {
