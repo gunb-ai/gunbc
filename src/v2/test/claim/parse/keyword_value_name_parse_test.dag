@@ -1,0 +1,644 @@
+module v2.test.parse.keyword_value_name_parse
+
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.compilers.lexing { StreamLayout, Token, TokenStream, stream_layout_empty, stream_layout_with_break, token_stream_lexed }
+import v2.test.parse.expression_bodied_fn_decl_parse { g_fatal_at, g_tokenize_parse }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.parse_refusal_reason { KeywordAsValueName }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A KEYWORD IS NOT A VALUE NAME, AND SAYING SO IS A LOCATED REFUSAL AT THE BINDER. Every position that
+// introduces a value name reads exactly what a value reference reads (v2.extdeps.languages.dag
+// dag_grammar_primary_name_expr: an identifier, the two type-declaration modifiers, and the contextual set
+// dag_contextual_value_name_keywords = module, data), behind a guard that refuses any other keyword as
+// KeywordAsValueName (dag_grammar_value_name_before / _unconditional / dag_grammar_field_pattern_binder_guard).
+// Before the guard the binder parsed and the program refused at the keyword's first USE as the generic
+// parse_g0_tokens_remain (gunbc.recurring_failure_mode seed_admits_a_keyword_as_a_pattern_binder); that
+// leftover reason as the fatal, or an accept, reds the subjects.
+//
+// THE CONTROLS ARE THE PROBED POSITIONS THE GUARD MUST NOT FIRE IN: keyword LABELS (a field decl, a record
+// init, a projection, a field-pattern label), the contextual value names declared and used, `true` / `false`
+// as literal patterns, and a match arm led by `true`. A statement value named `node` followed by an `if` is the same
+// probed position, and it is already enrolled as v2.test.parse.bare_node_statement_route
+// bare_node_statement_before_an_if_takes_the_expression_route (the same fixture), so it is not repeated here.
+// Each would refuse if a guard were unconditional or its follow set too wide.
+
+data kvn_param_source: String = "module m.t\nfn f(then: Int) -> Int {\n  0\n}\n"
+
+// a parameter named by a keyword refuses at the keyword: `then` is bytes 16..20 of kvn_param_source.
+test fn kvn_param_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_param_source, file: ^probe_kvn_param),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_param,
+    start: 16,
+    end: 20
+  )
+}
+
+data kvn_let_source: String = "module m.t\nfn f() -> Int {\n  let alias = 1\n  0\n}\n"
+
+// a let binder named by a keyword refuses at the keyword: `alias` is bytes 33..38 of kvn_let_source.
+test fn kvn_let_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_let_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_let,
+    start: 33,
+    end: 38
+  )
+}
+
+data kvn_node_sugar_source: String = "module m.t\nfn f() -> Int {\n  node then = 1\n  0\n}\n"
+
+// a `node NAME =` binder named by a keyword refuses at the keyword: `then` is bytes 34..38 of kvn_node_sugar_source.
+test fn kvn_node_sugar_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_node_sugar_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_node_sugar,
+    start: 34,
+    end: 38
+  )
+}
+
+data kvn_bare_eq_source: String = "module m.t\nfn f() -> Int {\n  loop = 1\n  0\n}\n"
+
+// A bare `NAME =` binder named by a keyword still REFUSES, but unnamed: statements dispatch by FIRST set and the
+// guard is transparent to it, so the let_sugar alternative is never reached for a keyword (the declared limit on
+// gunbc.recurring_failure_mode seed_admits_a_keyword_as_a_pattern_binder). The claim holds the floor that matters --
+// the keyword is never ACCEPTED as a binder -- and reds if it ever parses.
+test fn kvn_bare_eq_keyword_binder_still_refuses_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_bare_eq_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+data kvn_pattern_value_source: String = "module m.t\ndata d: Int = match r {\n  R { a: as } => 0\n}\n"
+
+// a field-pattern binder named by a keyword refuses at the keyword: `as` is bytes 44..46 of kvn_pattern_value_source.
+test fn kvn_pattern_value_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_pattern_value_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_pattern_value,
+    start: 44,
+    end: 46
+  )
+}
+
+data kvn_pattern_pun_source: String = "module m.t\ndata d: Int = match r {\n  R { then } => 0\n}\n"
+
+// a punned field-pattern binder named by a keyword refuses at the keyword: `then` is bytes 41..45 of kvn_pattern_pun_source.
+test fn kvn_pattern_pun_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_pattern_pun_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_pattern_pun,
+    start: 41,
+    end: 45
+  )
+}
+
+data kvn_pattern_pun_true_source: String = "module m.t\ndata d: Int = match r {\n  R { true } => 0\n}\n"
+
+// A PUNNED field pattern named `true` is a value BINDER, not a literal pattern (the field pattern is
+// `name [":" pattern]`), and a binder named `true` is unreferenceable, so it refuses at the keyword:
+// bytes 41..45. Only the position after `:` reads `true` / `false` as literals.
+test fn kvn_pattern_pun_true_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_pattern_pun_true_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_pattern_pun_true,
+    start: 41,
+    end: 45
+  )
+}
+
+data kvn_pattern_pun_false_source: String = "module m.t\ndata d: Int = match r {\n  R { false } => 0\n}\n"
+
+// The same for `false`: bytes 41..46.
+test fn kvn_pattern_pun_false_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_pattern_pun_false_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_pattern_pun_false,
+    start: 41,
+    end: 46
+  )
+}
+
+data kvn_bool_label_source: String = "module m.t\ndata d: Int = match r {\n  R { true: x } => 0\n}\n"
+
+// Control: `true` as an explicit field-pattern LABEL is a label, not a binder, so it still parses.
+test fn kvn_bool_label_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_bool_label_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_label_keywords_source: String = "module m.t\ndata d: R = R { module: r.then }\n"
+
+// Control: keyword LABELS still parse: a record-init label and a projection (a field-pattern label is in
+// the contextual control, a field-declaration label in kvn_field_decl_label).
+test fn kvn_label_keywords_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_label_keywords_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_contextual_module_data_source: String = "module m.t\nfn f(module: Int, data: Int) -> Int {\n  module\n}\n"
+
+// Control: the contextual value names module and data are declarable as parameters and referenceable (the
+// pattern-binder half is kvn_contextual_pattern_binder).
+test fn kvn_contextual_module_data_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_contextual_module_data_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_bool_literal_pattern_source: String = "module m.t\ndata d: Int = match r {\n  R { ok: true } => 0\n}\n"
+
+// Control: true and false stay literal patterns in a field pattern.
+test fn kvn_bool_literal_pattern_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_bool_literal_pattern_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_match_arm_true_source: String = "module m.t\ndata d: Int = match b {\n  true => 1\n}\n"
+
+// Control: a match arm led by true is not a lambda binder.
+test fn kvn_match_arm_true_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_match_arm_true_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_field_decl_label_source: String = "module m.t\ntype R = R { then: Int }\n"
+
+// Control: a field DECLARATION label is a label, not a value name, so it still admits a keyword.
+test fn kvn_field_decl_label_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_field_decl_label_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_contextual_pattern_binder_source: String = "module m.t\ndata d: Int = match r {\n  R { module: module } => 0\n}\n"
+
+// Control: a contextual value name binds in a field pattern (its reference half is kvn_contextual_module_data).
+test fn kvn_contextual_pattern_binder_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_contextual_pattern_binder_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE INPUT IS SUPPLIED AT THE PARSE INTERFACE, AND THE TEXT ROUTE STILL RUNS ONCE. Every claim above
+// except kvn_param_refuses_at_the_keyword parses a SUPPLIED token stream (v2.test.parse.supplied_token_stream_support
+// supplied_stream_parse), because its subject is the grammar's binder guard, not the tokenizer: deriving the
+// stream re-ran tokenize in every claim, and the floor's enrolment margin refused seven of them on that cost.
+// kvn_param_refuses_at_the_keyword stays on the real text route (tokenize, prepared parse) as the
+// inhabitance claim, and it asserts the ROUTE as well as the answer: the fatal must be KeywordAsValueName
+// at the keyword's bytes, which the leftover parse_g0_tokens_remain route cannot produce.
+//
+// EACH SUPPLIED STREAM IS PROVEN TO BE THE TOKENIZER'S OUTPUT, POSITIONS AND LAYOUT INCLUDED. The located
+// claims assert byte ranges and the statement claims depend on line breaks, so the shared class-and-lexeme
+// projection is not enough here: kvn_stream_matches_tokenize compares every token's class, lexeme, start and
+// end, and the recorded layout's digest, against the real tokenizer over the same source text.
+fn kvn_tokens_agree(left: List<Token>, right: List<Token>) -> Bool {
+  match left {
+    Empty =>
+      match right {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: a, tail: rest_a } =>
+      match right {
+        Empty => false
+        Cons { head: b, tail: rest_b } =>
+          (a.class == b.class) && (a.lexeme == b.lexeme) && (a.start == b.start) && (a.end == b.end)
+            && kvn_tokens_agree(left: rest_a, right: rest_b)
+      }
+  }
+}
+
+fn kvn_layouts_agree(left: Optional<StreamLayout>, right: Optional<StreamLayout>) -> Bool {
+  match left {
+    Absent => false
+    Present { value: l } =>
+      match right {
+        Absent => false
+        Present { value: r } => l.digest == r.digest
+      }
+  }
+}
+
+fn kvn_stream_matches_tokenize(text: String, file: Symbol, supplied: TokenStream) -> Bool {
+  match tokenize(text: text, file: file, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: real, diagnostics: _ } =>
+      kvn_tokens_agree(left: real.all, right: supplied.all) && kvn_layouts_agree(left: real.layout, right: supplied.layout)
+  }
+}
+
+test fn kvn_let_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_let_source, file: ^probe_kvn_let, supplied: kvn_let_stream())
+}
+
+test fn kvn_node_sugar_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_node_sugar_source, file: ^probe_kvn_node_sugar, supplied: kvn_node_sugar_stream())
+}
+
+test fn kvn_bare_eq_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_bare_eq_source, file: ^probe_kvn_bare_eq, supplied: kvn_bare_eq_stream())
+}
+
+test fn kvn_pattern_value_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_pattern_value_source, file: ^probe_kvn_pattern_value, supplied: kvn_pattern_value_stream())
+}
+
+test fn kvn_pattern_pun_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_pattern_pun_source, file: ^probe_kvn_pattern_pun, supplied: kvn_pattern_pun_stream())
+}
+
+test fn kvn_label_keywords_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_label_keywords_source, file: ^probe_kvn_label_keywords, supplied: kvn_label_keywords_stream())
+}
+
+test fn kvn_contextual_module_data_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_contextual_module_data_source, file: ^probe_kvn_contextual_module_data, supplied: kvn_contextual_module_data_stream())
+}
+
+test fn kvn_bool_literal_pattern_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_bool_literal_pattern_source, file: ^probe_kvn_bool_literal_pattern, supplied: kvn_bool_literal_pattern_stream())
+}
+
+test fn kvn_match_arm_true_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_match_arm_true_source, file: ^probe_kvn_match_arm_true, supplied: kvn_match_arm_true_stream())
+}
+
+test fn kvn_field_decl_label_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_field_decl_label_source, file: ^probe_kvn_field_decl_label, supplied: kvn_field_decl_label_stream())
+}
+
+test fn kvn_contextual_pattern_binder_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_contextual_pattern_binder_source, file: ^probe_kvn_contextual_pattern_binder, supplied: kvn_contextual_pattern_binder_stream())
+}
+
+fn kvn_let_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_let, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_let, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_let, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_let, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^probe_kvn_let, start: 11, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^probe_kvn_let, start: 14, end: 15 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^probe_kvn_let, start: 15, end: 16 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^probe_kvn_let, start: 16, end: 17 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^probe_kvn_let, start: 18, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_let, start: 21, end: 24 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_let, start: 25, end: 26 },
+    Token { class: ^dag_token_kw_let, lexeme: "let", file: ^probe_kvn_let, start: 29, end: 32 },
+    Token { class: ^dag_token_kw_alias, lexeme: "alias", file: ^probe_kvn_let, start: 33, end: 38 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_let, start: 39, end: 40 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^probe_kvn_let, start: 41, end: 42 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_let, start: 45, end: 46 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_let, start: 47, end: 48 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 29, gap_start: 26), token_start: 45, gap_start: 42), token_start: 47, gap_start: 46))
+}
+
+fn kvn_node_sugar_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_node_sugar, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_node_sugar, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_node_sugar, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_node_sugar, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^probe_kvn_node_sugar, start: 11, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^probe_kvn_node_sugar, start: 14, end: 15 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^probe_kvn_node_sugar, start: 15, end: 16 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^probe_kvn_node_sugar, start: 16, end: 17 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^probe_kvn_node_sugar, start: 18, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_node_sugar, start: 21, end: 24 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_node_sugar, start: 25, end: 26 },
+    Token { class: ^dag_token_ident, lexeme: "node", file: ^probe_kvn_node_sugar, start: 29, end: 33 },
+    Token { class: ^dag_token_kw_then, lexeme: "then", file: ^probe_kvn_node_sugar, start: 34, end: 38 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_node_sugar, start: 39, end: 40 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^probe_kvn_node_sugar, start: 41, end: 42 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_node_sugar, start: 45, end: 46 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_node_sugar, start: 47, end: 48 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 29, gap_start: 26), token_start: 45, gap_start: 42), token_start: 47, gap_start: 46))
+}
+
+fn kvn_bare_eq_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_bare_eq, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_bare_eq, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_bare_eq, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_bare_eq, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^probe_kvn_bare_eq, start: 11, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^probe_kvn_bare_eq, start: 14, end: 15 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^probe_kvn_bare_eq, start: 15, end: 16 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^probe_kvn_bare_eq, start: 16, end: 17 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^probe_kvn_bare_eq, start: 18, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_bare_eq, start: 21, end: 24 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bare_eq, start: 25, end: 26 },
+    Token { class: ^dag_token_kw_loop, lexeme: "loop", file: ^probe_kvn_bare_eq, start: 29, end: 33 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_bare_eq, start: 34, end: 35 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^probe_kvn_bare_eq, start: 36, end: 37 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_bare_eq, start: 40, end: 41 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bare_eq, start: 42, end: 43 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 29, gap_start: 26), token_start: 40, gap_start: 37), token_start: 42, gap_start: 41))
+}
+
+fn kvn_pattern_value_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_pattern_value, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_pattern_value, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_pattern_value, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_pattern_value, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_pattern_value, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_pattern_value, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_value, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_pattern_value, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_pattern_value, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_pattern_value, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_pattern_value, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_value, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_pattern_value, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_value, start: 39, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "a", file: ^probe_kvn_pattern_value, start: 41, end: 42 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_value, start: 42, end: 43 },
+    Token { class: ^dag_token_kw_as, lexeme: "as", file: ^probe_kvn_pattern_value, start: 44, end: 46 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_value, start: 47, end: 48 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_pattern_value, start: 49, end: 51 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_pattern_value, start: 52, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_value, start: 54, end: 55 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 54, gap_start: 53))
+}
+
+fn kvn_pattern_pun_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_pattern_pun, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_pattern_pun, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_pattern_pun, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_pattern_pun, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_pattern_pun, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_pattern_pun, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_pun, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_pattern_pun, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_pattern_pun, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_pattern_pun, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_pattern_pun, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_pattern_pun, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_then, lexeme: "then", file: ^probe_kvn_pattern_pun, start: 41, end: 45 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun, start: 46, end: 47 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_pattern_pun, start: 48, end: 50 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_pattern_pun, start: 51, end: 52 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun, start: 53, end: 54 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 53, gap_start: 52))
+}
+
+fn kvn_label_keywords_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_label_keywords, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_label_keywords, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_label_keywords, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_label_keywords, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_label_keywords, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_label_keywords, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_label_keywords, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_label_keywords, start: 19, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_label_keywords, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_label_keywords, start: 23, end: 24 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_label_keywords, start: 25, end: 26 },
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_label_keywords, start: 27, end: 33 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_label_keywords, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_label_keywords, start: 35, end: 36 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_label_keywords, start: 36, end: 37 },
+    Token { class: ^dag_token_kw_then, lexeme: "then", file: ^probe_kvn_label_keywords, start: 37, end: 41 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_label_keywords, start: 42, end: 43 }
+  ], layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10))
+}
+
+fn kvn_contextual_module_data_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_contextual_module_data, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_contextual_module_data, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_contextual_module_data, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_contextual_module_data, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^probe_kvn_contextual_module_data, start: 11, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^probe_kvn_contextual_module_data, start: 14, end: 15 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^probe_kvn_contextual_module_data, start: 15, end: 16 },
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_contextual_module_data, start: 16, end: 22 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_contextual_module_data, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_contextual_module_data, start: 24, end: 27 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^probe_kvn_contextual_module_data, start: 27, end: 28 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_contextual_module_data, start: 29, end: 33 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_contextual_module_data, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_contextual_module_data, start: 35, end: 38 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^probe_kvn_contextual_module_data, start: 38, end: 39 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^probe_kvn_contextual_module_data, start: 40, end: 42 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_contextual_module_data, start: 43, end: 46 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_contextual_module_data, start: 47, end: 48 },
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_contextual_module_data, start: 51, end: 57 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_contextual_module_data, start: 58, end: 59 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 51, gap_start: 48), token_start: 58, gap_start: 57))
+}
+
+fn kvn_bool_literal_pattern_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_bool_literal_pattern, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_bool_literal_pattern, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_bool_literal_pattern, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_bool_literal_pattern, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_bool_literal_pattern, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_bool_literal_pattern, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_bool_literal_pattern, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_bool_literal_pattern, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_bool_literal_pattern, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_bool_literal_pattern, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_bool_literal_pattern, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bool_literal_pattern, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_bool_literal_pattern, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bool_literal_pattern, start: 39, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "ok", file: ^probe_kvn_bool_literal_pattern, start: 41, end: 43 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_bool_literal_pattern, start: 43, end: 44 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^probe_kvn_bool_literal_pattern, start: 45, end: 49 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bool_literal_pattern, start: 50, end: 51 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_bool_literal_pattern, start: 52, end: 54 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_bool_literal_pattern, start: 55, end: 56 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bool_literal_pattern, start: 57, end: 58 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 57, gap_start: 56))
+}
+
+fn kvn_match_arm_true_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_match_arm_true, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_match_arm_true, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_match_arm_true, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_match_arm_true, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_match_arm_true, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_match_arm_true, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_match_arm_true, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_match_arm_true, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_match_arm_true, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_match_arm_true, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "b", file: ^probe_kvn_match_arm_true, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_match_arm_true, start: 33, end: 34 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^probe_kvn_match_arm_true, start: 37, end: 41 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_match_arm_true, start: 42, end: 44 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^probe_kvn_match_arm_true, start: 45, end: 46 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_match_arm_true, start: 47, end: 48 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 47, gap_start: 46))
+}
+
+fn kvn_field_decl_label_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_field_decl_label, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_field_decl_label, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_field_decl_label, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_field_decl_label, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^probe_kvn_field_decl_label, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_field_decl_label, start: 16, end: 17 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_field_decl_label, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_field_decl_label, start: 20, end: 21 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_field_decl_label, start: 22, end: 23 },
+    Token { class: ^dag_token_kw_then, lexeme: "then", file: ^probe_kvn_field_decl_label, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_field_decl_label, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_field_decl_label, start: 30, end: 33 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_field_decl_label, start: 34, end: 35 }
+  ], layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10))
+}
+
+fn kvn_contextual_pattern_binder_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_contextual_pattern_binder, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_contextual_pattern_binder, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_contextual_pattern_binder, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_contextual_pattern_binder, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_contextual_pattern_binder, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_contextual_pattern_binder, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_contextual_pattern_binder, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_contextual_pattern_binder, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_contextual_pattern_binder, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_contextual_pattern_binder, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_contextual_pattern_binder, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_contextual_pattern_binder, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_contextual_pattern_binder, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_contextual_pattern_binder, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_contextual_pattern_binder, start: 41, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_contextual_pattern_binder, start: 47, end: 48 },
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_contextual_pattern_binder, start: 49, end: 55 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_contextual_pattern_binder, start: 56, end: 57 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_contextual_pattern_binder, start: 58, end: 60 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_contextual_pattern_binder, start: 61, end: 62 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_contextual_pattern_binder, start: 63, end: 64 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 63, gap_start: 62))
+}
+
+test fn kvn_pattern_pun_true_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_pattern_pun_true_source, file: ^probe_kvn_pattern_pun_true, supplied: kvn_pattern_pun_true_stream())
+}
+
+test fn kvn_pattern_pun_false_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_pattern_pun_false_source, file: ^probe_kvn_pattern_pun_false, supplied: kvn_pattern_pun_false_stream())
+}
+
+test fn kvn_bool_label_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_bool_label_source, file: ^probe_kvn_bool_label, supplied: kvn_bool_label_stream())
+}
+
+fn kvn_pattern_pun_true_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_pattern_pun_true, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_pattern_pun_true, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_pattern_pun_true, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_pattern_pun_true, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_pattern_pun_true, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_pattern_pun_true, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_pun_true, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_pattern_pun_true, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_pattern_pun_true, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_pattern_pun_true, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_pattern_pun_true, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_true, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_pattern_pun_true, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_true, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^probe_kvn_pattern_pun_true, start: 41, end: 45 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_true, start: 46, end: 47 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_pattern_pun_true, start: 48, end: 50 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_pattern_pun_true, start: 51, end: 52 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_true, start: 53, end: 54 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 53, gap_start: 52))
+}
+
+fn kvn_pattern_pun_false_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_pattern_pun_false, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_pattern_pun_false, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_pattern_pun_false, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_pattern_pun_false, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_pattern_pun_false, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_pattern_pun_false, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_pun_false, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_pattern_pun_false, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_pattern_pun_false, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_pattern_pun_false, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_pattern_pun_false, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_false, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_pattern_pun_false, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_false, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_false, lexeme: "false", file: ^probe_kvn_pattern_pun_false, start: 41, end: 46 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_false, start: 47, end: 48 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_pattern_pun_false, start: 49, end: 51 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_pattern_pun_false, start: 52, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_false, start: 54, end: 55 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 54, gap_start: 53))
+}
+
+fn kvn_bool_label_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_bool_label, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_bool_label, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_bool_label, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_bool_label, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_bool_label, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_bool_label, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_bool_label, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_bool_label, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_bool_label, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_bool_label, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_bool_label, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bool_label, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_bool_label, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bool_label, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^probe_kvn_bool_label, start: 41, end: 45 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_bool_label, start: 45, end: 46 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^probe_kvn_bool_label, start: 47, end: 48 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bool_label, start: 49, end: 50 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_bool_label, start: 51, end: 53 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_bool_label, start: 54, end: 55 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bool_label, start: 56, end: 57 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 56, gap_start: 55))
+}
+

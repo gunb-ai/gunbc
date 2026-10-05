@@ -11837,10 +11837,10 @@ fn body_lower_exit_walk_children(node: Node, tail: Bool, arm_tail: Bool) -> Opti
   })
 }
 
-fn body_lower_exit_first(first: Optional<Outcome<Node>>, then: Node, tail: Bool) -> Optional<Outcome<Node>> {
+fn body_lower_exit_first(first: Optional<Outcome<Node>>, next_arm: Node, tail: Bool) -> Optional<Outcome<Node>> {
   match first {
     Present { value: _ } => first
-    Absent => body_lower_exit_walk(node: then, tail: tail, arm_tail: false)
+    Absent => body_lower_exit_walk(node: next_arm, tail: tail, arm_tail: false)
   }
 }
 
@@ -11933,11 +11933,11 @@ fn body_lower_exit_walk_if_valued(shell: Node, tail: Bool) -> Optional<Outcome<N
         Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
         Present { value: condition } =>
           let after_condition = match body_lower_if_then_arm_optional(captured: captured) {
-            Present { value: arm } => body_lower_exit_first(first: body_lower_exit_walk(node: condition, tail: false, arm_tail: false), then: body_lower_if_arm_as_node(arm: arm), tail: tail)
+            Present { value: arm } => body_lower_exit_first(first: body_lower_exit_walk(node: condition, tail: false, arm_tail: false), next_arm: body_lower_if_arm_as_node(arm: arm), tail: tail)
             Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
           }
           match body_lower_if_else_capture_optional(captured: captured) {
-            Present { value: arm } => body_lower_exit_first(first: after_condition, then: body_lower_if_arm_as_node(arm: arm), tail: tail)
+            Present { value: arm } => body_lower_exit_first(first: after_condition, next_arm: body_lower_if_arm_as_node(arm: arm), tail: tail)
             Absent => after_condition
           }
       }
@@ -11972,7 +11972,7 @@ fn body_lower_exit_walk_spine(spine: Node, tail: Bool) -> Optional<Outcome<Node>
         let here = match body_lower_admitted_guard_optional(stmt: head) {
           Present { value: guard } =>
             if tail {
-              body_lower_exit_first(first: body_lower_exit_walk(node: guard.condition, tail: false, arm_tail: false), then: guard.arm, tail: true)
+              body_lower_exit_first(first: body_lower_exit_walk(node: guard.condition, tail: false, arm_tail: false), next_arm: guard.arm, tail: true)
             } else {
               body_lower_exit_walk(node: head, tail: false, arm_tail: false)
             }
