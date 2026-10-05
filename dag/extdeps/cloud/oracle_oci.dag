@@ -3,9 +3,8 @@ module extdeps.cloud.oracle_oci
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { Gigabyte, gigabyte }
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import std.nat { Nat }
 
 // ORACLE CLOUD INFRASTRUCTURE COMPUTE, AS ITS ALWAYS FREE ALLOWANCE AND ITS TWO FREE SHAPES.
@@ -32,19 +31,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // (the same reason extdeps.cloud.ubicloud gives for ubicloud_runner_types_authority).
 data oci_always_free_resources_authority: ExternalAuthority = extdeps_external_authority_anchor
 
-data oci_compute_shapes_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm"
-  }
-}
-
-data oci_preemptible_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.oracle.com/en-us/iaas/Content/Compute/Concepts/preemptible.htm"
-  }
-}
+// Two further Oracle pages are read by this module and cited in the notes that use them: the compute
+// shapes page (docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm) and the
+// preemptible page (docs.oracle.com/en-us/iaas/Content/Compute/Concepts/preemptible.htm).
 
 // ── THE TWO ALWAYS FREE SHAPES ────────────────────────────────────────────────────────────────
 //
@@ -79,9 +68,9 @@ fn oci_vcpus_per_ocpu(shape: OciAlwaysFreeShape) -> Nat {
   }
 }
 
-// The compute shapes page names the A1.Flex processor as Ampere Altra Q80-30. That part is already a
-// catalog row, which is cited here rather than restated.
-data oci_a1_flex_processor: DeclarationRef = decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog")
+// The compute shapes page names the A1.Flex processor as Ampere Altra Q80-30, which is the catalog row
+// extdeps.cpu.ampere altra_q8030_catalog. No consumer here needs the processor, so the row is named in
+// this note rather than bound to a declaration nothing reads.
 
 // ── THE ALLOWANCE ─────────────────────────────────────────────────────────────────────────────
 //
@@ -109,29 +98,28 @@ data oci_a1_flex_allowance: OciA1FlexAllowance = OciA1FlexAllowance {
 
 // "All tenancies get up to two Always Free VM instances using the VM.Standard.E2.1.Micro shape".
 // Each one: "1/8th of an OCPU with the ability to use additional CPU resources", 1 GB of memory, and
-// "up to 50 Mbps network bandwidth via the internet".
+// "up to 50 Mbps network bandwidth via the internet". The count and the memory are consumed (the fit
+// and the offer shape). The bandwidth is not, so it stays in this note until a consumer, such as a
+// network-capacity term in placement, needs it as a std.measure Bandwidth.
 type OciE2MicroAllowance {
   max_instances: Nat
   memory_per_instance: Gigabyte
-  internet_bandwidth_megabits_per_second: Nat
 }
 
 data oci_e2_micro_allowance: OciE2MicroAllowance = OciE2MicroAllowance {
   max_instances: 2,
   memory_per_instance: gigabyte(count: 1),
-  internet_bandwidth_megabits_per_second: 50,
 }
 
 // "All tenancies receive a total of 200 GB of Block Volume storage, and five volume backups". Every
-// instance's boot volume is a block volume, so this one pool is shared by every free instance.
+// instance's boot volume is a block volume, so this one pool is shared by every free instance. The
+// backup count is not consumed until something takes volume backups, so it stays in this note.
 type OciBlockVolumeAllowance {
   total: Gigabyte
-  volume_backups: Nat
 }
 
 data oci_block_volume_allowance: OciBlockVolumeAllowance = OciBlockVolumeAllowance {
   total: gigabyte(count: 200),
-  volume_backups: 5,
 }
 
 // ── PLACEMENT RULES ───────────────────────────────────────────────────────────────────────────
@@ -140,18 +128,9 @@ data oci_block_volume_allowance: OciBlockVolumeAllowance = OciBlockVolumeAllowan
 // about one tenancy, not about Oracle, so it is never written here. The consumer has to supply it.
 //
 // "Instances using the VM.Standard.E2.1.Micro shape can only be created in one availability domain",
-// while A1 instances may use any availability domain, except in South Korea North (Chuncheon).
-type OciAvailabilityDomainRule
-  = AnyAvailabilityDomain
-  | SingleEligibleAvailabilityDomain
-
-fn oci_availability_domain_rule(shape: OciAlwaysFreeShape) -> OciAvailabilityDomainRule {
-  match shape {
-    VmStandardA1Flex => AnyAvailabilityDomain
-    VmStandardE21Micro => SingleEligibleAvailabilityDomain
-  }
-}
-
+// while A1 instances may use any availability domain, except in South Korea North (Chuncheon). Which
+// domain admits the micro is a per-tenancy fact, so the consumer reads it from the API's shape list
+// (gunbc.oracle_oci.instance_ensure) and plans carry it as their micro placement.
 // The five capacity types the instance-creation console offers. The Always Free page describes only
 // ordinary instances. It says nothing about the other four, so the free-eligibility of those four is
 // UNREAD, which is different from refused. The preemptible page states that preemptible capacity
@@ -169,29 +148,10 @@ type OciCapacityType
 // "Oracle will deem virtual machine and bare metal compute instances as idle if, during a 7-day
 // period, the following are true: CPU utilization for the 95th percentile is less than 20%, Network
 // utilization is less than 20%, Memory utilization is less than 20% (applies to A1 shapes only)".
-// All the conditions must hold together, so an instance that is busy on any one axis is not idle.
-type OciIdleReclamationRule {
-  window_days: Nat
-  cpu_p95_percent_below: Nat
-  network_percent_below: Nat
-  memory_percent_below: Nat
-}
-
-data oci_idle_reclamation_rule: OciIdleReclamationRule = OciIdleReclamationRule {
-  window_days: 7,
-  cpu_p95_percent_below: 20,
-  network_percent_below: 20,
-  memory_percent_below: 20,
-}
-
-// The memory condition "applies to A1 shapes only", so on E2.1.Micro the instance can be judged idle
-// on CPU and network alone.
-fn oci_idle_rule_reads_memory(shape: OciAlwaysFreeShape) -> Bool {
-  match shape {
-    VmStandardA1Flex => true
-    VmStandardE21Micro => false
-  }
-}
+// All the conditions must hold together, so an instance busy on any one axis is not idle, and on
+// E2.1.Micro the memory condition does not apply. Nothing here observes utilization yet. The rule
+// enters as typed rows together with its consumer, a utilization observation of a running instance
+// judged against them.
 
 // ── ACCOUNT TIERS ─────────────────────────────────────────────────────────────────────────────
 //
@@ -207,17 +167,11 @@ type OciTenancyTier
 
 // ── REGIONS ───────────────────────────────────────────────────────────────────────────────────
 //
-// One row per region a consumer has needed. Read 2026-10-05 from the regions page cited below:
+// One row per region a consumer has needed. Read 2026-10-05 from the regions page,
+// docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm:
 // US East (Ashburn), identifier us-ashburn-1, region key IAD, realm OC1, three availability domains.
 // The domain count matters for the micro rule above, because exactly one of the three can host an
 // E2.1.Micro.
-data oci_regions_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm"
-  }
-}
-
 type OciRegion {
   identifier: NonEmptyStr
   region_key: NonEmptyStr
