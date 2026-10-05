@@ -94,7 +94,7 @@ fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
 }
 
 fn source_char(source: SourceRef, pos: Int) -> String {
-  char_text(c: source.source_chars[pos])
+  char_text(c: source_code_point(source: source, pos: pos))
 }
 
 fn source_code_point(source: SourceRef, pos: Int) -> Int {
@@ -539,8 +539,9 @@ fn process_escapes(chars: List<Int>) -> EscapeProcessResult {
 // wherever the emitter acts on the declared type it emits a coercion the realization cannot
 // satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64`
 // (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen
-// to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the
-// BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and
+// to line up. The one index-as-argument site used to call the BUILTIN `from_code_point`, which
+// admitted the Optional index silently; that builtin is deleted (std.unicode.scalar), and source_char
+// now crosses through source_code_point like every other site. This accessor is the same shape as `source_code_point` and
 // `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary.
 // It works because return position is not checked against the body (recorded on the finalization
 // carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together
