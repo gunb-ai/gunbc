@@ -291,3 +291,19 @@ membership, deposited XY bounds and support attribution. This receipt is a manua
 invoked preparation result. CAD kernel checks and sliced-toolpath readback are not
 yet mandatory gates in the printer-start workflow; BATCH-3 must bind them to the
 source/process/project before the start route can enforce that preparation evidence.
+
+## Printer-02 started — 5 October 2026
+
+Printer-02 is now running the ten-piece rear-and-upper-posts plate. The workflow
+accepted ntfy approval, checked current readiness and confirmed the exact filename
+in its first post-start observation. `artifacts/printing/rear-posts-2026-10-05/start-receipt.json`
+is the execution receipt. The publisher acknowledgement was uncertain; no start was
+republished. The temporary token file was deleted. Reserve these ten instances along
+with printer-01's eight; physical completion and per-piece acceptance remain pending.
+
+The final four lower posts were trialed lying on their sides. Their CAD source fits
+the nominal placement, but Orca auto-arrangement emitted two plates and the one-plate
+readback refused. This trial is not dispatchable. Resolve packing/process allowances
+or prepare explicitly separate plates before offering it as ready; no start was sent.
+The existing slicer command auto-arranges objects, so it does not preserve the supplied
+packing as a binding placement. BATCH-2/3 must represent and enforce that distinction.
