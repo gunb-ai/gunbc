@@ -44,7 +44,7 @@ import gunbc.instruments.argv_word_construction_census {
   argv_word_construction_census_roster,
   argv_word_construction_census_roster_modules
 }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
@@ -72,10 +72,10 @@ data gate_file: String = "dag/gunbc/instruments/argv_word_construction_census.da
 
 fn fixture_facts() -> Optional<List<ArgvWordsFact>> {
   let read = Filesystem.Read(path: fixture_path)
-  match read {
-    FilesystemReadRefused { error: _ } => Absent
-    FilesystemReadSucceeded { content: text } =>
-      match raw_tree_of_text(text: text) {
+  match read.success {
+    false => Absent
+    true =>
+      match raw_tree_of_text(text: read.content) {
         RawTreeNotEstablished { cause: _ } => Absent
         RawTreeEstablished { root: root } => Present { value: facts_of(root: root) }
       }
