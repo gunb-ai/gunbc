@@ -90,6 +90,9 @@ pub mod std_induction;
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_unicode_scalar.rs"]
+pub mod std_unicode_scalar;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_uri.rs"]
 pub mod extdeps_uri;
 #[rustfmt::skip]

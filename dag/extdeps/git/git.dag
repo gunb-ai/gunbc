@@ -213,7 +213,9 @@ fn git_diff_name_status_parse(raw: String) -> GitDiffNameStatusParseOutcome {
   let state = git_diff_name_status_parse_state(raw: raw)
   match state.pending {
     AwaitingStatusToken => GitDiffNameStatusComplete { entries: state.entries }
-    _ => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+    AwaitingSinglePath { status: _ } => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+    AwaitingOldPath { status: _ } => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+    AwaitingNewPath { status: _, old_path: _ } => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
   }
 }
 
@@ -236,7 +238,13 @@ fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
   match entry.status {
     DiffDeletedStatus => Present { value: entry.path }
     DiffRenamedStatus { similarity: _ } => entry.old_path
-    _ => Absent
+    DiffAddedStatus => Absent
+    DiffCopiedStatus { similarity: _ } => Absent
+    DiffModifiedStatus => Absent
+    DiffPairingBrokenStatus => Absent
+    DiffTypeChangedStatus => Absent
+    DiffUnmergedStatus => Absent
+    DiffUnknownGitStatus { raw: _ } => Absent
   }
 }
 

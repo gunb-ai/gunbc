@@ -470,15 +470,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_std_core::with_optional_cardinality(string_type()),
     }));
-                __m.insert("from_code_point".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "cp".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Int".to_string(),
-    }),
-    })]),
-        returns: string_type(),
-    }));
                 __m.insert("chars_to_string".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "chars".to_string(),

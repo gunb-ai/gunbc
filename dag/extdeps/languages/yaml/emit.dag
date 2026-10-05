@@ -50,8 +50,8 @@ fn yaml_path_key(path: String, key: String) -> String {
 
 fn yaml_lexeme_reads_back(v: YamlValue) -> Bool {
   match v {
-    YamlInt { lexeme: l } => match yaml_resolve_plain(s: l) { YamlInt { lexeme: _ } => true  _ => false }
-    YamlFloat { lexeme: l } => match yaml_resolve_plain(s: l) { YamlFloat { lexeme: _ } => true  _ => false }
+    YamlInt { lexeme: l } => match yaml_resolve_plain(s: l) { YamlInt { lexeme: _ } => true  YamlNull => false  YamlBool { value: _ } => false  YamlFloat { lexeme: _ } => false  YamlString { value: _ } => false  YamlSequence { elements: _ } => false  YamlMapping { entries: _ } => false }
+    YamlFloat { lexeme: l } => match yaml_resolve_plain(s: l) { YamlFloat { lexeme: _ } => true  YamlNull => false  YamlBool { value: _ } => false  YamlInt { lexeme: _ } => false  YamlString { value: _ } => false  YamlSequence { elements: _ } => false  YamlMapping { entries: _ } => false }
     YamlNull => true
     YamlBool { value: _ } => true
     YamlString { value: _ } => true
@@ -184,7 +184,8 @@ fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
     YamlFloat { lexeme: _ } => true
     YamlBool { value: _ } => true
     YamlNull => true
-    _ => false
+    YamlSequence { elements: _ } => false
+    YamlMapping { entries: _ } => false
   })
 }
 
@@ -242,7 +243,9 @@ fn entry_doc(entry: YamlKeyValue) -> Doc {
         doc_concat(parts: [doc_text(text: concat(key, ":")), nested_body_doc(body: block_sequence_doc(elements: els))])
       }
     YamlString { value: s } => string_doc(prefix: concat(key, ": "), s: s)
-    _ => doc_line_of(text: concat(concat(key, ": "), emit_scalar(v: val)))
+    YamlBool { value: _ } => doc_line_of(text: concat(concat(key, ": "), emit_scalar(v: val)))
+    YamlInt { lexeme: _ } => doc_line_of(text: concat(concat(key, ": "), emit_scalar(v: val)))
+    YamlFloat { lexeme: _ } => doc_line_of(text: concat(concat(key, ": "), emit_scalar(v: val)))
   }
 }
 

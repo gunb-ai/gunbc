@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 
+import gunbc.roadmap_launch_deployment_cli { rlm1_merge_commit }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.actions_run_binding {
   ActionsRunBinding,

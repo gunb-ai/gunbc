@@ -271,7 +271,13 @@ type CborMemberLookup
 fn cbor_entries_named(entries: List<CborEntry>, key: String) -> List<CborValue> {
   fold(entries, init: [], f: (acc, e) => match e.key {
     CborTextString { text: t } => if t == key { acc |> list_push(e.value) } else { acc }
-    _ => acc
+    CborUnsigned { value: _ } => acc
+    CborNegative { value: _ } => acc
+    CborByteString { octets: _ } => acc
+    CborArray { items: _ } => acc
+    CborMap { entries: _ } => acc
+    CborTagged { tag: _, item: _ } => acc
+    CborSimple { value: _ } => acc
   })
 }
 
