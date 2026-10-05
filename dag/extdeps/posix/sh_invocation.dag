@@ -4,12 +4,16 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, NonEmptyStr, List, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.posix.shell_command_language { PosixShellName }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
+  bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -80,55 +84,65 @@ fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")
+
 // EXPORT ONE VARIABLE FROM A FILE, THEN EXEC A COMMAND (POSIX sh: command substitution, export,
 // exec). The value is read by the shell itself and placed only in the exec'd command's environment;
-// it never appears in any process's argument vector, which every local user can read. The script is
-// fixed text built from the variable NAME alone (which the caller supplies from its own authority);
-// the file path is $0 and the command is "$@", so neither is ever spliced into the script. A file
-// that cannot be read exits 78 before the command runs, never an empty value exported.
-data posix_sh_export_from_file_unreadable_exit: Int = 78
-
-// DECLARED SCAFFOLD, MEDIUM-AS-STRING (review 76293). The script below is POSIX sh syntax assembled
-// as a String, not a sh command Node emitted through grammar rows: the corpus has no modeled POSIX sh
-// emission to build it from (extdeps.languages.bash carries invocation and subject only). It is
-// admitted as the least-exposure realization of one boundary -- placing a secret read from a file
-// into ONE child's environment -- because every shell-free route measured puts the value in some
-// process's argument vector (tmux -e, systemd-run --setenv, tmux set-environment). DISSOLVES ON: a
-// modeled sh command emission (structured command substitution, export and exec) from which this
-// script is projected; when it lands this declaration is deleted, and the trigger below FIRES.
+// it never appears in any process's argument vector, which every local user can read. The file path
+// is $0 and the command is "$@", so neither is ever spliced into the program; the name is a
+// PosixShellName. A file that cannot be read exits 78 before the command runs, never an empty value
+// exported.
+//
+// THE PROGRAM IS A NODE, NOT A STRING (reviews 76293, 76372, 76385). It is built from the bash grammar
+// constructors (v2.extdeps.languages.bash_build) and serialized by the grammar-row emitter
+// (v2.workflow.bash_emit bash_emit_stmts), which renders, for name N:
+//   N=$('cat' '--' "$0") || exit 78
+//   'export' 'N'
+//   'exec' "$@"
+// -- measured under dash. An emitter refusal is a typed arm, never a fallback spelling.
 //
 // WHY THIS IS HOMED IN extdeps AND NOT IN THE CREDENTIAL LAYER (review 76372 point 3, stated
-// divergence). The ArgvCommand mint (extdeps.exec.command argv_command) admits only per-tool
-// builders homed in the tool's own extdeps module, and what this builds is one POSIX sh operation --
-// command substitution, export, exec -- parameterized by a name, a path and a command. The POLICY
-// (which variable, which credential, which custody file) is not here: it is supplied by
-// gunbc.claude_code_credential, which owns all three. The name is a PosixShellName, so no caller can
-// splice shell text through it.
-data posix_sh_export_from_file_then_exec_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.posix.sh_invocation",
-    decl_name: "posix_sh_export_from_file_then_exec_script",
-    field: WholeDeclaration
-  }
-}
+// divergence). The ArgvCommand mint (extdeps.exec.command argv_command) admits only per-tool builders
+// homed in the tool's own extdeps module, and this is one POSIX sh operation parameterized by a name,
+// a path and a command. The POLICY (which variable, which credential, which custody file) is supplied
+// by the caller -- gunbc.claude_code_credential owns all three for the Claude credential.
+data posix_sh_export_from_file_unreadable_exit: Int = 78
 
-data posix_sh_export_from_file_then_exec_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_script")
-)
-
-fn posix_sh_export_from_file_then_exec_script(name: PosixShellName) -> String {
-  join([
-    name.spelling as String, "=\"$(cat -- \"$0\")\" || exit ", to_string(value: posix_sh_export_from_file_unreadable_exit),
-    "; export ", name.spelling as String, "; exec \"$@\"",
-  ], "")
-}
-
-fn posix_sh_export_from_file_then_exec_command(name: PosixShellName, path: NonEmptyStr, command: List<String>) -> ArgvCommand {
-  argv_command(
-    program: posix_sh_program(),
-    arguments: concat(["-c", posix_sh_export_from_file_then_exec_script(name: name), path as String], command),
+fn posix_sh_export_from_file_then_exec_program(name: PosixShellName) -> Outcome<String> {
+  let spelling = name.spelling as String
+  bash_emit_stmts(
+    statements: [
+      bash_build_or_else(
+        left: bash_build_assign(
+          name: spelling,
+          value: bash_build_word_cmdsubst(
+            body: bash_build_command_with_words(
+              words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
+            ),
+          ),
+        ),
+        right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unreadable_exit)),
+      ),
+      bash_build_command_from_lits(lits: ["export", spelling]),
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), bash_build_word_var(name: "@")]),
+    ],
+    set_e: false,
   )
 }
 
-fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")
+type PosixShExportExecCommand
+  = PosixShExportExecReady { command: ArgvCommand }
+  | PosixShExportExecEmitRefused { name: NonEmptyStr }
+
+fn posix_sh_export_from_file_then_exec_command(name: PosixShellName, path: NonEmptyStr, command: List<String>) -> PosixShExportExecCommand {
+  match posix_sh_export_from_file_then_exec_program(name: name) {
+    Accepted { value: program, diagnostics: _ } =>
+      PosixShExportExecReady {
+        command: argv_command(
+          program: posix_sh_program(),
+          arguments: concat(["-c", program, path as String], command),
+        ),
+      }
+    Rejected { diagnostics: _ } => PosixShExportExecEmitRefused { name: name.spelling }
+  }
+}
