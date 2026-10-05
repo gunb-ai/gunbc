@@ -73,6 +73,21 @@ fn cost_debt_verdict_refusal_cause(standing: CostDebtVerdictStanding) -> String 
   }
 }
 
+// WHAT THE FLOOR READS FOR ONE OWED IDENTITY: its terminal outcome, or the absence of one. An owed
+// row planning declined (a declared BinWitnessWet row takes DeclinedNoCiWetLane) has no terminal
+// row, and that is no verdict -- never a pass.
+type CostDebtVerdictReading =
+    CostDebtTerminalOutcome { outcome: ClaimDisposition }
+  | CostDebtNoTerminalOutcome
+
+// THE ENTRY THE FLOOR CALLS per owed identity: the refusal cause, or "" when the row stands.
+fn cost_debt_verdict_cause_for_reading(reading: CostDebtVerdictReading) -> String {
+  match reading {
+    CostDebtNoTerminalOutcome => cost_debt_verdict_refusal_cause(standing: CostDebtRowVerdictUnreached {})
+    CostDebtTerminalOutcome { outcome: o } => cost_debt_verdict_refusal_cause(standing: cost_debt_verdict_standing(outcome: o))
+  }
+}
+
 fn cost_debt_verdict_refuses(standing: CostDebtVerdictStanding) -> Bool {
   match standing {
     CostDebtVerdictPassed => false

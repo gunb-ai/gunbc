@@ -2547,15 +2547,18 @@ pub(crate) fn cost_debt_verdict_wall(
     changed_witnesses: Option<&[String]>,
     head_roster: &HashSet<String>,
     terminal: &[ClaimTerminalRow],
-) -> Vec<ChangedWitnessBlocker> {
+) -> Result<Vec<ChangedWitnessBlocker>, String> {
     let changed: HashSet<String> = changed_witnesses.unwrap_or(&[]).iter().cloned().collect();
     cost_debt_verdict_refusals(&changed, head_roster, terminal)
 }
 
-/// THE COST-DEBT VERDICT WALL over the claims this run executed for a cost row's verdict.
-/// Mirror of `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing` and
-/// `cost_debt_verdict_refusal_cause`; the match is exhaustive, so a new `ClaimDisposition` arm
-/// must be placed here as it must there.
+/// THE COST-DEBT VERDICT WALL over the identities this change owes a verdict for. The verdict is
+/// the `.dag`'s: each owed identity's terminal outcome is handed to
+/// `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_cause_for_reading`, and the host keeps
+/// no table of its own (review 76257: a Rust copy had already drifted from the model by one arm).
+/// The host's share is the reading -- the `ClaimDisposition` arm, spelled as the model spells it
+/// (the terminal ledger's wire comparator already holds the two mappings to one spelling), or the
+/// absence of a terminal row.
 ///
 /// THE OWED POPULATION IS DERIVED FROM THE CHANGE AND THE HEAD ROSTER, NEVER FROM PLANNING: every
 /// head-rostered identity in `changed` (which carries this change's admissions as well as the
@@ -2566,44 +2569,70 @@ pub(crate) fn cost_debt_verdict_refusals(
     changed: &HashSet<String>,
     head_roster: &HashSet<String>,
     terminal: &[ClaimTerminalRow],
-) -> Vec<ChangedWitnessBlocker> {
+) -> Result<Vec<ChangedWitnessBlocker>, String> {
+    use v1_interpreter::Value;
     let verdict_required: BTreeSet<&String> = changed
         .iter()
         .filter(|id| head_roster.contains(*id))
         .collect();
+    if verdict_required.is_empty() {
+        return Ok(Vec::new());
+    }
     let outcomes: HashMap<&str, ClaimDisposition> = terminal
         .iter()
         .map(|row| (row.qualified.as_str(), claim_disposition(row)))
         .collect();
-    verdict_required
-        .iter()
-        .filter_map(|identity| {
-            let cause = match outcomes.get(identity.as_str()) {
-                Some(
-                    ClaimDisposition::Passed
-                    | ClaimDisposition::PassedOverBudget
-                    | ClaimDisposition::KnownRedNowPassing,
-                ) => return None,
-                Some(ClaimDisposition::Failed | ClaimDisposition::KnownRedHeld) => {
-                    "CostDebtRowHidesSemanticRed"
-                }
-                Some(
-                    ClaimDisposition::BudgetRefusedBeforeVerdict
-                    | ClaimDisposition::HostToolUnresolvedBeforeVerdict
-                    | ClaimDisposition::RouteGapBeforeVerdict
-                    | ClaimDisposition::RuntimeErroredBeforeVerdict
-                    | ClaimDisposition::PanickedBeforeVerdict
-                    | ClaimDisposition::NotAttemptedAfterAbort
-                    | ClaimDisposition::ObservationUnreadableBeforeVerdict,
-                )
-                | None => "CostDebtRowVerdictUnreached",
-            };
-            Some(ChangedWitnessBlocker {
-                identity: (*identity).clone(),
-                cause: cause.to_string(),
-            })
-        })
-        .collect()
+    let entry = process_workspace_root().join(FLOOR_COST_DEBT_VERDICT);
+    let (graph, indices) =
+        resolve_entry_graph_shared(&default_source_roots(), &entry.to_string_lossy())
+            .map_err(|e| format!("floor_cost_debt_verdict resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(v1_interpreter::sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    };
+    let mut refused = Vec::new();
+    for identity in verdict_required {
+        let reading = match outcomes.get(identity.as_str()) {
+            Some(outcome) => variant(
+                "CostDebtVerdictReading",
+                "CostDebtTerminalOutcome",
+                vec![(
+                    "outcome",
+                    variant("ClaimDisposition", &format!("{outcome:?}"), Vec::new()),
+                )],
+            ),
+            None => variant(
+                "CostDebtVerdictReading",
+                "CostDebtNoTerminalOutcome",
+                Vec::new(),
+            ),
+        };
+        let cause = v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "cost_debt_verdict_cause_for_reading",
+            &[(Some("reading".to_string()), reading)],
+            false,
+        )
+        .map_err(|e| format!("cost_debt_verdict_cause_for_reading({identity}): {e}"))?;
+        match cause {
+            Value::Str(c) if c.is_empty() => {}
+            Value::Str(c) => refused.push(ChangedWitnessBlocker {
+                identity: identity.clone(),
+                cause: c.to_string(),
+            }),
+            other => {
+                return Err(format!(
+                    "cost_debt_verdict_cause_for_reading({identity}) returned {}, not a String",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+        }
+    }
+    Ok(refused)
 }
 
 /// `v2.workflow.floor_unimported_bare_provider_debt_roster`: the debt the rule inherited.
@@ -13636,7 +13665,8 @@ mod changed_witness_projection_tests {
                 terminal("m.heavy", ClaimOutcome::Pass),
                 terminal("m.ordinary", ClaimOutcome::Fail),
             ],
-        );
+        )
+        .expect("wall");
         assert_eq!(
             refused.len(),
             1,
@@ -13779,7 +13809,7 @@ mod changed_witness_projection_tests {
         assert_eq!(admitted, vec!["t.new".to_string(), "t.pass".to_string()]);
         let roster: HashSet<String> = head.iter().cloned().collect();
         let terminal = [terminal("t.pass", ClaimOutcome::Pass)];
-        let refused = cost_debt_verdict_wall(Some(&changed), &roster, &terminal);
+        let refused = cost_debt_verdict_wall(Some(&changed), &roster, &terminal).expect("wall");
         assert_eq!(
             refused
                 .iter()
@@ -13797,7 +13827,8 @@ mod changed_witness_projection_tests {
             &ids(&["m.fails"]),
             &ids(&["m.fails"]),
             &[terminal("m.fails", ClaimOutcome::Fail)],
-        );
+        )
+        .expect("wall");
         assert_eq!(refused.len(), 1);
         assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
     }
@@ -13808,7 +13839,8 @@ mod changed_witness_projection_tests {
     fn cost_debt_row_over_an_enrolled_expected_red_is_refused() {
         let mut row = terminal("m.known", ClaimOutcome::Fail);
         row.expected_red = true;
-        let refused = cost_debt_verdict_refusals(&ids(&["m.known"]), &ids(&["m.known"]), &[row]);
+        let refused = cost_debt_verdict_refusals(&ids(&["m.known"]), &ids(&["m.known"]), &[row])
+            .expect("wall");
         assert_eq!(refused.len(), 1);
         assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
     }
