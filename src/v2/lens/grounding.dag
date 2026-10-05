@@ -10,7 +10,13 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
-import v2.std.node { symbol_lexeme }
+import v2.std.node { Node, symbol_lexeme }
+import v2.std.concept_index { ConceptByName, ConceptDecl, ConceptStruct, FieldRef, QualifiedConcept, build_concept_name_index, concept_from_decl, enumerate_concepts_from_decls }
+import v2.std.layer { LayerPrefix, LayerPrefixCompiler, LayerPrefixExtdeps, LayerPrefixStd, LayerPrefixWorkflow }
+import v2.std.node_query { coproduct_arm_list_from_node, coproduct_arm_payload_pair_from_arm, node_is_coproduct }
+import v2.std.algebra { fold_list, is_prefix_of }
+import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
+import gunbc.ci_layer_roots { witness_layer_roots }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
