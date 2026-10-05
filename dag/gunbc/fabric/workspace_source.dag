@@ -1,7 +1,7 @@
 module gunbc.fabric.workspace_source
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { ByteSize, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock }

@@ -24,7 +24,7 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_node, parame
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted }
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.optional { Absent, optional_present }
+import std.optional { Absent, optional_present }
 import v2.std.algebra { list_append, list_map }
 import std.algebra { Cons }
 
