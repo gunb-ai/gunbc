@@ -2238,6 +2238,278 @@ pub(crate) fn floor_enrolment_dead_band_envelope_floor_ms(
     }
 }
 
+/// THE SAME-RUN HOST-SPEED CALIBRATION'S POLICY INPUTS, read out of the model. Authority:
+/// `v2.workflow.floor_eval_step_calibration` (the specimen, its declared steps, the pinned rate, the
+/// plausible-range bounds), projected through `v2.workflow.floor_enrolment_margin`'s
+/// `enrolment_host_speed_*` read points so it is evaluated in the frame this gate already declares.
+/// Nothing here is a Rust literal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HostSpeedCalibrationPolicy {
+    pub(crate) specimen: String,
+    /// `host_speed_specimen_replicates`, in order; the first is `specimen`.
+    pub(crate) replicates: Vec<String>,
+    pub(crate) specimen_eval_steps: u64,
+    pub(crate) rate: u64,
+    pub(crate) lower_permille: u64,
+    pub(crate) upper_permille: u64,
+}
+
+pub(crate) fn floor_host_speed_calibration_policy(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<HostSpeedCalibrationPolicy, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let int = |func: &str| -> Result<u64, String> {
+        let qualified = format!("{MODULE}.{func}");
+        match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+            Ok(v1_interpreter::Value::Int(n)) if n > 0 => Ok(n as u64),
+            Ok(other) => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {qualified}: \
+                 expected a positive Int, got {}",
+                floor_value_shape(Some(&other))
+            )),
+            Err(e) => Err(format!("{qualified}: {e}")),
+        }
+    };
+    let specimen_q = format!("{MODULE}.enrolment_host_speed_specimen_identity");
+    let specimen = match v1_interpreter::run_in_context(&ctx, &specimen_q, false) {
+        Ok(v1_interpreter::Value::Str(ref s)) if !s.is_empty() => s.to_string(),
+        Ok(other) => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {specimen_q}: \
+                 expected a qualified claim identity, got {}",
+                floor_value_shape(Some(&other))
+            ))
+        }
+        Err(e) => return Err(format!("{specimen_q}: {e}")),
+    };
+    let replicates_q = format!("{MODULE}.enrolment_host_speed_specimen_replicates");
+    let replicates_value = v1_interpreter::run_in_context(&ctx, &replicates_q, false)
+        .map_err(|e| format!("{replicates_q}: {e}"))?;
+    let mut replicates = Vec::new();
+    for item in floor_decode_list(&ctx, Some(&replicates_value))
+        .map_err(|e| format!("{replicates_q}: {e}"))?
+    {
+        match item {
+            v1_interpreter::Value::Str(r) if !r.is_empty() => replicates.push(r.to_string()),
+            other => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded \
+                     {replicates_q}: expected qualified claim identities, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        }
+    }
+    if replicates.first() != Some(&specimen) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {replicates_q} \
+             must begin with the pinned specimen {specimen}, got {replicates:?}"
+        ));
+    }
+    let policy = HostSpeedCalibrationPolicy {
+        specimen,
+        replicates,
+        specimen_eval_steps: int("enrolment_host_speed_specimen_eval_steps_count")?,
+        rate: int("enrolment_host_speed_rate_count")?,
+        lower_permille: int("enrolment_host_speed_lower_permille_count")?,
+        upper_permille: int("enrolment_host_speed_upper_permille_count")?,
+    };
+    if policy.lower_permille >= policy.upper_permille {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded the plausible range \
+             [{}, {}] permille is empty",
+            policy.lower_permille, policy.upper_permille
+        ));
+    }
+    Ok(policy)
+}
+
+/// THE RUN'S HOST-SPEED CALIBRATION. Mirror of `v2.workflow.floor_eval_step_calibration`
+/// `HostSpeedCalibration`, produced as `v2.workflow.floor_enrolment_margin`
+/// `enrolment_host_speed_calibration` produces it. Only `Calibrated` admits; every other arm refuses
+/// the run, typed, and there is no default factor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HostSpeedCalibration {
+    Calibrated {
+        specimen_cpu_ms: u64,
+        factor_permille: u64,
+    },
+    SpecimenNotMeasured {
+        cause: String,
+    },
+    SpecimenCensored {
+        cpu_lower_bound_ms: u64,
+    },
+    SpecimenMoved {
+        declared_steps: u64,
+        observed_steps: u64,
+    },
+    FactorOutOfRange {
+        factor_permille: u64,
+        lower_permille: u64,
+        upper_permille: u64,
+    },
+}
+
+impl HostSpeedCalibration {
+    /// Mirror of `host_speed_calibration_name`.
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            HostSpeedCalibration::Calibrated { .. } => "calibrated",
+            HostSpeedCalibration::SpecimenNotMeasured { .. } => "host_speed_specimen_not_measured",
+            HostSpeedCalibration::SpecimenCensored { .. } => "host_speed_specimen_censored",
+            HostSpeedCalibration::SpecimenMoved { .. } => "host_speed_specimen_moved",
+            HostSpeedCalibration::FactorOutOfRange { .. } => "host_speed_factor_out_of_range",
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            HostSpeedCalibration::Calibrated {
+                specimen_cpu_ms,
+                factor_permille,
+            } => format!("specimen_cpu_ms={specimen_cpu_ms} factor_permille={factor_permille}"),
+            HostSpeedCalibration::SpecimenNotMeasured { cause } => format!("cause={cause}"),
+            HostSpeedCalibration::SpecimenCensored { cpu_lower_bound_ms } => {
+                format!("cpu_at_least_ms={cpu_lower_bound_ms} (a bound yields no factor)")
+            }
+            HostSpeedCalibration::SpecimenMoved {
+                declared_steps,
+                observed_steps,
+            } => format!("declared_steps={declared_steps} observed_steps={observed_steps}"),
+            HostSpeedCalibration::FactorOutOfRange {
+                factor_permille,
+                lower_permille,
+                upper_permille,
+            } => format!(
+                "factor_permille={factor_permille} plausible=[{lower_permille}, {upper_permille}]"
+            ),
+        }
+    }
+
+    /// The factor, or the typed, located refusal of the run. Never a default.
+    pub(crate) fn factor_or_refusal(&self, specimen: &str) -> Result<u64, String> {
+        match self {
+            HostSpeedCalibration::Calibrated {
+                factor_permille, ..
+            } => Ok(*factor_permille),
+            refused => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationRefused standing={} \
+                 specimen={specimen} {} -- the enrolment margin is judged in calibrated CPU ms and \
+                 this run produced no admissible host-speed factor (authority: \
+                 v2.workflow.floor_eval_step_calibration HostSpeedCalibration)",
+                refused.name(),
+                refused.detail()
+            )),
+        }
+    }
+}
+
+/// Mirror of `enrolment_host_speed_calibration` over the run's own cost population, with
+/// `host_speed_calibration_of`'s arithmetic: `specimen_cpu * rate * 1000 / specimen_eval_steps`.
+pub(crate) fn host_speed_calibration_for(
+    policy: &HostSpeedCalibrationPolicy,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> HostSpeedCalibration {
+    // Mirror of `host_speed_fastest_of`: any refusing replicate refuses the run (the first, in
+    // replicate order); otherwise the smallest factor -- the fastest reading -- stands. No replicate
+    // at all is a refusal.
+    let mut best: Option<HostSpeedCalibration> = None;
+    for replicate in &policy.replicates {
+        let one = host_speed_calibration_of_replicate(policy, replicate, claim_cost, dispositions);
+        match (&one, &best) {
+            (HostSpeedCalibration::Calibrated { .. }, None) => best = Some(one),
+            (
+                HostSpeedCalibration::Calibrated {
+                    factor_permille: f, ..
+                },
+                Some(HostSpeedCalibration::Calibrated {
+                    factor_permille: b, ..
+                }),
+            ) => {
+                if f < b {
+                    best = Some(one);
+                }
+            }
+            _ => return one,
+        }
+    }
+    best.unwrap_or(HostSpeedCalibration::SpecimenNotMeasured {
+        cause: "no_replicate_readings".to_string(),
+    })
+}
+
+fn host_speed_calibration_of_replicate(
+    policy: &HostSpeedCalibrationPolicy,
+    replicate: &str,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> HostSpeedCalibration {
+    match enrolment_gate_execution_disposition(replicate, dispositions) {
+        Some(crate::cli_run::RequiredFloorDisposition::Planned)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        Some(other) => {
+            return HostSpeedCalibration::SpecimenNotMeasured {
+                cause: format!("{replicate}: {}", required_floor_disposition_label(other)),
+            }
+        }
+        None => {
+            return HostSpeedCalibration::SpecimenNotMeasured {
+                cause: format!("{replicate}: no_disposition_row"),
+            }
+        }
+    }
+    let Some(row) = claim_cost.get(replicate) else {
+        return HostSpeedCalibration::SpecimenNotMeasured {
+            cause: format!("{replicate}: no_claim_cost_row_for_a_planned_identity"),
+        };
+    };
+    match &row.reading {
+        crate::cli_run::ClaimCostReading::RightCensored(r) => {
+            HostSpeedCalibration::SpecimenCensored {
+                cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
+            }
+        }
+        crate::cli_run::ClaimCostReading::Observed {
+            observed_cpu_ms, ..
+        } => host_speed_calibration_of(policy, *observed_cpu_ms, row.eval_steps),
+    }
+}
+
+/// Mirror of `v2.workflow.floor_eval_step_calibration` `host_speed_calibration_of`.
+pub(crate) fn host_speed_calibration_of(
+    policy: &HostSpeedCalibrationPolicy,
+    specimen_cpu_ms: u64,
+    specimen_eval_steps: u64,
+) -> HostSpeedCalibration {
+    if specimen_eval_steps != policy.specimen_eval_steps {
+        return HostSpeedCalibration::SpecimenMoved {
+            declared_steps: policy.specimen_eval_steps,
+            observed_steps: specimen_eval_steps,
+        };
+    }
+    let factor_permille = specimen_cpu_ms * policy.rate * 1000 / policy.specimen_eval_steps;
+    if factor_permille < policy.lower_permille || factor_permille > policy.upper_permille {
+        return HostSpeedCalibration::FactorOutOfRange {
+            factor_permille,
+            lower_permille: policy.lower_permille,
+            upper_permille: policy.upper_permille,
+        };
+    }
+    HostSpeedCalibration::Calibrated {
+        specimen_cpu_ms,
+        factor_permille,
+    }
+}
+
+/// Mirror of `calibrated_cpu_ms`: raw CPU to CPU ms on the calibration runner. One factor per run.
+pub(crate) fn calibrated_cpu_ms(raw_ms: u64, factor_permille: u64) -> u64 {
+    raw_ms * 1000 / factor_permille
+}
+
 /// THE TYPED COST-DEBT ROW'S ENVELOPE FLOOR, READ OUT OF THE MODEL like the dead band's:
 /// `v2.workflow.floor_enrolment_margin` `floor_enrolment_roster_envelope_floor_ms_count` derives it by
 /// applying the same measured p90 runner envelope to the per-subject line. Strictly positive and
@@ -2907,6 +3179,9 @@ pub(crate) struct EnrolmentThresholds {
     pub(crate) dead_band_envelope_floor_ms: u64,
     pub(crate) per_subject_line_ms: u64,
     pub(crate) roster_envelope_floor_ms: u64,
+    /// The run's host-speed factor (`HostSpeedCalibration::Calibrated`), applied to every reading
+    /// before any threshold above is consulted. 1000 is the calibration runner's own speed.
+    pub(crate) host_speed_factor_permille: u64,
 }
 
 pub(crate) fn enrolment_margin_standing_for(
@@ -2921,7 +3196,11 @@ pub(crate) fn enrolment_margin_standing_for(
         dead_band_envelope_floor_ms,
         per_subject_line_ms,
         roster_envelope_floor_ms,
+        host_speed_factor_permille,
     } = *thresholds;
+    // EVERY CPU FIGURE BELOW IS CALIBRATED, exact or bound, by the one factor of this run
+    // (mirror of `v2.workflow.floor_enrolment_margin` `enrolment_calibrated_reading`).
+    let cal = |raw: u64| calibrated_cpu_ms(raw, host_speed_factor_permille);
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
     //
     // The enrolled population is derived from the DIFF and is root-agnostic; the executed
@@ -2975,11 +3254,11 @@ pub(crate) fn enrolment_margin_standing_for(
                 crate::cli_run::ClaimCostReading::Observed {
                     observed_cpu_ms, ..
                 } => EnrolmentDeclaredCostReading::Observed {
-                    observed_cpu_ms: *observed_cpu_ms,
+                    observed_cpu_ms: cal(*observed_cpu_ms),
                 },
                 crate::cli_run::ClaimCostReading::RightCensored(r) => {
                     EnrolmentDeclaredCostReading::BoundWithoutCeiling {
-                        cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
+                        cpu_lower_bound_ms: cal(r.elapsed_cpu_at_least_ms),
                     }
                 }
             },
@@ -3066,14 +3345,15 @@ pub(crate) fn enrolment_margin_standing_for(
         crate::cli_run::ClaimCostReading::Observed {
             observed_cpu_ms, ..
         } => {
-            if *observed_cpu_ms > budget_ms {
+            let calibrated = cal(*observed_cpu_ms);
+            if calibrated > budget_ms {
                 EnrolmentMarginStanding::OverMargin {
-                    exact_cpu_ms: *observed_cpu_ms,
+                    exact_cpu_ms: calibrated,
                     budget_ms,
                 }
             } else {
                 EnrolmentMarginStanding::WithinMargin {
-                    exact_cpu_ms: *observed_cpu_ms,
+                    exact_cpu_ms: calibrated,
                     budget_ms,
                 }
             }
@@ -3102,7 +3382,7 @@ pub(crate) fn enrolment_margin_standing_for(
             // comment. Nothing is widened either way: the enrolment question stays unanswered and
             // the row stays refused.
             EnrolmentMarginStanding::BoundWithoutCeiling {
-                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
+                cpu_lower_bound_ms: cal(reading.elapsed_cpu_at_least_ms),
             }
         }
     }
@@ -5541,16 +5821,6 @@ pub(crate) fn install_pure_producer_share(
                  seed and must be in every required-floor subject: {why}"
             )
         })?;
-    let warm_rows = floor_decode_module_prefix_roster(
-        &roster_frame,
-        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"),
-    )?;
-    let claim_forced_rows = floor_decode_module_prefix_roster(
-        &roster_frame,
-        &format!(
-            "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
-        ),
-    )?;
     // The two carried-input rosters are decoded HERE, beside the other two, because their
     // producers are part of the ADMITTED population: admission is one node set, and a producer
     // that warms into the tier but is not admitted would store nothing while the receipt read
@@ -5603,18 +5873,44 @@ pub(crate) fn install_pure_producer_share(
         .iter()
         .map(|m| (m.type_env.module_path.as_str(), m.as_ref()))
         .collect();
-    let mut admitted_by_qualified: std::collections::HashMap<
-        String,
-        std::rc::Rc<crate::v1_std_core::Node>,
-    > = std::collections::HashMap::new();
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
-    for qualified in warm_rows
-        .iter()
-        .chain(claim_forced_rows.iter())
-        .chain(carried_producers.iter())
-    {
+    // The frozen runtime-identity residual: producers whose every call site carries arguments
+    // computed inside the claim, so the derivation cannot join their demand before the run. The
+    // population is closed in `.dag` (`FrozenRuntimeIdentityProducer`); the tier keys and verifies
+    // their fills by declaration and argument row like any other.
+    let residual_name = format!(
+        "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_runtime_identity_residual_producers"
+    );
+    let residual_producers: Vec<String> = {
+        let value = v1_interpreter::run_in_context(&roster_frame, &residual_name, false).map_err(
+            |e| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} did not evaluate: {e}"
+                )
+            },
+        )?;
+        let items = v1_interpreter::list_value_items(&roster_frame, &value).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                  {residual_name} is not a list"
+            )
+        })?;
+        let mut out = Vec::new();
+        for item in &items {
+            let v1_interpreter::Value::Str(producer) = item else {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} carries a member that is not a String"
+                ));
+            };
+            out.push(producer.to_string());
+        }
+        out
+    };
+    // THE PRODUCERS ADMITTED HERE ARE THE CARRIED-INPUT ONES AND THE FROZEN RESIDUAL. Plain pure
+    // producers are no longer a roster: they are derived from the planned claims' call-site
+    // demand once planning has fixed the claims (`derive_and_install_cross_claim_share`).
+    for qualified in carried_producers.iter().chain(residual_producers.iter()) {
         let (module, decl) = match qualified.rsplit_once('.') {
             Some((module, decl)) => (module.to_string(), decl),
             None => (qualified.clone(), qualified.as_str()),
@@ -5642,7 +5938,6 @@ pub(crate) fn install_pure_producer_share(
                      module; fix or delete the roster row"
                 )
             })?;
-        admitted_by_qualified.insert(qualified.clone(), node.clone());
         admitted_nodes.push(node);
         admitted_qualified.push(qualified.clone());
     }
@@ -5730,7 +6025,6 @@ pub(crate) fn install_pure_producer_share(
         .iter()
         .map(|i| module_of(&i.acquisition))
         .chain(carried_rows.iter().map(|r| module_of(&r.producer)))
-        .chain(warm_rows.iter().map(|q| module_of(q)))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -5934,134 +6228,6 @@ pub(crate) fn install_pure_producer_share(
                 }
             }
         }
-
-        for qualified in warm_rows.iter().filter(|q| &module_of(q) == group) {
-            let module = match qualified.rsplit_once('.') {
-                Some((module, _)) => module.to_string(),
-                None => qualified.clone(),
-            };
-            // Resolution above either framed this row's module or recorded it as outside the
-            // prepared subject (not evaluated here, counted below); a stale row already refused.
-            let Some(producer_frame) = frames.frame(
-                prepared,
-                corpus_modules,
-                &mut outside_subject,
-                &module,
-                "producer",
-                qualified,
-            )?
-            else {
-                continue;
-            };
-            let framed = producer_frame.lookup_fn_node(qualified);
-            let admitted = admitted_by_qualified.get(qualified.as_str());
-            if !matches!((&framed, admitted), (Some(f), Some(a)) if std::rc::Rc::ptr_eq(f, a)) {
-                return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameLookupDiverges producer={qualified} \
-                 — the module frame resolves the producer to a different declaration than admission \
-                 read from the prepared graph, so the admitted identity is not the one evaluated"
-            ));
-            }
-            // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
-            // first revision of this line got that wrong in the direction DESIGN section 4b names.
-            // It passed `already_built: false` unconditionally, on the reasoning that the outcome
-            // below is the authority for whether the value was already retained. THAT REASONING
-            // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
-            // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
-            // Two representations of one fact with one of them lying is worse than either alone, and
-            // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
-            // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
-            //
-            // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
-            // does not exist until the call returns. So the observation is corrected AFTER the fact,
-            // from the outcome that owns it.
-            //
-            // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
-            // and not who caused it, so the label names the boundary that is knowable rather than
-            // fabricating a call site -- inside this loop the only writer that can already have
-            // stored a rostered producer's value is an earlier rostered producer whose traversal
-            // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
-            // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
-            // deliberately weaker than a call-site name because a call site is not recorded.
-            let (warm_result, mut warm_observation) =
-                observe_shared_build(false, "floor-preparation", || {
-                    v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
-                });
-            if let Ok(outcome) = &warm_result {
-                if matches!(
-                    outcome,
-                    v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
-                ) {
-                    warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
-                        triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
-                    };
-                }
-            }
-            match warm_result {
-                Ok(outcome) => {
-                    // A NON-SERVABLE outcome means nothing is retained for later claims, so a
-                    // silent decline would relocate the fill onto the first toucher: stop the
-                    // line, naming the ONE cause rather than a disjunction of three. An
-                    // `AlreadyPresent` outcome is servable and therefore not a refusal — a
-                    // rostered producer reachable from an earlier rostered producer is stored
-                    // by that traversal, and its own warm correctly finds the work done.
-                    if !outcome.is_servable() {
-                        // The located detail comes from the OUTCOME, so a cause can only ever be
-                        // paired with its own evidence. Reading the retained slot here instead
-                        // would decorate a byte-budget or entry-cap refusal with a stale path
-                        // left by an earlier producer's unportable value (review 57554).
-                        let detail = match outcome.not_portable_detail() {
-                            Some(refusal) => format!(
-                                "{} path={} kind={}",
-                                outcome.cause(),
-                                if refusal.path_into_value.is_empty() {
-                                    "<root>"
-                                } else {
-                                    refusal.path_into_value.as_str()
-                                },
-                                refusal.encountered_kind
-                            ),
-                            None => outcome.cause().to_string(),
-                        };
-                        return Err(format!(
-                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
-                         producer={qualified} — the rostered producer evaluated but its value \
-                         was refused by the cross-claim store: {detail}"
-                        ));
-                    }
-                    floor_warm_row_identity(qualified);
-                    eprintln!(
-                        "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} disposition={} cpu_ms={} wall_ms={} \
-                     rss_growth_bytes={} provenance={}",
-                        outcome.cause(),
-                        warm_observation.cpu_ms,
-                        warm_observation.wall_ms,
-                        warm_observation.rss_growth_bytes,
-                        warm_observation.provenance.render(),
-                    );
-                    warm_observations.push((
-                        format!("CrossClaimPureProducerWarm/{qualified}"),
-                        warm_observation,
-                    ));
-                }
-                Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
-                     producer={qualified} effects={effects} — the warm row reached the world, \
-                     so the value depends on an input its empty argument row cannot represent; \
-                     roster the read as a prepared effect input and the fold as a carried-input \
-                     warm row instead"
-                    ));
-                }
-                Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
-                     producer={qualified} — {why}"
-                    ));
-                }
-            }
-        }
     }
     // Disposition 2 is COUNTED, one line, so a subject that quietly stopped evaluating rows
     // it should carry is visible in the run's own announcement.
@@ -6098,6 +6264,465 @@ pub(crate) fn install_pure_producer_share(
     );
     drop(frames);
     Ok(warm_observations)
+}
+
+/// THE DERIVED CROSS-CLAIM SHARE: admit, for this run, exactly the pure computations its PLANNED
+/// claims demand from more than one claim with one closed identity.
+///
+/// The seed observes (`claim_call_site_demand`, one realization of the `.dag` row type
+/// `CallSiteDemandObservation`) and `v2.workflow.floor_pure_producer_share`
+/// `floor_cross_claim_share_derivation` decides; the seed then admits the decided rows at their call
+/// sites. There is no warm: the first planned claim that evaluates an admitted site fills it (see the
+/// install note at the end of this function). Every arm refuses: a planned claim the prepared subject does not carry, a fold
+/// that does not evaluate or decode, a partition that does not reconcile, and an admitted producer
+/// with no declaration node or an unparseable site.
+pub(crate) fn derive_and_install_cross_claim_share(
+    prepared: &PreparedRepository,
+    claims: &[RequiredFloorClaim],
+    declared: &[(String, String)],
+    in_flight_wall_cap_ms: u64,
+) -> Result<(), String> {
+    use super::claim_call_site_demand::{
+        CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
+    };
+    use v1_interpreter::Value;
+    const MODULE: &str = "v2.workflow.floor_pure_producer_share";
+    let started = std::time::Instant::now();
+    let mut population: Vec<(String, String)> = claims
+        .iter()
+        .map(|c| (c.module_path.clone(), c.function.clone()))
+        .collect();
+    let planned_count = population.len();
+    let mut observer =
+        CallSiteDemandObserver::new(&prepared.graph, prepared.source_indices.clone());
+    // THE DECLARED POPULATION: every other claim declared in a module the prepared subject carries.
+    // Recurrence is judged over it (so a claim's budget does not depend on which other claims a diff
+    // plans); a declared claim whose module is outside the subject cannot be walked and is counted.
+    let planned_set: std::collections::HashSet<(String, String)> =
+        population.iter().cloned().collect();
+    let mut declared_outside_subject = 0usize;
+    for d in declared {
+        if planned_set.contains(d) {
+            continue;
+        }
+        if observer.decl(&d.0, &d.1).is_some() {
+            population.push(d.clone());
+        } else {
+            declared_outside_subject += 1;
+        }
+    }
+    let (rows, unresolved) = observer.observe(&population, planned_count);
+    if !unresolved.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CallSiteDemandClaimUnresolved claims=[{}] -- a planned \
+             claim's declaration is not in the prepared subject, so its call-site demand cannot be \
+             observed and the derived share would omit it",
+            unresolved.join(",")
+        ));
+    }
+    let observe_ms = started.elapsed().as_millis();
+    for (producer, cause, claims_n, sites_n) in observer.open_producers() {
+        eprintln!(
+            "[cross-claim-share-unadmissible] producer={producer} cause={} claims={claims_n} \
+             sites={sites_n}",
+            cause.variant()
+        );
+    }
+    let frame = floor_authority_frame(prepared, MODULE).map_err(|why| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRosterOutsidePreparedSubject \
+             module={MODULE} -- {why}"
+        )
+    })?;
+    let ctx = &frame;
+    let sym = |s: &str| ctx.sym(s);
+    let unit = |ty: &str, variant: &str| Value::Variant {
+        type_name: sym(ty),
+        variant_name: sym(variant),
+        fields: std::rc::Rc::new(vec![]),
+    };
+    let closed_rows = rows
+        .iter()
+        .filter(|r| matches!(r, CallSiteDemandRow::Closed { .. }))
+        .count();
+    let values: Vec<Value> = rows
+        .iter()
+        .map(|row| match row {
+            CallSiteDemandRow::Closed {
+                producer,
+                argument_preimage,
+                claims,
+                planned_claims,
+                sites,
+            } => Value::Variant {
+                type_name: sym("CallSiteDemandObservation"),
+                variant_name: sym("ClosedCallSiteDemand"),
+                fields: std::rc::Rc::new(vec![
+                    (sym("producer"), str_value(producer)),
+                    (sym("argument_preimage"), str_value(argument_preimage)),
+                    (
+                        sym("identity"),
+                        Value::Variant {
+                            type_name: sym("ComputationIdentity"),
+                            variant_name: sym("NormalizedIdentical"),
+                            fields: std::rc::Rc::new(vec![(
+                                sym("normalizer"),
+                                str_value(CLOSED_ARGUMENT_NORMALIZER),
+                            )]),
+                        },
+                    ),
+                    (
+                        sym("claims"),
+                        list_value_from_vec(claims.iter().map(str_value).collect()),
+                    ),
+                    (sym("planned_claims"), Value::Int(*planned_claims as i64)),
+                    (
+                        sym("sites"),
+                        list_value_from_vec(sites.iter().map(str_value).collect()),
+                    ),
+                ]),
+            },
+            CallSiteDemandRow::Unadmissible {
+                cause,
+                claims,
+                sites,
+            } => Value::Variant {
+                type_name: sym("CallSiteDemandObservation"),
+                variant_name: sym("UnadmissibleCallSiteDemand"),
+                fields: std::rc::Rc::new(vec![
+                    (sym("cause"), unit("CallSiteDemandCause", cause.variant())),
+                    (sym("claims"), Value::Int(*claims as i64)),
+                    (sym("sites"), Value::Int(*sites as i64)),
+                ]),
+            },
+        })
+        .collect();
+    let result = v1_interpreter::run_in_context_with_args(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_derivation"),
+        &[(
+            Some("observations".to_string()),
+            list_value_from_vec(values),
+        )],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationFailed -- \
+             floor_cross_claim_share_derivation did not evaluate: {e}"
+        )
+    })?;
+    let derive_ms = started.elapsed().as_millis() - observe_ms;
+    let malformed = |what: &str| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationUndecodable -- {what} (got `{}`)",
+            ctx.format_value(&result)
+        )
+    };
+    let Value::Record { fields, .. } = &result else {
+        return Err(malformed("expected a CrossClaimShareDerivation record"));
+    };
+    // The fold's lists may be kernel lists or v2.std.algebra FreeMonoid chains; both decode.
+    let list_of = |name: &str| -> Result<Vec<Value>, String> {
+        ctx.field(fields, name)
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed(&format!("no `{name}` list")))
+    };
+    let text_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
+        match ctx.field(row, name) {
+            Some(Value::Str(s)) => Ok(s.to_string()),
+            _ => Err(malformed(&format!("a row has no `{name}` String"))),
+        }
+    };
+    let int_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<i64, String> {
+        match ctx.field(row, name) {
+            Some(Value::Int(n)) => Ok(*n),
+            _ => Err(malformed(&format!("a row has no `{name}` Int"))),
+        }
+    };
+    let variant_of =
+        |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
+            match ctx.field(row, name) {
+                Some(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(*variant_name)),
+                _ => Err(malformed(&format!("a row has no `{name}` variant"))),
+            }
+        };
+    let admitted = list_of("admitted")?;
+    let declined = list_of("declined")?;
+    let unadmissible = list_of("unadmissible")?;
+    if admitted.len() + declined.len() != closed_rows {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationDoesNotReconcile \
+             closed_observations={closed_rows} admitted={} declined={} -- every closed observation \
+             must be admitted or declined exactly once",
+            admitted.len(),
+            declined.len()
+        ));
+    }
+    let mut nodes = Vec::new();
+    let mut sites: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
+    let mut admitted_qualified = Vec::new();
+    let mut billed_debt_claims: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut net_only_sites: std::collections::HashSet<(String, i64, i64)> =
+        std::collections::HashSet::new();
+    for row in &admitted {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed("an admitted row is not a DerivedShareRow record"));
+        };
+        let producer = text_of(r, "producer")?;
+        let preimage = text_of(r, "argument_preimage")?;
+        let claims_n = int_of(r, "claims")?;
+        let (module, decl) = producer.rsplit_once('.').ok_or_else(|| {
+            malformed(&format!("admitted producer `{producer}` is not qualified"))
+        })?;
+        let node = observer.decl(module, decl).cloned().ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=DerivedShareProducerUnresolved producer={producer} \
+                 -- the derivation admitted a producer the prepared subject carries no declaration for"
+            )
+        })?;
+        let row_sites = ctx
+            .field(r, "sites")
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed("an admitted row has no `sites` list"))?;
+        let mut row_keys: Vec<(String, i64, i64)> = Vec::new();
+        for site in &row_sites {
+            let Value::Str(text) = site else {
+                return Err(malformed("a site is not a String"));
+            };
+            let parsed = text.rsplit_once(':').and_then(|(file, span)| {
+                let (start, end) = span.split_once('-')?;
+                Some((file.to_string(), start.parse().ok()?, end.parse().ok()?))
+            });
+            let Some(key) = parsed else {
+                return Err(malformed(&format!(
+                    "site `{text}` is not <file>:<start>-<end>"
+                )));
+            };
+            row_keys.push(key);
+        }
+        // WHY the row is admitted, printed so a single-claim fill debt is never read as sharing.
+        let mut row_is_debt = false;
+        let basis = match ctx.field(r, "basis") {
+            Some(Value::Variant {
+                variant_name,
+                fields: b,
+                ..
+            }) => {
+                let variant = ctx.resolve(*variant_name);
+                if variant == "SingleClaimFillDebt" {
+                    let claim = text_of(b, "claim")?;
+                    billed_debt_claims.insert(claim.clone());
+                    row_is_debt = true;
+                    format!("SingleClaimFillDebt:{claim}")
+                } else {
+                    variant
+                }
+            }
+            _ => return Err(malformed("an admitted row has no `basis` variant")),
+        };
+        // A debt row's sites are NET-ONLY: the fill is netted from its one claim and no value is
+        // retained, since no other claim will ever ask for it.
+        for key in row_keys {
+            if row_is_debt {
+                net_only_sites.insert(key.clone());
+            }
+            sites.insert(key);
+        }
+        eprintln!(
+            "[cross-claim-share-admitted] producer={producer} basis={basis} claims={claims_n} \
+             sites={} argument_preimage={preimage}",
+            row_sites.len()
+        );
+        admitted_qualified.push(producer);
+        nodes.push(node);
+    }
+    let mut decline_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for row in &declined {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed("a declined row is not a DeclinedShareRow record"));
+        };
+        *decline_counts.entry(variant_of(r, "decline")?).or_default() += 1;
+        // EVERY decline is printed, single-claim ones included, so each producer's disposition is
+        // readable by identity from the run's own log.
+        {
+            eprintln!(
+                "[cross-claim-share-declined] producer={} decline={} argument_preimage={}",
+                text_of(r, "producer")?,
+                variant_of(r, "decline")?,
+                text_of(r, "argument_preimage")?
+            );
+        }
+    }
+    let mut unadmissible_rendered = Vec::new();
+    for row in &unadmissible {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed(
+                "an unadmissible row is not an UnadmissibleDemandCount record",
+            ));
+        };
+        unadmissible_rendered.push(format!(
+            "{}:claims={}:sites={}",
+            variant_of(r, "cause")?,
+            int_of(r, "claims")?,
+            int_of(r, "sites")?
+        ));
+    }
+    eprintln!(
+        "[floor-phase] phase=cross-claim-share-derivation state=completed planned_claims={} \
+         declared_claims_observed={} declared_outside_subject={declared_outside_subject} \
+         closed_identities={closed_rows} admitted={} admitted_sites={} declined=[{}] \
+         unadmissible=[{}] observe_ms={observe_ms} derive_ms={derive_ms}",
+        claims.len(),
+        population.len(),
+        admitted.len(),
+        sites.len(),
+        decline_counts
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(","),
+        unadmissible_rendered.join(",")
+    );
+    // THE DEBT CONTRACT'S IDENTITY JOIN (v2.workflow.floor_pure_producer_share
+    // floor_single_claim_fill_debt, a monotone debt set): every ACTIVE member this run PLANS must
+    // have at least one single-claim fixture identity admitted on its behalf. A planned member with
+    // none is STALE -- it was restructured, or its fixture became shared, or its cost is not a
+    // closed fixture at all -- and a stale row would keep asserting a transfer that no longer
+    // happens, so it stops the line and names the remedy.
+    let active_debt = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_single_claim_fill_debt_active_claims"),
+        false,
+    ) {
+        Ok(v) => v1_interpreter::list_value_items(ctx, &v)
+            .ok_or_else(|| malformed("floor_single_claim_fill_debt_active_claims is not a list"))?,
+        Err(e) => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtUnreadable -- \
+                 floor_single_claim_fill_debt_active_claims did not evaluate: {e}"
+            ))
+        }
+    };
+    let planned_identities: std::collections::HashSet<String> = claims
+        .iter()
+        .map(|c| format!("{}.{}", c.module_path, c.function))
+        .collect();
+    let mut active_planned = 0usize;
+    let mut stale_debt: Vec<String> = Vec::new();
+    for member in &active_debt {
+        let Value::Str(member) = member else {
+            return Err(malformed("a fill-debt member is not a String"));
+        };
+        let member = member.to_string();
+        if planned_identities.contains(&member) {
+            active_planned += 1;
+            if !billed_debt_claims.contains(&member) {
+                stale_debt.push(member);
+            }
+        }
+    }
+    eprintln!(
+        "[floor-phase] phase=single-claim-fill-debt state=completed active_members={} \
+         planned_members={active_planned} billed_members={} stale_members={}",
+        active_debt.len(),
+        billed_debt_claims.len(),
+        stale_debt.len()
+    );
+    if !stale_debt.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtStale members=[{}] -- each is an ACTIVE \
+             member of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt that this \
+             run plans, and no single-claim fixture identity was admitted for it, so the row asserts \
+             a cost transfer that no longer happens. Retire the row with its typed disposition \
+             (RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted).",
+            stale_debt.join(",")
+        ));
+    }
+    v1_interpreter::install_cross_claim_derived_share_with_net_only(nodes, sites, net_only_sites);
+    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+        if let Some(roster) = r.borrow_mut().as_mut() {
+            roster.admitted_qualified.extend(admitted_qualified);
+        }
+    });
+    // NO WARM. An admitted site fills on the FIRST planned claim that actually evaluates it, so a
+    // site the static reach over-approximates costs nothing, and no frame is built just to measure
+    // a value (the first derived runs built one frame per site module -- 169 -- to warm 2523
+    // identities and then discarded 2404 below the floor). The fill's evaluator steps are netted
+    // from the paying claim's budget by the existing fill guard, so budgets stay deterministic; its
+    // wall is excused from the claim's wall deadline only in proportion to the steps it has
+    // performed (a declared ns-per-step ceiling), under the preparation wall safety limit as the
+    // outer hard cap, so a stalled fill and a runaway one both still interrupt; and the cost floor
+    // is applied to the fill's own measured steps at the moment it would be retained.
+    let cost_floor_steps = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_eval_steps"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorUnreadable -- \
+                 floor_cross_claim_share_cost_floor_eval_steps must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
+    // The floor has a CPU arm: a fill whose thread CPU reaches the declared floor is retained
+    // however few steps it performed. A fill whose cost is native (keying a served producer's
+    // argument row) is otherwise declined on its step count and re-paid by every claim.
+    let cost_floor_cpu_ms = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_cpu_millisecond_count"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorCpuUnreadable -- \
+                 floor_cross_claim_share_cost_floor_cpu_millisecond_count must be a positive \
+                 Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_cpu_ms(cost_floor_cpu_ms);
+    let ns_per_step_ceiling = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimFillWallCeilingUnreadable -- \
+                 floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_in_flight_wall_bound(
+        in_flight_wall_cap_ms,
+        ns_per_step_ceiling,
+    );
+    eprintln!(
+        "[floor-phase] phase=cross-claim-share-install state=completed \
+         cost_floor_eval_steps={cost_floor_steps} fill_wall_ns_per_step_ceiling={ns_per_step_ceiling} \
+         in_flight_wall_outer_cap_ms={in_flight_wall_cap_ms}"
+    );
+    Ok(())
 }
 
 /// One row of `v2.workflow.floor_pure_producer_share.floor_cross_claim_refused_candidates`:
@@ -6842,6 +7467,9 @@ pub fn run_required_floor(
     floor_cgroup_stat_beat("floor-entry", None);
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
+    // The fixture-closure union is per run: whatever an earlier run in this process recorded is
+    // not this run's population (`crate::cli_run::fixture_closure_union_emit_receipt`).
+    drop(crate::cli_run::take_fixture_closure_union());
     eprintln!("[floor-phase] phase=strict-preparation state=started");
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
@@ -7274,6 +7902,12 @@ pub fn run_required_floor(
     let prepared_module_paths: HashSet<String> = prepared_sources
         .iter()
         .map(|view| view.module_path.clone())
+        .collect();
+    // The prepared closure's source paths, kept (strings only) so the fixture-closure union phase
+    // can state how many of its members lie outside this closure.
+    let prepared_source_paths: HashSet<String> = prepared_sources
+        .iter()
+        .map(|view| view.source.path.clone())
         .collect();
     // BOUNDED RETENTION, NOT A CORPUS COPY HELD FOR THE CLAIM RUN. The full-index views are
     // taken OUT of `prepared` here and consumed, by value, inside the discovery-authority phase
@@ -9468,7 +10102,14 @@ pub fn run_required_floor(
     // stale. Construction, not validation (DESIGN.md §5): all three rosters
     // are cross-referenced from their own source authorities on every required-floor run, so the
     // contradiction cannot re-accumulate silently the way it did before this wall existed.
+    //
+    // STALE ROWS REFUSE FIRST, on this live route. A freeze row whose entry left the offline path
+    // policy, whose file is gone, or whose file no longer declares the frozen test is stale debt
+    // (`collect_stale_frozen_path_deferrals`). That refusal previously ran only on the deleted
+    // discovery-corpus path, so no required run executed it while the intersection scan below
+    // skipped such rows. It runs here so the scan never sees one.
     {
+        super::refuse_stale_frozen_path_deferrals(&super::collect_stale_frozen_path_deferrals())?;
         let freeze_content = std::fs::read_to_string(
             workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
         )
@@ -9591,6 +10232,25 @@ pub fn run_required_floor(
         );
     }
     let claims_planned = claims.len();
+    // THE DERIVED CROSS-CLAIM SHARE, admitted now that planning has fixed the claims: the share's
+    // demand is these claims' reach and nothing wider (`derive_and_install_cross_claim_share`).
+    floor_seam("cross-claim-share-derivation");
+    // The derived warms are shared builds like every preparation warm, so they answer to the same
+    // three preparation limits; they run here only because their demand is the planned claims.
+    let declared_claims: Vec<(String, String)> = files
+        .iter()
+        .flat_map(|f| {
+            f.functions
+                .iter()
+                .map(move |function| (f.module_path.clone(), function.clone()))
+        })
+        .collect();
+    derive_and_install_cross_claim_share(
+        &prepared,
+        &claims,
+        &declared_claims,
+        preparation_wall_limit_ms,
+    )?;
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
@@ -10675,6 +11335,22 @@ pub fn run_required_floor(
     // next claim to touch it pays the same seconds — so a paring decision that reads only the
     // per-row wall time is deciding on an attribution artifact.
     eprint!("{}", shared_fill::report());
+    // WHAT THE TIER DECLINED TO RETAIN. An admitted fill whose store is declined stays on the
+    // claim that paid it; without these lines such a claim reads as over budget for no visible
+    // reason. One line per (producer, cause), then the tier's own totals.
+    for (producer, cause, count) in v1_interpreter::cross_claim_store_declines() {
+        eprintln!(
+            "[cross-claim-share-store-declined] producer={producer} cause={cause} count={count}"
+        );
+    }
+    {
+        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
+        eprintln!(
+            "[cross-claim-share-tier] retained_keys={stores} overflow_refusals={overflow} \
+             below_cost_floor={}",
+            v1_interpreter::cross_claim_below_cost_floor_count()
+        );
+    }
     // AND THE LEDGER IS ADJUDICATED, NOT ONLY RENDERED. The lines above are what a paring
     // decision reads; this call is what refuses one. It runs after the render so an operator has
     // the whole ledger in the log above the refusal that cites two of its rows.
@@ -11725,19 +12401,35 @@ pub fn run_required_floor(
         let per_subject_line_ms = floor_per_subject_cpu_line_ms(&prepared)?;
         let roster_envelope_floor_ms =
             floor_enrolment_roster_envelope_floor_ms(&prepared, per_subject_line_ms)?;
-        let thresholds = EnrolmentThresholds {
-            budget_ms,
-            dead_band_envelope_floor_ms,
-            per_subject_line_ms,
-            roster_envelope_floor_ms,
-        };
-        enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
             .required_floor_disposition
             .iter()
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
+        // THE MARGIN IS JUDGED IN CALIBRATED CPU MS (node adhoc-c9504740-637). The factor is the
+        // calibration specimen's reading in THIS run on THIS runner against the pinned rate; a
+        // specimen that is absent, censored, moved or implausible refuses the run here, before any
+        // identity is judged, and never defaults.
+        let calibration_policy = floor_host_speed_calibration_policy(&prepared)?;
+        let calibration =
+            host_speed_calibration_for(&calibration_policy, &cost_by_identity, &dispositions);
+        eprintln!(
+            "[enrolment-margin] host_speed_calibration specimen={} standing={} {}",
+            calibration_policy.specimen,
+            calibration.name(),
+            calibration.detail()
+        );
+        let host_speed_factor_permille =
+            calibration.factor_or_refusal(&calibration_policy.specimen)?;
+        let thresholds = EnrolmentThresholds {
+            budget_ms,
+            dead_band_envelope_floor_ms,
+            per_subject_line_ms,
+            roster_envelope_floor_ms,
+            host_speed_factor_permille,
+        };
+        enrolment_budget_ms = Some(budget_ms);
         let typed_admission = floor_enrolment_typed_cost_debt_identities(&prepared)?;
         let dead_band = floor_enrolment_dead_band_observed_identities(&prepared)?;
         for identity in newly_enrolled {
@@ -11754,8 +12446,20 @@ pub fn run_required_floor(
                 &thresholds,
                 declared_expensiveness,
             );
+            // RAW MS STAY REPORTED beside the calibrated standing: the detail's figures are
+            // calibrated, and this is the reading the runner actually took.
+            let raw_cpu_ms = match cost_by_identity.get(identity.as_str()).map(|r| &r.reading) {
+                Some(crate::cli_run::ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                }) => observed_cpu_ms.to_string(),
+                Some(crate::cli_run::ClaimCostReading::RightCensored(r)) => {
+                    format!("at_least_{}", r.elapsed_cpu_at_least_ms)
+                }
+                None => "none".to_string(),
+            };
             eprintln!(
-                "[enrolment-margin] identity={identity} standing={} {}",
+                "[enrolment-margin] identity={identity} standing={} {} raw_cpu_ms={raw_cpu_ms} \
+                 host_speed_factor_permille={host_speed_factor_permille}",
                 standing.name(),
                 standing.detail()
             );
@@ -11850,6 +12554,44 @@ pub fn run_required_floor(
     // The prepared subject's last reader has returned; it is freed here either way, so its bytes
     // are attributed by class as it goes (`typed_graph_byte_attribution`).
     crate::cli_run::typed_graph_byte_attribution("prepared-teardown", prepared.graph);
+    // THE FIXTURE-CLOSURE UNION RENDER (retires `gunbc.rung_drop`
+    // `fixture_closure_corpus_emit_refusals_lost_as_passenger`). Every corpus module a fixture
+    // instrument resolved on this run is rendered once through the rust emitter, and a per-module
+    // emit refusal refuses the floor, typed and located. It runs here, after the claims (which
+    // produce the population) and after the prepared graph is freed (so the union compile never
+    // sits beside it). The population's size and digest are printed so the log names what was
+    // rendered; `outside_prepared` shows whether the union is the prepared closure, rather than
+    // assuming either way.
+    floor_seam("fixture-closure-union-emit");
+    let union = crate::cli_run::take_fixture_closure_union();
+    let outside_prepared = union
+        .members
+        .keys()
+        .filter(|path| !prepared_source_paths.contains(*path))
+        .count();
+    // The enrolled red and positive control run first, on every required run, so a disabled
+    // refusal arm or a broken clean render is a required red rather than a unit test nobody runs.
+    let (control_red_ms, control_clean_ms) = crate::cli_run::fixture_closure_union_controls()?;
+    eprintln!(
+        "[floor-receipt] receipt=fixture-closure-union-controls state=held red_wall_ms={control_red_ms} \
+         clean_wall_ms={control_clean_ms}"
+    );
+    let union_started = std::time::Instant::now();
+    let union_cpu_started = v1_interpreter::thread_cpu_nanos();
+    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
+    eprintln!(
+        "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
+         memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         cpu_ms={} wall_ms={}",
+        union.fixture_compiles,
+        union.memo_hits,
+        union_observed.members,
+        union_observed.digest,
+        union_observed.files,
+        union_observed.emit_diagnostics,
+        v1_interpreter::thread_cpu_nanos().saturating_sub(union_cpu_started) / 1_000_000,
+        union_started.elapsed().as_millis(),
+    );
     Ok(outcome)
 }
 
@@ -12135,78 +12877,6 @@ mod pure_producer_share_tests {
         extra.iter().map(|m| m.to_string()).collect()
     }
 
-    const EMPTY_ROSTER_TAIL: &str =
-        "data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n";
-
-    fn roster_naming(row: &str) -> String {
-        format!(
-            "module v2.workflow.floor_pure_producer_share\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"{row}\"]\n{EMPTY_ROSTER_TAIL}"
-        )
-    }
-
-    /// THE gunbc#11452 SHAPE: a row naming a LIVE producer whose module the corpus carries but
-    /// this narrow subject does not is not evaluated, and the install succeeds.
-    #[test]
-    fn a_live_row_outside_the_prepared_subject_is_not_evaluated() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
-        )]);
-        let warms =
-            install_pure_producer_share(&prepared, &fixture_corpus(&["test.claim.elsewhere.emit"]))
-                .expect("a live row outside the subject must not stop the line");
-        assert!(warms.is_empty(), "nothing outside the subject warms");
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// The discriminating RED beside it: the SAME row, with its module absent from the corpus,
-    /// is stale and refuses with the cause that tells the author to delete it.
-    #[test]
-    fn a_row_whose_module_no_root_carries_refuses_as_stale() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("a row naming no corpus module must refuse");
-        assert!(
-            err.contains("PureProducerShareRowModuleAbsentFromCorpus") && err.contains("stale"),
-            "refusal must name the stale cause: {err}"
-        );
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
     /// THE CLOSURE RED the review asked for: a prepared subject WITHOUT the roster module
     /// must REFUSE, never skip — a skip leaves admission empty while the floor reads green,
     /// memoizing nothing.
@@ -12226,235 +12896,6 @@ mod pure_producer_share_tests {
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
-    /// Positive control: a subject carrying the roster module warms its nullary rows into
-    /// the cross-claim store.
-    #[test]
-    fn a_carried_roster_warms_and_stores_its_nullary_rows() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             fn tm_local() -> Bool { true }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [\n\
-               RefusedShareCandidate {\n\
-                 producer: \"v2.workflow.floor_pure_producer_share.tm_refused\",\n\
-                 verdict: MeasuredServeAboveRecompute,\n\
-                 carrier_modules: [\"v2.test.fixture.a_consumer\"],\n\
-                 measurement: \"fixture\",\n\
-                 next_trigger: \"fixture\"\n\
-               }\n\
-             ]\n",
-        )]);
-        let observations = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("carried roster installs and warms");
-        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
-        assert_eq!(overflow, 0);
-        assert!(stores >= 1, "the warm must land in the store, got {stores}");
-        // THE DISCRIMINATING ASSERTION, and it is why this control is no longer only positive:
-        // the warm is a shared preparation build, and a shared build that produces no
-        // observation is bounded by nothing -- the preparation refusal is denominated over the
-        // observations collected here. Before the observation existed this function returned
-        // `()`, so this assertion could not be written at all, which is precisely the shape of
-        // the gap: the cost was real, printed, and invisible to the only wall that could stop it.
-        assert_eq!(
-            observations.len(),
-            1,
-            "one observation per warm row, got {observations:?}"
-        );
-        let (label, observed) = &observations[0];
-        assert_eq!(
-            label, "CrossClaimPureProducerWarm/v2.workflow.floor_pure_producer_share.tm_local",
-            "the label must name the ROW, since the refusal names one phase and a reader must \
-             reach one roster row from it"
-        );
-        // The three axes the preparation refusal reads. Asserting they are PRESENT rather than
-        // asserting a magnitude: a fixture's absolute cost is a property of the fixture and the
-        // runner it ran on, and a threshold copied from this tree would be the measurement-as-
-        // oracle DESIGN section 5 refuses.
-        let _: u64 = observed.cpu_ms;
-        let _: u64 = observed.wall_ms;
-        let _: u64 = observed.rss_growth_bytes;
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// THE RED FOR THE CONTENT-BLIND WARM: a nullary row that performs one confirmed checkout
-    /// read, rostered as a PLAIN warm row. Before the guard the warm path stored it under the
-    /// empty argument row — `Stored`, no refusal — so a changed file would have been served the
-    /// old value by every later claim. The read is a real hermetic checkout-input dispatch (the
-    /// test's cwd is inside the checkout and `Cargo.toml` is committed), not a stubbed counter,
-    /// so the wall is exercised on the path the floor runs. The positive control is
-    /// `a_carried_roster_warms_and_stores_its_nullary_rows`: a pure nullary row still stores.
-    #[test]
-    fn a_plain_warm_row_that_dispatches_an_effect_stops_the_line() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             service Filesystem {\n\
-               operation Read {\n\
-                 input { path: String }\n\
-                 output {\n\
-                   content: String from \"content\"\n\
-                   success: Bool from \"read_success\"\n\
-                   error: String from \"error\"\n\
-                   error_kind: String from \"error_kind\"\n\
-                 }\n\
-                 readonly\n\
-                 transport file { path: \"{path}\" }\n\
-               }\n\
-             }\n\
-             fn reads_checkout() -> String {\n\
-               let read = Filesystem.Read(path: \"Cargo.toml\")\n\
-               read.content\n\
-             }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.reads_checkout\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("an effectful plain warm row must refuse, never store content-blind");
-        assert!(
-            err.contains("cause=PureProducerShareWarmDispatchedEffect")
-                && err.contains("producer=v2.workflow.floor_pure_producer_share.reads_checkout")
-                && err.contains("effects=1"),
-            "the refusal must name the cause, the row and the dispatch it saw: {err}"
-        );
-        let (stores, _) = v1_interpreter::cross_claim_pure_memo_counts();
-        assert_eq!(stores, 0, "nothing may be retained for the refused row");
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
-    /// The discriminating red for review 59035: before the fix this asserted
-    /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
-    /// produced an artifact it merely found. Running the install TWICE without clearing the
-    /// memos in between is what puts the second warm on that path, and nothing else in this
-    /// module reaches it — which is why the defect survived the first round of tests.
-    #[test]
-    fn a_second_warm_of_the_same_producer_reports_that_it_was_found_not_built() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             fn tm_local() -> Bool { true }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
-        )]);
-
-        let first = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("first install warms");
-        assert!(
-            matches!(
-                first[0].1.provenance,
-                SharedBuildProvenance::BuiltByPreparation
-            ),
-            "the first warm BUILDS it: {:?}",
-            first[0].1.provenance
-        );
-
-        // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
-        // whole subject of this test.
-        let second = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("second install re-warms");
-        match &second[0].1.provenance {
-            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
-                // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
-                // establishes presence and not cause. Asserting the exact string keeps a
-                // future edit from quietly upgrading it into a fabricated attribution.
-                assert_eq!(
-                    *triggered_by,
-                    "an-earlier-rostered-producer-in-this-warm-loop"
-                );
-            }
-            other => panic!("a warm that found the value must not claim it built it: {other:?}"),
-        }
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
     /// The fixture roster for the carried-input tests: one acquisition (`carrier_a`), one
     /// producer that reaches it nullary (`projection`), and a SECOND acquisition returning
     /// different content (`carrier_b`) which exists only so a test can bind a different carrier
@@ -12469,8 +12910,6 @@ mod pure_producer_share_tests {
                  fn carrier_b() -> String {{ \"content-B\" }}\n\
                  fn projection() -> String {{ concat(\"projected:\", carrier_a()) }}\n\
                  fn consumer() -> String {{ projection() }}\n\
-                 data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-                 data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
                  type CarriedInputDependence =\n\
                      BoundParameter {{ parameter: String }}\n\
                    | ImplicitAcquisition\n\
@@ -12512,7 +12951,8 @@ mod pure_producer_share_tests {
                    measurement: String\n\
                    next_trigger: String\n\
                  }}\n\
-                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+                 fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {{ [] }}\n",
                 dependence = dependence,
                 dependence_input = "v2.workflow.floor_pure_producer_share.carrier_a",
             ),
@@ -12689,8 +13129,6 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn carrier_a() -> String { \"content-A\" }\n\
              fn projection() -> String { concat(\"projected:\", carrier_a()) }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
              type CarriedInputDependence =\n\
                  BoundParameter { parameter: String }\n\
                | ImplicitAcquisition\n\
@@ -12725,7 +13163,8 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a row naming an unprepared input must stop the line");
@@ -12746,8 +13185,6 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn carrier_a(seed: String) -> String { concat(\"content-\", seed) }\n\
              fn projection() -> String { \"projected\" }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
              type CarriedInputDependence =\n\
                  BoundParameter { parameter: String }\n\
                | ImplicitAcquisition\n\
@@ -12782,52 +13219,14 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a non-nullary acquisition must stop the line");
         assert!(
             err.contains("PreparedEffectInputAcquisitionFailed") && err.contains("NULLARY"),
             "refusal must name the cause and the reason: {err}"
-        );
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// A warm row naming a producer the subject cannot resolve stops the line.
-    #[test]
-    fn a_stale_warm_row_stops_the_line() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_gone\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-",
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("a stale warm row must stop the line");
-        // The stop now lands at roster RESOLUTION (admission is by resolved declaration
-        // identity), before any warm runs — same line-stop, more precisely located.
-        assert!(
-            err.contains("PureProducerShareProducerUnresolved"),
-            "refusal must name the cause: {err}"
         );
         v1_interpreter::clear_cross_claim_pure_memos();
     }
@@ -13011,14 +13410,18 @@ mod scope_fragment_memo_equivalence {
 mod changed_witness_projection_tests {
     use super::*;
 
-    /// The enrolment thresholds these tests decide against: the 302 ms margin, its 182 ms dead-band
-    /// floor, the 500 ms per-subject line, and its 302 ms typed cost-debt floor -- the values the model
-    /// derives today, fixed here so each test pins a boundary rather than re-deriving one.
+    /// A FIXTURE, not the model's current derivation: the 302 ms margin, its 182 ms dead-band floor,
+    /// the 500 ms per-subject line and its 302 ms typed cost-debt floor, at the reference host speed.
+    /// These were the model's values before gunbc#13352 withdrew the cross-runner envelope from the
+    /// calibrated gate (the model now derives 391 / 306 / 500 / 391; the host reads those at run time
+    /// and never this constant). Each test pins a boundary RELATIVE to this fixture, so the fixture
+    /// is kept rather than re-derived; the calibration controls below state the current thresholds.
     const TEST_ENROLMENT_THRESHOLDS: EnrolmentThresholds = EnrolmentThresholds {
         budget_ms: 302,
         dead_band_envelope_floor_ms: 182,
         per_subject_line_ms: 500,
         roster_envelope_floor_ms: 302,
+        host_speed_factor_permille: 1000,
     };
 
     /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
@@ -15734,6 +16137,175 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     /// (302, 250, 183 against a 182 floor) it is within the runner envelope and does not block; at the
     /// floor it is stale and blocks (182), above
     /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
+    /// THE HOST-SPEED CALIBRATION CONTROLS (node adhoc-c9504740-637), the seed half of
+    /// `v2.test.floor_enrolment_margin`'s. Policy figures are the model's today: the specimen's
+    /// 55,011 steps at 723 steps/ms, plausible range [400, 2500] permille.
+    fn test_calibration_policy() -> HostSpeedCalibrationPolicy {
+        HostSpeedCalibrationPolicy {
+            specimen: "m.specimen".to_string(),
+            replicates: vec![
+                "m.specimen".to_string(),
+                "m.replicate_two".to_string(),
+                "m.replicate_three".to_string(),
+            ],
+            specimen_eval_steps: 55011,
+            rate: 723,
+            lower_permille: 400,
+            upper_permille: 2500,
+        }
+    }
+
+    fn calibration_occurrence(
+        identity: &str,
+        cpu: u64,
+        steps: u64,
+    ) -> crate::cli_run::WitnessExecutionOccurrence {
+        crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "passed".to_string(),
+            reading: crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms: cpu,
+                observed_wall_ms: cpu,
+            },
+            eval_steps: steps,
+            verdict_reached: true,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        }
+    }
+
+    fn calibrated_factor_at(specimen_cpu: u64) -> u64 {
+        match host_speed_calibration_of(&test_calibration_policy(), specimen_cpu, 55011) {
+            HostSpeedCalibration::Calibrated {
+                factor_permille, ..
+            } => factor_permille,
+            other => panic!("expected a calibrated factor, got {other:?}"),
+        }
+    }
+
+    /// SAME CLAIM, TWO RUNNERS OF DIFFERENT SPEED, ONE VERDICT -- the gunbc#13168 shape, synthetic:
+    /// the specimen is scaled 1.75x with the claim. Raw, the two readings would disagree.
+    #[test]
+    fn the_same_claim_gets_the_same_enrolment_verdict_at_two_runner_speeds() {
+        let identity = "m.claim";
+        let planned = RequiredFloorDisposition::Planned;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let standing = |cpu: u64, factor: u64| {
+            let row = calibration_occurrence(identity, cpu, 48760);
+            let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+                HashMap::new();
+            cost.insert(identity, &row);
+            // The model's current calibrated thresholds (v2.workflow.floor_enrolment_margin).
+            let thresholds = EnrolmentThresholds {
+                budget_ms: 391,
+                dead_band_envelope_floor_ms: 306,
+                per_subject_line_ms: 500,
+                roster_envelope_floor_ms: 391,
+                host_speed_factor_permille: factor,
+            };
+            enrolment_margin_standing_for(identity, &cost, &dispositions, &thresholds, None)
+        };
+        let fast = standing(240, calibrated_factor_at(76));
+        let slow = standing(426, calibrated_factor_at(133));
+        assert_eq!(fast.name(), "admitted");
+        assert_eq!(slow.name(), "admitted");
+        assert_eq!(standing(426, 1000).name(), "measured_over_margin");
+        // A GENUINELY EXPENSIVE CLAIM STILL REFUSES at both speeds.
+        assert_eq!(
+            standing(466, calibrated_factor_at(76)).name(),
+            "measured_over_margin"
+        );
+        assert_eq!(
+            standing(815, calibrated_factor_at(133)).name(),
+            "measured_over_margin"
+        );
+    }
+
+    /// A MISSING, CENSORED, MOVED OR IMPLAUSIBLE SPECIMEN REFUSES THE RUN, typed; never a default.
+    #[test]
+    fn the_host_speed_calibration_refuses_without_an_exact_plausible_specimen_reading() {
+        let policy = test_calibration_policy();
+        let planned = RequiredFloorDisposition::Planned;
+        let declined = RequiredFloorDisposition::DeclinedOutsideRequiredGate;
+        let healthy = calibration_occurrence("m.specimen", 76, 55011);
+        // The other two replicates are healthy, so each case below is decided by the first alone:
+        // one bad replicate refuses the run however good the others are.
+        let two = calibration_occurrence("m.replicate_two", 80, 55011);
+        let three = calibration_occurrence("m.replicate_three", 90, 55011);
+        let run = |dispo: Option<&RequiredFloorDisposition>,
+                   row: Option<&crate::cli_run::WitnessExecutionOccurrence>| {
+            let mut dispositions = HashMap::new();
+            if let Some(d) = dispo {
+                dispositions.insert("m.specimen", d);
+            }
+            dispositions.insert("m.replicate_two", &planned);
+            dispositions.insert("m.replicate_three", &planned);
+            let mut cost = HashMap::new();
+            if let Some(r) = row {
+                cost.insert("m.specimen", r);
+            }
+            cost.insert("m.replicate_two", &two);
+            cost.insert("m.replicate_three", &three);
+            host_speed_calibration_for(&policy, &cost, &dispositions)
+        };
+        // THE FASTEST REPLICATE STANDS: a 1.75x-slow first touch on the pinned specimen does not
+        // loosen the factor, because replicate two read faster.
+        let slow_first = calibration_occurrence("m.specimen", 133, 55011);
+        assert_eq!(
+            run(Some(&planned), Some(&slow_first)).factor_or_refusal("m.specimen"),
+            Ok(80 * 723 * 1000 / 55011)
+        );
+        assert_eq!(run(Some(&planned), Some(&healthy)).name(), "calibrated");
+        assert_eq!(
+            run(Some(&planned), Some(&healthy)).factor_or_refusal("m.specimen"),
+            Ok(998)
+        );
+        let absent = run(Some(&planned), None);
+        assert_eq!(absent.name(), "host_speed_specimen_not_measured");
+        assert!(absent
+            .factor_or_refusal("m.specimen")
+            .unwrap_err()
+            .contains("cause=HostSpeedCalibrationRefused"));
+        assert_eq!(
+            run(Some(&declined), Some(&healthy)).name(),
+            "host_speed_specimen_not_measured"
+        );
+        assert_eq!(
+            run(None, Some(&healthy)).name(),
+            "host_speed_specimen_not_measured"
+        );
+        let mut cut = calibration_occurrence("m.specimen", 900, 1);
+        cut.reading = crate::cli_run::ClaimCostReading::RightCensored(
+            crate::cli_run::SafetyInterruptReading {
+                raised_by: crate::cli_run::SafetyInterruptTrigger::WallDeadlineRaised,
+                elapsed_cpu_at_least_ms: 900,
+                elapsed_wall_at_least_ms: 1000,
+                wall_safety_limit_ms: 1000,
+            },
+        );
+        assert_eq!(
+            run(Some(&planned), Some(&cut)).name(),
+            "host_speed_specimen_censored"
+        );
+        let moved = calibration_occurrence("m.specimen", 76, 55012);
+        assert_eq!(
+            run(Some(&planned), Some(&moved)).name(),
+            "host_speed_specimen_moved"
+        );
+        let too_fast = calibration_occurrence("m.specimen", 20, 55011);
+        let too_slow = calibration_occurrence("m.specimen", 400, 55011);
+        assert_eq!(
+            run(Some(&planned), Some(&too_fast)).name(),
+            "host_speed_factor_out_of_range"
+        );
+        assert_eq!(
+            run(Some(&planned), Some(&too_slow)).name(),
+            "host_speed_factor_out_of_range"
+        );
+    }
+
     #[test]
     fn the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line() {
         let identity = "m.dead_band";

@@ -20,6 +20,7 @@ import extdeps.ebay.browse {
   browse_search_page_admission, ebay_browse_frontier_rows, browse_search_limit_default, BrowseSearchPageAdmitted, BrowseSearchLimitOutOfRange,
   BrowseSearchOffsetNotAPageBoundary, BrowseSearchBeyondResultWindow
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

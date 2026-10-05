@@ -125,7 +125,7 @@ test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
 }
 
 // ONE WARM PRODUCER FOR THE TWO FN-LITERAL VERDICTS (3) and (4): each once paid its own front end.
-// Enrolled in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the
+// Shared by v2.workflow.floor_pure_producer_share derive_cross_claim_share; the
 // claims only read their Bool.
 type BtarFnLiteralOutcomes {
   annotated_reaches_resolve: Bool

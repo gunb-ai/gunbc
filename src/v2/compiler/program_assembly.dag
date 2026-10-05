@@ -1,7 +1,7 @@
 module v2.compiler.program_assembly
 
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.extdeps.languages.dag { dag_grammar, qualified_name_from_module_node }
+import v2.extdeps.languages.dag { dag_grammar, dag_lex, qualified_name_from_module_node }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRefListDigestBuild,
@@ -49,8 +49,10 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostics,
   NonEmptyDiagnostics,
+  None,
   Outcome,
   Rejected,
+  Some,
   bind_outcome,
   bind_outcome_accepted,
   diagnostics_singleton,
@@ -542,12 +544,20 @@ data program_assembly_prepare_once_note: String = "prepare_grammar is hoisted AB
 // `dag_grammar()` before its fold can start, and `prepare_grammar` is the cross-claim pure tier's
 // built-in admitted arm, so one fill serves every claim — if it ever lands. The fill costs more
 // than one claim's CPU budget, so an in-fold first touch dies mid-flight (FillBudgetExceeded) and is
-// abandoned un-stored, and the next claim starts it over. Enrolled in
-// `floor_cross_claim_pure_producers_warm` (v2.workflow.floor_pure_producer_share) so the required
+// abandoned un-stored, and the next claim starts it over. Admitted by the derived
+// cross-claim share (v2.workflow.floor_pure_producer_share derive_cross_claim_share) so the required
 // floor evaluates this nullary producer during strict preparation — outside every per-claim
 // budget — and the inner `prepare_grammar` fill lands in the tier before any claim runs.
 fn dag_prepared_grammar() -> Outcome<PreparedGrammar> {
   prepare_grammar(grammar: dag_grammar())
+}
+
+// THE SAME GROUND FOR THE LEXER. A compiled rule set is a property of the language and, since its
+// matchers are pattern data rather than closures (v2.compiler.tokenize lex_match_pattern), it is
+// portable: the nullary producer is served across claims exactly as dag_prepared_grammar is, so a
+// claim that tokenizes .dag text pays the walk and not the compile.
+fn dag_prepared_lex() -> PreparedLexRules {
+  prepare_lex_rules(rules: dag_lex())
 }
 
 // THE GRAMMAR REFUSAL REPORTS AN EMPTY INDEX AND THAT IS AN ANSWER, NOT A DROP. An invalid grammar

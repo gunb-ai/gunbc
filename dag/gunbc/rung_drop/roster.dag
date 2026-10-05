@@ -68,7 +68,9 @@ import gunbc.rung_drop.v2_native_frontier_nightly_cadence { v2_native_frontier_n
 import gunbc.rung_drop.native_lane_live_pair_expected_red { native_lane_live_pair_expected_red }
 import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
 import gunbc.rung_drop.approval_store_single_writer_by_agreement { approval_store_single_writer_by_agreement }
+import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash { mtcollins1_bmc_secure_standing_predates_reflash }
 import gunbc.rung_drop.mtcollins1_boot_accepts_socket1_absent { mtcollins1_boot_accepts_socket1_absent }
+import gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation { megarac_operations_admitted_through_a_superseded_build_observation }
 import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_follow_up_charge_removed }
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
@@ -228,6 +230,7 @@ data rung_drop_roster: List<RungDrop> = [
   retention_census_counts_one_retention_per_refused_module,
   typed_statement_let_refuses_until_the_bind_annotation_carrier,
   mtcollins1_boot_accepts_socket1_absent,
+  megarac_operations_admitted_through_a_superseded_build_observation,
   python_to_typescript_compile_inhabitance_off_the_required_gate,
   edited_bin_witness_wet_rows_not_executed_by_ci,
   shared_index_residency_asserted_after_the_run,
@@ -237,6 +240,7 @@ data rung_drop_roster: List<RungDrop> = [
   fixture_closure_corpus_emit_refusals_lost_as_passenger,
   native_serve_request_budget_unrealized,
   dag_text_round_trip_nested_bind_new_witness_eval_step_cost,
+  mtcollins1_bmc_secure_standing_predates_reflash,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

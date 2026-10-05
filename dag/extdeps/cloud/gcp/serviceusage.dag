@@ -5,9 +5,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import std.types { List, Secret, String }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { POST, GET }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -30,7 +30,7 @@ service gcp.ServiceUsage {
       project_id: GcpProjectId
       service_ids: List<String>
     }
-    output { operation_name: String from "name", outcome: RestOutcome }
+    output { operation_name: String from "name" }
 
     idempotent
     transport rest {
@@ -55,7 +55,7 @@ service gcp.ServiceUsage {
       project_id: GcpProjectId
       service_id: String
     }
-    output { operation_name: String from "name", outcome: RestOutcome }
+    output { operation_name: String from "name" }
 
     idempotent
     transport rest {
@@ -82,7 +82,6 @@ service gcp.ServiceUsage {
     output {
       name: String from "name"
       state: String from "state"
-      outcome: RestOutcome
     }
     readonly
     transport rest {

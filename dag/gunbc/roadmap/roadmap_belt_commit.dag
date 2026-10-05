@@ -29,6 +29,44 @@ fn belt_candidate_commit_message(node_id: String, attempt_key: String) -> NonEmp
   join(["dispatch candidate: ", node_id, " a", attempt_key], "") as NonEmptyStr
 }
 
+// THE INVERSE OF THE CANDIDATE MESSAGE, beside its one producer: the attempt a candidate commit was
+// captured from, read back from the message belt_candidate_commit_message wrote. Absent for any
+// message that producer could not have written -- a caller treats that as underivable, never as
+// "no attempt". (The typed carrier for a commit's capture attempt and base is the BaseAdvance
+// follow-up; until then this producer's format is the only record, and it is read only here.)
+type CandidateCommitSubject {
+  node_id: String
+  attempt_key: String
+}
+
+data belt_candidate_commit_prefix: String = "dispatch candidate: "
+
+fn belt_candidate_commit_subject(message: String) -> CandidateCommitSubject? {
+  if !starts_with(s: message, prefix: belt_candidate_commit_prefix) {
+    none
+  } else {
+    let rest = substring(s: message, start: string_length(s: belt_candidate_commit_prefix), end: string_length(s: message))
+    let parts = split(s: rest, delimiter: " a")
+    if count(parts) != 2 {
+      none
+    } else {
+      match parts.first() {
+        Absent => none
+        Present { value: node_id } =>
+          match parts.last() {
+            Absent => none
+            Present { value: attempt_key } =>
+              if node_id == "" || attempt_key == "" || (belt_candidate_commit_message(node_id: node_id, attempt_key: attempt_key) as String) != message {
+                none
+              } else {
+                Present { value: CandidateCommitSubject { node_id: node_id, attempt_key: attempt_key } }
+              }
+          }
+      }
+    }
+  }
+}
+
 fn belt_checkpoint_commit_message(node_id: String, attempt_key: String) -> NonEmptyStr {
   join(["dispatch checkpoint: ", node_id, " a", attempt_key], "") as NonEmptyStr
 }
