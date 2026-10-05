@@ -27996,6 +27996,21 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     #[test]
+    fn a_slash_slash_line_inside_a_multi_line_string_still_charges_it() {
+        // Lines: 3-6 `d`, whose string literal spans lines 4-5; line 4 opens with `//`.
+        let path = "src/v2/test/claim/note_string_fixture_test.dag";
+        let head = "module m.note_string\n\ntest fn d() -> Bool {\n  \"a\n// in a string, new\n  b\" == \"\"\n}\n";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +5 @@\n-// in a string, old\n+// in a string, new\n"
+        );
+        assert_eq!(
+            edited_in(&text_attribution_edits(&diff, path, head, &["d"]), path),
+            HashSet::from(["d".to_string()]),
+            "a `//` line inside a string literal is program data, not an annotation"
+        );
+    }
+
+    #[test]
     fn a_moved_annotation_block_charges_neither_declaration() {
         // Base: `// note c new` sat inside `a`'s body; the head moved it above `c`.
         let diff = note_diff("@@ -5 +4,0 @@\n-// note c new\n@@ -8,0 +8 @@\n+// note c new\n");
