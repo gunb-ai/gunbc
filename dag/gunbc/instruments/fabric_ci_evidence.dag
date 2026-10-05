@@ -3,6 +3,8 @@ module tools.fabric_ci_evidence
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
+import std.error_primitives { Ok, Err }
+import std.unicode.scalar { NotUnicodeScalar, from_code_point }
 import extdeps.numeric.base16 { base16_word_value }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -39,7 +41,17 @@ data fabric_ci_evidence_wire_prefix: NonEmptyStr = "FCIE0X"
 
 type FabricCiEvidenceDecode
   = FabricCiEvidenceDecoded { value: NonEmptyStr }
-  | FabricCiEvidenceUndecodable
+  | FabricCiEvidenceUndecodable { cause: FabricCiDecodeRefusal }
+
+// WHY A WIRE REFUSES, AND WHERE. The wire is the prefix then one six-hex-digit word per Unicode
+// scalar, so a word is refused either because it is not six hex digits or because its value is not
+// a scalar (std.unicode.scalar NotUnicodeScalar, carried as decoded, never defaulted). `at` is the
+// word's offset in the wire.
+type FabricCiDecodeRefusal
+  = FabricCiWireUnframed
+  | FabricCiWireEmpty
+  | FabricCiWordNotHex { at: Int }
+  | FabricCiWordNotScalar { at: Int, cause: NotUnicodeScalar }
 
 fn fabric_ci_hex_digit(n: Int) -> String {
   substring(s: "0123456789ABCDEF", start: n, end: n + 1)
@@ -83,18 +95,20 @@ fn fabric_ci_decode_scalar(wire: String, at: Int) -> Int? {
 
 type FabricCiDecodeState
   = FabricCiDecodeBuilding { value: String }
-  | FabricCiDecodeRefused
+  | FabricCiDecodeRefused { cause: FabricCiDecodeRefusal }
 
 fn fabric_ci_decode_step(wire: String, at: Int, stop: Int, state: FabricCiDecodeState) -> FabricCiDecodeState {
   match state {
-    FabricCiDecodeRefused => FabricCiDecodeRefused
+    FabricCiDecodeRefused { cause: c } => FabricCiDecodeRefused { cause: c }
     FabricCiDecodeBuilding { value: value } =>
       if at == stop { FabricCiDecodeBuilding { value: value } } else {
         match fabric_ci_decode_scalar(wire: wire, at: at) {
-          Absent => FabricCiDecodeRefused
+          Absent => FabricCiDecodeRefused { cause: FabricCiWordNotHex { at: at } }
           Present { value: cp } =>
-            if cp > 1114111 || (cp >= 55296 && cp <= 57343) { FabricCiDecodeRefused }
-            else { fabric_ci_decode_step(wire: wire, at: at + 6, stop: stop, state: FabricCiDecodeBuilding { value: concat(value, from_code_point(cp)) }) }
+            match from_code_point(cp: cp) {
+              Err { value: n } => FabricCiDecodeRefused { cause: FabricCiWordNotScalar { at: at, cause: n } }
+              Ok { value: text } => fabric_ci_decode_step(wire: wire, at: at + 6, stop: stop, state: FabricCiDecodeBuilding { value: concat(value, text) })
+            }
         }
       }
   }
@@ -105,11 +119,11 @@ fn decode_fabric_ci_evidence_wire(wire: String) -> FabricCiEvidenceDecode {
   let payload_len = wire.length() - prefix_len
   if !starts_with(wire, prefix: fabric_ci_evidence_wire_prefix as String)
     || payload_len <= 0 || payload_len % 6 != 0 {
-    FabricCiEvidenceUndecodable
+    FabricCiEvidenceUndecodable { cause: FabricCiWireUnframed }
   } else {
     match fabric_ci_decode_step(wire: wire, at: prefix_len, stop: wire.length(), state: FabricCiDecodeBuilding { value: "" }) {
-      FabricCiDecodeRefused => FabricCiEvidenceUndecodable
-      FabricCiDecodeBuilding { value: "" } => FabricCiEvidenceUndecodable
+      FabricCiDecodeRefused { cause: c } => FabricCiEvidenceUndecodable { cause: c }
+      FabricCiDecodeBuilding { value: "" } => FabricCiEvidenceUndecodable { cause: FabricCiWireEmpty }
       FabricCiDecodeBuilding { value: value } => FabricCiEvidenceDecoded { value: value as NonEmptyStr }
     }
   }
@@ -158,7 +172,7 @@ fn fabric_ci_calibration_transport_ignores_write_failure(path: String) -> Proces
 
 fn fabric_ci_calibration_assert_transport(wire: String) -> ProcessExit {
   match decode_fabric_ci_evidence_wire(wire: wire) {
-    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 transport undecodable")
+    FabricCiEvidenceUndecodable { cause: _ } => exit_failure(reason: "FCI-EVIDENCE-0 transport undecodable")
     FabricCiEvidenceDecoded { value: decoded } =>
       if (decoded as String) == fabric_ci_calibration_projection_wire(value: FabricCiCalibrationAlpha { payload: "apostrophe-' newline-\n delimiter-|" }) {
         ExitSuccess
@@ -176,7 +190,7 @@ fn fabric_ci_calibration_collapsed_projection_must_red() -> ProcessExit {
 
 fn fabric_ci_calibration_assert_beta_transport(wire: String) -> ProcessExit {
   match decode_fabric_ci_evidence_wire(wire: wire) {
-    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 beta transport undecodable")
+    FabricCiEvidenceUndecodable { cause: _ } => exit_failure(reason: "FCI-EVIDENCE-0 beta transport undecodable")
     FabricCiEvidenceDecoded { value: decoded } =>
       if (decoded as String) == fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "different-value" }) { ExitSuccess }
       else { exit_failure(reason: "FCI-EVIDENCE-0 status did not distinguish transported values") }
