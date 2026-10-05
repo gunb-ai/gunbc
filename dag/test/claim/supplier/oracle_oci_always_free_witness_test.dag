@@ -67,7 +67,7 @@ test fn two_micros_and_one_full_a1_fit_together() -> Bool {
 
 // The pre-2026 allowance, 4 OCPUs and 24 GB, no longer fits. It refuses on exactly those two axes.
 test fn the_old_four_ocpu_allowance_refuses_on_ocpus_and_memory() -> Bool {
-  breaches_of(plan: [a1(name: "a", ocpus: 4, gb: 24, boot: 47)]) == [A1OcpusOverAllowance { planned: 4, allowed: 2 }, A1MemoryOverAllowance { planned: 24, allowed: 12 }]
+  breaches_of(plan: [a1(name: "a", ocpus: 4, gb: 24, boot: 47)]) == [A1OcpusOverAllowance { planned: 4, allowed: 2 }, A1MemoryOverAllowance { planned: gigabyte(count: 24), allowed: gigabyte(count: 12) }]
 }
 
 // The maximum instance count is limited by storage. Four 50 GB boot volumes use exactly 200 GB and
@@ -77,7 +77,7 @@ test fn four_instances_fit_at_exactly_two_hundred_gigabytes() -> Bool {
 }
 
 test fn one_more_boot_gigabyte_refuses_on_block_volume_alone() -> Bool {
-  breaches_of(plan: [micro(name: "m1", boot: 51), micro(name: "m2", boot: 50), a1(name: "a1", ocpus: 1, gb: 6, boot: 50), a1(name: "a2", ocpus: 1, gb: 6, boot: 50)]) == [BlockVolumeOverAllowance { planned: 201, allowed: 200 }]
+  breaches_of(plan: [micro(name: "m1", boot: 51), micro(name: "m2", boot: 50), a1(name: "a1", ocpus: 1, gb: 6, boot: 50), a1(name: "a2", ocpus: 1, gb: 6, boot: 50)]) == [BlockVolumeOverAllowance { planned: gigabyte(count: 201), allowed: gigabyte(count: 200) }]
 }
 
 test fn a_third_micro_refuses_on_micro_count() -> Bool {
