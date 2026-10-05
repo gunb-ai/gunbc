@@ -1,9 +1,10 @@
 module v2.test.claim.body_lowering.zz_sam_probe
 
-import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text, conserved_normalize, no_explained_drops }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.reference_conservation { reference_conservation_of_subject, dag_declared_token_classes }
 import v2.std.node { symbol_lexeme }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, Cons }
 
 data p3: String = "module m.t\ntype T = A | B | C\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    B => 2\n    _ => 3\n  }\n}\n"
 data p2: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    _ => 2\n  }\n}\n"
@@ -17,3 +18,20 @@ fn render(text: String) -> String {
 
 fn probe3() -> String { render(text: p3) }
 fn probe2() -> String { render(text: p2) }
+
+fn reasons(text: String) -> String {
+  let s = conservation_subject_of_text(path: "single_arm_match_subject", text: text)
+  let r = reference_conservation_of_subject(subject: s, token_classes: dag_declared_token_classes())
+  let norm = match s.normalized {
+    Accepted { value: _, diagnostics: _ } => "norm=ACC"
+    Rejected { diagnostics: d } => "norm=REJ:" + symbol_lexeme(sym: d.head.reason)
+  }
+  let cn = match conserved_normalize(subject: s, explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => " cn=ACC"
+    Rejected { diagnostics: d } => fold_list(xs: Cons { head: d.head, tail: d.tail }, empty: " cn=REJ:", cons: fn(acc, x) { acc + " " + symbol_lexeme(sym: x.reason) })
+  }
+  norm + cn + " unmeasured=" + fold_list(xs: r.unmeasured, empty: "", cons: fn(acc, _u) { acc + "U" }) + " " + render(text: text)
+}
+
+fn reasons3() -> String { reasons(text: p3) }
+fn reasons2() -> String { reasons(text: p2) }
