@@ -1,0 +1,224 @@
+module extdeps.cloud.oracle_oci_request_signing
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.sha2 { sha256 }
+import std.encoding { base64_encode, Standard }
+import std.integer { QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.types { Int, List, NonEmptyStr, String }
+
+// OCI API REQUEST SIGNING, the upstream specification: what is signed and how the Authorization
+// header is spelled. It is read from the signing-requests page cited below on 2026-10-05.
+//
+// This module is PURE. It builds the signing string and the header from a signature it is handed.
+// Producing the RSA-SHA256 signature is realization, done by whichever signer holds the key (today
+// gunbc.jws_signer_realize, which hands a host key file to openssl), and the key never enters here.
+//
+// The page's rules, as they are used below. A GET or DELETE signs at least (request-target), host
+// and date. A POST or PUT also signs x-content-sha256, content-type and content-length. Header
+// names are lowercase in the signing string, and each line is "<name>: <value>". The
+// (request-target) line is the lowercase method, one space, then the path with its query string.
+// x-content-sha256 is the Base64 of the SHA-256 of the body. The signature is
+// Base64(RSA-SHA256(signing string)). The date is an HTTP date such as "Thu, 05 Jan 2014 21:31:40 GMT",
+// and it must be within 5 minutes of the server's clock.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oracle.com/en-us/iaas/Content/API/Concepts/signingrequests.htm"
+  }
+}
+
+// keyId is "<tenancy OCID>/<user OCID>/<key fingerprint>". All three are identifiers, not secrets.
+type OciApiKeyId {
+  tenancy: NonEmptyStr
+  user: NonEmptyStr
+  fingerprint: NonEmptyStr
+}
+
+fn oci_key_id_wire(key: OciApiKeyId) -> String {
+  join([key.tenancy as String, "/", key.user as String, "/", key.fingerprint as String], "")
+}
+
+// A body is signed by its exact bytes. This module only admits an ASCII body, so its length in bytes
+// is its length in characters and its octets are its code points. A body with any non-ASCII
+// character refuses rather than being hashed under a byte encoding this module does not carry.
+type OciRequestBody
+  = OciNoBody
+  | OciJsonBody { text: String }
+
+type OciBodyOctets
+  = OciBodyOctetsReady { octets: List<Int> }
+  | OciBodyNotAscii { index: Int }
+
+fn oci_ascii_octets_from(text: String, index: Int, acc: List<Int>) -> OciBodyOctets {
+  if index >= string_length(text) {
+    OciBodyOctetsReady { octets: acc }
+  } else {
+    let cp = code_point(char_at(text, index))
+    if cp > 127 {
+      OciBodyNotAscii { index: index }
+    } else {
+      oci_ascii_octets_from(text: text, index: index + 1, acc: concat(acc, [cp]))
+    }
+  }
+}
+
+fn oci_ascii_octets(text: String) -> OciBodyOctets {
+  oci_ascii_octets_from(text: text, index: 0, acc: [])
+}
+
+// The digest is 32 octets each in [0, 255], so the octet admission cannot refuse it. The refused arm
+// is the admission's own vocabulary and returns the empty string, which no OCI endpoint accepts as a
+// digest, so the request is refused by the server rather than signed over an invented hash.
+fn oci_sha256_base64(octets: List<Int>) -> String {
+  match uint8_octets_of_ints(values: sha256(message: octets)) {
+    QualifiedOctetsReady { value } => base64_encode(octets: value, variant: Standard)
+    QualifiedOctetsRefused { observed } => ""
+  }
+}
+
+// ── THE HTTP DATE ─────────────────────────────────────────────────────────────────────────────
+//
+// The date is derived from epoch seconds, the magnitude extdeps.clock produces, using the
+// days-to-civil-date conversion of the proleptic Gregorian calendar. 1970-01-01 was a Thursday.
+
+// index 0 is the weekday of day 0, 1970-01-01, which was a Thursday.
+fn oci_weekday_name(index: Int) -> String {
+  if index == 0 { "Thu" } else if index == 1 { "Fri" } else if index == 2 { "Sat" }
+  else if index == 3 { "Sun" } else if index == 4 { "Mon" } else if index == 5 { "Tue" } else { "Wed" }
+}
+
+fn oci_month_name(month: Int) -> String {
+  if month == 1 { "Jan" } else if month == 2 { "Feb" } else if month == 3 { "Mar" }
+  else if month == 4 { "Apr" } else if month == 5 { "May" } else if month == 6 { "Jun" }
+  else if month == 7 { "Jul" } else if month == 8 { "Aug" } else if month == 9 { "Sep" }
+  else if month == 10 { "Oct" } else if month == 11 { "Nov" } else { "Dec" }
+}
+
+fn oci_two_digits(n: Int) -> String {
+  if n < 10 { join(["0", to_string(n)], "") } else { to_string(n) }
+}
+
+type OciCivilDate {
+  year: Int
+  month: Int
+  day: Int
+}
+
+fn oci_civil_from_days(days: Int) -> OciCivilDate {
+  let z = days + 719468
+  let era = z / 146097
+  let doe = z - era * 146097
+  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+  let mp = (5 * doy + 2) / 153
+  let day = doy - (153 * mp + 2) / 5 + 1
+  let month = if mp < 10 { mp + 3 } else { mp - 9 }
+  let year = yoe + era * 400 + (if month <= 2 { 1 } else { 0 })
+  OciCivilDate { year: year, month: month, day: day }
+}
+
+fn oci_http_date(epoch_seconds: Int) -> String {
+  let days = epoch_seconds / 86400
+  let secs = epoch_seconds - days * 86400
+  let civil = oci_civil_from_days(days: days)
+  join([
+    oci_weekday_name(index: days % 7), ", ",
+    oci_two_digits(n: civil.day), " ",
+    oci_month_name(month: civil.month), " ",
+    to_string(civil.year), " ",
+    oci_two_digits(n: secs / 3600), ":",
+    oci_two_digits(n: (secs % 3600) / 60), ":",
+    oci_two_digits(n: secs % 60), " GMT",
+  ], "")
+}
+
+// ── THE SIGNING STRING ────────────────────────────────────────────────────────────────────────
+
+type OciHttpMethod
+  = OciGet
+  | OciPost
+  | OciDelete
+
+fn oci_method_lower(method: OciHttpMethod) -> String {
+  match method {
+    OciGet => "get"
+    OciPost => "post"
+    OciDelete => "delete"
+  }
+}
+
+// The request as it will be sent. path_and_query must already be URL-encoded (RFC 3986), in the order
+// it will appear on the wire. The page requires the signed target and the sent target to be the same
+// bytes.
+type OciRequest {
+  method: OciHttpMethod
+  host: NonEmptyStr
+  path_and_query: NonEmptyStr
+  date: String
+  body: OciRequestBody
+}
+
+// What a signer must sign, and the headers that must accompany the request. headers_list is the
+// value of the Authorization header's headers="..." field, in the same order as the signing-string
+// lines.
+type OciSigningPlan
+  = OciSigningReady {
+      signing_string: String,
+      headers_list: String,
+      content_sha256: String,
+      content_length: Int,
+    }
+  | OciSigningRefused { cause: NonEmptyStr }
+
+fn oci_request_target_line(req: OciRequest) -> String {
+  join(["(request-target): ", oci_method_lower(method: req.method), " ", req.path_and_query as String], "")
+}
+
+fn oci_bodiless_signing_string(req: OciRequest) -> String {
+  join([
+    join(["date: ", req.date], ""),
+    oci_request_target_line(req: req),
+    join(["host: ", req.host as String], ""),
+  ], "\n")
+}
+
+fn oci_signing_plan(req: OciRequest) -> OciSigningPlan {
+  match req.body {
+    OciNoBody => OciSigningReady {
+      signing_string: oci_bodiless_signing_string(req: req),
+      headers_list: "date (request-target) host",
+      content_sha256: "",
+      content_length: 0,
+    }
+    OciJsonBody { text } =>
+      match oci_ascii_octets(text: text) {
+        OciBodyNotAscii { index } => OciSigningRefused {
+          cause: join(["OCI request body has a non-ASCII character at index ", to_string(index), "; only an ASCII body is signed, so its byte length is its character length"], "") as NonEmptyStr,
+        }
+        OciBodyOctetsReady { octets } => {
+          let digest = oci_sha256_base64(octets: octets)
+          let length = string_length(text)
+          OciSigningReady {
+            signing_string: join([
+              oci_bodiless_signing_string(req: req),
+              join(["content-length: ", to_string(length)], ""),
+              "content-type: application/json",
+              join(["x-content-sha256: ", digest], ""),
+            ], "\n"),
+            headers_list: "date (request-target) host content-length content-type x-content-sha256",
+            content_sha256: digest,
+            content_length: length,
+          }
+        }
+      }
+  }
+}
+
+fn oci_authorization_header(key: OciApiKeyId, headers_list: String, signature_base64: String) -> String {
+  join([
+    "Signature version=\"1\",headers=\"", headers_list,
+    "\",keyId=\"", oci_key_id_wire(key: key),
+    "\",algorithm=\"rsa-sha256\",signature=\"", signature_base64, "\"",
+  ], "")
+}
