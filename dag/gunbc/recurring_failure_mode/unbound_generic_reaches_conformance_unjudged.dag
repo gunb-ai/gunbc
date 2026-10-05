@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.unbound_generic_reaches_conformance_unjudged
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unbound_generic_reaches_conformance_unjudged: RecurringFailureMode = RecurringFailureMode {
+  identity: "unbound_generic_reaches_conformance_unjudged" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a call's generic parameter is never bound, so the call's result type stays an unresolved type parameter, and that unresolved type reaches a declared-type position (a direct-call argument, a declared return) where v1.compiler.infer's conformance does not judge it. The program is Accepted, and the value that arrives has a type the declaration forbids.",
+
+    "SPECIMENS, executed 2026-10-05 with gunbc built at main ed68b5573b (gunbc run, fixture modules outside the corpus), each with take_s(s: String): (p8) `fn idf<R>(f: fn() -> R) -> R { f() }`; `take_s(s: idf(f: fn() { 5 }))` is Accepted and returns Int 5. (p8b) `fn app<T, R>(x: T, f: fn(T) -> R) -> R { f(x) }`; `take_s(s: app(x: 1, f: fn(v) { v }))` is Accepted and returns 1. (p7b) `fn apply2<T, R>(f: fn(T) -> R, x: T) -> R`; `take_s(s: apply2(f: fn(v) { v }, x: 1))` is Accepted and returns 1. In all three, R is fixed only by a lambda's return, which never binds it.",
+
+    "MORE MEMBERS: gunbc.recurring_failure_mode generic_identity_decided_by_spelling shape (2), `take_s(s: head_of(xs: [1], d: 2))` Accepted with Int 1, is this class: its T is left unbound by the self-binding guard and then passes conformance unjudged. Its shape (1) srv3 refusal is the same unbound T meeting a method call, which does refuse. unsolved_placeholder_reads_back_as_unit is the neighbouring arm, where an unsolved variable is read as a concrete type instead of passing unjudged. Each new way to leave a generic unbound is a new admission route for this class, so it is the wall, not any one binding repair, that closes the class.",
+
+    "HARM: silent wrongness (DESIGN section 5). The checker reports success for a program whose value contradicts a declared type, and nothing downstream refuses until the value is consumed at runtime, if then.",
+
+    "NOT FIXED BY MORE BINDING: lifting particular routes (a lambda's return feeding a parameter, the #9416 narrowing in v1.compiler.infer above expr_contains_lambda) shrinks the population but leaves it open, because some parameters are genuinely not inferable from a call site. A round-2 MISMATCH is already judged on main: `ap<T, R>(f: fn(T) -> R, x: T, r: R)` with `ap(f: fn(v) { v }, x: 1, r: 's')` refuses `expected Callable(Int->String), got Callable(Int->Int)`. The gap is the UNSOLVED case, not the disagreeing one.",
+
+    "RUNG FOUND AT: below the floor (silent acceptance). CEILING: 3 -- an unresolved type parameter at a declared-type position is a modeled state, decidable at the conformance site. NEXT TRIGGER: a call whose result type is an unresolved generic parameter, reaching a declared-type position, refuses with a typed located 'cannot infer <param> here; annotate' diagnostic. Evidence: p8, p8b and p7b refuse with that cause; `apply2(f: fn(v) { v }, x: 1)` under a declared -> Int is the accepted control. That wall refuses some code main accepts today, by design, and lands as its own step with its own census of the sites that newly refuse.",
+  ],
+
+  evidence: [],
+}
