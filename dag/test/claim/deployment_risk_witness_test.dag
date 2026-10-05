@@ -658,7 +658,7 @@ data canonical_apply_source: String = "module probe_canonical_apply\nimport gunb
 
 data altered_spec_to_assessor_source: String = "module probe_altered_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit_rostered, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn alter() -> RoleSingletonAdmissionResult { let s = deployment_spec_srv1()\n assess_and_admit_rostered(spec: s, own: LocalShell) }\n"
 
-data spec_to_assessor_source: String = "module probe_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn hand() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), own: LocalShell) }\n"
+data spec_to_production_apply_source: String = "module probe_spec_to_production_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn hand(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(spec: deployment_spec_srv1(), access: a, candidate: c)\n true }\n"
 
 data replayed_admission_source: String = "module probe_replayed_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { RoleSingletonAdmission, admitted_spec }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nfn replay(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\n"
 
@@ -680,11 +680,15 @@ fn class_refusals_in(source: String, wanted: String) -> Int {
 // the spec is built from its bound roster row inside assess_and_admit; (a) handing a spec to the
 // production entry does not type (it has no spec parameter), and (b) handing one to the
 // spec-taking assessor step is refused at its seal, while (c) the canonical row-taking call compiles.
-// AT ONE INTERFACE: each probe imports only gunbc.live_deploy.role_singleton_convergence, the module
-// that declares the assessor and its sealed spec-taking step, never the apply tree, and compiles once
-// per claim. The canonical apply route's control is the one in the effect-boundary claims below.
+// THE ROUTE, NOT ONLY A REFUSAL. The probe hands a spec to the UNSEALED production entry
+// (live_deploy_apply_with_access), so no seal can refuse it: the only refusal it can draw is the label
+// wall's, because the entry has no spec parameter. Zero seal refusals is asserted beside it, so the
+// claim cannot pass on a ConstructorCallAdmissionRefused standing in for the missing parameter -- which
+// is what a probe aimed at the sealed assessor itself drew (measured: only ConstructorCallAdmissionRefused
+// on assess_and_admit, never the label wall). One compile per claim.
 test fn no_caller_supplied_spec_reaches_the_role_singleton_assessment() -> Bool {
-  class_refusals_in(source: spec_to_assessor_source, wanted: "CallArgumentNameUnknown") >= 1
+  class_refusals_in(source: spec_to_production_apply_source, wanted: "CallArgumentNameUnknown") >= 1
+    && admission_refusals_in(source: spec_to_production_apply_source) == 0
 }
 
 test fn an_altered_spec_is_refused_at_the_assessor_seal() -> Bool {
