@@ -7,9 +7,10 @@ import gunbc.workspace_slot_mutation { workspace_slot_mutation_supply_open }
 import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
 import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
 import std.types { String, NonEmptyStr, Bool }
-import std.measure { byte_size_count, hardware_thread_count_value }
-import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, json_bool, serialize_json }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import std.measure { byte_size_count, hardware_thread_count_value, byte_size, hardware_thread_count }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_nat, json_field_bool, json_field_value }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_bool, serialize_json }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.workspace_commissioning_transaction {
   WorkspaceCommissioningProvenance, WorkspaceCommissioningRecord,
   WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted,
@@ -83,6 +84,42 @@ fn workspace_commissioning_record_read(value: NonEmptyStr, provenance: Workspace
   } else if value == workspace_commissioning_record_text(record: committed) {
     WorkspaceCommissioningRecordRead { record: committed }
   } else { WorkspaceCommissioningRecordUnreadable { reason: "commissioning record is malformed or belongs to different provenance" } }
+}
+
+fn workspace_commissioning_record_field(doc: JsonValue, field: String) -> String {
+  match json_field_value(r: json_field_string(obj: doc, key: field)) { Present { value: v } => v Absent => "" }
+}
+
+// THE PROVENANCE IS RECOVERED FROM THE RECORD AND ADMITTED ONLY BY EXACT RE-RENDER. A consumer that
+// holds no reviewed directive (preparation, which runs after commissioning) reads the subject the
+// record names; the canonical record text is the authority, so an unknown, missing or duplicated
+// field, a different slot, or any non-canonical spelling refuses rather than being parsed leniently.
+// The recovered provenance is then observed through workspace_commissioning_store_observe like any other.
+fn workspace_commissioning_record_provenance(value: NonEmptyStr, slot: RunnerSlotIdentity) -> WorkspaceCommissioningProvenance? {
+  match parse_json_document(s: value as String) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => {
+      let cpu = json_field_value(r: json_field_nat(obj: doc, key: "cpu_budget"))
+      let envelope = json_field_value(r: json_field_nat(obj: doc, key: "attempt_envelope_bytes"))
+      let no_swap = json_field_value(r: json_field_bool(obj: doc, key: "no_swap"))
+      match cpu { Absent => none Present { value: cpu_threads } => match envelope { Absent => none Present { value: envelope_bytes } => match no_swap { Absent => none Present { value: swap_free } =>
+        if workspace_commissioning_record_field(doc: doc, field: "plan_hash") == "" || workspace_commissioning_record_field(doc: doc, field: "source_revision") == "" || workspace_commissioning_record_field(doc: doc, field: "installed_tree_digest") == ""
+          || workspace_commissioning_record_field(doc: doc, field: "controller_digest") == "" || workspace_commissioning_record_field(doc: doc, field: "guest_image_digest") == "" || workspace_commissioning_record_field(doc: doc, field: "sanitation_observation") == "" { none }
+        else {
+          let provenance = WorkspaceCommissioningProvenance { slot: slot, plan_hash: workspace_commissioning_record_field(doc: doc, field: "plan_hash") as NonEmptyStr,
+            source_revision: workspace_commissioning_record_field(doc: doc, field: "source_revision") as NonEmptyStr, installed_tree_digest: workspace_commissioning_record_field(doc: doc, field: "installed_tree_digest") as NonEmptyStr,
+            controller_digest: workspace_commissioning_record_field(doc: doc, field: "controller_digest") as NonEmptyStr, guest_image_digest: workspace_commissioning_record_field(doc: doc, field: "guest_image_digest") as NonEmptyStr,
+            cpu_budget: hardware_thread_count(count: cpu_threads), attempt_envelope: byte_size(count: envelope_bytes), no_swap: swap_free,
+            sanitation_observation: workspace_commissioning_record_field(doc: doc, field: "sanitation_observation") as NonEmptyStr }
+          match workspace_commissioning_record_read(value: value, provenance: provenance) {
+            WorkspaceCommissioningRecordRead { record: _ } => Present { value: provenance }
+            WorkspaceCommissioningRecordAbsent => none
+            WorkspaceCommissioningRecordUnreadable { reason: _ } => none
+          }
+        }
+      } } }
+    }
+  }
 }
 
 // Only our exact canonical prepared/committed records for the expected subject are admitted.
@@ -247,5 +284,22 @@ fn workspace_commissioning_store_restore_admission(snapshot: WorkspaceCommission
         WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
         WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
       } }
+  }
+}
+
+// Preparation's reader: the slot's own committed record names its provenance, which is then
+// re-observed and admitted by exactly the path a directive-holding caller uses. An absent,
+// prepared-only, malformed or foreign record never becomes supply.
+fn workspace_commissioning_committed_for_slot(slot: RunnerSlotIdentity) -> WorkspaceCommissioningSupplyReadback {
+  match observe_cas_slot_state(root: workspace_commissioning_store_root, key: runner_slot_instance_name(slot: slot) as NonEmptyStr) {
+    CasObservedReadable { readable: CasReadableAbsent } => WorkspaceCommissioningSupplyRefused { reason: "slot has no commissioning record" }
+    CasObservedUnreadable { cause: _ } => WorkspaceCommissioningSupplyRefused { reason: "commissioning CAS head is unreadable" }
+    CasObservedReadable { readable: CasReadablePresent { version } } => match workspace_commissioning_record_provenance(value: version.value, slot: slot) {
+      Absent => WorkspaceCommissioningSupplyRefused { reason: "commissioning record is malformed or names another slot" }
+      Present { value: provenance } => match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+        WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningSupplyRefused { reason: reason }
+        WorkspaceCommissioningStoreObserved { snapshot } => workspace_commissioning_store_admit_supply(snapshot: snapshot)
+      }
+    }
   }
 }

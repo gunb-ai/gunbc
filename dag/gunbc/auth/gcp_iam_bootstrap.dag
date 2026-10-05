@@ -3,6 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap
 import std.types { String, NonEmptyStr, Secret, List, Bool, Int, path_segment_is_safe, Timestamp }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import std.list { distinct_by_key }
 import extdeps.google.userinfo
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
@@ -20,7 +21,11 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.secret_provision_actuator {
+  observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
+  SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
+}
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present,
   FederationClassified, FederationUnclassified, rest_ok, rest_refusal_text, outcome_is_not_found,
@@ -86,6 +91,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
+    concat("Grant-set secrets created bare (no version) when absent; their accessor cells remain approval-gated: ", join(map(gcp_iam_converge_grant_set_secrets(), x => x as String), ",")),
     bootstrap_authority_dependency_plan(),
     concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
     "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
@@ -118,6 +124,200 @@ fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token:
         }
       }
     }
+  }
+}
+
+// A GRANT SET'S SECRET IS CREATED BARE HERE, as a target's pool and account are, so iam-converge's
+// per-secret policy role has a resource to be bound on and no recurring identity needs the
+// project-level secretmanager.secrets.create. Bare means no version: the container carries no
+// payload until the mint flow adds one.
+//
+// A CREATE IS JOURNALED ACROSS RUNS, with the election pattern this module already uses for the
+// temporary authority and the pool initialization (iam_authority_record, iam_authority_pin,
+// WriteCreateNew under target/). A GET that answers 404 after an ambiguous create does not establish
+// absence (gunbc.secret_provision_actuator SecretContainerCreation), so the fact that a create may
+// have committed must outlive the run that issued it. Per secret and operation (the bootstrap
+// receipt) the journal holds an election written BEFORE CreateSecret, then exactly one of:
+//   closed   -- the container was observed present (after a definite create, or later);
+//   refused  -- the service definitely refused; a new operation may elect again;
+//   disposed -- an explicit operator disposition (iam_bootstrap_custody_create_dispose).
+// An election with none of these is UNRESOLVED and blocks every later automatic create of that
+// secret, even when a later GET answers absent; observing the container present settles it.
+type CustodyContainerObservation = CustodyObservedPresent | CustodyObservedAbsent | CustodyObservationRefused { cause: String }
+
+type CustodyContainerCreateOutcome = CustodyCreated | CustodyCreateRefused { cause: String } | CustodyCreateOutcomeUnknown { cause: String }
+
+type CustodyCreateJournal = CustodyJournalRead { unresolved: List<String> } | CustodyJournalUnreadable { cause: String }
+
+type CustodyContainerStep
+  = CustodyContainerLeave
+  | CustodyContainerSettle { operations: List<String> }
+  | CustodyContainerCreateBare
+  | CustodyContainerRefuse { reason: String }
+
+type CustodyAfterCreate = CustodyReadBack | CustodyCreateRefusedDefinitely { reason: String } | CustodyCreateStops { reason: String }
+
+type CustodyJournalMark = CustodyMarkElected | CustodyMarkClosed | CustodyMarkRefused | CustodyMarkDisposed
+
+// A Secret Manager id admits only letters, digits, '-' and '_', so the '.' around it makes one
+// secret's journal prefix never a prefix of another's.
+fn custody_journal_prefix(secret: NonEmptyStr) -> String {
+  join(["gcp-iam-custody-create.", secret as String, "."], "")
+}
+
+fn custody_journal_mark_suffix(mark: CustodyJournalMark) -> String {
+  match mark { CustodyMarkElected => "-elected.txt"  CustodyMarkClosed => "-closed.txt"  CustodyMarkRefused => "-refused.txt"  CustodyMarkDisposed => "-disposed.txt" }
+}
+
+fn custody_journal_name(secret: NonEmptyStr, operation: String, mark: CustodyJournalMark) -> String {
+  join([custody_journal_prefix(secret: secret), operation, custody_journal_mark_suffix(mark: mark)], "")
+}
+
+fn custody_journal_wire(secret: NonEmptyStr, operation: String) -> String {
+  join([fleet_secrets_project_id as String, "\n", iam_bootstrap_resource_key(resource: BootstrapSecret { secret: secret }), "\n", operation, "\n"], "")
+}
+
+// THE LISTING ONLY DISCOVERS CANDIDATE OPERATIONS: every operation with any mark of this secret. No
+// mark is believed from its name; each is read below.
+fn custody_candidate_operations(secret: NonEmptyStr, listing: String) -> List<String> {
+  let prefix = custody_journal_prefix(secret: secret)
+  let found = flat_map(split(s: listing, delimiter: "\n"), n => if !starts_with(s: n, prefix: prefix) { [] } else {
+    flat_map([CustodyMarkElected, CustodyMarkClosed, CustodyMarkRefused, CustodyMarkDisposed], m => {
+      let suffix = custody_journal_mark_suffix(mark: m)
+      if ends_with(s: n, suffix: suffix) { [substring(s: n, start: string_length(s: prefix), end: string_length(s: n) - string_length(s: suffix))] } else { [] }
+    })
+  })
+  distinct_by_key(xs: found, key: x => x)
+}
+
+// ONE OPERATION'S MARKS AS READ, each through iam_authority_record, as the authority journal reads its.
+type CustodyOperationRecords {
+  operation: String
+  elected: IamAuthorityRecord
+  closed: IamAuthorityRecord
+  refused: IamAuthorityRecord
+  disposed: IamAuthorityRecord
+}
+
+// A MARK COUNTS ONLY WHEN ITS BYTES ARE THIS SECRET'S AND OPERATION'S WIRE. A marker interrupted after
+// WriteCreateNew, corrupt, or restored from elsewhere is not a resolution: it makes the journal
+// unreadable, which refuses, rather than settling an election and admitting a re-create.
+fn custody_record_valid(record: IamAuthorityRecord, wire: String) -> Bool {
+  iam_authority_record_matches(record: record, wire: wire)
+}
+
+fn custody_journal_of(secret: NonEmptyStr, records: List<CustodyOperationRecords>) -> CustodyCreateJournal {
+  let invalid = filter(records, r => {
+    let wire = custody_journal_wire(secret: secret, operation: r.operation)
+    let marks = [r.elected, r.closed, r.refused, r.disposed]
+    !path_segment_is_safe(raw: r.operation)
+      || !all(marks, m => custody_record_valid(record: m, wire: wire))
+      || (!iam_authority_record_present(record: r.elected) && any([r.closed, r.refused, r.disposed], m => iam_authority_record_present(record: m)))
+  })
+  if count(invalid) > 0 {
+    CustodyJournalUnreadable { cause: join(["create journal records are unreadable, carry other bytes, or close an election that is absent: ", join(map(invalid, r => r.operation), ",")], "") }
+  } else {
+    CustodyJournalRead { unresolved: map(filter(records, r => iam_authority_record_present(record: r.elected)
+      && !any([r.closed, r.refused, r.disposed], m => iam_authority_record_present(record: m))), r => r.operation) }
+  }
+}
+
+fn custody_container_step(secret: NonEmptyStr, o: CustodyContainerObservation, journal: CustodyCreateJournal) -> CustodyContainerStep {
+  match journal {
+    CustodyJournalUnreadable { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the create journal is unreadable, so an earlier ambiguous create cannot be excluded: ", cause], "") }
+    CustodyJournalRead { unresolved } => match o {
+      CustodyObservationRefused { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the container could not be observed: ", cause], "") }
+      CustodyObservedPresent => if count(unresolved) == 0 { CustodyContainerLeave } else { CustodyContainerSettle { operations: unresolved } }
+      CustodyObservedAbsent => if count(unresolved) == 0 { CustodyContainerCreateBare } else {
+        CustodyContainerRefuse { reason: join([secret as String, ": an earlier create is unresolved (", join(unresolved, ","), "), and absence after an ambiguous create is not evidence; no automatic create until the container is observed or the operator disposes it (iam_bootstrap_custody_create_dispose)"], "") }
+      }
+    }
+  }
+}
+
+fn custody_after_create(secret: NonEmptyStr, c: CustodyContainerCreateOutcome) -> CustodyAfterCreate {
+  match c {
+    CustodyCreated => CustodyReadBack
+    CustodyCreateRefused { cause } => CustodyCreateRefusedDefinitely { reason: join([secret as String, ": bare container creation refused: ", cause], "") }
+    CustodyCreateOutcomeUnknown { cause } => CustodyCreateStops { reason: join([secret as String, ": bare container creation outcome unknown; its election stays unresolved and blocks every later automatic create: ", cause], "") }
+  }
+}
+
+fn custody_observation_of(o: SecretObservationOutcome) -> CustodyContainerObservation {
+  match o {
+    SecretContainerObserved { container: _ } => CustodyObservedPresent
+    SecretContainerAbsent { project: _, secret_id: _ } => CustodyObservedAbsent
+    SecretObservationRefused { cause } => CustodyObservationRefused { cause: cause as String }
+  }
+}
+
+fn custody_create_outcome_of(c: SecretContainerCreation) -> CustodyContainerCreateOutcome {
+  match c {
+    SecretContainerCreated { container: _ } => CustodyCreated
+    SecretContainerCreationRefused { cause } => CustodyCreateRefused { cause: cause as String }
+    SecretContainerCreationOutcomeUnknown { cause } => CustodyCreateOutcomeUnknown { cause: cause as String }
+  }
+}
+
+fn custody_journal_read(secret: NonEmptyStr) -> CustodyCreateJournal {
+  let listed = Filesystem.List(path: "target")
+  if !listed.success { CustodyJournalUnreadable { cause: "target/ could not be listed" } }
+  else { custody_journal_of(secret: secret, records: map(custody_candidate_operations(secret: secret, listing: listed.entries), op => CustodyOperationRecords {
+    operation: op,
+    elected: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkElected)),
+    closed: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkClosed)),
+    refused: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkRefused)),
+    disposed: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkDisposed)),
+  })) }
+}
+
+fn custody_journal_close(secret: NonEmptyStr, operations: List<String>) -> String {
+  fold(operations, init: "", f: (prior, op) => if prior != "" { prior }
+    else if iam_authority_pin(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkClosed), wire: custody_journal_wire(secret: secret, operation: op)) { "" }
+    else { join([secret as String, ": observed present but the closing journal mark for ", op, " could not be recorded"], "") })
+}
+
+fn iam_bootstrap_ensure_custody_container(secret: NonEmptyStr, token: Secret) -> String {
+  let op = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
+  if !path_segment_is_safe(raw: op) { "custody container creation needs the safe bootstrap receipt as its operation identity" }
+  else { match custody_container_step(secret: secret, o: custody_observation_of(o: observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token)), journal: custody_journal_read(secret: secret)) {
+    CustodyContainerLeave => ""
+    CustodyContainerSettle { operations } => custody_journal_close(secret: secret, operations: operations)
+    CustodyContainerRefuse { reason } => reason
+    CustodyContainerCreateBare =>
+      if !Filesystem.WriteCreateNew(path: concat("target/", custody_journal_name(secret: secret, operation: op, mark: CustodyMarkElected)), content: custody_journal_wire(secret: secret, operation: op)).success {
+        concat(secret as String, ": the create election could not be recorded or was already taken by this operation; no create issued")
+      } else { match custody_after_create(secret: secret, c: custody_create_outcome_of(c: create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token))) {
+        CustodyCreateStops { reason } => reason
+        CustodyCreateRefusedDefinitely { reason } =>
+          if iam_authority_pin(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkRefused), wire: custody_journal_wire(secret: secret, operation: op)) { reason }
+          else { concat(reason, "; the refusal could not be journaled, so the election stays unresolved") }
+        CustodyReadBack =>
+          match custody_observation_of(o: observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token)) {
+            CustodyObservedPresent => custody_journal_close(secret: secret, operations: [op])
+            CustodyObservedAbsent => concat(secret as String, ": created but not yet visible on readback; the election stays unresolved and no rights are granted")
+            CustodyObservationRefused { cause } => join([secret as String, ": created but readback refused; the election stays unresolved: ", cause], "")
+          }
+      } }
+  } }
+}
+
+// THE ONLY RETIREMENT OF AN UNRESOLVED CREATE THAT NO OBSERVATION SETTLES: an operator names the
+// secret and the operation, having established out of band that the create did not commit. It
+// refuses for a secret outside the grant sets, an unsafe operation, an election that does not exist,
+// or one already closed, refused or disposed.
+fn iam_bootstrap_custody_create_dispose() -> ProcessExit {
+  let secret = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_CUSTODY_SECRET")
+  let op = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_CUSTODY_OPERATION")
+  match filter(gcp_iam_converge_grant_set_secrets(), x => (x as String) == secret).first() {
+    Absent => exit_failure(reason: "the named secret is not a grant-set custody secret")
+    Present { value: s } => if !path_segment_is_safe(raw: op) { exit_failure(reason: "the operation identity is not a safe receipt") }
+      else { match custody_journal_read(secret: s) {
+        CustodyJournalUnreadable { cause } => exit_failure(reason: cause)
+        CustodyJournalRead { unresolved } => if !any(unresolved, x => x == op) { exit_failure(reason: "no unresolved create election exists for that secret and operation") }
+          else if iam_authority_pin(name: custody_journal_name(secret: s, operation: op, mark: CustodyMarkDisposed), wire: custody_journal_wire(secret: s, operation: op)) { ExitSuccess }
+          else { exit_failure(reason: "the disposition could not be recorded") }
+      } }
   }
 }
 
@@ -251,8 +451,10 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     BootstrapIdentities => {
       let own = fold([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], init: "", f: (prior, f) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: true, token: token) })
-      if own != "" { own } else { fold(gcp_iam_converge_targets, init: "", f: (prior, f) =>
+      let targets = if own != "" { own } else { fold(gcp_iam_converge_targets, init: "", f: (prior, f) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: false, token: token) }) }
+      if targets != "" { targets } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
+        if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
     }
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
     BootstrapDeny => {
@@ -362,9 +564,11 @@ fn iam_bootstrap_positive_probes(token: Secret) -> String {
 fn iam_bootstrap_negative_probes(token: Secret) -> String {
   let accounts = fold([iam_observe_service_account, iam_converge_service_account], init: "", f: (prior, account) =>
     if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: ["iam.serviceAccounts.setIamPolicy"], expected: [], token: token) })
-  if accounts != "" { accounts } else {
+  let pool = if accounts != "" { accounts } else {
     iam_bootstrap_check_probe(resource: BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id }, requested: ["iam.workloadIdentityPoolProviders.create"], expected: [], token: token)
   }
+  if pool != "" { pool } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
+    if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapSecret { secret: secret }, requested: grant_set_payload_permissions, expected: [], token: token) }) }
 }
 
 fn iam_bootstrap_is_forbidden(outcome: RestOutcome) -> Bool {

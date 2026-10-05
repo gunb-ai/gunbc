@@ -37,6 +37,10 @@ import gunbc.fleet.app_control_plane_inspection {
   HookDeviation, HookTlsDiverges, HookContentTypeDiverges, HookSecretDiverges, HookDeliveriesRejected,
   HookUnknown, DeliveryLogUnread, DeliveryWindowEmpty,
   app_control_plane_receipt_text,
+  HookConfigReadRefusal, HookConfigReadRefused, HookConfigUndecodable,
+  hook_config_attempt_of_response,
+  HookStanding, HookInspectedStanding, HookConfigUnread, HookNotAttempted,
+  hook_standing_of, app_control_plane_failure,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -393,8 +397,11 @@ data observed_registration_row: ObservedAppRegistration = AppRegistrationReadbac
 fn receipt_for(config: GitHubAppHookConfig, deliveries_body: String) -> String {
   app_control_plane_receipt_text(
     registration: observed_registration_row,
-    hook: hook_with(config: config, deliveries_body: deliveries_body),
-    assessment: assess_hook(config: config, deliveries_body: deliveries_body),
+    registration_assessment: GoalSatisfied { evidence: gunbai_ci_declared.app_id },
+    hook: HookInspectedStanding {
+      observed: hook_with(config: config, deliveries_body: deliveries_body),
+      assessment: assess_hook(config: config, deliveries_body: deliveries_body),
+    },
     observed_on: "2026-09-05"
   )
 }
@@ -427,4 +434,121 @@ test fn witness_receipt_retains_the_reachability_observation() -> Bool {
     && contains(dead, "standing=diverged:deliveries_rejected:2/2")
     && contains(empty, "deliveries=empty_window")
     && contains(empty, "standing=indeterminate:")
+}
+
+// ---------------------------------------------------------------------------------------------
+// R5 - A REFUSED HOOK READ STILL WRITES THE RECEIPT, AND STILL FAILS.
+//
+// Fleet-converge run 37215976003: GetAppRegistrationJson succeeded, GetAppHookConfigJson answered
+// `curl: (22) The requested URL returned error: 404`, and the run exited with no receipt, so the
+// App's permission map was read and discarded. GitHub documents only 200 for GET /app/hook/config,
+// and the transport carries no status, so a 404 is NOT read as an absent hook: every non-success
+// refuses (the RED below, a 404 and a 500 alike). What changes is that the refusal becomes the
+// hook's STANDING in a receipt that carries the registration, rather than an abort before it.
+//
+// The registration side runs the real join (inspect_registration over the production decoder and
+// assessor); the hook side runs inspect_goal over an observer that replays through the production
+// response-to-attempt step, hook_config_attempt_of_response.
+// ---------------------------------------------------------------------------------------------
+
+data hook_404_stderr: String = "curl: (22) The requested URL returned error: 404"
+
+data hook_500_stderr: String = "curl: (22) The requested URL returned error: 500"
+
+fn replay_hook(app: NonEmptyStr, request: ReplayedResponse) -> ObservationAttempt<HookObserved, HookConfigReadRefusal> {
+  match hook_config_attempt_of_response(success: request.success, stdout: request.stdout, stderr: request.stderr) {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: config } => ObservationEstablished { observed: hook_with(config: config, deliveries_body: deliveries_accepted_json) }
+  }
+}
+
+fn hook_standing_for(response: ReplayedResponse) -> HookStanding {
+  hook_standing_of(inspection: inspect_goal(
+    subject: gunbai_ci_declared.slug,
+    goal: gunbai_ci_hook_goal,
+    request: response,
+    observe: replay_hook,
+    assess: assess_app_hook,
+  ))
+}
+
+fn refused_with(stderr: String) -> ReplayedResponse {
+  ReplayedResponse { success: false, stdout: "", stderr: stderr }
+}
+
+// The receipt the wet entry writes for a registration response and a hook response, and the
+// failure it then exits with -- the same two calls app_control_plane_inspect_wet makes, in order.
+type ControlPlaneOutcome { receipt: String, failure: String? }
+
+fn control_plane_outcome(registration_body: String, hook: ReplayedResponse) -> ControlPlaneOutcome? {
+  match inspect_registration(response: answered(body: registration_body)) {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: _ } => Absent
+    GoalInspected { subject: _, goal: _, request: _, observed, assessment } => {
+      let standing = match assessment {
+        GoalSatisfied { evidence: _ } => hook_standing_for(response: hook)
+        _ => HookNotAttempted
+      }
+      Present { value: ControlPlaneOutcome {
+        receipt: app_control_plane_receipt_text(
+          registration: observed,
+          registration_assessment: assessment,
+          hook: standing,
+          observed_on: "2026-10-04"
+        ),
+        failure: app_control_plane_failure(registration_assessment: assessment, hook: standing),
+      } }
+    }
+  }
+}
+
+test fn witness_hook_404_still_writes_the_permission_receipt_and_fails() -> Bool {
+  match control_plane_outcome(registration_body: registration_gunbai_ci_json, hook: refused_with(stderr: hook_404_stderr)) {
+    Absent => false
+    Present { value: outcome } =>
+      contains(outcome.receipt, "observed_permissions=metadata:read,organization_self_hosted_runners:write")
+        && contains(outcome.receipt, "registration_standing=satisfied")
+        && contains(outcome.receipt, "hook=unread:AppHookConfigReadRefused: curl: (22) The requested URL returned error: 404")
+        && !contains(outcome.receipt, "hook=read")
+        && match outcome.failure {
+          Absent => false
+          Present { value: reason } => contains(reason, "AppHookConfigReadRefused")
+        }
+  }
+}
+
+// THE RED: no non-success response establishes a hook -- not a 404 (undocumented, so not
+// absence) and not a 500. Each is HookConfigReadRefused, never a config and never a fourth arm.
+fn is_read_refused(attempt: ObservationAttempt<GitHubAppHookConfig, HookConfigReadRefusal>) -> Bool {
+  match attempt {
+    ObservationRefused { cause: HookConfigReadRefused { stderr: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_every_non_success_hook_read_refuses() -> Bool {
+  is_read_refused(attempt: hook_config_attempt_of_response(success: false, stdout: "", stderr: hook_404_stderr))
+    && is_read_refused(attempt: hook_config_attempt_of_response(success: false, stdout: "", stderr: hook_500_stderr))
+    && is_read_refused(attempt: hook_config_attempt_of_response(success: false, stdout: hook_json(secret_member: ", \"secret\": \"********\""), stderr: hook_404_stderr))
+}
+
+test fn witness_diverged_registration_writes_a_receipt_without_attempting_the_hook() -> Bool {
+  match control_plane_outcome(registration_body: registration_gunbai_ci_read_only_runners_json, hook: answered(body: hook_json(secret_member: ", \"secret\": \"********\""))) {
+    Absent => false
+    Present { value: outcome } =>
+      contains(outcome.receipt, "observed_permissions=metadata:read,organization_self_hosted_runners:read")
+        && contains(outcome.receipt, "registration_standing=diverged:")
+        && contains(outcome.receipt, "hook=not_attempted:")
+        && match outcome.failure { Absent => false, Present { value: reason } => contains(reason, "AppRegistration diverged") }
+  }
+}
+
+// The positive control: the only outcome that does not fail is both sides satisfied.
+test fn witness_satisfied_registration_and_hook_is_the_only_success() -> Bool {
+  match control_plane_outcome(registration_body: registration_gunbai_ci_json, hook: answered(body: hook_json(secret_member: ", \"secret\": \"********\""))) {
+    Absent => false
+    Present { value: outcome } =>
+      contains(outcome.receipt, "hook=read")
+        && contains(outcome.receipt, "standing=satisfied")
+        && match outcome.failure { Absent => true, Present { value: _ } => false }
+  }
 }

@@ -292,6 +292,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_network_real_reader_witness_test", function: "real_reader_takes_the_route_the_reader_identity_dictates" },
+      entry: "dag/test/claim/workspace_network_real_reader_witness_test.dag",
+      function: "real_reader_takes_the_route_the_reader_identity_dictates",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.scm_repository_save_real_execution_witness", function: "scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes" },
       entry: "dag/test/claim/scm_repository_save_real_execution_witness_test.dag",
       function: "scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes",
@@ -2876,6 +2882,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
       function: "client_list_reconciles_recorded_intent",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_typed_unavailable_disables_create" },
+      entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
+      function: "client_typed_unavailable_disables_create",
+      expectation: ExpectedToHold {}
     }
   ]
 }
@@ -2940,6 +2952,10 @@ fn local_repo_wet_premise_roster() -> List<WetPremisedClaim> {
     },
     WetPremisedClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_list_reconciles_recorded_intent" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    },
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_typed_unavailable_disables_create" },
       premise: RunnerBrowserToolchainReadyForJobUser {}
     }
   ]

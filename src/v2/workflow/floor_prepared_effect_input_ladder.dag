@@ -14,6 +14,8 @@ import std.materialization_ladder {
 }
 import std.measure { byte_size }
 import v2.workflow.floor_pure_producer_share {
+  floor_preparation_frame, floor_claim_frame, floor_claim_site, cross_claim_tier_retention,
+  cross_claim_share_provider,
   CarriedInputWarmRow, PreparedEffectInput, carried_input_warm_producers,
   floor_cross_claim_carried_input_warm_rows, floor_cross_claim_prepared_effect_inputs,
   prepared_effect_input_acquisitions
@@ -41,44 +43,6 @@ import v2.std.text { String }
 // provider and lets that authority decide; restating the rule would be the fork the ladder exists
 // to prevent.
 
-// THE FRAME PATH, and each frame's kind is a fact about the floor's own execution rather than a
-// label. Preparation is a SHARED-STATE frame: one process, one prepared subject, and the carried
-// value is bound in it. A claim is an ISOLATED-CHILDREN frame because the floor builds a fresh
-// evaluation frame per claim deliberately — one witness must not contaminate the next — which is
-// exactly why the eval-frame memo dies at every claim boundary and why the obligation LCA is
-// preparation rather than any claim.
-fn floor_preparation_frame() -> Frame {
-  Frame { name: "required-floor-preparation", kind: SharedStateFrame }
-}
-
-fn floor_claim_frame(name: String) -> Frame {
-  Frame { name: name, kind: IsolatedChildrenFrame }
-}
-
-fn floor_claim_site(name: String) -> List<Frame> {
-  [floor_preparation_frame(), floor_claim_frame(name: name)]
-}
-
-// THE PROVIDER: the cross-claim pure-producer tier, described as it actually behaves.
-//
-// scope      — the preparation frame, which is the least common visible ancestor of the claims.
-// coverage   — the enrolled identities and nothing else; admission is a declared roster, never
-//              every pure call, because cross-claim retention is byte-unbounded by construction.
-// tier       — MemoTier { ContentKeyed }: an in-process store whose key is the resolved fn node
-//              plus the portable argument row, and the carried value IS that argument row.
-// retention  — released when the prepared subject is cleared, with the exact 256 MiB ceiling the
-//              tier enforces at publication and RefuseNewStore as its at-capacity disposition
-//              (an over-budget producer recomputes per claim as if never enrolled).
-fn cross_claim_tier_retention() -> ProviderRetention {
-  ProviderRetention {
-    release_policy: ReleasedAtProviderScopeExit,
-    capacity: CapacityBounded {
-      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 268435456) } },
-      at_capacity: RefuseNewStore
-    }
-  }
-}
-
 fn carried_input_identities() -> List<String> {
   concat(
     prepared_effect_input_acquisitions(inputs: floor_cross_claim_prepared_effect_inputs),
@@ -86,14 +50,10 @@ fn carried_input_identities() -> List<String> {
   )
 }
 
+// THE PROVIDER is the cross-claim tier, declared once in v2.workflow.floor_pure_producer_share
+// (`cross_claim_share_provider`) and covering, here, the carried identities.
 fn prepared_effect_input_provider() -> CacheProvider {
-  CacheProvider {
-    id: "floor-cross-claim-pure-share",
-    scope: [floor_preparation_frame()],
-    coverage: CoversIdentities { identities: carried_input_identities() },
-    tier: MemoTier { keying: ContentKeyed },
-    retention: cross_claim_tier_retention()
-  }
+  cross_claim_share_provider(identities: carried_input_identities())
 }
 
 // THE DEMANDS, one per consuming claim frame, at the two natures this carry actually has.
