@@ -1,5 +1,6 @@
 module gunbc.spark.vllm_runtime_image_build
 
+import extdeps.crypto.hash { digest_shell_verify_line, sha256_digest }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
@@ -34,6 +35,7 @@ import gunbc.spark.fabric_blob_peer {
   fabric_blob_subject, fabric_blob_path, fabric_blob_root, fabric_blob_staging_directory, fabric_blob_pull_policy,
 }
 import gunbc.spark.vllm_image_identity {
+  glm53_kvplan_key, glm53_kvplan_tag,
   vllm_image_repository, glm53_image_repository, vllm_image_repository_for, glm53_derived_key_inputs, glm53_derived_key, glm53_derived_tag, vllm_image_build_key_inputs, vllm_image_build_key, vllm_image_tag_for_key, vllm_image_tag,
 }
 import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
@@ -378,7 +380,7 @@ fn glm53_derived_prepare_script() -> String {
     fold(flashinfer_0_7_0_dev20260910_wheels, init: "", f: (acc, w) => join([
       acc,
       "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String, "\n",
-      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+      digest_shell_verify_line(digest: sha256_digest(hex: w.sha256.hex as String as NonEmptyStr), file_path: join([dir, "/", w.filename as String], "") as NonEmptyStr), "\n",
     ], "")),
   ], "")
 }
@@ -502,6 +504,184 @@ fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionCon
                     }
                 }
             }
+            }
+          }
+        }
+      }
+  }
+}
+
+// ── THE KV ALLOCATION-PLAN v2 LAYER OVER THE GLM DERIVED IMAGE (deforking cut 8c) ─────────────────
+//
+// docs/runbooks/glm-kv-allocation-plan-image-rebuild.md as a modeled stage: the two Python files the v2
+// patch changes, taken from the converged source tree at the base revision, verified, patched,
+// verified again, and copied over the installed package in one layer above the derived image. Its
+// production and probe are gunbc.spark.glm53_kvplan_image.
+// THE PATCH IS ITS BYTES. The path is where the corpus holds it; the digest is its identity, verified on
+// the build host before it is applied.
+data glm53_kvplan_patch_path: NonEmptyStr = "dag/extdeps/vllm/patches/kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr
+data glm53_kvplan_patch_sha256: NonEmptyStr = "8267d86be0b7f2690119ed22d09e3299cea69debc6032c57f6eacf2fec8252c5" as NonEmptyStr
+
+type PinnedSourceFile {
+  path: NonEmptyStr
+  sha256_hex: NonEmptyStr
+}
+
+// THE FILES THE PATCH APPLIES TO, AT THE BASE REVISION, AND WHAT THEY MUST BE AFTER IT. The pre-patch
+// envs.py pin is the v1 patch header's: the v2 header states its pins are unchanged from v1, and its own
+// copy of the envs.py digest is 63 hex characters -- a transcription with one character lost, which no
+// sha256sum could match. Taking v1's 64-character digest is reading the record the v2 header points at,
+// and the host's sha256sum -c is what establishes it. The post-patch pins are the runbook's for v2.
+data glm53_kvplan_pre_patch_pins: List<PinnedSourceFile> = [
+  PinnedSourceFile { path: "vllm/envs.py" as NonEmptyStr, sha256_hex: "1a2c6121ef54aa4b7f8769db462a01446d012f3e99dfba249d4fa0576b373627" as NonEmptyStr },
+  PinnedSourceFile { path: "vllm/v1/engine/core.py" as NonEmptyStr, sha256_hex: "ef709a037077f48db65d381305a0427c25749bd5dc7997f3dec5b5539f1f0dc4" as NonEmptyStr },
+]
+
+data glm53_kvplan_post_patch_pins: List<PinnedSourceFile> = [
+  PinnedSourceFile { path: "vllm/envs.py" as NonEmptyStr, sha256_hex: "239d509314d44fd90c0aa2f39e8306c1d5976533763e4c2784d1ed97da774747" as NonEmptyStr },
+  PinnedSourceFile { path: "vllm/v1/engine/core.py" as NonEmptyStr, sha256_hex: "7ffe8efa43e532d41722509db90db0c0db57af1b44b2b5dcd2d47a9088c9245e" as NonEmptyStr },
+]
+
+// WHERE THE BASE INSTALLS vLLM: Debian's dist-packages for the recipe's Python, as the runbook reads it
+// in-image. The probe below prints the package directory from inside the produced image and the
+// production refuses unless it is this one, so a base that installed elsewhere cannot pass with the
+// patched files copied beside a package nothing imports.
+fn glm53_kvplan_package_dir(r: VllmContainerBuildRecipe) -> NonEmptyStr {
+  join(["/usr/local/lib/python", r.python_version as String, "/dist-packages/vllm"], "") as NonEmptyStr
+}
+
+fn glm53_kvplan_context_dir() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/glm53-kvplan"], "") as NonEmptyStr
+}
+
+fn glm53_kvplan_patch_remote_path() -> NonEmptyStr {
+  join([glm53_kvplan_context_dir() as String, "/kv-allocation-plan-emission-v2.patch"], "") as NonEmptyStr
+}
+
+fn glm53_kvplan_prepare_script_path() -> NonEmptyStr {
+  join([glm53_kvplan_context_dir() as String, "/prepare.sh"], "") as NonEmptyStr
+}
+
+fn glm53_kvplan_dockerfile_path() -> NonEmptyStr {
+  join([glm53_kvplan_context_dir() as String, "/Dockerfile"], "") as NonEmptyStr
+}
+
+fn sha256_check_line(dir: String, f: PinnedSourceFile) -> String {
+  join([digest_shell_verify_line(digest: sha256_digest(hex: f.sha256_hex), file_path: join([dir, "/", f.path as String], "") as NonEmptyStr), "\n"], "")
+}
+
+// feature:remote-shell-body-emission — dissolve-on: the bounded-remote-operation-sequence capability
+// gunbc.spark.vllm_runtime_image_build glm53_derived_prepare_script names (one class, one trigger). This
+// body is that capability's file-staging half: take the two files from the converged source tree at the
+// base revision, verify them, verify the patch, apply it, verify the result. Nothing falls back to an
+// unverified file: every check is `sha256sum -c` under `set -e`.
+fn glm53_kvplan_prepare_script() -> String {
+  let dir = glm53_kvplan_context_dir() as String
+  let src = vllm_source_dir() as String
+  join([
+    "set -e\n",
+    "rm -rf ", dir, "/vllm\n",
+    "mkdir -p ", dir, "/vllm/v1/engine\n",
+    join(map(glm53_kvplan_pre_patch_pins, f => join(["cp ", src, "/", f.path as String, " ", dir, "/", f.path as String, "\n"], "")), ""),
+    join(map(glm53_kvplan_pre_patch_pins, f => sha256_check_line(dir: dir, f: f)), ""),
+    digest_shell_verify_line(digest: sha256_digest(hex: glm53_kvplan_patch_sha256), file_path: glm53_kvplan_patch_remote_path()), "\n",
+    "cd ", dir, "\n",
+    "git apply --check ", glm53_kvplan_patch_remote_path() as String, "\n",
+    "git apply ", glm53_kvplan_patch_remote_path() as String, "\n",
+    join(map(glm53_kvplan_post_patch_pins, f => sha256_check_line(dir: dir, f: f)), ""),
+  ], "")
+}
+
+fn glm53_kvplan_dockerfile(derived_tag: NonEmptyStr, r: VllmContainerBuildRecipe) -> String {
+  let pkg = glm53_kvplan_package_dir(r: r) as String
+  join([
+    "FROM ", derived_tag as String, " AS glm53kvplan\n",
+    join(map(glm53_kvplan_post_patch_pins, f => join(["COPY ", f.path as String, " ", pkg, "/", substring(s: f.path as String, start: 5, end: length(f.path as String)), "\n"], "")), ""),
+  ], "")
+}
+
+fn glm53_kvplan_file_scope() -> FileTreeScope {
+  FileTreeScope { root_path: glm53_kvplan_context_dir() }
+}
+
+fn glm53_kvplan_prepare_steps(derived_tag: NonEmptyStr, r: VllmContainerBuildRecipe, patch_text: String) -> List<PlannedRemoteStep>? {
+  match typed_remote_file_write_seal(path: glm53_kvplan_patch_remote_path() as FilePath, content: patch_text, allowed_scope: glm53_kvplan_file_scope()) {
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    TypedRemoteFileWriteAdmitted { write: patch } =>
+      match typed_remote_file_write_seal(path: glm53_kvplan_prepare_script_path() as FilePath, content: glm53_kvplan_prepare_script(), allowed_scope: glm53_kvplan_file_scope()) {
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+        TypedRemoteFileWriteAdmitted { write: script } =>
+          match typed_remote_file_write_seal(path: glm53_kvplan_dockerfile_path() as FilePath, content: glm53_kvplan_dockerfile(derived_tag: derived_tag, r: r), allowed_scope: glm53_kvplan_file_scope()) {
+            TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+            TypedRemoteFileWriteAdmitted { write: dockerfile } => Present { value: [
+              PlannedRemoteStep {
+                identity: "kvplan-context-dir" as NonEmptyStr,
+                operation: RemoteArgv { argv: argv_words(command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: glm53_kvplan_context_dir() as String)) },
+              },
+              PlannedRemoteStep { identity: "kvplan-patch" as NonEmptyStr, operation: RemoteFileBytes { write: patch, mode: RemoteFileModeOwnerReadWrite } },
+              PlannedRemoteStep { identity: "kvplan-prepare-script" as NonEmptyStr, operation: RemoteFileBytes { write: script, mode: RemoteFileModeOwnerReadWrite } },
+              PlannedRemoteStep { identity: "kvplan-dockerfile" as NonEmptyStr, operation: RemoteFileBytes { write: dockerfile, mode: RemoteFileModeOwnerReadWrite } },
+              PlannedRemoteStep {
+                identity: "kvplan-prepare-run" as NonEmptyStr,
+                operation: RemoteArgv { argv: argv_words(command: posix_sh_script_command(path: glm53_kvplan_prepare_script_path())) },
+              },
+            ] }
+          }
+      }
+  }
+}
+
+fn glm53_kvplan_build_spec(derived: VllmImageIdentity) -> DockerBuildSpec {
+  DockerBuildSpec {
+    tag: glm53_kvplan_tag(derived_key: derived.build_key, patch_sha256_hex: glm53_kvplan_patch_sha256),
+    context_dir: glm53_kvplan_context_dir() as FilePath,
+    dockerfile: glm53_kvplan_dockerfile_path(),
+    target: "glm53kvplan" as NonEmptyStr,
+    platform: "linux/arm64" as NonEmptyStr,
+    build_args: [] as List<DockerBuildArg>,
+  }
+}
+
+// THE LAYER'S CONVERGENCE, with the derived stage's adoption/build/readback discipline: a tag already
+// present is adopted under its expected tag; a build that reports success is not believed until the
+// digest reads back.
+fn converge_glm53_kvplan_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, derived: VllmImageIdentity, r: VllmContainerBuildRecipe, patch_text: String) -> VllmImageBuild
+{
+  let tag = glm53_kvplan_tag(derived_key: derived.build_key, patch_sha256_hex: glm53_kvplan_patch_sha256)
+  let key = glm53_kvplan_key(derived_key: derived.build_key, patch_sha256_hex: glm53_kvplan_patch_sha256)
+  match vllm_docker_leg(ctx: ctx, step: "kvplan-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+    ImageLegFailed { step: st, cause: why } =>
+      VllmImageBuildRefused { step: st, cause: join(["the kvplan image query did not run, so nothing is known about whether the tag exists: ", why], "") }
+    ImageLegRan { stdout: digest } =>
+      if digest != "" {
+        VllmImageBuilt {
+          identity: VllmImageIdentity { tag: tag, local_config_digest: digest as NonEmptyStr, requested_from: derived.requested_from, build_key: key, provenance: AdoptedUnderExpectedTag },
+          already_present: true,
+        }
+      } else {
+        match glm53_kvplan_prepare_steps(derived_tag: derived.tag, r: r, patch_text: patch_text) {
+          Absent => VllmImageBuildRefused { step: "kvplan-prepare" as NonEmptyStr, cause: "the prepare payloads did not seal against the kvplan context scope" }
+          Present { value: steps } => {
+            let standings = run_remote_step_sequence(steps: steps, transport: FleetSsh { target: target, context: context })
+            if remote_step_sequence_failed(standings: standings) {
+              VllmImageBuildRefused { step: "kvplan-prepare" as NonEmptyStr, cause: remote_step_failure_causes_wire(standings: standings) }
+            } else {
+              match vllm_docker_leg(ctx: ctx, step: "kvplan-build" as NonEmptyStr, command: docker_build_spec_command(spec: glm53_kvplan_build_spec(derived: derived))) {
+                ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+                ImageLegRan { stdout: _ } =>
+                  match vllm_docker_leg(ctx: ctx, step: "kvplan-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+                    ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: join(["the kvplan build reported success and the readback did not run: ", why], "") }
+                    ImageLegRan { stdout: readback } =>
+                      if readback == "" {
+                        VllmImageBuildRefused { step: "kvplan-readback" as NonEmptyStr, cause: "the kvplan build reported success and no image carries the tag it was asked to write" }
+                      } else {
+                        VllmImageBuilt {
+                          identity: VllmImageIdentity { tag: tag, local_config_digest: readback as NonEmptyStr, requested_from: derived.requested_from, build_key: key, provenance: BuiltByThisRun },
+                          already_present: false,
+                        }
+                      }
+                  }
+              }
             }
           }
         }

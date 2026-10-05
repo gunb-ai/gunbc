@@ -1,6 +1,22 @@
 module gunbc.roadmap_page
+import gunbc.roadmap_issue_query { IssueQueryRow, issue_query_row_wire, issue_query_separator }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.roadmap_view_preferences { default_issue_view_preferences, issue_view_preferences_json }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.site.status { status_badge, status_tone }
+import gunbc.roadmap_surface_style { workspace_issue_columns }
+import gunbc.roadmap_presentation { issue_status_sort_rank }
+import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
+import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
+import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph_interactive }
+import gunbc.roadmap_presentation { dependency_cycle_touches }
+import gunbc.principal_mention { principal_mention_read, principal_mention_markdown }
+import extdeps.uri { uri_wire }
+import gunbc.site.controls { site_client_path }
+import gunbc.site.document { SiteStyles, site_document }
 
 import gunbc.site.robot_mark { robot_mark_svg }
+import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigned_avatar }
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
@@ -10,7 +26,7 @@ import gunbc.roadmap_issue_command { IssueFormContext }
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
@@ -32,9 +48,7 @@ import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
-import extdeps.auth.oidc { OidcLoginPromptSelectAccount, oidc_login_prompt_label }
-import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
-import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_duration_var }
+import gunbc.roadmap_style { roadmap_styles, roadmap_css, round_fill_delay_var, round_fill_duration_var }
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
@@ -64,18 +78,8 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_levels, alignment_resolve, alignment_base_cadence_state, alignment_refusal_reason,
 }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
-import gunbc.roadmap_component {
-  roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
-  theme_toggle_label_prefix, theme_toggle_auto_value,
-  disclosure_mark_class, disclosure_mark_glyph,
-  workflow_controls_class,
-  dashboard_instance_class, dashboard_instance_label_class,
-  activity_ledger_class, activity_obligation_class,
-  activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
-  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
-  node_attempt_stale_class,
-  stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class,
-}
+import gunbc.roadmap_component { roadmap_dispatch_asset_path, disclosure_mark_class, disclosure_mark_glyph, workflow_controls_class, dashboard_instance_class, dashboard_instance_label_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_located_reason_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, node_attempt_stale_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class }
+import gunbc.site.controls { sound_toggle_class, theme_toggle_class, theme_toggle_label_prefix, theme_toggle_auto_value }
 import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
@@ -113,7 +117,7 @@ import gunbc.roadmap_presentation {
   IssueTableRow,
   worker_alive_from_process,
   IssueLinkView, IssueLinkPanel, issue_work_history_rounds,
-  issue_explanation, issue_first_open_kind, issue_wait_state_label,
+  issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
@@ -122,11 +126,10 @@ import extdeps.google.issue_tracker {
   IssueActionAssign, issue_action_wire,
   IssueButtonText, issue_button_idiom_wire,
   IssueActionAvailability, issue_action_availability_wire,
-  issue_assignee_unassigned_display,
   IssueResultsColumn, IssueResultsColumnKind,
   IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee,
   IssueColumnStatus, IssueColumnLastModified,
-  issue_results_columns, issue_results_column_kind_wire,
+  issue_results_column_kind_wire,
   avatar_initials_of, issue_avatar_standing_wire, AvatarStanding, AvatarAbsent,
 }
 import gunbc.roadmap_workflow_stage {
@@ -218,19 +221,9 @@ fn dashboard_instance_banner() -> Fragment {
 // and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated
 // claim for someone. The client program repaints both from storage on load, exactly as before.
 
-fn sound_toggle_control() -> Fragment {
-  el_attrs("button", [
-    attr(name: "class", value: sound_toggle_class ),
-    attr(name: "type", value: "button" ),
-  ], [ txt("sound") ])
-}
 
-fn theme_toggle_control() -> Fragment {
-  el_attrs("button", [
-    attr(name: "class", value: theme_toggle_class ),
-    attr(name: "type", value: "button" ),
-  ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
-}
+
+
 
 // A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT
 // wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A
@@ -243,94 +236,6 @@ fn theme_toggle_control() -> Fragment {
 
 data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH (operator ruling 2026-09-24, superseding the 2026-08-02 centered-measure frame): the page takes the full viewport like the issue-tracker model — the measure_page cap and auto-centering are retired from .header-inner, .roadmap, and .daily-workspace. The header element keeps its full-width surface and border — it is a chassis edge — and its content in .header-inner now flows edge to edge with the same side padding the content containers carry. measure_page survives only on the sandbox audition surfaces, which are deliberately narrow."
 
-// THE HEADER ACCOUNT AREA (owner ask 2026-09-26, DYNAMIC since the pre-rendered-body defect
-// 2026-09-27: the main page body is the belt's pre-rendered static body, so a statically rendered
-// account area could never reflect the per-request session — it showed Sign in forever after a
-// successful login). ONE AUTHORITY NOW: the static markup ALWAYS renders the Sign-in affordance
-// plus a HIDDEN session target (empty avatar/name fields), and the emitted client program fetches
-// GET /auth/session on load and swaps the target in when the response says authenticated — name
-// and avatar render from the SESSION RESPONSE alone; a 401, an absent flag, or a failed fetch
-// leaves Sign in, never an identity claim from a failed fetch. THE AVATAR rides the never-blocks
-// law: the session wire's OPTIONAL picture member renders as an <img> layered over the
-// client-computed initials (the standing flips to data-avatar="resolved" only when the picture
-// lands); an absent picture, a failed fetch, or a failed image all render the initials — the
-// /avatar/<principal> proxy endpoint is the tailnet-privacy follow-up, not a blocker.
-// THE ACCOUNT MENU (owner ask 2026-09-27): the chip is a BUTTON (avatar + name), not a bare
-// row — activating it toggles a small menu with the Google-account actions: Switch account
-// (a GET to /auth/login?prompt=select_account, the one admitted login prompt, so Google shows
-// its chooser) and Sign out (the native form POSTing /auth/logout: the 303 lands back here,
-// the fetch re-runs against the cleared cookie, Sign in returns). The menu ships hidden and
-// the emitted client owns the toggle; the static bytes still carry no identity claim.
-fn header_account_nodes() -> List<Fragment> {
-  let signin = el_attrs("a", [
-    attr(name: "class", value: "header-account header-account-signin" ),
-    attr(name: "href", value: auth_login_route_path ),
-    attr(name: "data-account-signin", value: "" ),
-    attr(name: "title", value: "sign in with Google" ),
-  ], [ txt("Sign in") ])
-  let avatar = el_attrs("span", [
-    attr(name: "class", value: "issue-avatar" ),
-    attr(name: "data-account-avatar", value: "" ),
-    attr(name: "data-avatar", value: "absent" ),
-  ], [])
-  let name = el_attrs("span", [
-    attr(name: "class", value: "header-account-name" ),
-    attr(name: "data-account-name", value: "" ),
-  ], [])
-  let trigger = el_attrs("button", [
-    attr(name: "class", value: "header-account-trigger" ),
-    attr(name: "type", value: "button" ),
-    attr(name: "data-account-trigger", value: "" ),
-    attr(name: "aria-haspopup", value: "menu" ),
-    attr(name: "aria-expanded", value: "false" ),
-  ], [ avatar, name ])
-  let switch_item = el_attrs("a", [
-    attr(name: "class", value: "header-account-menu-item" ),
-    attr(name: "href", value: join([auth_login_route_path, "?prompt=", oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String], "") ),
-    attr(name: "role", value: "menuitem" ),
-  ], [ txt("Switch account") ])
-  let signout_btn = el_attrs("button", [
-    attr(name: "class", value: "header-account-menu-item header-account-signout-btn" ),
-    attr(name: "type", value: "submit" ),
-    attr(name: "role", value: "menuitem" ),
-  ], [ txt("Sign out") ])
-  let signout_form = el_attrs("form", [
-    attr(name: "class", value: "header-account-signout" ),
-    attr(name: "method", value: "post" ),
-    attr(name: "action", value: auth_logout_route_path ),
-  ], [ signout_btn ])
-  let menu = el_attrs("span", [
-    attr(name: "class", value: "header-account-menu" ),
-    attr(name: "data-account-menu", value: "" ),
-    attr(name: "role", value: "menu" ),
-    attr(name: "hidden", value: "" ),
-  ], [ switch_item, signout_form ])
-  let session = el_attrs("span", [
-    attr(name: "class", value: "header-account header-account-session" ),
-    attr(name: "data-account-session", value: "" ),
-    attr(name: "hidden", value: "" ),
-  ], [ trigger, menu ])
-  [ el_class("span", "header-account-slot", [ signin, session ]) ]
-}
-
-// THE SHARED HEADER. Every page renders the same static account area (Sign in + the hidden
-// session target); the client swap personalizes it per request where a session exists.
-fn roadmap_header(page: String) -> Fragment {
-  el("header", [
-    el_class("div", "header-inner", concat(
-      [
-        el_class("span", "wordmark", [ txt("gunbc") ]),
-        el("h1", [ txt(page) ]),
-        header_surface_link(label: "workspace", href: "/"),
-        header_surface_link(label: "fleet", href: "/fleet"),
-        header_surface_link(label: "allocations", href: allocation_page_path),
-        sound_toggle_control(),
-        theme_toggle_control(),
-      ],
-      header_account_nodes())),
-  ])
-}
-
 // The header carries one link per SERVED page a human navigates between, so splitting the fleet
 // panels off the workspace does not make them unreachable. The link set is authored here rather
 // than derived from gunbc.roadmap_serve's route table on purpose and the reason is a layering one:
@@ -339,9 +244,7 @@ fn roadmap_header(page: String) -> Fragment {
 // which rows a person navigates to -- a fact this page owns. If the pair ever disagrees the tell is
 // a 404 from a header link, which is why the link text and the route literal are the only two
 // spellings and both live one grep apart.
-fn header_surface_link(label: String, href: String) -> Fragment {
-  el_attrs("a", [ attr(name: "href", value: href ), attr(name: "class", value: "surface-link" ) ], [ txt(label) ])
-}
+
 
 // The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
 // work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to
@@ -612,44 +515,39 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
 // route records the Claimed event and then drives the SAME launch admission the /dispatch route
 // answers (see gunbc.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
 // typed vocabulary when fabric cannot start.
-fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
-  let suggestions = issue_assign_suggestions(viewer: viewer, recents: recents)
+fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String = "", command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
+  issue_assign_form_nodes(node_id: view.node_id, profiles: view.profiles, viewer: viewer, recents: recents, expected_revision: expected_revision, current_assignee: current_assignee, command_context: command_context)
+}
+
+// One form producer for the issue rail and the session-loaded workspace editor.
+fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String, command_context: IssueFormContext) -> List<Fragment> {
+  let suggestions = filter(issue_assign_suggestions(viewer: viewer, recents: recents), p => issue_assign_selector(p: p, profiles: profiles) != "")
   [ el_attrs("form", [
-      attr(name: "class", value: "issue-assign-form" ),
+      attr(name: "class", value: "issue-assign-form site-choice site-choice-rich" ),
+      attr(name: "data-site-choice", value: "rich"),
       attr(name: "method", value: "post" ),
       attr(name: "enctype", value: "application/x-www-form-urlencoded" ),
-      attr(name: "action", value: join(["/issue/", view.node_id, "/assign"], "") ),
+      attr(name: "action", value: join(["/issue/", node_id, "/assign"], "") ),
     ], [
       el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-assign") }) ], []),
       el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
-      el_attrs("input", [
-        attr(name: "class", value: "issue-assign-input" ),
-        attr(name: "name", value: "assignee" ),
-        attr(name: "id", value: "issue-assign-input" ),
-        attr(name: "type", value: "text" ),
-        attr(name: "list", value: "issue-assign-recents" ),
-        attr(name: "placeholder", value: "assignee email" ),
-        attr(name: "autocomplete", value: "off" ),
-      ], []),
-      el_attrs("datalist", [
-        attr(name: "id", value: "issue-assign-recents" ),
-      ], map(filter(suggestions, p => suggestion_selector_of(p: p) != ""), p =>
-        el_attrs("option", [ attr(name: "value", value: suggestion_selector_of(p: p)) ], []))),
+      site_choice_input(id: concat("issue-assign-input-", node_id), name: "assignee", class_name: "issue-assign-input", label: "Assignee", placeholder: "Unassigned — choose a person or group", value: current_assignee, list_id: concat("issue-assign-options-", node_id)),
       el_attrs("input", [
         attr(name: "name", value: "expected_revision" ),
         attr(name: "type", value: "hidden" ),
         attr(name: "value", value: expected_revision ),
       ], []),
-      el_class("div", "issue-assign-suggestions", map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: view.profiles))),
+      site_choice_list(id: concat("issue-assign-options-", node_id), options: map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: profiles)), hidden: true, empty_label: "No matching assignees"),
       el_attrs("button", [
         attr(name: "class", value: "issue-assign-submit issue-action-text" ),
+        attr(name: "hidden", value: ""),
         attr(name: "type", value: "submit" ),
         attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
         attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
         attr(name: "data-action-route", value: "assign" ),
         attr(name: "data-action-state", value: issue_action_availability_wire(a: IssueActionEnabled) ),
-        attr(name: "data-node", value: view.node_id ),
-        attr(name: "title", value: "record an assignment: who this issue is assigned to" ),
+        attr(name: "data-node", value: node_id ),
+        attr(name: "title", value: "Assigning Fabric starts a workflow run; review before confirming" ),
       ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]),
     ]) ]
 }
@@ -692,16 +590,22 @@ fn suggestion_selector_of(p: EventPrincipal) -> String {
 // selector, and the workflow badge for the fabric endpoint so it never masquerades as human.
 fn issue_assign_suggestion_nodes(p: EventPrincipal, profiles: List<PrincipalProfile>) -> Fragment {
   let display = event_principal_display_with_profile(p: p, profiles: profiles)
-  el_attrs("div", [
-    attr(name: "class", value: "issue-assign-suggestion" ),
+  el_attrs("button", [
+    attr(name: "type", value: "button"),
+    attr(name: "role", value: "option"),
+    attr(name: "aria-selected", value: "false"),
+    attr(name: "data-choice-value", value: issue_assign_selector(p: p, profiles: profiles)),
+    attr(name: "data-workflow", value: if event_principal_is_fabric(p: p) { "1" } else { "0" }),
+    attr(name: "class", value: "site-choice-option issue-assign-suggestion" ),
     attr(name: "data-principal", value: event_principal_label(p: p) ),
+    attr(name: "data-assignee-label", value: workspace_assignee_label(holder: p, profiles: profiles)),
     attr(name: "data-kind", value: suggestion_kind_wire(p: p) ),
   ], concat(
     [ issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)) ],
     concat(
       [ el_class("span", "issue-assign-name", [ txt(display.name) ]),
         el_class("span", "issue-assign-email", [ txt(display.detail) ]) ],
-      [ el_class("span", "issue-assign-kind", [ txt(suggestion_kind_wire(p: p)) ]) ])))
+      [ el_class("span", "issue-assign-kind", [ txt(if event_principal_is_fabric(p: p) { "Group · starts a workflow run" } else { "Person" }) ]) ])))
 }
 
 fn event_principal_is_fabric(p: EventPrincipal) -> Bool {
@@ -724,18 +628,19 @@ type EventPrincipalDisplay {
   detail: String
   initials: String
   avatar: AvatarStanding
+  picture: String
 }
 
 fn event_principal_display(p: EventPrincipal) -> EventPrincipalDisplay {
   match p {
     EventPrincipalAuthenticated { ref } =>
       if principal_ref_eq(a: ref, b: fabric_workflow_principal) {
-        EventPrincipalDisplay { name: "Fabric", detail: fabric_display_alias as String, initials: "F", avatar: AvatarAbsent }
+        EventPrincipalDisplay { name: "Fabric", detail: fabric_display_alias as String, initials: "F", avatar: AvatarAbsent, picture: "" }
       } else {
-        EventPrincipalDisplay { name: principal_ref_label(p: ref), detail: principal_ref_label(p: ref), initials: principal_subject_initial(ref: ref), avatar: AvatarAbsent }
+        EventPrincipalDisplay { name: principal_ref_label(p: ref), detail: principal_ref_label(p: ref), initials: principal_subject_initial(ref: ref), avatar: AvatarAbsent, picture: "" }
       }
     LegacyEmailPrincipal { email, authentication_unestablished: _ } =>
-      EventPrincipalDisplay { name: principal_display_name_of(email: email as String), detail: join([email as String, " (legacy, unverified)"], ""), initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent }
+      EventPrincipalDisplay { name: principal_display_name_of(email: email as String), detail: join([email as String, " (legacy, unverified)"], ""), initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent, picture: "" }
   }
 }
 
@@ -772,6 +677,7 @@ fn profile_display_projection(ref: PrincipalRef, profile: PrincipalProfile) -> E
     detail: profile_display_detail(ref: ref, profile: profile),
     initials: avatar_initials_of(display_name: name),
     avatar: profile_display_avatar(profile: profile),
+    picture: match profile.picture { Present { value: u } => uri_wire(uri: u) as String Absent => "" },
   }
 }
 
@@ -839,22 +745,25 @@ fn principal_display_name_of(email: String) -> String {
 fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fragment {
   el_attrs("span", [
     attr(name: "class", value: join([
-      "issue-avatar",
-      if workflow { " issue-avatar-workflow" } else { "" },
+      "site-avatar",
+      if workflow { " site-avatar-workflow" } else { match display.avatar { AvatarResolved => "" AvatarAbsent => " site-avatar-default" AvatarUnread => " site-avatar-default" } },
     ], "") ),
     attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
     attr(name: "title", value: issue_avatar_title(display: display, workflow: workflow) ),
   ], issue_avatar_face(display: display, workflow: workflow))
 }
 
-// THE CIRCLE'S FACE: a person shows their initial; the Fabric workflow shows the gunb robot mark
+// THE CIRCLE'S FACE: absent/unread human pictures use the question-mark brand avatar;
+// resolved pictures keep their existing initials realization until the photo transport lands.
+// The Fabric workflow shows the gunb robot mark
 // (gunbc.site.robot_mark, copied from the frontend's #stoic-robot symbol), in the chip's own color.
 fn issue_avatar_face(display: EventPrincipalDisplay, workflow: Bool) -> List<Fragment> {
-  if workflow {
-    [ robot_mark_svg(class_name: "issue-avatar-mark", label: display.name) ]
-  } else {
-    [ txt(display.initials) ]
-  }
+  if workflow { [group_avatar_svg(class_name: "site-avatar-default-mark", label: concat(display.name, " group"))] }
+  else if display.picture != "" {
+    [el_attrs("img", [attr(name: "src", value: display.picture), attr(name: "alt", value: display.name), attr(name: "referrerpolicy", value: "no-referrer")], [])]
+  } else if substring(s: display.name, start: 0, end: 10) == "principal:" {
+    [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: concat(display.name, " — unknown profile"))]
+  } else { [txt(display.initials)] }
 }
 
 // THE CIRCLE HOLDS ONLY THE INITIAL. It is a fixed 24px chip with overflow hidden, so prose placed
@@ -913,10 +822,10 @@ fn issue_assignee_chip_text(holder: EventPrincipal, profiles: List<PrincipalProf
   }
 }
 
-// THE DETAIL ACTION BAR: the durable Assign form alone (owner ruling 2026-09-25 — the table rows
-// and the detail header carry no execution buttons; see issue_assign_action_nodes for the ruling).
-fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
-  issue_assign_action_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)
+// The issue rail and the on-demand workspace editor share the durable Assign form
+// (owner request 2026-10-04). Workflow selection still needs its explicit commit.
+fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String = "", command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
+  issue_assign_action_nodes(view: view, current_assignee: current_assignee, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -974,7 +883,7 @@ fn collect_script_violations(node: Fragment, known_src: String) -> List<PageScri
         let src = script_src_attr(attributes: attributes)
         concat(
           if inline == "" { [] } else { [PageScriptViolation { kind: "inline-js", detail: inline }] },
-          if src == "" || src == known_src { [] } else { [PageScriptViolation { kind: "unknown-src", detail: src }] },
+          if src == "" || src == known_src || src == site_client_path { [] } else { [PageScriptViolation { kind: "unknown-src", detail: src }] },
         )
       } else {
         fold(children, init: [], f: (acc, c) => concat(acc, collect_script_violations(node: c, known_src: known_src)))
@@ -1215,7 +1124,6 @@ fn taskbar_inspect_nodes(view: WorkRowView, project: ProjectTreeView?) -> List<F
   } else {
     [ el_class("details", "taskbar-inspect", [
         el("summary", [
-          el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
           txt(inspect_disclosure_label),
         ]),
         el_class("div", "inspect-body", concat(attempt, concat(facts, concat(body, links)))),
@@ -1588,7 +1496,6 @@ fn project_tasks_details(view: ProjectTreeView, observation: ObservationImpactVi
       [ el_class("details", "project-tasks project-deeper",
           concat(
             [ el("summary", [
-                el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
                 txt(join(["+", to_string(count(view.entries)), " deeper"], "")),
               ]) ],
             content)) ]
@@ -1599,7 +1506,6 @@ fn project_tasks_details(view: ProjectTreeView, observation: ObservationImpactVi
             if view.auto_open { [ attr(name: "open", value: "" ) ] } else { [] }),
           concat(
             [ el("summary", [
-                el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
                 txt(if count(view.entries) == 0 { "chain" } else { "tasks" }),
               ]) ],
             content)) ]
@@ -1644,28 +1550,6 @@ fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationIm
 // renderers had no caller left once the served page dropped the forest; the entry renderer
 // (workspace_entries_ul and its chain) stays for the /sandbox exhibit.
 
-fn workspace_observation_banner(observation: ObservationImpactView) -> List<Fragment> {
-  match observation {
-    ObservationsNominal => []
-    WorkspaceObservationImpact { summary, located_reason } =>
-      [ el_class("section", "workspace-observation", [
-          el_class("span", "workspace-observation-summary", [ txt(summary) ]),
-          el_class("span", "workspace-observation-reason", [ txt(located_reason) ]),
-        ]) ]
-  }
-}
-
-// THE ISSUE TRACKER'S SURFACE (owner ruling 2026-09-22, "the frontend as an issue tracker",
-// amended 2026-09-25: "just copy buganizer for now"): ONE body, ONE container — the searchable
-// issue TABLE, the Buganizer results surface. The tree and bands VIEW TABS are RETIRED (owner:
-// they go back to the old UI, it's jarring): the forest they switched to — the banded taskbar
-// rendering of the same rows — no longer ships on this page at all, and the view chips, the
-// client view switch, and the stylesheet's view rules went with them. What survives of the band
-// vocabulary is the FILTER: the all/active/ready/not-ready/done/superseded chips filter THIS table
-// in place (the stylesheet hides non-matching data-band rows), and the search input filters by
-// the row's own data-search (headline · node id · owner). The table rows are dense lines, not
-// taskbars; the forest renderer itself lives on as the /sandbox exhibit's grouping path (a design
-// surface, not this product surface).
 fn issue_owner_value(view: WorkRowView) -> String {
   fold(view.supporting_facts, init: "", f: (acc, f) =>
     if f.label == "owner" { f.value } else { acc })
@@ -1713,7 +1597,10 @@ fn issue_search_value(view: WorkRowView) -> String {
 
 fn issue_band_chip(label: String, band: String) -> Fragment {
   el_attrs("button", [
-    attr(name: "class", value: "chip chip-filter" ),
+    attr(name: "class", value: "site-choice-option chip-filter" ),
+    attr(name: "data-choice-value", value: band),
+    attr(name: "role", value: "option"),
+    attr(name: "aria-selected", value: if band == "all" { "true" } else { "false" }),
     attr(name: "type", value: "button" ),
     attr(name: "data-band-chip", value: band ),
   ], [ txt(label) ])
@@ -1723,25 +1610,29 @@ fn issue_controls_markup() -> Fragment {
   el_class("div", "issue-controls", concat(
     [ el_attrs("input", [
         attr(name: "type", value: "search" ),
+        attr(name: "maxlength", value: "500"),
         attr(name: "class", value: "issue-search" ),
-        attr(name: "placeholder", value: "filter issues — title · id · owner" ),
+        attr(name: "placeholder", value: "Filter issues · title, ID or assignee" ),
         attr(name: "aria-label", value: "filter issues" ),
       ], []) ],
     [
-      issue_band_chip(label: "all", band: "all"),
-      issue_band_chip(label: "active", band: "active"),
-      issue_band_chip(label: "ready", band: "ready"),
-      issue_band_chip(label: "not ready", band: "not-ready"),
-      issue_band_chip(label: "done", band: "done"),
-      issue_band_chip(label: "superseded", band: "superseded"),
+      site_compact_choice(id: "issue-status-options", label: "All issues", accessible_label: "Issue status filter", options: [
+        issue_band_chip(label: "All issues", band: "all"),
+        issue_band_chip(label: "Active", band: "active"),
+        issue_band_chip(label: "Ready", band: "ready"),
+        issue_band_chip(label: "Not ready", band: "not-ready"),
+        issue_band_chip(label: "Done", band: "done"),
+        issue_band_chip(label: "Superseded", band: "superseded"),
+      ]),
+      el_attrs("div", [attr(name: "class", value: "issue-sort-settings"), attr(name: "data-view-default", value: serialize_json(v: issue_view_preferences_json(prefs: default_issue_view_preferences()))), attr(name: "role", value: "group"), attr(name: "aria-label", value: "View preferences")], [
+        el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-button-compact"), attr(name: "data-view-reset", value: "")], [txt("Reset view")]),
+        el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-button-compact"), attr(name: "data-view-retry", value: ""), attr(name: "hidden", value: "")], [txt("Save this view")]),
+        el_attrs("span", [attr(name: "class", value: "issue-view-save-status"), attr(name: "data-view-save-status", value: ""), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], [txt("Loading preferences…")]),
+      ]),
       el_attrs("button", [
         attr(name: "type", value: "button"),
-        attr(name: "class", value: "chip issue-topological"),
-        attr(name: "aria-pressed", value: "false"),
-      ], [ txt("Topological sort") ]),
-      el_attrs("button", [
-        attr(name: "type", value: "button"),
-        attr(name: "class", value: "chip issue-sort-undo"),
+        attr(name: "class", value: "site-button-compact issue-sort-undo"),
+        attr(name: "hidden", value: "hidden"),
         attr(name: "disabled", value: "disabled"),
       ], [ txt("Undo sort") ]),
       el_attrs("span", [
@@ -1766,9 +1657,24 @@ fn issue_line_cell_class(kind: IssueResultsColumnKind) -> String {
   join(["issue-cell issue-cell-", issue_results_column_kind_wire(kind: kind)], "")
 }
 
-fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> List<Fragment> {
+// Names are preferred for people; groups and legacy identities retain their full email.
+fn workspace_assignee_label(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> String {
+  match holder {
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } => email as String
+    EventPrincipalAuthenticated { ref: _ } =>
+      if event_principal_is_fabric(p: holder) { fabric_display_alias as String }
+      else { event_principal_display_with_profile(p: holder, profiles: profiles).name }
+  }
+}
+
+fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> List<Fragment> {
   match col.kind {
-    IssueColumnPriority => []
+    IssueColumnPriority => [el_attrs("span", [
+      attr(name: "class", value: "issue-priority"),
+      attr(name: "data-priority", value: to_string(roadmap_priority_rank(priority: priority.priority))),
+      attr(name: "title", value: issue_priority_explanation(value: priority)),
+      attr(name: "aria-label", value: issue_priority_explanation(value: priority))
+    ], [txt(roadmap_priority_label(priority: priority.priority))])]
     IssueColumnTitle =>
       [ el_attrs("a", [
           attr(name: "class", value: "issue-title-link" ),
@@ -1779,32 +1685,32 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "type", value: "button"),
           attr(name: "class", value: "issue-inline-assign"),
           attr(name: "disabled", value: "disabled"),
-          attr(name: "title", value: "Sign in to assign this issue; checking session."),
+          attr(name: "title", value: "Open assignee picker; checking session."),
           attr(name: "aria-label", value: join(["Assign ", view.headline], "")),
           attr(name: "data-assign-node", value: view.node_id),
         ], match issue_assignee_holder(view: view, attempts: []) {
-          Absent => [ txt(issue_assignee_unassigned_display as String) ]
-          Present { value: holder } => issue_assignee_chip_node(holder: holder, profiles: view.profiles)
+          Absent => [unassigned_avatar(), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
+          Present { value: holder } => [
+            issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder)),
+            el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
+          ]
         }) ]
-    IssueColumnStatus =>
-      if bar.signal == "" { [] } else {
-        [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
-      }
+    IssueColumnStatus => [el_attrs("span", [attr(name: "class", value: "issue-status site-status"), attr(name: "data-status-tone", value: status_tone(label: issue_status_label(view: view))), attr(name: "title", value: bar.signal)], [txt(issue_status_label(view: view))])]
     IssueColumnLastModified => []
   }
 }
 
 // Sort the underlying identity and status text, never avatar initials or DOM decorations.
-// Priority and modified have no authored facts yet, so they remain missing, not invented.
-fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> String {
+// Priority is derived from classified project ancestry; modified remains absent without a fact.
+fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> String {
   match col.kind {
-    IssueColumnPriority => ""
+    IssueColumnPriority => to_string(roadmap_priority_rank(priority: priority.priority))
     IssueColumnTitle => view.headline
     IssueColumnAssignee => match issue_assignee_holder(view: view, attempts: []) {
       Absent => ""
       Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).name
     }
-    IssueColumnStatus => bar.signal
+    IssueColumnStatus => to_string(issue_status_sort_rank(view: view))
     IssueColumnLastModified => ""
   }
 }
@@ -1828,6 +1734,7 @@ fn issue_dependencies_of(index: Map<String, List<String>>, node_id: String) -> L
 
 fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, memberships: RoadmapMembershipIndex, dependencies: Map<String, List<String>>) -> Fragment {
   let view = row.view
+  let priority = issue_priority_of(node_id: view.node_id, index: memberships)
   let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
   Element {
     tag: "li",
@@ -1840,12 +1747,12 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, members
         attr(name: "data-search", value: issue_search_value(view: view) ),
         attr(name: "data-summary-only", value: "" ) ]),
     children: [ el_attrs("div", [attr(name: "class", value: "issue-line"), attr(name: "role", value: "presentation")],
-      map(issue_results_columns, c => el_attrs("span", [
+      map(workspace_issue_columns(), c => el_attrs("span", [
         attr(name: "class", value: issue_line_cell_class(kind: c.kind) ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
-        attr(name: "data-sort-value", value: issue_line_sort_value(col: c, view: view, bar: bar) ),
+        attr(name: "data-sort-value", value: issue_line_sort_value(col: c, view: view, bar: bar, priority: priority) ),
         attr(name: "role", value: "cell"),
-      ], issue_line_cell_content(col: c, view: view, bar: bar)))) ],
+      ], issue_line_cell_content(col: c, view: view, bar: bar, priority: priority)))) ],
   }
 }
 
@@ -1853,31 +1760,40 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, members
 // in roster order. The header div is a display:
 // contents wrapper like the row divs, so these cells land in the table's one grid beside the
 // rows' cells — same tracks, by construction.
+fn workspace_column_label(col: IssueResultsColumn) -> String {
+  match col.kind {
+    IssueColumnPriority => "P"
+    IssueColumnTitle => "Title"
+    IssueColumnAssignee => "Assignee"
+    IssueColumnStatus => "Status"
+    IssueColumnLastModified => "Last modified"
+  }
+}
+
 fn issue_table_header_nodes() -> Fragment {
   el_attrs("div", [attr(name: "class", value: "issue-table-header"), attr(name: "role", value: "row")],
-    map(issue_results_columns, c =>
+    map(workspace_issue_columns(), c =>
       el_attrs("span", [
         attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
         attr(name: "role", value: "columnheader" ),
-        attr(name: "aria-sort", value: "none" ),
+        attr(name: "aria-sort", value: if c.kind == IssueColumnStatus { "other" } else { "none" } ),
       ], [ el_attrs("button", [
         attr(name: "type", value: "button" ),
         attr(name: "class", value: "issue-sort" ),
         attr(name: "data-sort-key", value: issue_results_sort_key_wire(key: c.sort_key) ),
-        attr(name: "data-sort-numeric", value: if issue_results_sort_numeric(key: c.sort_key) { "true" } else { "false" } ),
-        attr(name: "aria-label", value: join(["Sort by ", c.header as String], "") ),
-      ], [ txt(c.header as String) ]) ])))
+        attr(name: "data-sort-numeric", value: if c.kind == IssueColumnStatus || issue_results_sort_numeric(key: c.sort_key) { "true" } else { "false" } ),
+        attr(name: "aria-label", value: join(["Sort by ", workspace_column_label(col: c)], "") ),
+      ], [ txt(workspace_column_label(col: c)) ]) ])))
 }
 
 fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   let membership_index_of_table = membership_index(memberships: memberships)
   let dependency_index_of_table = issue_dependency_index(edges: edges)
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
-    el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
-    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(rows, r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
+    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(sort_by(rows, r => workspace_priority_order_key(priority: issue_priority_of(node_id: r.view.node_id, index: membership_index_of_table).priority, status_rank: issue_status_sort_rank(view: r.view))).take(n: 50), r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
   ])
 }
 
@@ -1951,13 +1867,13 @@ fn issue_attempt_history_row_node(progress: WorkflowAttemptProgress) -> Fragment
 // the event kind, and its payload — the durable facts a session stated on the issue (assignment
 // among them: a Claimed event IS the assignment record). Events whose recorded_at is empty (an
 // unprobed clock at write) sort oldest, honestly — absence is not a timestamp.
-fn issue_event_row_node(env: RoadmapEventEnvelope) -> Fragment {
+fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile> = []) -> Fragment {
   let e = env.event
   el_attrs("div", [
     attr(name: "class", value: "issue-event-row" ),
     attr(name: "data-event-kind", value: roadmap_event_kind_word(k: e.kind) ),
   ], [
-    el_class("span", "issue-event-author", [ txt(e.author as String) ]),
+    el_attrs("span", [attr(name: "class", value: "issue-event-author"), attr(name: "title", value: event_principal_label(p: e.author))], [txt(event_principal_display_with_profile(p: e.author, profiles: profiles).name)]),
     el_class("span", "issue-event-text", [ txt(issue_event_text(env: env)) ]),
     el_class("span", "issue-event-at", [ txt(e.recorded_at) ]),
   ])
@@ -2034,19 +1950,12 @@ fn ticket_fields_selected(fields: List<DisclosureField>, identities: List<Ticket
   fold(identities, init: [], f: (acc, identity) => concat(acc, filter(fields, f => f.identity == identity)))
 }
 
-// THE AUTHORED FIELDS, FOLDED PER THE MANDATE (owner 2026-09-25,
-// docs/plans/issue-page-architecture.md): Description (the brief) always renders; Acceptance
-// criteria carries the red control and the hand-back; Current plan carries current state, first
-// slice and displaced cost inside a details/summary disclosure — OPEN while the work is not done,
-// collapsed once it is; Scope carries out-of-scope inside a collapsed disclosure. Long content is
-// collapsed by default; the verified row never forms when no verification was recorded (fixed at
-// the source, roadmap_presentation.ticket_disclosure_fields). The flat rendering survives for the
-// daily table's row disclosure, where the fold is not the mandate's subject.
+// Supporting authored details share one collapsed disclosure below the brief (2026-10-04).
+// This supersedes the per-section/open-current-plan presentation of 2026-09-25.
 fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
   match d {
     NoDisclosure => []
-    LegacyBodyDisclosure { content } =>
-      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
+    LegacyBodyDisclosure { content: _ } => []
     TicketDisclosure { brief, fields, updates } =>
       let acceptance_fields = ticket_fields_selected(fields: fields, identities: [TicketRedControl, TicketHandback])
       let acceptance = if count(acceptance_fields) == 0 { [] } else {
@@ -2054,15 +1963,16 @@ fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
       }
       let plan_fields = ticket_fields_selected(fields: fields, identities: [TicketCurrentState, TicketFirstSlice, TicketDisplacedCost])
       let plan = if count(plan_fields) == 0 { [] } else {
-        [ issue_authored_details(summary: "Current plan", open: !done, rows: map(plan_fields, f => disclosure_field_row(f: f))) ]
+        [ issue_authored_section(heading: "Current plan", rows: map(plan_fields, f => disclosure_field_row(f: f))) ]
       }
       let scope_fields = ticket_fields_selected(fields: fields, identities: [TicketOutOfScope])
       let scope = if count(scope_fields) == 0 { [] } else {
-        [ issue_authored_details(summary: "Scope", open: false, rows: map(scope_fields, f => disclosure_field_row(f: f))) ]
+        [ issue_authored_section(heading: "Scope", rows: map(scope_fields, f => disclosure_field_row(f: f))) ]
       }
-      [ el_class("div", "issue-authored", concat(
-          [],
-          concat(acceptance, concat(plan, concat(scope, disclosure_updates_block(updates: updates)))))) ]
+      let sections = concat(acceptance, concat(plan, concat(scope, disclosure_updates_block(updates: updates))))
+      if count(sections) == 0 { [] } else {
+        [issue_authored_details(summary: "More details", open: false, rows: [el_class("div", "issue-authored", sections)])]
+      }
   }
 }
 
@@ -2090,7 +2000,7 @@ fn issue_comment_row_node(node_id: String, comments: List<IssueComment>, c: Issu
     el_class("div", "issue-comment-main", concat(
       [ issue_comment_head_node(node_id: node_id, comments: comments, c: c, display: display) ],
       [ el_class("div", "issue-comment-body",
-          if c.deleted { [ txt("comment deleted") ] } else { inline_md_nodes(text: c.body) }) ])),
+          if c.deleted { [ txt("comment deleted") ] } else { map(inline_md_nodes(text: c.body), f => issue_mention_fragment(f: f, profiles: profiles)) }) ])),
   ])
 }
 
@@ -2172,11 +2082,14 @@ fn issue_entry_insert(sorted: List<IssueStreamEntry>, e: IssueStreamEntry) -> Li
   }
 }
 
+// The preview uses the same durable event stream as every other instance.
 fn issue_comments_stream_node(node_id: String, envs: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile>) -> Fragment {
   let entries = issue_stream_entries(envs: envs)
   el_class("div", "issue-comments", [
-    el_class("h2", "issue-comments-heading", [ txt(join(["Comments · ", to_string(value: count(roadmap_issue_comments(envs: envs)))], "")) ]),
-    el_class("div", "issue-comment-stream", map(entries, e => issue_stream_entry_row_node(node_id: node_id, envs: envs, entries: entries, e: e, profiles: profiles))),
+    el_class("h2", "issue-comments-heading", [txt(concat("Comments · ", to_string(value: count(roadmap_issue_comments(envs: envs)))))]),
+    el_class("div", "issue-comment-stream", if count(entries) == 0 {
+      []
+    } else { map(entries, e => issue_stream_entry_row_node(node_id: node_id, envs: envs, entries: entries, e: e, profiles: profiles)) }),
   ])
 }
 
@@ -2274,7 +2187,7 @@ fn issue_result_entry_sentence(outcome: AttemptResultOutcome, return_to: String)
 // which the write law refuses honestly) — and the expected_revision pin matching the assign
 // form. The submit wears no .issue-action class — the client's bodyless action
 // bind must not race the native submit.
-fn issue_comment_composer_node(node_id: String, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+fn issue_comment_composer_node(node_id: String, expected_revision: String, profiles: List<PrincipalProfile> = [], command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   el_attrs("form", [
     attr(name: "class", value: "issue-comment-form" ),
     attr(name: "method", value: "post" ),
@@ -2287,14 +2200,18 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String, comma
     el_attrs("textarea", [
       attr(name: "name", value: "body" ),
       attr(name: "class", value: "issue-comment-input" ),
-      attr(name: "placeholder", value: "comment — markdown, @mentions" ),
+      attr(name: "placeholder", value: "Write a comment. Type @ to mention a person or group." ),
+      attr(name: "aria-label", value: "Comment"),
+      attr(name: "aria-controls", value: "issue-mention-options"),
     ], []),
-    el_attrs("button", [
+    el_attrs("div", [attr(name: "id", value: "issue-mention-options"), attr(name: "class", value: "site-choice-list issue-mention-options"), attr(name: "role", value: "listbox"), attr(name: "aria-label", value: "Mention suggestions"), attr(name: "hidden", value: "")],
+      concat([issue_mention_option(p: fabric_workflow_principal, profiles: profiles)], map(profiles, p => issue_mention_option(p: p.principal, profiles: profiles)))),
+    el_attrs("button", concat(if command_context.csrf == "" { [attr(name: "disabled", value: ""), attr(name: "title", value: "Sign in to post a comment")] } else { [] }, [
       attr(name: "class", value: "issue-comment-submit issue-action-text" ),
       attr(name: "type", value: "submit" ),
       attr(name: "data-action-route", value: "comment" ),
       attr(name: "data-node", value: node_id ),
-    ], [ txt("Comment") ]),
+    ]), [ txt("Comment") ]),
   ])
 }
 
@@ -2309,7 +2226,7 @@ fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgres
         [ el_class("div", "issue-work-history", map(rounds, issue_work_history_row_node)) ]
       },
       match view.activity {
-        NoActiveWork => []
+        NoActiveWork => if count(attempts) == 0 && count(rounds) == 0 { [el_class("p", "issue-panel-empty", [txt("No work has been recorded for this issue.")])] } else { [] }
         ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
         ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
           issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
@@ -2415,6 +2332,7 @@ fn issue_breadcrumb_crumb_node(crumb: IssueBreadcrumbCrumb) -> Fragment {
     IssueBreadcrumbTask { node_id: _, purpose, boundary } =>
       el_attrs("span", [
         attr(name: "class", value: "issue-breadcrumb-here"),
+        attr(name: "aria-current", value: "page"),
         attr(name: "title", value: boundary),
       ], [ txt(purpose) ])
   }
@@ -2442,33 +2360,78 @@ fn issue_breadcrumb_nodes(breadcrumb: IssueBreadcrumb) -> List<Fragment> {
   }
 }
 
+fn issue_breadcrumb_short_label(label: String) -> String {
+  if string_length(s: label) <= 44 { label } else {
+    join([substring(s: label, start: 0, end: 27), "…", substring(s: label, start: string_length(s: label) - 14, end: string_length(s: label))], "")
+  }
+}
+
+fn issue_breadcrumb_compact_labels(crumbs: List<IssueBreadcrumbCrumb>) -> List<String> {
+  let ancestors = fold(crumbs, init: [] as List<String>, f: (acc, c) => match c {
+    IssueBreadcrumbProject { node_id: _, purpose, boundary: _ } => concat(acc, [purpose])
+    IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => acc
+  })
+  let ends = fold(ancestors, init: { first: "", last: "", n: 0 }, f: (acc, label) => {
+    first: if acc.n == 0 { label } else { acc.first }, last: label, n: acc.n + 1
+  })
+  if ends.n == 0 { [] } else if ends.n == 1 { [ends.first] } else if ends.n == 2 { [ends.first, "›", ends.last] }
+  else { [ends.first, join(["› … ", to_string(ends.n - 2), " ›"], ""), ends.last] }
+}
+
+fn issue_breadcrumb_tree(crumbs: List<IssueBreadcrumbCrumb>) -> List<Fragment> {
+  let reversed = fold(crumbs, init: [] as List<IssueBreadcrumbCrumb>, f: (acc, crumb) => concat([crumb], acc))
+  fold(reversed, init: [] as List<Fragment>, f: (children, crumb) =>
+    [el("li", concat([issue_breadcrumb_crumb_node(crumb: crumb)], if count(children) == 0 { [] } else { [el("ol", children)] }))])
+}
+
 fn issue_alignment_breadcrumb_node(resolution: AlignmentResolution) -> Fragment {
-  el_class("nav", "issue-breadcrumb", issue_breadcrumb_nodes(breadcrumb: issue_breadcrumb_of(resolution: resolution)))
+  let breadcrumb = issue_breadcrumb_of(resolution: resolution)
+  el_attrs("nav", [attr(name: "class", value: "issue-breadcrumb"), attr(name: "aria-label", value: "Issue hierarchy")], match breadcrumb {
+    IssueBreadcrumbRefused { reason: _ } => issue_breadcrumb_nodes(breadcrumb: breadcrumb)
+    IssueBreadcrumbPath { crumbs } => {
+      let labels = issue_breadcrumb_compact_labels(crumbs: crumbs)
+      if count(labels) == 0 { [] } else if count(crumbs) == 1 && all(labels, label => string_length(s: label) <= 44) {
+        [el_class("ol", "issue-path-tree", issue_breadcrumb_tree(crumbs: crumbs))]
+      } else {
+        [el_class("details", "issue-path-disclosure", [
+          el_attrs("summary", [attr(name: "aria-label", value: "Expand issue hierarchy")], map(labels, label =>
+            el_attrs("span", [attr(name: "class", value: "issue-path-label"), attr(name: "title", value: label)], [txt(issue_breadcrumb_short_label(label: label))]))),
+          el_class("ol", "issue-path-tree", issue_breadcrumb_tree(crumbs: crumbs)),
+        ])]
+      }
+    }
+  })
 }
 
 fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+  issue_detail_page_with_alignment(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context,
+    alignment: alignment_resolve(node_id: view.node_id, turns_elapsed: 1, state: alignment_base_cadence_state()))
+}
+
+// The page consumes the resolved project path; the authority-bound entry above supplies it.
+fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, alignment: AlignmentResolution) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
   ], [
+    issue_alignment_breadcrumb_node(resolution: alignment),
     el_class("div", "issue-detail-head", concat(
       [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
       concat(
         [ el_class("h1", "issue-detail-title", inline_md_nodes(text: view.headline)) ],
         issue_head_chip_nodes(view: view)))),
     el_class("div", "issue-tabs", [
-      issue_tab_chip(label: "comments", tab: "comments"),
-      issue_tab_chip(label: "dependencies", tab: "dependencies"),
-      issue_tab_chip(label: "work", tab: "work"),
-      issue_tab_chip(label: "history", tab: "history"),
+      issue_tab_chip(label: concat("Comments · ", to_string(value: count(roadmap_issue_comments(envs: events)))), tab: "comments"),
+      issue_tab_chip(label: "Dependencies", tab: "dependencies"),
+      issue_tab_chip(label: "Work", tab: "work"),
+      issue_tab_chip(label: "History", tab: "history"),
     ]),
-    issue_alignment_breadcrumb_node(resolution: alignment_resolve(node_id: view.node_id, turns_elapsed: 1, state: alignment_base_cadence_state())),
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
         el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, panel: panel)),
         el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
-        el_class("section", "panel-history", issue_history_tab_nodes(events: events)),
+        el_class("section", "panel-history", issue_history_tab_nodes(events: events, profiles: view.profiles)),
       ]),
       issue_metadata_rail_node(view: view, panel: panel, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
     ]),
@@ -2478,51 +2441,72 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
 // THE COMMENTS TAB: the description pinned above the stream, the composer below — the page's
 // default panel (the tab law renders it when data-tab is "comments").
 fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
-  concat(
-    [
-      issue_description_node(view: view),
+  [el_class("div", "issue-reading-surface", concat(
+    [issue_description_node(view: view)],
+    concat(disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"), [
       issue_comments_stream_node(node_id: view.node_id, envs: events, profiles: view.profiles),
-      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, command_context: command_context),
-    ],
-    disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
+      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, profiles: view.profiles, command_context: command_context),
+    ])))]
 }
 
 // Nesting and blocking are independently projected; no reverse blocker stands in for a child.
+// One-hop dependency neighborhood. Solid lanes are prerequisite edges; project
+// membership is a separate dashed lane. Completed prerequisites remain visible.
+fn issue_graph_link(link: IssueLinkView) -> Fragment {
+  issue_membership_link(link: link, parent: false)
+}
+fn issue_membership_link(link: IssueLinkView, parent: Bool) -> Fragment {
+  el_attrs("a", [attr(name: "class", value: "issue-graph-node"), attr(name: "href", value: concat("/issue/", link.node_id)),
+    attr(name: "data-complete", value: if link.status == "done" || link.status == "superseded" { "1" } else { "0" }),
+    attr(name: "aria-label", value: concat(if parent { "Parent project: " } else { "Child issue: " }, link.headline)),
+    attr(name: "title", value: concat(if parent { "Parent project · " } else { "Child issue · " }, concat(link.node_id, concat(" · ", link.status))))], [
+    el_attrs("svg", [attr(name: "class", value: "issue-membership-icon"), attr(name: "viewBox", value: "0 0 16 16"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "1.5"), attr(name: "stroke-linecap", value: "round"), attr(name: "stroke-linejoin", value: "round"), attr(name: "aria-hidden", value: "true")], [el_attrs("path", [attr(name: "d", value: if parent { "M12 13H8a3 3 0 0 1-3-3V3M2 6l3-3 3 3" } else { "M3 2v6a3 3 0 0 0 3 3h7M10 8l3 3-3 3" })], [])]),
+    el_class("span", "issue-membership-name", [txt(link.headline)]), el_class("small", "issue-graph-state", [txt(link.status)]),
+  ])
+}
+fn issue_graph_column(label: String, links: List<IssueLinkView>) -> Fragment {
+  el_class("div", "issue-graph-column", [el("h3", [txt(label)]),
+    el_class("div", "issue-graph-branch", if count(links) == 0 { [el_class("p", "issue-panel-empty", [txt("None declared")])] } else { map(links, issue_graph_link) }),
+  ])
+}
+fn issue_dependency_graph_item(link: IssueLinkView) -> DependencyGraphItem {
+  DependencyGraphItem { id: link.node_id, label: link.headline, status: link.status }
+}
 fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> List<Fragment> {
-  [
-    el_class("div", "issue-deps-section", [
-      el_class("h3", "issue-deps-heading", [ txt("parent") ]),
-      el_class("div", "issue-deps-body", issue_parent_value(panel: panel)),
+  [el_class("section", "issue-dependency-graph", [
+    el("h2", [txt("Dependencies")]),
+    el_class("p", "issue-graph-legend", [txt("Read top to bottom. Arrows lead from a prerequisite to the issue that needs it. Click a grouped node to expand its issues; select an issue to follow its dependencies.")]),
+    el_class("div", "issue-dag-key", [
+      el_attrs("span", [attr(name: "data-state", value: "selected")], [txt("Selected")]),
+      el_attrs("span", [attr(name: "data-state", value: "open")], [txt("Unfinished")]),
+      el_attrs("span", [attr(name: "data-state", value: "done")], [txt("Done")]),
+      el_attrs("span", [attr(name: "data-state", value: "unknown")], [txt("Unknown")]),
     ]),
-    el_class("div", "issue-deps-section", [
-      el_class("h3", "issue-deps-heading", [ txt("children") ]),
-      el_class("div", "issue-deps-body", if count(panel.children) == 0 { [ txt("no nesting declared") ] } else { issue_link_value(links: panel.children) }),
+    dependency_graph_interactive(current: DependencyGraphItem { id: view.node_id, label: view.headline, status: issue_status_label(view: view) }, prerequisites: map(panel.prerequisites, issue_dependency_graph_item), dependents: map(panel.blocking, issue_dependency_graph_item)),
+    el_class("p", "issue-dag-empty", if count(panel.prerequisites) == 0 && count(panel.blocking) == 0 { [txt("No dependencies declared.")] } else { [] }),
+    el_class("div", "issue-graph-membership", [el("h3", [txt("Project membership")]),
+      el_class("div", "issue-membership-tree", concat(match panel.parent { Absent => [] Present { value: parent } => [issue_membership_link(link: parent, parent: true)] }, [
+        el_attrs("div", [attr(name: "class", value: "issue-membership-subtree"), attr(name: "data-has-parent", value: match panel.parent { Absent => "0" Present { value: _ } => "1" })], [
+          el_class("details", "issue-membership-children", concat([
+            el_attrs("summary", [attr(name: "class", value: "issue-membership-current"), attr(name: "aria-current", value: "true"), attr(name: "aria-label", value: join([view.headline, " · ", to_string(value: count(panel.children)), " child issues"], ""))], [
+              el_class("span", "issue-membership-selected-mark", []),
+              el_class("strong", "issue-membership-selected", [txt(view.headline)]),
+              el_attrs("span", [attr(name: "class", value: "issue-membership-count"), attr(name: "aria-hidden", value: "true")], [txt(to_string(value: count(panel.children)))]),
+            ]),
+          ], if count(panel.children) == 0 { [el_class("p", "issue-panel-empty", [txt("No child issues")])] } else { [el_class("div", "issue-membership-list", map(panel.children, issue_graph_link))] })),
+        ]),
+      ])),
     ]),
-    el_class("div", "issue-deps-section", [
-      el_class("h3", "issue-deps-heading", [ txt("blocked by") ]),
-      el_class("div", "issue-deps-body", if count(panel.blocked_by) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocked_by) }),
-    ]),
-    el_class("div", "issue-deps-section", [
-      el_class("h3", "issue-deps-heading", [ txt("blocking") ]),
-      el_class("div", "issue-deps-body", if count(panel.blocking) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocking) }),
-    ]),
-    el_class("div", "issue-deps-section", [
-      el_class("h3", "issue-deps-heading", [ txt("related") ]),
-      el_class("div", "issue-deps-body", [ txt("no related-issue relation is declared yet") ]),
-    ]),
-    el_class("div", "issue-deps-section", [
-      el_class("h3", "issue-deps-heading", [ txt("supersedes") ]),
-      el_class("div", "issue-deps-body", [ txt(if view.superseded_by == "" { "not superseded" } else { join(["superseded by ", view.superseded_by], "") }) ]),
-    ]),
-  ]
+    el_class("p", "issue-graph-warning", if panel.cycle { [txt("Dependency cycle touches this issue. Review the linked prerequisites before dispatching.")] } else { [] }),
+  ])]
 }
 
 // THE HISTORY TAB: the raw event ledger, newest first — every durable event with its author,
 // kind, and payload. Execution evidence (attempts, rounds, the stage ledger) lives on the Work
 // tab exclusively; this tab is the audit trail.
-fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>) -> List<Fragment> {
-  if count(events) == 0 { [] } else {
-    [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), issue_event_row_node)) ]
+fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile> = []) -> List<Fragment> {
+  if count(events) == 0 { [el_class("p", "issue-panel-empty", [txt("No issue history yet.")])] } else {
+    [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), env => issue_event_row_node(env: env, profiles: profiles))) ]
   }
 }
 
@@ -2534,7 +2518,7 @@ fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: 
   let assignment = roadmap_issue_assignment(envs: events)
   let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
   el_class("aside", "issue-rail", [
-    issue_field_text_row(label: "status", value: issue_rail_status_text(view: view, events: events)),
+    issue_field_row(label: "status", value: [issue_status_node(view: view, events: events)]),
     issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
     issue_field_text_row(label: "reporter", value: issue_reporter_value(events: events)),
     issue_field_text_row(label: "component", value: issue_component_value(view: view)),
@@ -2548,19 +2532,7 @@ fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: 
   ])
 }
 
-// THE STATUS ROW's TEXT: the planning explanation, plus the event-log standing sentence when one
-// holds (claimed / ready for review / blocked …) — read from THE LEDGER'S OWN FOLD (the durable
-// truth), not the observed copy: an observed publication on this node's events shows ready for
-// review here even before the observation channel re-reads. Open histories render the explanation
-// alone.
-fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>) -> String {
-  match roadmap_node_standing(envs: events) {
-    NodeOpen => issue_explanation(view: view)
-    s =>
-      join([issue_explanation(view: view), " · ", issue_standing_text(s: s, profiles: view.profiles)], "")
-  }
-}
-
+// Status detail keeps the latest ledger standing alongside the observed planning facts.
 // THE STANDING SENTENCE AS A PAGE SHOWS IT: the ledger's one sentence, with each principal named
 // by the same profile-bound display the avatar chips use ("Fabric", "Brian Searls") rather than
 // its canonical label.
@@ -2568,18 +2540,16 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
   roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
 }
 
-// THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
-// Assign control — the editable field the mandate puts in the rail. The chip projects the
-// profile-bound identity (view.profiles, read once at the render entry); the holder reads the
-// assignment projection (the one derivation), never a second fold over attempts.
+// The current identity becomes the editor in place; closing restores the projected holder.
 fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
-  let holder_chip = match assignment.holder {
-    Absent => [ txt(issue_assignee_unassigned_display as String) ]
-    Present { value: holder } => issue_assignee_chip_node(holder: holder, profiles: view.profiles)
+  let face = match assignment.holder {
+    Absent => unassigned_avatar()
+    Present { value: holder } => issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder))
   }
-  issue_field_row(label: "assignee", value: concat(
-    holder_chip,
-    issue_detail_action_bar_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))
+  let label = match assignment.holder { Absent => "Unassigned" Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).detail }
+  issue_field_row(label: "assignee", value: [el_class("details", "issue-assignee-disclosure", concat([
+    el_attrs("summary", [attr(name: "aria-label", value: concat("Change assignee: ", label))], [face, el_class("span", "issue-assignee-identity", [txt(label)])]),
+  ], issue_detail_action_bar_nodes(view: view, current_assignee: if label == "Unassigned" { "" } else { label }, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))])
 }
 
 // THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's
@@ -2652,23 +2622,10 @@ fn issue_modified_value(events: List<RoadmapEventEnvelope>) -> String {
 }
 
 fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt(join(["gunbc — issue ", view.node_id], "")) ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "issue"),
-        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
-        dispatch_client_script(),
-      ]),
-    ],
-  }
+  site_document(title: join(["gunbc — issue ", view.node_id], ""), heading: "issue", styles: roadmap_styles(), content: [
+issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+dispatch_client_script()
+])
 }
 
 // THE DETAIL ROUTE'S RENDER ENTRY (owner ruling 2026-09-24: the detail page is a real served
@@ -2737,7 +2694,7 @@ fn issue_detail_page_for(
               launch: ctx,
               attempt_stale: any(stale_nodes, s => s == node_id),
               profiles: profiles),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, member_titles: declared_roadmap_nodes()),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, member_titles: declared_roadmap_nodes(), merged: authored_merged_prs()),
             observation: observation,
             attempts: attempts,
             events: events,
@@ -2750,23 +2707,11 @@ fn issue_detail_page_for(
 }
 
 fn issue_detail_not_found_page(node_id: String, viewer: String) -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt("gunbc — issue not found") ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "issue"),
-        el_class("main", "issue-detail", [
+  site_document(title: "gunbc — issue not found", heading: "issue", styles: roadmap_styles(), content: [
+el_class("main", "issue-detail", [
           el_class("p", "issue-not-found", [ txt(join(["no issue named ", node_id, " is declared in the roadmap authority"], "")) ]),
-        ]),
-      ]),
-    ],
-  }
+        ])
+])
 }
 
 // THE PROJECT SUITE PAGE (GET /project/<node_id>): ONE project's direct membership listing --
@@ -2776,7 +2721,7 @@ fn issue_detail_not_found_page(node_id: String, viewer: String) -> Fragment {
 // in-set prerequisites keep their authored order at the front. The heading is the project row's
 // own ticket headline; an absent row or a non-ticket row renders the not-found document, the same
 // grain as the issue detail route.
-type ProjectSuiteRow { node_id: String, title: String }
+type ProjectSuiteRow { node_id: String, title: String, cycle: Bool }
 
 // THE HEADING'S TICKET PROJECTION: exactly one declared row, and that row a ticket -- anything
 // else is a not-found, because a suite whose heading cannot be read against the row's own brief
@@ -2849,7 +2794,7 @@ fn project_suite_member_title(nodes: List<RoadmapNode>, member: String) -> Strin
 // THE LISTING, one row per direct member, topologically ordered.
 fn project_suite_rows(memberships: List<RoadmapMembership>, edges: List<RoadmapEdge>, nodes: List<RoadmapNode>, project: String) -> List<ProjectSuiteRow> {
   let ordered = project_suite_ordered_members(members: project_suite_member_ids(memberships: memberships, project: project), edges: edges)
-  map(ordered, m => ProjectSuiteRow { node_id: m, title: project_suite_member_title(nodes: nodes, member: m) })
+  map(ordered, m => ProjectSuiteRow { node_id: m, title: project_suite_member_title(nodes: nodes, member: m), cycle: dependency_cycle_touches(node_id: m, edges: edges) })
 }
 
 fn project_suite_row_node(row: ProjectSuiteRow) -> Fragment {
@@ -2858,58 +2803,35 @@ fn project_suite_row_node(row: ProjectSuiteRow) -> Fragment {
       attr(name: "href", value: join(["/issue/", row.node_id], "")),
       attr(name: "title", value: row.node_id),
     ], [ txt(row.title) ]),
+    el_class("span", "issue-graph-warning", if row.cycle { [txt(" · dependency cycle")] } else { [] }),
   ])
 }
 
 fn project_suite_page_launch(headline: String, node_id: String, rows: List<ProjectSuiteRow>, viewer: String) -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt(join(["gunbc — project ", node_id], "")) ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "project"),
-        el_class("main", "project-suite", [
+  site_document(title: join(["gunbc — project ", node_id], ""), heading: "project", styles: roadmap_styles(), content: [
+el_class("main", "project-suite", [
           el_class("div", "issue-detail-head", [
             el_class("span", "issue-id", [ txt(node_id) ]),
             el_class("h1", "issue-detail-title", [ txt(headline) ]),
           ]),
+          el_class("p", "issue-graph-warning", if any(rows, r => r.cycle) { [txt("A dependency cycle prevents a complete ordering. Unresolved members follow in declared order.")] } else { [] }),
           if count(rows) == 0 {
             el_class("p", "project-suite-empty", [ txt("no direct members declared") ])
           } else {
             el_class("ul", "project-suite-members", map(rows, r => project_suite_row_node(row: r)))
           },
-        ]),
-      ]),
-    ],
-  }
+        ])
+])
 }
 
 // THE NOT-FOUND DOCUMENT, the issue route's grain: an absent row or a non-ticket row is a missing
 // project, said in one sentence.
 fn project_suite_not_found_page(node_id: String, viewer: String) -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt("gunbc — project not found") ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "project"),
-        el_class("main", "project-suite", [
+  site_document(title: "gunbc — project not found", heading: "project", styles: roadmap_styles(), content: [
+el_class("main", "project-suite", [
           el_class("p", "issue-not-found", [ txt(join(["no project named ", node_id, " is declared as a ticket in the roadmap authority"], "")) ]),
-        ]),
-      ]),
-    ],
-  }
+        ])
+])
 }
 
 // THE WORKSPACE RENDERS THE TABLE ALONE (owner ruling 2026-09-25: the tree/bands views and their
@@ -2922,11 +2844,10 @@ fn project_suite_not_found_page(node_id: String, viewer: String) -> Fragment {
 // calls it.
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
-    el_class("div", "view-table", concat(
-      [ issue_controls_markup() ],
-      concat(
-        if ws.hidden_not_ready == 0 { [] } else { [ el_class("p", "issue-hidden-summary", [ txt(hidden_not_ready_summary(ws: ws)) ]) ] },
-        [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships) ]))),
+    el_class("div", "view-table", [
+      el_class("div", "workspace-toolbar", [issue_controls_markup()]),
+      el_class("div", "issue-table-scroll", [issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships)])
+    ])
   ])
 }
 
@@ -2941,15 +2862,6 @@ fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>,
     total: count(v1_exit_finish_lines()),
     ready_obligation_count: ready_count,
   }
-}
-
-fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
-  el_class("section", "program-progress", [
-    el_class("span", "program-progress-name", [ txt(v.name) ]),
-    el_class("span", "program-progress-count", [
-      txt(join([to_string(v.ready_obligation_count), " ready now"], "")),
-    ]),
-  ])
 }
 
 fn daily_attempt_progress_for(node_id: String, attempts: List<WorkflowAttemptProgress>) -> WorkflowAttemptProgress? {
@@ -3038,7 +2950,7 @@ fn daily_workspace_view_of_for_accepted(
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
-  memberships: List<RoadmapMembership> = roadmap_memberships()) -> DailyWorkspaceView {
+  memberships: List<RoadmapMembership> = roadmap_memberships(), include_all: Bool = false) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
@@ -3057,7 +2969,7 @@ fn daily_workspace_view_of_for_accepted(
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   let shown_index = membership_index(memberships: memberships)
-  let shown = rows |> filter(r => row_is_shown_in(row: r, index: shown_index))
+  let shown = if include_all { rows } else { rows |> filter(r => row_is_shown_in(row: r, index: shown_index)) }
   daily_workspace_view_in(
     rows: shown,
     edges: edges,
@@ -3084,7 +2996,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     doc: doc, merged: merged, accepted_ids: accepted_ids, withheld: withheld, main_prefix: main_prefix,
     attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: launch,
-    stale_nodes: stale_nodes, profiles: profiles, memberships: memberships, stylesheet: roadmap_css())
+    stale_nodes: stale_nodes, profiles: profiles, memberships: memberships, stylesheet: roadmap_styles())
 }
 
 fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
@@ -3100,7 +3012,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
   memberships: List<RoadmapMembership>,
-  stylesheet: String) -> Fragment {
+  stylesheet: SiteStyles) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
     merged: merged,
@@ -3111,30 +3023,11 @@ fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     launch: launch,
     stale_nodes: stale_nodes,
     profiles: profiles,
-      memberships: memberships)
-  let program_strip = match ws.program {
-    Present { value: v } => [ program_progress_markup_of(v: v) ]
-    Absent => []
-  }
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(stylesheet) ]),
-        el("title", [ txt("gunbc — daily workspace") ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
-          workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)])))),
-        dispatch_client_script(),
-      ]),
-    ],
-  }
+      memberships: memberships, include_all: true)
+  site_document(title: "gunbc — daily workspace", heading: "workspace", styles: stylesheet, content: [
+    el_attrs("main", [attr(name: "class", value: "daily-workspace"), attr(name: "data-observation-banners", value: "off")], concat(main_prefix, [workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)])),
+    dispatch_client_script()
+  ])
 }
 
 // THE MACHINE-STANDING SURFACE IS ITS OWN PAGE, NOT A PREFIX ON THE WORK SURFACE.
@@ -3150,25 +3043,12 @@ fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
 // than being deleted: the claim was never "the panel is on the daily workspace", it was "the panel
 // reaches the surface the operator actually sees", and that surface is now /fleet.
 fn roadmap_fleet_page() -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt("gunbc — fleet") ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "fleet"),
-        el_class("main", "daily-workspace", [
+  site_document(title: "gunbc — fleet", heading: "fleet", styles: roadmap_styles(), content: [
+el_class("main", "daily-workspace", [
           fleet_hardware_standing_panel(),
           fleet_capacity_panel(),
-        ]),
-      ]),
-    ],
-  }
+        ])
+])
 }
 
 // THE STYLESHEET IS A PARAMETER BECAUSE IT IS HEAD CHROME NO ROW CLAIM READS. Deriving it here
@@ -3178,13 +3058,12 @@ fn roadmap_fleet_page() -> Fragment {
 // this tree). That is the DESIGN section 3 tell exactly -- a claim dominated by one call whose result
 // it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
 // it. Every production caller below passes roadmap_css(), so the served page is unchanged.
-fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: String) -> Fragment {
+fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
   let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged, launch: ctx))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged, launch: ctx))
   let main_children = concat(main_prefix, concat(lead, secs))
   let body_base = [
-    roadmap_header(page: "roadmap"),
     el_class("main", "roadmap", main_children),
   ]
   let body_children = if list_length(main_children) == 0 {
@@ -3192,28 +3071,16 @@ fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, ma
   } else {
     concat(body_base, [ dispatch_client_script() ])
   }
-  Element {
-    tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(stylesheet) ]),
-        el("title", [ txt("gunbc — roadmap") ]),
-      ]),
-      el("body", body_children),
-    ],
-  }
+  site_document(title: "gunbc — roadmap", heading: "roadmap", styles: stylesheet, content: body_children)
 }
 
 fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_css())
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_styles())
 }
 
 // The supplied-stylesheet seam a row claim renders through. It is the same page fold; only the head's
 // style text is handed in. A claim that asserts on the stylesheet must use roadmap_page_launch.
-fn roadmap_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, stylesheet: String) -> Fragment {
+fn roadmap_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
   roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: [], launch: launch, stylesheet: stylesheet)
 }
 
@@ -3269,13 +3136,13 @@ fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
 }
 
 fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_for_projection_launch_with_stylesheet(proj: proj, launch: launch, stylesheet: roadmap_css())
+  roadmap_page_for_projection_launch_with_stylesheet(proj: proj, launch: launch, stylesheet: roadmap_styles())
 }
 
 // The supplied-stylesheet seam of the served roadmap route: the projection's own page fold with only
 // the head's style text handed in, so a claim about rows of a supplied projection does not pay for
 // the stylesheet it never reads. roadmap_page_for_projection_launch passes roadmap_css().
-fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding, stylesheet: String) -> Fragment {
+fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_page_impl_with_stylesheet(
@@ -3325,7 +3192,7 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>, members
 // The supplied-stylesheet seam a row or table claim renders through (the daily twin of
 // roadmap_page_launch_with_stylesheet): the same page fold with only the head's style text handed in.
 // A claim that asserts on the stylesheet itself reads roadmap_css or its rule blocks directly.
-fn roadmap_daily_workspace_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, memberships: List<RoadmapMembership>, stylesheet: String) -> Fragment {
+fn roadmap_daily_workspace_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, memberships: List<RoadmapMembership>, stylesheet: SiteStyles) -> Fragment {
   roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch, stale_nodes: [], profiles: [],
       memberships: memberships, stylesheet: stylesheet)
 }
@@ -3374,7 +3241,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
   memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
     proj: proj, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: launch,
-    stale_nodes: stale_nodes, profiles: profiles, memberships: memberships, stylesheet: roadmap_css())
+    stale_nodes: stale_nodes, profiles: profiles, memberships: memberships, stylesheet: roadmap_styles())
 }
 
 // The supplied-stylesheet seam of the served daily route (the twin of
@@ -3389,7 +3256,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
   stale_nodes: List<String>,
   profiles: List<PrincipalProfile>,
   memberships: List<RoadmapMembership>,
-  stylesheet: String) -> Fragment {
+  stylesheet: SiteStyles) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
@@ -3398,7 +3265,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
         accepted_ids: [],
         withheld: [],
         main_prefix: [
-          dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
         ],
         attempts: attempts,
@@ -3416,7 +3282,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
         accepted_ids: accepted,
         withheld: withheld,
         main_prefix: [
-          dashboard_instance_banner(),
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
@@ -3443,4 +3308,86 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection,
    profiles: [],
       memberships: memberships)
 
+}
+
+fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>) -> String { issue_status_label(view: view) }
+fn issue_status_node(view: WorkRowView, events: List<RoadmapEventEnvelope> = []) -> Fragment {
+  let facts = issue_status_details(view: view)
+  el_class("details", "issue-status-detail", [
+    el("summary", [status_badge(label: issue_status_label(view: view))]),
+    el_class("dl", "issue-status-facts", [
+      el("dt", [txt("Planning")]), el("dd", concat([txt(facts.planning)], if count(events) == 0 { [] } else { [el("p", [txt(issue_standing_text(s: roadmap_node_standing(envs: events), profiles: view.profiles))])] })),
+      el("dt", [txt("Current obligation")]), el("dd", [txt(if facts.obligation == "" { "No unsettled obligation" } else { facts.obligation })]),
+      el("dt", [txt("Attempt")]), el("dd", [txt(facts.outcome)]),
+      el("dt", [txt("Delivery evidence")]), el("dd", if count(facts.evidence) == 0 { [txt("No delivery evidence observed")] } else { map(facts.evidence, e => el("p", [txt(join([e.label, ": ", e.value], ""))])) }),
+    ]),
+  ])
+}
+
+// Profile disclosure is local UI. No click on this card issues a command.
+fn issue_mention_fragment(f: Fragment, profiles: List<PrincipalProfile>) -> Fragment {
+  match f {
+    FragmentText { content: _ } => f
+    RawNode { content: _ } => f
+    Element { tag, attributes, children } =>
+      let href = fold(attributes, init: "", f: (acc, a) => if a.name == "href" { a.value } else { acc })
+      match principal_mention_read(uri: href) {
+        Absent => Element { tag: tag, attributes: attributes, children: map(children, c => issue_mention_fragment(f: c, profiles: profiles)) }
+        Present { value: principal } =>
+          let p = EventPrincipalAuthenticated { ref: principal }
+          let display = event_principal_display_with_profile(p: p, profiles: profiles)
+          el_attrs("span", [attr(name: "class", value: "issue-mention"), attr(name: "tabindex", value: "0"), attr(name: "data-principal", value: principal_ref_label(p: principal))], concat(children, [
+            el_class("span", "issue-profile-card", [
+              issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)),
+              el("strong", [txt(display.name)]), el("span", [txt(display.detail)]),
+              el("small", [txt(if event_principal_is_fabric(p: p) { "Group · Fabric workflow" } else { "Person" })]),
+            ]),
+          ]))
+      }
+  }
+}
+fn issue_mention_option(p: PrincipalRef, profiles: List<PrincipalProfile>) -> Fragment {
+  let principal = EventPrincipalAuthenticated { ref: p }
+  let display = event_principal_display_with_profile(p: principal, profiles: profiles)
+  el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-choice-option"), attr(name: "data-mention-reference", value: principal_mention_markdown(principal: p, label: display.name)), attr(name: "role", value: "option"), attr(name: "aria-selected", value: "false")], [
+    issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: principal)), txt(join([display.name, " · ", display.detail], "")),
+  ])
+}
+
+fn issue_assign_selector(p: EventPrincipal, profiles: List<PrincipalProfile>) -> String {
+  match p {
+    EventPrincipalAuthenticated { ref } => if principal_ref_eq(a: ref, b: fabric_workflow_principal) { fabric_display_alias as String } else {
+      match principal_profile_of(ref: ref, profiles: profiles) {
+        Absent => ""
+        Present { value: prof } => match prof.email { Absent => "" Present { value: email } => email as String }
+      }
+    }
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } => if string_contains(s: email as String, pattern: "@") { email as String } else { "" }
+  }
+}
+
+// Complete query corpus, produced during observation rather than by a request-time host probe.
+fn issue_query_snapshot_for_projection(proj: RoadmapAuthorityProjection, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, standings: RoadmapStandings, launch: LaunchHostStanding, stale_nodes: List<String>, profiles: List<PrincipalProfile>) -> String? {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: _ } => none
+    RoadmapAuthorityProjected { doc, accepted, withheld } => {
+      let members = roadmap_memberships()
+      let index = membership_index(memberships: members)
+      let deps = issue_dependency_index(edges: doc_all_edges(doc: doc))
+      let ws = daily_workspace_view_of_for_accepted(doc: doc, merged: authored_merged_prs(), accepted_ids: accepted, withheld: withheld, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: launch, stale_nodes: stale_nodes, profiles: profiles, memberships: members, include_all: true)
+      let encoded: List<String> = fold(ws.table, init: [] as List<String>, f: (acc, row) => {
+        let view = row.view
+        match try_serialize_html_source(node: issue_line_li(row: row, observation: ws.observation, memberships: index, dependencies: deps)) {
+          EmitRejected { reason: _ } => acc
+          EmitOk { html } => concat(acc, [issue_query_row_wire(row: IssueQueryRow { node_id: view.node_id,
+            project: match project_root_for_node_in(node_id: view.node_id, index: index) { Present { value } => value Absent => "" },
+            band: row_filter_band_key(view: view), search: issue_search_value(view: view), title: view.headline,
+            assignee: match issue_assignee_holder(view: view, attempts: []) { Absent => "" Present { value: holder } => workspace_assignee_label(holder: holder, profiles: view.profiles) },
+            priority: roadmap_priority_rank(priority: issue_priority_of(node_id: view.node_id, index: index).priority),
+            status: issue_status_sort_rank(view: view), html: html })])
+        }
+      })
+      if count(encoded) == count(ws.table) { Present { value: join(encoded, issue_query_separator) } } else { none }
+    }
+  }
 }
