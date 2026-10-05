@@ -152,6 +152,62 @@ fn dbg_peer_clause_anat() -> ProcessExit {
   }
 }
 
+// DBG-PROBE (temporary): the clause's raw ENTRY anatomy from the normalized (pre-lowering) tree —
+// pins how the assembled call's children are labeled (the carrier's operator-edge demand must match).
+fn dbg_peer_entry_anat() -> ProcessExit {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "GRAMMAR", d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: wall_red_peer_text(), file: ^wall_red_peer_fixture, rules: dag_lex()) {
+        Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "PEER-TOKENIZE", d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match program_assembly_normalized_outcome(
+            phase: program_assembly_phase_normalize_seeded(
+              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
+              seed: OccurrenceIdAllocator { next_id: 10 },
+              scope: Fnv1a64Structural { digest: "00000000000000ad" }
+            )
+          ) {
+            Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "PEER-NORMALIZE", d: d))
+            Accepted { value: t, diagnostics: _ } =>
+              match body_lower_find_production_shell_optional(root: t.root, emitted: ^dag_surface_admit_callers_clause) {
+                Absent => exit_failure(reason: "PEER-NO-CLAUSE-SHELL")
+                Present { value: clause } =>
+                  match parse_production_captured_child_optional(node: clause) {
+                    Absent => exit_failure(reason: "PEER-CLAUSE-NO-CAPTURED")
+                    Present { value: captured } =>
+                      match dbg_admit_entries_from_clause(captured: captured) {
+                        Absent => exit_failure(reason: "PEER-ENTRIES-UNREADABLE")
+                        Present { value: entries } =>
+                          match entries {
+                            Empty => exit_failure(reason: "PEER-ENTRIES-EMPTY")
+                            Cons { head: first, tail: _ } =>
+                              exit_failure(reason: concat("PEER-ENTRY ", dbg_anat_deep(n: first, depth: 26)))
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dbg_admit_entries_from_clause(captured: Node) -> Optional<List<Node>> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => optional_absent()
+    Present { value: head_pair } =>
+      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head_pair.right)) {
+        Absent => optional_absent()
+        Present { value: colon_pair } =>
+          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: colon_pair.right)) {
+            Absent => optional_absent()
+            Present { value: bracket_pair } =>
+              body_lower_comma_list_items_optional(list_capture: bracket_pair.right)
+          }
+      }
+  }
+}
+
 // DBG-PROBE (temporary): a trivial fn (no admit clause) through the same normalize — isolates whether
 // the fixture text or the clause itself is refused.
 fn dbg_trivial_normalize() -> ProcessExit {
