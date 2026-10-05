@@ -557,7 +557,11 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // unless covers names its site. The converse does not hold, on purpose: a covered site whose effect
 // the selection already federates on its own parameters -- registration, deregistration and the
 // reversible branch create and delete -- does not consume the discharge, and only a consumer owes a
-// rostered interlock. The dispatch, being irreversible, is the one consumer. The interlock is the
+// rostered interlock. The dispatch, being irreversible, is the one consumer.
+// THE DEDICATED GROUP'S SELECTED-WORKFLOW PIN IS NOT UNDER EITHER RULING. ensure_qualification_ref_pin
+// is listed for its branch create; the group pin it performs in the same function is authorized by
+// its own federated standing -- the census row's own parameters, selected without any discharge --
+// and the 10-03 and 10-05 rulings say nothing about it (eager-gull-22, 2026-10-05). The interlock is the
 // host-generic unit hold (gunbc.managed_host_unit_hold UnitHoldProof): the dispatch takes the proof
 // and refuses unless it is the slot's own host's.
 data runner_lifecycle_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
