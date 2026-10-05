@@ -410,6 +410,7 @@ type FrameKind
 type LexicalBinding {
   binder_site: NodeOccurrenceIdentity
   declared: Optional<Node>
+  value: Optional<Node>
 }
 
 // One answered lexical reference: the reference's own minted occurrence and the binding that
@@ -792,10 +793,15 @@ fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
               fold(domain.children, init: frame_binders_empty(), f: fn(fb, e) {
                 match try_edge_declared_binding(e: e) {
                   Present { value: b } =>
-                    frame_binders_add(fb: fb, name: b.name, binding: LexicalBinding {
-                      binder_site: n.occurrence_id,
-                      declared: member_edge_type_node(e: e)
-                    })
+                    frame_binders_add(
+                      fb: fb,
+                      name: b.name,
+                      binding: LexicalBinding {
+                        binder_site: n.occurrence_id,
+                        declared: member_edge_type_node(e: e),
+                        value: optional_absent()
+                      }
+                    )
                   Absent => fb
                 }
               })
@@ -816,10 +822,15 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
           Present { value: e0 } =>
             match e0.target.kind {
               TypeNode { connective: Atom { identity: sym } } =>
-                frame_binders_add(fb: frame_binders_empty(), name: sym, binding: LexicalBinding {
-                  binder_site: e0.target.occurrence_id,
-                  declared: optional_absent()
-                })
+                frame_binders_add(
+                  fb: frame_binders_empty(),
+                  name: sym,
+                  binding: LexicalBinding {
+                    binder_site: e0.target.occurrence_id,
+                    declared: optional_absent(),
+                    value: list_at_optional(xs: node_positional_child_targets(node: n), index: 1)
+                  }
+                )
               _ => frame_binders_empty()
             }
           Absent => frame_binders_empty()
@@ -2598,10 +2609,15 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
               m
             } else {
-              frame_binders_add(fb: m, name: id, binding: LexicalBinding {
-                binder_site: e.target.occurrence_id,
-                declared: resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e)
-              })
+              frame_binders_add(
+                fb: m,
+                name: id,
+                binding: LexicalBinding {
+                  binder_site: e.target.occurrence_id,
+                  declared: resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e),
+                  value: optional_absent()
+                }
+              )
             }
           _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }

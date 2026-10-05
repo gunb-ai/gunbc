@@ -292,7 +292,8 @@ test fn pr_lambda_reference_grounds_through_recorded_binding_holds() -> Bool {
 // Lexical twin over the same name accepts, so the red is the kind, not the name.
 data pr_binder_site: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 41 } }
 
-data pr_lexical_binders: Map<Symbol, LexicalBinding> = map_insert(empty_map(), ^pr_x, LexicalBinding { binder_site: pr_binder_site, declared: Absent })
+data pr_lexical_binders: Map<Symbol, LexicalBinding> = map_insert(empty_map(), ^pr_x, LexicalBinding { binder_site: pr_binder_site, declared: Absent,
+ value: optional_absent() })
 
 fn pr_ctx(kind: FrameKind) -> ResolveContext {
   let namespace = Namespace {

@@ -1783,11 +1783,7 @@ fn infer_branch_operand_resolved_type_with_entries(
           match binding.declared {
             Present { value: declared } => Holds { value: declared }
             Absent =>
-              match infer_let_binder_value_type_optional(
-                entries: entries,
-                resolved: resolved,
-                binder_site: binding.binder_site
-              ) {
+              match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
                 Present { value: value_type } => Holds { value: value_type }
                 Absent => inferred_facts_resolved_type(facts: facts)
               }
@@ -1797,56 +1793,10 @@ fn infer_branch_operand_resolved_type_with_entries(
   }
 }
 
-// THE LET'S VALUE IS THE LET'S TYPE. The Bind node that owns the binder occurrence is found by one
-// walk of the resolved tree (a binder occurrence has no parent link, and resolve's lexical bindings
-// record the binder site, not the Bind); its second positional child is the value expression, and
-// the fold's entry for THAT node carries the derived type. Absent — no Bind owns the site, or the
-// value's own facts are underived, as for a let over a still-frontier expression — leaves the
-// caller's answer exactly as it stood.
-fn infer_let_binder_value_type_optional(
-  entries: List<InferredFactsEntry>,
-  resolved: ResolvedTree,
-  binder_site: NodeOccurrenceIdentity,
-) -> Optional<Node> {
-  match infer_bind_node_with_binder_site(root: resolved.root, binder_site: binder_site) {
-    Absent => optional_absent()
-    Present { value: bind_node } =>
-      match list_at_optional(xs: node_positional_child_targets(node: bind_node), index: 1) {
-        Absent => optional_absent()
-        Present { value: value_target } =>
-          match lookup_inferred_facts_in_entries(entries: entries, key: value_target) {
-            Absent => optional_absent()
-            Present { value: facts } => inferred_facts_resolved_type_optional(facts: facts)
-          }
-      }
-  }
-}
-
-fn infer_bind_node_with_binder_site(root: Node, binder_site: NodeOccurrenceIdentity) -> Optional<Node> {
-  match root.kind {
-    ComputationNode { behavior: Bind } =>
-      match list_at_optional(xs: node_positional_child_targets(node: root), index: 0) {
-        Present { value: binder_target } =>
-          if binder_target.occurrence_id == binder_site {
-            optional_present(value: root)
-          } else {
-            infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
-          }
-        Absent => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
-      }
-    TypeNode { connective: _ } => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
-    ComputationNode { behavior: _ } => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
-  }
-}
-
-fn infer_bind_node_with_binder_site_over_children(children: List<Edge>, binder_site: NodeOccurrenceIdentity) -> Optional<Node> {
-  fold(children, init: Absent, f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => infer_bind_node_with_binder_site(root: e.target, binder_site: binder_site)
-    }
-  })
-}
+// THE LET'S VALUE IS THE LET'S TYPE. The binding carries the value occurrence beside the binder
+// site -- resolve's Bind frame mints it where the Bind node is in hand -- so the read is one map
+// entry and one fold-entry lookup, never a tree walk. Absent -- the binding carries no value (a
+// parameter or pattern binder), or the value's own facts are underived, as for a let over a
 
 fn inferred_facts_resolved_type_optional(facts: InferredFacts) -> Optional<Node> {
   match facts.grounding {
