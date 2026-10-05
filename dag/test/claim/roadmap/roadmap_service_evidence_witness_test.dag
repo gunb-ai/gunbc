@@ -12,10 +12,10 @@ import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_service_evidence {
   AttemptBinding, AttemptBindingOutcome, AttemptBound, AttemptUnlaunched, AttemptBindingRefused,
   ServiceEvidenceReader, MeteringReader, SessionPlacementReader, SharedComputationReader, ResultReturnedReader,
-  ServiceEvidenceReading, EvidenceObserved, EvidenceRecordAbsent, EvidenceNotOwed, EvidenceRefused,
+  ServiceEvidenceReading, EvidenceObserved, EvidenceRecordAbsent, EvidenceNotOwed, EvidencePending, EvidenceRefused,
   ServiceEvidenceOwed, OwedToPendingReader, OwedToUnbuiltProducer,
   PendingServiceReader, PendingSharedComputation,
-  ServiceEvidenceStanding, StandingObserved, StandingOwed, StandingNotOwed, StandingRefused, PendingReader, ReaderRecordAbsent, UnbuiltProducer,
+  ServiceEvidenceStanding, StandingObserved, StandingOwed, StandingNotOwed, StandingPending, StandingRefused, PendingReader, ReaderRecordAbsent, UnbuiltProducer,
   PlacementObserved, WorkloadClassObserved,
   ServiceEvidenceReadings, ServiceEvidenceReceipt, ServiceEvidenceEntry, ServiceEvidenceInputs,
   SessionPlacementRead, MeteringRead, ResultReturnedRead, MeteredTokenUsage,
@@ -153,27 +153,31 @@ fn owed_unbuilt(o: ServiceEvidenceOwed, owner: String) -> Bool {
 }
 
 fn is_refused<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceRefused { reason: _ } => true  EvidenceObserved { value: _ } => false  EvidenceRecordAbsent => false  EvidenceNotOwed { reason: _ } => false }
+  match r { EvidenceRefused { reason: _ } => true  EvidenceObserved { value: _ } => false  EvidenceRecordAbsent => false  EvidenceNotOwed { reason: _ } => false  EvidencePending { reason: _ } => false }
 }
 
 fn not_observed<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => true  EvidenceRecordAbsent => true  EvidenceNotOwed { reason: _ } => true }
+  match r { EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => true  EvidenceRecordAbsent => true  EvidenceNotOwed { reason: _ } => true  EvidencePending { reason: _ } => true }
 }
 
 fn record_absent<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceRecordAbsent => true  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false  EvidenceNotOwed { reason: _ } => false }
+  match r { EvidenceRecordAbsent => true  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false  EvidenceNotOwed { reason: _ } => false  EvidencePending { reason: _ } => false }
+}
+
+fn is_pending<T>(r: ServiceEvidenceReading<T>) -> Bool {
+  match r { EvidencePending { reason: _ } => true  EvidenceNotOwed { reason: _ } => false  EvidenceRecordAbsent => false  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false }
 }
 
 fn is_not_owed<T>(r: ServiceEvidenceReading<T>) -> Bool {
-  match r { EvidenceNotOwed { reason: _ } => true  EvidenceRecordAbsent => false  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false }
+  match r { EvidenceNotOwed { reason: _ } => true  EvidenceRecordAbsent => false  EvidenceObserved { value: _ } => false  EvidenceRefused { reason: _ } => false  EvidencePending { reason: _ } => false }
 }
 
 fn standing_owed(x: ServiceEvidenceEntry) -> Bool {
-  match x.standing { StandingOwed { producer: _ } => true  StandingObserved { value: _, source: _ } => false  StandingNotOwed { source: _, reason: _ } => false  StandingRefused { reason: _ } => false }
+  match x.standing { StandingOwed { producer: _ } => true  StandingObserved { value: _, source: _ } => false  StandingNotOwed { source: _, reason: _ } => false  StandingPending { source: _, reason: _ } => false  StandingRefused { reason: _ } => false }
 }
 
 fn standing_observed_by_g5(x: ServiceEvidenceEntry) -> Bool {
-  match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: SessionPlacementReader)  StandingOwed { producer: _ } => false  StandingNotOwed { source: _, reason: _ } => false  StandingRefused { reason: _ } => false }
+  match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: SessionPlacementReader)  StandingOwed { producer: _ } => false  StandingNotOwed { source: _, reason: _ } => false  StandingPending { source: _, reason: _ } => false  StandingRefused { reason: _ } => false }
 }
 
 // ── the binding: one discriminating red per refusal ──
@@ -328,18 +332,21 @@ test fn a_bound_placement_observes_placement_workload_class_and_granted_resource
     EvidenceRecordAbsent => false
     EvidenceRefused { reason: _ } => false
     EvidenceNotOwed { reason: _ } => false
+    EvidencePending { reason: _ } => false
   })
     && (match r.resource_request {
       EvidenceObserved { value } => kibibyte_count(k: value) == 8388608
       EvidenceRecordAbsent => false
       EvidenceRefused { reason: _ } => false
       EvidenceNotOwed { reason: _ } => false
+      EvidencePending { reason: _ } => false
     })
     && (match r.workload_class {
       EvidenceObserved { value } => value.class_grant != ""
       EvidenceRecordAbsent => false
       EvidenceRefused { reason: _ } => false
       EvidenceNotOwed { reason: _ } => false
+      EvidencePending { reason: _ } => false
     })
     && all(filter(service_evidence_entries(r: r), x => x.field == "placement" || x.field == "workload_class" || x.field == "resource_request"), x => standing_observed_by_g5(x: x))
     && owed_unbuilt(o: r.wait_time, owner: "service-evidence-capture")
@@ -539,14 +546,26 @@ test fn a_final_meter_observes_execution_time_and_billable_usage_from_g3() -> Bo
     && all(filter(service_evidence_entries(r: r), x => x.field == "execution_time" || x.field == "billable_usage"), x => match x.standing { StandingObserved { value: _, source } => reader_is(a: source, b: MeteringReader)  _ => false })
 }
 
-// A provisional record can still change and a record not yet written is nothing: both are a record
-// not yet written, never an observed meter. A refused reading is refused.
-test fn a_provisional_or_unwritten_meter_is_record_absent_and_a_refused_meter_is_refused() -> Bool {
+fn g3_entry_standing(r: ServiceEvidenceReadings) -> List<ServiceEvidenceStanding> {
+  map(filter(service_evidence_entries(r: r), x => x.field == "execution_time" || x.field == "billable_usage"), x => x.standing)
+}
+
+// CONTROL 1: a provisional record EXISTS -- it is pending from G3, and it does not encode as
+// reader_record_absent. (Red if Provisional is collapsed into the absent arm again.)
+test fn a_provisional_meter_is_pending_from_g3_not_record_absent() -> Bool {
   let p = g3_readings(attempt: key_a, m: MeteringProvisional { record: g3_record(node: node_a, attempt: key_a) })
+  is_pending(r: p.execution_time) && is_pending(r: p.billable_usage)
+    && all(g3_entry_standing(r: p), st => match st { StandingPending { source, reason: _ } => reader_is(a: source, b: MeteringReader)  _ => false })
+    && count(service_evidence_unsourced_fields(r: p)) == 14
+}
+
+// CONTROL 2: a missing record still encodes as the metering reader's absent record; a refused one is
+// refused.
+test fn an_unwritten_meter_is_record_absent_and_a_refused_meter_is_refused() -> Bool {
   let n = g3_readings(attempt: key_a, m: MeteringNotYetWritten)
   let x = g3_readings(attempt: key_a, m: MeteringRefused { cause: "the launch roster is unreadable" })
-  record_absent(r: p.execution_time) && record_absent(r: p.billable_usage)
-    && record_absent(r: n.execution_time) && record_absent(r: n.billable_usage)
+  record_absent(r: n.execution_time) && record_absent(r: n.billable_usage)
+    && all(g3_entry_standing(r: n), st => match st { StandingOwed { producer } => (match producer { ReaderRecordAbsent { reader } => reader_is(a: reader, b: MeteringReader)  _ => false })  _ => false })
     && is_refused(r: x.execution_time) && is_refused(r: x.billable_usage)
 }
 
@@ -633,6 +652,7 @@ data failure_owed: String = "{\"field\": \"failure_attribution\", \"standing\": 
 data failure_observed: String = "{\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"verification_failed\", \"head\": \"52c56a8\", \"cause\": \"verdict validation-failed\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"
 data billable_observed: String = "{\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 1200, \"output_tokens\": 340}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}"
 data completion_observed: String = "{\"field\": \"completion_time\", \"standing\": \"observed\", \"value\": {\"recorded_at\": \"2026-10-03T10:00:00Z\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"
+data execution_pending: String = "{\"field\": \"execution_time\", \"standing\": \"pending\", \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"reason\": \"provisional\"}"
 data completion_not_owed: String = "{\"field\": \"completion_time\", \"standing\": \"not_owed\", \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"reason\": \"autonomous\"}"
 
 test fn an_observed_execution_time_from_g3_decodes() -> Bool {
@@ -645,6 +665,20 @@ test fn an_observed_failure_attribution_from_g4_decodes() -> Bool {
 
 test fn observed_billable_usage_and_completion_time_decode() -> Bool {
   snapshot_admits(wire: replace(s: edited(from: completion_owed, to: completion_observed), from: billable_owed, to: billable_observed))
+}
+
+test fn a_pending_execution_time_from_g3_decodes() -> Bool {
+  snapshot_admits(wire: edited(from: execution_owed, to: execution_pending))
+}
+
+// CONTROL 3: pending only from a reader whose observation has a provisional arm, and only for that
+// reader's own field.
+test fn a_pending_standing_attributed_to_another_reader_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: execution_owed, to: replace(s: execution_pending, from: "gunbc.roadmap_attempt_metering metering_observe_for_attempt", to: "gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt")))
+}
+
+test fn a_pending_standing_on_a_g4_field_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: completion_owed, to: "{\"field\": \"completion_time\", \"standing\": \"pending\", \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"reason\": \"provisional\"}"))
 }
 
 test fn a_not_owed_completion_time_from_g4_decodes() -> Bool {

@@ -232,6 +232,9 @@ type ServiceEvidenceReceipt {
 //   a field with no landed source holds ServiceEvidenceOwed, which has NO observed arm, so nothing can
 //     be observed for it until its reader lands and that change gives the field its typed carrier.
 // Values become text only in the wire encoder (service_evidence_entries / service_evidence_entry_json).
+// EvidencePending: the reader's record EXISTS for this attempt and decodes, but is not final (G3: a
+// provisional meter, whose roster is open or whose launches are not all complete). It is not a record
+// not yet written, so it is never read as RecordAbsent, and not a value, so never as Observed.
 // EvidenceNotOwed: the reader establishes that THIS attempt owes no such record (G4: an attempt with
 // no requester owes no result). It is a fact about the attempt, not a record not yet written, so it
 // is never read as RecordAbsent and never as Observed.
@@ -239,6 +242,7 @@ type ServiceEvidenceReading<T>
   = EvidenceObserved { value: T }
   | EvidenceRecordAbsent
   | EvidenceNotOwed { reason: NonEmptyStr }
+  | EvidencePending { reason: NonEmptyStr }
   | EvidenceRefused { reason: NonEmptyStr }
 
 type ServiceEvidenceOwed
@@ -331,9 +335,9 @@ fn resource_request_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<
   }
 }
 
-// G3 (gunbc.roadmap_attempt_metering). Only a FINAL record (MeteringObserved) is the attempt's meter:
-// a Provisional record can still change and a record not yet written is nothing, so both are a record
-// not yet written here; Refused is refused. What a final record ESTABLISHES, and nothing else:
+// G3 (gunbc.roadmap_attempt_metering). Only a FINAL record (MeteringObserved) is the attempt's meter.
+// A Provisional record exists but can still change: it is pending, never observed and never absent.
+// A record not yet written is record-absent; Refused is refused. What a final record ESTABLISHES, and nothing else:
 //   execution_time -- the seat time its launches held, summed (metering_seat_time_total), as Second;
 //   billable_usage -- the input and output tokens its launches consumed (metering_token_total).
 // The record's compute share is a typed absence in the record itself (ComputeNotAttributable), so it
@@ -346,8 +350,11 @@ type MeteredTokenUsage {
 
 type MeterOfAttempt
   = MeterFinal { record: AttemptMeteringRecord }
-  | MeterNotYetFinal
+  | MeterProvisional
+  | MeterNotYetWritten
   | MeterRefused { reason: NonEmptyStr }
+
+data meter_provisional_reason: NonEmptyStr = "the attempt's metering record is provisional: its launch roster is open or a launch's stream or seat is not yet complete" as NonEmptyStr
 
 fn meter_names_binding(record: AttemptMeteringRecord, binding: AttemptBinding) -> Bool {
   record.node_id == (binding.node_id as String) && record.attempt_key == (binding.attempt_key as String)
@@ -362,8 +369,8 @@ fn meter_of_attempt(i: MeteringInput, binding: AttemptBinding) -> MeterOfAttempt
     MeteringRead { observation } =>
       match observation {
         MeteringObserved { record } => if meter_names_binding(record: record, binding: binding) { MeterFinal { record: record } } else { meter_foreign(record: record) }
-        MeteringProvisional { record } => if meter_names_binding(record: record, binding: binding) { MeterNotYetFinal } else { meter_foreign(record: record) }
-        MeteringNotYetWritten => MeterNotYetFinal
+        MeteringProvisional { record } => if meter_names_binding(record: record, binding: binding) { MeterProvisional } else { meter_foreign(record: record) }
+        MeteringNotYetWritten => MeterNotYetWritten
         MeteringRefused { cause } => MeterRefused { reason: refusal_reason(reason: join(["the metering record is refused: ", cause], "")) }
       }
   }
@@ -376,7 +383,8 @@ fn execution_time_reading(m: MeterOfAttempt) -> ServiceEvidenceReading<Second> {
         MeteringSeatTimeObserved { held } => EvidenceObserved { value: held }
         MeteringSeatTimeIncomplete { cause } => EvidenceRefused { reason: refusal_reason(reason: join(["the final metering record's seat time is incomplete: ", cause], "")) }
       }
-    MeterNotYetFinal => EvidenceRecordAbsent
+    MeterProvisional => EvidencePending { reason: meter_provisional_reason }
+    MeterNotYetWritten => EvidenceRecordAbsent
     MeterRefused { reason } => EvidenceRefused { reason: reason }
   }
 }
@@ -392,7 +400,8 @@ fn billable_usage_reading(m: MeterOfAttempt) -> ServiceEvidenceReading<MeteredTo
             MeteringTokensObserved { value: output_total } => EvidenceObserved { value: MeteredTokenUsage { input_tokens: input_total, output_tokens: output_total } }
           }
       }
-    MeterNotYetFinal => EvidenceRecordAbsent
+    MeterProvisional => EvidencePending { reason: meter_provisional_reason }
+    MeterNotYetWritten => EvidenceRecordAbsent
     MeterRefused { reason } => EvidenceRefused { reason: reason }
   }
 }
@@ -535,6 +544,7 @@ type ServiceEvidenceStanding
   = StandingObserved { value: JsonValue, source: ServiceEvidenceReader }
   | StandingOwed { producer: ServiceEvidenceProducer }
   | StandingNotOwed { source: ServiceEvidenceReader, reason: NonEmptyStr }
+  | StandingPending { source: ServiceEvidenceReader, reason: NonEmptyStr }
   | StandingRefused { reason: NonEmptyStr }
 
 type ServiceEvidenceEntry {
@@ -602,6 +612,7 @@ fn reading_entry(field: String, source: ServiceEvidenceReader, r: ServiceEvidenc
     EvidenceObserved { value } => StandingObserved { value: value, source: source }
     EvidenceRecordAbsent => StandingOwed { producer: ReaderRecordAbsent { reader: source } }
     EvidenceNotOwed { reason } => StandingNotOwed { source: source, reason: reason }
+    EvidencePending { reason } => StandingPending { source: source, reason: reason }
     EvidenceRefused { reason } => StandingRefused { reason: reason }
   } }
 }
@@ -611,6 +622,7 @@ fn placement_entry(field: String, r: ServiceEvidenceReading<PlacementObserved>) 
     EvidenceObserved { value } => EvidenceObserved { value: placement_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -620,6 +632,7 @@ fn workload_class_entry(field: String, r: ServiceEvidenceReading<WorkloadClassOb
     EvidenceObserved { value } => EvidenceObserved { value: workload_class_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -629,6 +642,7 @@ fn kibibyte_entry(field: String, r: ServiceEvidenceReading<Kibibyte>) -> Service
     EvidenceObserved { value } => EvidenceObserved { value: kibibyte_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -638,6 +652,7 @@ fn execution_time_entry(field: String, r: ServiceEvidenceReading<Second>) -> Ser
     EvidenceObserved { value } => EvidenceObserved { value: second_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -647,6 +662,7 @@ fn billable_usage_entry(field: String, r: ServiceEvidenceReading<MeteredTokenUsa
     EvidenceObserved { value } => EvidenceObserved { value: metered_token_usage_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -656,6 +672,7 @@ fn completion_time_entry(field: String, r: ServiceEvidenceReading<CompletionTime
     EvidenceObserved { value } => EvidenceObserved { value: completion_time_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -665,6 +682,7 @@ fn failure_attribution_entry(field: String, r: ServiceEvidenceReading<AttemptRes
     EvidenceObserved { value } => EvidenceObserved { value: result_outcome_json(v: value) }
     EvidenceRecordAbsent => EvidenceRecordAbsent
     EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
     EvidenceRefused { reason } => EvidenceRefused { reason: reason }
   })
 }
@@ -776,6 +794,11 @@ fn service_evidence_entry_json(x: ServiceEvidenceEntry) -> JsonValue {
       json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
       json_kv(key: "reason", value: json_string(s: reason as String)),
     ])
+    StandingPending { source, reason } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "pending")),
+      json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
+      json_kv(key: "reason", value: json_string(s: reason as String)),
+    ])
     StandingRefused { reason } => json_object([field,
       json_kv(key: "standing", value: json_string(s: "refused")),
       json_kv(key: "reason", value: json_string(s: reason as String)),
@@ -828,6 +851,7 @@ fn service_evidence_unsourced_fields(r: ServiceEvidenceReadings) -> List<String>
     StandingObserved { value: _, source: _ } => false
     StandingRefused { reason: _ } => false
     StandingNotOwed { source: _, reason: _ } => false
+    StandingPending { source: _, reason: _ } => false
     StandingOwed { producer } => match producer {
       PendingReader { reader: _ } => true
       UnbuiltProducer { owner_node: _ } => true
@@ -867,6 +891,7 @@ fn service_evidence_capture_acceptance_holds() -> Bool {
 // field, or a wire this module would not write, does not decode.
 type ServiceEvidenceSnapshotStanding
   = SnapshotFieldObserved
+  | SnapshotFieldPending
   | SnapshotFieldNotOwed
   | SnapshotFieldOwed
 
@@ -924,6 +949,16 @@ fn reader_can_establish_not_owed(r: ServiceEvidenceReader) -> Bool {
   match r {
     ResultReturnedReader => true
     MeteringReader => false
+    SessionPlacementReader => false
+    SharedComputationReader => false
+  }
+}
+
+// Which readers' observations carry a present-but-not-final arm: only G3 (MeteringProvisional).
+fn reader_can_establish_pending(r: ServiceEvidenceReader) -> Bool {
+  match r {
+    MeteringReader => true
+    ResultReturnedReader => false
     SessionPlacementReader => false
     SharedComputationReader => false
   }
@@ -1019,6 +1054,14 @@ fn snapshot_field_of(v: JsonValue) -> SnapshotEntry? {
             }
         }
     }
+  } else if standing == "pending" {
+    let reason = snapshot_string(v: v, key: "reason")
+    if reason == "" { none } else {
+      match reader_of_wire(w: snapshot_string(v: v, key: "source")) {
+        Absent => none
+        Present { value: source } => Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingPending { source: source, reason: reason as NonEmptyStr } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldPending } } }
+      }
+    }
   } else if standing == "not_owed" {
     let reason = snapshot_string(v: v, key: "reason")
     if reason == "" { none } else {
@@ -1063,7 +1106,8 @@ fn snapshot_fields_of(v: JsonValue) -> List<SnapshotEntry>? {
 // Exactly the canonical names, once each and in canonical order: pairwise equal over equal lengths.
 // One decoded entry against its source-authority entry: the same field; if owed, exactly the producer
 // the authority names; if observed or not owed, only where the authority owes the field to a reader's
-// absent record and only from that reader -- so a typed value the decoder accepts for one field can
+// absent record and only from that reader (and pending or not owed only from a reader whose
+// observation has that arm) -- so a typed value the decoder accepts for one field can
 // stand only as that field's own reader wrote it.
 fn snapshot_entry_follows_its_source(decoded: ServiceEvidenceEntry, canonical: ServiceEvidenceEntry) -> Bool {
   decoded.field == canonical.field && (match canonical.standing {
@@ -1073,6 +1117,12 @@ fn snapshot_entry_follows_its_source(decoded: ServiceEvidenceEntry, canonical: S
         StandingObserved { value: _, source } =>
           match expected {
             ReaderRecordAbsent { reader } => source == reader
+            PendingReader { reader: _ } => false
+            UnbuiltProducer { owner_node: _ } => false
+          }
+        StandingPending { source, reason: _ } =>
+          match expected {
+            ReaderRecordAbsent { reader } => source == reader && reader_can_establish_pending(r: reader)
             PendingReader { reader: _ } => false
             UnbuiltProducer { owner_node: _ } => false
           }
@@ -1086,6 +1136,7 @@ fn snapshot_entry_follows_its_source(decoded: ServiceEvidenceEntry, canonical: S
       }
     StandingObserved { value: _, source: _ } => false
     StandingNotOwed { source: _, reason: _ } => false
+    StandingPending { source: _, reason: _ } => false
     StandingRefused { reason: _ } => false
   })
 }
