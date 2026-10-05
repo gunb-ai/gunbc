@@ -328,7 +328,7 @@ test fn a_prod_role_holder_with_no_instance_refuses_as_unrealized() -> Bool {
 
 // ── The convergence transitions, over supplied per-host sightings ──────────────────────────────
 // Sightings are supplied at the adjudication boundary (DESIGN 3: a witness discriminates at one
-// interface); the ssh probe that produces them in production is ssh_probe_reading_source, and the
+// interface); host self-reports produce them in production (self_report_reading_source_with), and the
 // positive control below runs the real decision over the real realization.
 fn full_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
   [
@@ -646,7 +646,7 @@ test fn an_unmarked_legacy_store_refuses_naming_the_operators_disposition() -> B
 // carry one into an apply step later -- each refused at compile time as a located diagnostic.
 data forged_admission_source: String = "module probe_forged_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nfn forge() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\n"
 
-data obtained_admission_source: String = "module probe_obtained_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nimport gunbc.host_effect { LocalShell }\nfn obtain() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment(), own: LocalShell) }\n"
+data obtained_admission_source: String = "module probe_obtained_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nfn obtain() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment()) }\n"
 
 data outside_member_plan_source: String = "module probe_outside_member_plan\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.host_effect { LocalShell }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn bypass(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\n"
 
@@ -656,7 +656,7 @@ data outside_warrant_literal_source: String = "module probe_outside_warrant_lite
 
 data canonical_apply_source: String = "module probe_canonical_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(deployment: srv1_production_desired_deployment(), access: a, candidate: c)\n true }\n"
 
-data altered_spec_to_assessor_source: String = "module probe_altered_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit_rostered, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn alter() -> RoleSingletonAdmissionResult { let s = deployment_spec_srv1()\n assess_and_admit_rostered(spec: s, own: LocalShell) }\n"
+data altered_spec_to_assessor_source: String = "module probe_altered_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit_rostered, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nfn alter() -> RoleSingletonAdmissionResult { let s = deployment_spec_srv1()\n assess_and_admit_rostered(spec: s) }\n"
 
 data spec_to_production_apply_source: String = "module probe_spec_to_production_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(spec: deployment_spec_srv1(), access: a, candidate: c)\n true }\n"
 

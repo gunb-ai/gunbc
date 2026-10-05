@@ -1,0 +1,75 @@
+module extdeps.tailscale.whois
+
+import std.types { NonEmptyStr, String, Unit, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit {
+  JsonString,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tailscale.com/kb/1080/cli#whois"
+  }
+}
+
+// `tailscale whois --json <ip>` ASKS THE LOCAL tailscaled WHICH NODE HOLDS A TAILNET ADDRESS. The
+// answer is the control plane's (apitype.WhoIsResponse: Node *tailcfg.Node, UserProfile
+// *tailcfg.UserProfile), and a WireGuard session to that address can only be completed by the holder
+// of that node's key -- so a response read from that address was served by that node. This module
+// owns the operation and the one member a consumer binds on: Node.Name, the node's MagicDNS FQDN with
+// its trailing dot (tailcfg.Node Name). Whether a node is the one a consumer expected is the consumer's
+// question.
+service tailscale.WhoIs {
+  operation Json {
+    requires none
+    input { address: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["tailscale", "whois", "--json", "{address}"] }
+    exit {
+      0 => Unit
+      nonzero => String "tailscale whois --json failed"
+    }
+    mock_response {
+      0 => { stdout: "", success: false } "hermetic: no tailscaled; a peer identity refuses rather than fabricate a node"
+    }
+  }
+}
+
+// UNREADABLE IS NOT A NODE. A document without exactly one Node object carrying exactly one string
+// Name names nobody, and the consumer must refuse it rather than compare against an empty name.
+type WhoIsNodeName
+  = WhoIsNodeNamed { name: NonEmptyStr }
+  | WhoIsNodeUnreadable { cause: String }
+
+fn whois_node_name(whois_json: String) -> WhoIsNodeName {
+  match parse_json_document(s: whois_json) {
+    JsonDocumentUnreadable { gap } => WhoIsNodeUnreadable { cause: join(["tailscale whois output is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "Node") {
+      JsonMemberFound { value: node } => match json_object_unique_member(v: node, key: "Name") {
+        JsonMemberFound { value: JsonString { value: name } } =>
+          if name == "" { WhoIsNodeUnreadable { cause: "tailscale whois Node.Name is empty" } } else { WhoIsNodeNamed { name: name as NonEmptyStr } }
+        JsonMemberFound { value: _ } => WhoIsNodeUnreadable { cause: "tailscale whois Node.Name is not a string" }
+        JsonMemberAbsent => WhoIsNodeUnreadable { cause: "tailscale whois Node.Name is missing" }
+        JsonMemberDuplicated { count: _ } => WhoIsNodeUnreadable { cause: "tailscale whois Node.Name is duplicated" }
+        JsonMemberNotAnObject => WhoIsNodeUnreadable { cause: "tailscale whois Node is not an object" }
+      }
+      JsonMemberAbsent => WhoIsNodeUnreadable { cause: "tailscale whois output carries no Node" }
+      JsonMemberDuplicated { count: _ } => WhoIsNodeUnreadable { cause: "tailscale whois Node is duplicated" }
+      JsonMemberNotAnObject => WhoIsNodeUnreadable { cause: "tailscale whois output is not an object" }
+    }
+  }
+}

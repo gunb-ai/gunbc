@@ -592,7 +592,7 @@ fn live_deploy_apply_via_transport(
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match assess_and_admit(deployment: deployment, own: transport) {
+  match assess_and_admit(deployment: deployment) {
     RoleSingletonNotAdmitted { cause } =>
       NotConverged {
         reason: join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], ""),
@@ -1316,7 +1316,7 @@ fn live_deploy_transaction_decided(
           exit: live_deploy_reconciliation_exit(r: preflight),
         )
       } else {
-        match assess_and_admit(deployment: deployment, own: access.transport) {
+        match assess_and_admit(deployment: deployment) {
           RoleSingletonNotAdmitted { cause } => {
             let why = join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], "")
             live_deploy_write_transaction_receipt(

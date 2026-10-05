@@ -105,6 +105,9 @@ fn http_client_get_unix_socket_argv(socket: NonEmptyStr, url: NonEmptyStr, max_t
 // for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
 // them), one content-type line differs, and the body still rides --data @{file} so a client
 // secret in the form body is never an argv word (gunbc.credential_argv_exposure).
+// GetBoundedReportingPeer IS GetBounded WHOSE LAST STDOUT LINE IS THE ADDRESS IT CONNECTED TO
+// (curl -w %{remote_ip}, curl(1)): a consumer that must know WHO served the body reads the peer from
+// the same connection that carried it, rather than from a second resolution that could disagree.
 // Probe, A LIVENESS PROBE: one bounded connection attempt, answered as DATA on every arm. This is
 // the observation half of a readiness poll (the retry loop lives with the caller, which owns the
 // budget): StatusWithin REFUSES a nonzero curl, which is the wrong shape for polling a server that
@@ -175,6 +178,33 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
+    }
+  }
+
+  operation GetBoundedReportingPeer {
+    requires Network
+    input { url: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "-fsS",
+        "--connect-timeout",
+        http_client_localhost_connect_timeout_flag(),
+        "--max-time",
+        http_client_localhost_max_time_flag(),
+        "-w",
+        "\n%\{remote_ip\}",
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client bounded GET reporting its peer failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a peer-bound observation refuses rather than fabricate a body"
     }
   }
 

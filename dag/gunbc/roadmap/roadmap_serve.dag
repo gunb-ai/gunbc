@@ -51,7 +51,8 @@ import gunbc.auth.request_authentication {
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
 import extdeps.uri { Uri, uri_wire }
-import extdeps.languages.json.emit { json_bool }
+import extdeps.languages.json.emit { json_bool, JsonKeyValue }
+import gunbc.live_deploy.role_singleton_convergence { role_singleton_self_report_member, role_singleton_self_report_json, role_singleton_self_report_of }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
 }
@@ -1175,8 +1176,23 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
 }
 
 fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: dashboard_instance_json_members(instance: instance)))
+}
+
+// THE SERVED DOCUMENT CARRIES THE HOST'S ROLE-SINGLETON SELF-REPORT (operator ruling 2026-10-05:
+// cross-host role-singleton observation is self-report). It is read on the host when the route is
+// served -- gunbc.live_deploy.role_singleton_convergence role_singleton_self_report_of -- so it is the
+// one effectful member, kept out of dashboard_instance_json, whose members are the instance's facts.
+fn dashboard_instance_served_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: concat(
+    dashboard_instance_json_members(instance: instance),
+    [json_kv(key: role_singleton_self_report_member, value: role_singleton_self_report_json(report: role_singleton_self_report_of(instance: instance)))],
+  )))
+}
+
+fn dashboard_instance_json_members(instance: HostDashboardInstance) -> List<JsonKeyValue> {
   let plan = dashboard_instance_provision_plan_rows(instance: instance)
-  serialize_json(v: json_object(members: [
+  [
     json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
     json_kv(key: "instance_id", value: json_string(s: instance.instance_id as String)),
     json_kv(key: "host_identity", value: json_string(s: instance.host_identity as String)),
@@ -1210,7 +1226,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
         json_kv(key: "detail", value: json_string(s: row.detail)),
       ]))),
     ),
-  ]))
+  ]
 }
 
 // The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable
@@ -1326,7 +1342,7 @@ fn roadmap_serve_invoke_over(
       serve_text_response(
         status: 200,
         content_type: application_json_utf8,
-        body: dashboard_instance_json(instance: instance),
+        body: dashboard_instance_served_json(instance: instance),
       )
     ProviderReadinessHandler =>
       serve_text_response(

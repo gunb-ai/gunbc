@@ -1,0 +1,298 @@
+module test.claim.live_deploy.role_singleton_self_report_witness_test
+
+import std.types { NonEmptyStr, List, Bool, String, Int }
+import v2.std.collection { Present, Absent }
+import gunbc.deployment_risk { DeploymentId, ProdRoleHeldBy, NoProdRole, srv1_daily_workspace_deployment, srv2_deploy_deployment }
+import gunbc.roadmap_dashboard_instance { ProdRoleRealization, srv1_live_dashboard_instance }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import extdeps.tailscale.whois { WhoIsNodeNamed, WhoIsNodeUnreadable, whois_node_name }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import gunbc.live_deploy.role_singleton_convergence {
+  RoleSingletonConvergence,
+  RoleSingletonNoop,
+  RoleSingletonInstall,
+  RoleSingletonRefused,
+  RoleSingletonMoveUnimplemented,
+  RoleSingletonHostUnobservable,
+  RoleSingletonSighting,
+  SightedDeploymentMember,
+  SightedBroker,
+  SightedMismatchedMarker,
+  FabricUnitMember,
+  StoreMarkerMember,
+  HostRoleSingletonReading,
+  HostRoleSingletonsRead,
+  HostRoleSingletonsUnobservable,
+  RoleSingletonReadingSource,
+  RoleSingletonSelfReport,
+  FetchedSelfReport,
+  SelfReportServed,
+  SelfReportUnserved,
+  SelfReportDecoded,
+  SelfReportUndecodable,
+  role_singleton_convergence,
+  role_singleton_observation_of,
+  observe_role_singletons_with,
+  self_report_reading_source_with,
+  self_report_host_reading,
+  self_report_unobservable,
+  decode_self_report_in_instance_document,
+  role_singleton_self_report_json,
+  role_singleton_self_report_member,
+  role_singleton_self_report_max_age_millis,
+  role_singleton_self_report_of,
+  roster_host_tailnet_node,
+  host_row,
+  roster_hosts,
+  observe_role_singletons_by_self_report,
+  RoleSingletonObservationRefused,
+  RoleSingletonsObserved,
+}
+
+// THE SELF-REPORT READER, OVER SUPPLIED REPORTS. Each claim supplies what the fetch returned -- the
+// tailscale whois answer for the address that served the body, and the served /instance.json body --
+// at self_report_reading_source_with (DESIGN 3: a witness discriminates at one interface), then runs
+// the REAL adjudication and convergence over every roster host. The real fetch is exercised once, by
+// the inhabitance claim at the end, through the canonical assessor.
+
+data now_millis: Int = 1800000000000
+
+fn node_of(host: String) -> NonEmptyStr {
+  match host_row(host: host as NonEmptyStr, rows: desired_deployment_roster()) {
+    Absent => "no-roster-row." as NonEmptyStr
+    Present { value: row } => match roster_host_tailnet_node(row: row) {
+      Present { value: n } => n
+      Absent => "no-tailnet-domain." as NonEmptyStr
+    }
+  }
+}
+
+fn full_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
+  [
+    SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: FabricUnitMember },
+    SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: StoreMarkerMember },
+    SightedBroker { host: host as NonEmptyStr },
+  ]
+}
+
+fn report(host: String, at: Int, sightings: List<RoleSingletonSighting>) -> RoleSingletonSelfReport {
+  RoleSingletonSelfReport { host: host as NonEmptyStr, observed_at_unix_millis: at, reading: HostRoleSingletonsRead { host: host as NonEmptyStr, sightings: sightings } }
+}
+
+// THE SUPPLIED /instance.json: the served document with its role_singletons member, encoded by the
+// real encoder.
+fn instance_body(r: RoleSingletonSelfReport) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-dashboard-instance/v1")),
+    json_kv(key: role_singleton_self_report_member, value: role_singleton_self_report_json(report: r)),
+  ]))
+}
+
+fn served_by(node_host: String, r: RoleSingletonSelfReport) -> FetchedSelfReport {
+  SelfReportServed { peer_node: WhoIsNodeNamed { name: node_of(host: node_host) }, body: instance_body(r: r) }
+}
+
+fn honest(host: String, sightings: List<RoleSingletonSighting>) -> FetchedSelfReport {
+  served_by(node_host: host, r: report(host: host, at: now_millis, sightings: sightings))
+}
+
+fn decide_with(desired: ProdRoleRealization, srv1: FetchedSelfReport, srv2: FetchedSelfReport) -> RoleSingletonConvergence {
+  let rows = desired_deployment_roster()
+  let source = self_report_reading_source_with(fetch: row => if (row.target.ssh_host as String) == "srv1" { srv1 } else { srv2 }, now_unix_millis: now_millis)
+  role_singleton_convergence(desired: desired, observed: observe_role_singletons_with(source: source, rows: rows), rows: rows)
+}
+
+fn srv1_holder() -> FetchedSelfReport {
+  honest(host: "srv1", sightings: full_on(host: "srv1", d: srv1_daily_workspace_deployment))
+}
+
+fn srv2_empty() -> FetchedSelfReport {
+  honest(host: "srv2", sightings: [])
+}
+
+fn fx_moved() -> ProdRoleRealization {
+  prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment })
+}
+
+fn is_noop(c: RoleSingletonConvergence) -> Bool {
+  match c { RoleSingletonNoop => true  _ => false }
+}
+
+fn refused_unobservable_on(c: RoleSingletonConvergence, host: String) -> Bool {
+  match c {
+    RoleSingletonRefused { cause } => match cause {
+      RoleSingletonHostUnobservable { host: h, cause: _ } => (h as String) == host
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn refused_as_move(c: RoleSingletonConvergence) -> Bool {
+  match c {
+    RoleSingletonRefused { cause } => match cause { RoleSingletonMoveUnimplemented { observed, desired } => observed == srv1_daily_workspace_deployment && desired == srv2_deploy_deployment  _ => false }
+    _ => false
+  }
+}
+
+// The roster this file's fixtures assume: exactly srv1 and srv2 are its hosts.
+test fn the_roster_hosts_are_srv1_and_srv2_each_bound_to_a_tailnet_node() -> Bool {
+  let hosts = roster_hosts(rows: desired_deployment_roster()) |> map(h => h as String)
+  length(hosts) == 2 && any(hosts, h => h == "srv1") && any(hosts, h => h == "srv2")
+    && starts_with(s: node_of(host: "srv1") as String, prefix: "srv1.") && starts_with(s: node_of(host: "srv2") as String, prefix: "srv2.")
+}
+
+// ── The holder self-reports a complete marked realization: Noop (the control of every red) ─────
+test fn the_srv1_holder_self_reporting_a_complete_marked_realization_is_a_noop() -> Bool {
+  is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: srv2_empty()))
+}
+
+// ── srv2's report absent refuses ────────────────────────────────────────────────────────────────
+// Unserved (no reach, no route, no dashboard) and served-without-a-report are both an unreporting
+// host. The control is the Noop above, which differs only in srv2's leg.
+test fn srv2s_report_absent_refuses_as_unobservable_never_as_absent() -> Bool {
+  refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: SelfReportUnserved { cause: "GET failed" }), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeNamed { name: node_of(host: "srv2") }, body: "{\"schema\":\"roadmap-dashboard-instance/v1\"}" }), host: "srv2")
+    && is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: srv2_empty()))
+}
+
+// ── A stale report refuses ──────────────────────────────────────────────────────────────────────
+// The boundary is the derived fetch deadline: a report exactly that old is admitted, one millisecond
+// older refuses, and so does one from beyond the bound in the reader's future.
+test fn a_stale_report_refuses_and_one_at_the_bound_is_admitted() -> Bool {
+  let bound = role_singleton_self_report_max_age_millis()
+  let at_bound = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis - bound, sightings: []))
+  let stale = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis - bound - 1, sightings: []))
+  let future = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis + bound + 1, sightings: []))
+  bound > 0
+    && is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: at_bound))
+    && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: stale), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: future), host: "srv2")
+}
+
+// ── A report signed as the wrong host refuses ───────────────────────────────────────────────────
+// Three ways one host answers for another on srv2's leg: srv1's node serving srv1's own report;
+// srv2's node serving a report that names srv1; srv2's node serving a report naming srv2 whose
+// sightings are on srv1. An unidentified peer refuses too. Each differs from the Noop control only
+// in srv2's leg.
+test fn a_report_signed_as_the_wrong_host_refuses() -> Bool {
+  let desired = prod_role_actuated_realization()
+  refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv1", r: report(host: "srv1", at: now_millis, sightings: []))), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: report(host: "srv1", at: now_millis, sightings: []))), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsRead { host: "srv2" as NonEmptyStr, sightings: [SightedBroker { host: "srv1" as NonEmptyStr }] } })), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: "whois failed" }, body: instance_body(r: report(host: "srv2", at: now_millis, sightings: [])) }), host: "srv2")
+    && is_noop(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: srv2_empty()))
+}
+
+// A HOST THAT REPORTS ITSELF UNOBSERVABLE (the dashboard cannot list the store control directory)
+// stays unobservable at the reader.
+test fn a_host_reporting_itself_unobservable_refuses() -> Bool {
+  refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsUnobservable { host: "srv2" as NonEmptyStr, cause: "listing fabric-storage-control: permission denied" } })), host: "srv2")
+}
+
+// ── A moved role with srv1 still reporting the singleton: Refuse (move not implemented) ────────
+// The control is the install: the same moved role over an empty world installs on srv2.
+test fn a_moved_role_with_srv1_still_reporting_the_singleton_refuses_as_a_move() -> Bool {
+  refused_as_move(c: decide_with(desired: fx_moved(), srv1: srv1_holder(), srv2: srv2_empty()))
+    && match decide_with(desired: fx_moved(), srv1: honest(host: "srv1", sightings: []), srv2: srv2_empty()) {
+      RoleSingletonInstall { holder } => holder.instance.deployment == srv2_deploy_deployment
+      _ => false
+    }
+}
+
+// A MISMATCHED MARKER TRAVELS THE WIRE AS ITSELF: the encoder and decoder keep every field, so the
+// reporter's marker readback reaches the adjudication unflattened.
+test fn a_mismatched_marker_sighting_round_trips_through_the_report() -> Bool {
+  let r = RoleSingletonSelfReport { host: "srv1" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsRead { host: "srv1" as NonEmptyStr, sightings: [SightedMismatchedMarker { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, field: "mode" as NonEmptyStr, expected: "640", observed: "644" }] } }
+  match decode_self_report_in_instance_document(body: instance_body(r: r)) {
+    SelfReportDecoded { report: d } => match d.reading {
+      HostRoleSingletonsRead { host: _, sightings } => match sightings |> first {
+        Present { value: SightedMismatchedMarker { host, deployment, field, expected, observed } } =>
+          (host as String) == "srv1" && deployment == srv1_daily_workspace_deployment && (field as String) == "mode" && expected == "640" && observed == "644" && length(sightings) == 1 && d.observed_at_unix_millis == now_millis
+        _ => false
+      }
+      HostRoleSingletonsUnobservable { host: _, cause: _ } => false
+    }
+    SelfReportUndecodable { cause: _ } => false
+  }
+}
+
+// ── Mutants ─────────────────────────────────────────────────────────────────────────────────────
+// Each mutant is the real adjudication with one hole; the claim holds only if the real reader refuses
+// where the mutant reaches a decision the world does not support.
+fn mutant_missing_as_absent(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now: Int) -> HostRoleSingletonReading {
+  match fetched {
+    SelfReportUnserved { cause: _ } => HostRoleSingletonsRead { host: host, sightings: [] }
+    SelfReportServed { peer_node: _, body: _ } => self_report_host_reading(host: host, expected_node: expected_node, fetched: fetched, now_unix_millis: now)
+  }
+}
+
+fn mutant_any_host(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now: Int) -> HostRoleSingletonReading {
+  match fetched {
+    SelfReportUnserved { cause } => self_report_unobservable(host: host, cause: cause)
+    SelfReportServed { peer_node: _, body } => match decode_self_report_in_instance_document(body: body) {
+      SelfReportDecoded { report: r } => r.reading
+      SelfReportUndecodable { cause } => self_report_unobservable(host: host, cause: cause)
+    }
+  }
+}
+
+fn decide_mutant(adjudicate: fn(NonEmptyStr, NonEmptyStr, FetchedSelfReport, Int) -> HostRoleSingletonReading, desired: ProdRoleRealization, srv1: FetchedSelfReport, srv2: FetchedSelfReport) -> RoleSingletonConvergence {
+  let rows = desired_deployment_roster()
+  let readings = roster_hosts(rows: rows) |> map(h => adjudicate(h, node_of(host: h as String), if (h as String) == "srv1" { srv1 } else { srv2 }, now_millis))
+  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows)
+}
+
+// THE OLD HOLDER UNREPORTED, the role moved, srv2 empty: read as absent, the mutant INSTALLS a second
+// empty store beside the running one; the real reader refuses.
+test fn a_mutant_reading_a_missing_report_as_absent_installs_where_the_real_reader_refuses() -> Bool {
+  let unreported = SelfReportUnserved { cause: "GET failed" }
+  refused_unobservable_on(c: decide_with(desired: fx_moved(), srv1: unreported, srv2: srv2_empty()), host: "srv1")
+    && match decide_mutant(adjudicate: (h, n, f, t) => mutant_missing_as_absent(host: h, expected_node: n, fetched: f, now: t), desired: fx_moved(), srv1: unreported, srv2: srv2_empty()) {
+      RoleSingletonInstall { holder } => holder.instance.deployment == srv2_deploy_deployment
+      _ => false
+    }
+}
+
+// srv1 ANSWERS FOR srv2: accepted, srv2 is never observed and the mutant reads Noop; the real reader
+// refuses srv2 as unobservable.
+test fn a_mutant_accepting_any_hosts_report_reads_noop_where_the_real_reader_refuses() -> Bool {
+  let impostor = served_by(node_host: "srv1", r: report(host: "srv1", at: now_millis, sightings: []))
+  refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: impostor), host: "srv2")
+    && is_noop(c: decide_mutant(adjudicate: (h, n, f, t) => mutant_any_host(host: h, expected_node: n, fetched: f, now: t), desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: impostor))
+}
+
+// ── Inhabitance: the real producer and the real reader ──────────────────────────────────────────
+// THE PRODUCER'S REPORT DECODES AS ITSELF. role_singleton_self_report_of runs the real on-host read
+// for the srv1 instance (whatever this runner's filesystem answers), and the real decoder reads back
+// the same host, the same instant and the same reading arm.
+fn reading_shape(r: HostRoleSingletonReading) -> String {
+  match r {
+    HostRoleSingletonsRead { host, sightings } => join(["read ", host as String, " ", to_string(length(sightings))], "")
+    HostRoleSingletonsUnobservable { host, cause: _ } => join(["unobservable ", host as String], "")
+  }
+}
+
+test fn the_real_producers_report_decodes_as_itself() -> Bool {
+  let produced = role_singleton_self_report_of(instance: srv1_live_dashboard_instance())
+  (produced.host as String) == "srv1"
+    && match decode_self_report_in_instance_document(body: instance_body(r: produced)) {
+      SelfReportDecoded { report: d } => (d.host as String) == "srv1" && d.observed_at_unix_millis == produced.observed_at_unix_millis && reading_shape(r: d.reading) == reading_shape(r: produced.reading)
+      SelfReportUndecodable { cause: _ } => false
+    }
+}
+
+// THE REAL OBSERVATION RUNS THE REAL FETCH. observe_role_singletons_by_self_report is the observation
+// the canonical assessor (assess_and_admit_rostered, sealed to its callers) decides over. With no granted
+// reach the fetch is unserved, or the served document carries no report, so it refuses as unobservable
+// with the self-report reader's own cause prefix -- the ROUTE asserted, not only the verdict: an
+// observation still probing over ssh would refuse with a different cause.
+test fn the_real_observation_reads_through_the_self_report_reader_and_refuses_without_a_grant() -> Bool {
+  match observe_role_singletons_by_self_report(rows: desired_deployment_roster()) {
+    RoleSingletonObservationRefused { cause } => match cause {
+      RoleSingletonHostUnobservable { host: _, cause: c } => starts_with(s: c, prefix: "self-report: ")
+      _ => false
+    }
+    RoleSingletonsObserved { realizations: _ } => false
+  }
+}
