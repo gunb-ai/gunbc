@@ -52,7 +52,8 @@ fn parse_memo_frame_replay_run_modeled(
     productions_by_name: base.productions_by_name,
     prepared_exprs: base.prepared_exprs,
     layout: base.layout,
-    refusal: base.refusal
+    refusal: base.refusal,
+    minted_through: base.minted_through
   }
   match grammar_lookup_production(root: root, name: root.start) {
     Violates { diagnostic: _ } => optional_absent()
@@ -328,6 +329,137 @@ test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool {
   }
 }
 
+// A MEMO ENTRY FILLED BY A REJECTED ATTEMPT, SERVED AFTER LATER MINTS.
+//
+//   S = H P y      H = x (!(P y) a)*      P = a      tokens: x a y
+//
+// The guard is the match-arm body's shape (v2.extdeps.languages.dag
+// dag_grammar_match_arm_stmt_body_statement), and its element begins with the token the guard
+// reads, as a statement can begin with a pattern's token, so FIRST dispatch attempts it. At `a` the
+// guard parses P y, which matches, so the guard
+// rejects and the repetition stops. That attempt memoized P at position 1 with the ids it minted,
+// and a rejected attempt returns no provenance, so the repetition's stamp and H's wrap are minted
+// after it. S then serves P from the memo. Unless the allocator resumes past what the memo retains,
+// those later mints reuse P's ids, the replay keeps the index's earlier event for them, and P's
+// token resolves to the repetition stamp's locus instead of its own (gunbc#13056's second match
+// arm). The memo-free run has no served node, so the comparison is the oracle; the hit count is
+// the route.
+fn guarded_memo_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^guarded_memo_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^guarded_memo_s,
+        expression: Sequence {
+          left: Nonterminal { production: ^guarded_memo_h },
+          right: Sequence {
+            left: Nonterminal { production: ^guarded_memo_p },
+            right: abandoned_terminal(token_class: ^guarded_tok_y)
+          }
+        },
+        emitted: grammar_atom(identity: ^guarded_memo_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^guarded_memo_h,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^guarded_tok_x),
+          right: Repeat {
+            element: Sequence {
+              left: NotPredicate {
+                element: Sequence {
+                  left: Nonterminal { production: ^guarded_memo_p },
+                  right: abandoned_terminal(token_class: ^guarded_tok_y)
+                }
+              },
+              right: abandoned_terminal(token_class: ^guarded_tok_a)
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^guarded_memo_h)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^guarded_memo_p,
+        expression: abandoned_terminal(token_class: ^guarded_tok_a),
+        emitted: grammar_atom(identity: ^guarded_memo_p)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn guarded_memo_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^guarded_tok_x, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^guarded_tok_a, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^guarded_tok_y, offset: 2),
+  tail: std.algebra.Empty } } }
+}
+
+fn guarded_memo_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^guarded_memo_grammar_contract)
+  match grammar_validate_for_parse(root: guarded_memo_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_memo_frame_replay_run_modeled(
+        tokens: guarded_memo_tokens(),
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: validated.root),
+        materialization: materialization
+      )
+  }
+}
+
+test fn parse_memo_entry_from_a_rejected_guard_resolves_like_a_memo_free_parse() -> Bool {
+  match guarded_memo_run(materialization: Memoize) {
+    Absent => false
+    Present { value: warm } =>
+      match guarded_memo_run(materialization: Recompute) {
+        Absent => false
+        Present { value: cold } =>
+          match parse_memo_frame_replay_loci(run: warm) {
+            Absent => false
+            Present { value: warm_loci } =>
+              match parse_memo_frame_replay_loci(run: cold) {
+                Absent => false
+                Present { value: cold_loci } =>
+                  (parse_memo_frame_replay_hits(run: warm) > 0)
+                    && (parse_memo_frame_replay_hits(run: cold) == 0)
+                    && (length(xs: warm_loci) > 0)
+                    && (warm_loci == cold_loci)
+              }
+          }
+      }
+  }
+}
+
+// THE REPAIR MOVES NO ID ON A PARSE THAT RETAINS NOTHING. Only a stored memo entry raises the
+// high-water the parse resumes past, so the same guard with the store refused (Recompute) must mint
+// exactly the ids it minted before the repair: the guard's own attempt is discarded and its ids are
+// reused, harmlessly, because no node keeps them. The literal is the pre-order id list this fixture
+// parsed to at ed68b5573b, before the repair; a change that shifts ids on an unretained path reds here.
+fn parse_memo_frame_replay_minted_ids(run: ParseMemoFrameReplayRun) -> List<Int> {
+  fold_list(
+    xs: node_subtree_nodes(root: run.tree),
+    empty: std.algebra.Empty,
+    cons: fn(acc, n) {
+      match n.occurrence_id {
+        OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id.value)
+        OccurrenceSynthetic => acc
+        OccurrenceProjected { id: _, caused_by: _ } => acc
+        OccurrencePending { caused_by: _ } => acc
+      }
+    }
+  )
+}
+
+test fn parse_without_a_stored_entry_mints_the_ids_it_minted_before() -> Bool {
+  match guarded_memo_run(materialization: Recompute) {
+    Absent => false
+    Present { value: cold } =>
+      parse_memo_frame_replay_minted_ids(run: cold) == [8, 3, 2, 0, 1, 7, 5, 4, 6]
+  }
+}
+
 // THE PARSE MEMO'S DEMAND CASE IS DERIVED BY THE REAL PRODUCER, AND THE DIRECT ARM PRESERVES THE
 // WHOLE PARSE. v2.compiler.parse compute_grammar_first_analysis rules each grammar's
 // (nonterminal, position) demand through std.materialization_ladder once, and every table built
@@ -484,7 +616,8 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
         productions_by_name: base.productions_by_name,
         prepared_exprs: base.prepared_exprs,
         layout: base.layout,
-        refusal: base.refusal
+        refusal: base.refusal,
+        minted_through: base.minted_through
       }
       match grammar_lookup_production(root: root, name: root.start) {
         Violates { diagnostic: _ } => optional_absent()
@@ -543,3 +676,4 @@ test fn parse_memo_direct_arm_preserves_the_whole_parse() -> Bool {
       }
   }
 }
+

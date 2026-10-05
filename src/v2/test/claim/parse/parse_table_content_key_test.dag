@@ -20,7 +20,8 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
     productions_by_name: base.productions_by_name,
     prepared_exprs: base.prepared_exprs,
     layout: base.layout,
-    refusal: base.refusal
+    refusal: base.refusal,
+    minted_through: base.minted_through
   }
 }
 
