@@ -10,7 +10,7 @@ import gunbc.bmc_netboot_shell_boot {
 }
 import gunbc.bmc_netboot_serve { srv4_bmc_netboot_serve_plan }
 
-test fn srv4_shell_boot_sequence_direct_kernel() -> Bool {
+test fn srv4_shell_boot_sequence_direct_kernel() -> Bool  {
   let all = fold(srv4_shell_boot_commands, init: "", f: (acc, c) => join([acc, uefi_shell_command_line(cmd: c), "\n"], ""))
   string_contains(s: all, pattern: "ifconfig -s eth2 dhcp")
     && string_contains(s: all, pattern: "ping 192.168.1.195")
@@ -21,6 +21,6 @@ test fn srv4_shell_boot_sequence_direct_kernel() -> Bool {
     && list_length(items: srv4_shell_boot_commands) == 5
 }
 
-test fn srv4_tftpd_serve_command_grounded() -> Bool {
+test fn srv4_tftpd_serve_command_grounded() -> Bool  {
   string_contains(s: shell_command_render(command: bmc_tftpd_serve_command(plan: srv4_bmc_netboot_serve_plan)), pattern: "'/tmp/netboot/busybox' 'udpsvd' '-E' '0.0.0.0' '69' '/tmp/netboot/busybox' 'tftpd' '-r' '/tmp/netboot'")
 }

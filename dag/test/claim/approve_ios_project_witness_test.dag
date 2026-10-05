@@ -83,13 +83,13 @@ fn project_carries_required_content(v: YamlValue) -> Bool {
 // Xcode 26.6 identifies itself as 2660 (observed on the operator's Mac, Xcode > About, 2026-09-24).
 // The spec writes the RELEASE; XcodeGen derives LastUpgradeCheck from it. The prompt stops only when
 // that derivation lands on the building Xcode's own number, and 26.0 (2600) did not.
-test fn the_declared_release_stamps_the_building_xcodes_upgrade_check() -> Bool {
+test fn the_declared_release_stamps_the_building_xcodes_upgrade_check() -> Bool  {
   (xcodegen_last_upgrade_check(r: xcode_26_6) == "2660")
     && (xcodegen_last_upgrade_check(r: XcodeRelease { major: 26, minor: 0, release_notes: xcode_26_6.release_notes }) == "2600")
     && (xcodegen_last_upgrade_check(r: XcodeRelease { major: 9, minor: 1, release_notes: xcode_26_6.release_notes }) == "0910")
 }
 
-test fn the_committed_projection_carries_every_required_info_plist_key_and_setting() -> Bool {
+test fn the_committed_projection_carries_every_required_info_plist_key_and_setting() -> Bool  {
   match expected_approve_ios_project_yml() {
     ApproveIosProjectRefused { reason: _ } => false
     ApproveIosProjectGenerated { content: t } => match ingest_yaml_source(src: t) {
@@ -150,26 +150,26 @@ data swift_version: YamlKeyValue = kv(key: "SWIFT_VERSION", value: yaml_string(s
 data host: YamlKeyValue = kv(key: "ApproveServerHost", value: yaml_string(s: "srv1.supplied.example"))
 data bundle_id: YamlKeyValue = kv(key: "PRODUCT_BUNDLE_IDENTIFIER", value: yaml_string(s: "ai.gunb.approve"))
 
-test fn witness_a_complete_supplied_document_is_admitted() -> Bool {
+test fn witness_a_complete_supplied_document_is_admitted() -> Bool  {
   project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
 
 // The Mac's letterboxing: UILaunchScreen missing from the written Info.plist.
-test fn red_a_document_without_a_launch_screen_is_refused() -> Bool {
+test fn red_a_document_without_a_launch_screen_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
 
 // The Mac's crash on first Face ID use: no purpose string.
-test fn red_a_document_without_a_face_id_purpose_is_refused() -> Bool {
+test fn red_a_document_without_a_face_id_purpose_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [launch, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
 
-test fn red_a_document_without_a_display_name_is_refused() -> Bool {
+test fn red_a_document_without_a_display_name_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [launch, face_id, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
 
 // The shape that hid all three: the keys spelled as INFOPLIST_KEY_* settings XcodeGen's own plist ignores.
-test fn red_a_dead_infoplist_key_setting_is_refused() -> Bool {
+test fn red_a_dead_infoplist_key_setting_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(
     properties: [launch, face_id, display, orientations, modes, host, apns],
     approve_settings: [bundle_id, kv(key: "INFOPLIST_KEY_CFBundleDisplayName", value: yaml_string(s: "Approve"))],
@@ -178,23 +178,23 @@ test fn red_a_dead_infoplist_key_setting_is_refused() -> Bool {
 }
 
 // The upgrade prompt: a project stamped with an Xcode older than the one building it.
-test fn red_a_stale_xcode_version_is_refused() -> Bool {
+test fn red_a_stale_xcode_version_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "16.0"))
     && !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.0"))
 }
 
 // The test bundle with no Info.plist source: ApproveTests did not build.
-test fn red_a_test_target_without_an_info_plist_is_refused() -> Bool {
+test fn red_a_test_target_without_an_info_plist_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied_with(properties: [launch, face_id, display, orientations, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: []))
 }
 
 // Xcode's "All interface orientations must be supported" warning, fatal under warnings-as-errors.
-test fn red_a_document_without_supported_orientations_is_refused() -> Bool {
+test fn red_a_document_without_supported_orientations_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [launch, face_id, display, modes, host, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
 
 // The standing never claims an executing lane, and names the trigger that would retire that.
-test fn the_ios_build_standing_names_its_missing_lane() -> Bool {
+test fn the_ios_build_standing_names_its_missing_lane() -> Bool  {
   match approve_ios_build_standing() {
     NotExecutedByAnyRequiredLane { latest_receipt: _, trigger: t } => t == approve_ios_build_unexecuted_frontier
   }
@@ -203,22 +203,22 @@ test fn the_ios_build_standing_names_its_missing_lane() -> Bool {
 // The three rows the app's identity and runtime read: omitted or substituted, each is refused.
 data all_properties: List<YamlKeyValue> = [launch, face_id, display, orientations, modes, host, apns]
 
-test fn red_an_omitted_or_substituted_apns_environment_is_refused() -> Bool {
+test fn red_an_omitted_or_substituted_apns_environment_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host], approve_settings: [bundle_id], xcode_version: "26.6"))
     && !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, host, kv(key: "ApproveApnsEnvironment", value: yaml_string(s: "production"))], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
 
-test fn red_an_omitted_or_substituted_bundle_identifier_is_refused() -> Bool {
+test fn red_an_omitted_or_substituted_bundle_identifier_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: all_properties, approve_settings: [], xcode_version: "26.6"))
     && !project_carries_required_content(v: supplied(properties: all_properties, approve_settings: [kv(key: "PRODUCT_BUNDLE_IDENTIFIER", value: yaml_string(s: "ai.gunb.other"))], xcode_version: "26.6"))
 }
 
-test fn red_an_omitted_or_substituted_swift_version_is_refused() -> Bool {
+test fn red_an_omitted_or_substituted_swift_version_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied_full(properties: all_properties, approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: [tests_infoplist], swift_version: []))
     && !project_carries_required_content(v: supplied_full(properties: all_properties, approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: [tests_infoplist], swift_version: [kv(key: "SWIFT_VERSION", value: yaml_string(s: "6.0"))]))
 }
 
-test fn red_an_omitted_or_xcconfig_substituted_server_host_is_refused() -> Bool {
+test fn red_an_omitted_or_xcconfig_substituted_server_host_is_refused() -> Bool  {
   !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
     && !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, kv(key: "ApproveServerHost", value: yaml_string(s: "$(APPROVE_SERVER_HOST)")), apns], approve_settings: [bundle_id], xcode_version: "26.6"))
 }
@@ -239,7 +239,7 @@ fn generated_server_host(g: ApproveIosProjectGeneration) -> String? {
 
 // The host the app dials and the base the approval links are issued against are one address:
 // https:// plus the projected host IS gunbc.auth.approval_broker_endpoint approval_broker_base_url.
-test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
+test fn the_committed_projection_names_the_brokers_public_host() -> Bool  {
   match generated_server_host(g: expected_approve_ios_project_yml()) {
     Present { value: h } => concat("https://", h) == (approval_broker_base_url() as String)
     Absent => false
@@ -248,7 +248,7 @@ test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
 
 // THE DISCRIMINATING CLAIM: the tailnet domain row decides the generated host. A different domain
 // yields that domain's host and not the committed one.
-test fn changing_the_tailnet_domain_changes_the_generated_host() -> Bool {
+test fn changing_the_tailnet_domain_changes_the_generated_host() -> Bool  {
   match generated_server_host(g: approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: none)) {
     Present { value: h } => (h == join([operator_host_srv1 as String, ".other-tailnet.example"], ""))
       && (concat("https://", h) != (approval_broker_base_url() as String))
@@ -257,7 +257,7 @@ test fn changing_the_tailnet_domain_changes_the_generated_host() -> Bool {
 }
 
 // An undeclared tailnet domain projects the unroutable RFC 2606 host, never a plausible one.
-test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool {
+test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool  {
   match generated_server_host(g: approve_ios_project_yml_from(domain: none, port: none)) {
     Present { value: h } => string_contains(s: h, pattern: ".invalid") && !string_contains(s: h, pattern: operator_host_srv1 as String)
     Absent => false
@@ -266,7 +266,7 @@ test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool {
 
 // ServerConfig carries no port, so a broker published off the default TLS listener refuses the
 // projection rather than emitting a host the app would dial on 443.
-test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
+test fn red_a_non_default_public_port_refuses_the_projection() -> Bool  {
   match approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: Present { value: approval_ntfy_serve_port }) {
     ApproveIosProjectRefused { reason: r } => string_contains(s: r, pattern: to_string(approval_ntfy_serve_port))
     ApproveIosProjectGenerated { content: _ } => false

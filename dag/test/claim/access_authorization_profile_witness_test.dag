@@ -22,7 +22,7 @@ fn string_set(a: String, b: String) -> Set<String> {
   set_insert(set_insert(empty_set(), a), b)
 }
 
-test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
+test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool  {
   let left = EnumeratedAudience { members: string_set(a: "alice", b: "bob") }
   let right = EnumeratedAudience { members: string_set(a: "bob", b: "carol") }
   !audience_subset(left: left, right: right)
@@ -34,7 +34,7 @@ test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
     }
 }
 
-test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
+test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool  {
   let effect = effect_access_request(request: EffectRequest {
     subject: "actor", effect: "write", target: "file", context: "frame", evidence: "grant",
   })
@@ -63,7 +63,7 @@ test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
     && sealed.action.operation == "evaluate" && sealed.context.value == "enclave"
 }
 
-test fn denial_is_typed_located_and_left_biased_under_meet() -> Bool {
+test fn denial_is_typed_located_and_left_biased_under_meet() -> Bool  {
   let first = access_policy_refusal(
     profile: "PublicationAdmissionRequest", subject: "session-a", action: "publication",
     object: "public-root", reason: "evidence rejected",

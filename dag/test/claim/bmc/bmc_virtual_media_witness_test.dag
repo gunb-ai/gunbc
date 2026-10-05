@@ -157,7 +157,7 @@ fn realized_commands(ops: List<ConfigfsPreparedOp>) -> List<ConfigfsOpCommand> {
     list_append(left: acc, right: [configfs_prepared_realization(op: op)]))
 }
 
-test fn srv4_nbd_export_read_only_seeded_iso() -> Bool {
+test fn srv4_nbd_export_read_only_seeded_iso() -> Bool  {
   let cfg = srv4_nbd_server_config_text()
   string_contains(s: cfg, pattern: concat("port = ", to_string(srv3_nbd_proxy_local_port)))
     && string_contains(s: cfg, pattern: "[srv4iso]")
@@ -165,7 +165,7 @@ test fn srv4_nbd_export_read_only_seeded_iso() -> Bool {
     && string_contains(s: cfg, pattern: "readonly = true")
 }
 
-test fn srv4_nbd_client_attaches_named_export() -> Bool {
+test fn srv4_nbd_client_attaches_named_export() -> Bool  {
   string_contains(
     s: srv4_nbd_client_attach_command_text(),
     pattern: concat(
@@ -182,7 +182,7 @@ test fn srv4_nbd_client_attaches_named_export() -> Bool {
 // commands). The same facts, read off the PREPARED staging: the gadget root is ensured, the
 // attribute writes carry the values the srv4 fixture states, and the whole staging is ready -- a
 // refusal here mints nothing, so every value read below would be the empty string.
-test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
+test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool  {
   let ops = staging_ready_ops(staging: srv4_vm_gadget_setup_staging())
   configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/file") == "/dev/nbd0"
     && configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
@@ -191,7 +191,7 @@ test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
     && list_length(items: ops) == 16
 }
 
-test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
+test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool  {
   let ops = srv4_vm_gadget_setup_ops()
   configfs_write_value_for(ops: ops, path_suffix: "/lun.0/file") == "/dev/nbd0"
     && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
@@ -210,7 +210,7 @@ test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
 // `"'ln' '-sf' '/dev/nbd0'"` -- a rendered-string search that also blessed a target (`/dev/nbd0`)
 // which cannot be the configfs operation's meaning; the destination is now derived, and the
 // assertion reads the field.
-test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() -> Bool {
+test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() -> Bool  {
   let g = srv4_vm_gadget()
   let gd = usb_gadget_dir(gadget: g) as String
   let realized = realized_commands(ops: staging_ready_ops(staging: srv4_vm_gadget_setup_staging()))
@@ -250,7 +250,7 @@ test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() 
 // down to the gadget root itself. The rmdir absence frontier names the host-effect lane as the
 // consumer that will model an already-removed directory as done; until that lands this realization
 // is the described teardown and nothing suppresses its failures.
-test fn srv4_gadget_teardown_realization_detaches_first_then_unlinks_and_rmdirs() -> Bool {
+test fn srv4_gadget_teardown_realization_detaches_first_then_unlinks_and_rmdirs() -> Bool  {
   let g = srv4_vm_gadget()
   let gd = usb_gadget_dir(gadget: g) as String
   let realized = realized_commands(ops: staging_ready_ops(staging: srv4_vm_gadget_teardown_staging()))

@@ -26,13 +26,13 @@ fn mint_did_not_succeed(o: JitConfigMintOutcome) -> Bool {
 // waits out its whole deadline looking healthy -- a silent wrong answer, which is outside the
 // ladder entirely. Both a non-201 AND the empty 201 must refuse, so the positive control below is
 // what keeps this from being satisfied by a function that refuses everything.
-test fn a_201_with_an_empty_config_is_a_refusal_not_a_credential() -> Bool {
+test fn a_201_with_an_empty_config_is_a_refusal_not_a_credential() -> Bool  {
   mint_did_not_succeed(o: jit_config_mint_outcome(
     status: 201, encoded: "", runner_id: 7, error_body: ""
   ))
 }
 
-test fn a_forbidden_status_is_a_generic_refusal() -> Bool {
+test fn a_forbidden_status_is_a_generic_refusal() -> Bool  {
   match jit_config_mint_outcome(
     status: 403, encoded: "", runner_id: 0, error_body: "Resource not accessible by integration"
   ) {
@@ -42,7 +42,7 @@ test fn a_forbidden_status_is_a_generic_refusal() -> Bool {
   }
 }
 
-test fn a_404_is_not_found_not_a_generic_refusal() -> Bool {
+test fn a_404_is_not_found_not_a_generic_refusal() -> Bool  {
   match jit_config_mint_outcome(
     status: jit_config_not_found_status, encoded: "", runner_id: 0, error_body: "not found"
   ) {
@@ -51,7 +51,7 @@ test fn a_404_is_not_found_not_a_generic_refusal() -> Bool {
   }
 }
 
-test fn a_409_is_conflict_not_validation_or_generic_refusal() -> Bool {
+test fn a_409_is_conflict_not_validation_or_generic_refusal() -> Bool  {
   match jit_config_mint_outcome(
     status: jit_config_conflict_status, encoded: "", runner_id: 0, error_body: "already exists"
   ) {
@@ -60,7 +60,7 @@ test fn a_409_is_conflict_not_validation_or_generic_refusal() -> Bool {
   }
 }
 
-test fn a_422_is_validation_failed_not_conflict() -> Bool {
+test fn a_422_is_validation_failed_not_conflict() -> Bool  {
   match jit_config_mint_outcome(
     status: jit_config_validation_failed_status,
     encoded: "ignored-because-the-status-refused",
@@ -74,7 +74,7 @@ test fn a_422_is_validation_failed_not_conflict() -> Bool {
 
 // POSITIVE CONTROL. Without it every assertion above is satisfied by a function that refuses
 // unconditionally, and the suite would read as coverage while asserting nothing about minting.
-test fn a_created_status_with_a_body_mints() -> Bool {
+test fn a_created_status_with_a_body_mints() -> Bool  {
   match jit_config_mint_outcome(status: 201, encoded: "eyJib2R5Ijoib3BhcXVlIn0=", runner_id: 4242, error_body: "") {
     JitConfigMinted { config: c, runner_id: id } =>
       id == 4242 && (c.encoded as String) == "eyJib2R5Ijoib3BhcXVlIn0="

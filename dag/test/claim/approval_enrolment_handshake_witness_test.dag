@@ -77,7 +77,7 @@ fn fx_pending() -> EnrolmentPending? {
 
 // R1: the SYN never arrived. The slot is still generation 1 and live, and the phone learns it may
 // SYN again. THE RED: STATUS on a live issued code answering anything else strands the phone.
-test fn r1_a_lost_syn_reads_never_submitted() -> Bool {
+test fn r1_a_lost_syn_reads_never_submitted() -> Bool  {
   match enrolment_status_at(slot: fx_issued(), presented_key: key_a, observed_at: fx_submit_at) {
     StatusNeverSubmitted { expires_at: x } => x == fx_code_expires
     _ => false
@@ -87,7 +87,7 @@ test fn r1_a_lost_syn_reads_never_submitted() -> Bool {
 // R2: the SYN-ACK was lost. Resending the identical SYN answers the SAME pending record and asks
 // for no write. THE RED: a replay that mints a new nonce, or asks to write, splits the phone's view
 // from the server's.
-test fn r2_a_repeated_identical_syn_replays_the_same_pending() -> Bool {
+test fn r2_a_repeated_identical_syn_replays_the_same_pending() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } =>
@@ -100,7 +100,7 @@ test fn r2_a_repeated_identical_syn_replays_the_same_pending() -> Bool {
 }
 
 // R3: a different key under a spent code refuses, and it is the only way a spent code refuses.
-test fn r3_a_syn_with_another_key_is_refused_as_code_already_used() -> Bool {
+test fn r3_a_syn_with_another_key_is_refused_as_code_already_used() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } =>
@@ -113,7 +113,7 @@ test fn r3_a_syn_with_another_key_is_refused_as_code_already_used() -> Bool {
 
 // R4: the ACK never arrived. PENDING reads Pending with the same challenge, and PENDING decides
 // nothing. THE RED: deciding_enrollment answering a pending record is the invariant broken.
-test fn r4_a_pending_enrolment_reads_pending_and_cannot_decide() -> Bool {
+test fn r4_a_pending_enrolment_reads_pending_and_cannot_decide() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } =>
@@ -127,7 +127,7 @@ test fn r4_a_pending_enrolment_reads_pending_and_cannot_decide() -> Bool {
 
 // R5: the ACK's answer was lost. STATUS answers Active and whether the PRESENTED key is the active
 // one. THE RED: matching a foreign key would let a code holder adopt someone else's enrolment.
-test fn r5_a_lost_ack_answer_reads_active_only_for_the_confirming_key() -> Bool {
+test fn r5_a_lost_ack_answer_reads_active_only_for_the_confirming_key() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } => {
@@ -146,7 +146,7 @@ test fn r5_a_lost_ack_answer_reads_active_only_for_the_confirming_key() -> Bool 
 }
 
 // R6: an ACK after the deadline refuses, even with the right signature.
-test fn r6_an_ack_after_the_deadline_is_refused_as_lapsed() -> Bool {
+test fn r6_an_ack_after_the_deadline_is_refused_as_lapsed() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } =>
@@ -160,7 +160,7 @@ test fn r6_an_ack_after_the_deadline_is_refused_as_lapsed() -> Bool {
 // R7: the phone walked away (Cancel is a local discard). With no writer, the pending record reads
 // Lapsed at its deadline. THE RED: a lapsed pending that still reads Pending would invite a
 // confirm nobody can make and hold the operator in a state no action ends.
-test fn r7_an_abandoned_pending_reads_lapsed_at_its_deadline() -> Bool {
+test fn r7_an_abandoned_pending_reads_lapsed_at_its_deadline() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } =>
@@ -173,7 +173,7 @@ test fn r7_an_abandoned_pending_reads_lapsed_at_its_deadline() -> Bool {
 
 // R8: two ACKs (a retry after a lost answer). The first writes, and the repeat against the active
 // record replays without writing.
-test fn r8_a_repeated_ack_replays_active_without_a_second_write() -> Bool {
+test fn r8_a_repeated_ack_replays_active_without_a_second_write() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } => {
@@ -193,7 +193,7 @@ test fn r8_a_repeated_ack_replays_active_without_a_second_write() -> Bool {
 
 // R9: a code that expired unspent reads CodeExpired, and a SYN against it refuses with the same
 // fact, so the phone discards rather than waiting.
-test fn r9_an_expired_unspent_code_refuses_the_syn() -> Bool {
+test fn r9_an_expired_unspent_code_refuses_the_syn() -> Bool  {
   let read = match enrolment_status_at(slot: fx_issued(), presented_key: key_a, observed_at: fx_after_code_expiry) {
     StatusCodeExpired { expires_at: x } => x == fx_code_expires
     _ => false
@@ -206,7 +206,7 @@ test fn r9_an_expired_unspent_code_refuses_the_syn() -> Bool {
 }
 
 // R10: an ACK whose signature is not by the pending decision key refuses.
-test fn r10_an_ack_by_another_key_is_refused() -> Bool {
+test fn r10_an_ack_by_another_key_is_refused() -> Bool  {
   match fx_pending() {
     Absent => false
     Present { value: p } =>
@@ -218,7 +218,7 @@ test fn r10_an_ack_by_another_key_is_refused() -> Bool {
 }
 
 // A code never issued reads CodeNotIssued, and confirming against it has nothing pending.
-test fn a_code_never_issued_reads_not_issued() -> Bool {
+test fn a_code_never_issued_reads_not_issued() -> Bool  {
   let read = match enrolment_status_at(slot: SlotAbsent, presented_key: key_a, observed_at: fx_submit_at) {
     StatusCodeNotIssued => true
     _ => false

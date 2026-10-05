@@ -154,14 +154,14 @@ fn legacy_toolchain_identity(
 // by rather than that construction merely succeeded. Under the old shape both
 // halves passed while the provider declared EffectiveLimitUnobserved and the
 // caller supplied 100 — the contradiction the split exists to make unwritable.
-test fn store_budget_is_derived_from_the_provider_not_the_caller() -> Bool {
+test fn store_budget_is_derived_from_the_provider_not_the_caller() -> Bool  {
   match store_over_provider(provider: byte_bounded_provider) {
     StoreReady { store: s } => s.budget == byte_size(count: 100)
     StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => false
   }
 }
 
-test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool {
+test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool  {
   match store_over_provider(provider: scopeexit_provider) {
     StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
@@ -169,7 +169,7 @@ test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool {
   }
 }
 
-test fn timed_release_provider_is_refused_not_realized_as_lru() -> Bool {
+test fn timed_release_provider_is_refused_not_realized_as_lru() -> Bool  {
   match store_over_provider(provider: timed_release_provider) {
     StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
@@ -179,7 +179,7 @@ test fn timed_release_provider_is_refused_not_realized_as_lru() -> Bool {
 
 // Each remaining refusal cause gets its own control, because the whole point of
 // splitting StoreRefusedRetention into causes is that the remedies differ.
-test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool {
+test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool  {
   let entry_capped = provider_row(
     id: "entry-capped-test",
     scope: [],
@@ -196,7 +196,7 @@ test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool 
   }
 }
 
-test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
+test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool  {
   let value_unknown = provider_row(
     id: "value-unobserved-test",
     scope: [],
@@ -216,7 +216,7 @@ test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
 // The LRU realization may not be built over a provider that refuses new stores
 // instead of replacing — it would silently evict where the row says it should
 // have declined. This is the at_capacity field's first behavioral reader.
-test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
+test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool  {
   let refuses_new = provider_row(
     id: "refuse-new-test",
     scope: [],
@@ -233,7 +233,7 @@ test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
   }
 }
 
-test fn store_hit_and_stale_never_served_holds() -> Bool {
+test fn store_hit_and_stale_never_served_holds() -> Bool  {
   let k1 = key_of(toolchain: "1.93.0")
   let k2 = key_of(toolchain: "1.94.0")
   store_put_fold(
@@ -253,7 +253,7 @@ test fn store_hit_and_stale_never_served_holds() -> Bool {
   )
 }
 
-test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
+test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool  {
   let fixed_inputs: List<ArtifactRealizationInput> = [
     ArtifactRealizationInput {
       identity: "workspace:src/main.rs",
@@ -316,7 +316,7 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
   cargo_before && rustc_changed && (before_context != after_context) && unchanged_build_receipt && before != after
 }
 
-test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
+test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool  {
   let missing_context = ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
@@ -348,7 +348,7 @@ test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
 
 data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
+test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool  {
   let sha256_identity = match sha256_hex_digest(hex: witness_sha256_hex) {
     Present { value: digest } => as_content_hash_cryptographic(digest: digest)
     Absent =>
@@ -375,7 +375,7 @@ test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
   }
 }
 
-test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool {
+test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool  {
   let context = ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
@@ -390,7 +390,7 @@ test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool
   )
 }
 
-test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
+test fn native_realization_environment_change_cold_rebuild_holds() -> Bool  {
   let fixed_realization = native_cache_realization_workspace_root(
     workspace_root: "/tmp/gunbc_environment_identity/outer-key",
     realization_digest: as_content_hash_structural(
@@ -424,7 +424,7 @@ test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
   before != after
 }
 
-test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
+test fn store_budget_evicts_least_recent_counted_holds() -> Bool  {
   let ka = key_of(toolchain: "a")
   let kb = key_of(toolchain: "b")
   let kc = key_of(toolchain: "c")
@@ -459,7 +459,7 @@ test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
   )
 }
 
-test fn store_no_eviction_under_budget_holds() -> Bool {
+test fn store_no_eviction_under_budget_holds() -> Bool  {
   store_put_evicted_keys(
     outcome: store_put(store: test_store(), key: key_of(toolchain: "solo"), artifact_bytes: byte_size(count: 40))
   ) == []
@@ -477,13 +477,13 @@ fn oversize_store() -> ArtifactStore {
   ArtifactStore { budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
 }
 
-test fn store_put_oversized_artifact_does_not_fit_holds() -> Bool {
+test fn store_put_oversized_artifact_does_not_fit_holds() -> Bool  {
   let outcome = store_put(store: oversize_store(), key: key_of(toolchain: "oversize"), artifact_bytes: byte_size(count: 500))
   (store_put_is_admitted(outcome: outcome) == false)
     && (store_put_evicted_keys(outcome: outcome) == [])
 }
 
-test fn store_put_oversized_artifact_never_evicts_itself_holds() -> Bool {
+test fn store_put_oversized_artifact_never_evicts_itself_holds() -> Bool  {
   let k = key_of(toolchain: "oversize-self")
   let evicted = store_put_evicted_keys(
     outcome: store_put(store: oversize_store(), key: k, artifact_bytes: byte_size(count: 500))
@@ -491,7 +491,7 @@ test fn store_put_oversized_artifact_never_evicts_itself_holds() -> Bool {
   (evicted |> any(e => e == k)) == false
 }
 
-test fn store_put_oversized_artifact_preserves_warm_rows_holds() -> Bool {
+test fn store_put_oversized_artifact_preserves_warm_rows_holds() -> Bool  {
   let survivor = key_of(toolchain: "warm-survivor")
   store_put_fold(
     outcome: store_put(store: oversize_store(), key: survivor, artifact_bytes: byte_size(count: 40)),
@@ -509,7 +509,7 @@ test fn store_put_oversized_artifact_preserves_warm_rows_holds() -> Bool {
   )
 }
 
-test fn store_put_artifact_exactly_at_budget_is_admitted_holds() -> Bool {
+test fn store_put_artifact_exactly_at_budget_is_admitted_holds() -> Bool  {
   store_put_is_admitted(
     outcome: store_put(store: oversize_store(), key: key_of(toolchain: "exact"), artifact_bytes: byte_size(count: 100))
   )

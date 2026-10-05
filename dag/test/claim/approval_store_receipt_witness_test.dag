@@ -78,7 +78,7 @@ fn sr_mint(slot: EscalationSlot, attempt: String) -> StoreReceiptIssuance {
 // approved escalation over a filing that agrees mints a receipt whose claims are the filing's and the
 // decision's, addressed to the store. Verification is a separate interface and has its own claims
 // below, over a receipt built directly from the same claim constructor (§3: one interface per claim).
-test fn an_approved_matching_filing_mints_a_receipt_addressed_to_the_store() -> Bool {
+test fn an_approved_matching_filing_mints_a_receipt_addressed_to_the_store() -> Bool  {
   match sr_mint(slot: sr_approved(revision: sr_revision), attempt: "tx-d0") {
     StoreReceiptRefused { refusal: _ } => false
     StoreReceiptIssued { receipt: r } =>
@@ -104,7 +104,7 @@ fn sr_receipt() -> ApprovalCapability {
 
 // THE PINNED RECEIPT IS WHAT ISSUANCE PRODUCES: the envelope's own issuance over the mint's claims
 // and the receipt key yields exactly the pinned tag.
-test fn issuance_over_the_receipt_claims_yields_the_pinned_tag() -> Bool {
+test fn issuance_over_the_receipt_claims_yields_the_pinned_tag() -> Bool  {
   match issue_capability(claims: sr_claims(), key: sr_receipt_key()) {
     CapabilityIssued { capability: c } => (c.tag_b64url as String) == (sr_receipt().tag_b64url as String)
     CapabilityIssuanceRefused { cause: _ } => false
@@ -113,7 +113,7 @@ test fn issuance_over_the_receipt_claims_yields_the_pinned_tag() -> Bool {
 
 // THE MINT REFUSES, one arm per remedy: nothing decided yet, a denial, another attempt, a filing
 // whose revision is not the decided one, no filing beneath the decision, and no receipt key.
-test fn the_mint_refuses_each_standing_that_is_not_a_matching_approval() -> Bool {
+test fn the_mint_refuses_each_standing_that_is_not_a_matching_approval() -> Bool  {
   (match sr_mint(slot: EscalationNotFiled, attempt: "tx-d0") { StoreReceiptRefused { refusal: ReceiptEscalationNotFiled } => true  _ => false })
     && (match sr_mint(slot: EscalationPending { request: sr_filed() }, attempt: "tx-d0") { StoreReceiptRefused { refusal: ReceiptStillPending } => true  _ => false })
     && (match sr_mint(slot: EscalationDecided { decision: BrokerDenied { escalation_id: "esc-d0-1", revision: sr_revision, decided_by: "operator", decided_at: "2026-09-28T00:10:00Z", reason: "no" } }, attempt: "tx-d0") { StoreReceiptRefused { refusal: ReceiptDenied { decided_by: _, reason: _ } } => true  _ => false })
@@ -144,7 +144,7 @@ fn sr_tag(key: MacKey, attempt: String) -> String {
   }
 }
 
-test fn only_a_submission_key_holder_is_answered_with_a_receipt() -> Bool {
+test fn only_a_submission_key_holder_is_answered_with_a_receipt() -> Bool  {
   let other_key = MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: sr_receipt_key_hex as Secret }
   sr_answer(body: join(["attempt=tx-d0\ntag=", sr_tag(key: sr_submission_key(), attempt: "tx-d0"), "\n"], "")) == 200
     && sr_answer(body: join(["attempt=tx-d0\ntag=", sr_tag(key: other_key, attempt: "tx-d0"), "\n"], "")) == 403

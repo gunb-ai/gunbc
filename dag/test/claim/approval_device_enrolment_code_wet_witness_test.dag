@@ -25,7 +25,7 @@ data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
 // route (claim_batch --wet). Without a publisher token the outcome is IssuedNotDelivered and the
 // issued-code slot is readable afterwards; a second issuance of the same code refuses on the
 // occupied slot. Dropping the write, or publishing before it, reds this.
-test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool {
+test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool  {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol.XXXXXX").path
   let root = root_path as NonEmptyStr
   let publisher = PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }
@@ -56,7 +56,7 @@ fn fx_all_lower_hex_from(s: String, pos: Int) -> Bool {
   else { string_contains(s: "0123456789abcdef", pattern: char_at(s: s, pos: pos)) && fx_all_lower_hex_from(s: s, pos: pos + 1) }
 }
 
-test fn the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution() -> Bool {
+test fn the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution() -> Bool  {
   match mint_enrolment_code() {
     Present { value: c } => string_length(s: c as String) == 32 && fx_all_lower_hex_from(s: c as String, pos: 0)
     Absent => false

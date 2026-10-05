@@ -31,7 +31,7 @@ fn witness_float_contraction_permitted_maps_to_lossy_fidelity() -> Bool {
   }
 }
 
-test fn accelerator_demo_modeling_lane_witnesses() -> Bool {
+test fn accelerator_demo_modeling_lane_witnesses() -> Bool  {
   gunbc.accelerator_demo_plan.witness_integer_demo_emits_realization_plan_value()
     && gunbc.accelerator_demo_plan.witness_integer_demo_plan_has_local_accelerator_placement()
     && gunbc.accelerator_demo_plan.witness_demo_device_identity_grounds_on_accelerator_facts()

@@ -41,19 +41,19 @@ data forged_assertion_source: String = "module probe_forged_assertion\nimport ex
 // closure. The suppliers' own calls to the mints are inside the imported closure this census covers.
 data suppliers_source: String = "module probe_mint_suppliers\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth, SignatureVerification, verify_signature }\nimport extdeps.apple.app_attest { AttestationExpectation, AttestationVerification, AssertionExpectation, AssertionVerification, verify_attestation, verify_assertion }\nfn via_signature() -> SignatureVerification {\n  verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: \"AA\" }, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: \"AA\" }, message: \"m\")\n}\nfn via_attestation(e: AttestationExpectation) -> AttestationVerification {\n  verify_attestation(object: [], e: e)\n}\nfn via_assertion(e: AssertionExpectation) -> AssertionVerification {\n  verify_assertion(object: [], e: e)\n}\n"
 
-test fn a_forged_signature_success_is_refused_at_compile_time() -> Bool {
+test fn a_forged_signature_success_is_refused_at_compile_time() -> Bool  {
   keyed_refusals(source: forged_signature_source, callee: "signature_verification_from_implementation") >= 1
 }
 
-test fn a_forged_attestation_success_is_refused_at_compile_time() -> Bool {
+test fn a_forged_attestation_success_is_refused_at_compile_time() -> Bool  {
   keyed_refusals(source: forged_attestation_source, callee: "attestation_verification_from_implementation") >= 1
 }
 
-test fn a_forged_assertion_success_is_refused_at_compile_time() -> Bool {
+test fn a_forged_assertion_success_is_refused_at_compile_time() -> Bool  {
   keyed_refusals(source: forged_assertion_source, callee: "assertion_verification_from_implementation") >= 1
 }
 
-test fn the_three_suppliers_resolve_under_their_seals() -> Bool {
+test fn the_three_suppliers_resolve_under_their_seals() -> Bool  {
   keyed_refusals(source: suppliers_source, callee: "signature_verification_from_implementation") == 0
     && keyed_refusals(source: suppliers_source, callee: "attestation_verification_from_implementation") == 0
     && keyed_refusals(source: suppliers_source, callee: "assertion_verification_from_implementation") == 0
@@ -65,15 +65,15 @@ test fn the_three_suppliers_resolve_under_their_seals() -> Bool {
 // refused at the FIXTURE boundary, keyed by the fixture's name.
 data laundered_evidence_source: String = "module probe_laundered_evidence\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { SignatureVerification }\nimport extdeps.apple.app_attest { AttestationVerification, AssertionVerification }\nimport test.claim.approval_device_redemption_witness_test { fx_attestation, verdict, assertion_over, key_a }\nfn laundered_attestation() -> AttestationVerification {\n  fx_attestation(client_data: \"x\")\n}\nfn laundered_signature() -> SignatureVerification {\n  verdict(key: key_a, message: \"x\")\n}\nfn laundered_assertion() -> AssertionVerification {\n  assertion_over(key_id: \"k\", client_data: \"x\")\n}\n"
 
-test fn laundering_an_attestation_through_its_fixture_is_refused() -> Bool {
+test fn laundering_an_attestation_through_its_fixture_is_refused() -> Bool  {
   keyed_refusals(source: laundered_evidence_source, callee: "fx_attestation") >= 1
 }
 
-test fn laundering_a_signature_through_its_fixture_is_refused() -> Bool {
+test fn laundering_a_signature_through_its_fixture_is_refused() -> Bool  {
   keyed_refusals(source: laundered_evidence_source, callee: "verdict") >= 1
 }
 
-test fn laundering_an_assertion_through_its_fixture_is_refused() -> Bool {
+test fn laundering_an_assertion_through_its_fixture_is_refused() -> Bool  {
   keyed_refusals(source: laundered_evidence_source, callee: "assertion_over") >= 1
 }
 
@@ -81,6 +81,6 @@ test fn laundering_an_assertion_through_its_fixture_is_refused() -> Bool {
 // from an outside module, is refused; it answers only to the fold's dispatcher.
 data direct_step_source: String = "module probe_direct_step\nimport extdeps.standards.rfc_5280 { X509Certificate }\nimport extdeps.apple.app_attest { AttestationRefusal, ca_authority_refusal }\nfn direct(ca: X509Certificate) -> AttestationRefusal? {\n  ca_authority_refusal(ca: ca)\n}\n"
 
-test fn a_structural_step_called_outside_the_order_is_refused() -> Bool {
+test fn a_structural_step_called_outside_the_order_is_refused() -> Bool  {
   keyed_refusals(source: direct_step_source, callee: "ca_authority_refusal") >= 1
 }

@@ -42,7 +42,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_synthetic_path_additivity_refuted_by_fold_derivation() -> Bool {
+test fn w_synthetic_path_additivity_refuted_by_fold_derivation() -> Bool  {
   match synthetic_first_minimum_verdict() {
     PathAdditivityRefutationAtBand { receipt: receipt } =>
       path_additivity_refutation_holds_for_synthetic_fixture(receipt: receipt)
@@ -51,11 +51,11 @@ test fn w_synthetic_path_additivity_refuted_by_fold_derivation() -> Bool {
   }
 }
 
-test fn w_synthetic_fold_receipt_resolution_matches_kernel_counts() -> Bool {
+test fn w_synthetic_fold_receipt_resolution_matches_kernel_counts() -> Bool  {
   synthetic_fold_receipt_resolution_matches_kernel_counts()
 }
 
-test fn w_synthetic_equal_counts_do_not_resolve_refutation_receipt() -> Bool {
+test fn w_synthetic_equal_counts_do_not_resolve_refutation_receipt() -> Bool  {
   match path_additivity_refutation_receipt_resolution_from_resolved_counts(
     left: 10,
     right: 10,
@@ -69,7 +69,7 @@ test fn w_synthetic_equal_counts_do_not_resolve_refutation_receipt() -> Bool {
   }
 }
 
-test fn w_synthetic_held_verdict_does_not_resolve_refutation_receipt() -> Bool {
+test fn w_synthetic_held_verdict_does_not_resolve_refutation_receipt() -> Bool  {
   match refutation_receipt_resolution_from_band_verdict(
     verdict: PathAdditivityHeldAtBand {
       band: FirstMinimumBand,
@@ -82,7 +82,7 @@ test fn w_synthetic_held_verdict_does_not_resolve_refutation_receipt() -> Bool {
   }
 }
 
-test fn w_synthetic_undecided_verdict_does_not_resolve_refutation_receipt() -> Bool {
+test fn w_synthetic_undecided_verdict_does_not_resolve_refutation_receipt() -> Bool  {
   match refutation_receipt_resolution_from_band_verdict(
     verdict: synthetic_derive_first_minimum_verdict_from_partial_rows(),
   ) {
@@ -92,7 +92,7 @@ test fn w_synthetic_undecided_verdict_does_not_resolve_refutation_receipt() -> B
   }
 }
 
-test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool {
+test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool  {
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
@@ -117,7 +117,7 @@ test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool
   }
 }
 
-test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
+test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool  {
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
@@ -142,7 +142,7 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
   }
 }
 
-test fn w_synthetic_path_additivity_rejects_additive_equal_observed() -> Bool {
+test fn w_synthetic_path_additivity_rejects_additive_equal_observed() -> Bool  {
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let fabricated = PathAdditivityCounterexampleWitness {
@@ -166,7 +166,7 @@ test fn w_synthetic_path_additivity_rejects_additive_equal_observed() -> Bool {
   }
 }
 
-test fn w_synthetic_derive_undecided_carries_incomplete_failure() -> Bool {
+test fn w_synthetic_derive_undecided_carries_incomplete_failure() -> Bool  {
   match synthetic_derive_first_minimum_verdict_from_partial_rows() {
     PathAdditivityUndecidedAtBand {
       failure: AdditivityInputMissing {
@@ -190,7 +190,7 @@ test fn w_synthetic_derive_undecided_carries_incomplete_failure() -> Bool {
   }
 }
 
-test fn w_synthetic_central_band_verdict_is_refutation_not_held_or_undecided() -> Bool {
+test fn w_synthetic_central_band_verdict_is_refutation_not_held_or_undecided() -> Bool  {
   match synthetic_central_band_verdict() {
     PathAdditivityRefutationAtBand { receipt: refutation_receipt } => true
     PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
@@ -198,28 +198,28 @@ test fn w_synthetic_central_band_verdict_is_refutation_not_held_or_undecided() -
   }
 }
 
-test fn w_synthetic_central_band_refutes_with_observed_above_prediction() -> Bool {
+test fn w_synthetic_central_band_refutes_with_observed_above_prediction() -> Bool  {
   bach_double_slit_path_additivity_central_band_refutation_holds()
 }
 
-test fn w_synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {
+test fn w_synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool  {
   synthetic_blocked_count_is_resolved_zero_not_missing()
 }
 
-test fn w_synthetic_missing_row_yields_incomplete_inputs() -> Bool {
+test fn w_synthetic_missing_row_yields_incomplete_inputs() -> Bool  {
   synthetic_missing_row_yields_incomplete_inputs()
 }
 
-test fn w_synthetic_path_additivity_subject_is_synthetic_fixture_coproduct() -> Bool {
+test fn w_synthetic_path_additivity_subject_is_synthetic_fixture_coproduct() -> Bool  {
   path_additivity_subject == PathAdditivitySyntheticFixture {}
 }
 
-test fn w_synthetic_compare_orientation_first_arg_is_observed() -> Bool {
+test fn w_synthetic_compare_orientation_first_arg_is_observed() -> Bool  {
   path_additivity_compare_observed_to_prediction(observed_both: 5, prediction: 20) == Less
     && path_additivity_compare_observed_to_prediction(observed_both: 95, prediction: 78) == Greater
 }
 
-test fn w_synthetic_first_minimum_witness_less_than_prediction() -> Bool {
+test fn w_synthetic_first_minimum_witness_less_than_prediction() -> Bool  {
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } =>
       canonical_receipt.witness.both_open_observed_count == 5

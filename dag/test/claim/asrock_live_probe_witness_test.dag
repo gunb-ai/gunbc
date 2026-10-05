@@ -36,18 +36,18 @@ import extdeps.firmware.types { firmware_semantic_version }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn srv3_live_bmc_host_is_grounded() -> Bool {
+test fn srv3_live_bmc_host_is_grounded() -> Bool  {
   asrock_srv3_live_bmc_host == "192.168.1.192"
 }
 
-test fn live_probe_firmware_matches_shipped_catalog_row() -> Bool {
+test fn live_probe_firmware_matches_shipped_catalog_row() -> Bool  {
   let expected = firmware_semantic_version(major: 2, minor: 7, patch: 0)
   live_probe_confirms_shipped_firmware_version()
     && asrock_srv3_live_probe_firmware_version == expected
     && asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version == expected
 }
 
-test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
+test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool  {
   live_probe_confirms_redfish_virtual_media_absent()
     && firmware_has_capability(
       row: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
@@ -55,7 +55,7 @@ test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
     ) == false
 }
 
-test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
+test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool  {
   list_length(items: asrock_srv3_live_readonly_probe_rows) == 7
     && live_probe_confirms_nbd_proxy_vm_slot_ws_present()
     && live_probe_confirms_nbd_slot_ws_absent()
@@ -69,7 +69,7 @@ test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
     )
 }
 
-test fn shipped_row_nbd_proxy_capability_requires_ws_dry_run_receipt() -> Bool {
+test fn shipped_row_nbd_proxy_capability_requires_ws_dry_run_receipt() -> Bool  {
   firmware_has_capability(
     row: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
     cap: CapabilityNbdProxyVirtualMedia

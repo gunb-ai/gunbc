@@ -39,7 +39,7 @@ import gunbc.fleet_converge_workflow {
 data fx_code: NonEmptyStr = "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
 data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
 
-test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code() -> Bool {
+test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code() -> Bool  {
   let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires)
   (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }) {
     EnrolmentCodeIssued { topic: t, expires_at: x, delivery: DeliveryAccepted { message_id: Present { value: m } } } => {
@@ -74,7 +74,7 @@ test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_neve
 // --uid/--gid: those leave the account's supplementary groups unset and keep root's group 0, so the
 // verb could not read the group-gated ntfy publisher token (run 37098981121); restoring them turns
 // this claim red.
-test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
+test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool  {
   let argv = enrolment_code_issue_remote_argv(revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" })
   let joined = join(argv, " ")
   let op = fleet_posix_operator_user.name as String
@@ -88,7 +88,7 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
 
 // The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH
 // key like its keyring sibling.
-test fn the_mode_is_rostered_and_pinned_to_srv1() -> Bool {
+test fn the_mode_is_rostered_and_pinned_to_srv1() -> Bool  {
   (match enrolment_code_issue_refuses_off_srv1(host: operator_host_srv1 as String) {
     ExitSuccess => true
     _ => false
@@ -121,7 +121,7 @@ fn fx_rendered(d: EnrolmentCodeDelivery) -> CliWireResponse {
   enrolment_code_issuance_response(i: EnrolmentCodeIssued { topic: approval_ntfy_topic as NonEmptyStr, expires_at: fx_expires, delivery: d })
 }
 
-test fn an_accepted_publish_with_an_unreadable_receipt_is_accepted_and_never_rendered_as_not_delivered() -> Bool {
+test fn an_accepted_publish_with_an_unreadable_receipt_is_accepted_and_never_rendered_as_not_delivered() -> Bool  {
   let d = fx_delivery_of_rest(rest: RestBodyUndecodable { status: 200, cause: "unexpected end of JSON" }, id: "")
   (match d {
     DeliveryAccepted { message_id: Absent } => true
@@ -133,7 +133,7 @@ test fn an_accepted_publish_with_an_unreadable_receipt_is_accepted_and_never_ren
     })
 }
 
-test fn only_an_explicit_http_refusal_yields_delivery_refused() -> Bool {
+test fn only_an_explicit_http_refusal_yields_delivery_refused() -> Bool  {
   let refused = fx_delivery_of_rest(rest: RestStatusRefused { status: 401, body: "unauthorized" }, id: "")
   (match refused {
     DeliveryRefused { detail: d } => string_contains(s: d, pattern: "401")
@@ -145,7 +145,7 @@ test fn only_an_explicit_http_refusal_yields_delivery_refused() -> Bool {
     })
 }
 
-test fn a_transport_refusal_or_server_error_is_indeterminate_and_says_the_code_may_have_arrived() -> Bool {
+test fn a_transport_refusal_or_server_error_is_indeterminate_and_says_the_code_may_have_arrived() -> Bool  {
   let unreached = fx_delivery_of_rest(rest: RestTransportRefused { cause: "connection reset" }, id: "")
   let five = fx_delivery_of_rest(rest: RestStatusRefused { status: 503, body: "busy" }, id: "")
   (match unreached {
@@ -167,7 +167,7 @@ test fn a_transport_refusal_or_server_error_is_indeterminate_and_says_the_code_m
 // exactly their lowercase hex, and fifteen or seventeen octets refuse rather than minting a shorter
 // or longer code. The real read is paired on the wet lane:
 // test.claim.approval_device_enrolment_code_wet_witness_test.
-test fn the_enrolment_code_is_sixteen_supplied_octets_as_lowercase_hex() -> Bool {
+test fn the_enrolment_code_is_sixteen_supplied_octets_as_lowercase_hex() -> Bool  {
   (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuRqg==") {
     Present { value: c } => (c as String) == "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
     Absent => false

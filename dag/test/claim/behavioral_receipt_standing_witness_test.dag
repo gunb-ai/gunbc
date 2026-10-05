@@ -92,7 +92,7 @@ fn standing_is_fault_unobserved(s: BehavioralReceiptStanding) -> Bool {
 
 // THE THREE ARMS THE COLLAPSE MADE INDISTINGUISHABLE. Each is a DIFFERENT stage failing to be
 // observed; under the old predicate all three were one `false`.
-test fn unobserved_build_is_not_an_unobserved_comparison() -> Bool {
+test fn unobserved_build_is_not_an_unobserved_comparison() -> Bool  {
   let s = behavioral_receipt_standing(
     o: observation(
       build: ObservationUnavailable { cause: ^stage_incomplete },
@@ -103,7 +103,7 @@ test fn unobserved_build_is_not_an_unobserved_comparison() -> Bool {
   standing_is_build_unobserved(s: s) && !standing_is_equivalence_unobserved(s: s)
 }
 
-test fn unobserved_comparison_over_a_green_build_names_the_comparison() -> Bool {
+test fn unobserved_comparison_over_a_green_build_names_the_comparison() -> Bool  {
   let s = behavioral_receipt_standing(
     o: observation(
       build: ObservationPresent { value: BuildGreen },
@@ -114,7 +114,7 @@ test fn unobserved_comparison_over_a_green_build_names_the_comparison() -> Bool 
   standing_is_equivalence_unobserved(s: s) && !standing_is_build_unobserved(s: s)
 }
 
-test fn unobserved_fault_over_an_agreeing_comparison_names_the_fault() -> Bool {
+test fn unobserved_fault_over_an_agreeing_comparison_names_the_fault() -> Bool  {
   let s = behavioral_receipt_standing(
     o: observation(
       build: ObservationPresent { value: BuildGreen },
@@ -128,7 +128,7 @@ test fn unobserved_fault_over_an_agreeing_comparison_names_the_fault() -> Bool {
 // THE CAUSAL ORDER IS LOAD-BEARING. With the build unobserved, downstream verdicts are meaningless
 // rather than false, so reporting a fault cause here would name a symptom as the finding. This arm
 // pins that an unobserved build wins over a POSITIVE downstream verdict.
-test fn an_unobserved_build_is_reported_over_downstream_agreement() -> Bool {
+test fn an_unobserved_build_is_reported_over_downstream_agreement() -> Bool  {
   let s = behavioral_receipt_standing(
     o: observation(
       build: ObservationUnavailable { cause: ^stage_incomplete },
@@ -142,7 +142,7 @@ test fn an_unobserved_build_is_reported_over_downstream_agreement() -> Bool {
 // EVERY ONE OF THE ABOVE IS false UNDER THE Bool — the arm proving the witnesses above are not
 // restatements of the predicate they replace: the Bool cannot separate them, which is why the
 // collapse was invisible.
-test fn the_bool_cannot_separate_what_the_standing_separates() -> Bool {
+test fn the_bool_cannot_separate_what_the_standing_separates() -> Bool  {
   let a = behavioral_receipt_standing(
     o: observation(
       build: ObservationUnavailable { cause: ^stage_incomplete },
@@ -165,7 +165,7 @@ test fn the_bool_cannot_separate_what_the_standing_separates() -> Bool {
 
 // THE POSITIVE CONTROL. A fully observed, fully agreeing run holds — the standing does not refuse
 // everything.
-test fn a_fully_observed_agreeing_run_holds() -> Bool {
+test fn a_fully_observed_agreeing_run_holds() -> Bool  {
   let s = behavioral_receipt_standing(
     o: observation(
       build: ObservationPresent { value: BuildGreen },
@@ -179,7 +179,7 @@ test fn a_fully_observed_agreeing_run_holds() -> Bool {
 // A CAUGHT FAULT IS REQUIRED, NOT OPTIONAL. A run that built, agreed, and did NOT catch its planted
 // fault has not established the receipt — it established that the comparison cannot tell right from
 // wrong, the claim-entailing-evidence rule at receipt level.
-test fn agreement_without_a_caught_fault_does_not_hold() -> Bool {
+test fn agreement_without_a_caught_fault_does_not_hold() -> Bool  {
   let s = behavioral_receipt_standing(
     o: observation(
       build: ObservationPresent { value: BuildGreen },

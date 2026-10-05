@@ -53,7 +53,7 @@ fn fixture_request() -> StoredApprovalRequest {
 
 // ── keyring ────────────────────────────────────────────────────────────────────────────────────
 
-test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool {
+test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool  {
   mac_key_material_hex_length(s: approval_mac_key_suite) == 2 * byte_size_count(b: mac_suite_key_size(s: approval_mac_key_suite))
     && mac_key_material_hex_length(s: approval_mac_key_suite) == fixture_key_hex.length()
     &&   match approval_keyring_from_content(path: approval_mac_key_path, key_id: approval_mac_key_id, content: fixture_key_hex) { ApprovalKeyLoaded { key: k } => k.suite == approval_mac_key_suite  _ => false }
@@ -64,7 +64,7 @@ test fn keyring_loads_sixty_four_lower_hex_and_refuses_the_rest() -> Bool {
 
 // ABSENT IS THE FILESYSTEM'S ANSWER AND UNREADABLE IS A DIFFERENT ONE: a missing file and a
 // permission failure both arrive with empty content, and only the exact read tells them apart.
-test fn keyring_absent_and_unreadable_are_two_refusals() -> Bool {
+test fn keyring_absent_and_unreadable_are_two_refusals() -> Bool  {
   match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "No such file or directory (os error 2)", error_kind: "not_found")) { ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: _ } } => true  _ => false }
     && match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: "", success: false, error: "Permission denied (os error 13)", error_kind: "permission_denied")) { ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: _, error: _ } } => true  _ => false }
     && match approval_keyring_from_exact_read(path: approval_mac_key_path, key_id: approval_mac_key_id, exact: filesystem_exact_read(path: "/etc/gunbc-roadmap/approval-mac-key", content: fixture_key_hex, success: true, error: "", error_kind: "")) { ApprovalKeyLoaded { key: _ } => true  _ => false }
@@ -72,7 +72,7 @@ test fn keyring_absent_and_unreadable_are_two_refusals() -> Bool {
 
 // ── the record round-trips through its own wire ────────────────────────────────────────────────
 
-test fn stored_request_round_trips_through_json() -> Bool {
+test fn stored_request_round_trips_through_json() -> Bool  {
   match parse_stored_record(text: stored_request_json(r: fixture_request())) {
     StoredRequestParsed { request: r } =>
       r.escalation_id == fixture_request().escalation_id && r.request_revision == fixture_request().request_revision
@@ -82,13 +82,13 @@ test fn stored_request_round_trips_through_json() -> Bool {
   }
 }
 
-test fn a_record_missing_a_field_or_of_unknown_kind_is_unreadable_not_defaulted() -> Bool {
+test fn a_record_missing_a_field_or_of_unknown_kind_is_unreadable_not_defaulted() -> Bool  {
   match parse_stored_record(text: "{\"kind\":\"request\",\"escalation_id\":\"e\"}") { StoredRecordUnreadable { detail: _ } => true  _ => false }
     && match parse_stored_record(text: "{\"kind\":\"granted\"}") { StoredRecordUnreadable { detail: _ } => true  _ => false }
     && match parse_stored_record(text: "not json") { StoredRecordUnreadable { detail: _ } => true  _ => false }
 }
 
-test fn a_newline_in_expires_at_is_unreadable_not_a_filed_request() -> Bool {
+test fn a_newline_in_expires_at_is_unreadable_not_a_filed_request() -> Bool  {
   let poisoned = StoredApprovalRequest {
     escalation_id: fixture_request().escalation_id,
     request_revision: fixture_request().request_revision,
@@ -108,7 +108,7 @@ test fn a_newline_in_expires_at_is_unreadable_not_a_filed_request() -> Bool {
 
 // ── the link segment ───────────────────────────────────────────────────────────────────────────
 
-test fn capability_segment_round_trips_and_refuses_a_third_decision_word() -> Bool {
+test fn capability_segment_round_trips_and_refuses_a_third_decision_word() -> Bool  {
   let seg = capability_path_segment(escalation_id: "esc-mtc1-boot-1", decision: ProposeApprove, tag_hex: fixture_approve_tag)
   match parse_capability_segment(segment: seg as String) {
     CapabilitySegmentParsed { escalation_id: e, decision: ProposeApprove, tag_hex: t } => e == "esc-mtc1-boot-1" && t == fixture_approve_tag
@@ -121,7 +121,7 @@ test fn capability_segment_round_trips_and_refuses_a_third_decision_word() -> Bo
 
 // ── the tag authenticates the STORED claims, and the decision is part of them ──────────────────
 
-test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() -> Bool {
+test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() -> Bool  {
   let approve_msg = approval_capability_signing_input(c: claims_for(request: fixture_request(), decision: ProposeApprove))
   let deny_msg = approval_capability_signing_input(c: claims_for(request: fixture_request(), decision: ProposeDeny))
   match mac_verify(key: fixture_key(), message: approve_msg, tag_hex: fixture_approve_tag) { MacVerified { verified: v } => v.message == approve_msg  _ => false }
@@ -137,7 +137,7 @@ test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() ->
 // the record names the bearer), any other bind or an unparseable host keeps it closed, and the production row is
 // exactly the derivation over srv1_live_dashboard_instance.listen_host -- so the gate cannot be
 // opened by editing a row beside the one the unit is emitted from.
-test fn identity_trust_is_derived_from_the_instance_bind() -> Bool {
+test fn identity_trust_is_derived_from_the_instance_bind() -> Bool  {
   match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderUnattributed { residual: _ } => true  _ => false }
     && match approval_identity_trust_for(listen_host: "127.0.0.1") { IdentityHeaderTrustEstablished { evidence: _ } => false  _ => true }
     && match approval_identity_trust_for(listen_host: "0.0.0.0") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
@@ -148,7 +148,7 @@ test fn identity_trust_is_derived_from_the_instance_bind() -> Bool {
 // AN UNTRUSTED IDENTITY HEADER REFUSES BEFORE THE SEGMENT IS EVEN PARSED -- with a well-formed
 // segment and a loaded key, so nothing else could be the cause. The untrusted standing is supplied,
 // since the production row is whatever the instance bind makes it.
-test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
+test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool  {
   true
     && match redeem_over_store(
       root: "/nonexistent/approvals",

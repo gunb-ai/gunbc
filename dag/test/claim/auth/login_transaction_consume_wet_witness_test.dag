@@ -15,7 +15,7 @@ fn browser_transaction() -> OidcLoginTransaction {
     verifier: OidcPkceCodeVerifier { verifier: "verifier-from-jar-A" }, return_path: RelativeReturnPath { path: "/" } }
 }
 
-test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
+test fn transaction_consume_has_one_winner_over_real_files() -> Bool  {
   let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
   if directory == "" { false } else {
     let layout = LoginTransactionStoreLayout { root: directory as FilePath }
@@ -39,7 +39,7 @@ test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
 // file finds the winner's create-new claim already on disk. The claim is planted here rather than
 // raced, so the arm is reached deterministically. RED if the claim write stops being create-new
 // (the loser would then delete and report Deleted); the transaction file must survive the loser.
-test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> Bool {
+test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> Bool  {
   let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
   if directory == "" { false } else {
     let layout = LoginTransactionStoreLayout { root: directory as FilePath }

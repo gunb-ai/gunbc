@@ -111,7 +111,7 @@ fn refuses_naming(d: AltraMinimalMotherboard, wanted: String) -> Bool {
 
 // THE POSITIVE CONTROL. The selected 1P minimum admits: four channels is the smallest
 // production-qualified population, one DIMM per channel, four lanes of a hundred and twenty-eight.
-test fn w_the_selected_minimum_is_admitted() -> Bool {
+test fn w_the_selected_minimum_is_admitted() -> Bool  {
   admits(d: altra_1p_minimum) && board_total_dimm_positions(d: altra_1p_minimum) == 4
 }
 
@@ -119,7 +119,7 @@ test fn w_the_selected_minimum_is_admitted() -> Bool {
 // bring-up, so it is refused under a production intent — not because two is small, but because
 // the part is documented as outside its production envelope there. A design that quietly picked
 // two to save routing effort would be a debug fixture wearing a product's name.
-test fn w_a_debug_only_channel_count_is_refused_for_production() -> Bool {
+test fn w_a_debug_only_channel_count_is_refused_for_production() -> Bool  {
   refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4), wanted: "DebugOnly")
     && refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0], positions: one_dimm(), lanes: 4), wanted: "DebugOnly")
 }
@@ -128,14 +128,14 @@ test fn w_a_debug_only_channel_count_is_refused_for_production() -> Bool {
 // statement about intent rather than about the number. Without this the wall is satisfied by a
 // rule that simply refuses small channel counts, and the one- and two-channel configurations
 // exist precisely to serve bring-up.
-test fn w_the_same_count_is_admitted_for_engineering_bring_up() -> Bool {
+test fn w_the_same_count_is_admitted_for_engineering_bring_up() -> Bool  {
   admits(d: design(intent_is_production: false, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4))
     && admits(d: design(intent_is_production: false, chans: [DdrChannel0], positions: one_dimm(), lanes: 4))
 }
 
 // The admitted set is the vendor's enumeration, not an arithmetic range: four, six and eight are
 // production-qualified and one and two are not, and nothing in between is representable at all.
-test fn w_the_qualified_set_is_exactly_four_six_and_eight() -> Bool {
+test fn w_the_qualified_set_is_exactly_four_six_and_eight() -> Bool  {
   !channel_count_is_production_qualified(c: OneChannel)
     && !channel_count_is_production_qualified(c: TwoChannels)
     && channel_count_is_production_qualified(c: FourChannels)
@@ -147,7 +147,7 @@ test fn w_the_qualified_set_is_exactly_four_six_and_eight() -> Bool {
 // a hundred and twenty-eight is the lane count, both from the cited datasheet rows rather than
 // retyped here — so a correction there moves this admission instead of leaving it agreeing with a
 // number that has changed.
-test fn w_the_bounds_come_from_the_cited_package() -> Bool {
+test fn w_the_bounds_come_from_the_cited_package() -> Bool  {
   active_channel_count(c: EightChannels) == altra_ddr4_channel_count
     && altra_pcie_gen4_lane_count == 128
     && refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3], positions: one_dimm(), lanes: 129), wanted: "PcieLanes")
@@ -155,7 +155,7 @@ test fn w_the_bounds_come_from_the_cited_package() -> Bool {
 
 // A channel with no DIMM on it is a channel that is not populated, which contradicts calling it
 // active.
-test fn w_an_unpopulated_channel_refuses() -> Bool {
+test fn w_an_unpopulated_channel_refuses() -> Bool  {
   refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3], positions: [], lanes: 4), wanted: "DimmPopulation")
 }
 
@@ -170,7 +170,7 @@ test fn w_an_unpopulated_channel_refuses() -> Bool {
 // at once, with a perfectly legal channel list. The count assertion is what makes this
 // discriminating rather than decorative: one cause for one repeated position, not one per affected
 // channel, so a fold that reported per slot would go red here.
-test fn w_a_repeated_dimm_position_refuses() -> Bool {
+test fn w_a_repeated_dimm_position_refuses() -> Bool  {
   let d = design(
     intent_is_production: true,
     chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
@@ -187,7 +187,7 @@ test fn w_a_repeated_dimm_position_refuses() -> Bool {
 // THE POSITIVE CONTROL FOR THE ARM ABOVE: two DISTINCT positions on the same channels is a
 // two-DIMM-per-channel board, which is an ordinary capacity decision and must still be admitted.
 // Without this, refusing every multi-position topology would also read green.
-test fn w_two_distinct_dimm_positions_are_admitted() -> Bool {
+test fn w_two_distinct_dimm_positions_are_admitted() -> Bool  {
   admits(d: design(
     intent_is_production: true,
     chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
@@ -196,7 +196,7 @@ test fn w_two_distinct_dimm_positions_are_admitted() -> Bool {
   ))
 }
 
-test fn w_a_population_outside_the_admitted_set_refuses() -> Bool {
+test fn w_a_population_outside_the_admitted_set_refuses() -> Bool  {
   refuses_naming(
     d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2], positions: one_dimm(), lanes: 4),
     wanted: "NotAdmittedCount"
@@ -207,7 +207,7 @@ test fn w_a_population_outside_the_admitted_set_refuses() -> Bool {
 // the sharpest evidence that identity was the missing fact: a generated range is duplicate-free by
 // construction, so under the old shape this board could not be described, and the failure could
 // not be caught because it could not be written.
-test fn w_a_controller_populated_twice_refuses() -> Bool {
+test fn w_a_controller_populated_twice_refuses() -> Bool  {
   let d = design(
     intent_is_production: true,
     chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel0],
@@ -230,7 +230,7 @@ test fn w_a_controller_populated_twice_refuses() -> Bool {
 // literal, which greens for the wrong reason the moment a law is added or removed -- the number
 // would keep matching while naming a different set. Naming each cause makes the next law's arrival
 // a red that says which cause went missing.
-test fn w_independent_defects_are_all_reported() -> Bool {
+test fn w_independent_defects_are_all_reported() -> Bool  {
   let d = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: [], lanes: 129)
   refuses_naming(d: d, wanted: "DimmPopulation")
     && refuses_naming(d: d, wanted: "PcieLanes")
@@ -246,7 +246,7 @@ test fn w_independent_defects_are_all_reported() -> Bool {
 // What the fixture no longer owes is the different question "can this board eventually host a
 // production-qualified population", which is inapplicable to a board that intentionally routes two
 // channels and never ships -- not failed, and requiring it would make the arm uninhabitable.
-test fn w_a_fixture_still_owes_ordinary_population_admission() -> Bool {
+test fn w_a_fixture_still_owes_ordinary_population_admission() -> Bool  {
   refuses_naming(
     d: design(intent_is_production: false, chans: [DdrChannel0, DdrChannel1, DdrChannel2], positions: one_dimm(), lanes: 4),
     wanted: "NotAdmittedCount")
@@ -255,7 +255,7 @@ test fn w_a_fixture_still_owes_ordinary_population_admission() -> Bool {
 // THE PAIRED POSITIVE CONTROL, without which the one above only says that something refuses. The
 // same fixture at an admitted count is admitted, and the production board at that same count is
 // refused -- so the two arms differ on reachability alone, which is the whole of the claim.
-test fn w_the_fixture_arm_differs_from_production_only_on_reachability() -> Bool {
+test fn w_the_fixture_arm_differs_from_production_only_on_reachability() -> Bool  {
   let two_channels = [DdrChannel0, DdrChannel1]
   admits(d: design(intent_is_production: false, chans: two_channels, positions: one_dimm(), lanes: 4))
     && refuses_naming(d: design(intent_is_production: true, chans: two_channels, positions: one_dimm(), lanes: 4),
@@ -268,7 +268,7 @@ test fn w_the_fixture_arm_differs_from_production_only_on_reachability() -> Bool
 // the existing unrouted-channel witness exercises BringUpThenFill rather than this arm. Two active
 // channels are admitted under engineering intent, so the ONLY intended refusal here is the
 // unrouted seventh channel -- which is exactly what makes it discriminating for the subset half.
-test fn w_a_fixture_still_owes_the_routed_subset_law() -> Bool {
+test fn w_a_fixture_still_owes_the_routed_subset_law() -> Bool  {
   let fixture_off_copper = AltraMinimalMotherboard {
     design: RevARoutedMemoryDesign {
       routed: RoutedDdrTopology {
@@ -302,7 +302,7 @@ test fn w_a_fixture_still_owes_the_routed_subset_law() -> Bool {
 // someone happened to write its channels in. The first arm is the discriminator -- substituting
 // structural equality for the predicate turns it false -- and the second is the paired positive
 // control, so a predicate that simply returned true could not pass this witness either.
-test fn w_RED_design_identity_survives_channel_permutation_but_not_a_different_channel_set() -> Bool {
+test fn w_RED_design_identity_survives_channel_permutation_but_not_a_different_channel_set() -> Bool  {
   let forward = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4)
   let reversed = design(intent_is_production: true, chans: [DdrChannel1, DdrChannel0], positions: one_dimm(), lanes: 4)
   let widened = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel2], positions: one_dimm(), lanes: 4)

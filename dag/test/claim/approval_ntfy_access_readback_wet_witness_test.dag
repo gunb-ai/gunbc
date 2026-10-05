@@ -41,7 +41,7 @@ fn path_exists(path: String) -> Bool {
 // verb refuses before minting and creates nothing. So it asserts the refusal, and that the call leaves
 // the store's existence as it found it. That holds on a host with a store and on one without, and a
 // verb that went on to the store still reds it on a host without one.
-test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool {
+test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool  {
   let before = path_exists(path: approval_device_store_root as String)
   let r = issue_device_enrolment_code(revision: never_installed_revision)
   (match r {
@@ -58,7 +58,7 @@ test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool
 // gunbc-ntfy unit it is the helper's refusal naming the `unit` read; on a host running the server as
 // this principal it is an observation. Either way it DECODES: an encoder/decoder drift, a helper that
 // printed a diagnostic instead of its outcome, or one that exited nonzero reds this.
-test fn the_helper_output_decodes_as_an_outcome_by_real_execution() -> Bool {
+test fn the_helper_output_decodes_as_an_outcome_by_real_execution() -> Bool  {
   match approval_ntfy_runtime_observe() {
     CliWirePrintable { bytes: b, exit: _ } => match ntfy_runtime_observe_decode(text: b) {
       NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveRefused { read: r, cause: _ } } => r == "unit" || r == "stat" || r == "environ" || starts_with(s: r, prefix: "exe") || starts_with(s: r, prefix: "fd")

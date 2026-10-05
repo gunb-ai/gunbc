@@ -95,7 +95,7 @@ fn is_admitted(r: Redemption) -> Bool {
 // ── The whole point: a POST decides and nothing else does ────────────────────────────────────
 // THE POSITIVE CONTROL FIRST. An operator, on the tailnet, POSTing a live capability, is admitted.
 // Without this every refusal below could be a broker that refuses everything.
-test fn an_operator_posting_a_live_capability_is_admitted() -> Bool {
+test fn an_operator_posting_a_live_capability_is_admitted() -> Bool  {
   match redeem_with(method: POST, identity: operator_identity()) {
     RedemptionAdmitted { claims: c, decided_by: who } =>
       who == operator_login && c.escalation_id == "org-actions-secret-access-1"
@@ -108,7 +108,7 @@ test fn an_operator_posting_a_live_capability_is_admitted() -> Bool {
 // not decide. A link preview, a mail scanner, a chat unfurler and a browser prefetch all issue
 // exactly this request at a URL nobody has looked at, and if it decided, the audit row would name
 // the operator for a decision no person made.
-test fn a_get_at_the_approval_url_does_not_decide() -> Bool {
+test fn a_get_at_the_approval_url_does_not_decide() -> Bool  {
   match redeem_with(method: GET, identity: operator_identity()) {
     RedemptionRefused { cause: c } =>
       match c {
@@ -119,7 +119,7 @@ test fn a_get_at_the_approval_url_does_not_decide() -> Bool {
   }
 }
 
-test fn head_and_options_do_not_decide_either() -> Bool {
+test fn head_and_options_do_not_decide_either() -> Bool  {
   !is_admitted(r: redeem_with(method: HEAD, identity: operator_identity()))
     && !is_admitted(r: redeem_with(method: OPTIONS, identity: operator_identity()))
 }
@@ -128,7 +128,7 @@ test fn head_and_options_do_not_decide_either() -> Bool {
 // never decides. CONNECT (9.3.6) is neither safe nor a decision, so it is refused as UNSUPPORTED.
 // Each is asserted at its exact refusal arm: the method gate is the wall under test, so a mutation
 // that let either method commit must turn one of these red.
-test fn trace_is_refused_as_a_safe_method() -> Bool {
+test fn trace_is_refused_as_a_safe_method() -> Bool  {
   match redeem_with(method: TRACE, identity: operator_identity()) {
     RedemptionRefused { cause: c } =>
       match c {
@@ -139,7 +139,7 @@ test fn trace_is_refused_as_a_safe_method() -> Bool {
   }
 }
 
-test fn connect_is_refused_as_unsupported() -> Bool {
+test fn connect_is_refused_as_unsupported() -> Bool  {
   match redeem_with(method: CONNECT, identity: operator_identity()) {
     RedemptionRefused { cause: c } =>
       match c {
@@ -152,7 +152,7 @@ test fn connect_is_refused_as_unsupported() -> Bool {
 
 // The safe-method refusal must READ as "not here", because the operator will see it when their
 // phone opens the link -- it is the confirmation page's normal path, not an error.
-test fn the_safe_method_refusal_points_at_the_button() -> Bool {
+test fn the_safe_method_refusal_points_at_the_button() -> Bool  {
   match redeem_with(method: GET, identity: operator_identity()) {
     RedemptionRefused { cause: c } =>
       string_contains(s: redemption_refusal_reason(r: c), pattern: "committed by the button")
@@ -160,7 +160,7 @@ test fn the_safe_method_refusal_points_at_the_button() -> Bool {
   }
 }
 
-test fn the_other_methods_are_unsupported_rather_than_silently_safe() -> Bool {
+test fn the_other_methods_are_unsupported_rather_than_silently_safe() -> Bool  {
   match decision_method_admission(m: PUT) {
     DecisionMethodUnsupported { method: _ } => true
     _ => false
@@ -180,7 +180,7 @@ test fn the_other_methods_are_unsupported_rather_than_silently_safe() -> Bool {
 // obtained the URL, POSTing it, with a perfectly valid capability. Signed, live, correct verb --
 // and no tailnet identity, which is what a request that did not come through the authenticating
 // proxy looks like. It must refuse.
-test fn a_valid_capability_without_a_tailnet_identity_is_refused() -> Bool {
+test fn a_valid_capability_without_a_tailnet_identity_is_refused() -> Bool  {
   match redeem_with(method: POST, identity: TailnetIdentityAbsent) {
     RedemptionRefused { cause: c } =>
       match c {
@@ -194,7 +194,7 @@ test fn a_valid_capability_without_a_tailnet_identity_is_refused() -> Bool {
 // AND THE INSIDE CASE. A different tailnet user is authenticated -- the proxy did its job -- and
 // still is not the operator this request names. Network reachability is not identity, which is why
 // the two checks are separate.
-test fn another_tailnet_user_cannot_spend_the_operators_decision() -> Bool {
+test fn another_tailnet_user_cannot_spend_the_operators_decision() -> Bool  {
   match redeem_with(method: POST, identity: tailnet_identity_of(header_value: "someone-else@github")) {
     RedemptionRefused { cause: c } =>
       match c {
@@ -209,7 +209,7 @@ test fn another_tailnet_user_cannot_spend_the_operators_decision() -> Bool {
 // identity -- reports the method, because a safe request must never reach a decision path at all.
 // Reporting the identity would mean the identity check ran on a request that was only ever
 // rendering a page.
-test fn a_safe_method_refuses_before_identity_is_considered() -> Bool {
+test fn a_safe_method_refuses_before_identity_is_considered() -> Bool  {
   match redeem_with(method: GET, identity: TailnetIdentityAbsent) {
     RedemptionRefused { cause: c } =>
       match c {
@@ -225,7 +225,7 @@ test fn a_safe_method_refuses_before_identity_is_considered() -> Bool {
 // A refusal nominating a request establishes that a capability is MISSING, never that the
 // requester may hold it. Without this check, a worker that can provoke a refusal can put any
 // capability it names in front of the operator, whose only defence is noticing.
-test fn an_unenrolled_requester_cannot_put_a_request_to_the_operator() -> Bool {
+test fn an_unenrolled_requester_cannot_put_a_request_to_the_operator() -> Bool  {
   match admit_submission(
     requester: "some-worker" as NonEmptyStr,
     authority: "gcp.secret_manager" as NonEmptyStr,
@@ -237,7 +237,7 @@ test fn an_unenrolled_requester_cannot_put_a_request_to_the_operator() -> Bool {
   }
 }
 
-test fn an_enrolled_requester_cannot_reach_an_authority_it_is_not_permitted() -> Bool {
+test fn an_enrolled_requester_cannot_reach_an_authority_it_is_not_permitted() -> Bool  {
   match admit_submission(
     requester: "fleet-cloud-convergence" as NonEmptyStr,
     authority: "host.sudoers" as NonEmptyStr,
@@ -249,7 +249,7 @@ test fn an_enrolled_requester_cannot_reach_an_authority_it_is_not_permitted() ->
   }
 }
 
-test fn a_permitted_requester_and_authority_is_admitted() -> Bool {
+test fn a_permitted_requester_and_authority_is_admitted() -> Bool  {
   match admit_submission(
     requester: "fleet-cloud-convergence" as NonEmptyStr,
     authority: "gcp.secret_manager" as NonEmptyStr,
@@ -265,7 +265,7 @@ test fn a_permitted_requester_and_authority_is_admitted() -> Bool {
 // An expired lease means the holder stopped REPORTING, not that it stopped executing. Without a
 // fence the external effect itself checks, takeover may run the effect twice, so the unfenced arm
 // refuses rather than proceeding.
-test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool {
+test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool  {
   !takeover_is_admissible(
     t: TakeoverUnfencedAndRefused {
       holder: "attempt-1" as AttemptIdentity,
@@ -278,7 +278,7 @@ test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool {
 // AN UNATTRIBUTED HEADER NEVER BECOMES A LOGIN ON THE RECORD: the redemption is admitted on the
 // capability alone and decided_by names the bearer, whatever login the header carried -- including
 // the operator's own, because on that deployment the header could have been written by anyone.
-test fn an_unattributed_header_records_the_bearer_and_never_the_presented_login() -> Bool {
+test fn an_unattributed_header_records_the_bearer_and_never_the_presented_login() -> Bool  {
   match redeem_capability(
     method: POST,
     capability: good_capability(),

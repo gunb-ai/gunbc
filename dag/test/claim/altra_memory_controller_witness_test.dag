@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // controller admits carries a register or a buffer, and NONE is unbuffered. Asserted over the
 // whole admitted list rather than by naming the three, so a fourth class added later must also
 // satisfy it or red here.
-test fn w_every_admitted_module_class_is_buffered() -> Bool {
+test fn w_every_admitted_module_class_is_buffered() -> Bool  {
   fold(altra_admitted_module_classes, init: true, f: fn(acc, c) {
     acc && match c.buffering {
       Registered => true
@@ -67,7 +67,7 @@ test fn w_every_admitted_module_class_is_buffered() -> Bool {
 
 // AND THE DISCRIMINATING CONTROL: an unbuffered class is genuinely refused, not merely absent
 // from a list nothing checks. Without this the claim above is satisfied by any list.
-test fn w_an_unbuffered_module_class_is_refused() -> Bool {
+test fn w_an_unbuffered_module_class_is_refused() -> Bool  {
   !altra_admits_module_class(c: DramModuleClass { buffering: Unbuffered, stacking: MonolithicDie })
     && !altra_admits_module_class(c: DramModuleClass { buffering: Unbuffered, stacking: ThreeDimensionalStacked })
     && altra_admits_module_class(c: DramModuleClass { buffering: Registered, stacking: MonolithicDie })
@@ -76,7 +76,7 @@ test fn w_an_unbuffered_module_class_is_refused() -> Bool {
 // THE STACKING AXIS EARNS ITS EXISTENCE HERE. A registered monolithic module and a registered 3DS
 // module are both admitted and are DIFFERENT values — which is unrepresentable if 3DS is folded
 // into the buffering enum. This is the regression control for that collapse.
-test fn w_stacking_is_independent_of_buffering() -> Bool {
+test fn w_stacking_is_independent_of_buffering() -> Bool  {
   let reg_mono = DramModuleClass { buffering: Registered, stacking: MonolithicDie }
   let reg_3ds = DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked }
   !dram_module_class_eq(a: reg_mono, b: reg_3ds)
@@ -92,7 +92,7 @@ test fn w_stacking_is_independent_of_buffering() -> Bool {
 // mention DDP at all -- and NOT a withdrawal like UDIMM's; the two are kept apart above. The
 // control matters because before DualDiePackage existed such a module could only be written as
 // monolithic and would have been admitted as a class it does not belong to.
-test fn w_a_dual_die_registered_module_is_not_among_the_listed_classes() -> Bool {
+test fn w_a_dual_die_registered_module_is_not_among_the_listed_classes() -> Bool  {
   let reg_ddp = DramModuleClass { buffering: Registered, stacking: DualDiePackage }
   !altra_admits_module_class(c: reg_ddp)
     && !dram_module_class_eq(a: reg_ddp, b: DramModuleClass { buffering: Registered, stacking: MonolithicDie })
@@ -103,7 +103,7 @@ test fn w_a_dual_die_registered_module_is_not_among_the_listed_classes() -> Bool
 // THE WITHDRAWAL IS THE STANDING, not a missing entry. A board-down proposal must land on the
 // arm that says the nearest class was taken away, because that routes differently from "nobody
 // has established it" — one stops the proposal, the other invites a test campaign.
-test fn w_board_down_reports_the_withdrawal_not_an_absence() -> Bool {
+test fn w_board_down_reports_the_withdrawal_not_an_absence() -> Bool  {
   match altra_board_down_dram_standing(topology: BoardProvidesNoRegisterOrBuffer) {
     BoardDownNearestClassWithdrawn { authority: _, withdrawal: w } =>
       (w.withdrawn_in_issue as String) == "1.50"
@@ -119,7 +119,7 @@ test fn w_board_down_reports_the_withdrawal_not_an_absence() -> Bool {
 // board-down topologies — the exact over-reading a previous revision of the module made. It
 // asserts the standing is Unestablished specifically, not merely "not withdrawn", so answering
 // this topology with Admitted or NotAdmitted also reds: nothing read so far establishes either.
-test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool {
+test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool  {
   match altra_board_down_dram_standing(topology: BoardProvidesRegisterOrBuffer) {
     BoardDownSupportUnestablished { required_authority: _ } => true
     BoardDownNearestClassWithdrawn { authority: _, withdrawal: _ } => false
@@ -134,7 +134,7 @@ test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool 
 // would be a legitimate part, so pinning the two equal would red on a true fact. Written this way
 // it survives a JEDEC revision raising the ceiling, and reds if this module ever admits a density
 // the generation cannot physically carry.
-test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
+test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool  {
   let ceiling = byte_size_count(b: ddr4_generation_catalog.max_monolithic_die_density)
   fold(altra_admitted_device_densities, init: true, f: fn(acc, d) {
     acc && (byte_size_count(b: d) <= ceiling)
@@ -150,7 +150,7 @@ test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
 // longer has to assert is that 3, 5 and 7 are unsupported -- they have no representation in
 // ActiveDdrChannelCount at all, so that claim moved from a runtime check to unwritability, which
 // is why the Int-list classifier this replaced could be deleted rather than re-homed.
-test fn w_production_qualification_separates_bringup_from_production() -> Bool {
+test fn w_production_qualification_separates_bringup_from_production() -> Bool  {
   channel_count_is_production_qualified(c: EightChannels)
     && channel_count_is_production_qualified(c: SixChannels)
     && channel_count_is_production_qualified(c: FourChannels)
@@ -163,7 +163,7 @@ test fn w_production_qualification_separates_bringup_from_production() -> Bool {
 // Device organization, both axes, against the datasheet's stated values. Densities are asserted
 // in bytes at the exact 2^30-bits-per-Gb conversion the carrier declares, so a silent
 // re-denomination reds rather than rounding.
-test fn w_device_organization_matches_the_datasheet() -> Bool {
+test fn w_device_organization_matches_the_datasheet() -> Bool  {
   list_length(items: altra_admitted_device_widths) == 2
     && list_length(items: altra_admitted_device_densities) == 2
     && match altra_admitted_device_widths.first() {
@@ -185,7 +185,7 @@ test fn w_device_organization_matches_the_datasheet() -> Bool {
 }
 
 // The channel facts, and the aggregate DERIVED from them rather than authored beside them.
-test fn w_channel_geometry_derives_the_total_width() -> Bool {
+test fn w_channel_geometry_derives_the_total_width() -> Bool  {
   altra_ddr4_channel_count == 8
     && bit_width_count(b: altra_memory_channel_width) == 72
     && dimms_per_channel_count(topology: altra_memory_max_dimms_per_channel_topology) == 2
@@ -197,7 +197,7 @@ test fn w_channel_geometry_derives_the_total_width() -> Bool {
 // package module must reach the SAME socket declaration — not merely equal values, which was
 // already true while the fork existed and is why nothing failed. Identity through one authority
 // is the property; equality is the symptom it happens to produce.
-test fn w_one_socket_authority_serves_both_families() -> Bool {
+test fn w_one_socket_authority_serves_both_families() -> Bool  {
   altra_fclga_socket == ampere_lga4926_socket
     && altra_max_m12830_catalog.socket == ampere_lga4926_socket
     && altra_q6430_catalog.socket == ampere_lga4926_socket

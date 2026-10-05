@@ -12,7 +12,7 @@ import gunbc.roadmap_auth_routes { auth_google_callback_response, auth_callback_
 
 // Two independent browser cookie contexts and two already-read copies of one transaction.
 // No code is supplied, so even configured CI cannot contact Google's token endpoint.
-test fn foreign_browser_cannot_consume_and_cached_replay_cannot_exchange() -> Bool {
+test fn foreign_browser_cannot_consume_and_cached_replay_cannot_exchange() -> Bool  {
   let directory = shell.Mktemp.Dir()
   if !directory.success { false } else {
     let instance = isolated_dashboard_instance(deployment: deployment_id(name: "login-hold-fixture" as NonEmptyStr), instance_id: "login-hold-fixture", layout: srv1_host_layout(), root: directory.path as FilePath,

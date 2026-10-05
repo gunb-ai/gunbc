@@ -188,7 +188,7 @@ fn witness_mint_session(
 
 // THE POSITIVE CONTROL: a verified verdict bound to a live transaction mints a session on the
 // verdict-sealed principal, with the Google OIDC method, the client, and the CSRF token aboard.
-test fn a_verified_login_mints_a_session_on_the_verdict_principal() -> Bool {
+test fn a_verified_login_mints_a_session_on_the_verdict_principal() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -213,7 +213,7 @@ test fn a_verified_login_mints_a_session_on_the_verdict_principal() -> Bool {
 }
 
 // A REFUSED VERDICT MINTS NO SESSION.
-test fn a_refused_verdict_mints_no_session() -> Bool {
+test fn a_refused_verdict_mints_no_session() -> Bool  {
   match witness_mint_session(
     verdict: witness_refused_verdict(),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -232,7 +232,7 @@ test fn a_refused_verdict_mints_no_session() -> Bool {
 // projects none — and the principal is byte-identical either way, because the picture is a
 // MUTABLE PROJECTION, never an identity input (the session mint reads it from the verified
 // claims inside the seal; there is no picture parameter anywhere).
-test fn the_minted_session_carries_the_picture_from_the_verified_claims() -> Bool {
+test fn the_minted_session_carries_the_picture_from_the_verified_claims() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict_with_picture(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -267,7 +267,7 @@ test fn the_minted_session_carries_the_picture_from_the_verified_claims() -> Boo
 
 // THE TRANSACTION ARMS: an expired transaction refuses before any session exists; a nonce the
 // token did not answer refuses with both sides named.
-test fn an_expired_transaction_refuses_before_any_session_exists() -> Bool {
+test fn an_expired_transaction_refuses_before_any_session_exists() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:01:00Z"),
@@ -281,7 +281,7 @@ test fn an_expired_transaction_refuses_before_any_session_exists() -> Bool {
   }
 }
 
-test fn a_nonce_the_token_did_not_answer_refuses() -> Bool {
+test fn a_nonce_the_token_did_not_answer_refuses() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict(nonce: Present { value: "nonce-other" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -297,7 +297,7 @@ test fn a_nonce_the_token_did_not_answer_refuses() -> Bool {
 }
 
 // SESSION LIFETIME: the bounded expiry is a total fold over the model's clock string.
-test fn a_session_expires_at_its_bound() -> Bool {
+test fn a_session_expires_at_its_bound() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -314,7 +314,7 @@ test fn a_session_expires_at_its_bound() -> Bool {
 
 // THE CSRF PROOF IS SEPARATE FROM THE COOKIE FACTS: an exact presentation admits; absent and
 // mismatched refuse with different causes; an empty presentation is absent, never a match.
-test fn the_csrf_proof_admits_exactly_and_refuses_absent_and_mismatch() -> Bool {
+test fn the_csrf_proof_admits_exactly_and_refuses_absent_and_mismatch() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -338,7 +338,7 @@ test fn the_csrf_proof_admits_exactly_and_refuses_absent_and_mismatch() -> Bool 
 }
 
 // THE COOKIE ATTRIBUTES are the ruling's spelled set, as data a realization must emit verbatim.
-test fn the_cookie_attributes_are_the_rulings_spelled_set() -> Bool {
+test fn the_cookie_attributes_are_the_rulings_spelled_set() -> Bool  {
   session_cookie_secure == true
     && session_cookie_http_only == true
     && session_cookie_same_site_lax == true
@@ -361,7 +361,7 @@ fn witness_store_layout() -> SessionStoreLayout {
 // THE INBOUND PARSE distinguishes a present id from an absent one and from malformed spellings:
 // an empty value, a character outside RFC 6265's cookie-octet set, and a duplicate session
 // cookie are three Malformed arms with their own causes — never silently NotPresent.
-test fn the_cookie_parse_admits_a_present_id_and_refuses_malformed_spellings() -> Bool {
+test fn the_cookie_parse_admits_a_present_id_and_refuses_malformed_spellings() -> Bool  {
   match session_cookie_id_of_header(cookie_header: "gunbc_session=abc-123") {
     SessionCookieIdParsed { session_id } => (session_id as String) == "abc-123"
     _ => false
@@ -389,7 +389,7 @@ test fn the_cookie_parse_admits_a_present_id_and_refuses_malformed_spellings() -
 // THE STANDING FOLD KEEPS EVERY NON-VALID ARM DISTINCT: absent, unknown (the forged-cookie arm:
 // the id names no session the store holds), unread, malformed, and the valid/expired split each
 // survive the fold as their own constructor, because each names a different remedy.
-test fn the_standing_fold_keeps_absent_unknown_unread_and_expired_distinct() -> Bool {
+test fn the_standing_fold_keeps_absent_unknown_unread_and_expired_distinct() -> Bool  {
   session_cookie_standing_of(cookie_header: "", layout: witness_store_layout(), observed_at: "2026-09-25T00:05:00Z")
     == SessionCookieAbsent
     && match session_cookie_standing_of_store_result(
@@ -442,7 +442,7 @@ test fn the_standing_fold_keeps_absent_unknown_unread_and_expired_distinct() -> 
 // THE SESSION FILE CODEC round-trips the whole session record through its JSON spelling, so a
 // file written by one login decodes to the same session the next request decides over — and a
 // file missing a member refuses with the member named, never a fabricated partial session.
-test fn the_session_file_codec_round_trips_and_refuses_with_the_member_named() -> Bool {
+test fn the_session_file_codec_round_trips_and_refuses_with_the_member_named() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -495,7 +495,7 @@ data witness_session_file_with_empty_name: String = "{\"schema\":\"gunbc-auth-se
 // a file written before the projection landed decodes to a projection-less profile rather
 // than a malformed file — the projection never forces a re-login; and a member of a spelling
 // the mint never writes refuses with the member named.
-test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool {
+test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool  {
   match witness_mint_session(
     verdict: witness_verdict_with_picture(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
     transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
@@ -556,7 +556,7 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
 // THE OUTBOUND Set-Cookie LINE spells the ruling's attributes from the data rows — Secure,
 // HttpOnly, SameSite=Lax, path-bound, bounded lifetime — and the logout clearing line zeroes the
 // lifetime so the browser drops the cookie.
-test fn the_set_cookie_lines_spell_the_ruling_attributes() -> Bool {
+test fn the_set_cookie_lines_spell_the_ruling_attributes() -> Bool  {
   let line = set_cookie_value(cookie: session_cookie_set_cookie(session_id: "abc-123" as NonEmptyStr, max_age_seconds: 43200))
   let cleared = set_cookie_value(cookie: session_cookie_clear())
   string_contains(s: line, pattern: "gunbc_session=abc-123; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200")

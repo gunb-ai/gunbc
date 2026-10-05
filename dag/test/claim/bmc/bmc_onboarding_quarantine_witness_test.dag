@@ -349,7 +349,7 @@ data live_standing: OnboardingQuarantineStanding = onboarding_quarantine_standin
 // nor does any declaration in the live pool bridge it to an intake name. Nested body calls and
 // parameter types are outside the instrument (see the trigger above), so the claim is named by
 // what it observes.
-test fn parse_grain_onboarding_quarantine_wall_holds_on_the_live_pool() -> Bool {
+test fn parse_grain_onboarding_quarantine_wall_holds_on_the_live_pool() -> Bool  {
   match live_standing {
     OnboardingQuarantineHeld { declarations_examined: n } => n > 0
     OnboardingVocabularyUnestablished { vocabulary: _ } => false
@@ -368,19 +368,19 @@ data fixture_carrier_type: String = "test.fixture.onboarding_quarantine.machine_
 
 data fixture_body_fn: String = "test.fixture.onboarding_quarantine.machine_intake_probe.onboarding_quarantine_probe_factory_state"
 
-test fn fixture_bridge_type_is_found_by_identity_on_both_fields() -> Bool {
+test fn fixture_bridge_type_is_found_by_identity_on_both_fields() -> Bool  {
   onboarding_quarantine_finding_hits(findings: fixture_control_wall.intake_consumers_of_onboarding, declaration: fixture_bridge_type, want: "BmcOnboardingPhase")
     && any(fixture_control_wall.bridging_declarations, predicate: fn(f) {
       f.declaration == fixture_bridge_type && contains(xs: f.intake_hits, item: "IntakeLedgerValidation", eq: onboarding_quarantine_string_eq)
     })
 }
 
-test fn fixture_carrier_type_is_found_and_is_not_a_bridge() -> Bool {
+test fn fixture_carrier_type_is_found_and_is_not_a_bridge() -> Bool  {
   onboarding_quarantine_finding_hits(findings: fixture_control_wall.intake_consumers_of_onboarding, declaration: fixture_carrier_type, want: "BmcLifecycleState")
     && (onboarding_quarantine_finding_named(findings: fixture_control_wall.bridging_declarations, declaration: fixture_carrier_type) == false)
 }
 
-test fn fixture_top_level_callee_is_found_and_the_control_counts_are_exact() -> Bool {
+test fn fixture_top_level_callee_is_found_and_the_control_counts_are_exact() -> Bool  {
   onboarding_quarantine_finding_hits(findings: fixture_control_wall.intake_consumers_of_onboarding, declaration: fixture_body_fn, want: "bmc_factory_state")
     && length(xs: fixture_control_wall.bridging_declarations) == 1
     && length(xs: fixture_control_wall.intake_consumers_of_onboarding) == 3

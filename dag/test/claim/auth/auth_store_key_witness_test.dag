@@ -12,7 +12,7 @@ import gunbc.auth.session_store { SessionStoreLayout, session_store_lookup, sess
 // traversal shape is admitted as a key, or reaches a lookup/delete that touches the filesystem.
 data traversal_shapes: List<String> = ["../x", "..", "a/b", "/etc/passwd", "a\u{0}b", "a.b", ".", "a b", "a%2Fb"]
 
-test fn no_traversal_shape_is_a_store_key() -> Bool {
+test fn no_traversal_shape_is_a_store_key() -> Bool  {
   auth_store_key_of(raw: "") == none
     && all(traversal_shapes, raw => match auth_store_key_of(raw: raw) {
       Absent => true
@@ -20,7 +20,7 @@ test fn no_traversal_shape_is_a_store_key() -> Bool {
     })
 }
 
-test fn a_minted_base64url_identifier_is_a_store_key() -> Bool {
+test fn a_minted_base64url_identifier_is_a_store_key() -> Bool  {
   match auth_store_key_of(raw: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") {
     Present { value: k } => (k.value as String) == "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
     Absent => false
@@ -35,7 +35,7 @@ fn never_read_session_layout() -> SessionStoreLayout {
   SessionStoreLayout { root: "/fixture-never-read/sessions" as FilePath }
 }
 
-test fn a_traversal_state_is_unknown_and_its_consume_refuses_without_a_filesystem_call() -> Bool {
+test fn a_traversal_state_is_unknown_and_its_consume_refuses_without_a_filesystem_call() -> Bool  {
   all(["../x", "a/b", "/etc/passwd"], raw =>
     match login_transaction_store_lookup(layout: never_read_login_layout(), state: raw as NonEmptyStr) {
       LoginTransactionStoreUnknown { state: _ } => true
@@ -49,7 +49,7 @@ test fn a_traversal_state_is_unknown_and_its_consume_refuses_without_a_filesyste
     })
 }
 
-test fn a_traversal_session_id_is_unknown_and_its_delete_refuses_without_a_filesystem_call() -> Bool {
+test fn a_traversal_session_id_is_unknown_and_its_delete_refuses_without_a_filesystem_call() -> Bool  {
   all(["../x", "a/b", "/etc/passwd"], raw =>
     match session_store_lookup(layout: never_read_session_layout(), session_id: raw as NonEmptyStr) {
       SessionStoreUnknown { session_id: _ } => true

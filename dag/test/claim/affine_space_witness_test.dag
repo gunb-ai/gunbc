@@ -578,7 +578,7 @@ fn witness_transform_translation_must_be_in_destination_frame() -> Bool {
   }
 }
 
-test fn affine_space_witnesses() -> Bool {
+test fn affine_space_witnesses() -> Bool  {
   witness_point_difference_is_signed_displacement()
     && witness_translate_inverts_difference()
     && witness_vectors_compose()
@@ -617,7 +617,7 @@ fn micro_registry() -> SpatialFrameRegistry {
 // check the label against - assuming the default is the convention this layer exists to remove.
 // CROSS PRODUCT IS THE SAME WALL, censused rather than waited for: it labels THREE components
 // in square millimetres, so an unguarded micrometre frame mislabels a whole vector at once.
-test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
+test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool  {
   let v = vector3(frame: room(), x: 1000, y: 0, z: 0)
   let refused_in_micrometres = match norm3(registry: micro_registry(), v: v) {
     SpatialFrameRefused { refusal: r } =>

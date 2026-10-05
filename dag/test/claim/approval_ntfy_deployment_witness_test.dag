@@ -35,7 +35,7 @@ data srv1: HostIdentity = "srv1" as HostIdentity
 // automating their update would have collapsed them to `measure() == measure()` -- §5's own review
 // tell for a change detector. Adding a legitimate seventh step should not redden a test whose
 // subject is not the number of steps.
-test fn witness_no_per_run_human_cost() -> Bool {
+test fn witness_no_per_run_human_cost() -> Bool  {
   human_intervention_count_at(burden: approval_ntfy_human_burden(), frequency: EveryProvision) == 0
 }
 
@@ -51,7 +51,7 @@ fn every_identity_occurs_once(b: ProvisioningHumanBurden) -> Bool {
   all(xs: b.interventions, f: i => identity_occurrence_count(b: b, id: i.identity) == 1)
 }
 
-test fn witness_every_intervention_has_a_distinct_identity() -> Bool {
+test fn witness_every_intervention_has_a_distinct_identity() -> Bool  {
   every_identity_occurs_once(b: approval_ntfy_human_burden())
 }
 
@@ -66,13 +66,13 @@ fn burden_with_a_duplicated_row() -> ProvisioningHumanBurden {
   }
 }
 
-test fn witness_duplicate_identities_are_refused() -> Bool {
+test fn witness_duplicate_identities_are_refused() -> Bool  {
   !every_identity_occurs_once(b: burden_with_a_duplicated_row())
 }
 
 // EVERY ROW MUST ACTUALLY TELL A PERSON WHAT TO DO. An intervention with an empty instruction is
 // a roster entry that looks like coverage and discharges nothing.
-test fn witness_every_intervention_carries_an_instruction() -> Bool {
+test fn witness_every_intervention_carries_an_instruction() -> Bool  {
   all(xs: approval_ntfy_human_burden().interventions, f: i => (i.instruction as String) != "" && (i.subject as String) != "")
 }
 
@@ -85,7 +85,7 @@ test fn witness_every_intervention_carries_an_instruction() -> Bool {
 // The former witness_upstream_relay_is_declared is DELETED: it compared
 // approval_ntfy_upstream_base_url to its own literal, which is `measure() == measure()` and
 // asserted nothing at all.
-test fn witness_server_binds_loopback_only() -> Bool {
+test fn witness_server_binds_loopback_only() -> Bool  {
   approval_ntfy_listen_address == "127.0.0.1"
 }
 
@@ -93,17 +93,17 @@ test fn witness_server_binds_loopback_only() -> Bool {
 // declarations from being dangling data beside an English restatement of themselves: if the port
 // or the state root changes and the instruction stops agreeing, these go red. A person following
 // the instruction and a machine reading the declarations get the same answer by construction.
-test fn witness_install_instruction_carries_the_declared_endpoint() -> Bool {
+test fn witness_install_instruction_carries_the_declared_endpoint() -> Bool  {
   string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: approval_ntfy_endpoint())
 }
 
-test fn witness_install_instruction_carries_the_declared_state_root() -> Bool {
+test fn witness_install_instruction_carries_the_declared_state_root() -> Bool  {
   string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: approval_ntfy_state_root as String)
 }
 
 // POSITIVE CONTROL on those two: string_contains must be capable of answering false here, or the
 // pair above would pass over any instruction at all.
-test fn witness_install_instruction_does_not_carry_an_unrelated_endpoint() -> Bool {
+test fn witness_install_instruction_does_not_carry_an_unrelated_endpoint() -> Bool  {
   !string_contains(s: approval_ntfy_server_install_intervention().instruction as String, pattern: "0.0.0.0:2586")
 }
 
@@ -118,20 +118,20 @@ test fn witness_install_instruction_does_not_carry_an_unrelated_endpoint() -> Bo
 // -- which holds that address to loopback as an explicit policy requirement -- this says the
 // endpoint is loopback-based, without either witness restating the other's literal. Changing the
 // port freely is correct and does not redden anything; widening the address does.
-test fn witness_endpoint_is_built_from_the_declared_address() -> Bool {
+test fn witness_endpoint_is_built_from_the_declared_address() -> Bool  {
   starts_with(s: approval_ntfy_endpoint(), prefix: concat(approval_ntfy_listen_address as String, ":"))
 }
 
 // POSITIVE CONTROL: the prefix check must be capable of answering false, or the assertion above
 // would hold over any endpoint at all.
-test fn witness_endpoint_is_not_built_from_a_wildcard_address() -> Bool {
+test fn witness_endpoint_is_not_built_from_a_wildcard_address() -> Bool  {
   !starts_with(s: approval_ntfy_endpoint(), prefix: "0.0.0.0:")
 }
 
 // The notification principal's realization standing is persistent and unallocated until a host uid
 // is observed -- the same shape its sibling carries, asserted rather than assumed, and naming its
 // own principal so a copy-paste of the publication helper's row would go red.
-test fn witness_notification_service_realization_is_a_persistent_account() -> Bool {
+test fn witness_notification_service_realization_is_a_persistent_account() -> Bool  {
   match notification_service_realization_standing(host: srv1) {
     PersistentServiceAccount { allocation: AccountUnallocated { occurrence: o } } =>
       match o.principal {
@@ -150,14 +150,14 @@ test fn witness_notification_service_realization_is_a_persistent_account() -> Bo
 // deployment, so an operator granting read on a DIFFERENT topic than the broker publishes to would
 // leave the real one at read-write -- silently, and in exactly the direction that makes approval
 // links public. Joining the declaration is what makes that disagreement impossible.
-test fn witness_grant_instruction_names_the_declared_topic() -> Bool {
+test fn witness_grant_instruction_names_the_declared_topic() -> Bool  {
   string_contains(
     s: approval_ntfy_subscriber_grant_intervention().instruction as String,
     pattern: approval_ntfy_topic as String,
   )
 }
 
-test fn witness_grant_instruction_does_not_name_an_unrelated_topic() -> Bool {
+test fn witness_grant_instruction_does_not_name_an_unrelated_topic() -> Bool  {
   !string_contains(
     s: approval_ntfy_subscriber_grant_intervention().instruction as String,
     pattern: "gunbc-approvals-staging",
@@ -173,11 +173,11 @@ test fn witness_grant_instruction_does_not_name_an_unrelated_topic() -> Bool {
 // These are identity joins against the network authority, not transcriptions: the host and the
 // tailnet domain are read from gunbc.fleet_intent_network, so renaming either reddens this rather
 // than leaving a stale literal behind.
-test fn witness_base_url_carries_the_declared_host() -> Bool {
+test fn witness_base_url_carries_the_declared_host() -> Bool  {
   string_contains(s: approval_ntfy_base_url as String, pattern: operator_host_srv1 as String)
 }
 
-test fn witness_base_url_carries_the_declared_tailnet_domain() -> Bool {
+test fn witness_base_url_carries_the_declared_tailnet_domain() -> Bool  {
   match fleet_intent_network.tailnet_domain {
     Present { value: d } => string_contains(s: approval_ntfy_base_url as String, pattern: d as String)
     Absent => false
@@ -188,13 +188,13 @@ test fn witness_base_url_carries_the_declared_tailnet_domain() -> Bool {
 // structurally unroutable rather than a plausible one -- RFC 2606 reserves `.invalid` precisely so
 // this cannot resolve anywhere. Asserting it here is what keeps the arm from being an absorbing
 // fallback nobody ever exercised.
-test fn witness_absent_tailnet_domain_yields_an_unroutable_address() -> Bool {
+test fn witness_absent_tailnet_domain_yields_an_unroutable_address() -> Bool  {
   let u = approval_ntfy_base_url_from(domain: none) as String
   string_contains(s: u, pattern: ".invalid") && !string_contains(s: u, pattern: "ts.net")
 }
 
 // POSITIVE CONTROL ON THAT ARM: the Present path must NOT produce the unroutable marker, or the
 // witness above would pass over an address that never works.
-test fn witness_present_tailnet_domain_is_not_the_unroutable_address() -> Bool {
+test fn witness_present_tailnet_domain_is_not_the_unroutable_address() -> Bool  {
   !string_contains(s: approval_ntfy_base_url as String, pattern: ".invalid")
 }

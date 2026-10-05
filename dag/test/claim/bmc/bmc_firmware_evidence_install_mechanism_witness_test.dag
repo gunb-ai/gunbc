@@ -96,7 +96,7 @@ fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSoluti
 // and PxeHttpInstall by absence for anything else, is deleted; the refusal is
 // the honest per-host answer until a bound BootDeliverySolution reaches these
 // consumers.
-test fn every_catalogued_host_refuses_at_profile_lookup_not_run() -> Bool {
+test fn every_catalogued_host_refuses_at_profile_lookup_not_run() -> Bool  {
   solution_refuses_at_profile_lookup_not_run(solution: srv1_install_mechanism_solution)
     && solution_refuses_at_profile_lookup_not_run(solution: srv2_install_mechanism_solution)
     && solution_refuses_at_profile_lookup_not_run(solution: srv3_install_mechanism_solution)
@@ -104,7 +104,7 @@ test fn every_catalogued_host_refuses_at_profile_lookup_not_run() -> Bool {
 }
 
 // The refusal names the host's OWN evidence endpoint, not a default one.
-test fn profile_lookup_refusal_names_the_evidence_endpoint() -> Bool {
+test fn profile_lookup_refusal_names_the_evidence_endpoint() -> Bool  {
   match srv4_install_mechanism_solution {
     OsInstallMechanismRefused { cause: c } =>
       match c {
@@ -122,7 +122,7 @@ test fn profile_lookup_refusal_names_the_evidence_endpoint() -> Bool {
 
 // Provenance is carried structurally, not by a comment: srv1/srv2 inhabit the attested arm and
 // srv3/srv4 the observed arm, so a recollection cannot be read back as a Redfish observation.
-test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
+test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool  {
   match srv1_bmc_firmware_evidence {
     BmcFirmwareEvidenceAttested { attestation: _ } =>
       match srv2_bmc_firmware_evidence {
@@ -148,7 +148,7 @@ test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
 // RED CONTROL — an endpoint with no evidence must refuse with the missing fact,
 // NOT reach the access step (whose refusal would name a lookup that could not
 // even have been keyed) and NOT substitute the board's shipped roster.
-test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step() -> Bool {
+test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step() -> Bool  {
   match solve_install_mechanism_from_evidence(
     evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
     catalog: srv3_firmware_catalog,
@@ -173,7 +173,7 @@ test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step(
 // RED CONTROL — a firmware version one patch off a catalogued row must refuse, not match the
 // nearest row. 2.07.00 is the only version carrying CapabilityNbdProxyVirtualMedia; answering
 // for 2.07.01 from that row would grant a capability nobody observed.
-test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
+test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool  {
   match solve_install_mechanism_from_evidence(
     evidence: BmcFirmwareEvidenceAttested {
       attestation: BmcFirmwareAttestation {
@@ -206,7 +206,7 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
 // POSITIVE CONTROL for the lookup itself — the catalogued version resolves to the row whose
 // capabilities the fleet actually depends on, so the refusals above are discriminating rather
 // than the function refusing everything.
-test fn catalogued_version_resolves_to_its_own_row() -> Bool {
+test fn catalogued_version_resolves_to_its_own_row() -> Bool  {
   match bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
     catalog: srv3_firmware_catalog,
@@ -219,7 +219,7 @@ test fn catalogued_version_resolves_to_its_own_row() -> Bool {
   }
 }
 
-test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool {
+test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool  {
   match bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
     catalog: srv3_firmware_catalog,
@@ -232,7 +232,7 @@ test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool
   }
 }
 
-test fn unobserved_evidence_establishes_no_version() -> Bool {
+test fn unobserved_evidence_establishes_no_version() -> Bool  {
   match bmc_firmware_evidence_version(
     evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
   ) {
@@ -241,7 +241,7 @@ test fn unobserved_evidence_establishes_no_version() -> Bool {
   }
 }
 
-test fn capability_standing_refuses_on_absent_evidence() -> Bool {
+test fn capability_standing_refuses_on_absent_evidence() -> Bool  {
   match bmc_firmware_capability_standing(
     evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
     catalog: srv3_firmware_catalog,
@@ -269,7 +269,7 @@ data attested_2_07_00_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceAtteste
 
 // RED CONTROL for the manager-flagged duplicate-match defect. Two catalog rows for one version
 // is a contradiction; answering from whichever was authored first would render it as a verdict.
-test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool {
+test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool  {
   match bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
     catalog: duplicated_version_catalog,
@@ -280,7 +280,7 @@ test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool {
   }
 }
 
-test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
+test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool  {
   match solve_install_mechanism_from_evidence(
     evidence: attested_2_07_00_evidence,
     catalog: duplicated_version_catalog,

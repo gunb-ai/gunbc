@@ -78,7 +78,7 @@ fn w_single_declarer_keeps_the_authored_use_line() -> Bool {
   )
 }
 
-test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool {
+test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool  {
   w_single_declarer_keeps_the_authored_use_line()
 }
 
@@ -107,7 +107,7 @@ fn w_second_declarer_keeps_the_authored_use_line() -> Bool {
   )
 }
 
-test fn a_second_declarer_in_the_closure_keeps_the_use_line() -> Bool {
+test fn a_second_declarer_in_the_closure_keeps_the_use_line() -> Bool  {
   w_second_declarer_keeps_the_authored_use_line()
 }
 
@@ -124,7 +124,7 @@ fn w_consumer_naming_both_providers_keeps_its_use_line() -> Bool {
   )
 }
 
-test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
+test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool  {
   w_consumer_naming_both_providers_keeps_its_use_line()
 }
 
@@ -165,7 +165,7 @@ fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
   )
 }
 
-test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
+test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool  {
   w_forked_nominal_record_keeps_its_use_line()
 }
 
@@ -204,7 +204,7 @@ fn w_nominal_arm_really_carries_the_second_declaration() -> Bool {
   )
 }
 
-test fn the_nominal_arm_really_carries_the_second_declaration() -> Bool {
+test fn the_nominal_arm_really_carries_the_second_declaration() -> Bool  {
   w_nominal_arm_really_carries_the_second_declaration()
 }
 
@@ -220,6 +220,6 @@ fn w_nominal_record_alone_keeps_its_use_line() -> Bool {
   )
 }
 
-test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool {
+test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool  {
   w_nominal_record_alone_keeps_its_use_line()
 }

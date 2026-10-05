@@ -46,7 +46,7 @@ data click_to_customer_scenario: AcquisitionScenario = AcquisitionScenario {
   ],
 }
 
-test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
+test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: click_to_customer_scenario }) {
     AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.num == 1)
@@ -67,7 +67,7 @@ data indivisible_scenario: AcquisitionScenario = AcquisitionScenario {
   ],
 }
 
-test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
+test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
     AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.num == 3)
@@ -79,14 +79,14 @@ test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
   }
 }
 
-test fn w_red_unknown_scenario_refuses() -> Bool {
+test fn w_red_unknown_scenario_refuses() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioUnknown) {
     AcquisitionForecastRefused { cause: ScenarioUnknown } => true
     _ => false
   }
 }
 
-test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
+test fn w_red_zero_entry_unit_cost_refuses() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
     scenario: AcquisitionScenario {
       entry_stage_label: "click",
@@ -99,7 +99,7 @@ test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
   }
 }
 
-test fn w_red_empty_funnel_refuses() -> Bool {
+test fn w_red_empty_funnel_refuses() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
     scenario: AcquisitionScenario {
       entry_stage_label: "click",
@@ -112,7 +112,7 @@ test fn w_red_empty_funnel_refuses() -> Bool {
   }
 }
 
-test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
+test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
     scenario: AcquisitionScenario {
       entry_stage_label: "click",
@@ -129,7 +129,7 @@ test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
   }
 }
 
-test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
+test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
     scenario: AcquisitionScenario {
       entry_stage_label: "click",
@@ -145,7 +145,7 @@ test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
   }
 }
 
-test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
+test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
     scenario: AcquisitionScenario {
       entry_stage_label: "click",
@@ -168,14 +168,14 @@ data zero_converted_forecast_fixture: AcquisitionCostForecast = AcquisitionCostF
   entry_unit_cost: two_usd_per_click,
 }
 
-test fn w_red_floor_projection_refuses_hand_built_zero_converted_forecast() -> Bool {
+test fn w_red_floor_projection_refuses_hand_built_zero_converted_forecast() -> Bool  {
   match acquisition_forecast_cost_floor_micros(forecast: zero_converted_forecast_fixture) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn w_red_first_invalid_stage_wins() -> Bool {
+test fn w_red_first_invalid_stage_wins() -> Bool  {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
     scenario: AcquisitionScenario {
       entry_stage_label: "click",

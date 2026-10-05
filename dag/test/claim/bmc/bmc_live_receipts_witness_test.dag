@@ -55,21 +55,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The firmware VERSION is the per-host observation and the only one. srv3 was
 // flashed to 3.22.00 on 2026-08-11 and re-observed 2026-08-12; the surface it
 // presents is no longer asserted here, because it is no longer stored here.
-test fn firmware_versions_are_the_per_host_observation() -> Bool {
+test fn firmware_versions_are_the_per_host_observation() -> Bool  {
   srv3_bmc_firmware_observation.firmware.version.major == 3
     && srv3_bmc_firmware_observation.firmware.version.minor == 22
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
 }
 
-test fn update_surface_receipts_do_not_claim_an_available_backup_image() -> Bool {
+test fn update_surface_receipts_do_not_claim_an_available_backup_image() -> Bool  {
   srv3_bmc_update_service_observation.active_bmc_image_updateable
     && srv4_bmc_update_service_observation.active_bmc_image_updateable
     && !srv3_bmc_update_service_observation.backup_bmc_image_observed
     && !srv4_bmc_update_service_observation.backup_bmc_image_observed
 }
 
-test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
+test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool  {
   match srv4_bmc_config_persistence_observation {
     BmcOverlayConfigObserved {
       firmware: firmware,
@@ -97,7 +97,7 @@ test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
   }
 }
 
-test fn observed_fan_curve_is_validated_before_use() -> Bool {
+test fn observed_fan_curve_is_validated_before_use() -> Bool  {
   match validate_bmc_fan_curve(curve: srv4_bmc_fan_observed_curve) {
     BmcFanCurveValid { curve: validated } =>
       validated.curve == srv4_bmc_fan_observed_curve
@@ -105,7 +105,7 @@ test fn observed_fan_curve_is_validated_before_use() -> Bool {
   }
 }
 
-test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
+test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool  {
   let falling = BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
@@ -130,7 +130,7 @@ test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
   }
 }
 
-test fn fan_curve_refuses_duty_above_full() -> Bool {
+test fn fan_curve_refuses_duty_above_full() -> Bool  {
   let above_full = BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
@@ -157,7 +157,7 @@ test fn fan_curve_refuses_duty_above_full() -> Bool {
   }
 }
 
-test fn fan_curve_refuses_minimum_above_first_step() -> Bool {
+test fn fan_curve_refuses_minimum_above_first_step() -> Bool  {
   let below_minimum = BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
@@ -187,7 +187,7 @@ test fn fan_curve_refuses_minimum_above_first_step() -> Bool {
 
 data fixture_proc_mounts: String = "cow / overlay rw,lowerdir=/run/initramfs/ro,upperdir=/run/initramfs/rw/cow 0 0\n/dev/mtdblock4 /run/initramfs/ro squashfs ro 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw 0 0\n"
 
-test fn proc_mounts_parser_derives_literal_overlay_paths() -> Bool {
+test fn proc_mounts_parser_derives_literal_overlay_paths() -> Bool  {
   match linux_overlay_observation_from_proc_mounts(
     proc_mounts: fixture_proc_mounts,
   ) {
@@ -199,7 +199,7 @@ test fn proc_mounts_parser_derives_literal_overlay_paths() -> Bool {
   }
 }
 
-test fn proc_mounts_parser_decodes_kernel_mount_escapes() -> Bool {
+test fn proc_mounts_parser_decodes_kernel_mount_escapes() -> Bool  {
   let escaped = "cow / overlay rw,lowerdir=/run/initramfs/ro\\040image,upperdir=/run/initramfs/rw/cow 0 0\n/dev/mtdblock4 /run/initramfs/ro\\040image squashfs ro 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw 0 0"
   match linux_overlay_observation_from_proc_mounts(proc_mounts: escaped) {
     LinuxOverlayParsed { observation: observation } =>
@@ -209,7 +209,7 @@ test fn proc_mounts_parser_decodes_kernel_mount_escapes() -> Bool {
   }
 }
 
-test fn proc_mounts_parser_refuses_multi_lower_overlay() -> Bool {
+test fn proc_mounts_parser_refuses_multi_lower_overlay() -> Bool  {
   let multiple = "cow / overlay rw,lowerdir=/ro/a:/ro/b,upperdir=/rw/cow 0 0\n/dev/a /ro squashfs ro 0 0\n/dev/b /rw jffs2 rw 0 0"
   match linux_overlay_observation_from_proc_mounts(proc_mounts: multiple) {
     LinuxOverlayRefused {
@@ -219,7 +219,7 @@ test fn proc_mounts_parser_refuses_multi_lower_overlay() -> Bool {
   }
 }
 
-test fn proc_mounts_parser_refuses_relative_overlay_paths() -> Bool {
+test fn proc_mounts_parser_refuses_relative_overlay_paths() -> Bool  {
   let relative = "cow / overlay rw,lowerdir=ro,upperdir=/rw/cow 0 0\n/dev/a /ro squashfs ro 0 0\n/dev/b /rw jffs2 rw 0 0"
   match linux_overlay_observation_from_proc_mounts(proc_mounts: relative) {
     LinuxOverlayRefused {
@@ -229,7 +229,7 @@ test fn proc_mounts_parser_refuses_relative_overlay_paths() -> Bool {
   }
 }
 
-test fn convergence_receipt_binds_host_realizer_readback_and_live_health() -> Bool {
+test fn convergence_receipt_binds_host_realizer_readback_and_live_health() -> Bool  {
   let receipt = srv4_bmc_fan_convergence_receipt
   receipt.host == srv4_host.identity
     && receipt.policy.curve == srv4_bmc_fan_observed_curve
@@ -245,7 +245,7 @@ test fn convergence_receipt_binds_host_realizer_readback_and_live_health() -> Bo
     )
 }
 
-test fn restart_receipt_binds_one_literal_perturbation_generation_and_readback() -> Bool {
+test fn restart_receipt_binds_one_literal_perturbation_generation_and_readback() -> Bool  {
   let receipt = srv4_bmc_fan_reboot_persistence_receipt
   receipt.host == srv4_host.identity
     && receipt.perturbation_generation == srv4_bmc_fan_perturbation_generation

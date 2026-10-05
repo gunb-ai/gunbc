@@ -140,7 +140,7 @@ fn is_authentic(v: CapabilityVerification) -> Bool {
 
 // ── The positive control comes first, because every refusal below is only informative if the
 // same shape with the defect removed is actually accepted. ───────────────────────────────────
-test fn a_well_formed_capability_inside_its_window_is_authentic() -> Bool {
+test fn a_well_formed_capability_inside_its_window_is_authentic() -> Bool  {
   is_authentic(v: verify_authentic_at(claims: good_claims(), observed_at: witness_inside))
 }
 
@@ -149,7 +149,7 @@ test fn a_well_formed_capability_inside_its_window_is_authentic() -> Bool {
 // tag does not verify AND the audience names another deployment. If claim checks ran first the
 // report would name the audience -- which tells a forger which audiences are interesting, and
 // means claims were interpreted before they were authenticated. The refusal must name the MAC.
-test fn an_unauthentic_capability_reports_the_mac_not_the_first_wrong_claim() -> Bool {
+test fn an_unauthentic_capability_reports_the_mac_not_the_first_wrong_claim() -> Bool  {
   refusal_is_mac(
     v: verify_at(
       claims: claims_with(
@@ -169,7 +169,7 @@ test fn an_unauthentic_capability_reports_the_mac_not_the_first_wrong_claim() ->
 // THE CONTROL ON THAT ORDERING TEST. With the SAME wrong audience and a GOOD tag, the audience is
 // what gets reported -- so the test above passes because the MAC ran first, not because a wrong
 // audience is ignored.
-test fn an_authentic_capability_for_another_audience_is_refused_by_audience() -> Bool {
+test fn an_authentic_capability_for_another_audience_is_refused_by_audience() -> Bool  {
   match verify_authentic_at(
     claims: claims_with(
       protocol: approval_capability_protocol,
@@ -192,7 +192,7 @@ test fn an_authentic_capability_for_another_audience_is_refused_by_audience() ->
 }
 
 // ── Each bound context refuses its own substitution ──────────────────────────────────────────
-test fn a_capability_from_another_issuer_is_refused() -> Bool {
+test fn a_capability_from_another_issuer_is_refused() -> Bool  {
   match verify_authentic_at(
     claims: claims_with(
       protocol: approval_capability_protocol,
@@ -216,7 +216,7 @@ test fn a_capability_from_another_issuer_is_refused() -> Bool {
 // AUTHORITY SUBSTITUTION IS THE ONE THAT MATTERS MOST AT N AUTHORITIES. An approval the operator
 // gave for a Secret Manager grant must not be redeemable at the sudoers authority, and the only
 // thing standing between those two is this field being bound and checked.
-test fn an_approval_for_another_authority_is_refused() -> Bool {
+test fn an_approval_for_another_authority_is_refused() -> Bool  {
   match verify_authentic_at(
     claims: claims_with(
       protocol: approval_capability_protocol,
@@ -238,7 +238,7 @@ test fn an_approval_for_another_authority_is_refused() -> Bool {
   }
 }
 
-test fn a_capability_declaring_another_protocol_is_refused() -> Bool {
+test fn a_capability_declaring_another_protocol_is_refused() -> Bool  {
   match verify_authentic_at(
     claims: claims_with(
       protocol: "gunbc.approval-capability.v2" as NonEmptyStr,
@@ -264,7 +264,7 @@ test fn a_capability_declaring_another_protocol_is_refused() -> Bool {
 // INCLUDES the expiry instant; this module deliberately uses a strict comparison, because
 // expires_at on a link is the instant it stops being redeemable. Observing exactly AT expires_at
 // must refuse. A test one second either side of the boundary cannot see which comparison is in use.
-test fn a_capability_observed_exactly_at_its_expiry_is_refused() -> Bool {
+test fn a_capability_observed_exactly_at_its_expiry_is_refused() -> Bool  {
   match verify_authentic_at(claims: good_claims(), observed_at: witness_expires_at) {
     CapabilityRefused { cause: c } =>
       match c {
@@ -278,11 +278,11 @@ test fn a_capability_observed_exactly_at_its_expiry_is_refused() -> Bool {
 // THE OTHER SIDE OF THE SAME BOUNDARY, asserted separately: issuance is INCLUSIVE, so a link
 // redeemed at the instant it was minted is live. If both boundaries were strict a link would be
 // dead at issuance; if both were inclusive it would outlive its window by an instant.
-test fn a_capability_observed_exactly_at_its_issuance_is_authentic() -> Bool {
+test fn a_capability_observed_exactly_at_its_issuance_is_authentic() -> Bool  {
   is_authentic(v: verify_authentic_at(claims: good_claims(), observed_at: witness_issued_at))
 }
 
-test fn a_capability_observed_before_its_issuance_is_refused_as_not_yet_valid() -> Bool {
+test fn a_capability_observed_before_its_issuance_is_refused_as_not_yet_valid() -> Bool  {
   match verify_authentic_at(claims: good_claims(), observed_at: "2026-09-05T23:59:59Z") {
     CapabilityRefused { cause: c } =>
       match c {
@@ -299,7 +299,7 @@ test fn a_capability_observed_before_its_issuance_is_refused_as_not_yet_valid() 
 // AFTER "2026-10-01T..."; a stamp carrying a local offset compares as though the offset were not
 // there. Under a permissive verifier those compare as times and silently answer wrongly, which is
 // the fabricated-plausible-output arm DESIGN section 5 forbids. So the shape is required.
-test fn a_non_canonical_observation_time_refuses_rather_than_being_ordered() -> Bool {
+test fn a_non_canonical_observation_time_refuses_rather_than_being_ordered() -> Bool  {
   match verify_authentic_at(claims: good_claims(), observed_at: "2026-9-06T00:07:00Z") {
     CapabilityRefused { cause: c } =>
       match c {
@@ -312,7 +312,7 @@ test fn a_non_canonical_observation_time_refuses_rather_than_being_ordered() -> 
 
 // THE CLAIMS ARE CHECKED TOO, not just the observation. A broker bug that minted an offset-bearing
 // expires_at would otherwise produce a link whose expiry compares wrongly for its whole life.
-test fn a_non_canonical_expiry_claim_refuses() -> Bool {
+test fn a_non_canonical_expiry_claim_refuses() -> Bool  {
   match verify_authentic_at(
     claims: claims_with(
       protocol: approval_capability_protocol,
@@ -335,7 +335,7 @@ test fn a_non_canonical_expiry_claim_refuses() -> Bool {
 
 // THE CANONICALITY PREDICATE'S OWN CONTROL. Without this the rule could be "nothing is canonical"
 // and every test above would still pass, while the whole loop refused every link it ever minted.
-test fn the_canonical_form_is_accepted_and_near_misses_are_not() -> Bool {
+test fn the_canonical_form_is_accepted_and_near_misses_are_not() -> Bool  {
   utc_instant_is_canonical(t: "2026-09-06T00:00:00Z")
     && !utc_instant_is_canonical(t: "2026-9-06T00:00:00Z")
     && !utc_instant_is_canonical(t: "2026-09-06T00:00:00+00:00")
@@ -348,7 +348,7 @@ test fn the_canonical_form_is_accepted_and_near_misses_are_not() -> Bool {
 // A leaked approve link must not be convertible into a deny, or the reverse. The binding is that
 // the verb lives in the authenticated claims rather than arriving beside them at redemption, so
 // what the verifier returns names the decision the operator was shown.
-test fn the_verified_claims_carry_the_decision_that_was_signed() -> Bool {
+test fn the_verified_claims_carry_the_decision_that_was_signed() -> Bool  {
   match verify_authentic_at(claims: good_claims(), observed_at: witness_inside) {
     CapabilityAuthentic { claims: c } =>
       match c.decision {
@@ -361,7 +361,7 @@ test fn the_verified_claims_carry_the_decision_that_was_signed() -> Bool {
 
 // The rendered refusal must say which check failed; an operator reading an incident needs the
 // distinction between "someone forged this" and "this was for the lab".
-test fn the_refusal_reason_names_the_failing_check() -> Bool {
+test fn the_refusal_reason_names_the_failing_check() -> Bool  {
   match verify_at(claims: good_claims(), mac: mac_bad, observed_at: witness_inside) {
     CapabilityRefused { cause: c } =>
       string_contains(s: capability_refusal_reason(r: c), pattern: "does not verify")
@@ -425,7 +425,7 @@ fn evidence_is_for_another_message(v: CapabilityVerification) -> Bool {
 // THE DECISION FLIP. An operator's approve capability, presented with the deny envelope. Under the
 // old shape this returned CapabilityAuthentic{deny} and the broker would have recorded a denial the
 // operator never gave -- or, with the arguments the other way round, an approval.
-test fn approve_evidence_cannot_authenticate_the_deny_envelope() -> Bool {
+test fn approve_evidence_cannot_authenticate_the_deny_envelope() -> Bool  {
   evidence_is_for_another_message(
     v: verify_at(
       claims: deny_claims(),
@@ -436,7 +436,7 @@ test fn approve_evidence_cannot_authenticate_the_deny_envelope() -> Bool {
 }
 
 // AND THE REVERSE, so the join is not one-directional.
-test fn deny_evidence_cannot_authenticate_the_approve_envelope() -> Bool {
+test fn deny_evidence_cannot_authenticate_the_approve_envelope() -> Bool  {
   evidence_is_for_another_message(
     v: verify_at(
       claims: good_claims(),
@@ -448,7 +448,7 @@ test fn deny_evidence_cannot_authenticate_the_approve_envelope() -> Bool {
 
 // THE REQUEST REVISION. An approval the operator gave for revision 1 must not authenticate
 // revision 2 -- that is consent to a statement of the request they never read.
-test fn evidence_for_one_revision_cannot_authenticate_another() -> Bool {
+test fn evidence_for_one_revision_cannot_authenticate_another() -> Bool  {
   evidence_is_for_another_message(
     v: verify_at(
       claims: revised_claims(),
@@ -461,7 +461,7 @@ test fn evidence_for_one_revision_cannot_authenticate_another() -> Bool {
 // SAME KEY, DIFFERENT MESSAGE. Every specimen above is minted under the SAME key id, so none of
 // these refusals can be explained by a key comparison. That is the point: comparing key ids alone
 // leaves exactly this substitution open, which is why the comparand is the message.
-test fn the_substitutions_are_refused_under_one_shared_key() -> Bool {
+test fn the_substitutions_are_refused_under_one_shared_key() -> Bool  {
   match verify_at(
     claims: deny_claims(),
     mac: mac_ok_for(c: good_claims()),
@@ -480,7 +480,7 @@ test fn the_substitutions_are_refused_under_one_shared_key() -> Bool {
 // THE POSITIVE CONTROL ON THE JOIN. Each of those envelopes IS authentic when presented with its
 // own evidence, so the four reds above are the join refusing a mismatch rather than the verifier
 // refusing these envelopes for some unrelated reason.
-test fn each_envelope_is_authentic_with_its_own_evidence() -> Bool {
+test fn each_envelope_is_authentic_with_its_own_evidence() -> Bool  {
   is_authentic(v: verify_authentic_at(claims: good_claims(), observed_at: witness_inside))
     && is_authentic(v: verify_authentic_at(claims: deny_claims(), observed_at: witness_inside))
     && is_authentic(v: verify_authentic_at(claims: revised_claims(), observed_at: witness_inside))
@@ -489,7 +489,7 @@ test fn each_envelope_is_authentic_with_its_own_evidence() -> Bool {
 // THE SIGNING INPUT MUST SEPARATE THESE ENVELOPES AT ALL. If the projection dropped a field, two
 // materially different envelopes would serialize identically and the join above would pass them --
 // a signature collision authored in the encoding rather than found in the algorithm.
-test fn materially_different_envelopes_have_different_signing_inputs() -> Bool {
+test fn materially_different_envelopes_have_different_signing_inputs() -> Bool  {
   approval_capability_signing_input(c: good_claims())
     != approval_capability_signing_input(c: deny_claims())
     && approval_capability_signing_input(c: good_claims())
@@ -504,7 +504,7 @@ test fn materially_different_envelopes_have_different_signing_inputs() -> Bool {
 // expires_at of 2026-99-99 passes the shape check and sorts AFTER every real instant, so it is a
 // deadline that never arrives. A link that never expires, minted by a validator that believed it
 // had bounded one.
-test fn a_nonexistent_date_is_not_a_canonical_instant() -> Bool {
+test fn a_nonexistent_date_is_not_a_canonical_instant() -> Bool  {
   !utc_instant_is_canonical(t: "2026-99-99T00:00:00Z")
     && !utc_instant_is_canonical(t: "2026-13-01T00:00:00Z")
     && !utc_instant_is_canonical(t: "2026-00-01T00:00:00Z")
@@ -513,7 +513,7 @@ test fn a_nonexistent_date_is_not_a_canonical_instant() -> Bool {
 }
 
 // THE CALENDAR, not just the ranges. February 30th is inside every field range and is not a day.
-test fn a_date_outside_its_month_is_not_a_canonical_instant() -> Bool {
+test fn a_date_outside_its_month_is_not_a_canonical_instant() -> Bool  {
   !utc_instant_is_canonical(t: "2026-02-30T12:00:00Z")
     && !utc_instant_is_canonical(t: "2026-04-31T12:00:00Z")
     && !utc_instant_is_canonical(t: "2026-02-29T12:00:00Z")
@@ -523,7 +523,7 @@ test fn a_date_outside_its_month_is_not_a_canonical_instant() -> Bool {
 
 // THE CENTURY RULE, which is the half of leap-year logic a naive `% 4` gets wrong. 2100 is not a
 // leap year; 2000 is. Without both, "divisible by four" would pass every test above.
-test fn the_leap_year_century_rule_is_applied() -> Bool {
+test fn the_leap_year_century_rule_is_applied() -> Bool  {
   !utc_instant_is_canonical(t: "2100-02-29T00:00:00Z")
     && utc_instant_is_canonical(t: "2000-02-29T00:00:00Z")
 }
@@ -531,7 +531,7 @@ test fn the_leap_year_century_rule_is_applied() -> Bool {
 // TIME FIELD RANGES, including the 24:00 form RFC 3339 permits and this domain does not, and the
 // leap second :60, which is refused rather than silently repaired to :59 or :00 -- an unorderable
 // point has no place inside a comparison contract.
-test fn out_of_range_times_are_not_canonical_instants() -> Bool {
+test fn out_of_range_times_are_not_canonical_instants() -> Bool  {
   !utc_instant_is_canonical(t: "2026-09-05T24:00:00Z")
     && !utc_instant_is_canonical(t: "2026-09-05T12:60:00Z")
     && !utc_instant_is_canonical(t: "2026-09-05T23:59:60Z")
@@ -542,7 +542,7 @@ test fn out_of_range_times_are_not_canonical_instants() -> Bool {
 // THE END-TO-END CONSEQUENCE, driven through the verifier rather than the predicate. This is the
 // exact counterexample: a well-formed-looking envelope whose expiry is a date that does not exist.
 // It must refuse, and it must refuse by NAMING the expiry rather than by passing as live.
-test fn a_capability_whose_expiry_is_a_nonexistent_date_refuses() -> Bool {
+test fn a_capability_whose_expiry_is_a_nonexistent_date_refuses() -> Bool  {
   match verify_authentic_at(
     claims: claims_with(
       protocol: approval_capability_protocol,
@@ -572,14 +572,14 @@ fn ct_tag_hex(tag: String) -> NonEmptyStr? {
   capability_tag_hex(capability: ApprovalCapability { claims: good_claims(), tag_b64url: tag as NonEmptyStr })
 }
 
-test fn the_canonical_tag_spelling_decodes_to_its_hex() -> Bool {
+test fn the_canonical_tag_spelling_decodes_to_its_hex() -> Bool  {
   match ct_tag_hex(tag: ct_tag_canonical as String) {
     Present { value: h } => (h as String) == "1a7689b8ed44a8a2141aba517600ddbf303bc9b248275e16a07702e5bccaecc2"
     Absent => false
   }
 }
 
-test fn a_tag_with_other_padding_is_refused() -> Bool {
+test fn a_tag_with_other_padding_is_refused() -> Bool  {
   (match ct_tag_hex(tag: "GnaJuO1EqKIUGrpRdgDdvzA7ybJIJ14WoHcC5bzK7MI") { Absent => true  Present { value: _ } => false })
     && (match ct_tag_hex(tag: "GnaJuO1EqKIUGrpRdgDdvzA7ybJIJ14WoHcC5bzK7MI==") { Absent => true  Present { value: _ } => false })
 }

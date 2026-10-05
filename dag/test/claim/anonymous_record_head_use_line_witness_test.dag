@@ -30,6 +30,6 @@ fn w_anonymous_record_head_gets_use_line() -> Bool {
   )
 }
 
-test fn anonymous_record_head_use_line_synthesized() -> Bool {
+test fn anonymous_record_head_use_line_synthesized() -> Bool  {
   w_anonymous_record_head_gets_use_line()
 }

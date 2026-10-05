@@ -31,13 +31,13 @@ fn decode_reason(doc: JsonValue) -> String {
   }
 }
 
-test fn a_non_string_outcome_is_unreadable_and_says_so() -> Bool {
+test fn a_non_string_outcome_is_unreadable_and_says_so() -> Bool  {
   decode_reason(
     doc: json_object(members: [json_kv(key: "outcome", value: json_int(n: 3))]),
   ) == "belt tick pass outcome is not a string"
 }
 
-test fn a_recorded_outcome_still_decodes() -> Bool {
+test fn a_recorded_outcome_still_decodes() -> Bool  {
   match belt_pass_outcome_from_json(
     doc: json_object(members: [json_kv(key: "outcome", value: json_string(s: "recorded"))]),
   ) {
@@ -47,7 +47,7 @@ test fn a_recorded_outcome_still_decodes() -> Bool {
   }
 }
 
-test fn an_unknown_outcome_string_keeps_its_own_reason() -> Bool {
+test fn an_unknown_outcome_string_keeps_its_own_reason() -> Bool  {
   decode_reason(
     doc: json_object(members: [json_kv(key: "outcome", value: json_string(s: "wobble"))]),
   ) == "belt tick pass outcome is unknown"

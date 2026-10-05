@@ -93,18 +93,18 @@ fn the_interrupt_cell_is_exactly_its_two_predicates() -> Bool {
     && (cell |> count) <= census_wrong_answer_today_count()
 }
 
-test fn sibling_claim_has_an_identity_to_feed_it() -> Bool {
+test fn sibling_claim_has_an_identity_to_feed_it() -> Bool  {
   every_sibling_claim_has_an_identity_to_feed_it()
 }
 
-test fn member_has_at_least_one_call_site() -> Bool {
+test fn member_has_at_least_one_call_site() -> Bool  {
   every_member_has_at_least_one_call_site()
 }
 
-test fn derived_counts_bounded_by_roster() -> Bool {
+test fn derived_counts_bounded_by_roster() -> Bool  {
   derived_counts_are_bounded_by_the_roster()
 }
 
-test fn interrupt_cell_is_exactly_its_two_predicates() -> Bool {
+test fn interrupt_cell_is_exactly_its_two_predicates() -> Bool  {
   the_interrupt_cell_is_exactly_its_two_predicates()
 }
