@@ -148,6 +148,11 @@ type OciListRead
   | OciListInaccessible { status: Int, body: String }
   | OciListRefused { cause: NonEmptyStr }
 
+// PURE: whether a list of this many items can be read as complete.
+fn oci_list_page_complete(count: Int) -> Bool {
+  count < oci_list_page_limit
+}
+
 fn oci_list_refused(operation: String, what: String) -> OciListRead {
   OciListRefused { cause: join([operation, " ", what], "") as NonEmptyStr }
 }
@@ -165,7 +170,7 @@ fn classify_oci_list(operation: String, exchange: OciExchange) -> OciListRead {
           JsonDocumentUnreadable { gap } => oci_list_refused(operation: operation, what: concat("body is not JSON: ", json_document_gap_text(gap: gap)))
           JsonDocumentParsed { value } => match value {
             JsonArray { elements } =>
-              if elements.length() >= oci_list_page_limit {
+              if !oci_list_page_complete(count: elements.length()) {
                 oci_list_refused(operation: operation, what: join(["filled a page of ", to_string(oci_list_page_limit), "; the next page is not followed, so the list cannot be read as complete"], ""))
               } else {
                 OciListed { items: elements }

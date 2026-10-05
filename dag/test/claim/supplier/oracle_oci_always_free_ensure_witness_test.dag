@@ -3,7 +3,7 @@ module test.claim.supplier.oracle_oci_always_free_ensure_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
-import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciAnswered, classify_oci_list, oci_list_page_limit }
+import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list, oci_list_page_limit, oci_list_page_complete }
 import gunbc.oracle_oci.network_ensure {
   OciNamedDecision, NamedReady, NamedCreate, NamedStop,
   oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
@@ -48,10 +48,6 @@ fn named(display: String, text: String) -> String {
   }
 }
 
-fn repeat(s: String, n: Int, acc: List<String>) -> List<String> {
-  if n <= 0 { acc } else { repeat(s: s, n: n - 1, acc: concat(acc, [s])) }
-}
-
 // ── THE OPERATOR'S PLAN ───────────────────────────────────────────────────────────────────────
 
 test fn the_operators_plan_fits_the_always_free_allowance() -> Bool {
@@ -64,22 +60,16 @@ test fn the_operators_plan_fits_the_always_free_allowance() -> Bool {
 // ── LISTS ─────────────────────────────────────────────────────────────────────────────────────
 
 // A list that fills its page cannot be told apart from a truncated one, so it refuses rather than
-// letting a converge read "absent" from it and create a duplicate.
+// letting a converge read "absent" from it and create a duplicate. The rule is checked over counts;
+// the route from a parsed answer to the rule is the classify_oci_list call the short list below takes.
 test fn a_full_page_refuses_rather_than_reading_as_complete() -> Bool {
-  let row = "{\"id\":\"x\",\"displayName\":\"n\",\"lifecycleState\":\"AVAILABLE\"}"
-  let full = join(["[", join(repeat(s: row, n: oci_list_page_limit, acc: []), ","), "]"], "")
-  let short = join(["[", join(repeat(s: row, n: oci_list_page_limit - 1, acc: []), ","), "]"], "")
-  let refused = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: full }) {
-    OciListRefused { cause } => true
-    OciListed { items } => false
-    OciListInaccessible { status, body } => false
-  }
-  let listed = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: short }) {
-    OciListed { items } => items.length() == oci_list_page_limit - 1
-    OciListRefused { cause } => false
-    OciListInaccessible { status, body } => false
-  }
-  refused && listed
+  !oci_list_page_complete(count: oci_list_page_limit)
+    && oci_list_page_complete(count: oci_list_page_limit - 1)
+    && match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: "[{\"id\":\"x\"}]" }) {
+      OciListed { items } => items.length() == 1
+      OciListRefused { cause } => false
+      OciListInaccessible { status, body } => false
+    }
 }
 
 // ── NETWORK ───────────────────────────────────────────────────────────────────────────────────
