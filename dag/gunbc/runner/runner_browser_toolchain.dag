@@ -1286,6 +1286,18 @@ fn browser_ready_labels_outcome_holds(o: BrowserReadyLabelsOutcome, ready: Bool)
   }
 }
 
+// THE CONVERGE'S REAL EXECUTION IS WITHHELD ON CI (typed, review round on gunbc#13401): the row
+// below declares it with its trigger. The hermetic witness reads the plans' steps, so the plan
+// pairing is asserted every run; what no CI lane does is EXECUTE the steps, because the drop-in
+// destination is a privileged system constant (browser_ready_labels_dropin_path under the unit's
+// service.d directory) and every leg is elevated (sudo -n through sudo_elevate_command) -- a real
+// execution writes the host's systemd configuration. The module's own converge site (the
+// browser_toolchain_admin_transport leg at the converge call) executes the steps for real only in
+// a runner bootstrap on a real host. The removed shell path had the same posture: the old witness
+// searched the rendered script text and no CI lane ran the wall, so this change's evidence posture
+// is not a regression.
+data browser_ready_label_converge_ci_execution_withholding: DissolutionCondition = unbound_dissolution(description: "the readiness-label converge takes a parameterized destination root and an explicit elevation posture, so a LocalRepoWet receipt can drive the SAME write-then-reload and remove-then-reload sequences for real against a mktemp scratch root with no sudo (the fleet authorized-key real-path envelope: shell.Mktemp.Dir for the scratch root, the production plan functions for the steps, both sequences invoked, the drop-in bytes read back, the second run a no-op, the scratch removed with shell.Remove.RecursiveForce). The receipt's WetScheduledClaim row, its floor_route_gap expectation, and this withholding close together; Mktemp.Dir, Filesystem.Write or git mock coverage alone cannot discharge the trigger.")
+
 fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport) -> BrowserReadyLabelsOutcome {
   let plan = if ready { browser_ready_labels_grant_plan(host: (host as String) as HostIdentity) } else { browser_ready_labels_revoke_plan() }
   match plan {

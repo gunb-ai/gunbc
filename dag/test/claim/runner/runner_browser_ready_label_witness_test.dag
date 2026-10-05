@@ -24,12 +24,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE gunbc-browser-ready LABEL IS GRANTED BY A READY BROWSER-TOOLCHAIN CONVERGE AND NOTHING ELSE.
 // Each claim supplies its subject at one interface: the plan's typed steps, the conformance
 // relation, the converge verdict. The wet write is the converge's own and is not re-run here.
-// EXECUTION STANDING (the typed gap in gunbc.ci_layer_roots): what executes the converge for real
+// EXECUTION STANDING (typed in gunbc.runner_browser_toolchain's
+// browser_ready_label_converge_ci_execution_withholding row): what executes the converge for real
 // is the module's own runner converge flow on a real host -- never CI. The drop-in destination is
 // a privileged system constant and every leg is elevated, so no receipt can enroll until the route
 // takes a parameterized destination root and an explicit elevation posture; the removed shell path
 // had the same posture (the old witness only searched script text), so the evidence does not
-// regress. The trigger that closes the gap is typed in the ci_layer_roots row.
+// regress. The trigger that closes the withholding is typed on that row.
 // The plan is typed argv steps (the retained-shell text is gone), so these claims read the STEPS:
 // the elevated write's words, the drop-in bytes on stdin, the reload, the removal -- pure over the
 // rendered plan, no transport. The revoke's no-write property is now TYPED: a RevokeReady carries
