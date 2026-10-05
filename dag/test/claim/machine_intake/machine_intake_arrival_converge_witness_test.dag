@@ -20,8 +20,8 @@ import gunbc.machine_intake_mtjade1_access_observation {
   SmbiosBaseBoardDecode, SmbiosBaseBoardSerial, SmbiosBaseBoardRefused, SmbiosSerialLineCount, decode_smbios_type2_capture, sol_session_controller, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
 }
 import gunbc.machine_intake_bmc_rotation_route {
-  BmcRotationRouteStanding, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
-  RedfishAccountPasswordWrite, IpmiSetUserPassword, ObservedSurfaceRead, PublicStandardOperation,
+  BmcRotationRouteStanding, BmcAccountWriteRequest, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
+  RedfishAccountPasswordWrite, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead, PublicStandardOperation,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded,
   rotation_apply_authority, rotation_route_request_identity, rotation_route_is_grounded, admit_rotation_apply,
 }
@@ -78,9 +78,9 @@ fn instance_step_is(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefus
 fn route_is_redfish_write_candidate_on_manager_read(route: BmcRotationRouteStanding) -> Bool {
   match route.grounding {
     RouteQualificationCandidate { request: r, evidence: e } =>
-      (match r { RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true  IpmiSetUserPassword { user: _ } => false })
+      (match r { RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true  IpmiSetUserPassword { user: _ } => false  IpmiSetUserPrivilegeLimit { access: _ } => false })
         && (match e { ObservedSurfaceRead { surface: _, receipt: rc } => (rc.label as String) == "artifacts/bmc/mtjade1-redfish-manager-self-192.168.1.246-2026-10-04T043605Z.json"  PublicStandardOperation { authority: _ } => false })
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => false
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => false
     RouteGroundedByCitedSource { request: _, citation: _ } => false
     RouteUngrounded => false
   }
@@ -493,10 +493,19 @@ test fn w_a_refused_access_leaves_identity_bind_not_reached_blocked_by_it() -> B
 // SUPPLIED: an operator approval of the rotation that names this exact controller, build and request,
 // so the only thing left to refuse is the route. A Manager GET alone yields a candidate, and the
 // ordinary rotation Apply refuses it as not grounded.
+fn route_request_of(s: BmcRotationRouteStanding) -> BmcAccountWriteRequest {
+  match s.grounding {
+    RouteQualificationCandidate { request: r, evidence: _ } => r
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => r
+    RouteGroundedByCitedSource { request: r, citation: _ } => r
+    RouteUngrounded => IpmiSetUserPassword { user: 3 }
+  }
+}
+
 fn rotation_approval_for(s: BmcRotationRouteStanding) -> Redemption {
   let request = match s.grounding {
     RouteQualificationCandidate { request: r, evidence: _ } => r
-    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => r
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => r
     RouteGroundedByCitedSource { request: r, citation: _ } => r
     RouteUngrounded => IpmiSetUserPassword { user: 3 }
   }
@@ -523,7 +532,7 @@ test fn w_a_manager_get_alone_cannot_construct_an_account_write_route_at_the_cur
     Absent => false
     Present { value: a } =>
       rotation_route_is_grounded(standing: a.route) == false
-        && match admit_rotation_apply(standing: a.route, target_endpoint: a.access.endpoint, target_firmware: a.access.firmware, approval: rotation_approval_for(s: a.route)) {
+        && match admit_rotation_apply(standing: a.route, target_endpoint: a.access.endpoint, target_firmware: a.access.firmware, request: route_request_of(s: a.route), managed_readback: none, approval: rotation_approval_for(s: a.route)) {
           RotationApplyRouteNotGrounded { standing: _ } => true
           _ => false
         }

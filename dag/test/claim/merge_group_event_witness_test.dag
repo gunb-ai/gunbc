@@ -1,0 +1,58 @@
+module test.claim.merge_group_event_witness
+
+import std.logic { Bool }
+import extdeps.github.merge_group_event {
+  merge_group_base_from_event_json,
+  MergeGroupBaseObservation,
+  MergeGroupBaseObserved,
+  MergeGroupBaseAbsent,
+  MergeGroupBaseMalformed,
+  MergeGroupEventPayloadReadRefused
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn arm(o: MergeGroupBaseObservation) -> String {
+  match o {
+    MergeGroupBaseObserved { sha: _ } => "observed"
+    MergeGroupBaseAbsent { detail: _ } => "absent"
+    MergeGroupBaseMalformed { detail: _ } => "malformed"
+    MergeGroupEventPayloadReadRefused { path: _, cause: _ } => "read_refused"
+  }
+}
+
+// Hermetic executing consumer for extdeps.github.merge_group_event JSON ingest. The base is the
+// NESTED merge_group.base_sha (the group's parent), not merge_group.head_sha and not a top-level
+// member: the specimen carries all three with different values so a reader of the wrong member
+// cannot pass.
+test fn witness_merge_group_base_observed_from_the_nested_member() -> Bool {
+  match merge_group_base_from_event_json(
+    text: "{\"action\":\"checks_requested\",\"base_sha\":\"1111111111111111111111111111111111111111\",\"merge_group\":{\"head_sha\":\"529d43851df00000000000000000000000000000\",\"base_sha\":\"c48221ef648aaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"base_ref\":\"refs/heads/main\"}}"
+  ) {
+    MergeGroupBaseObserved { sha: sha } => (sha as String) == "c48221ef648aaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    MergeGroupBaseAbsent { detail: _ } => false
+    MergeGroupBaseMalformed { detail: _ } => false
+    MergeGroupEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_merge_group_member_absent_refuses() -> Bool {
+  arm(o: merge_group_base_from_event_json(text: "{\"action\":\"checks_requested\"}")) == "absent"
+}
+
+test fn witness_merge_group_base_sha_absent_refuses() -> Bool {
+  arm(o: merge_group_base_from_event_json(text: "{\"merge_group\":{\"head_sha\":\"529d43851df00000000000000000000000000000\"}}")) == "absent"
+}
+
+test fn witness_merge_group_base_sha_empty_refuses() -> Bool {
+  arm(o: merge_group_base_from_event_json(text: "{\"merge_group\":{\"base_sha\":\"\"}}")) == "absent"
+}
+
+test fn witness_merge_group_base_sha_not_an_object_id_refuses() -> Bool {
+  arm(o: merge_group_base_from_event_json(text: "{\"merge_group\":{\"base_sha\":\"main\"}}")) == "malformed"
+}
+
+test fn witness_merge_group_payload_not_json_refuses() -> Bool {
+  arm(o: merge_group_base_from_event_json(text: "not json")) == "malformed"
+}

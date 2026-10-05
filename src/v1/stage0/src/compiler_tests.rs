@@ -4799,12 +4799,14 @@ mod compiler_tests {
                 std::rc::Rc::new(HashMap::new()),
             )
         }
-        // PAIR 1 -- the structural roster (structural_declaration_modules_for).
-        assert_eq!(
-            base("Bool", "src/v2/std/logic.dag"),
-            "Bool",
-            "a structurally-declared Bool must render its dag spelling through the renderer hop"
-        );
+        // PAIR 1 -- the structural roster (structural_declaration_modules_for). Its structural
+        // half is RETIRED as dissolution, not repaired: the Bool de-fork (gunbc#12583) deleted
+        // v2.std.logic's Bool, so the roster has no Bool row and no structural Bool exists to
+        // render. The .dag witness retired its matching row the same way
+        // (table_present_bool_refuses_under_structural_declaration_logic). No surviving row
+        // discriminates at this hop either: the Hash row is vacuous (v1.compiler.coercion
+        // records both arms answering Unrealized) and String renders identically on both arms
+        // (the MEASURED VACUITY row below). The prelude control stays.
         assert_eq!(
             base("Bool", "dag/std/types.dag"),
             "bool",

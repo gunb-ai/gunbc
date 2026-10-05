@@ -1452,7 +1452,6 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
          subject: "",
          declared: declared,
          produced: expression_value_type(e: returned),
-         produced_by: returned,
          span: returned.span,
          scope: scope))
 }
@@ -1626,24 +1625,23 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // alias or brand between the two, and these positions carry no unfold (only a call argument
 // does, v1.compiler.infer host_text_unfolded_at_code_point_boundary). gunbc.rung_drop
 // text_boundary_identity_wall.
-fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   concat(
     text_unjudged_advisories(
       a: text_representation_by_identity(n: declared, env: scope.type_env),
       b: text_representation_by_identity(n: produced, env: scope.type_env),
       position: "a declared type", span: span, module_name: scope.module_name),
-    declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, produced_by: produced_by, span: span, scope: scope))
+    declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, span: span, scope: scope))
 }
 
-fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  let cardinality_diags = optional_at_required_value_obligation_diags(
+  let cardinality_diags = optional_at_required_obligation_diags(
     obligation: DeclaredTypeObligation {
       position: position, subject: subject, declared: declared, produced: produced, span: span
     },
-    produced_by: produced_by,
     scope: scope)
   if (cardinality_diags |> count) > 0 { cardinality_diags }
   else if text_crossing_by_identity(left: declared, right: produced, env: scope.type_env) {
@@ -4442,41 +4440,6 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
 // relation also asked of branch pairs and of the lift direction, and optional-into-required is a
 // DIRECTED fact about a declared position, which is what the obligation carries.
 //
-// AN INDEX ACCESS IS NOT JUDGED HERE, AND THAT IS A DECLARED RESIDUAL. v1.compiler.infer_access
-// check_index_access_node types `xs[i]` as optional, while the Rust realization of an index is the
-// bare element: the type and the realization disagree about the very fact this verdict reads, so
-// the optionality of an index value is not established across the two acceptance paths. The seed
-// itself stands on that disagreement -- v1.tokenize source_code_point and code_point_at return
-// `chars[pos]` at a declared `-> Int`, and the note on code_point_at says return-position checking
-// would red them. It did: the second-generation regeneration refused on exactly those two sites.
-// Eliminating the optional with a match there would author an elimination the Rust realization
-// cannot satisfy, so the repair is the reconciliation that note names (the index realizes as an
-// optional, or types as the element), not a rewrite of its consumers. Until then a value whose
-// tail expression is an index access produces no cardinality obligation at these four positions.
-// The direct-call argument and list-element positions are untouched by this: they run the whole
-// relation and keep whatever they decided before.
-fn expr_value_is_index_access(e: Node) -> Bool {
-  match e.expr_data {
-    ExprIndex => true
-    ExprLet =>
-      match let_body(texpr: e) {
-        Present { value: body } => expr_value_is_index_access(e: body)
-        Absent => false
-      }
-    ExprBlock =>
-      match e.children |> last {
-        Present { value: tail } => expr_value_is_index_access(e: tail)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
-fn optional_at_required_value_obligation_diags(obligation: DeclaredTypeObligation, produced_by: Node, scope: InferScope) -> List<ErrorNode> {
-  if expr_value_is_index_access(e: produced_by) { [] }
-  else { optional_at_required_obligation_diags(obligation: obligation, scope: scope) }
-}
-
 fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope) {
     [make_error_node(
@@ -9416,7 +9379,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             subject: let_name,
             declared: declared,
             produced: produced_value_type,
-            produced_by: val_typed,
             span: val_expr.span,
             scope: scope)
           if (conformance |> count) > 0 { conformance }
@@ -10828,7 +10790,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
         } else {
-          optional_at_required_value_obligation_diags(
+          optional_at_required_obligation_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField,
               subject: fi_name,
@@ -10836,7 +10798,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               produced: got_node,
               span: ar_typed.span
             },
-            produced_by: ar_typed,
             scope: scope)
         }
         if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
@@ -13517,7 +13478,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
       concat(
-        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), produced_by: body_typed, span: item.body.value.span, scope: scope),
+        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
         explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     } else { [] }
 
@@ -13545,7 +13506,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_diags = if item.type_annotation != none {
       concat(
         val_result.diagnostics,
-        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), produced_by: val_typed, span: item.body.value.span, scope: scope)
+        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope)
       )
     } else { val_result.diagnostics }
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }

@@ -114,7 +114,8 @@ fn bound_reference_population_eq(
             agree: bound_reference_provider_eq,
           ) {
             ListsAgree => true
-            _ => false
+            ListsDisagree => false
+            ListStructureBroken => false
           }
         ReferencePopulationRefused { first_failure: _, more_failures: _ } => false
       }
@@ -140,7 +141,8 @@ fn reference_occurrence_lists_agree(
     agree: (a, b) => a.reference_occurrence == b.reference_occurrence,
   ) {
     ListsAgree => true
-    _ => false
+    ListsDisagree => false
+    ListStructureBroken => false
   }
 }
 
@@ -154,7 +156,8 @@ fn declaration_occurrence_lists_agree(
     agree: (a, b) => a.declaration_occurrence == b.declaration_occurrence,
   ) {
     ListsAgree => true
-    _ => false
+    ListsDisagree => false
+    ListStructureBroken => false
   }
 }
 
@@ -168,7 +171,8 @@ fn provenance_lists_agree(
     agree: cross_file_binding_provenance_eq,
   ) {
     ListsAgree => true
-    _ => false
+    ListsDisagree => false
+    ListStructureBroken => false
   }
 }
 
