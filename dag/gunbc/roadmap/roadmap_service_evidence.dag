@@ -386,10 +386,10 @@ fn billable_usage_reading(m: MeterOfAttempt) -> ServiceEvidenceReading<MeteredTo
     MeterFinal { record } =>
       match metering_token_total(record: record, output: false) {
         MeteringTokensIncomplete { cause } => EvidenceRefused { reason: refusal_reason(reason: join(["the final metering record's input tokens are incomplete: ", cause], "")) }
-        MeteringTokensObserved { value: input } =>
+        MeteringTokensObserved { value: input_total } =>
           match metering_token_total(record: record, output: true) {
             MeteringTokensIncomplete { cause } => EvidenceRefused { reason: refusal_reason(reason: join(["the final metering record's output tokens are incomplete: ", cause], "")) }
-            MeteringTokensObserved { value: output } => EvidenceObserved { value: MeteredTokenUsage { input_tokens: input, output_tokens: output } }
+            MeteringTokensObserved { value: output_total } => EvidenceObserved { value: MeteredTokenUsage { input_tokens: input_total, output_tokens: output_total } }
           }
       }
     MeterNotYetFinal => EvidenceRecordAbsent

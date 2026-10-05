@@ -327,16 +327,19 @@ test fn a_bound_placement_observes_placement_workload_class_and_granted_resource
     EvidenceObserved { value } => value.host == "srv2" && value.partition == "session-memory-srv2" && value.unit == (session_unit(node_id: node_a, attempt_key: key_a) as String)
     EvidenceRecordAbsent => false
     EvidenceRefused { reason: _ } => false
+    EvidenceNotOwed { reason: _ } => false
   })
     && (match r.resource_request {
       EvidenceObserved { value } => kibibyte_count(k: value) == 8388608
       EvidenceRecordAbsent => false
       EvidenceRefused { reason: _ } => false
+      EvidenceNotOwed { reason: _ } => false
     })
     && (match r.workload_class {
       EvidenceObserved { value } => value.class_grant != ""
       EvidenceRecordAbsent => false
       EvidenceRefused { reason: _ } => false
+      EvidenceNotOwed { reason: _ } => false
     })
     && all(filter(service_evidence_entries(r: r), x => x.field == "placement" || x.field == "workload_class" || x.field == "resource_request"), x => standing_observed_by_g5(x: x))
     && owed_unbuilt(o: r.wait_time, owner: "service-evidence-capture")
