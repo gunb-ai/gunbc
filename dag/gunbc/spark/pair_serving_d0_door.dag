@@ -17,10 +17,9 @@ import gunbc.auth.approval_gate {
   approval_instant_now, approval_expires_at, approval_standing_read, approval_poll_ticks, ApprovalStandingRead, StandingReadAt, StandingClockUnreadable,
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
-import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
+import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization, approval_loopback_origin, ApprovalLoopbackOrigin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused, approval_loopback_origin_refusal_detail }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name, read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent }
-import gunbc.fleet_host_identity { operator_host_srv1 }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.plumbing
@@ -453,9 +452,10 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
 // REVISION is the workflow's expected_revision (the ref the job checked out), frozen with the first
 // filing; a rerun that executes another revision refuses before polling or mutating anything.
 //
-// THE EXECUTOR IS srv1, PROVED TWICE AND BEFORE ANY CREDENTIAL: the broker is loopback on the host
-// that serves the dashboard. The dispatch's host input (the runner label the job was scheduled on)
-// and the kernel's own hostname must both be srv1, and pair_serving_d0_admit_executor runs that
+// THE EXECUTOR IS THE APPROVAL WRITER'S HOST, PROVED TWICE AND BEFORE ANY CREDENTIAL: the writer is
+// loopback on the prod-role holder's host (gunbc.auth.approval_request_client approval_loopback_origin
+// carries it). The dispatch's host input (the runner label the job was scheduled on) and the kernel's
+// own hostname must both be that host -- under NoProdRole there is none and the mode refuses -- and pair_serving_d0_admit_executor runs that
 // admission as a credential-free step BEFORE the job acquires its WIF token, loads the fleet ssh key
 // or materializes the submission MAC key -- so a dispatch to another host refuses with no secret on
 // that host. The door's own entry re-runs the same admission after the credentials, from the same
@@ -469,11 +469,20 @@ type D0ModeAdmission
   = D0ModeAdmitted { group: FabricGroup, transaction: NonEmptyStr, authorization: NonEmptyStr, execution_revision: NonEmptyStr }
   | D0ModeRefused { reason: String }
 
-fn pair_serving_d0_mode_admission(declared_host: String, kernel_host: String, consent: String, execution_revision: String, checked_out_revision: String) -> D0ModeAdmission {
-  if declared_host != (operator_host_srv1 as String) {
-    D0ModeRefused { reason: join(["the dispatch names host ", declared_host, ": POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String], "") }
-  } else if kernel_host != (operator_host_srv1 as String) {
-    D0ModeRefused { reason: join(["the dispatch names ", operator_host_srv1 as String, " but this job runs on ", kernel_host, "; the broker is loopback on ", operator_host_srv1 as String], "") }
+fn pair_serving_d0_mode_admission(writer: ApprovalLoopbackOrigin, declared_host: String, kernel_host: String, consent: String, execution_revision: String, checked_out_revision: String) -> D0ModeAdmission {
+  match writer {
+    ApprovalLoopbackOriginRefused { cause } =>
+      D0ModeRefused { reason: approval_loopback_origin_refusal_detail(cause: cause) as String }
+    ApprovalLoopbackOriginResolved { host: writer_host, origin: _ } =>
+      pair_serving_d0_mode_admission_on(writer_host: writer_host as String, declared_host: declared_host, kernel_host: kernel_host, consent: consent, execution_revision: execution_revision, checked_out_revision: checked_out_revision)
+  }
+}
+
+fn pair_serving_d0_mode_admission_on(writer_host: String, declared_host: String, kernel_host: String, consent: String, execution_revision: String, checked_out_revision: String) -> D0ModeAdmission {
+  if declared_host != writer_host {
+    D0ModeRefused { reason: join(["the dispatch names host ", declared_host, ": POST/GET /approvals is loopback on the approval writer's host, the prod-role holder's, which is ", writer_host], "") }
+  } else if kernel_host != writer_host {
+    D0ModeRefused { reason: join(["the dispatch names ", writer_host, " but this job runs on ", kernel_host, "; the approval writer is loopback on ", writer_host], "") }
   } else if consent == "" {
     D0ModeRefused { reason: join([pair_serving_d0_consent_env as String, " is unset; the mode names no consent (escalation id), and a run must name the same one on every rerun"], "") }
   } else if execution_revision == "" {
@@ -516,7 +525,7 @@ fn pair_serving_d0_kernel_host() -> String
 // holds any secret.
 fn pair_serving_d0_admit_executor() -> ProcessExit
 {
-  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
+  match pair_serving_d0_mode_admission(writer: approval_loopback_origin(), declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
     D0ModeRefused { reason: r } => refuse(reason: r)
     D0ModeAdmitted { group: _, transaction: _, authorization: _, execution_revision: _ } => ExitSuccess
   }
@@ -524,7 +533,7 @@ fn pair_serving_d0_admit_executor() -> ProcessExit
 
 fn pair_serving_d0_ci_wet() -> ProcessExit
 {
-  match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
+  match pair_serving_d0_mode_admission(writer: approval_loopback_origin(), declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
     D0ModeRefused { reason: r } => refuse(reason: r)
     D0ModeAdmitted { group: g, transaction: tx, authorization: auth, execution_revision: rev } =>
       pair_serving_d0_wet(group: fabric_group_wire(g: g) as String, transaction: tx as String, authorization: auth as String, execution_revision: rev as String)

@@ -1,5 +1,6 @@
 module gunbc.auth.approval_gate
 
+import std.decl_ref { decl_ref }
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
 import std.measure { Second, second_count }
 import v2.std.optional { Present, Absent }
@@ -25,7 +26,8 @@ import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantD
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.auth.approval_request_client {
   sign_stored_request, approval_submit_url, approval_status_url, approval_poll_standing,
-  approval_loopback_origin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused, approval_loopback_origin_refusal_detail,
+  approval_origin_admission_here, approval_origin_standing_detail, DialableApprovalOrigin,
+  ApprovalOriginDialable, ApprovalOriginNotAdmitted,
   SubmissionMacReady, SubmissionMacKeyNotHex,
   ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending, PollNotFiled, PollUnreadable,
 }
@@ -192,11 +194,11 @@ fn approval_standing_read(escalation_id: NonEmptyStr, expires_at: Timestamp) -> 
   match approval_instant_now() {
     Absent => StandingClockUnreadable
     Present { value: observed } => {
-      match approval_loopback_origin() {
-        ApprovalLoopbackOriginRefused { cause } =>
-          StandingReadAt { standing: approval_poll_standing(status: StatusUnreadable { detail: approval_loopback_origin_refusal_detail(cause: cause) }, observed_at: observed, expires_at: expires_at), observed_at: observed }
-        ApprovalLoopbackOriginResolved { origin } => {
-          let got = http.Client.GetLocalhostBounded(url: approval_status_url(origin: origin, escalation_id: escalation_id))
+      match approval_origin_admission_here() {
+        ApprovalOriginNotAdmitted { standing } =>
+          StandingReadAt { standing: approval_poll_standing(status: StatusUnreadable { detail: approval_origin_standing_detail(standing: standing) }, observed_at: observed, expires_at: expires_at), observed_at: observed }
+        ApprovalOriginDialable { dial } => {
+          let got = http.Client.GetLocalhostBounded(url: approval_status_url(dial: dial, escalation_id: escalation_id))
           StandingReadAt { standing: approval_poll_standing(status: approval_status_from_get(success: got.success, body: got.body), observed_at: observed, expires_at: expires_at), observed_at: observed }
         }
       }
@@ -260,14 +262,15 @@ type ApprovalFiling
 
 fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
 {
-  match approval_loopback_origin() {
-    ApprovalLoopbackOriginRefused { cause } => ApprovalFilingRefused { reason: approval_loopback_origin_refusal_detail(cause: cause) as String }
-    ApprovalLoopbackOriginResolved { origin } => approval_file_stored_request_at(origin: origin, stored: stored, body_file_name: body_file_name, submit_timeout: submit_timeout)
+  match approval_origin_admission_here() {
+    ApprovalOriginDialable { dial } => approval_file_stored_request_at(dial: dial, stored: stored, body_file_name: body_file_name, submit_timeout: submit_timeout)
+    ApprovalOriginNotAdmitted { standing } => ApprovalFilingRefused { reason: approval_origin_standing_detail(standing: standing) as String }
   }
 }
 
-fn approval_file_stored_request_at(origin: NonEmptyStr, stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
-{
+fn approval_file_stored_request_at(dial: DialableApprovalOrigin, stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_file_stored_request"),
+] {
   let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
   if sub_path == "" {
     ApprovalFilingRefused { reason: join([approval_submission_mac_key_path_env as String, " is unset; the request cannot be filed"], "") }
@@ -289,7 +292,7 @@ fn approval_file_stored_request_at(origin: NonEmptyStr, stored: StoredApprovalRe
             if !written.success {
               ApprovalFilingRefused { reason: join(["could not write the submit body: ", written.error], "") }
             } else {
-              let posted = http.Client.PostJsonFromFile(url: approval_submit_url(origin: origin), request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: submit_timeout)) as NonEmptyStr)
+              let posted = http.Client.PostJsonFromFile(url: approval_submit_url(dial: dial), request_body_file: body_path as NonEmptyStr, max_seconds: to_string(second_count(s: submit_timeout)) as NonEmptyStr)
               let _wiped = Filesystem.Delete(path: body_path)
               if submission_body_admits_poll(body: posted.body) { ApprovalFiled } else { ApprovalFilingRefused { reason: join(["POST /approvals refused: ", posted.body], "") } }
             }

@@ -1,0 +1,93 @@
+module gunbc.site.dependency_graph
+import gunbc.site.status { status_badge }
+import v2.std.algebra { filter }
+import gunbc.design.scale { graph_row_height_px, graph_rail_width_px }
+import std.types { String, Int, Bool }
+import std.markup { Fragment, Element, attr }
+import gunbc.site.markup { el, el_class, el_attrs, txt }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { RawProperty, CustomProperty }
+
+type DependencyGraphItem { id: String, label: String, status: String }
+type DependencyGraphGeometry { row_height: Int, rail_width: Int, upstream_x: Int, selected_x: Int, downstream_x: Int }
+data dependency_graph_geometry: DependencyGraphGeometry = DependencyGraphGeometry { row_height: graph_row_height_px, rail_width: graph_rail_width_px, upstream_x: 24, selected_x: 64, downstream_x: 104 }
+
+fn dependency_graph_state(item: DependencyGraphItem, selected: Bool) -> String {
+  if selected { "selected" } else if item.status == "done" || item.status == "superseded" { "done" } else if item.status == "unknown" { "unknown" } else { "open" }
+}
+fn dependency_graph_y(index: Int) -> Int { index * dependency_graph_geometry.row_height + dependency_graph_geometry.row_height / 2 }
+fn dependency_graph_point(item: DependencyGraphItem, x: Int, y: Int, selected: Bool) -> Fragment {
+  el_attrs("g", [attr(name: "class", value: "issue-dag-point"), attr(name: "data-state", value: dependency_graph_state(item: item, selected: selected))], concat(
+    if selected { [el_attrs("circle", [attr(name: "class", value: "issue-dag-halo"), attr(name: "cx", value: to_string(value: x)), attr(name: "cy", value: to_string(value: y)), attr(name: "r", value: "22")], [])] } else { [] }, [
+    el_attrs("circle", [attr(name: "class", value: "issue-dag-ring"), attr(name: "cx", value: to_string(value: x)), attr(name: "cy", value: to_string(value: y)), attr(name: "r", value: "12")], []),
+    if item.status == "done" || item.status == "superseded" || item.status == "unknown" {
+      el_attrs("text", [attr(name: "x", value: to_string(value: x)), attr(name: "y", value: to_string(value: y + 4)), attr(name: "text-anchor", value: "middle")], [txt(if item.status == "unknown" { "?" } else { "✓" })])
+    } else { el_attrs("circle", [attr(name: "class", value: "issue-dag-core"), attr(name: "cx", value: to_string(value: x)), attr(name: "cy", value: to_string(value: y)), attr(name: "r", value: if selected { "7" } else { "4" })], []) },
+  ]))
+}
+fn dependency_graph_edge(item: DependencyGraphItem, current: DependencyGraphItem, index: Int, selected_index: Int, upstream: Bool) -> Fragment {
+  let y = dependency_graph_y(index: index)
+  let cy = dependency_graph_y(index: selected_index)
+  let g = dependency_graph_geometry
+  let path = if upstream {
+    join(["M ", to_string(value: g.upstream_x + 14), " ", to_string(value: y), " C ", to_string(value: g.selected_x), " ", to_string(value: y), " ", to_string(value: g.selected_x), " ", to_string(value: cy - 48), " ", to_string(value: g.selected_x), " ", to_string(value: cy - 16)], "")
+  } else {
+    join(["M ", to_string(value: g.selected_x), " ", to_string(value: cy + 14), " C ", to_string(value: g.selected_x), " ", to_string(value: y), " ", to_string(value: g.selected_x), " ", to_string(value: y), " ", to_string(value: g.downstream_x - 16), " ", to_string(value: y)], "")
+  }
+  let arrow = if upstream {
+    join(["M ", to_string(value: g.selected_x - 4), " ", to_string(value: cy - 22), " L ", to_string(value: g.selected_x), " ", to_string(value: cy - 14), " L ", to_string(value: g.selected_x + 4), " ", to_string(value: cy - 22), " Z"], "")
+  } else {
+    join(["M ", to_string(value: g.downstream_x - 22), " ", to_string(value: y - 4), " L ", to_string(value: g.downstream_x - 14), " ", to_string(value: y), " L ", to_string(value: g.downstream_x - 22), " ", to_string(value: y + 4), " Z"], "")
+  }
+  el_attrs("g", [attr(name: "data-state", value: dependency_graph_state(item: item, selected: false))], [
+    el_attrs("path", [attr(name: "class", value: "issue-dag-edge"), attr(name: "data-from", value: if upstream { item.id } else { current.id }), attr(name: "data-to", value: if upstream { current.id } else { item.id }), attr(name: "d", value: path)], []),
+    el_attrs("path", [attr(name: "class", value: "issue-dag-arrow"), attr(name: "d", value: arrow)], []),
+  ])
+}
+fn dependency_graph_row(item: DependencyGraphItem, role: String, selected: Bool) -> Fragment {
+  el_attrs(if selected { "div" } else { "a" }, concat([
+    attr(name: "class", value: "issue-dag-row"), attr(name: "data-state", value: dependency_graph_state(item: item, selected: selected)),
+    attr(name: "title", value: join([item.label, " · ", item.id, " · ", item.status], "")),
+  ], if selected { [attr(name: "aria-current", value: "true"), attr(name: "data-current", value: "1")] } else { [attr(name: "href", value: concat("/issue/", item.id))] }), [
+    el_class("span", "issue-dag-role", [txt(role)]),
+    el_class("span", "issue-dag-label", [txt(item.label)]),
+    el_class("span", "issue-dag-status", [status_badge(label: item.status)]),
+  ])
+}
+// A one-hop directed graph: each emitted path has exactly one authored dependency.
+// Membership is deliberately supplied by the caller outside this graph, never as an edge.
+fn dependency_graph(current: DependencyGraphItem, prerequisites: List<DependencyGraphItem>, dependents: List<DependencyGraphItem>) -> Fragment {
+  let g = dependency_graph_geometry
+  let selected_index = count(prerequisites)
+  let height = (count(prerequisites) + 1 + count(dependents)) * g.row_height
+  let edges = concat(map(prerequisites |> enumerate, pair => dependency_graph_edge(item: pair.second, current: current, index: pair.first, selected_index: selected_index, upstream: true)), map(dependents |> enumerate, pair => dependency_graph_edge(item: pair.second, current: current, index: selected_index + 1 + pair.first, selected_index: selected_index, upstream: false)))
+  let points = concat(map(prerequisites |> enumerate, pair => dependency_graph_point(item: pair.second, x: g.upstream_x, y: dependency_graph_y(index: pair.first), selected: false)), concat([dependency_graph_point(item: current, x: g.selected_x, y: dependency_graph_y(index: selected_index), selected: true)], map(dependents |> enumerate, pair => dependency_graph_point(item: pair.second, x: g.downstream_x, y: dependency_graph_y(index: selected_index + 1 + pair.first), selected: false))))
+  el_attrs("div", [attr(name: "class", value: "issue-dag"), attr(name: "data-graph-layout", value: "directed")], [
+    el_attrs("svg", [attr(name: "class", value: "issue-dag-rail"), attr(name: "width", value: to_string(value: g.rail_width)), attr(name: "height", value: to_string(value: height)), attr(name: "viewBox", value: join(["0 0 ", to_string(value: g.rail_width), " ", to_string(value: height)], "")), attr(name: "aria-hidden", value: "true"), attr(name: "focusable", value: "false")], concat(edges, points)),
+    el_class("div", "issue-dag-rows", concat(map(prerequisites, item => dependency_graph_row(item: item, role: "Prerequisite", selected: false)), concat([dependency_graph_row(item: current, role: "Selected issue", selected: true)], map(dependents, item => dependency_graph_row(item: item, role: "Depends on this issue", selected: false))))),
+  ])
+}
+
+// Aggregate nodes retain their relation to the selected issue while branches expand independently.
+fn dependency_graph_branch(item: DependencyGraphItem, current: DependencyGraphItem, upstream: Bool) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: "issue-dag-branch-node"), attr(name: "data-state", value: dependency_graph_state(item: item, selected: false)), attr(name: "data-from", value: if upstream { item.id } else { current.id }), attr(name: "data-to", value: if upstream { current.id } else { item.id })], [dependency_graph_row(item: item, role: if upstream { "Prerequisite" } else { "Depends on this issue" }, selected: false)])
+}
+fn dependency_graph_cluster(current: DependencyGraphItem, items: List<DependencyGraphItem>, upstream: Bool) -> Fragment {
+  let completed = count(filter(items, item => item.status == "done" || item.status == "superseded"))
+  el_attrs("details", concat([attr(name: "class", value: "issue-dag-cluster"), attr(name: "data-direction", value: if upstream { "upstream" } else { "downstream" })], if count(items) > 3 { [] } else { [attr(name: "open", value: "")] }), [
+    el("summary", [
+      el_class("span", "issue-dag-cluster-count", [txt(to_string(value: count(items)))]),
+      el_class("span", "issue-dag-cluster-copy", [el("strong", [txt(if upstream { "Prerequisites" } else { "Dependent issues" })]), el("small", [txt(join([to_string(value: completed), " done · ", to_string(value: count(items) - completed), " remaining"], ""))])]),
+    ]),
+    el_class("div", "issue-dag-cluster-branches", map(items, item => dependency_graph_branch(item: item, current: current, upstream: upstream))),
+  ])
+}
+fn dependency_graph_interactive(current: DependencyGraphItem, prerequisites: List<DependencyGraphItem>, dependents: List<DependencyGraphItem>) -> Fragment {
+  if count(prerequisites) <= 3 && count(dependents) <= 3 { dependency_graph(current: current, prerequisites: prerequisites, dependents: dependents) } else {
+    el_class("div", "issue-dag issue-dag-aggregate", concat(
+      if count(prerequisites) == 0 { [] } else { [dependency_graph_cluster(current: current, items: prerequisites, upstream: true)] }, concat([
+        el_class("div", "issue-dag-selected-anchor", [dependency_graph_row(item: current, role: "Selected issue", selected: true)]),
+      ], if count(dependents) == 0 { [] } else { [dependency_graph_cluster(current: current, items: dependents, upstream: false)] })))
+  }
+}
