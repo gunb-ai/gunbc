@@ -874,7 +874,7 @@ test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
 
 fn ephemeral_slot_words_carry_fleet_shape(reading: SystemdRunCommandReading) -> Bool {
   match reading {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
       let argv = argv_words(command: command)
       let has_quota_word = argv |> any(w => string_contains(s: w, pattern: "--property=CPUQuota="))

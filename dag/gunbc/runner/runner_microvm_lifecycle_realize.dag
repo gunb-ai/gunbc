@@ -79,6 +79,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
+, systemd_run_option_words_refused_cause_detail,
 }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -1181,7 +1182,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
         ], receipt.runtime_properties),
         command_argv: argv_words(command: jailer),
       ) {
-        SystemdRunCommandRefused { reason: why } => VmmStartFailed { unit: unit, detail: why }
+        SystemdRunCommandRefused { cause: why } => VmmStartFailed { unit: unit, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
         SystemdRunCommandReady { command: command } => {
           let started = systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command))
           if started.success { VmmStarted { unit: unit, receipt: receipt } }

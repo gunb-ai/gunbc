@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_au
 import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_command,
+  systemd_run_option_words_refused_cause_detail, dispatch_review_unit_name, dispatch_review_unit_command,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
   dispatch_audit_unit_name, dispatch_audit_unit_command,
   dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
@@ -1346,8 +1346,8 @@ fn belt_session_container_create(
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
                   match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
-                    SystemdRunCommandRefused { reason: why } =>
-                      ExecStepFailed { step: "harness-unit-start", detail: why }
+                    SystemdRunCommandRefused { cause: why } =>
+                      ExecStepFailed { step: "harness-unit-start", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
                     SystemdRunCommandReady { command: command } =>
                       belt_exec_steps(
                         steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
@@ -2588,11 +2588,11 @@ fn belt_supervisor_convene(
                       ),
                     ),
                   ) {
-                    SystemdRunCommandRefused { reason: why } =>
+                    SystemdRunCommandRefused { cause: why } =>
                       SpawnFailed {
                         node_id: node.node as String,
                         step: "supervisor-unit-start",
-                        detail: why,
+                        detail: systemd_run_option_words_refused_cause_detail(cause: why),
                         provider: provider_wire_label,
                         launch: launch,
                       }
@@ -10043,8 +10043,8 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                 RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
                 RosterAdmitted =>
               match dispatch_audit_unit_command(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head) {
-                SystemdRunCommandRefused { reason: why } =>
-                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: why }
+                SystemdRunCommandRefused { cause: why } =>
+                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
                 SystemdRunCommandReady { command: command } =>
                   match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
                     ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
@@ -10304,8 +10304,8 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
         RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
         RosterAdmitted =>
       match dispatch_review_unit_command(instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key) {
-        SystemdRunCommandRefused { reason: why } =>
-          ReviewFailed { node_id: node_id, criterion: call.id, detail: why }
+        SystemdRunCommandRefused { cause: why } =>
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
         SystemdRunCommandReady { command: command } =>
           match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
             ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }

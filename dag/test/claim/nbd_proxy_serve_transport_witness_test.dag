@@ -224,7 +224,7 @@ test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool
     properties: [],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
   }
 }
@@ -240,7 +240,7 @@ test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bo
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
   }
 }
@@ -256,7 +256,7 @@ test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> 
     properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
   }
 }
@@ -281,7 +281,7 @@ test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       join(argv_words(command: command), " ")
         == "systemd-run --unit=nbd-proxy-witness.service --property=MemoryMax=17179869184 --collect -- /bin/true"

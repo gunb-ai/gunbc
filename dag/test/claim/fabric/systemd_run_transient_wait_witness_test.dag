@@ -39,7 +39,7 @@ fn wait_control_command_reading() -> SystemdRunCommandReading {
 // THE POSITIVE CONTROL, WORDS HALF: the projection's words are the old builder's words, byte for byte.
 test fn systemd_wait_route_projects_the_old_words() -> Bool {
   match wait_control_command_reading() {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       argv_exact_token_equal(
         left: argv_words(command: command),
@@ -56,7 +56,7 @@ test fn systemd_wait_route_projects_the_old_words() -> Bool {
 // same words the typed command projects.
 test fn systemd_wait_route_materializes_the_projected_words() -> Bool {
   match wait_control_command_reading() {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       systemd_run_transient_wait_operation_argv_matches_authority(command: command)
   }
@@ -71,7 +71,7 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
     properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/tmp/a\nb" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "one line")
+    SystemdRunCommandRefused { cause: UnitSettingValueMultiline { property: p } } => systemd_unit_property_wire(property: p) == "WorkingDirectory"
     SystemdRunCommandReady { command: _ } => false
   }
 }
@@ -87,7 +87,7 @@ test fn the_collecting_transient_builder_emits_unit_properties_collect() -> Bool
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       argv_exact_token_equal(
         left: argv_words(command: command),
@@ -106,7 +106,7 @@ test fn the_retained_transient_builder_omits_collect() -> Bool {
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       argv_exact_token_equal(
         left: argv_words(command: command),
@@ -124,7 +124,7 @@ test fn the_user_wait_builder_renders_the_old_order() -> Bool {
     setenv_bindings: [SystemdSetenvBinding { name: "A" as NonEmptyStr, value: "c" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       argv_exact_token_equal(
         left: argv_words(command: command),
@@ -143,7 +143,7 @@ test fn the_scope_builder_leads_with_scope_only() -> Bool {
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       argv_exact_token_equal(
         left: argv_words(command: command),
@@ -159,7 +159,7 @@ test fn a_unit_name_the_wire_cannot_carry_is_refused() -> Bool {
     properties: [],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "never contains /")
+    SystemdRunCommandRefused { cause: UnitNameContainsSlash } => true
     SystemdRunCommandReady { command: _ } => false
   }
 }
@@ -173,16 +173,32 @@ test fn a_setenv_name_with_an_equals_is_refused() -> Bool {
     setenv_bindings: [SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "carries no = of its own")
+    SystemdRunCommandRefused { cause: SetenvNameContainsEquals } => true
     SystemdRunCommandReady { command: _ } => false
   }
 }
 
 test fn a_setenv_binding_with_an_equals_in_the_name_is_refused() -> Bool {
   match systemd_run_option_words(options: [SetEnv { binding: SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr } }]) {
-    SystemdRunOptionWordsRefused { reason: why } => string_contains(s: why, pattern: "carries no = of its own")
+    SystemdRunOptionWordsRefused { cause: SetenvNameContainsEquals } => true
     SystemdRunOptionWordsProjected { words: _ } => false
   }
+}
+
+// The cause sum discriminates: two different wire defects yield two different constructors, so a
+// caller can branch on the cause without matching on prose. Tags 0 and 1 must differ.
+test fn refusal_causes_discriminate_two_wire_defects() -> Bool {
+  let slash_tag = match systemd_run_option_words(options: [RunUnit { unit: "wrong/name" as NonEmptyStr }]) {
+    SystemdRunOptionWordsRefused { cause: UnitNameContainsSlash } => 1
+    SystemdRunOptionWordsRefused { cause: _ } => 0 - 1
+    SystemdRunOptionWordsProjected { words: _ } => 0 - 1
+  }
+  let equals_tag = match systemd_run_option_words(options: [SetEnv { binding: SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr } }]) {
+    SystemdRunOptionWordsRefused { cause: SetenvNameContainsEquals } => 2
+    SystemdRunOptionWordsRefused { cause: _ } => 0 - 1
+    SystemdRunOptionWordsProjected { words: _ } => 0 - 1
+  }
+  (slash_tag == 1) && (equals_tag == 2) && (slash_tag != equals_tag)
 }
 
 // THE TYPED OPTION IS A SEALED SUM: there is no arm an unknown flag could ride. This fold walks the
@@ -191,7 +207,7 @@ test fn a_setenv_binding_with_an_equals_in_the_name_is_refused() -> Bool {
 // unwritable.
 test fn every_option_variant_renders_its_man_page_spelling() -> Bool {
   match systemd_run_option_words(options: [RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions]) {
-    SystemdRunOptionWordsRefused { reason: _ } => false
+    SystemdRunOptionWordsRefused { cause: _ } => false
     SystemdRunOptionWordsProjected { words: words } =>
       join(words, separator: " ") == "--user --scope --wait --quiet --pipe --collect --"
   }
@@ -218,7 +234,7 @@ test fn systemd_wait_normal_exit_86_remains_86() -> Bool {
 
 fn materialized_cardinality(reading: SystemdRunCommandReading) -> Int {
   match reading {
-    SystemdRunCommandRefused { reason: _ } => 0 - 2
+    SystemdRunCommandRefused { cause: _ } => 0 - 2
     SystemdRunCommandReady { command: command } =>
       match systemd_run_transient_wait_operation_argv(command: command) {
         ArgvMaterialized { argv: words } => count(words)

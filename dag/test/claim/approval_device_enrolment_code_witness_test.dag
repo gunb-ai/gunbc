@@ -94,7 +94,7 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
 // on a refusal arm.
 fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReading, rev: String, op: String) -> Bool {
   match reading {
-    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
       let joined = join(sudo_elevate_words(command: command), " ")
       string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max)) + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high)) + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/" + rev + " /opt/gunbc/approval-broker/releases/" + rev + "/gunbc run ")

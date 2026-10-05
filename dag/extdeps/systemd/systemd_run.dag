@@ -101,20 +101,42 @@ type SystemdRunOption
 // typed value and the words, not a mangled word downstream. Each arm names the wire fact it
 // defends (unit names and setting values are one line and contain no slash; an environment name
 // is the text before the first '=').
+type SystemdRunOptionWordsRefusedCause
+  = UnitNameContainsSlash
+  | UnitNameMultiline
+  | UnitSettingValueMultiline { property: SystemdUnitProperty }
+  | SetenvNameContainsEquals
+  | SetenvNameMultiline
+  | SetenvValueMultiline
+
 type SystemdRunOptionWordsReading
   = SystemdRunOptionWordsProjected { words: List<String> }
-  | SystemdRunOptionWordsRefused { reason: String }
+  | SystemdRunOptionWordsRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 type SystemdRunCommandReading
   = SystemdRunCommandReady { command: ArgvCommand }
-  | SystemdRunCommandRefused { reason: String }
+  | SystemdRunCommandRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 fn systemd_run_option_word_has_newline(s: String) -> Bool {
   string_contains(s: s, pattern: "\n")
 }
 
-fn systemd_run_option_word_refused(reason: String) -> SystemdRunOptionWordsReading {
-  SystemdRunOptionWordsRefused { reason: reason }
+fn systemd_run_option_word_refused(cause: SystemdRunOptionWordsRefusedCause) -> SystemdRunOptionWordsReading {
+  SystemdRunOptionWordsRefused { cause: cause }
+}
+
+// The one prose projection of a refusal cause, for consumers whose carriers are prose (belt
+// step details, log lines). Every arm names the wire fact it defends; the cause sum itself is
+// what callers match on.
+fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRefusedCause) -> String {
+  match cause {
+    UnitNameContainsSlash => "a unit name never contains / (systemd.unit(5))"
+    UnitNameMultiline => "a unit name is one line"
+    UnitSettingValueMultiline { property: p } => concat("unit setting value is one line, so --property= cannot carry a newline in: ", systemd_unit_property_wire(property: p))
+    SetenvNameContainsEquals => "--setenv= takes NAME=VALUE, so the NAME side carries no = of its own"
+    SetenvNameMultiline => "--setenv= takes NAME=VALUE, so the NAME side is one line"
+    SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
+  }
 }
 
 fn systemd_run_property_options_long(properties: List<SystemdRunProperty>) -> List<SystemdRunOption> {
@@ -129,14 +151,14 @@ fn systemd_run_property_options_short(properties: List<SystemdRunProperty>) -> L
 // these so a refused command never mints words at all (short-circuit on the first refusal).
 fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option: SystemdRunOption) -> SystemdRunOptionWordsReading {
   match acc {
-    SystemdRunOptionWordsRefused { reason: r } => SystemdRunOptionWordsRefused { reason: r }
+    SystemdRunOptionWordsRefused { cause: c } => SystemdRunOptionWordsRefused { cause: c }
     SystemdRunOptionWordsProjected { words: words } =>
       match option {
         RunUnit { unit: unit } =>
           if string_contains(s: unit as String, pattern: "/") {
-            systemd_run_option_word_refused(reason: "--unit= takes a unit name, and a unit name never contains / (systemd.unit(5))")
+            systemd_run_option_word_refused(cause: UnitNameContainsSlash)
           } else if systemd_run_option_word_has_newline(s: unit as String) {
-            systemd_run_option_word_refused(reason: "--unit= takes a unit name, and a unit name is one line")
+            systemd_run_option_word_refused(cause: UnitNameMultiline)
           } else {
             SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--unit=", unit as String)]) }
           }
@@ -144,23 +166,23 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
         PropertyShort { property: p } =>
           if systemd_run_option_word_has_newline(s: p.value as String) {
-            systemd_run_option_word_refused(reason: concat("unit setting value is one line, so --property= cannot carry a newline in: ", systemd_unit_property_wire(property: p.property)))
+            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
           } else {
             SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", concat(systemd_unit_property_wire(property: p.property), concat("=", p.value as String))]) }
           }
         PropertyLong { property: p } =>
           if systemd_run_option_word_has_newline(s: p.value as String) {
-            systemd_run_option_word_refused(reason: concat("unit setting value is one line, so --property= cannot carry a newline in: ", systemd_unit_property_wire(property: p.property)))
+            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
           } else {
             SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", concat(systemd_unit_property_wire(property: p.property), concat("=", p.value as String)))]) }
           }
         SetEnv { binding: b } =>
           if string_contains(s: b.name as String, pattern: "=") {
-            systemd_run_option_word_refused(reason: "--setenv= takes NAME=VALUE, so the NAME side carries no = of its own")
+            systemd_run_option_word_refused(cause: SetenvNameContainsEquals)
           } else if systemd_run_option_word_has_newline(s: b.name as String) {
-            systemd_run_option_word_refused(reason: "--setenv= takes NAME=VALUE, so the NAME side is one line")
+            systemd_run_option_word_refused(cause: SetenvNameMultiline)
           } else if systemd_run_option_word_has_newline(s: b.value as String) {
-            systemd_run_option_word_refused(reason: "--setenv= takes NAME=VALUE, so the VALUE side is one line")
+            systemd_run_option_word_refused(cause: SetenvValueMultiline)
           } else {
             SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--setenv=", concat(b.name as String, concat("=", b.value as String)))]) }
           }
@@ -200,7 +222,7 @@ fn systemd_run_command_argument_words(command: ArgvCommand) -> List<String> {
 
 fn systemd_run_command_of(options: List<SystemdRunOption>, command_argv: List<String>) -> SystemdRunCommandReading {
   match systemd_run_option_words(options: options) {
-    SystemdRunOptionWordsRefused { reason: r } => SystemdRunCommandRefused { reason: r }
+    SystemdRunOptionWordsRefused { cause: c } => SystemdRunCommandRefused { cause: c }
     SystemdRunOptionWordsProjected { words: option_words } =>
       SystemdRunCommandReady { command: argv_command(program: systemd_run_program(), arguments: list_append(left: option_words, right: command_argv)) }
   }

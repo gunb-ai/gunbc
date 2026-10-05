@@ -1378,7 +1378,7 @@ test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_ow
           && runner_label_sets_equal(a: map(req.labels, l => l.value as String), b: ephemeral_slot_labels(host: h.host, attempt: "q-1"))
           && match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
                SystemdRunCommandReady { command: c } => u.argv == systemd_run_command_argument_words(command: c)
-               SystemdRunCommandRefused { reason: _ } => false
+               SystemdRunCommandRefused { cause: _ } => false
              }
           && match u.runner.arch { ActionsRunnerLinuxArm64 => true _ => false }
       _ => false

@@ -70,10 +70,7 @@ fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool
   uses net: Network
 {
   match systemd_run_transient_unit_command(unit: unit, properties: [wet_slice_property()], command_argv: argv) {
-    SystemdRunCommandRefused { reason: why } => {
-      let _ = why
-      false
-    }
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       systemd.SystemdRun.RunTransient(command_argv: argv_words(command: command)).success
   }
@@ -422,10 +419,7 @@ fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: Strin
 // tail only — the transport owns the "systemd-run" head.
 fn start_retained_payload(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
   match systemd_run_transient_retained_unit_command(unit: unit, properties: properties, command_argv: command_argv) {
-    SystemdRunCommandRefused { reason: why } => {
-      let _ = why
-      false
-    }
+    SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command)).success
   }

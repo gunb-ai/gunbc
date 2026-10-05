@@ -22,6 +22,7 @@ import extdeps.systemd.systemd_run {
   ServiceResultFormatNotGrounded, MemoryPeakFormatNotGrounded,
   SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent, summary_absence_wire,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+, systemd_run_option_words_refused_cause_detail,
 }
 import extdeps.systemd.systemctl
 import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value }
@@ -395,9 +396,9 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ],
       command_argv: argv,
     ) {
-      SystemdRunCommandRefused { reason: why } =>
+      SystemdRunCommandRefused { cause: why } =>
         ComputeUnitRun {
-          exec: ComputeExecRefused { reason: why },
+          exec: ComputeExecRefused { reason: systemd_run_option_words_refused_cause_detail(cause: why) },
           summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
         }
       SystemdRunCommandReady { command: command } => {

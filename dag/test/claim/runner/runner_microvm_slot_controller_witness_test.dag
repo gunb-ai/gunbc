@@ -336,7 +336,7 @@ fn attempt_launch_property_words(attempt: MicroVmAttempt) -> List<String> {
     ],
     command_argv: [],
   ) {
-    SystemdRunCommandRefused { reason: _ } => []
+    SystemdRunCommandRefused { cause: _ } => []
     SystemdRunCommandReady { command: command } => property_words_of(argv: argv_words(command: command))
   }
 }
