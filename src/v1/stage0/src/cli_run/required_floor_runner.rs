@@ -2369,9 +2369,12 @@ fn cost_debt_admitted_identities(base: &str) -> Result<Vec<String>, String> {
         ));
     };
     match ctx.resolve(*variant_name).as_str() {
-        "CostDebtAdmittedIdentities" => match ctx.field(fields, "identities") {
-            Some(Value::List(ids)) => ids
-                .iter()
+        "CostDebtAdmittedIdentities" => {
+            // THE CARRIER IS THE FOLD'S OWN LIST, cons-shaped or host-shaped; the floor's one
+            // decoder reads both, as it does for `floor_cost_debt_roster`.
+            let ids = floor_decode_list(&ctx, ctx.field(fields, "identities"))
+                .map_err(|e| format!("CostDebtAdmittedIdentities.identities: {e}"))?;
+            ids.into_iter()
                 .map(|id| match id {
                     Value::Str(id) => Ok(id.to_string()),
                     other => Err(format!(
@@ -2379,9 +2382,8 @@ fn cost_debt_admitted_identities(base: &str) -> Result<Vec<String>, String> {
                         floor_value_shape(Some(other))
                     )),
                 })
-                .collect(),
-            _ => Err("CostDebtAdmittedIdentities carries no `identities` list".to_string()),
-        },
+                .collect()
+        }
         "CostDebtRosterUnreadableAtBase" => Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterUnreadableAtBase base={base} \
              path={FLOOR_COST_DEBT_ROSTER} stderr={} -- the change modifies the roster, so it must \
