@@ -3,7 +3,7 @@ module test.claim.approval_request_client_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, List, Int }
 import v2.std.collection { Present, Absent }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.auth.approval_request_client {
   approval_loopback_origin, approval_loopback_origin_for, approval_loopback_origin_of, approval_request_submit_path,
   ApprovalLoopbackOrigin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused,
@@ -124,20 +124,23 @@ test fn an_executor_whose_host_is_unobserved_refuses() -> Bool {
 }
 
 // ── THE DIAL TOKEN CANNOT BE FORGED, AND THE FILING STEP CANNOT BE REACHED AROUND IT ───────────
-// One compile per claim (each compile probe costs the census, gunbc.recurring_failure_mode
-// entry_scoped_typecheck_rss_tracks_the_name_census).
-data forged_dial_mint_source: String = "module probe_forged_dial_mint\nimport gunbc.auth.approval_request_client { mint_dialable_approval_origin, DialableApprovalOrigin }\nfn forge() -> DialableApprovalOrigin { mint_dialable_approval_origin(host: \"srv1\", origin: \"http://127.0.0.1:8085\") }\n"
-
-data forged_dial_literal_source: String = "module probe_forged_dial_literal\nimport gunbc.auth.approval_request_client { DialableApprovalOrigin }\nfn forge() -> DialableApprovalOrigin { DialableApprovalOrigin { host: \"srv1\", origin: \"http://127.0.0.1:8085\" } }\n"
-
-data outside_admission_here_source: String = "module probe_outside_admission_here\nimport gunbc.auth.approval_request_client { approval_origin_admission_here, ApprovalOriginAdmission }\nfn obtain() -> ApprovalOriginAdmission { approval_origin_admission_here() }\n"
-
-data outside_filing_step_source: String = "module probe_outside_filing_step\nimport gunbc.auth.approval_gate { approval_file_stored_request_at, ApprovalFiling }\nimport gunbc.auth.approval_request_client { DialableApprovalOrigin }\nimport gunbc.auth.approval_decision_store { StoredApprovalRequest }\nimport std.measure { Second }\nfn bypass(d: DialableApprovalOrigin, s: StoredApprovalRequest, t: Second) -> ApprovalFiling { approval_file_stored_request_at(dial: d, stored: s, body_file_name: \"x\", submit_timeout: t) }\n"
+// ONE probe source carries every forged route, one function each, so the floor compiles it once (the
+// census is memoized by source; each compile costs the census, gunbc.recurring_failure_mode
+// entry_scoped_typecheck_rss_tracks_the_name_census) and each claim reads ITS refusal by class AND
+// subject -- the refused callee or type -- so no claim can pass on another route's refusal.
+data forged_approval_routes_source: String = "module probe_forged_approval_routes\nimport gunbc.auth.approval_request_client { mint_dialable_approval_origin, DialableApprovalOrigin, approval_origin_admission_here, ApprovalOriginAdmission }\nimport gunbc.auth.approval_gate { approval_file_stored_request_at, ApprovalFiling }\nimport gunbc.auth.approval_decision_store { StoredApprovalRequest }\nimport std.measure { Second }\nfn forge_by_mint() -> DialableApprovalOrigin { mint_dialable_approval_origin(host: \"srv1\", origin: \"http://127.0.0.1:8085\") }\nfn forge_by_literal() -> DialableApprovalOrigin { DialableApprovalOrigin { host: \"srv1\", origin: \"http://127.0.0.1:8085\" } }\nfn obtain_admission() -> ApprovalOriginAdmission { approval_origin_admission_here() }\nfn bypass_filing(d: DialableApprovalOrigin, s: StoredApprovalRequest, t: Second) -> ApprovalFiling { approval_file_stored_request_at(dial: d, stored: s, body_file_name: \"x\", submit_timeout: t) }\n"
 
 data canonical_approval_routes_source: String = "module probe_canonical_approval_routes\nimport gunbc.auth.approval_gate { approval_file_stored_request, approval_standing_read, ApprovalFiling, ApprovalStandingRead }\nimport gunbc.auth.approval_decision_store { StoredApprovalRequest }\nimport std.measure { Second }\nimport std.types { Timestamp, NonEmptyStr }\nfn file(s: StoredApprovalRequest, t: Second) -> ApprovalFiling { approval_file_stored_request(stored: s, body_file_name: \"x\", submit_timeout: t) }\nfn read(e: NonEmptyStr, x: Timestamp) -> ApprovalStandingRead { approval_standing_read(escalation_id: e, expires_at: x) }\n"
 
-fn class_refusals_in(source: String, wanted: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+fn forged_route_refusals(class: String, subject: String) -> Int {
+  match census_blocking_count_for_subject(census: compile_dag_diagnostic_census(forged_approval_routes_source), wanted_class: class, wanted_subject: subject) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn admission_refusals_in(source: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "ConstructorCallAdmissionRefused") {
     Present { value: n } => n
     Absent => 0
   }
@@ -146,26 +149,26 @@ fn class_refusals_in(source: String, wanted: String) -> Int {
 // (1) An outside module cannot mint the token: not through the mint, not as a literal, and not by
 // calling the live admission (which is where the hostname is read).
 test fn no_outside_module_can_mint_a_dial_token_through_the_mint() -> Bool {
-  class_refusals_in(source: forged_dial_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "mint_dialable_approval_origin") >= 1
 }
 
 test fn no_outside_module_can_write_a_dial_token_literal() -> Bool {
-  class_refusals_in(source: forged_dial_literal_source, wanted: "SoleConstructorViolation") >= 1
+  forged_route_refusals(class: "SoleConstructorViolation", subject: "DialableApprovalOrigin") >= 1
 }
 
 test fn no_outside_module_can_call_the_live_origin_admission() -> Bool {
-  class_refusals_in(source: outside_admission_here_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "approval_origin_admission_here") >= 1
 }
 
 // (2) The filing step that reads the key, writes the envelope and POSTs is reachable only from the
 // filing composition that admitted the origin.
 test fn no_outside_module_can_call_the_filing_step() -> Bool {
-  class_refusals_in(source: outside_filing_step_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "approval_file_stored_request_at") >= 1
 }
 
 // (3) THE CONTROL: the canonical filing and standing-read routes compile with no admission refusal.
 test fn the_canonical_filing_and_standing_read_routes_compile() -> Bool {
-  class_refusals_in(source: canonical_approval_routes_source, wanted: "ConstructorCallAdmissionRefused") == 0
+  admission_refusals_in(source: canonical_approval_routes_source) == 0
 }
 
 // THE REGRESSION run 37265259209 hit: the live origin is the declared writer's, the broker's loopback

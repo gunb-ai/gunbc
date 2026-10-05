@@ -65,7 +65,7 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment, DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonConvergence,
   RoleSingletonNoop,
@@ -647,23 +647,20 @@ test fn an_unmarked_legacy_store_refuses_naming_the_operators_disposition() -> B
 // and the token's readers and every admitted apply step to those same compositions. So an outside
 // module can neither mint an admission from a fabricated decision, obtain one from the assessor, nor
 // carry one into an apply step later -- each refused at compile time as a located diagnostic.
-data forged_admission_source: String = "module probe_forged_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nfn forge() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\n"
-
-data obtained_admission_source: String = "module probe_obtained_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nimport gunbc.host_effect { LocalShell }\nfn obtain() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment(), own: LocalShell) }\n"
-
-data outside_member_plan_source: String = "module probe_outside_member_plan\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.host_effect { LocalShell }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn bypass(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\n"
-
-data outside_warrant_mint_source: String = "module probe_outside_warrant_mint\nimport gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply, AdmittedLiveDeployApply }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nfn forge(c: CandidateRelease, p: ReleaseEffectPlan) -> AdmittedLiveDeployApply { warrant_live_deploy_apply(spec: deployment_spec_srv1(), candidate: c, plan: p) }\n"
-
-data outside_warrant_literal_source: String = "module probe_outside_warrant_literal\nimport gunbc.live_deploy.apply_warrant { AdmittedLiveDeployApply }\nimport gunbc.host_effect { HostEffect, LiveDeployApply }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nfn forge(c: CandidateRelease, p: ReleaseEffectPlan) -> HostEffect { LiveDeployApply { warrant: AdmittedLiveDeployApply { spec: deployment_spec_srv1(), candidate: c, plan: p } } }\n"
+// ONE probe source carries every forged deploy route, one function each, so the floor compiles it
+// once (the census is memoized by source) and each claim reads ITS refusal by class AND subject.
+data forged_deploy_routes_source: String = "module probe_forged_deploy_routes\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission, assess_and_admit, assess_and_admit_rostered, RoleSingletonAdmissionResult, admitted_spec }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nimport gunbc.host_effect { LocalShell, HostEffect, LiveDeployApply }\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply, AdmittedLiveDeployApply }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn forge_admission() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\nfn obtain_admission() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment(), own: LocalShell) }\nfn replay_admission(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\nfn alter_spec() -> RoleSingletonAdmissionResult { assess_and_admit_rostered(spec: deployment_spec_srv1(), own: LocalShell) }\nfn bypass_member_plan(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\nfn forge_warrant(c: CandidateRelease, p: ReleaseEffectPlan) -> AdmittedLiveDeployApply { warrant_live_deploy_apply(spec: deployment_spec_srv1(), candidate: c, plan: p) }\nfn forge_warrant_literal(c: CandidateRelease, p: ReleaseEffectPlan) -> HostEffect { LiveDeployApply { warrant: AdmittedLiveDeployApply { spec: deployment_spec_srv1(), candidate: c, plan: p } } }\n"
 
 data canonical_apply_source: String = "module probe_canonical_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(deployment: srv1_production_desired_deployment(), access: a, candidate: c)\n true }\n"
 
-data altered_spec_to_assessor_source: String = "module probe_altered_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit_rostered, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn alter() -> RoleSingletonAdmissionResult { let s = deployment_spec_srv1()\n assess_and_admit_rostered(spec: s, own: LocalShell) }\n"
-
 data spec_to_production_apply_source: String = "module probe_spec_to_production_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn hand(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(spec: deployment_spec_srv1(), access: a, candidate: c)\n true }\n"
 
-data replayed_admission_source: String = "module probe_replayed_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { RoleSingletonAdmission, admitted_spec }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nfn replay(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\n"
+fn forged_route_refusals(class: String, subject: String) -> Int {
+  match census_blocking_count_for_subject(census: compile_dag_diagnostic_census(forged_deploy_routes_source), wanted_class: class, wanted_subject: subject) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
 
 fn admission_refusals_in(source: String) -> Int {
   match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "ConstructorCallAdmissionRefused") {
@@ -695,35 +692,29 @@ test fn no_caller_supplied_spec_reaches_the_role_singleton_assessment() -> Bool 
 }
 
 test fn an_altered_spec_is_refused_at_the_assessor_seal() -> Bool {
-  admission_refusals_in(source: altered_spec_to_assessor_source) >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "assess_and_admit_rostered") >= 1
 }
 
 test fn no_outside_module_can_mint_obtain_or_replay_an_admission() -> Bool {
-  admission_refusals_in(source: forged_admission_source) >= 1
-    && admission_refusals_in(source: obtained_admission_source) >= 1
-    && admission_refusals_in(source: replayed_admission_source) >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "mint_role_singleton_admission") >= 1
+    && forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "assess_and_admit") >= 1
+    && forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "admitted_spec") >= 1
 }
 
-fn sole_constructor_refusals_in(source: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "SoleConstructorViolation") {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
 
 // THE EFFECT DESTINATION IS CLOSED. (a) an outside call to the member-plan step and (b) an outside
 // warrant -- minted or written as a literal inside a LiveDeployApply -- are each refused at compile
 // time; (c) the canonical assess-and-act entry still compiles with no admission refusal.
 test fn the_realizer_receives_an_apply_only_through_the_assessed_composition() -> Bool {
-  admission_refusals_in(source: outside_member_plan_source) >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "live_deploy_apply_member_plan_via_transport") >= 1
 }
 
 test fn no_outside_module_can_mint_a_warrant() -> Bool {
-  admission_refusals_in(source: outside_warrant_mint_source) >= 1
+  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "warrant_live_deploy_apply") >= 1
 }
 
 test fn no_outside_module_can_write_a_warrant_literal() -> Bool {
-  sole_constructor_refusals_in(source: outside_warrant_literal_source) >= 1
+  forged_route_refusals(class: "SoleConstructorViolation", subject: "AdmittedLiveDeployApply") >= 1
 }
 
 // THE ONE CANONICAL-PATH CONTROL: the row-taking production apply compiles with no admission refusal,
