@@ -95,7 +95,10 @@ data service_config_without_colon_red_source: String = "module m\nservice S {\n 
 // A service whose only entry is config: config binds the transport (endpoint, auth), so it is
 // realization, set aside, and full normalize refuses the service for it -- carried to a typed
 // refusal, never dropped on the way to resolve.
-data config_only_service_source: String = "module m\nservice S { config {} }\n"
+// The config is nonempty: since #12974 the service realization conformance wall refuses an empty
+// config as service_realization_config_malformed (v2.compiler.service_realization
+// realization_config_refusal), which is a different refusal from the set-aside one asserted here.
+data config_only_service_source: String = "module m\nservice S { config { endpoint: e } }\n"
 
 data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  operation Op {\n    exit {\n      0 Unit\n    }\n  }\n}\n"
 
@@ -103,13 +106,12 @@ data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  ope
 // refusal pinned here is the missing expression, not a missing message.
 data mock_entry_without_expr_red_source: String = "module m\nservice S {\n  operation Op {\n    mock_response {\n      0 =>\n    }\n  }\n}\n"
 
-// The io field tail is service-scoped: a general type field with a default or a `from` key still
-// refuses at parse, and the plain type control shows the refusal is the tail, not the type.
+// The plain type control. The field tail is no longer service-scoped: since #12810 every field
+// admits v1's `[from "key"] [= default]` tail at parse, a record field with a wire key refuses at
+// lowering, and since #12948 a record field default lowers onto its binder. Those routes are
+// asserted by v2.test.claim.parse.record_field_tail, so the two claims that pinned a PARSE refusal
+// here were deleted as contradicting a ruled change rather than re-pointed at a second copy.
 data plain_type_source: String = "module m\ntype T { x: Int }\n"
-
-data type_field_default_red_source: String = "module m\ntype T { x: Int = 1 }\n"
-
-data type_field_from_red_source: String = "module m\ntype T { x: Int from \"k\" }\n"
 
 test fn fn_control_still_parses_holds() -> Bool {
   parses(src: fn_control_source)
@@ -213,14 +215,6 @@ test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
 
 test fn plain_type_still_parses_holds() -> Bool {
   parses(src: plain_type_source)
-}
-
-test fn type_field_default_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: type_field_default_red_source)
-}
-
-test fn type_field_from_key_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: type_field_from_red_source)
 }
 
 // ROUTE, not only parse. A service now LOWERS at declaration grade (v2.compiler.body_lowering_fold
