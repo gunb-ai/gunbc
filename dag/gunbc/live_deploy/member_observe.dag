@@ -518,6 +518,7 @@ fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
       FabricStorageServeUnit => []
       FabricStorageServeMapping => []
       ApprovalBrokerFrontDoor => []
+      TailnetDoorServeUnit => []
     }
     Dependency { step: _ } => []
   }

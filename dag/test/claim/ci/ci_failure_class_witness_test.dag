@@ -5,6 +5,42 @@ import std.decl_ref { declaration_ref_eq, decl_ref }
 import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
   command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
 }
+import gunbc.ci_failure_class {
+  CommandNotFound,
+  FloorFailed,
+  FloorFailureClass,
+  FloorOutcome,
+  InfraSignature,
+  MemoryStallRefusedPageThrash,
+  NoFailure,
+  SccacheFatalError,
+  Structural,
+  build_retry_infra_signatures,
+  classify_failure_exit,
+  classify_failure_reason,
+  classify_floor_exit,
+  floor_attempt_receipt_body,
+  floor_attempt_receipt_class_may_replace,
+  floor_exit_blocks_merge,
+  floor_failure_blocks_merge,
+  floor_outcome_wire,
+  floor_outcome_wire_infra,
+  floor_outcome_wire_none,
+  floor_outcome_wire_structural,
+  gating_is_enforced,
+  infra_retry_grep_alternation,
+  infra_signature_match_substring,
+  infra_signature_origin,
+  merge_freshness_gating_status,
+  merge_freshness_verdict_is_consumed_to_block,
+  posix_exit_status_decimal,
+  verdict_infra_signatures,
+  wrap_command_is_renderable,
+  wrap_command_with_floor_attempt_receipt,
+}
+import gunbc.memory_stall_refusal { memory_stall_refusal_page_thrash_class_name }
+import std.process { ExitFailure, ProcessExit }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

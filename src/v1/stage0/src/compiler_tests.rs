@@ -4367,9 +4367,13 @@ mod compiler_tests {
         let no_fields = std::rc::Rc::new(im::Vector::new());
         let no_path = std::rc::Rc::new(im::Vector::new());
         let no_shared = std::rc::Rc::new(im::OrdSet::new());
+        let unread_parent = std::rc::Rc::new(
+            crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+        );
         let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Add".to_string(),
             None,
+            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             no_shared.clone(),
@@ -4385,6 +4389,7 @@ mod compiler_tests {
         let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
             "Add".to_string(),
             None,
+            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
@@ -4412,6 +4417,7 @@ mod compiler_tests {
         let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Add".to_string(),
             Some("BinOp".to_string()),
+            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             no_shared.clone(),
@@ -4423,6 +4429,7 @@ mod compiler_tests {
         let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Absent".to_string(),
             None,
+            unread_parent,
             no_fields,
             no_path,
             no_shared,
@@ -4792,14 +4799,12 @@ mod compiler_tests {
                 std::rc::Rc::new(HashMap::new()),
             )
         }
-        // PAIR 1 -- the structural roster (structural_declaration_modules_for). Its structural
-        // half is RETIRED as dissolution, not repaired: the Bool de-fork (gunbc#12583) deleted
-        // v2.std.logic's Bool, so the roster has no Bool row and no structural Bool exists to
-        // render. The .dag witness retired its matching row the same way
-        // (table_present_bool_refuses_under_structural_declaration_logic). No surviving row
-        // discriminates at this hop either: the Hash row is vacuous (v1.compiler.coercion
-        // records both arms answering Unrealized) and String renders identically on both arms
-        // (the MEASURED VACUITY row below). The prelude control stays.
+        // PAIR 1 -- the structural roster (structural_declaration_modules_for).
+        assert_eq!(
+            base("Bool", "src/v2/std/logic.dag"),
+            "Bool",
+            "a structurally-declared Bool must render its dag spelling through the renderer hop"
+        );
         assert_eq!(
             base("Bool", "dag/std/types.dag"),
             "bool",

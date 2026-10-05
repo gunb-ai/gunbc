@@ -2,6 +2,57 @@ module test.claim.fleet_intent_network
 
 import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.dhcp.v4 { Active }
+import extdeps.network.ipv4 { ipv4_address }
+import gunbc.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet_host_identity {
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv5,
+  operator_host_srv6,
+  operator_host_srv7,
+  operator_host_srv8,
+  operator_host_srv9,
+}
+import gunbc.fleet_intent_network {
+  fleet_intent_network,
+  operator_lan_gateway_endpoint,
+  printer_01_lan_endpoint,
+  printer_01_lan_reservation,
+  printer_02_lan_endpoint,
+  printer_02_lan_reservation,
+  srv10_host_lan_endpoint,
+  srv11_host_lan_endpoint,
+  srv12_host_lan_endpoint,
+  srv1_bmc_endpoint,
+  srv1_host_lan_endpoint,
+  srv1_tailscale_endpoint,
+  srv2_bmc_endpoint,
+  srv2_host_lan_endpoint,
+  srv2_tailscale_endpoint,
+  srv3_bmc_endpoint,
+  srv3_host_lan_endpoint,
+  srv4_bmc_endpoint,
+  srv4_host_lan_endpoint,
+  srv5_host_lan_endpoint,
+  srv6_host_lan_endpoint,
+  srv7_host_lan_endpoint,
+  srv8_host_lan_endpoint,
+  srv9_host_lan_endpoint,
+}
+import product.network_topology {
+  BmcManagement,
+  BmcOutOfBand,
+  ContainerRunner,
+  EndpointAsset,
+  EndpointHost,
+  EndpointSubjectUnregistered,
+  FabricationAppliance,
+  HostLan,
+  HostOperatingSystem,
+  NetworkEndpoint,
+  network_reachability,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -67,6 +118,7 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv9_host_lan_endpoint,
   srv10_host_lan_endpoint,
   srv11_host_lan_endpoint,
+  srv12_host_lan_endpoint,
   srv1_bmc_endpoint,
   srv2_bmc_endpoint,
   srv3_bmc_endpoint,

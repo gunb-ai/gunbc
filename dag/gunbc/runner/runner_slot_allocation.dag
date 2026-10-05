@@ -11,10 +11,10 @@ import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.session_reservation_policy { ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished, session_reservation_bytes }
-import gunbc.host_memory_observation { HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured, gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for, oomd_actuation_floor }
-import gunbc.fabric_control_plane_charge { ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
-import gunbc.live_deploy.served_slice_charge { ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured, host_served_deployment_claim }
+import gunbc.session_reservation_policy { SessionReservationBytesResolution, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished, session_reservation_bytes }
+import gunbc.host_memory_observation { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured, gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for, oomd_actuation_floor }
+import gunbc.fabric_control_plane_charge { HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
+import gunbc.live_deploy.served_slice_charge { HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured, host_served_deployment_claim }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
@@ -164,7 +164,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // Collapsing 'one constraint admits this width' into 'this host should run this width' is the same
 // conflation gunbc.ci_floor_measurement refuses for overhead: an axis nobody resolved is not an
 // axis that permits everything. Memory admission and disk admission remain separate answers at
-// allocation; gunbc_derived_runner_slots_per_host takes their minimum when disk admits a numeric cap,
+// allocation; derived_runner_slots_of takes their minimum when disk admits a numeric cap,
 // otherwise memory alone.
 //
 // srv4's historical five-slot disk row-pin is retired (operator 2026-08-06):
@@ -220,7 +220,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // derived_width_reproduces_every_authored_literal is the probe that caught it by recomputing the
 // derivation this literal claims to be.
 //
-// NO COMMITTED WIDTH MOVES. gunbc_derived_runner_slots_per_host takes the minimum over the memory, CPU and
+// NO COMMITTED WIDTH MOVES. derived_runner_slots_of takes the minimum over the memory, CPU and
 // disk axes, and srv1's CPU axis binds at 21; min(27,21) and min(25,21) are both 21. The correction
 // restores agreement between the literal and the arithmetic without changing what any host commits.
 // THE ENVELOPE IS THE INVARIANT; THE WIDTH IS THE QUOTIENT. This module used to author the
@@ -253,7 +253,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // of which import this one -- at which point the envelope is computed from them and this authored
 // row deletes rather than being kept beside a derivation of the same number.
 // THE ENVELOPE IS DERIVED FROM THE HOST, AND AN UNESTABLISHED INPUT REFUSES IN THE RESOLUTION
-// BELOW -- though host_runner_memory_envelope_bytes still flattens that refusal to zero for its
+// BELOW -- though runner_memory_envelope_bytes_of still flattens that refusal to zero for its
 // existing callers, which is stated exactly at that function and is NOT closed by this change
 // (operator direction 2026-09-18: "we can't assume a uniform fleet, i would just derive as
 // much as possible from the actual state of the machines here"). What stood here was one authored
@@ -277,59 +277,98 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // ByteSize cannot exist honestly because one arm has no bytes to return. So the derivation matches
 // each in turn and carries the refusing input's own cause outward; there is no spelling of "derive
 // the envelope" that skips a refusal, rather than one a reviewer has to notice.
+// EVERY PER-HOST FACT THE WIDTH CHAIN READS, GATHERED ONCE, SO THE CHAIN IS A FUNCTION OF VALUES.
+// The width derivation below used to look each input up by HostIdentity at the link that consumed
+// it -- usable RAM, fixed overhead, session reservation, control-plane and served claims, disk, the
+// shakedown slot, and the CPU axis -- so a claim about the derivation could reach it only through
+// whatever the keyed tables held, and a host without rows (mtcollins1 before its census receipt)
+// could not be asked about at all. host_width_facts is now the ONE producer of those inputs and
+// every *_of function consumes the record. The host-keyed functions remain as
+// f(host) = f_of(host_width_facts(host)), so no consumer changes and no width moves: the same
+// lookups, read once at one place instead of once per link.
+type HostWidthFacts {
+  host: HostIdentity
+  cpu: HostCpuWidthResolution
+  usable_ram: HostUsableRam
+  fixed_overhead: HostFixedOverhead
+  session: SessionReservationBytesResolution
+  control_plane: HostFabricControlPlaneClaim
+  served_deployment: HostServedDeploymentClaim
+  disk: HostDiskWidthConstraint
+  carries_shakedown_slot: Bool
+}
+
+fn host_width_facts(host: HostIdentity) -> HostWidthFacts {
+  HostWidthFacts {
+    host: host,
+    cpu: host_cpu_admitted_width(host: host),
+    usable_ram: gunbc_ci_host_usable_ram_for(host: host),
+    fixed_overhead: gunbc_ci_host_fixed_overhead_for(host: host),
+    session: session_reservation_bytes(host: host),
+    control_plane: host_fabric_control_plane_claim(host: host),
+    served_deployment: host_served_deployment_claim(host: host),
+    disk: host_disk_admitted_width(host: host),
+    carries_shakedown_slot: host_carries_microvm_shakedown_slot(host: host),
+  }
+}
+
 type RunnerMemoryEnvelope
   = RunnerMemoryEnvelopeDerived { bytes: ByteSize }
   | RunnerMemoryEnvelopeUnestablished { cause: String }
 
 fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
-  match gunbc_ci_host_fixed_overhead_for(host: host) {
+  runner_memory_envelope_of(f: host_width_facts(host: host))
+}
+
+fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
+  match f.fixed_overhead {
     HostFixedOverheadUnmeasured =>
       RunnerMemoryEnvelopeUnestablished {
         cause: "host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents"
       }
     HostFixedOverheadMeasured { bytes: overhead, provenance: _ } =>
-      envelope_after_overhead(host: host, overhead: overhead)
+      envelope_after_overhead(f: f, overhead: overhead)
     HostFixedOverheadAllowance { bytes: overhead, reason: _ } =>
-      envelope_after_overhead(host: host, overhead: overhead)
+      envelope_after_overhead(f: f, overhead: overhead)
   }
 }
 
-fn envelope_after_overhead(host: HostIdentity, overhead: ByteSize) -> RunnerMemoryEnvelope {
-  match gunbc_ci_host_usable_ram_for(host: host) {
+fn envelope_after_overhead(f: HostWidthFacts, overhead: ByteSize) -> RunnerMemoryEnvelope {
+  match f.usable_ram {
     HostUsableRamUnmeasured =>
       RunnerMemoryEnvelopeUnestablished {
         cause: "host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host"
       }
     HostUsableRamMeasured { bytes: usable, provenance: _ } =>
-      envelope_after_usable(host: host, usable: usable, overhead: overhead)
+      envelope_after_usable(f: f, usable: usable, overhead: overhead)
     HostUsableRamConservativeLowerBound { bytes: usable, basis: _ } =>
-      envelope_after_usable(host: host, usable: usable, overhead: overhead)
+      envelope_after_usable(f: f, usable: usable, overhead: overhead)
   }
 }
 
-fn envelope_after_usable(host: HostIdentity, usable: ByteSize, overhead: ByteSize) -> RunnerMemoryEnvelope {
-  match session_reservation_bytes(host: host) {
+fn envelope_after_usable(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize) -> RunnerMemoryEnvelope {
+  match f.session {
     ReservationBytesUnestablished { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("host session reservation is unestablished, so the subtraction cannot be performed: ", why)
       }
     ReservationBytesNotApplicable =>
-      envelope_after_session(host: host, usable: usable, overhead: overhead, session: byte_size(0))
+      envelope_after_session(f: f, usable: usable, overhead: overhead, session: byte_size(0))
     ReservationBytes { bytes: session } =>
-      envelope_after_session(host: host, usable: usable, overhead: overhead, session: session)
+      envelope_after_session(f: f, usable: usable, overhead: overhead, session: session)
   }
 }
 
-fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize) -> RunnerMemoryEnvelope {
-  match host_fabric_control_plane_claim(host: host) {
+fn envelope_after_session(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize) -> RunnerMemoryEnvelope {
+  match f.control_plane {
     ControlPlaneClaimUnmeasured { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
       }
     ControlPlaneNotPlaced =>
-      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
     ControlPlaneClaimResolved { memory: m } =>
-      envelope_after_control_plane(host: host, usable: usable, overhead: overhead, session: session, control_plane: m)
+      envelope_after_control_plane(f: f, usable: usable, overhead: overhead, session: session, control_plane: m)
   }
 }
 
@@ -341,8 +380,8 @@ fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSi
 // slices grew to 40 + 10 GiB (#12015) srv1's derived width no longer conserved and
 // gunbc.ci_runner_placement refused it as over-committed. Width and verdict now subtract one set of
 // residents, so a width this module derives is one the verdict can admit.
-fn envelope_after_control_plane(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
-  match host_served_deployment_claim(host: host) {
+fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+  match f.served_deployment {
     ServedDeploymentClaimUnmeasured { cause: why } =>
       RunnerMemoryEnvelopeUnestablished {
         cause: concat("served deployment is placed on this host with an unmeasured allowance: ", why)
@@ -392,15 +431,11 @@ fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, contr
 // host whose envelope was never established. Until then the zero is bounded by the deploy-seam
 // admission and by nothing else, and that is the honest rung -- mechanically preventable at the
 // boundary, not structurally impossible at the type.
-fn host_runner_memory_envelope_bytes(host: HostIdentity) -> Int {
-  match host_runner_memory_envelope_resolution(host: host) {
+fn runner_memory_envelope_bytes_of(f: HostWidthFacts) -> Int {
+  match runner_memory_envelope_of(f: f) {
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
     RunnerMemoryEnvelopeUnestablished { cause: _ } => 0
   }
-}
-
-fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
-  byte_size(host_runner_memory_envelope_bytes(host: host))
 }
 
 // EVERY HOST DIVIDES, INCLUDING THE ONE THAT CANNOT. srv2 carried a second special arm here --
@@ -416,9 +451,13 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 // zero propagates as a stop rather than as an instruction. Keeping a held number here to avoid that
 // was protecting the reader from a word while leaving the walls unable to see the host at all.
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
+  memory_admitted_width_of(f: host_width_facts(host: host))
+}
+
+fn memory_admitted_width_of(f: HostWidthFacts) -> Int {
   memory_admitted_width_of_envelope(
-    envelope: host_runner_memory_envelope(host: host),
-    carries_shakedown_slot: host_carries_microvm_shakedown_slot(host: host),
+    envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
+    carries_shakedown_slot: f.carries_shakedown_slot,
   )
 }
 
@@ -545,7 +584,7 @@ data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THRE
 
 // WHICH AXIS ACTUALLY BOUND THE WIDTH, WHICH THE MINIMUM DISCARDS.
 //
-// gunbc_derived_runner_slots_per_host takes a minimum over three axes and returns a number. That number
+// derived_runner_slots_of takes a minimum over three axes and returns a number. That number
 // cannot say what would unblock more capacity, and the answer differs per host: where memory binds
 // the remedy is DIMMs, where cores bind it is a different machine, and the two are unrelated
 // purchases. A reader given only the total assumes one binding axis across the fleet and plans
@@ -595,7 +634,11 @@ type MemoryDenominatorStanding
   | MemoryDenominatorUnestablished { cause: NonEmptyStr }
 
 fn host_memory_denominator(host: HostIdentity) -> MemoryDenominatorStanding {
-  match session_reservation_bytes(host: host) {
+  memory_denominator_of(f: host_width_facts(host: host))
+}
+
+fn memory_denominator_of(f: HostWidthFacts) -> MemoryDenominatorStanding {
+  match f.session {
     ReservationBytes { bytes: _ } => MemoryDenominatorEstablished
     ReservationBytesNotApplicable => MemoryDenominatorEstablished
     ReservationBytesUnestablished { cause: c } =>
@@ -604,11 +647,15 @@ fn host_memory_denominator(host: HostIdentity) -> MemoryDenominatorStanding {
 }
 
 fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
-  let memory = match host_memory_denominator(host: host) {
+  width_axes_of(f: host_width_facts(host: host))
+}
+
+fn width_axes_of(f: HostWidthFacts) -> List<WidthAxisStanding> {
+  let memory = match memory_denominator_of(f: f) {
     MemoryDenominatorEstablished =>
       AxisAdmits {
         axis: "memory" as NonEmptyStr,
-        slots: host_memory_admitted_width(host: host),
+        slots: memory_admitted_width_of(f: f),
       }
     MemoryDenominatorUnestablished { cause: c } =>
       AxisUnmeasured {
@@ -616,12 +663,12 @@ fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
         reason: join(["session reservation unestablished on this host, so the memory subtraction has no denominator and states no width: ", c as String], "") as NonEmptyStr,
       }
   }
-  let cpu = match host_cpu_admitted_width(host: host) {
+  let cpu = match f.cpu {
     CpuWidthDerived { slots: n } => AxisAdmits { axis: "cores" as NonEmptyStr, slots: n }
     CpuWidthOfferAbsent { host: _ } =>
       AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: "the host has no gunbc.ci_fleet compute offer, so its processors are unknown and the cores axis states no width" as NonEmptyStr }
   }
-  let disk = match host_disk_admitted_width(host: host) {
+  let disk = match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } =>
       AxisAdmits { axis: "disk" as NonEmptyStr, slots: d }
     DiskWidthUnconstrained { reason: r } =>
@@ -794,6 +841,10 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
 }
 
 fn gunbc_runner_committed_width(host: HostIdentity) -> RunnerWidthResolution {
+  committed_width_of(f: host_width_facts(host: host))
+}
+
+fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeRefusedZeroMemoryMax =>
       RunnerWidthUnresolved {
@@ -802,26 +853,26 @@ fn gunbc_runner_committed_width(host: HostIdentity) -> RunnerWidthResolution {
         },
       }
     RunnerSlotShapeAdmitted =>
-      match host_memory_denominator(host: host) {
+      match memory_denominator_of(f: f) {
         MemoryDenominatorUnestablished { cause: c } =>
           RunnerWidthUnresolved {
-            cause: WidthMemoryDenominatorUnestablished { host: host, cause: c },
+            cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
           }
         MemoryDenominatorEstablished =>
-          match host_cpu_admitted_width(host: host) {
+          match f.cpu {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
             CpuWidthDerived { slots: by_cpu } =>
-              RunnerWidthDerived { slots: gunbc_derived_runner_slots_per_host(host: host, by_cpu: by_cpu) }
+              RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
           }
       }
   }
 }
 
-fn gunbc_derived_runner_slots_per_host(host: HostIdentity, by_cpu: Int) -> Int {
-  let by_memory = host_memory_admitted_width(host: host)
+fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
+  let by_memory = memory_admitted_width_of(f: f)
   let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
-  match host_disk_admitted_width(host: host) {
+  match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
     DiskWidthUnconstrained { reason: _ } => by_mem_cpu
   }
@@ -1570,7 +1621,7 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 //
 // AN EARLIER REVISION OF THIS NOTE DESCRIBED A MECHANISM THIS SAME CHANGE DELETED, which is worth
 // recording rather than silently rewriting. It said the width was zero because
-// host_runner_memory_envelope_bytes "has no arm for it" and warned against "restoring a special-case
+// host_runner_memory_envelope_bytes (since replaced by runner_memory_envelope_bytes_of) "has no arm for it" and warned against "restoring a special-case
 // arm". That was true while the envelope was one authored literal per host with an else arm of zero.
 // This change replaced those literals with a derivation over five authorities, so there are no arms
 // to restore or bypass; the refusal now comes from an input that cannot answer rather than from a
@@ -1745,7 +1796,7 @@ fn host_github_slot_count(host: HostIdentity) -> RunnerWidthResolution {
 // Operator-authorized desired transfer of one existing budgeted cell to workspace use.
 // This withdraws new CI work through the shared purpose sanction; it is not a commissioning
 // receipt. Current history, sanitation, host budget, image and access must still be observed
-// before workspace_offer_from_observations can offer the cell. Requests remain host-agnostic.
+// before workspace_host_offer_admit can admit an offer for the cell. Requests remain host-agnostic.
 data workspace_dedicated_slot_designations: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot()]
 
 fn identity_is_workspace_execution_member(identity: RunnerSlotIdentity) -> Bool {

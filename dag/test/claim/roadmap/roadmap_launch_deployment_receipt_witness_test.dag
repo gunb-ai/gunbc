@@ -2,6 +2,13 @@ module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 
 import gunbc.roadmap_launch_deployment_cli { rlm1_merge_commit }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.actions_run_binding { json_required_string_member }
+import gunbc.fleet_converge_plan { fleet_converge_scope_wire }
+import gunbc.fleet_converge_receipt { fleet_converge_apply_receipt_identity_hex, fleet_converge_plan_receipt_identity_hex }
+import gunbc.roadmap_belt_actuate { belt_tick_receipt_decode }
+import gunbc.roadmap_launch_deployment_cli { rlm1_contract_digest_frozen, rlm1_merge_commit, rlm_workflow_file_path }
+import gunbc.roadmap_launch_deployment_observe { belt_tick_freshness }
+import gunbc.roadmap_launch_deployment_receipt { observation_window_fact, roadmap_launch_deployment_receipt_document, roadmap_launch_deployment_receipt_identity_hex, roadmap_launch_deployment_verdict, verdict_receipt_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -138,6 +145,7 @@ fn rlm_tick(instance_id: String, revision: String, mode: SpawnMode, observed_at:
     commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRecorded,
     publish_pass: BeltPassRecorded,
+    metering_pass: BeltPassRecorded,
   }
 }
 
