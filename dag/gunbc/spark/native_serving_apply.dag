@@ -1443,7 +1443,7 @@ fn spark_native_verify(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, adm
       let wait_refusals = flat_map(verdicts, v => match v {
         AwaitedObserved { awaited: _ } => [] as List<ArmRankReadbackRefusal>
         AwaitedRefused { host: h, cause: c } => [ArmRankReadbackRefusal { host: h, cause: c }]
-        AwaitedLegOutlivedBound { host: h, bound_seconds: b } => [ArmRankReadbackRefusal { host: h, cause: join(["the transport wait leg outlived its bound of ", to_string(b), "s and was killed"], "") }]
+        AwaitedLegOutlivedBound { host: h, bound: b } => [ArmRankReadbackRefusal { host: h, cause: join(["the transport wait leg outlived its bound of ", to_string(second_count(s: b)), "s and was killed"], "") }]
       })
       if count(wait_refusals) > 0 {
         NativeNotVerified { receipt: after_wait, refusals: wait_refusals }
