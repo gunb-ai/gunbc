@@ -495,7 +495,7 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
         if: "!cancelled()"
-      - name: "Stage0 mirrors match what this seed emits, both generations: required CI build lane"
+      - name: "Stage0 mirrors match one emission by this seed: required CI build lane"
         id: stage0_regen
         run: |+
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'

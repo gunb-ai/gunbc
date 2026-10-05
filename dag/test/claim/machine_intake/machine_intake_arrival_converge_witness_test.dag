@@ -11,10 +11,13 @@ import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, IntakePhase }
 import gunbc.machine_intake_subject {
-  AssemblyManifest, BoardSerialObservation, BmcFru, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
+  AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
+  FirmwareEntry, FirmwareManifest, UnitKey,
+  qualification_subject_of,
 }
 import gunbc.machine_intake_mtjade1_access_observation {
-  CurrentManagerRead, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
+  CurrentManagerRead, read_mtjade1_fru, read_mtjade1_smbios_type2, FruObserved, FruReadRefused, SmbiosObserved, SmbiosReadRefused,
+  SmbiosBaseBoardDecode, SmbiosBaseBoardSerial, SmbiosBaseBoardRefused, SmbiosSerialLineCount, decode_smbios_type2_capture, sol_session_controller, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
 }
 import gunbc.machine_intake_bmc_rotation_route {
   BmcRotationRouteStanding, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
@@ -41,8 +44,8 @@ import gunbc.fleet.convergence_fold {
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, ArrivalStepRefusal,
-  IdentityBindObserveRefused, IdentityBindAccessForAnotherInstance, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
-  IdentityBindInputs, AccessDiscoverEstablished,
+  IdentityBindObserveRefused, IdentityObserveRefusal, IdentityBindAccessForAnotherInstance, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
+  IdentityBindInputs, AccessDiscoverEstablished, BoardSerialAgreementRefusal, BoardSerialsDisagree, SmbiosSessionForAnotherController, classify_board_serial_agreement,
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
@@ -51,11 +54,11 @@ import gunbc.machine_intake_arrival_converge {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// CUT O1c-1, THE ARRIVAL PREFIX OVER THE CONVERGENCE FOLD. The first claim is the ONE execution of
-// the real path (DESIGN §3 pairing obligation): mtjade1's committed current read goes through both
-// protocol steps, the census-joined and rank-checked plan, and the fold, and the claim asserts the
-// ROUTE -- which instance converged with which receipt fields, and the typed refusal the line stopped
-// on -- not only the verdict. The controls after it reuse that real read; where one supplies a value
+// CUT O1c-1, THE ARRIVAL PREFIX OVER THE CONVERGENCE FOLD. The real-path claim is the ONE execution of
+// the real path (DESIGN §3 pairing obligation): mtjade1's committed Manager, FRU and SMBIOS captures go
+// through both protocol steps, the census-joined and rank-checked plan, and the fold, and the claim
+// asserts the ROUTE -- which instance converged with which receipt fields -- not only the verdict.
+// The controls after it reuse the real Manager read; where one supplies a value
 // (a board serial, an approval, a census with a doubled row) the comment beside it says which.
 
 data run_a: ConvergenceRunId = "o1c1-witness-run-a" as ConvergenceRunId
@@ -102,42 +105,139 @@ fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, Arriva
   }
 }
 
-fn identity_refused_board_serial_absent(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal>) -> Bool {
+fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal>) -> Bool {
   match s {
-    InstanceRefused { key: k, cause: c } =>
+    InstanceConverged { key: k, receipt: r } =>
       declaration_ref_eq(a: k.step_identity, b: identity_bind_provisional_step_ref)
-        && match c {
-          DomainRefused { cause: d } =>
-            match d {
-              IdentityBindObserveRefused { cause: i } => match i { UnitKeyNotBound { cause: u } => match u { BoardSerialAbsent => true  _ => false }  _ => false }
-              _ => false
-            }
-          _ => false
+        && match r {
+          IdentityBindReceipt { receipt: i } =>
+            ((i.subject.subject.unit_key as NonEmptyStr) as String) == "B810301000412080005AJ0C1"
+              && ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
+              && declaration_ref_eq(a: i.consumed_access.step_identity, b: access_discover_step_ref)
+              && (i.agreement.serial as String) == "B810301000412080005AJ0C1"
+              && (i.agreement.fru.capture_sha256 as String) == "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
+              && (i.agreement.smbios.capture_sha256 as String) == "b40dde96a64c4d04c5440235a05a9571467472ba0b1ed0f35c907f675e817442"
+              && (sol_session_controller(a: i.agreement.smbios.sol_session).host as String) == "192.168.1.246"
+              && i.subject.subject == qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
+          AccessDiscoverReceipt { receipt: _ } => false
         }
-    InstanceConverged { key: _, receipt: _ } => false
+    InstanceRefused { key: _, cause: _ } => false
     InstanceNotReached { key: _, blocked_by: _ } => false
   }
 }
 
-// THE REAL PATH. mtjade1 establishes AccessDiscover from its committed 2026-10-04 read at
-// 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock kept as a reading, and a
-// CANDIDATE Redfish account-write route on that read), and the line stops at IdentityBindProvisional
-// with the typed missing observation: no committed board serial, so no unit key.
-test fn w_mtjade1_establishes_access_and_stops_at_identity_bind_board_serial_absent() -> Bool {
+// What the provisional manifests must contain, from which capture: the assembly from the FRU capture
+// (chassis part number, chassis serial), the firmware manifest from the Manager read (bmc build only).
+data expected_mtjade1_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "B60.0300E.0001",
+  components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: "21000012N0A1" }],
+}
+
+data expected_mtjade1_firmware: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "2.11.104000" }],
+  configuration_digests: [],
+}
+
+// THE REAL PATH. mtjade1 passes both read-only phases from its committed captures: AccessDiscover from
+// the 2026-10-04 Manager read at 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock
+// kept as a reading, a CANDIDATE Redfish account-write route), and IdentityBindProvisional binding the
+// unit key from the FRU and SMBIOS board serials, which agree, and minting the MachineIntakeSubject
+// over the FRU's provisional assembly and the read's live firmware manifest, with this run as its one
+// intake attempt.
+test fn w_mtjade1_converges_both_read_only_phases_from_its_committed_captures() -> Bool {
   match converge_mtjade1_arrival_prefix(run: run_a) {
     ArrivalRunFolded { verdict: v } =>
       match v {
-        RunStopped { ledger: l, at: at } =>
-          declaration_ref_eq(a: at.step_identity, b: identity_bind_provisional_step_ref)
-            && length(xs: l.instances) == 2
-            && match l.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
-            && match l.instances.last() { Present { value: s } => identity_refused_board_serial_absent(s: s)  Absent => false }
-        RunConverged { run: _ } => false
+        RunConverged { run: r } =>
+          length(xs: r.ledger.instances) == 2
+            && match r.ledger.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
+            && match r.ledger.instances.last() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+        RunStopped { ledger: _, at: _ } => false
         RunOutcomesRefused { cause: _ } => false
       }
     ArrivalPlanRefused { cause: _ } => false
     ArrivalPrefixUnstepped { phase: _ } => false
   }
+}
+
+// BOTH SOURCES ARE READ, each sealed by its own fail-closed file read: the FRU observation with the
+// fields the capture carries, and the SMBIOS observation with its serial read inside the Base Board
+// structure and its SOL session attested to the controller at 192.168.1.246.
+test fn w_mtjade1_fru_and_smbios_reads_are_sealed_observations_of_the_unit() -> Bool {
+  (match read_mtjade1_fru() {
+    FruObserved { observation: o } =>
+      (o.subject as String) == "mtjade1"
+        && (o.fields.board_serial as String) == "B810301000412080005AJ0C1"
+        && (o.fields.chassis_part_number as String) == "B60.0300E.0001"
+        && (o.fields.chassis_serial as String) == "21000012N0A1"
+    FruReadRefused { gap: _ } => false
+  })
+    && match read_mtjade1_smbios_type2() {
+      SmbiosObserved { observation: o } =>
+        (o.subject as String) == "mtjade1"
+          && (o.serial as String) == "B810301000412080005AJ0C1"
+          && (sol_session_controller(a: o.sol_session).host as String) == "192.168.1.246"
+      SmbiosReadRefused { gap: _ } => false
+    }
+}
+
+// SUPPLIED VALUES, at the pure agreement classifier (it returns no carrier). Equal serials agree; a
+// disagreeing pair refuses as BoardSerialsDisagree; a transcript whose SOL session is attested to
+// another controller refuses even with mtjade1's own serial, so it yields no HostSmbios observation
+// for this unit.
+fn agreement_of(smbios_controller: NonEmptyStr, smbios_serial: NonEmptyStr) -> BoardSerialAgreementRefusal? {
+  classify_board_serial_agreement(
+    unit: mtjade1_key,
+    accessed: BmcControllerEndpoint { host: "192.168.1.246" },
+    fru_subject: "mtjade1",
+    fru_serial: "B810301000412080005AJ0C1",
+    smbios_subject: "mtjade1",
+    smbios_controller: BmcControllerEndpoint { host: smbios_controller },
+    smbios_serial: smbios_serial,
+  )
+}
+
+test fn w_equal_serials_on_the_accessed_controller_agree() -> Bool {
+  match agreement_of(smbios_controller: "192.168.1.246", smbios_serial: "B810301000412080005AJ0C1") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_disagreeing_board_serials_refuse() -> Bool {
+  match agreement_of(smbios_controller: "192.168.1.246", smbios_serial: "SUPPLIED-OTHER-BOARD") {
+    Present { value: r } => match r { BoardSerialsDisagree { fru: _, smbios: sm } => (sm as String) == "SUPPLIED-OTHER-BOARD"  _ => false }
+    Absent => false
+  }
+}
+
+test fn w_an_smbios_session_attested_to_another_controller_refuses_with_an_equal_serial() -> Bool {
+  match agreement_of(smbios_controller: "192.168.1.99", smbios_serial: "B810301000412080005AJ0C1") {
+    Present { value: r } => match r { SmbiosSessionForAnotherController { attested: a, accessed: _ } => (a.host as String) == "192.168.1.99"  _ => false }
+    Absent => false
+  }
+}
+
+// THE SMBIOS PARSER IS SCOPED TO THE BASE BOARD STRUCTURE (supplied bytes, self-digested): a Base
+// Board structure with no SerialNumber and a SerialNumber in another structure refuses; the same
+// serial inside the structure is read.
+data sep: String = "========================================================="
+
+fn decode_self_digested_smbios(text: String) -> SmbiosBaseBoardDecode {
+  decode_smbios_type2_capture(content: text, expected_sha256: sha256_hex_of_text(text: text) as NonEmptyStr)
+}
+
+test fn w_a_serial_outside_the_base_board_structure_is_not_read() -> Bool {
+  let outside = join([sep, "Structure Type: Base Board Information", "Manufacturer: WIWYNN", sep, "Structure Type: Chassis Information", "SerialNumber: B810301000412080005AJ0C1", sep], "\n")
+  let inside = join([sep, "Structure Type: Base Board Information", "SerialNumber: B810301000412080005AJ0C1", sep], "\n")
+  (match decode_self_digested_smbios(text: outside) {
+    SmbiosBaseBoardRefused { gap: g } => match g { SmbiosSerialLineCount { count: n } => n == 0  _ => false }
+    SmbiosBaseBoardSerial { serial: _ } => false
+  })
+    && match decode_self_digested_smbios(text: inside) {
+      SmbiosBaseBoardSerial { serial: sn } => (sn as String) == "B810301000412080005AJ0C1"
+      SmbiosBaseBoardRefused { gap: _ } => false
+    }
 }
 
 // The roster is the authority's own prefix through IdentityBindProvisional: exactly two phases, in
