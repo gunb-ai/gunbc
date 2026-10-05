@@ -23,7 +23,7 @@ import gunbc.spark.native_serving_apply {
   spark_native_stage_has_mutated_the_serving_arm, spark_native_stage_created_removable_artifacts,
   spark_native_readback_disagreements, spark_native_image_readback_gap, spark_native_unplanned_assignments, ImageFactsRead, ImageFactsUnread,
 }
-import product.host_identity { host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.pair_serving_apply { SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
@@ -36,6 +36,7 @@ import extdeps.docker.container_inspect {
   ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
   container_inspect_from_stdout,
 }
+import gunbc.spark.awaited_incarnation { AwaitedIncarnation }
 import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
 import std.measure { second, second_count }
 import gunbc.spark.serving_relaunch_transaction { RelaunchDelta, relaunch_delta, delta_comparisons, delta_unclaimed_env }
@@ -51,6 +52,9 @@ import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, g
 
 
 // The rollback's script text: its prepare and finish legs, around the typed deliberate start.
+
+data w_awaited_fixture: AwaitedIncarnation = AwaitedIncarnation { host: "srv6" as HostIdentity, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+
 fn w_rollback_text(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
   join([spark_native_rollback_prepare_script(unit_name: unit_name, transaction_id: transaction_id, container_name: container_name),
         spark_native_rollback_finish_script(unit_name: unit_name, transaction_id: transaction_id)], "\n")
@@ -161,7 +165,7 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
             spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
             w_rollback_text(unit_name: st.unit_name, transaction_id: "t", container_name: st.launch.container.name),
             spark_native_metadata_cleanup_script(unit_name: st.unit_name, transaction_id: "t"),
-            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within: second(count: 3600), container: "c" as NonEmptyStr),
+            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr),
           ], "\n")
           !string_contains(s: scripts, pattern: "Using network")
             && !string_contains(s: scripts, pattern: "NET/IB")
@@ -481,18 +485,21 @@ test fn w_the_readback_refuses_a_changed_shm_size() -> Bool {
 test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation() -> Bool {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
-    NativeArmSteps { steps: steps, master_endpoint: _ } => {
-      let plans = spark_native_front_door_plans(steps: steps)
-      let timeouts = flat_map(steps, st => match engine_ready_timeout_for(env: st.launch.container.env) {
-        EngineReadyTimeoutResolved { timeout: t } => [to_string(second_count(s: t))]
-        EngineReadyTimeoutUnreadable { cause: _ } => [] as List<String>
-      })
-      length(plans) == 1
-        && length(timeouts) == length(steps)
-        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( started + ", t, " ))"], "")))
-             && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-front-door")
-             && string_contains(s: p.script, pattern: "if curl -fsS"))
-    }
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: head } => {
+          let handed = AwaitedIncarnation { host: head.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+          let plans = spark_native_front_door_plans(steps: steps, awaited: [handed])
+          let none_handed = spark_native_front_door_plans(steps: steps, awaited: [] as List<AwaitedIncarnation>)
+          length(plans) == 1
+            && all(plans, p => string_contains(s: p.script, pattern: "deadline=7654321")
+                 && string_contains(s: p.script, pattern: "incarnation='0f3a9c1d2e4b'")
+                 && !string_contains(s: p.script, pattern: "StartedAt")
+                 && string_contains(s: p.script, pattern: "if curl -fsS"))
+            && all(none_handed, p => string_contains(s: p.script, pattern: "FRONT-DOOR-REFUSED-no-awaited-incarnation"))
+        }
+      }
   }
 }
 
@@ -512,7 +519,7 @@ test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_time
       length(plans) == length(steps)
         && length(timeouts) == length(steps)
         && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( started + ", t, " ))"], "")))
-             && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-nccl-transport-announcement")
+             && string_contains(s: p.script, pattern: "echo \"awaited|$incarnation|$deadline\"")
              && string_contains(s: p.script, pattern: "'Using network '"))
     }
   }
@@ -526,8 +533,8 @@ test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
         Absent => false
         Present { value: st } =>
           length(steps) == 4
-            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within: second(count: 3600), container: "c" as NonEmptyStr), pattern: "ss ")
-            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, ready_within: second(count: 3600), container: "c" as NonEmptyStr), pattern: "/v1/models")
+            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "ss ")
+            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr), pattern: "/v1/models")
             && count(st.launch.container.devices) > 0
             && count(st.launch.container.cap_add) > 0
             && st.launch.container.memlock_unlimited
