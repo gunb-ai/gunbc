@@ -13,7 +13,7 @@ import gunbc.spark.native_serving_realization {
   glm_native_launch_lines, glm_native_unit_exec_words,
 }
 import gunbc.spark.native_serving_apply {
-  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps, spark_native_front_door_plans, spark_native_transport_announcement_plans, spark_native_wait_leg_grace, spark_native_preflight_plans, spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_remove_retired_script,
+  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps, SparkNativeHostStep, spark_native_front_door_plans, spark_native_transport_announcement_plans, spark_native_wait_leg_grace, spark_native_preflight_plans, spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_remove_retired_script,
   spark_native_preflight_script, spark_native_front_door_script, spark_native_stop_script, spark_native_commit_record_script,
   spark_native_readback_disagreements, spark_native_image_readback_gap, spark_native_unplanned_assignments, ImageFactsRead, ImageFactsUnread,
 }
@@ -623,14 +623,28 @@ fn w_echo_step(st: WEchoScan, c: Int, next: Int) -> WEchoScan {
 // One echo command's arguments: glued shell syntax, or a `;` followed by a word that is not a keyword or
 // a command this corpus follows an echo with.
 fn w_echo_args_are_inert(args: String) -> Bool {
+  let head = match split(s: args, delimiter: ";").get(0) { Present { value: h } => h  Absent => args }
+  if !any(w_echo_syntax_chars, m => string_contains(s: head, pattern: m)) {
+    if length(head) == length(args) { true } else { w_echo_follows_inertly(rest: substring(s: args, start: length(head) + 1, end: length(args))) }
+  } else { w_echo_args_scanned(args: args) }
+}
+
+// THE CHEAP PATH IS EXACT, NOT A SAMPLE: arguments up to the first `;` that carry no quote, substitution,
+// escape, pipe, redirect, background or subshell close are plain words, so only the `;` needs judging;
+// anything else takes the full scan.
+data w_echo_syntax_chars: List<String> = ["'", "\"", "$", "\\", "|", "&", ">", "<", ")", "("]
+
+fn w_echo_follows_inertly(rest: String) -> Bool {
+  let r = trim(s: rest)
+  r == "" || any(w_echo_follow_words, w => r == w || starts_with(s: r, prefix: join([w, " "], "")) || starts_with(s: r, prefix: join([w, ";"], "")))
+}
+
+fn w_echo_args_scanned(args: String) -> Bool {
   let cs = chars(s: args)
   let st = fold(enumerate(cs), init: WEchoScan { sq: false, dq: false, esc: false, depth: 0, prev: 32, done: false, bad: false, stop: 0, at: 0 },
     f: fn(acc, p) { w_echo_step(st: acc, c: p.second, next: match cs.get(p.first + 1) { Present { value: v } => v  Absent => 0 }) })
   if st.bad { false }
-  else if st.stop > 0 {
-    let rest = trim(s: substring(s: args, start: st.stop, end: length(args)))
-    rest == "" || any(w_echo_follow_words, w => rest == w || starts_with(s: rest, prefix: join([w, " "], "")) || starts_with(s: rest, prefix: join([w, ";"], "")))
-  }
+  else if st.stop > 0 { w_echo_follows_inertly(rest: substring(s: args, start: st.stop, end: length(args))) }
   else { true }
 }
 
@@ -649,29 +663,43 @@ test fn w_the_echo_scan_finds_a_glued_separator() -> Bool {
     && w_script_echoes_are_inert(script: "if a; then echo ok; else echo no; fi\n")
 }
 
-test fn w_no_rendered_stage_script_echoes_shell_syntax() -> Bool {
+fn w_sweep_over(pick: fn(List<SparkNativeHostStep>, SparkNativeHostStep) -> List<String>, at_least: Int) -> Bool {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } =>
       match first(steps) {
         Absent => false
         Present { value: st } => {
-          let u = st.unit_name
-          let c = st.launch.container.name
-          let scripts = concat(concat(concat(
-            map(spark_native_preflight_plans(steps: steps), p => p.script),
-            map(spark_native_transport_announcement_plans(steps: steps), bp => bp.plan.script)),
-            map(spark_native_front_door_plans(steps: steps, awaited: [AwaitedIncarnation { host: st.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }], now: Present { value: 7654000 }), bp => bp.plan.script)),
-            [
-              spark_native_host_apply_prepare_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: st.unit_text, container_name: c),
-              spark_native_host_apply_wait_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
-              spark_native_stop_script(unit_name: u, container_name: c),
-              spark_native_remove_retired_script(unit_name: u),
-              spark_native_commit_record_script(unit_name: u, label: "t" as NonEmptyStr),
-              arm_rank_observe_script(unit_name: u, container_name: c, planned_unit_text: st.unit_text),
-            ])
-          count(scripts) >= 14 && all(scripts, s => w_script_echoes_are_inert(script: s))
+          let scripts = pick(steps, st)
+          count(scripts) >= at_least && all(scripts, s => w_script_echoes_are_inert(script: s))
         }
       }
   }
+}
+
+// THE SWEEP, cut by stage so each claim is one bounded subject: the arm's waits and preflight (every rank),
+// and the apply, stop, retired-file, commit-record and rank-observe scripts. Together they are every stage
+// script the arm renders.
+test fn w_no_wait_or_preflight_script_echoes_shell_syntax() -> Bool {
+  w_sweep_over(pick: fn(steps, st) {
+    concat(concat(
+      map(spark_native_preflight_plans(steps: steps), p => p.script),
+      map(spark_native_transport_announcement_plans(steps: steps), bp => bp.plan.script)),
+      map(spark_native_front_door_plans(steps: steps, awaited: [AwaitedIncarnation { host: st.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }], now: Present { value: 7654000 }), bp => bp.plan.script))
+  }, at_least: 9)
+}
+
+test fn w_no_apply_or_convergence_script_echoes_shell_syntax() -> Bool {
+  w_sweep_over(pick: fn(steps, st) {
+    let u = st.unit_name
+    let c = st.launch.container.name
+    [
+      spark_native_host_apply_prepare_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: st.unit_text, container_name: c),
+      spark_native_host_apply_wait_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
+      spark_native_stop_script(unit_name: u, container_name: c),
+      spark_native_remove_retired_script(unit_name: u),
+      spark_native_commit_record_script(unit_name: u, label: "t" as NonEmptyStr),
+      arm_rank_observe_script(unit_name: u, container_name: c, planned_unit_text: st.unit_text),
+    ]
+  }, at_least: 6)
 }
