@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Success, Failure, Neutral, Cancelled, Skipped,
-  TimedOut, ActionRequired, StartupFailure, Completed,
+  TimedOut, ActionRequired, StartupFailure, Completed, Queued, InProgress, Waiting, Requested, Pending,
 }
 import extdeps.github.actions { github_event_name_merge_group }
 import extdeps.github.push_event { PushRefUpdate }
@@ -439,8 +439,10 @@ fn run_is_merge_group(run: WorkflowRun) -> Bool {
 // A run carries a verdict when GitHub states a terminal outcome for it: Success, Failure,
 // TimedOut, ActionRequired and StartupFailure say what happened. Neutral, Cancelled and Skipped
 // report that no verdict was rendered -- the run did not judge the revision -- so they are not
-// verdicts, and an unconcluded floor refuses as RequiredCiMergeGroupRunUnconcluded. Every
-// conclusion is named so a conclusion added later cannot inherit verdict-carrying.
+// verdicts, and an unconcluded floor refuses as RequiredCiMergeGroupRunUnconcluded. A run that
+// has not completed (Queued, InProgress, Waiting, Requested, Pending) has rendered nothing yet.
+// Every status and every conclusion is named so an addition to either cannot inherit
+// verdict-carrying without an arm.
 fn merge_group_run_carries_verdict(run: WorkflowRun) -> Bool {
   match run.status {
     Completed =>
@@ -458,7 +460,11 @@ fn merge_group_run_carries_verdict(run: WorkflowRun) -> Bool {
           }
         none => false
       }
-    _ => false
+    Queued => false
+    InProgress => false
+    Waiting => false
+    Requested => false
+    Pending => false
   }
 }
 
