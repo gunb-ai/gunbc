@@ -384,6 +384,7 @@ type CompilerDiagnostic
   | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
   | ReceiverTypeUnestablished { method: String, span: SourceSpan }
   | TextRepresentationUnidentifiedAtBoundary { position: String, span: SourceSpan }
+  | TextCrossingHasNoImplicitRoute { expected: String, got: String, route: String, span: SourceSpan }
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
@@ -405,6 +406,7 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | KernelMintShapeMismatch { declaration_name: String, cause: String, span: SourceSpan }
   | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
   | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
   | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
@@ -613,6 +615,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
     ReceiverTypeUnestablished { method: _, span: s } => s
     TextRepresentationUnidentifiedAtBoundary { position: _, span: s } => s
+    TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: s } => s
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     TestCodeReferenced { referrer: _, target: _, span: s } => s
@@ -634,6 +637,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    KernelMintShapeMismatch { declaration_name: _, cause: _, span: s } => s
     OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
@@ -695,6 +699,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
     MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
     AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, span: _ } => concat("algebra receiver application evidence unavailable for '", t, "' at argument ", to_string(value: i), ": structural members are not type arguments")
+    TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, span: _ } => concat(concat(concat(concat(concat(concat("text crossing with no implicit route: expected ", e), ", got "), g), " -- host text and a code-point sequence meet only through a declared conversion plan; call "), r), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)")
     TextRepresentationUnidentifiedAtBoundary { position: p, span: _ } => concat(concat("text boundary unjudged at ", p), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)")
     ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, span: _ } =>
@@ -719,6 +724,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    KernelMintShapeMismatch { declaration_name: d, cause: c, span: _ } => concat("kernel mint binding: '", d, "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ", c)
     OptionalCastNotEliminated { source_type: st, target_type: tt, span: _ } =>
       concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
     BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
@@ -857,6 +863,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     TextRepresentationUnidentifiedAtBoundary { position: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
@@ -886,6 +893,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    KernelMintShapeMismatch { declaration_name: _, cause: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     OptionalCastNotEliminated { source_type: _, target_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SourceAnnotationRefused { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

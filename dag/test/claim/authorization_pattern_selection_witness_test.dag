@@ -25,6 +25,7 @@ import gunbc.auth.privileged_effect_census {
   mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
   ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
   runner_lifecycle_ruling_scope_interpretation, runner_lifecycle_operator_ruling, RulingScopeInterpretation, ruling_discharge_for,
+  RealizedFederatedGrant, RealizedRunSelected, RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession, RealizedUnauthorized,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
@@ -437,4 +438,23 @@ test fn the_dispatch_is_federated_only_while_the_interpretation_names_it() -> Bo
           }))
       Absent => false
     }
+}
+
+// THE R2 MINT CUSTODY CELLS ARE REALIZED BY THE FEDERATED GCP IAM ROUTE, NOT AN OPERATOR SESSION:
+// no census site remains in gunbc.cloudflare.r2_mint_secret_access (its gcloud converges were
+// deleted), and the gcp-iam-converge apply site that now grants them is a federated grant naming the
+// R2 custody cells. The RED is the operator-session row restored.
+test fn the_r2_custody_cells_are_realized_by_the_federated_iam_route() -> Bool {
+  !any(privileged_effect_census, row => starts_with(s: declaration_ref_display_key(ref: row.site), prefix: "gunbc.cloudflare.r2_mint_secret_access::"))
+    && any(privileged_effect_census, row =>
+      declaration_ref_display_key(ref: row.site) == "gunbc.auth.gcp_iam_converge_run::gcp_iam_converge_apply_wet"
+        && string_contains(s: row.effect.subject as String, pattern: "R2 mint custody cells")
+        && match row.realized {
+          RealizedFederatedGrant => true
+          RealizedRunSelected => false
+          RealizedApprovalCapability => false
+          RealizedHumanStep => false
+          RealizedOperatorSession { arm: _ } => false
+          RealizedUnauthorized => false
+        })
 }

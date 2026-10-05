@@ -32,7 +32,6 @@ import v2.std.node {
   core_edge_label
 }
 import v2.std.node_query { binder_node, construct_node, field_projection_optional }
-import v2.std.type_binder { type_binder_set_children }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -289,7 +288,9 @@ data mbt_arms: String = "    Rejected { diagnostics: r } => fallback.tree\n    A
 
 data mbt_positive_src: String = mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: mbt_arms)
 
-// THE WARM PRODUCERS, one per fixture program; each is listed in floor_cross_claim_pure_producers_warm.
+// THE FIXTURE PRODUCERS, one per fixture program, nullary so the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills one once wherever two or
+// more declared claims read it; one read by a single claim is that claim's own cost.
 fn mbt_positive_reading() -> MbtReading { mbp_reading(src: mbt_positive_src) }
 
 // (1) THE BINDER IS TYPED ParseArtifact FROM Outcome<ParseArtifact>'s Accepted.value -- the argument
@@ -593,7 +594,7 @@ fn mbt_index() -> SymbolIndex {
       resolved: mbt_parse_artifact_declaration()
     ),
     qualified_path: mbt_qn(segs: [^p, ^Outcome]),
-    params: mbt_conj(fields: type_binder_set_children(binders: [Edge { label: Authored { name: ^T }, target: Node { kind: TypeNode { connective: Atom { identity: ^T } }, children: [], occurrence_id: OccurrenceSynthetic } }], source: mbt_conj(fields: [])))
+    params: [^T]
   )
 }
 

@@ -1,0 +1,229 @@
+module gunbc.workspace_commissioning_fleet
+
+import std.decl_ref { decl_ref }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_plan_credential, workspace_executor_plan_prestate }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
+
+import std.types { String, NonEmptyStr, Bool, CommitSha, List }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max }
+import gunbc.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
+import gunbc.runner_microvm_slot_controller { bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused }
+import gunbc.runner_microvm_slot_unit { microvm_controller_root, microvm_controller_gunbc_binary, microvm_slot_unit_instance_name }
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
+import gunbc.auth.approval_broker_cutover { observe_broker_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningCommitted, WorkspaceCommissioningPrepared, WorkspaceCommissioningRecordUnreadable }
+import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
+import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
+import gunbc.workspace_commissioning_history { workspace_initial_controller_history_refusal }
+import gunbc.workspace_commissioning_observe { workspace_observe_commissioning_obligations }
+import gunbc.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
+import gunbc.workspace_commissioning { workspace_commissioning_admit, WorkspaceCommissioningAuthorizedPlan, WorkspacePriorPurposeWithdrawn, WorkspaceCommissioningReady, WorkspaceCommissioningRefused }
+import gunbc.fleet_host_budget { HostAllocationConserves }
+import gunbc.workspace_commissioning_store { workspace_commissioning_store_observe, workspace_commissioning_store_root, WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused }
+import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
+import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_credential_row }
+import gunbc.workspace_commissioning_start_observe { workspace_commissioning_start_observe, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable }
+import gunbc.workspace_commissioning_executor_input { workspace_executor_installed_adapter_matches }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.workspace_slot_mutation { workspace_slot_mutation_key }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldSlotUndecodable }
+import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_owner, workspace_mutation_recovery_standing, WorkspaceMutationRecoveryReleased }
+import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_initial_ready, workspace_commissioning_credential_absent }
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_path }
+import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
+
+// This is a read-only fleet subject, never a readiness permit or supply offer. The constructor
+// is available only here, after actual host and protected-store observations, not fixture input.
+type WorkspaceCommissioningFleetBasis sole_constructor {
+  provenance: WorkspaceCommissioningProvenance
+  release_dir: NonEmptyStr
+  prestate: NonEmptyStr
+  already_committed: Bool
+}
+
+type WorkspaceCommissioningFleetObservation
+  = WorkspaceCommissioningFleetObserved { basis: WorkspaceCommissioningFleetBasis }
+  | WorkspaceCommissioningFleetRefused { reason: String }
+
+fn workspace_commissioning_basis_rows(basis: WorkspaceCommissioningFleetBasis) -> String {
+  join([workspace_executor_credential_row(provenance: basis.provenance),
+    concat("commissioning-release:", basis.release_dir as String),
+    concat("commissioning-prestate:", basis.prestate as String),
+    concat("commissioning-already-committed:", to_string(basis.already_committed))], "\n")
+}
+
+// The exact installed revision is an input to planning. All remaining provenance is derived
+// from the shared slot policy, pinned image, installed receipt/digest and fresh sanitation.
+fn workspace_commissioning_candidate(host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation {
+  let slots: List<RunnerSlotIdentity> = filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (host as String))
+  if slots.count() != 1 { WorkspaceCommissioningFleetRefused { reason: "commissioning requires one designated workspace slot on this host" } }
+  else { match slots.first() {
+    Present { value: slot } => workspace_commissioning_candidate_slot(slot: slot, revision: revision)
+    Absent => WorkspaceCommissioningFleetRefused { reason: "designated workspace slot is absent" }
+  } }
+}
+
+fn workspace_commissioning_candidate_slot(slot: RunnerSlotIdentity, revision: CommitSha) -> WorkspaceCommissioningFleetObservation {
+  let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision })
+  match bind_slot_host(slot: slot) {
+    MicrovmHostBound { spec: _, host: _ } => match resolve_network_subject(slot: slot) {
+      NetworkSubjectResolved { subject } => match workspace_observe_initial_sanitation(subject: subject) {
+        WorkspaceInitialSanitationReadback { observation } => {
+          let tree = Filesystem.Read(path: approval_broker_tree_receipt_path_for(root: microvm_controller_root,
+            revision: RevisionBoundAtEmission { revision: revision }))
+          match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+            TreeReceiptObserved { revision: actual, installed_digest } => if (actual as String) != (revision as String) {
+              WorkspaceCommissioningFleetRefused { reason: "installed tree revision differs from commissioning revision" }
+            } else { match sha256sum_file_digest_via_shell(path: microvm_controller_gunbc_binary(release_dir: installed) as NonEmptyStr) {
+              Sha256FileDigest { digest } => match gunbc_runner_slot_desired_for(slot: slot).cpu_quota {
+                CpuQuotaResolved { threads } => {
+                  let plan = serialize_content_hash(hash: content_hash_of_value(value: join([
+                    runner_slot_instance_name(slot: slot) as String, revision as String, installed_digest as String,
+                    digest.hex as String, workspace_demo_image_identity() as String, observation.observation_identity as String,
+                    to_string(threads), to_string(gunbc_microvm_shakedown_slot_memory_max)], "|") as NonEmptyStr)) as NonEmptyStr
+                  workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProvenance {
+                    slot: slot, plan_hash: plan, source_revision: revision as NonEmptyStr, installed_tree_digest: installed_digest,
+                    controller_digest: digest.hex as NonEmptyStr, guest_image_digest: workspace_demo_image_identity(),
+                    cpu_budget: threads, attempt_envelope: gunbc_microvm_shakedown_slot_memory_max, no_swap: true,
+                    sanitation_observation: observation.observation_identity,
+                  })
+                }
+                SlotCpuQuotaUnbounded => WorkspaceCommissioningFleetRefused { reason: "workspace slot has no finite CPU boundary" }
+              }
+              Sha256FileDigestUnavailable { path: _, reason: _ } => WorkspaceCommissioningFleetRefused { reason: "installed controller digest is unreadable" }
+            } }
+            TreeReceiptUnreadable { detail: _ } => WorkspaceCommissioningFleetRefused { reason: "installed tree receipt is unreadable" }
+            TreeReceiptMalformed { detail: _ } => WorkspaceCommissioningFleetRefused { reason: "installed tree receipt is unreadable" }
+          }
+        }
+        WorkspaceInitialSanitationUnavailable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "slot sanitation is unreadable" }
+      }
+      NetworkSubjectRefused { refusal: _ } => WorkspaceCommissioningFleetRefused { reason: "slot network subject is unavailable" }
+    }
+    MicrovmHostBindingRefused { cause: _ } => WorkspaceCommissioningFleetRefused { reason: "commissioning candidate is not on its host" }
+  }
+}
+
+// Before a submission journal exists, no controller can pass its invocation fence. A
+// same-plan guard left by interruption is therefore normalized to the reviewed absent guard
+// in the baseline, while retaining its actual generation for arm. Foreign/free guards refuse.
+// After commit, the release must match the executor's recorded generation exactly.
+fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProvenance) -> WorkspaceCommissioningFleetObservation {
+  let slot = provenance.slot
+  let key = runner_slot_instance_name(slot: slot)
+  let installed = approval_broker_release_dir(root: microvm_controller_root,
+    revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha }) as NonEmptyStr
+  match bind_slot_host(slot: slot) {
+    MicrovmHostBound { spec, host: _ } => match workspace_commissioning_runtime_refusal(provenance: provenance,
+      release_dir: installed, login: spec.job_user) {
+      Present { value: reason } => WorkspaceCommissioningFleetRefused { reason: reason }
+      Absent => if !workspace_executor_installed_adapter_matches(release_dir: installed as String, slot: key) {
+        WorkspaceCommissioningFleetRefused { reason: "commissioning executor installation is not established" }
+      } else { match workspace_commissioning_no_hold_refusal(provenance: provenance) {
+        Present { value: reason } => WorkspaceCommissioningFleetRefused { reason: reason }
+        Absent => match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+          WorkspaceCommissioningStoreObserved { snapshot } => match workspace_executor_journal_observe(slot_key: key) {
+            WorkspaceExecutorJournalObserved { snapshot: execution } => {
+              let mutation = observe_file_hold(root: workspace_commissioning_store_location as NonEmptyStr, key: workspace_slot_mutation_key(slot_key: key))
+              let readiness = read_cell_readiness_store()
+              let committed = (match snapshot.reading {
+                WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningCommitted { provenance: stored } } => stored == provenance
+                WorkspaceCommissioningRecordAbsent => false
+                WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningPrepared { provenance: _ } } => false
+                WorkspaceCommissioningRecordUnreadable { reason: _ } => false
+              }) && (match execution.record { Present { value: record } => record.subject.plan_hash == provenance.plan_hash && record.phase == ExecutorGenerationCommitted Absent => false })
+                && workspace_commissioning_initial_ready(slot: slot, reading: readiness)
+                && workspace_commissioning_credential_absent(path: workspace_launch_credential_source_path(instance: key as String))
+                && workspace_commissioning_credential_absent(path: workspace_commissioning_submitter_path(instance: key as String))
+                && (match execution.record {
+                  Present { value: record } => workspace_mutation_recovery_standing(observed: mutation,
+                    owner: workspace_commissioning_mutation_owner(plan_hash: provenance.plan_hash),
+                    acquired: record.subject.mutation_generation) == WorkspaceMutationRecoveryReleased
+                  Absent => false
+                })
+              let initial = (match snapshot.reading { WorkspaceCommissioningRecordAbsent => true WorkspaceCommissioningRecordRead { record: _ } => false WorkspaceCommissioningRecordUnreadable { reason: _ } => false })
+                && execution.record == none && (match mutation {
+                  HoldSlotAbsent => true
+                  HoldSlotHeld { owner, generation: _ } => owner == workspace_commissioning_mutation_owner(plan_hash: provenance.plan_hash)
+                  HoldSlotFree { generation: _, released_by: _ } => false
+                  HoldSlotUndecodable { generation: _, detail: _ } => false
+                  HoldObservationUnavailable { cause: _ } => false
+                })
+              if !committed && !initial { WorkspaceCommissioningFleetRefused { reason: "commissioning has existing history; resume its exact reviewed executor rather than minting a replacement plan" } }
+              else { match resolve_network_subject(slot: slot) {
+                NetworkSubjectResolved { subject } => match workspace_observe_initial_sanitation(subject: subject) {
+                  WorkspaceInitialSanitationReadback { observation } => if observation.observation_identity != provenance.sanitation_observation {
+                    WorkspaceCommissioningFleetRefused { reason: "sanitation changed during plan observation" }
+                  } else { match workspace_commissioning_start_observe(unit: microvm_slot_unit_instance_name(slot_instance: key as String)) {
+                    WorkspaceCommissioningStartObserved { snapshot: controller } => if !workspace_commissioning_start_quiescent(snapshot: controller) {
+                      WorkspaceCommissioningFleetRefused { reason: "controller is active or has queued work" }
+                    } else if !committed && (match workspace_initial_controller_history_refusal(slot: slot) { Present { value: _ } => true Absent => false }) {
+                      WorkspaceCommissioningFleetRefused { reason: "prior controller history requires recovery" }
+                    } else {
+                      let admitted = committed || (match workspace_commissioning_admit(slot: slot,
+                      authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: provenance.plan_hash },
+                      budget: HostAllocationConserves, cpu_budget: provenance.cpu_budget, attempt_envelope: provenance.attempt_envelope,
+                      prior_purpose: WorkspacePriorPurposeWithdrawn,
+                      obligations: workspace_observe_commissioning_obligations(root: fabric_control_plane_store_root(), slot: slot), sanitation: observation.observations) {
+                      WorkspaceCommissioningReady { commissioned: _ } => true
+                      WorkspaceCommissioningRefused { reason: _ } => false
+                    })
+                    if admitted { WorkspaceCommissioningFleetObserved { basis: WorkspaceCommissioningFleetBasis {
+                        provenance: provenance, release_dir: installed, already_committed: committed,
+                        prestate: serialize_content_hash(hash: content_hash_of_value(value: to_string([
+                          to_string(snapshot.expected), to_string(snapshot.reading), to_string(execution.expected),
+                          to_string(readiness), if initial { to_string(HoldSlotAbsent) } else { to_string(mutation) }, to_string(controller), observation.observation_identity as String,
+                        ]) as NonEmptyStr)) as NonEmptyStr,
+                      } } } else { WorkspaceCommissioningFleetRefused { reason: "initial commissioning obligations are not admitted" } }
+                    }
+                    WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "controller prestate is unreadable" }
+                  } }
+                  WorkspaceInitialSanitationUnavailable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "fresh sanitation is unreadable" }
+                }
+                NetworkSubjectRefused { refusal: _ } => WorkspaceCommissioningFleetRefused { reason: "network subject is unreadable" }
+              } }
+            }
+            WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "executor journal is unreadable" }
+          }
+          WorkspaceCommissioningStoreRefused { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "commissioning journal is unreadable" }
+        }
+      } }
+    }
+    MicrovmHostBindingRefused { cause: _ } => WorkspaceCommissioningFleetRefused { reason: "commissioning apply is on another host" }
+  }
+}
+
+// Only the adapter that just captured the exact installed privileged observer may decode its
+// response into a basis. This is not a fixture/text constructor exposed to planner consumers.
+fn workspace_commissioning_basis_from_privileged(text: String, host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_dispatch_transport", decl_name: "workspace_dispatch_observe")]
+{
+  match workspace_executor_plan_credential(plan_body: text) {
+    Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
+      WorkspaceCommissioningDirectiveReady { provenance } => match workspace_executor_plan_prestate(plan_body: text) {
+        Present { value: prestate } => {
+          let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
+          let basis = WorkspaceCommissioningFleetBasis { provenance: provenance, release_dir: installed, prestate: prestate as NonEmptyStr,
+            already_committed: text.ends_with(suffix: "commissioning-already-committed:true") }
+          if provenance.slot.host != host || (provenance.source_revision as String) != (revision as String)
+            || workspace_commissioning_basis_rows(basis: basis) != text {
+            WorkspaceCommissioningFleetRefused { reason: "privileged commissioning response changed subject or is noncanonical" }
+          } else { WorkspaceCommissioningFleetObserved { basis: basis } }
+        }
+        Absent => WorkspaceCommissioningFleetRefused { reason: "privileged commissioning prestate missing" }
+      }
+      WorkspaceCommissioningDirectiveRefused { reason: _ } => WorkspaceCommissioningFleetRefused { reason: "privileged commissioning provenance unreadable" }
+    }
+    Absent => WorkspaceCommissioningFleetRefused { reason: "privileged commissioning response lacks its unique credential" }
+  }
+}

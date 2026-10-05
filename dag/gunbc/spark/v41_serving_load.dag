@@ -6,47 +6,33 @@ import std.algebra { trim }
 import std.measure { token_count, microsecond_count }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { argv_words }
+
 import extdeps.vllm.bench_serve { VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request }
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
-import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable, parse_psi }
+import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable }
 import extdeps.linux.diskstats { DiskstatsReading, DiskReadMeasured, DiskReadUnmeasurable, parse_diskstats, disk_read_interval }
-import extdeps.linux.cgroup_v2_memory { parse_cgroup_memory_stat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete }
-import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_identity_from_stdout, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable }
+
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import gunbc.fleet_intent_network { srv6_host_lan_endpoint }
 import gunbc.fleet_host_identity { operator_host_srv6 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildHostWork, SparkBuildHostRefused, SparkBuildHostRan }
-import gunbc.spark.serving_arm {
-  DeepseekV41FlashDba1be0a, FourSparkTp4, GunbcDeepseekV41EngramProduced, deepseek_v41_flash_row,
-  runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished,
-}
+import gunbc.spark.serving_arm { FourSparkTp4, GunbcDeepseekV41EngramProduced, deepseek_v41_flash_row, runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished }
 import gunbc.spark.serving_arm_launch { arm_mount_plan }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.v41_group_a_launch { v41_group_a_container_name, v41_group_a_served_alias, v41_group_a_profile }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
 import gunbc.spark.v41_runtime_image_converge { v41_production_produced_image }
-import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding,
-}
-import gunbc.spark.serving_load_probe {
-  ClientRateQualificationFrontier, client_rate_qualification_frontier, preemption_count, bench_serve_latency,
-  ClientBenchLatency,
-}
-import gunbc.spark.serving_load_runner {
-  ServingLoadSubject, ServingLoadStepRecord, serving_load_records, serving_load_receipt_body,
-  ServingLoadRunObserved, ServingLoadRunRefused,
-}
-import gunbc.spark.v41_capacity_measurement {
-  v41_staircase_concurrencies, v41_measurement_launch_shape, v41_capacity_policy, V41StaircaseStepReading,
-  v41_run_staircase, v41_sla_capacity, v41_capacity_wire,
-}
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding }
+import gunbc.spark.serving_load_probe { ClientRateQualificationFrontier, client_rate_qualification_frontier, preemption_count, bench_serve_latency, ClientBenchLatency }
+import gunbc.spark.group_arm_serving_load { read_rank_container_pressure, RankContainerPressureObserved, RankContainerPressureUnread, remote_text, RemoteTextRead, RemoteTextRefused, rank_context }
+import gunbc.spark.serving_load_runner { ServingLoadSubject, ServingLoadStepRecord, serving_load_records, serving_load_receipt_body, ServingLoadRunObserved, ServingLoadRunRefused }
+import gunbc.spark.v41_capacity_measurement { v41_staircase_concurrencies, v41_measurement_launch_shape, v41_capacity_policy, V41StaircaseStepReading, v41_run_staircase, v41_sla_capacity, v41_capacity_wire }
 //
 // V4.1's binding of the shared serving-load runner (gunbc.spark.serving_load_runner): its subject on
 // Group A, one load step per staircase concurrency, and a host-pressure reading on every rank around
@@ -181,13 +167,11 @@ fn v41_serving_load_subject() -> ServingLoadSubject? {
 
 // ── THE RANK PRESSURE READING (operator ruling 2026-10-01: every rank, the step takes the worst) ──
 //
-// Three readings per rank, each a refusal when unread: host PSI memory, the diskstats row of the
-// device holding the Engram row stores (found by findmnt on that directory, never named by guess),
-// and the rank container's memory.stat. THE CGROUP PATH IS A STATED BET on dockerd's default systemd
-// cgroup driver (extdeps.docker.cgroup: the container is system.slice/docker-<id>.scope); a daemon on
-// the cgroupfs driver makes the read refuse with the path it tried, never a misread.
-data v41_rank_docker_scope_parent: String = "/sys/fs/cgroup/system.slice"
-
+// THE CONTAINER-SCOPED HALF IS THE ONE LOAD PATH'S (gunbc.spark.group_arm_serving_load
+// read_rank_container_pressure, deforking cut 8b): the rank container's cgroup memory.stat, its
+// memory.events and the host's PSI, under the same stated cgroup-driver bet. What is V4.1's own is the
+// diskstats row of the device holding the Engram row stores (found by findmnt on that directory, never
+// named by guess), composed on top of it here.
 type V41RankPressure {
   host: HostIdentity
   refault_file: Nat
@@ -200,34 +184,6 @@ type V41RankPressureRead
   | V41RankPressureUnread { host: HostIdentity, cause: String }
 
 type V41StepPressure { ranks: List<V41RankPressureRead> }
-
-fn v41_rank_context(ctx: SparkMaterializeContext, host: HostIdentity) -> SparkMaterializeContext {
-  SparkMaterializeContext {
-    host: host,
-    trust: ctx.trust,
-    path: ctx.path,
-    admin_credential: ctx.admin_credential,
-    admin_credential_file: ctx.admin_credential_file,
-    executor: ctx.executor,
-  }
-}
-
-// One remote read, its stdout or the located refusal.
-type V41RemoteText
-  = V41RemoteTextRead { stdout: String }
-  | V41RemoteTextRefused { cause: String }
-
-fn v41_remote_text(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> V41RemoteText {
-  match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: c } => V41RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
-    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
-      if code != 0 {
-        V41RemoteTextRefused { cause: join([what, " exited ", to_string(code), ": ", err], "") }
-      } else {
-        V41RemoteTextRead { stdout: out }
-      }
-  }
-}
 
 // findmnt prints the SOURCE as /dev/<name>; /proc/diskstats names the device without the prefix.
 fn v41_device_of_findmnt(stdout: String) -> NonEmptyStr? {
@@ -244,48 +200,32 @@ fn v41_device_of_findmnt(stdout: String) -> NonEmptyStr? {
 
 fn v41_read_rank_pressure(ctx: SparkMaterializeContext) -> V41RankPressureRead {
   let host = ctx.host
-  match v41_remote_text(ctx: ctx, what: "findmnt row-store device", argv: ["findmnt", "--noheadings", "--output", "SOURCE", "--target", v41_row_store_output_directory() as String]) {
-    V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
-    V41RemoteTextRead { stdout: mnt } => match v41_device_of_findmnt(stdout: mnt) {
-      Absent => V41RankPressureUnread { host: host, cause: join(["findmnt named no /dev source for the row-store directory: ", mnt], "") }
-      Present { value: device } =>
-        match v41_remote_text(ctx: ctx, what: "docker container inspect", argv: argv_words(command: docker_container_inspect_command(name: v41_group_a_container_name))) {
-          V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
-          V41RemoteTextRead { stdout: inspect } => match docker_container_inspect_identity_from_stdout(stdout: inspect) {
-            DockerContainerInspectIdentityUnreadable { cause: c } => V41RankPressureUnread { host: host, cause: c }
-            DockerContainerInspectIdentity { id: id, image: _ } => {
-              let stat_path = join([v41_rank_docker_scope_parent, "/docker-", id as String, ".scope/memory.stat"], "")
-              match v41_remote_text(ctx: ctx, what: join(["cat ", stat_path], ""), argv: ["cat", "--", stat_path]) {
-                V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
-                V41RemoteTextRead { stdout: stat } => match parse_cgroup_memory_stat(body: stat) {
-                  CgroupMemoryStatIncomplete { missing: m } => V41RankPressureUnread { host: host, cause: join(["memory.stat is missing ", join(m, ", ")], "") }
-                  CgroupMemoryStatRead { stat: s } =>
-                    match v41_remote_text(ctx: ctx, what: "cat /proc/pressure/memory", argv: ["cat", "/proc/pressure/memory"]) {
-                      V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
-                      V41RemoteTextRead { stdout: psi } =>
-                        match v41_remote_text(ctx: ctx, what: "cat /proc/diskstats", argv: ["cat", "/proc/diskstats"]) {
-                          V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
-                          V41RemoteTextRead { stdout: disk } =>
-                            V41RankPressureObserved { pressure: V41RankPressure {
-                              host: host,
-                              refault_file: s.workingset_refault_file,
-                              psi: parse_psi(body: psi),
-                              nvme: parse_diskstats(body: disk, device: device),
-                            } }
-                        }
-                    }
-                }
-              }
+  match read_rank_container_pressure(ctx: ctx, container: v41_group_a_container_name) {
+    RankContainerPressureUnread { host: _, cause: c } => V41RankPressureUnread { host: host, cause: c }
+    RankContainerPressureObserved { pressure: p } =>
+      match remote_text(ctx: ctx, what: "findmnt row-store device", argv: ["findmnt", "--noheadings", "--output", "SOURCE", "--target", v41_row_store_output_directory() as String]) {
+        RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+        RemoteTextRead { stdout: mnt } => match v41_device_of_findmnt(stdout: mnt) {
+          Absent => V41RankPressureUnread { host: host, cause: join(["findmnt named no /dev source for the row-store directory: ", mnt], "") }
+          Present { value: device } =>
+            match remote_text(ctx: ctx, what: "cat /proc/diskstats", argv: ["cat", "/proc/diskstats"]) {
+              RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+              RemoteTextRead { stdout: disk } =>
+                V41RankPressureObserved { pressure: V41RankPressure {
+                  host: host,
+                  refault_file: p.memory.workingset_refault_file,
+                  psi: p.psi,
+                  nvme: parse_diskstats(body: disk, device: device),
+                } }
             }
-          }
         }
-    }
+      }
   }
 }
 
 // The runner's host-reading bracket for V4.1: every Group A rank, read from the head's session.
 fn v41_read_step_pressure(ctx: SparkMaterializeContext) -> V41StepPressure {
-  V41StepPressure { ranks: map(fabric_group_hosts(g: FabricGroupA), h => v41_read_rank_pressure(ctx: v41_rank_context(ctx: ctx, host: h))) }
+  V41StepPressure { ranks: map(fabric_group_hosts(g: FabricGroupA), h => v41_read_rank_pressure(ctx: rank_context(ctx: ctx, host: h))) }
 }
 
 // ── THE WORST-RANK PROJECTION INTO THE STAIRCASE STEP READING ────────────────────────────────────
@@ -474,7 +414,6 @@ fn v41_serving_load_session(run_id: NonEmptyStr, ctx: SparkMaterializeContext) -
   }
   }
 }
-
 
 fn v41_serving_load_ci_wet() -> ProcessExit
 {
