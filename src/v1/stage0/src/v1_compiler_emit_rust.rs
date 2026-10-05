@@ -28938,10 +28938,10 @@ pub fn emit_rust_first_method_call(
                     );
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(recv_str.clone(), ".iter().cloned().skip(".to_string()),
+                            v1_rt::concat(recv_str.clone(), ".get((".to_string()),
                             n_str.clone(),
                         ),
-                        " as usize).next()".to_string(),
+                        ") as usize).cloned()".to_string(),
                     )
                 }
             } else {

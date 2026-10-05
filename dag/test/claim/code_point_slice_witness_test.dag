@@ -1,6 +1,8 @@
 module test.claim.code_point_slice_witness
 
+import std.algebra { Cons }
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
