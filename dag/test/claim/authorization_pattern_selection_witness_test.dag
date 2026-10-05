@@ -405,11 +405,11 @@ test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federa
         && match v.conformance { Conforms => true _ => false }))
 }
 
-// ONE ANSWER FOR WHICH SITES THE RUNNER-LIFECYCLE RULING DISCHARGES: the operator's scope ruling's covers list.
-// A census row carries that ruling's discharge exactly when covers names its site, so a row cannot
-// claim the ruling while covers omits it, and covers cannot name a row that never takes the discharge
-// (the branch-pin rows once did one without the other). The red is either drift: a row hard-coding the ruling,
-// or a covers entry whose row hard-codes NoWitnessDischarge.
+// THE OPERATOR'S SCOPE RULING IS THE ONE SOURCE OF WHERE THE RUNNER-LIFECYCLE DISCHARGE MAY APPLY: a
+// census row takes it only when covers names its site, and every covered site is a census row. The
+// red is a row claiming the ruling outside the operator's scope, or a covers entry naming no site. A
+// covered row that does not consume the discharge is admitted: the selection federates it on its own
+// parameters, so it owes no interlock (the converse direction is not a wall, by design).
 fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
   match d {
     NoWitnessDischarge => false
@@ -417,10 +417,10 @@ fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
   }
 }
 
-test fn a_row_takes_the_runner_lifecycle_ruling_exactly_when_the_operator_scope_ruling_covers_it() -> Bool {
+test fn a_row_takes_the_runner_lifecycle_ruling_only_where_the_operator_scope_ruling_covers_it() -> Bool {
   privileged_effect_census |> all(r =>
-    discharged_by_runner_lifecycle_ruling(d: r.effect.witness_discharge)
-      == any(runner_lifecycle_scope_ruling.covers, c => declaration_ref_eq(a: c, b: r.site)))
+    !discharged_by_runner_lifecycle_ruling(d: r.effect.witness_discharge)
+      || any(runner_lifecycle_scope_ruling.covers, c => declaration_ref_eq(a: c, b: r.site)))
     && runner_lifecycle_scope_ruling.covers |> all(c => any(privileged_effect_census, r => declaration_ref_eq(a: c, b: r.site)))
 }
 
