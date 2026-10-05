@@ -48,6 +48,12 @@ import extdeps.languages.json.emit {
   json_int,
 }
 
+import gunbc.scm.intake {
+  CommitIntake, IntakeNone, IntakeBase, IntakeAdvance, IntakeUnrecordedByFormat,
+  IntakeRevision, intake_revision_eq,
+  IntakeLineMark, LineMarkedAt, LineNotMarked, LineMarkUnrecorded, intake_line_mark,
+  encode_commit_intake, decode_commit_intake, CommitIntakeDecoded, CommitIntakeRefused,
+}
 import gunbc.scm.integration {
   CommitIntegration,
   NoSquashIntegration,
@@ -65,6 +71,8 @@ import gunbc.scm.ancestry {
   RepositoryHistory,
   AncestryTraced,
   AncestryStartNotInHistory,
+  AncestryBrokenAt,
+  AncestryRevisitsACommit,
   AncestryWalk,
   ancestry_walk,
 }
@@ -266,6 +274,13 @@ data repository_envelope_format_tag_v7: String = "gunbc-scm-repository-v7"
 // by gunbc.scm.repository_convert, which loads it whole once and re-saves it as v8.
 data repository_envelope_format_tag_v8: String = "gunbc-scm-repository-v8"
 
+// v9: THE TYPED INTAKE (the BaseAdvance follow-up to gunbc#13111). v8's index plus one commit member,
+// `intake` (gunbc.scm.intake CommitIntake): which external revision a commit froze or advanced its
+// line to. The index layout, the roster and the shards are v8's unchanged, so v8 stays loadable by
+// the same indexed reader; its commits read back IntakeUnrecordedByFormat, and the next save writes
+// v9 carrying that arm as JsonNull. No conversion entry is needed: nothing is re-read to migrate.
+data repository_envelope_format_tag_v9: String = "gunbc-scm-repository-v9"
+
 data repository_envelope_format_tag_v5: String = "gunbc-scm-repository-v5"
 
 // v4 IS READ, NOT RETIRED, AND THE DIFFERENCE FROM v3 IS WHETHER A READER CAN PRODUCE THE VALUE.
@@ -391,6 +406,7 @@ type RepositoryCommit sole_constructor {
   message: String
   ancestry: CommitAncestry
   integration: CommitIntegration
+  intake: CommitIntake
 }
 
 // THE SELECTION IS A COMMIT REFERENCE, NOT A ROOT IDENTITY, and this carrier was LOSSY until
@@ -528,6 +544,7 @@ type RepositoryEncodeRefusal
   | RepositoryEncodeStoreIsPartial { rostered_shards: Int }
   | RepositoryEncodeAppendCarriesSemanticNode { target: ObjectId }
   | RepositoryEncodeAppendShadowsRosteredIdentity { identity: ObjectId }
+  | RepositoryEncodeIntakeNotInWholeFormat { commit: RepositoryCommitRef }
 
 // THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
 // member-read arm below exists because dropping the envelope's own identity_rule member used to
@@ -850,6 +867,246 @@ fn mint_repository_commit(
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+// Intake commits (gunbc.scm.intake)
+// ------------------------------------------------------------------------------------------------
+
+// WHERE A LINE STANDS IN ITS EXTERNAL SOURCE: the nearest intake commit on a commit's ancestry, which
+// is where the line was last placed onto an external revision. It is read from the commit table the
+// index carries, so it costs no shard. Four states, never a default: an unrecorded commit on the line
+// is a document older than the member and cannot be read past -- below it the line may have been
+// placed anywhere -- so it is its own arm rather than a skip.
+type LineIntake
+  = LineIntakeAt { commit: RepositoryCommitRef, revision: IntakeRevision }
+  | LineIntakeAbsent
+  | LineIntakeUnrecorded { commit: RepositoryCommitRef }
+  | LineIntakeUnreadable { at: RepositoryCommitRef }
+
+type LineIntakeAcc {
+  found: LineIntake?
+}
+
+fn intakes_by_ordinal(commits: List<RepositoryCommit>) -> Map<Int, CommitIntake> {
+  fold(commits, init: empty_map(), f: fn(m, c) { map_insert(m, minted_id_ordinal(id: c.reference.identity), c.intake) })
+}
+
+fn line_intake(commits: List<RepositoryCommit>, head: RepositoryCommitRef) -> LineIntake {
+  match ancestry_walk(start: head, history: repository_history(commits: commits)) {
+    AncestryTraced { chain } => {
+      let by_ordinal = intakes_by_ordinal(commits: commits)
+      match fold(chain, init: LineIntakeAcc { found: none }, f: (acc, at) =>
+        match acc.found {
+          Present { value: _ } => acc
+          Absent =>
+            match map_lookup(m: by_ordinal, key: minted_id_ordinal(id: at.identity)) {
+              Absent => LineIntakeAcc { found: Present { value: LineIntakeUnreadable { at: at } } }
+              Present { value: intake } =>
+                match intake_line_mark(intake: intake) {
+                  LineNotMarked => acc
+                  LineMarkUnrecorded => LineIntakeAcc { found: Present { value: LineIntakeUnrecorded { commit: at } } }
+                  LineMarkedAt { revision } => LineIntakeAcc { found: Present { value: LineIntakeAt { commit: at, revision: revision } } }
+                }
+            }
+        }).found {
+        Absent => LineIntakeAbsent
+        Present { value: found } => found
+      }
+    }
+    AncestryBrokenAt { commit, missing_parent: _ } => LineIntakeUnreadable { at: commit }
+    AncestryStartNotInHistory { start } => LineIntakeUnreadable { at: start }
+    AncestryRevisitsACommit { detected_from } => LineIntakeUnreadable { at: detected_from }
+  }
+}
+
+// THE INTAKE COMMIT THAT PLACED SOME LINE AT `revision`, if the repository holds one. A repository may
+// hold several -- a base and the advances after it -- and each revision is placed at most once by
+// the mint below, so the first match is the only one.
+fn intake_commit_at_revision(commits: List<RepositoryCommit>, revision: IntakeRevision) -> RepositoryCommit? {
+  (commits |> filter(c => match intake_line_mark(intake: c.intake) {
+    LineMarkedAt { revision: r } => intake_revision_eq(left: r, right: revision)
+    LineNotMarked => false
+    LineMarkUnrecorded => false
+  })).first()
+}
+
+// THE ADVANCE THAT LEAVES `from`, if one exists. An advance is admitted only from a revision no
+// advance has left yet (mint_intake_advance), so at most one exists and the intake commits form ONE
+// chain -- which is what makes "the tip" and "the later of two bases" questions with one answer.
+fn intake_advance_from(commits: List<RepositoryCommit>, from: IntakeRevision) -> RepositoryCommit? {
+  (commits |> filter(c => match c.intake {
+    IntakeAdvance { from: f, to: _ } => intake_revision_eq(left: f, right: from)
+    IntakeNone => false
+    IntakeBase { revision: _ } => false
+    IntakeUnrecordedByFormat => false
+  })).first()
+}
+
+// THE TIP OF THE INTAKE LINE: the intake commit no advance leaves. An advance is minted only onto a
+// line whose intake stands at its `from`, and only from a revision no advance has left
+// (mint_intake_advance), so intake commits form one chain and its tip is unique.
+type IntakeTip {
+  commit: RepositoryCommit
+  revision: IntakeRevision
+}
+
+fn intake_tip(commits: List<RepositoryCommit>) -> IntakeTip? {
+  let marked = commits |> flat_map(c => match intake_line_mark(intake: c.intake) {
+    LineMarkedAt { revision } => [IntakeTip { commit: c, revision: revision }]
+    LineNotMarked => []
+    LineMarkUnrecorded => []
+  })
+  (marked |> filter(t =>
+    !any(marked, other => match other.commit.intake {
+      IntakeAdvance { from, to: _ } => intake_revision_eq(left: from, right: t.revision)
+      IntakeNone => false
+      IntakeBase { revision: _ } => false
+      IntakeUnrecordedByFormat => false
+    }))).first()
+}
+
+// THE INTAKE MINTS: ONE ROUTE PER MINTABLE ARM, so each answers exactly the questions its arm has.
+// A base is a root commit, so its route has no parent to look for and no line to continue; an advance
+// descends from a commit whose line stands at exactly its `from`, so an advance can only ever
+// CONTINUE the line it names -- applying the external change from S_k to S_k+1 onto a line placed
+// anywhere but S_k is the defect this member exists to make unwritable (gunbc.recurring_failure_mode
+// a_worktree_delta_against_one_base_applied_onto_another). The intake value is BUILT by each route
+// rather than accepted, so IntakeUnrecordedByFormat (a reading of an old document) and IntakeNone
+// (the ordinary routes' arm) are unwritable here rather than refused. A revision is placed once: a
+// second commit placing a revision the repository already holds would make "the base commit for this
+// revision" ambiguous.
+//
+// Neither route goes through staging, and that is deliberate: an advance whose external change
+// touched nothing the manifest holds freezes its parent's root unchanged, which staging refuses as
+// "nothing to freeze" but which is exactly the record a later candidate on that revision must descend
+// from. Both run the publication completeness the staged route runs, over the root's own entries.
+// The selection is left where it was; the caller moves it.
+type IntakeRootRefusal
+  = IntakeRootMissing { root: ObjectId }
+  | IntakeRootIsAuthoredSource { root: ObjectId }
+  | IntakeRootIsSemanticNode { root: ObjectId }
+  | IntakeRootSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
+
+type IntakeRootResolution
+  = IntakeRootResolved { subject: RepositoryManifestRoot }
+  | IntakeRootRefused { cause: IntakeRootRefusal }
+
+// THE ROOT IS RESOLVED ONCE, and the record that resolution finds is both the sealed subject and the
+// entry population completeness reads, so the entries observed are the root's own.
+fn resolve_intake_root(repository: RepositoryEnvelope, root: CorpusManifestTarget) -> IntakeRootResolution {
+  match find_corpus_manifest_record(store: repository.store, identity: corpus_manifest_target_locator(target: root)) {
+    CorpusManifestAbsent { identity: r } => IntakeRootRefused { cause: IntakeRootMissing { root: r } }
+    CorpusManifestIsAuthoredSource { identity: r } => IntakeRootRefused { cause: IntakeRootIsAuthoredSource { root: r } }
+    CorpusManifestIsSemanticNode { identity: r } => IntakeRootRefused { cause: IntakeRootIsSemanticNode { root: r } }
+    CorpusManifestFound(record) =>
+      match observe_corpus_source_completeness(store: repository.store, entries: record.entries) {
+        CorpusSourceIncomplete { cause: c } => IntakeRootRefused { cause: IntakeRootSourceUnrecoverable { cause: c } }
+        CorpusSourcesComplete => IntakeRootResolved { subject: RepositoryManifestRoot { repository: repository, root: record.identity } }
+      }
+  }
+}
+
+type IntakeBaseMint
+  = IntakeBaseMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | IntakeBaseAllocatorInvalid { next_ordinal: Int }
+  | IntakeBaseRootRefused { cause: IntakeRootRefusal }
+  | IntakeBaseRevisionAlreadyPlaced { commit: RepositoryCommitRef }
+
+fn mint_intake_base(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestTarget,
+  message: String,
+  revision: IntakeRevision,
+) -> IntakeBaseMint {
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } => IntakeBaseAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match intake_commit_at_revision(commits: repository.commits, revision: revision) {
+        Present { value: placed } => IntakeBaseRevisionAlreadyPlaced { commit: placed.reference }
+        Absent =>
+          match resolve_intake_root(repository: repository, root: root) {
+            IntakeRootResolved { subject } => {
+              let minted = mint_repository_commit_admitted(
+                admitted: AdmittedCommitSubject {
+                  subject: subject,
+                  ancestry: RootCommit,
+                  integration: NoSquashIntegration,
+                  intake: IntakeBase { revision: revision },
+                },
+                message: message,
+              )
+              IntakeBaseMinted { repository: minted.repository, reference: minted.reference }
+            }
+            IntakeRootRefused { cause } => IntakeBaseRootRefused { cause: cause }
+          }
+      }
+  }
+}
+
+type IntakeAdvanceMint
+  = IntakeAdvanceMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | IntakeAdvanceAllocatorInvalid { next_ordinal: Int }
+  | IntakeAdvanceParentMissing { parent: RepositoryCommitRef }
+  | IntakeAdvanceRootRefused { cause: IntakeRootRefusal }
+  | IntakeAdvanceDoesNotMove { revision: IntakeRevision }
+  | IntakeAdvanceDiscontinuous { parent: RepositoryCommitRef, line: LineIntake }
+  | IntakeAdvanceRevisionAlreadyPlaced { commit: RepositoryCommitRef }
+  | IntakeAdvanceLineAlreadyAdvanced { commit: RepositoryCommitRef }
+
+fn mint_intake_advance(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestTarget,
+  message: String,
+  parent: RepositoryCommitRef,
+  from: IntakeRevision,
+  to: IntakeRevision,
+) -> IntakeAdvanceMint {
+  if intake_revision_eq(left: from, right: to) {
+    IntakeAdvanceDoesNotMove { revision: to }
+  } else {
+    match admit_commit_allocator(repository: repository) {
+      CommitAllocatorInvalid { next_ordinal: n } => IntakeAdvanceAllocatorInvalid { next_ordinal: n }
+      CommitAllocatorAdmitted =>
+        match admit_commit_parent(repository: repository, parent: Present { value: parent }) {
+          CommitParentAbsent { parent: p } => IntakeAdvanceParentMissing { parent: p }
+          CommitParentAdmitted { ancestry } =>
+            match line_intake(commits: repository.commits, head: parent) {
+              LineIntakeAt { commit, revision } =>
+                if !intake_revision_eq(left: revision, right: from) {
+                  IntakeAdvanceDiscontinuous { parent: parent, line: LineIntakeAt { commit: commit, revision: revision } }
+                } else {
+                  match intake_advance_from(commits: repository.commits, from: from) {
+                    Present { value: onward } => IntakeAdvanceLineAlreadyAdvanced { commit: onward.reference }
+                    Absent =>
+                  match intake_commit_at_revision(commits: repository.commits, revision: to) {
+                    Present { value: placed } => IntakeAdvanceRevisionAlreadyPlaced { commit: placed.reference }
+                    Absent =>
+                      match resolve_intake_root(repository: repository, root: root) {
+                        IntakeRootResolved { subject } => {
+                          let minted = mint_repository_commit_admitted(
+                            admitted: AdmittedCommitSubject {
+                              subject: subject,
+                              ancestry: ancestry,
+                              integration: NoSquashIntegration,
+                              intake: IntakeAdvance { from: from, to: to },
+                            },
+                            message: message,
+                          )
+                          IntakeAdvanceMinted { repository: minted.repository, reference: minted.reference }
+                        }
+                        IntakeRootRefused { cause } => IntakeAdvanceRootRefused { cause: cause }
+                      }
+                  }
+                  }
+                }
+              LineIntakeAbsent => IntakeAdvanceDiscontinuous { parent: parent, line: LineIntakeAbsent }
+              LineIntakeUnrecorded { commit } => IntakeAdvanceDiscontinuous { parent: parent, line: LineIntakeUnrecorded { commit: commit } }
+              LineIntakeUnreadable { at } => IntakeAdvanceDiscontinuous { parent: parent, line: LineIntakeUnreadable { at: at } }
+            }
+        }
+    }
+  }
+}
+
 fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
   match mint {
     BrandedRootMinted { repository: r, reference: c } =>
@@ -943,6 +1200,7 @@ type AdmittedCommitSubject sole_constructor {
   subject: RepositoryManifestRoot
   ancestry: CommitAncestry
   integration: CommitIntegration
+  intake: CommitIntake
 }
 
 type CommitSubjectAdmission
@@ -987,6 +1245,7 @@ fn admit_commit_subject(
               subject: subject,
               ancestry: ancestry,
               integration: NoSquashIntegration,
+              intake: IntakeNone,
             }
           )
       }
@@ -1338,6 +1597,7 @@ fn admit_commit_subject_from_basis(
           subject: basis.subject,
           ancestry: basis.ancestry,
           integration: basis.integration,
+          intake: IntakeNone,
         }
       )
   }
@@ -1361,6 +1621,7 @@ fn mint_repository_commit_admitted(
         message: message,
         ancestry: ancestry,
         integration: integration,
+        intake: admitted.intake,
       }]),
       commit_allocator: allocation.alloc,
       checked_out: repository.checked_out,
@@ -1432,16 +1693,23 @@ fn encode_optional_manifest_reference(acc: EncodeAcc, staged: CorpusManifestObje
   }
 }
 
-fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
-  json_object(
-    members: [
-      json_kv(key: "id", value: json_int(n: minted_id_ordinal(id: commit.reference.identity))),
-      json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root.locator)),
-      json_kv(key: "message", value: json_string(s: commit.message)),
-      json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
-      json_kv(key: "integration", value: encode_integration(integration: commit.integration)),
-    ]
-  )
+// THE COMMIT MEMBER POPULATION IS THE WRITTEN FORMAT'S, chosen by the same policy its reader takes.
+// A pre-v9 writer has no `intake` member; which intakes such a writer may be handed is the checked
+// route's question (encode_repository_checked), not this row's.
+fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit, commit_policy: CommitMemberPolicy) -> JsonValue {
+  let members = [
+    json_kv(key: "id", value: json_int(n: minted_id_ordinal(id: commit.reference.identity))),
+    json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root.locator)),
+    json_kv(key: "message", value: json_string(s: commit.message)),
+    json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
+    json_kv(key: "integration", value: encode_integration(integration: commit.integration)),
+  ]
+  match commit_policy {
+    CommitIntakeDeclared =>
+      json_object(members: concat(members, [json_kv(key: "intake", value: encode_commit_intake(intake: commit.intake))]))
+    CommitIntegrationDeclared => json_object(members: members)
+    CommitIntegrationAbsentByFormat => json_object(members: members)
+  }
 }
 
 // JsonNull FOR NoSquashIntegration AND AN ORDINAL FOR A CONSUMED SOURCE, which are disjoint shapes,
@@ -1485,8 +1753,8 @@ fn encode_ancestry(ancestry: CommitAncestry) -> JsonValue {
   }
 }
 
-fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> List<JsonValue> {
-  map(commits, c => encode_commit_record(acc: acc, commit: c))
+fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>, commit_policy: CommitMemberPolicy) -> List<JsonValue> {
+  map(commits, c => encode_commit_record(acc: acc, commit: c, commit_policy: commit_policy))
 }
 
 // THE CODEC IS NAMED FOR THE EXACT WIRE VERSION IT UNDERSTANDS, and `encode_repository` is the
@@ -1530,7 +1798,7 @@ fn encode_repository_v6_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> 
       ),
       json_kv(
         key: "commits",
-        value: json_array(elements: encode_commit_records(acc: acc, commits: repo.commits))
+        value: json_array(elements: encode_commit_records(acc: acc, commits: repo.commits, commit_policy: CommitIntegrationDeclared))
       ),
       json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
       json_kv(
@@ -1580,7 +1848,7 @@ fn encode_repository_v7(repo: RepositoryEnvelope) -> JsonValue {
       ),
       json_kv(
         key: "commits",
-        value: json_array(elements: encode_commit_records(acc: empty_positions, commits: repo.commits))
+        value: json_array(elements: encode_commit_records(acc: empty_positions, commits: repo.commits, commit_policy: CommitIntegrationDeclared))
       ),
       json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
       json_kv(
@@ -1594,12 +1862,14 @@ fn encode_repository_v7(repo: RepositoryEnvelope) -> JsonValue {
 // THE SHARDED WRITER'S ADMISSION IS THE MONOLITH'S, UNCHANGED: the same checked encoder adjudicates
 // (its document is built and discarded -- the admission is the census, not the bytes), and only
 // then does the v7 index encode. A store that cannot be written whole cannot be written sharded.
-// The sharded writer now writes v8: the same index plus the object roster derived from the very
-// partition the shards are written from.
+// The sharded writer now writes v9: v8's index plus each commit's typed intake. Its admission is the
+// whole CENSUS (encode_repository_census_checked), not the whole SAVE route: the whole format cannot
+// carry a recorded intake and refuses one, which is a fact about that format's bytes, not about
+// whether this repository's store is sound.
 fn encode_repository_sharded_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
-  match encode_repository_checked(repo: repo) {
+  match encode_repository_census_checked(repo: repo) {
     RepositoryEncodeRefused { cause } => RepositoryEncodeRefused { cause: cause }
-    RepositoryEncoded { value: _ } => RepositoryEncoded { value: encode_repository_v8(repo: repo) }
+    RepositoryEncoded { value: _ } => RepositoryEncoded { value: encode_repository_v9(repo: repo) }
   }
 }
 
@@ -1631,7 +1901,10 @@ fn encode_rostered_row(row: RosteredObject) -> JsonValue {
   ])
 }
 
-fn encode_repository_v8_over(repo: RepositoryEnvelope, shards: List<String>, rows: List<RosteredObject>) -> JsonValue {
+// v8 AND v9 SHARE THIS INDEX LAYOUT AND DIFFER ONLY INSIDE A COMMIT RECORD, so one body carries both,
+// selected by the tag and the commit policy that travel together below. v8 stays a writer only so
+// its frozen fixtures and the conversion witnesses can still produce one; production writes v9.
+fn encode_repository_rostered_over(repo: RepositoryEnvelope, shards: List<String>, rows: List<RosteredObject>, tag: String, commit_policy: CommitMemberPolicy) -> JsonValue {
   let empty_positions = EncodeAcc {
     positions: EncodePositions {
       nodes_by_identity: empty_map(),
@@ -1643,14 +1916,14 @@ fn encode_repository_v8_over(repo: RepositoryEnvelope, shards: List<String>, row
   }
   json_object(
     members: [
-      json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v8)),
+      json_kv(key: "format", value: json_string(s: tag)),
       json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
       json_kv(key: "object_shards", value: json_array(elements: map(shards, d => json_string(s: d)))),
       json_kv(key: "objects", value: json_array(elements: map(rows, r => encode_rostered_row(row: r)))),
       json_kv(key: "next_commit_ordinal", value: json_int(n: repo.commit_allocator.next_ordinal)),
       json_kv(
         key: "commits",
-        value: json_array(elements: encode_commit_records(acc: empty_positions, commits: repo.commits))
+        value: json_array(elements: encode_commit_records(acc: empty_positions, commits: repo.commits, commit_policy: commit_policy))
       ),
       json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
       json_kv(
@@ -1662,11 +1935,25 @@ fn encode_repository_v8_over(repo: RepositoryEnvelope, shards: List<String>, row
 }
 
 fn encode_repository_v8(repo: RepositoryEnvelope) -> JsonValue {
+  encode_repository_rostered(repo: repo, tag: repository_envelope_format_tag_v8, commit_policy: CommitIntegrationDeclared)
+}
+
+fn encode_repository_v9(repo: RepositoryEnvelope) -> JsonValue {
+  encode_repository_rostered(repo: repo, tag: repository_envelope_format_tag_v9, commit_policy: CommitIntakeDeclared)
+}
+
+fn encode_repository_v9_over(repo: RepositoryEnvelope, shards: List<String>, rows: List<RosteredObject>) -> JsonValue {
+  encode_repository_rostered_over(repo: repo, shards: shards, rows: rows, tag: repository_envelope_format_tag_v9, commit_policy: CommitIntakeDeclared)
+}
+
+fn encode_repository_rostered(repo: RepositoryEnvelope, tag: String, commit_policy: CommitMemberPolicy) -> JsonValue {
   let partition = shard_partition(objects: repo.store.objects)
-  encode_repository_v8_over(
+  encode_repository_rostered_over(
     repo: repo,
     shards: map(partition, shard => shard_identity_of(member_digests: shard_members_of(objects: shard))),
     rows: sort_by(partition_rostered_rows(partition: partition), fn(r) { r.identity.digest as String }),
+    tag: tag,
+    commit_policy: commit_policy,
   )
 }
 
@@ -1816,7 +2103,7 @@ fn encode_repository_appended_checked(repo: RepositoryEnvelope) -> RepositoryEnc
                       }
                     Absent => {
                       let appended = appended_shards_and_rows(store: repo.store)
-                      RepositoryEncoded { value: encode_repository_v8_over(repo: repo, shards: appended.shards, rows: appended.rows) }
+                      RepositoryEncoded { value: encode_repository_v9_over(repo: repo, shards: appended.shards, rows: appended.rows) }
                     }
                   }
               }
@@ -1938,7 +2225,23 @@ fn an_uncontained_target(census: ClosureCensus) -> ObjectId? {
 // envelope type is shared by every SCM verb, so the encoder can be handed one, and writing it whole
 // would roster away every object it does not hold. The append-only writer
 // (encode_repository_appended_checked) is the only route that writes a partial store.
+// THE WHOLE SAVE ROUTE WRITES v6, WHICH HAS NO `intake` MEMBER. A commit whose intake is a base or an
+// advance would be written without the one fact that makes it one, and read back unrecorded, so it
+// refuses here by name. IntakeNone is written as the format's silence and reads back
+// IntakeUnrecordedByFormat: a weaker claim than the writer held, never a different one.
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
+  match (repo.commits |> filter(c => match c.intake {
+    IntakeBase { revision: _ } => true
+    IntakeAdvance { from: _, to: _ } => true
+    IntakeNone => false
+    IntakeUnrecordedByFormat => false
+  })).first() {
+    Present { value: c } => RepositoryEncodeRefused { cause: RepositoryEncodeIntakeNotInWholeFormat { commit: c.reference } }
+    Absent => encode_repository_census_checked(repo: repo)
+  }
+}
+
+fn encode_repository_census_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   match repo.store.residence {
     WholeResidence => encode_repository_checked_whole(repo: repo)
     PartialResidence { rostered: _, shards, materialized: _ } =>
@@ -2261,6 +2564,7 @@ type PendingCommit {
   message: String
   parent_reference: RepositoryCommitRef?
   integration: CommitIntegration
+  intake: CommitIntake
 }
 
 type ResolvedCommitAcc {
@@ -2397,6 +2701,7 @@ fn resolve_pending_step_admitted(
                     message: c.message,
                     ancestry: DescendsFrom { parent: parent },
                     integration: c.integration,
+                    intake: c.intake,
                   }],
                   acc.commits
                 ),
@@ -2413,6 +2718,7 @@ fn resolve_pending_step_admitted(
                   message: c.message,
                   ancestry: RootCommit,
                   integration: c.integration,
+                  intake: c.intake,
                 }],
                 acc.commits
               ),
@@ -2427,10 +2733,11 @@ fn resolve_pending_step_admitted(
 // A commit record's member set is closed for the same reason the envelope's is: a writer that states
 // a fact this reader discards, and then has it deleted on the next re-encode, has lost information
 // while every operation reported success.
-fn commit_allowed_members(commit_policy: IntegrationMemberPolicy) -> List<String> {
+fn commit_allowed_members(commit_policy: CommitMemberPolicy) -> List<String> {
   match commit_policy {
-    IntegrationMemberDeclared => ["id", "root", "message", "ancestry", "integration"]
-    IntegrationMemberAbsentByFormat => ["id", "root", "message", "ancestry"]
+    CommitIntakeDeclared => ["id", "root", "message", "ancestry", "integration", "intake"]
+    CommitIntegrationDeclared => ["id", "root", "message", "ancestry", "integration"]
+    CommitIntegrationAbsentByFormat => ["id", "root", "message", "ancestry"]
   }
 }
 
@@ -2438,7 +2745,7 @@ fn decode_commit_step(
   positions: DecodePositions,
   acc: CommitDecodeAcc,
   value: JsonValue,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
 ) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -2560,22 +2867,49 @@ type PendingIntegrationRead
 
 fn read_pending_integration(
   value: JsonValue,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
 ) -> PendingIntegrationRead {
   match commit_policy {
-    IntegrationMemberAbsentByFormat => PendingIntegrationRead { integration: NoSquashIntegration }
-    IntegrationMemberDeclared =>
-      match read_member_value(v: value, key: "integration") {
-        MemberLookupFailed { cause: c } =>
-          PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    CommitIntegrationAbsentByFormat => PendingIntegrationRead { integration: NoSquashIntegration }
+    CommitIntegrationDeclared => read_declared_pending_integration(value: value)
+    CommitIntakeDeclared => read_declared_pending_integration(value: value)
+  }
+}
+
+fn read_declared_pending_integration(value: JsonValue) -> PendingIntegrationRead {
+  match read_member_value(v: value, key: "integration") {
+    MemberLookupFailed { cause: c } =>
+      PendingIntegrationRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberValue { value: found } =>
+      match found {
+        JsonNull => PendingIntegrationRead { integration: NoSquashIntegration }
+        JsonBool { value: _ } => pending_integration_of_declared_reference(found: found)
+        JsonNumber { lexeme: _ } => pending_integration_of_declared_reference(found: found)
+        JsonString { value: _ } => pending_integration_of_declared_reference(found: found)
+        JsonArray { elements: _ } => pending_integration_of_declared_reference(found: found)
+        JsonObject { members: _ } => pending_integration_of_declared_reference(found: found)
+      }
+  }
+}
+
+// THE INTAKE MEMBER IS REQUIRED IN v9 AND ABSENT BEFORE IT, and the absent-by-format arm answers
+// IntakeUnrecordedByFormat, never IntakeNone: the v8 belt wrote base commits whose message names the
+// revision they froze, so that format's silence is not evidence of "no intake" (gunbc.scm.intake).
+type PendingIntakeRead
+  = PendingIntakeRead { intake: CommitIntake }
+  | PendingIntakeRefused { cause: RepositoryDecodeRefusal }
+
+fn read_pending_intake(value: JsonValue, commit_policy: CommitMemberPolicy) -> PendingIntakeRead {
+  match commit_policy {
+    CommitIntegrationAbsentByFormat => PendingIntakeRead { intake: IntakeUnrecordedByFormat }
+    CommitIntegrationDeclared => PendingIntakeRead { intake: IntakeUnrecordedByFormat }
+    CommitIntakeDeclared =>
+      match read_member_value(v: value, key: "intake") {
+        MemberLookupFailed { cause: c } => PendingIntakeRefused { cause: RepositoryMemberReadRefused { cause: c } }
         MemberValue { value: found } =>
-          match found {
-            JsonNull => PendingIntegrationRead { integration: NoSquashIntegration }
-            JsonBool { value: _ } => pending_integration_of_declared_reference(found: found)
-            JsonNumber { lexeme: _ } => pending_integration_of_declared_reference(found: found)
-            JsonString { value: _ } => pending_integration_of_declared_reference(found: found)
-            JsonArray { elements: _ } => pending_integration_of_declared_reference(found: found)
-            JsonObject { members: _ } => pending_integration_of_declared_reference(found: found)
+          match decode_commit_intake(value: found) {
+            CommitIntakeRefused { cause: c } => PendingIntakeRefused { cause: RepositoryMemberReadRefused { cause: c } }
+            CommitIntakeDecoded { intake } => PendingIntakeRead { intake: intake }
           }
       }
   }
@@ -2595,7 +2929,7 @@ fn decode_commit_members(
   positions: DecodePositions,
   acc: CommitDecodeAcc,
   value: JsonValue,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
 ) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -2626,7 +2960,7 @@ fn decode_commit_members_after_reference(
   acc: CommitDecodeAcc,
   value: JsonValue,
   commit_reference: RepositoryCommitRef,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
 ) -> CommitDecodeAcc {
       match read_member(v: value, key: "root") {
         MemberFailed { cause: c } =>
@@ -2648,18 +2982,24 @@ fn decode_commit_members_after_reference(
                         PendingIntegrationRefused { cause: c } =>
                           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
                         PendingIntegrationRead { integration: integration } =>
-                          CommitDecodeAcc {
-                            commits: concat(
-                              [PendingCommit {
-                                reference: commit_reference,
-                                root: root,
-                                message: message,
-                                parent_reference: parent_reference,
-                                integration: integration,
-                              }],
-                              acc.commits
-                            ),
-                            refusal: acc.refusal,
+                          match read_pending_intake(value: value, commit_policy: commit_policy) {
+                            PendingIntakeRefused { cause: c } =>
+                              CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
+                            PendingIntakeRead { intake: intake } =>
+                              CommitDecodeAcc {
+                                commits: concat(
+                                  [PendingCommit {
+                                    reference: commit_reference,
+                                    root: root,
+                                    message: message,
+                                    parent_reference: parent_reference,
+                                    integration: integration,
+                                    intake: intake,
+                                  }],
+                                  acc.commits
+                                ),
+                                refusal: acc.refusal,
+                              }
                           }
                       }
                   }
@@ -2714,7 +3054,8 @@ fn decode_commit_members_after_reference(
 // single tolerant reader admitting both would accept each of those, and each is a document nobody
 // could have written.
 type RepositoryFormat
-  = RepositoryFormatV8
+  = RepositoryFormatV9
+  | RepositoryFormatV8
   | RepositoryFormatV7
   | RepositoryFormatV6
   | RepositoryFormatV5
@@ -2729,6 +3070,8 @@ fn repository_format_of(tag: String) -> RepositoryFormat {
     RepositoryFormatV7
   } else if tag == repository_envelope_format_tag_v8 {
     RepositoryFormatV8
+  } else if tag == repository_envelope_format_tag_v9 {
+    RepositoryFormatV9
   } else if tag == repository_envelope_format_tag_v5 {
     RepositoryFormatV5
   } else {
@@ -2755,6 +3098,8 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
           RepositoryDecodeRefused {
             cause: RepositoryFormatRetired { found: repository_envelope_format_tag_v3 }
           }
+        RepositoryFormatV9 =>
+          RepositoryDecodeRefused { cause: RepositoryShardedIndexIsNotWhole { found: repository_envelope_format_tag_v9 } }
         RepositoryFormatV8 =>
           RepositoryDecodeRefused { cause: RepositoryShardedIndexIsNotWhole { found: repository_envelope_format_tag_v8 } }
         RepositoryFormatV7 =>
@@ -2792,17 +3137,19 @@ type StageMemberPolicy
 // than a Bool for the same reason: "the record declares the member, read it" and "this format has no
 // integration member, and NoSquashIntegration is what such a document SAYS about integration" are
 // different propositions, and only the second needs the historical argument that no v5 writer had a
-// squash producer.
-type IntegrationMemberPolicy
-  = IntegrationMemberDeclared
-  | IntegrationMemberAbsentByFormat
+// squash producer. It is named for the COMMIT's member population rather than for integration alone
+// since v9 added `intake` to it: one axis per format, not one Bool per member.
+type CommitMemberPolicy
+  = CommitIntakeDeclared
+  | CommitIntegrationDeclared
+  | CommitIntegrationAbsentByFormat
 
 fn decode_repository_v6(v: JsonValue) -> RepositoryDecodeOutcome {
   decode_repository_versioned(
     v: v,
     allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
     policy: StageMemberDeclared,
-    commit_policy: IntegrationMemberDeclared,
+    commit_policy: CommitIntegrationDeclared,
   )
 }
 
@@ -2815,7 +3162,7 @@ fn decode_repository_v5(v: JsonValue) -> RepositoryDecodeOutcome {
     v: v,
     allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
     policy: StageMemberDeclared,
-    commit_policy: IntegrationMemberAbsentByFormat,
+    commit_policy: CommitIntegrationAbsentByFormat,
   )
 }
 
@@ -2827,7 +3174,7 @@ fn decode_repository_v4(v: JsonValue) -> RepositoryDecodeOutcome {
     v: v,
     allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out"],
     policy: StageMemberAbsentByFormat,
-    commit_policy: IntegrationMemberAbsentByFormat,
+    commit_policy: CommitIntegrationAbsentByFormat,
   )
 }
 
@@ -2841,6 +3188,7 @@ type RepositoryShardedIndex {
   document: JsonValue
   shard_digests: List<String>
   roster: RepositoryObjectRoster
+  commit_policy: CommitMemberPolicy
 }
 
 // WHETHER THE INDEX CARRIES AN OBJECT ROSTER IS THE FORMAT'S FACT: v7 has none (its objects are
@@ -2968,6 +3316,7 @@ fn decode_repository_v7_index(v: JsonValue) -> RepositoryShardedIndexDecode {
     v: v,
     allowed: ["format", "identity_rule", "object_shards", "commits", "next_commit_ordinal", "checked_out", "staged"],
     roster_declared: false,
+    commit_policy: CommitIntegrationDeclared,
   )
 }
 
@@ -2976,12 +3325,24 @@ fn decode_repository_v8_index(v: JsonValue) -> RepositoryShardedIndexDecode {
     v: v,
     allowed: ["format", "identity_rule", "object_shards", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
     roster_declared: true,
+    commit_policy: CommitIntegrationDeclared,
   )
 }
 
-fn decode_sharded_index_roster(v: JsonValue, digests: List<String>, roster_declared: Bool) -> RepositoryShardedIndexDecode {
+// v9's ENVELOPE MEMBER POPULATION IS v8's; the formats differ only inside a commit record, so the
+// split is carried by `commit_policy` and nothing else -- the shape v5/v6 already have.
+fn decode_repository_v9_index(v: JsonValue) -> RepositoryShardedIndexDecode {
+  decode_repository_sharded_index(
+    v: v,
+    allowed: ["format", "identity_rule", "object_shards", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
+    roster_declared: true,
+    commit_policy: CommitIntakeDeclared,
+  )
+}
+
+fn decode_sharded_index_roster(v: JsonValue, digests: List<String>, roster_declared: Bool, commit_policy: CommitMemberPolicy) -> RepositoryShardedIndexDecode {
   if !roster_declared {
-    ShardedIndexDecoded { index: RepositoryShardedIndex { document: v, shard_digests: digests, roster: ObjectRosterAbsentByFormat } }
+    ShardedIndexDecoded { index: RepositoryShardedIndex { document: v, shard_digests: digests, roster: ObjectRosterAbsentByFormat, commit_policy: commit_policy } }
   } else {
     match read_member(v: v, key: "objects") {
       MemberArray { elements } =>
@@ -2990,7 +3351,7 @@ fn decode_sharded_index_roster(v: JsonValue, digests: List<String>, roster_decla
             ShardedIndexRefused { cause: RepositoryObjectRosterMalformed { detail: detail } }
           ObjectRosterRowsRead { rows, seen: _ } =>
             ShardedIndexDecoded {
-              index: RepositoryShardedIndex { document: v, shard_digests: digests, roster: ObjectRosterDeclared { rows: rows } },
+              index: RepositoryShardedIndex { document: v, shard_digests: digests, roster: ObjectRosterDeclared { rows: rows }, commit_policy: commit_policy },
             }
         }
       MemberFailed { cause: c } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -3002,7 +3363,7 @@ fn decode_sharded_index_roster(v: JsonValue, digests: List<String>, roster_decla
   }
 }
 
-fn decode_repository_sharded_index(v: JsonValue, allowed: List<String>, roster_declared: Bool) -> RepositoryShardedIndexDecode {
+fn decode_repository_sharded_index(v: JsonValue, allowed: List<String>, roster_declared: Bool, commit_policy: CommitMemberPolicy) -> RepositoryShardedIndexDecode {
   match read_string_member(v: v, key: "identity_rule") {
     MemberFailed { cause: c } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: rule } =>
@@ -3030,7 +3391,7 @@ fn decode_repository_sharded_index(v: JsonValue, allowed: List<String>, roster_d
                       cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "object_shards" } },
                     }
                   ShardDigestsRead { digests } =>
-                    decode_sharded_index_roster(v: v, digests: digests, roster_declared: roster_declared)
+                    decode_sharded_index_roster(v: v, digests: digests, roster_declared: roster_declared, commit_policy: commit_policy)
                 }
               MemberString { value: _ } =>
                 ShardedIndexRefused {
@@ -3048,7 +3409,7 @@ fn decode_repository_sharded_index(v: JsonValue, allowed: List<String>, roster_d
   }
 }
 
-fn decode_repository_v7_finish(v: JsonValue, store: ObjectStore) -> RepositoryDecodeOutcome {
+fn decode_repository_v7_finish(v: JsonValue, store: ObjectStore, commit_policy: CommitMemberPolicy) -> RepositoryDecodeOutcome {
   match read_member_value(v: v, key: "next_commit_ordinal") {
     MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberValue { value: found } =>
@@ -3061,7 +3422,7 @@ fn decode_repository_v7_finish(v: JsonValue, store: ObjectStore) -> RepositoryDe
             v: v,
             next_ordinal: next_ordinal,
             policy: StageMemberDeclared,
-            commit_policy: IntegrationMemberDeclared,
+            commit_policy: commit_policy,
             store: store,
             positions: empty_map(),
           )
@@ -3073,7 +3434,7 @@ fn decode_repository_versioned(
   v: JsonValue,
   allowed: List<String>,
   policy: StageMemberPolicy,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
 ) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "identity_rule") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -3095,7 +3456,7 @@ fn decode_repository_versioned(
   }
 }
 
-fn decode_repository_body(v: JsonValue, policy: StageMemberPolicy, commit_policy: IntegrationMemberPolicy) -> RepositoryDecodeOutcome {
+fn decode_repository_body(v: JsonValue, policy: StageMemberPolicy, commit_policy: CommitMemberPolicy) -> RepositoryDecodeOutcome {
   match read_member_value(v: v, key: "next_commit_ordinal") {
     MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberValue { value: found } =>
@@ -3155,7 +3516,7 @@ fn decode_repository_body_with_allocator(
   v: JsonValue,
   next_ordinal: Int,
   policy: StageMemberPolicy,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
 ) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -3328,7 +3689,7 @@ fn decode_repository_body_with_store(
   v: JsonValue,
   next_ordinal: Int,
   policy: StageMemberPolicy,
-  commit_policy: IntegrationMemberPolicy,
+  commit_policy: CommitMemberPolicy,
   store: ObjectStore,
   positions: DecodePositions,
 ) -> RepositoryDecodeOutcome {

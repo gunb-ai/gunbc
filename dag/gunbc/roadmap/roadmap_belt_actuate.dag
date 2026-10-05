@@ -431,7 +431,15 @@ import gunbc.scm.object_store {
   path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
   store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
   find_object, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
-  CorpusManifestRecord, authored_source_target_locator, object_id_eq,
+  CorpusManifestRecord, authored_source_target_locator, object_id_eq, CorpusManifestTarget,
+}
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeNone, IntakeBase, IntakeAdvance, IntakeUnrecordedByFormat, intake_revision_eq }
+import gunbc.scm.repository_envelope {
+  LineIntake, LineIntakeAt, LineIntakeAbsent, LineIntakeUnrecorded, LineIntakeUnreadable, line_intake,
+  intake_commit_at_revision, intake_tip, IntakeTip,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseRevisionAlreadyPlaced,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
   repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
@@ -456,6 +464,7 @@ import gunbc.scm.repository_save {
 import gunbc.scm.worktree_inventory {
   worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args,
   worktree_base_inventory_args, worktree_changes_since_args, worktree_untracked_args,
+  revision_observable_args, revision_changes_between_args,
   worktree_changes_parse, WorktreeChange, WorktreeBind, WorktreeDelete,
 }
 import std.minted_identity { MintedId, minted_id_ordinal }
@@ -6393,15 +6402,12 @@ fn belt_scm_envelope_seeded(
   generation: RepositoryGenerationExpectation,
   path: String,
   paths: List<NonEmptyStr>,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
+  base_sha: String,
+  revision: IntakeRevision,
 ) -> BeltSeedOutcome {
   if count(envelope.commits) > 0 {
     SeedReady { envelope: envelope, generation: generation }
   } else {
-    match belt_scm_base_sha_observe(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-      BaseShaUnobserved { reason } => SeedPoisoned { detail: reason }
-      BaseShaObserved { base_sha } =>
         match belt_scm_stage_base_tree(
           instance: instance,
           worktree: worktree,
@@ -6418,27 +6424,34 @@ fn belt_scm_envelope_seeded(
               CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
                 SeedPoisoned { detail: "the object store refuses the base manifest: a different manifest already holds its identity, which is store damage" }
               CorpusManifestStored { store: with_manifest, manifest } =>
-                match commit_staged(
+                match mint_intake_base(
                   repository: RepositoryEnvelope {
                     store: with_manifest,
                     commits: envelope.commits,
                     commit_allocator: envelope.commit_allocator,
                     checked_out: envelope.checked_out,
-                    staged: Present { value: manifest },
+                    staged: envelope.staged,
                   },
+                  root: CorpusManifestTarget { locator: manifest.locator },
                   message: join(["project base: ", base_sha], ""),
+                  revision: revision,
                 ) {
-                  StagedCommitCandidateRefused { cause: _ } =>
-                    SeedPoisoned { detail: "the base stage could not be compared against its base" }
-                  StagedCommitNothingToFreeze =>
-                    SeedPoisoned { detail: "the intake base froze nothing, so the project has no base to merge against" }
-                  StagedCommitAllocatorInvalid { next_ordinal } =>
+                  IntakeBaseRootRefused { cause: _ } =>
+                    SeedPoisoned { detail: "the base manifest the seed just stored does not resolve as a complete manifest in its own store, which is store damage" }
+                  IntakeBaseRevisionAlreadyPlaced { commit: _ } =>
+                    SeedPoisoned { detail: "an empty envelope already places the intake base, which is envelope damage" }
+                  IntakeBaseAllocatorInvalid { next_ordinal } =>
                     SeedPoisoned {
                       detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], ""),
                     }
-                  StagedCommitSourceUnrecoverable { cause: _ } =>
-                    SeedPoisoned { detail: "a staged base path's source is unrecoverable from the object store" }
-                  StagedCommitMinted { repository: seeded, reference: _ } =>
+                  IntakeBaseMinted { repository: minted, reference: base_ref } => {
+                    let seeded = RepositoryEnvelope {
+                      store: minted.store,
+                      commits: minted.commits,
+                      commit_allocator: minted.commit_allocator,
+                      checked_out: Present { value: base_ref },
+                      staged: minted.staged,
+                    }
                     match save_repository_sharded_guarded(path: path, repo: seeded, expected: generation) {
                       RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
                         SeedReady { envelope: seeded, generation: generation }
@@ -6460,19 +6473,257 @@ fn belt_scm_envelope_seeded(
   }
 }
 
-// THE ROOT COMMIT IS THE MERGE BASE EVERY CANDIDATE DESCENDS FROM. In a seeded envelope it is the
-// intake-base commit; in a pre-seeding envelope from the first capture design it is the first
-// (root) candidate, and later candidates chain from it -- both are one RootCommit-ancestry commit,
-// and more than one is envelope damage this derivation refuses to choose among.
-fn belt_scm_root_commit_ref(envelope: RepositoryEnvelope) -> RepositoryCommitRef? {
-  (envelope.commits
-    |> filter(c => match c.ancestry {
-      RootCommit => true
-      DescendsFrom { parent: _ } => false
-    })
-    |> map(c => c.reference)).first()
+// THE ATTEMPT'S BASE AS A TYPED REVISION. The spawn origin records the sha as git printed it
+// (untagged hex), so it is read through extdeps.git's one decoder for git's own plumbing text; a
+// value that is not a git object id cannot name a revision and is refused by the caller.
+fn belt_scm_intake_revision(base_sha: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: base_sha) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
 }
 
+fn belt_scm_intake_revision_sha(revision: IntakeRevision) -> String {
+  match revision {
+    GitIntakeRevision { id } => git_object_id_wire_hex(oid: id) as String
+  }
+}
+
+// THE BASE A CANDIDATE DESCENDS FROM IS THE INTAKE COMMIT FOR ITS ATTEMPT'S BASE (the BaseAdvance
+// follow-up to gunbc#13111). Until then every candidate descended from the repository's one root
+// commit and a string comparison of that commit's message refused attempts on any other base; now
+// the repository holds one intake commit per base revision it has met, and the candidate's parent
+// IS the record of which base its delta assumed. An attempt on a revision the repository has not
+// met advances the intake line's tip to it first (belt_scm_base_advance), in memory, and the
+// candidate's save persists both. A repository whose commits carry no typed intake predates this
+// and is refused by name: which base a candidate there would descend from is underivable from
+// typed facts, and choosing the root by position is the guess this change removes.
+type BeltIntakeBase
+  = BeltIntakeBaseReady { envelope: RepositoryEnvelope, base_ref: RepositoryCommitRef }
+  | BeltIntakeBaseRefused { detail: String }
+  | BeltIntakeBasePoisoned { detail: String }
+
+fn belt_scm_intake_base_for(
+  git_program: String,
+  worktree: String,
+  path: String,
+  envelope: RepositoryEnvelope,
+  revision: IntakeRevision,
+) -> BeltIntakeBase {
+  match intake_commit_at_revision(commits: envelope.commits, revision: revision) {
+    Present { value: placed } => BeltIntakeBaseReady { envelope: envelope, base_ref: placed.reference }
+    Absent =>
+      match intake_tip(commits: envelope.commits) {
+        Absent =>
+          BeltIntakeBasePoisoned {
+            detail: "the project repository predates typed base records: no commit carries an intake, so which base a candidate would descend from is underivable; the repository's standing is CaptureBaseStale/IntegratesStale-derivable only, and it must be re-seeded before it takes another capture",
+          }
+        Present { value: tip } =>
+          match tip {
+            IntakeTip { commit: tip_commit, revision: tip_revision } =>
+              match belt_scm_base_advance(git_program: git_program, worktree: worktree, path: path, envelope: envelope, tip_commit: tip_commit, from: tip_revision, to: revision) {
+                BaseAdvanceRefused { detail } => BeltIntakeBaseRefused { detail: detail }
+                BaseAdvancePoisoned { detail } => BeltIntakeBasePoisoned { detail: detail }
+                BaseAdvanced { envelope: advanced, reference } => BeltIntakeBaseReady { envelope: advanced, base_ref: reference }
+              }
+          }
+      }
+  }
+}
+
+// THE BASE ADVANCE: the tip's manifest re-bound over EXACTLY `git diff S_k..S_k+1` -- every path the
+// diff names deleted or re-bound to its bytes at S_k+1, every other entry the tip's own -- minted as
+// an IntakeAdvance { from: S_k, to: S_k+1 } child of the tip, whose admission refuses an advance that
+// does not continue the tip's line. Both revisions are first asked whether the bridge can observe
+// them; a revision it cannot observe refuses the advance by name rather than diffing against
+// whatever git resolves instead. The content demand on history is the tip's manifest (one shard),
+// plus the shard of any re-bound bytes the repository already holds.
+type BeltBaseAdvance
+  = BaseAdvanced { envelope: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | BaseAdvanceRefused { detail: String }
+  | BaseAdvancePoisoned { detail: String }
+
+fn belt_scm_revision_observable(git_program: String, worktree: String, sha: String, role: String) -> String? {
+  match belt_exec(cmd: host_exec_argv(program: git_program, args: revision_observable_args(sha: sha)), workdir: worktree) {
+    ExecOk { stdout: _ } => none
+    ExecFailed { program: _, exit_code, stderr } =>
+      Present {
+        value: join([
+          "BaseAdvanceRevisionUnobservable: the advance's ", role, " revision ", sha,
+          " is not a commit the worktree's git can observe (exit ", to_string(exit_code), ": ", trim(stderr),
+          "), so the change between the two bases is underivable",
+        ], ""),
+      }
+    ExecRefused { program: _, reason } =>
+      Present { value: join(["BaseAdvanceRevisionUnobservable: the bridge refused to observe the ", role, " revision ", sha, ": ", reason], "") }
+  }
+}
+
+fn belt_scm_base_advance(
+  git_program: String,
+  worktree: String,
+  path: String,
+  envelope: RepositoryEnvelope,
+  tip_commit: RepositoryCommit,
+  from: IntakeRevision,
+  to: IntakeRevision,
+) -> BeltBaseAdvance {
+  let from_sha = belt_scm_intake_revision_sha(revision: from)
+  let to_sha = belt_scm_intake_revision_sha(revision: to)
+  let tip_root = tip_commit.root.locator
+  match belt_scm_revision_observable(git_program: git_program, worktree: worktree, sha: from_sha, role: "from") {
+    Present { value: detail } => BaseAdvancePoisoned { detail: detail }
+    Absent =>
+  match belt_scm_revision_observable(git_program: git_program, worktree: worktree, sha: to_sha, role: "to") {
+    Present { value: detail } => BaseAdvancePoisoned { detail: detail }
+    Absent =>
+  match belt_exec(cmd: host_exec_argv(program: git_program, args: revision_changes_between_args(from: from_sha, to: to_sha)), workdir: worktree) {
+    ExecFailed { program, exit_code, stderr } =>
+      BaseAdvanceRefused { detail: belt_commit_exec_detail(step: "base-advance-diff", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      BaseAdvanceRefused { detail: belt_commit_exec_detail(step: "base-advance-diff", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout } => {
+      let changes = worktree_changes_parse(stdout_nul: stdout)
+      match belt_scm_advance_texts(git_program: git_program, worktree: worktree, to_sha: to_sha, changes: changes) {
+        AdvanceTextsRefused { detail } => BaseAdvanceRefused { detail: detail }
+        AdvanceTextsRead { texts } =>
+          match materialize_objects(envelope_path: path, store: envelope.store, identities: [tip_root]) {
+            ObjectMaterializationRefused { detail } =>
+              BaseAdvanceRefused { detail: join(["the intake tip's manifest could not be read from its shard: ", detail], "") }
+            ObjectsMaterialized { store: with_tip, read_shards: _ } =>
+              match find_corpus_manifest_record(store: with_tip, identity: tip_root) {
+                CorpusManifestAbsent { identity: _ } => BaseAdvancePoisoned { detail: "the intake tip's manifest is absent from the store" }
+                CorpusManifestIsAuthoredSource { identity: _ } => BaseAdvancePoisoned { detail: "the intake tip's root is an authored source, which is store damage" }
+                CorpusManifestIsSemanticNode { identity: _ } => BaseAdvancePoisoned { detail: "the intake tip's root is a semantic node, which is store damage" }
+                CorpusManifestFound(tip_record) =>
+                  belt_scm_base_advance_mint(
+                    path: path,
+                    envelope: RepositoryEnvelope {
+                      store: with_tip,
+                      commits: envelope.commits,
+                      commit_allocator: envelope.commit_allocator,
+                      checked_out: envelope.checked_out,
+                      staged: envelope.staged,
+                    },
+                    tip_commit: tip_commit,
+                    from: from,
+                    tip_record: tip_record,
+                    to: to,
+                    changes: changes,
+                    texts: texts,
+                  )
+              }
+          }
+      }
+    }
+  }
+  }
+  }
+}
+
+// THE BYTES OF EVERY RE-BOUND PATH AT S_k+1, keyed by path. Read through the same declared bridge
+// verb the seed reads the base with (`git show <sha>:<path>`), so an advance and a seed agree on
+// what a revision's file holds.
+type BeltAdvanceTexts
+  = AdvanceTextsRead { texts: Map<String, String> }
+  | AdvanceTextsRefused { detail: String }
+
+fn belt_scm_advance_texts(git_program: String, worktree: String, to_sha: String, changes: List<WorktreeChange>) -> BeltAdvanceTexts {
+  fold(changes, init: AdvanceTextsRead { texts: empty_map() }, f: (acc, change) =>
+    match acc {
+      AdvanceTextsRefused { detail: _ } => acc
+      AdvanceTextsRead { texts } =>
+        match change {
+          WorktreeDelete { path: _ } => acc
+          WorktreeBind { path } =>
+            match belt_exec(cmd: host_exec_argv(program: git_program, args: worktree_base_file_args(base_sha: to_sha, path: path as String)), workdir: worktree) {
+              ExecOk { stdout } => AdvanceTextsRead { texts: map_insert(texts, path as String, stdout) }
+              ExecFailed { program, exit_code, stderr } =>
+                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join(["base-advance-file ", path as String], ""), outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+              ExecRefused { program, reason } =>
+                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join(["base-advance-file ", path as String], ""), outcome: ExecRefused { program: program, reason: reason }) }
+            }
+        }
+    })
+}
+
+// THE PURE RE-BINDING: the tip's entries with exactly `changes` applied, each bind to its text at
+// S_k+1. A bind whose text was not read is refused rather than skipped -- a skipped bind would leave
+// the tip's bytes at a path the diff says changed, which is the stale-base tree this exists to end.
+fn belt_scm_advance_fold(path: String, store: ObjectStore, tip_record: CorpusManifestRecord, changes: List<WorktreeChange>, texts: Map<String, String>) -> BeltDeltaFold {
+  fold(changes, init: BeltDeltaFold { store: store, unique: path_unique_of_record(base: tip_record), refused: none }, f: (acc, change) =>
+    match acc.refused {
+      Present { value: _ } => acc
+      Absent =>
+        match change {
+          WorktreeDelete { path: p } =>
+            BeltDeltaFold { store: acc.store, unique: path_unique_with_path_removed(unique: acc.unique, path: p), refused: none }
+          WorktreeBind { path: p } =>
+            match map_get(texts, key: p as String) {
+              Absent =>
+                BeltDeltaFold { store: acc.store, unique: acc.unique, refused: Present { value: join(["the advance's diff re-binds ", p as String, " but its bytes at the target revision were not read"], "") } }
+              Present { value: text } => belt_scm_delta_bind_text(path_of_envelope: path, acc: acc, path: p, text: text)
+            }
+        }
+    })
+}
+
+fn belt_scm_base_advance_mint(
+  path: String,
+  envelope: RepositoryEnvelope,
+  tip_commit: RepositoryCommit,
+  from: IntakeRevision,
+  tip_record: CorpusManifestRecord,
+  to: IntakeRevision,
+  changes: List<WorktreeChange>,
+  texts: Map<String, String>,
+) -> BeltBaseAdvance {
+  let folded = belt_scm_advance_fold(path: path, store: envelope.store, tip_record: tip_record, changes: changes, texts: texts)
+  match folded.refused {
+    Present { value: detail } => BaseAdvanceRefused { detail: detail }
+    Absent =>
+      match belt_delta_resident_of(outcome: materialize_if_rostered(envelope_path: path, store: folded.store, identity: path_unique_manifest_identity(unique: folded.unique))) {
+        DeltaResidentRefused { detail } =>
+          BaseAdvanceRefused { detail: join(["the advanced manifest's identity is already persisted and could not be read back: ", detail], "") }
+        DeltaResident { store: manifest_resident } =>
+          match store_path_unique_manifest(store: manifest_resident, unique: folded.unique) {
+            UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+              BaseAdvancePoisoned { detail: "the object store refuses the advanced manifest: a different manifest already holds its identity, which is store damage" }
+            UniqueManifestStored { store: with_manifest, manifest } =>
+              match mint_intake_advance(
+                repository: RepositoryEnvelope {
+                  store: with_manifest,
+                  commits: envelope.commits,
+                  commit_allocator: envelope.commit_allocator,
+                  checked_out: envelope.checked_out,
+                  staged: envelope.staged,
+                },
+                root: CorpusManifestTarget { locator: manifest.locator },
+                message: join(["project base advance: ", belt_scm_intake_revision_sha(revision: from), "..", belt_scm_intake_revision_sha(revision: to)], ""),
+                parent: tip_commit.reference,
+                from: from,
+                to: to,
+              ) {
+                IntakeAdvanceMinted { repository, reference } => BaseAdvanced { envelope: repository, reference: reference }
+                IntakeAdvanceAllocatorInvalid { next_ordinal } =>
+                  BaseAdvancePoisoned { detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], "") }
+                IntakeAdvanceParentMissing { parent: _ } =>
+                  BaseAdvancePoisoned { detail: "the intake tip is not a commit of its own envelope, which is envelope damage" }
+                IntakeAdvanceRootRefused { cause: _ } =>
+                  BaseAdvancePoisoned { detail: "the advanced manifest does not resolve as a complete manifest in its own store, which is store damage" }
+                IntakeAdvanceDoesNotMove { revision: _ } =>
+                  BaseAdvancePoisoned { detail: "the advance's two revisions are one revision, which the intake tip search cannot produce: envelope damage" }
+                IntakeAdvanceDiscontinuous { parent: _, line: _ } =>
+                  BaseAdvancePoisoned { detail: "the intake tip's line does not stand at the tip's own revision, which is envelope damage" }
+                IntakeAdvanceRevisionAlreadyPlaced { commit: _ } =>
+                  BaseAdvancePoisoned { detail: "the advance's target revision is already placed, which the intake search had just ruled out: envelope damage" }
+                IntakeAdvanceLineAlreadyAdvanced { commit: _ } =>
+                  BaseAdvancePoisoned { detail: "an advance already leaves the intake tip's revision, so the tip search returned a commit that is not the tip: envelope damage" }
+              }
+          }
+      }
+  }
+}
 
 // THE CAPTURE, WHOLE. Seed-once (an envelope holding any commit is already seeded), then the
 // candidate is staged from the worktree and minted DESCENDING FROM THE SHARED BASE: the selection
@@ -6534,6 +6785,12 @@ fn belt_scm_capture_candidate_tree(
           ) {
             BaseShaUnobserved { reason } => ScmCapturePoisoned { detail: reason }
             BaseShaObserved { base_sha } =>
+          match belt_scm_intake_revision(base_sha: base_sha) {
+            Absent =>
+              ScmCapturePoisoned {
+                detail: join(["the attempt's recorded base '", base_sha, "' is not a git object id, so no typed base record can name it"], ""),
+              }
+            Present { value: revision } =>
           match belt_commit_git(instance: instance, worktree: worktree, args: worktree_base_inventory_args(base_sha: base_sha)) {
             ExecFailed { program, exit_code, stderr } =>
               ScmCaptureRefused {
@@ -6560,45 +6817,40 @@ fn belt_scm_capture_candidate_tree(
                   generation: generation,
                   path: path,
                   paths: paths,
-                  node_id: node_id,
-                  attempt_key: attempt_key,
+                  base_sha: base_sha,
+                  revision: revision,
                 ) {
                   SeedRefused { detail } => ScmCaptureRefused { detail: detail }
                   SeedPoisoned { detail } => ScmCapturePoisoned { detail: detail }
                   SeedReady { envelope: seeded, generation: seeded_generation } =>
-                    match belt_scm_root_commit_ref(envelope: seeded) {
-                      Absent =>
-                        ScmCapturePoisoned {
-                          detail: "the project envelope holds commits but no root commit, so no candidate can descend from a shared base: envelope damage",
-                        }
-                      Present { value: base_ref } => {
-                        let head_ref = seeded.checked_out
-                        match belt_scm_base_sha_observe(
+                    match belt_scm_intake_base_for(
+                      git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+                      worktree: worktree,
+                      path: path,
+                      envelope: seeded,
+                      revision: revision,
+                    ) {
+                      BeltIntakeBaseRefused { detail } => ScmCaptureRefused { detail: detail }
+                      BeltIntakeBasePoisoned { detail } => ScmCapturePoisoned { detail: detail }
+                      BeltIntakeBaseReady { envelope: based, base_ref } =>
+                        belt_scm_delta_capture(
                           instance: instance,
-                          node_id: node_id,
-                          attempt_key: attempt_key,
-                        ) {
-                          BaseShaUnobserved { reason } => ScmCapturePoisoned { detail: reason }
-                          BaseShaObserved { base_sha } =>
-                            belt_scm_delta_capture(
-                              instance: instance,
-                              worktree: worktree,
-                              seeded: seeded,
-                              generation: seeded_generation,
-                              base_ref: base_ref,
-                              head_ref: head_ref,
-                              base_sha: base_sha,
-                              path: path,
-                              message: message,
-                            )
-                        }
+                          worktree: worktree,
+                          seeded: based,
+                          generation: seeded_generation,
+                          base_ref: base_ref,
+                          head_ref: seeded.checked_out,
+                          base_sha: base_sha,
+                          path: path,
+                          message: message,
+                        )
+                    }
                 }
               }
             }
           }
       }
     }
-  }
   }
   }
   }
@@ -6669,43 +6921,51 @@ fn belt_scm_delta_fold_step(
               },
             }
           } else {
-            match belt_scm_delta_resident_for(path: path_of_envelope, store: acc.store, text: read.content) {
-              DeltaResidentRefused { detail } =>
-                BeltDeltaFold {
-                  store: acc.store,
-                  unique: acc.unique,
-                  refused: Present {
-                    value: join(["the changed path ", path as String, " re-binds bytes the repository already holds, and they could not be read back: ", detail], ""),
-                  },
-                }
-              DeltaResident { store: resident } =>
-            match store_authored_source(store: resident, text: read.content) {
-              SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                BeltDeltaFold {
-                  store: acc.store,
-                  unique: acc.unique,
-                  refused: Present {
-                    value: join([
-                      "the object store refuses ", path as String,
-                      ": a different source already holds its content identity, which is store damage",
-                    ], ""),
-                  },
-                }
-              SourceStored { store: next, source } =>
-                BeltDeltaFold {
-                  store: next,
-                  unique: path_unique_with_path_bound(
-                    unique: acc.unique,
-                    path: path,
-                    source: authored_source_target_of(reference: source),
-                  ),
-                  refused: none,
-                }
-            }
-            }
+            belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: read.content)
           }
         }
       }
+  }
+}
+
+// ONE BIND OF NEW BYTES AT A PATH, shared by the candidate delta (bytes read from the worktree) and
+// the base advance (bytes read from the revision it advances to): the identity-law readback of a
+// re-bound persisted object, the store, and the path-unique re-binding are one rule, so they are one
+// function rather than two copies free to drift.
+fn belt_scm_delta_bind_text(path_of_envelope: String, acc: BeltDeltaFold, path: NonEmptyStr, text: String) -> BeltDeltaFold {
+  match belt_scm_delta_resident_for(path: path_of_envelope, store: acc.store, text: text) {
+    DeltaResidentRefused { detail } =>
+      BeltDeltaFold {
+        store: acc.store,
+        unique: acc.unique,
+        refused: Present {
+          value: join(["the changed path ", path as String, " re-binds bytes the repository already holds, and they could not be read back: ", detail], ""),
+        },
+      }
+    DeltaResident { store: resident } =>
+  match store_authored_source(store: resident, text: text) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      BeltDeltaFold {
+        store: acc.store,
+        unique: acc.unique,
+        refused: Present {
+          value: join([
+            "the object store refuses ", path as String,
+            ": a different source already holds its content identity, which is store damage",
+          ], ""),
+        },
+      }
+    SourceStored { store: next, source } =>
+      BeltDeltaFold {
+        store: next,
+        unique: path_unique_with_path_bound(
+          unique: acc.unique,
+          path: path,
+          source: authored_source_target_of(reference: source),
+        ),
+        refused: none,
+      }
+  }
   }
 }
 
@@ -6735,15 +6995,6 @@ fn belt_scm_delta_capture(
     Absent =>
       ScmCapturePoisoned { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
     Present { value: base_commit } =>
-      if base_commit.message != join(["project base: ", base_sha], "") {
-        ScmCaptureRefused {
-          detail: join([
-            "stale base: the attempt branches from ", base_sha,
-            " but the project repository's base commit records '", base_commit.message,
-            "'; applying the worktree's change set against one base onto the other's tree would mint a candidate that is neither, so the capture refuses until the repository's base advances to this attempt's base",
-          ], ""),
-        }
-      } else {
       match materialize_objects(envelope_path: path, store: seeded.store, identities: [base_commit.root.locator]) {
         ObjectMaterializationRefused { detail } =>
           ScmCaptureRefused { detail: join(["the base commit's manifest could not be read from its shard: ", detail], "") }
@@ -6766,7 +7017,6 @@ fn belt_scm_delta_capture(
             message: message,
             base_commit: base_commit,
           )
-      }
       }
   }
 }
@@ -10701,27 +10951,114 @@ fn belt_integrate_materialize_sides(
   }
 }
 
-// A CAPTURE TAKEN AGAINST ANOTHER BASE IS NEVER INTEGRATED. Until 2026-10-03 the capture applied a
-// worktree delta computed against the ATTEMPT's base onto the repository's base manifest without
-// comparing the two, so a candidate from an attempt on a different base recorded a tree that is
-// neither base plus work nor anything real (srv2: three such candidates, one integrated). The
-// capture now refuses that state; this gate refuses to integrate one already recorded, durably, as
-// an integration-blocked receipt naming both bases -- the standing is derived from the attempt's
-// recorded spawn base and the repository's base commit, never guessed.
-// A HEAD LINE THAT INTEGRATED A STALE CAPTURE CARRIES ITS TREE (srv2, 2026-10-03: commit 2 of
-// shell-typed-invocation squash-integrated candidate 1, captured from an attempt on b7f9070 into a
-// repository based at d012e00). Until the BaseAdvance follow-up records a commit's capture base as a
-// typed member and lands the corrective merge, the standing is DERIVED on read: walk the head's
-// ancestry, take every squash-integrated source, recover its capturing attempt from the candidate
-// message's one producer (gunbc.roadmap.roadmap_belt_commit belt_candidate_commit_subject), and
-// compare that attempt's recorded spawn base with the repository's base commit. Publish and integrate
-// refuse a line carrying any such source. A source whose attempt cannot be recovered, or whose base
-// cannot be observed, is UNDERIVABLE and refuses too -- the line's standing is then unknown, and an
-// unknown standing is not a clean one.
-type BeltLineStanding
-  = LineClean
-  | LineIntegratesStale { integration: Int, source: Int, captured_against: String, repository_base: String }
-  | LineStandingUnderivable { detail: String }
+// A CAPTURE'S STANDING: WHETHER ITS DELTA WAS APPLIED ONTO THE BASE IT WAS COMPUTED AGAINST.
+//
+// For a commit the BaseAdvance follow-up to gunbc#13111 minted, this is answered by construction:
+// the capture finds (or advances to) the intake commit recording its attempt's base and mints the
+// candidate as that commit's child, so a typed line IS on base, with no observation at all. What
+// remains is the population that predates the typed record -- srv2's shell-typed-invocation, seeded
+// at d012e00, holds candidates 1, 3 and 4 captured from attempts on b7f9070, d7005ab and d7005ab, and
+// candidate 1 was integrated as commit 2 (gunbc.recurring_failure_mode
+// a_worktree_delta_against_one_base_applied_onto_another). Those commits carry
+// IntakeUnrecordedByFormat, so their standing is DERIVED, typed, from the two facts that were
+// recorded: the line's root commit message the v8 belt wrote ('project base: <sha>', read here and
+// nowhere else, and only for an unrecorded line) and the capturing attempt's spawn base. A legacy
+// capture whose two bases differ is CaptureBaseStale; any commit whose line integrated one is
+// IntegratesStale; a fact that cannot be read is underivable, and an unknown standing is never read
+// as a clean one.
+type BeltCaptureStanding
+  = CaptureOnBase
+  | CaptureBaseStale { commit: Int, captured_against: String, repository_base: String }
+  | CaptureStandingUnderivable { detail: String }
+
+// THE v8 BASE-MESSAGE CONVENTION, INVERTED ONCE, beside the seed that still writes it as presentation.
+// A typed commit is never read through it: line_intake answers LineIntakeAt for those.
+data belt_legacy_base_prefix: String = "project base: "
+
+fn belt_legacy_base_sha(message: String) -> String? {
+  if !starts_with(s: message, prefix: belt_legacy_base_prefix) {
+    none
+  } else {
+    let sha = substring(s: message, start: string_length(s: belt_legacy_base_prefix), end: string_length(s: message))
+    if sha == "" { none } else { Present { value: sha } }
+  }
+}
+
+// THE ROOT OF A COMMIT'S LINE, from the commit table alone.
+fn belt_line_root(commits: List<RepositoryCommit>, at: RepositoryCommitRef) -> RepositoryCommit? {
+  match ancestry_walk(start: at, history: repository_history(commits: commits)) {
+    AncestryTraced { chain } =>
+      match chain.last() {
+        Absent => none
+        Present { value: root } => commit_at_reference(commits: commits, reference: root)
+      }
+    AncestryBrokenAt { commit: _, missing_parent: _ } => none
+    AncestryStartNotInHistory { start: _ } => none
+    AncestryRevisitsACommit { detected_from: _ } => none
+  }
+}
+
+// WHETHER A CAPTURE'S STANDING NEEDS ITS ATTEMPT'S BASE AT ALL: only an unrecorded line does, so a
+// typed repository's integrate and publish observe no spawn origin.
+fn belt_capture_needs_attempt_base(commits: List<RepositoryCommit>, candidate: RepositoryCommitRef) -> Bool {
+  match line_intake(commits: commits, head: candidate) {
+    LineIntakeUnrecorded { commit: _ } => true
+    LineIntakeAt { commit: _, revision: _ } => false
+    LineIntakeAbsent => false
+    LineIntakeUnreadable { at: _ } => false
+  }
+}
+
+fn belt_capture_standing(commits: List<RepositoryCommit>, candidate: RepositoryCommitRef, captured: BeltBaseSha) -> BeltCaptureStanding {
+  let ordinal = to_string(minted_id_ordinal(id: candidate.identity))
+  match line_intake(commits: commits, head: candidate) {
+    LineIntakeAt { commit: _, revision: _ } => CaptureOnBase
+    LineIntakeAbsent =>
+      CaptureStandingUnderivable { detail: join(["no commit on candidate ", ordinal, "'s line records a base, typed or legacy"], "") }
+    LineIntakeUnreadable { at } =>
+      CaptureStandingUnderivable { detail: join(["candidate ", ordinal, "'s ancestry cannot be read at commit ", to_string(minted_id_ordinal(id: at.identity))], "") }
+    LineIntakeUnrecorded { commit: _ } =>
+      match belt_line_root(commits: commits, at: candidate) {
+        Absent => CaptureStandingUnderivable { detail: join(["candidate ", ordinal, "'s line has no readable root commit"], "") }
+        Present { value: root } =>
+          match belt_legacy_base_sha(message: root.message) {
+            Absent =>
+              CaptureStandingUnderivable { detail: join(["candidate ", ordinal, " predates typed base records and its line's root message '", root.message, "' names no base"], "") }
+            Present { value: repository_base } =>
+              match captured {
+                BaseShaUnobserved { reason } =>
+                  CaptureStandingUnderivable { detail: join(["the capture base of candidate ", ordinal, " is unobservable: ", reason], "") }
+                BaseShaObserved { base_sha } =>
+                  match belt_scm_intake_revision(base_sha: base_sha) {
+                    Absent => CaptureStandingUnderivable { detail: join(["candidate ", ordinal, "'s attempt records '", base_sha, "', which is not a git object id"], "") }
+                    Present { value: captured_revision } =>
+                      match belt_scm_intake_revision(base_sha: repository_base) {
+                        Absent => CaptureStandingUnderivable { detail: join(["candidate ", ordinal, "'s line root records '", repository_base, "', which is not a git object id"], "") }
+                        Present { value: base_revision } =>
+                          if intake_revision_eq(left: captured_revision, right: base_revision) {
+                            CaptureOnBase
+                          } else {
+                            CaptureBaseStale { commit: minted_id_ordinal(id: candidate.identity), captured_against: base_sha, repository_base: repository_base }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn belt_capture_underivable_detail(detail: String) -> String {
+  join(["whether the candidate was captured against its repository's base is unknown, so it is not integrated: ", detail], "")
+}
+
+fn belt_capture_base_stale_detail(commit: Int, captured_against: String, repository_base: String) -> String {
+  join([
+    "CaptureBaseStale: candidate ", to_string(commit), " was captured from an attempt on base ", captured_against,
+    " into a line based at ", repository_base,
+    ", so its recorded tree is not that attempt's tree and it is not integrated",
+  ], "")
+}
 
 // THE INTEGRATED SOURCES ON A HEAD'S LINE, as (integrating commit, source commit) pairs: the pure half
 // of the derivation, from the commit table the index carries.
@@ -10760,34 +11097,35 @@ fn belt_line_integrated_sources(commits: List<RepositoryCommit>, head: Repositor
   }
 }
 
-// THE PURE VERDICT over sources whose capture bases were observed: the first source captured against
-// a base other than the repository's is the stale standing; an unobserved base is underivable.
+// A LINE IS STALE WHEN IT INTEGRATED A STALE CAPTURE: IntegratesStale names the integrating commit
+// and the source, and carries the source's two bases. The pure verdict over sources whose capture
+// standing is already derived: the first non-clean source decides, and an underivable one is never
+// read as clean.
+type BeltLineStanding
+  = LineClean
+  | IntegratesStale { integration: Int, source: Int, captured_against: String, repository_base: String }
+  | LineStandingUnderivable { detail: String }
+
 type BeltObservedLineSource {
   line: BeltLineSource
-  captured: BeltBaseSha
+  standing: BeltCaptureStanding
 }
 
-fn belt_line_standing(repository_base_message: String, observed: List<BeltObservedLineSource>) -> BeltLineStanding {
+fn belt_line_standing(observed: List<BeltObservedLineSource>) -> BeltLineStanding {
   fold(observed, init: LineClean, f: (acc, o) =>
     match acc {
-      LineIntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => acc
+      IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => acc
       LineStandingUnderivable { detail: _ } => acc
       LineClean =>
-        match o.captured {
-          BaseShaUnobserved { reason } =>
-            LineStandingUnderivable {
-              detail: join(["the capture base of integrated source ", to_string(minted_id_ordinal(id: o.line.source.reference.identity)), " is unobservable: ", reason], ""),
-            }
-          BaseShaObserved { base_sha } =>
-            if repository_base_message == join(["project base: ", base_sha], "") {
-              LineClean
-            } else {
-              LineIntegratesStale {
-                integration: minted_id_ordinal(id: o.line.integration.reference.identity),
-                source: minted_id_ordinal(id: o.line.source.reference.identity),
-                captured_against: base_sha,
-                repository_base: repository_base_message,
-              }
+        match o.standing {
+          CaptureOnBase => LineClean
+          CaptureStandingUnderivable { detail } => LineStandingUnderivable { detail: detail }
+          CaptureBaseStale { commit, captured_against, repository_base } =>
+            IntegratesStale {
+              integration: minted_id_ordinal(id: o.line.integration.reference.identity),
+              source: commit,
+              captured_against: captured_against,
+              repository_base: repository_base,
             }
         }
     })
@@ -10797,46 +11135,52 @@ fn belt_line_standing_detail(standing: BeltLineStanding) -> String? {
   match standing {
     LineClean => none
     LineStandingUnderivable { detail } => Present { value: join(["the project head's line has an underivable standing, so it is neither integrated into nor published: ", detail], "") }
-    LineIntegratesStale { integration, source, captured_against, repository_base } =>
+    IntegratesStale { integration, source, captured_against, repository_base } =>
       Present {
         value: join([
-          "the project head's line integrates a stale capture: commit ", to_string(integration),
+          "IntegratesStale: the project head's line integrates a stale capture: commit ", to_string(integration),
           " squash-integrated candidate ", to_string(source), ", captured from an attempt on ", captured_against,
-          " into a repository whose base commit records '", repository_base,
-          "'; its tree is not that attempt's tree, so nothing on this line is integrated into or published until a corrective integration lands",
+          " into a line based at ", repository_base,
+          "; its tree is not that attempt's tree, so nothing on this line is integrated into or published until a corrective integration lands",
         ], ""),
       }
   }
 }
 
-// THE EFFECTFUL SHELL: observe each source's capturing attempt's spawn base, then decide purely.
+// THE CAPTURING ATTEMPT'S BASE, RECOVERED FROM A LEGACY CANDIDATE'S MESSAGE (its one producer is
+// gunbc.roadmap.roadmap_belt_commit belt_candidate_commit_message). Asked only of an unrecorded line.
+fn belt_legacy_capture_base(instance: HostDashboardInstance, source: RepositoryCommit) -> BeltBaseSha {
+  match belt_candidate_commit_subject(message: source.message) {
+    Absent => BaseShaUnobserved { reason: join(["source ", to_string(minted_id_ordinal(id: source.reference.identity)), "'s message '", source.message, "' names no capturing attempt"], "") }
+    Present { value: subject } =>
+      belt_scm_base_sha_observe(
+        instance: instance,
+        node_id: subject.node_id as gunbc.roadmap_model.RoadmapNodeId,
+        attempt_key: subject.attempt_key,
+      )
+  }
+}
+
+// THE EFFECTFUL SHELL: a typed source's standing needs nothing observed; a legacy one observes its
+// capturing attempt's spawn base, then everything is decided purely.
 fn belt_head_line_standing(instance: HostDashboardInstance, envelope: RepositoryEnvelope, head: RepositoryCommitRef) -> BeltLineStanding {
-  match belt_scm_root_commit_ref(envelope: envelope) {
-    Absent => LineStandingUnderivable { detail: "the project repository holds no base commit" }
-    Present { value: root_ref } =>
-      match commit_at_reference(commits: envelope.commits, reference: root_ref) {
-        Absent => LineStandingUnderivable { detail: "the base commit is not a commit of its own envelope" }
-        Present { value: root_commit } =>
-          match belt_line_integrated_sources(commits: envelope.commits, head: head) {
-            LineSourcesUnreadable { detail } => LineStandingUnderivable { detail: detail }
-            LineSourcesRead { sources } =>
-              belt_line_standing(
-                repository_base_message: root_commit.message,
-                observed: map(sources, line => BeltObservedLineSource {
-                  line: line,
-                  captured: match belt_candidate_commit_subject(message: line.source.message) {
-                    Absent => BaseShaUnobserved { reason: join(["source ", to_string(minted_id_ordinal(id: line.source.reference.identity)), "'s message '", line.source.message, "' names no capturing attempt"], "") }
-                    Present { value: subject } =>
-                      belt_scm_base_sha_observe(
-                        instance: instance,
-                        node_id: subject.node_id as gunbc.roadmap_model.RoadmapNodeId,
-                        attempt_key: subject.attempt_key,
-                      )
-                  },
-                }),
-              )
-          }
-      }
+  match belt_line_integrated_sources(commits: envelope.commits, head: head) {
+    LineSourcesUnreadable { detail } => LineStandingUnderivable { detail: detail }
+    LineSourcesRead { sources } =>
+      belt_line_standing(
+        observed: map(sources, line => BeltObservedLineSource {
+          line: line,
+          standing: belt_capture_standing(
+            commits: envelope.commits,
+            candidate: line.source.reference,
+            captured: if belt_capture_needs_attempt_base(commits: envelope.commits, candidate: line.source.reference) {
+              belt_legacy_capture_base(instance: instance, source: line.source)
+            } else {
+              BaseShaUnobserved { reason: "a typed capture's base is its parent's intake record, never observed" }
+            },
+          ),
+        }),
+      )
   }
 }
 
@@ -10844,32 +11188,6 @@ fn belt_selected_head_line_standing(instance: HostDashboardInstance, envelope: R
   match envelope.checked_out {
     Absent => LineClean
     Present { value: h } => belt_head_line_standing(instance: instance, envelope: envelope, head: h)
-  }
-}
-
-fn belt_integrate_stale_base_detail(envelope: RepositoryEnvelope, base: BeltBaseSha) -> String? {
-  match base {
-    BaseShaUnobserved { reason } => Present { value: join(["the capturing attempt's base is unobservable, so whether its candidate was captured against the repository's base is unknown: ", reason], "") }
-    BaseShaObserved { base_sha } =>
-      match belt_scm_root_commit_ref(envelope: envelope) {
-        Absent => Present { value: "the project repository holds no base commit, so no candidate can be admitted against it" }
-        Present { value: root_ref } =>
-          match commit_at_reference(commits: envelope.commits, reference: root_ref) {
-            Absent => Present { value: "the project repository's base commit is not a commit of its own envelope, which is envelope damage" }
-            Present { value: root_commit } =>
-              if root_commit.message == join(["project base: ", base_sha], "") {
-                none
-              } else {
-                Present {
-                  value: join([
-                    "stale capture: the candidate was captured from an attempt on base ", base_sha,
-                    " but the project repository's base commit records '", root_commit.message,
-                    "', so its recorded tree is not that attempt's tree and it is not integrated",
-                  ], ""),
-                }
-              }
-          }
-      }
   }
 }
 
@@ -10885,18 +11203,18 @@ fn belt_integrate_into_envelope(
     RepositoryLoadRefused { cause } =>
       EnvelopeIntegrationUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
     RepositoryLoaded { path: _, envelope, generation } =>
-      match belt_integrate_stale_base_detail(envelope: envelope, base: attempt_base) {
-        Present { value: detail } =>
-          match attempt_base {
-            BaseShaUnobserved { reason: _ } => EnvelopeIntegrationUnreadable { detail: detail }
-            BaseShaObserved { base_sha: _ } =>
-              match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
-                IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
-                IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
-              }
-          }
-        Absent => {
       let candidate = RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } }
+      match belt_capture_standing(commits: envelope.commits, candidate: candidate, captured: attempt_base) {
+        CaptureStandingUnderivable { detail } =>
+          EnvelopeIntegrationUnreadable { detail: belt_capture_underivable_detail(detail: detail) }
+        CaptureBaseStale { commit, captured_against, repository_base } => {
+          let detail = belt_capture_base_stale_detail(commit: commit, captured_against: captured_against, repository_base: repository_base)
+          match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+            IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
+            IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
+          }
+        }
+        CaptureOnBase => {
       match belt_line_standing_detail(standing: belt_selected_head_line_standing(instance: instance, envelope: envelope)) {
         Present { value: line_detail } => EnvelopeIntegrationUnreadable { detail: line_detail }
         Absent =>
@@ -11596,27 +11914,125 @@ fn belt_publish_tree_of(entries: List<CorpusManifestEntry>) -> List<String> {
   sort_by(entries, e => e.path as String) |> map(e => join([e.path as String, "=", object_id_key(identity: e.source.locator)], ""))
 }
 
+// THE PUBLISH BASE: THE INTAKE COMMIT WHOSE TREE THE INTEGRATION WORKTREE IS CHECKED OUT AT, and
+// against whose manifest the head's re-bound entries are planned. A head's tree contains every
+// external revision its line and its integrated sources were based on, and those intake commits lie
+// on ONE chain (gunbc.scm.repository_envelope mint_intake_advance), so the base is the deepest of
+// them: diffing against an earlier one would publish the upstream change between the two as if it
+// were the work. Until the BaseAdvance follow-up this was the repository's root commit compared with
+// the ATTEMPT's base by message, which refused every publish once an attempt branched from a later
+// base. A line older than the typed record publishes from its root's legacy base, and a line mixing
+// typed and unrecorded commits is underivable: no single checkout holds both readings.
+type BeltPublishBase {
+  commit: RepositoryCommit
+  sha: String
+}
+
+type BeltPublishBaseDerivation
+  = PublishBaseDerived { base: BeltPublishBase }
+  | PublishBaseUnderivable { detail: String }
+
+type BeltPublishBaseAcc {
+  typed: List<RepositoryCommitRef>
+  legacy: Bool
+  refused: String?
+}
+
+fn belt_publish_base(commits: List<RepositoryCommit>, head: RepositoryCommitRef) -> BeltPublishBaseDerivation {
+  match belt_line_integrated_sources(commits: commits, head: head) {
+    LineSourcesUnreadable { detail } => PublishBaseUnderivable { detail: detail }
+    LineSourcesRead { sources } => {
+      let lines = concat([head], map(sources, l => l.source.reference))
+      let acc = fold(lines, init: BeltPublishBaseAcc { typed: [], legacy: false, refused: none }, f: (acc, at) =>
+        match acc.refused {
+          Present { value: _ } => acc
+          Absent =>
+            match line_intake(commits: commits, head: at) {
+              LineIntakeAt { commit, revision: _ } => BeltPublishBaseAcc { typed: concat([commit], acc.typed), legacy: acc.legacy, refused: none }
+              LineIntakeUnrecorded { commit: _ } => BeltPublishBaseAcc { typed: acc.typed, legacy: true, refused: none }
+              LineIntakeAbsent => BeltPublishBaseAcc { typed: acc.typed, legacy: acc.legacy, refused: Present { value: join(["commit ", to_string(minted_id_ordinal(id: at.identity)), " is on no base line, typed or legacy"], "") } }
+              LineIntakeUnreadable { at: u } => BeltPublishBaseAcc { typed: acc.typed, legacy: acc.legacy, refused: Present { value: join(["the ancestry of commit ", to_string(minted_id_ordinal(id: u.identity)), " cannot be read"], "") } }
+            }
+        })
+      match acc.refused {
+        Present { value: detail } => PublishBaseUnderivable { detail: detail }
+        Absent =>
+          if acc.legacy && count(acc.typed) > 0 {
+            PublishBaseUnderivable { detail: "the head's line mixes typed base records with commits that predate them, so no single base checkout holds the head's tree" }
+          } else if acc.legacy {
+            match belt_line_root(commits: commits, at: head) {
+              Absent => PublishBaseUnderivable { detail: "the head's line has no readable root commit" }
+              Present { value: root } =>
+                match belt_legacy_base_sha(message: root.message) {
+                  Absent => PublishBaseUnderivable { detail: join(["the head's line predates typed base records and its root message '", root.message, "' names no base"], "") }
+                  Present { value: sha } => PublishBaseDerived { base: BeltPublishBase { commit: root, sha: sha } }
+                }
+            }
+          } else {
+            match (sort_by(acc.typed, r => 0 - belt_line_depth(commits: commits, at: r))).first() {
+              Absent => PublishBaseUnderivable { detail: "the head's line records no base" }
+              Present { value: deepest } =>
+                match commit_at_reference(commits: commits, reference: deepest) {
+                  Absent => PublishBaseUnderivable { detail: "the publish base is not a commit of its own envelope, which is envelope damage" }
+                  Present { value: base_commit } =>
+                    match line_intake(commits: commits, head: deepest) {
+                      LineIntakeAt { commit: _, revision } =>
+                        PublishBaseDerived { base: BeltPublishBase { commit: base_commit, sha: belt_scm_intake_revision_sha(revision: revision) } }
+                      LineIntakeAbsent => PublishBaseUnderivable { detail: "the publish base records no revision" }
+                      LineIntakeUnrecorded { commit: _ } => PublishBaseUnderivable { detail: "the publish base records no revision" }
+                      LineIntakeUnreadable { at: _ } => PublishBaseUnderivable { detail: "the publish base's ancestry cannot be read" }
+                    }
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn belt_line_depth(commits: List<RepositoryCommit>, at: RepositoryCommitRef) -> Int {
+  match ancestry_walk(start: at, history: repository_history(commits: commits)) {
+    AncestryTraced { chain } => count(chain)
+    AncestryBrokenAt { commit: _, missing_parent: _ } => 0
+    AncestryStartNotInHistory { start: _ } => 0
+    AncestryRevisitsACommit { detected_from: _ } => 0
+  }
+}
+
+// WHAT A PUBLISH IS ABOUT, READ FROM THE INDEX ONCE: the head, and the base its worktree is checked
+// out at. The same envelope value then plans the delta, so the index is not read twice.
+type BeltPublishSubject
+  = PublishSubjectRead { envelope: RepositoryEnvelope, head_commit: RepositoryCommit, base: BeltPublishBase }
+  | PublishSubjectUnreadable { detail: String }
+
+fn belt_publish_subject_of(path: String) -> BeltPublishSubject {
+  match load_repository_indexed(path: path) {
+    RepositoryLoadRefused { cause } => PublishSubjectUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
+    RepositoryLoaded { path: _, envelope, generation: _ } =>
+      match envelope.checked_out {
+        Absent => PublishSubjectUnreadable { detail: "the project envelope selects no integration head, so there is nothing to publish" }
+        Present { value: head } =>
+          match commit_at_reference(commits: envelope.commits, reference: head) {
+            Absent => PublishSubjectUnreadable { detail: "the integration head is not a commit of its own envelope, which is envelope damage" }
+            Present { value: head_commit } =>
+              match belt_publish_base(commits: envelope.commits, head: head) {
+                PublishBaseUnderivable { detail } =>
+                  PublishSubjectUnreadable { detail: join(["the publish base is underivable, so which head entries the base checkout already holds is unknown and the publish refuses rather than recovering the whole corpus: ", detail], "") }
+                PublishBaseDerived { base } => PublishSubjectRead { envelope: envelope, head_commit: head_commit, base: base }
+              }
+          }
+      }
+  }
+}
+
 fn belt_publish_head_delta(
   instance: HostDashboardInstance,
   path: String,
   envelope: RepositoryEnvelope,
   head_commit: RepositoryCommit,
-  base_sha: String,
+  base: BeltPublishBase,
 ) -> BeltPublishDelta {
-  match belt_scm_root_commit_ref(envelope: envelope) {
-    Absent => PublishDeltaRefused { detail: "the project envelope holds no root commit, so the base the integration worktree holds has no manifest to diff against" }
-    Present { value: root_ref } =>
-      match commit_at_reference(commits: envelope.commits, reference: root_ref) {
-        Absent => PublishDeltaRefused { detail: "the root commit is not a commit of its own envelope, which is envelope damage" }
-        Present { value: root_commit } =>
-          if root_commit.message != join(["project base: ", base_sha], "") {
-            PublishDeltaRefused {
-              detail: join([
-                "the envelope's root commit does not record the intake base ", base_sha,
-                " the integration worktree is checked out at, so which head entries that checkout already holds is underivable; the publish refuses rather than recovering the whole corpus",
-              ], ""),
-            }
-          } else {
+  let root_commit = base.commit
             match belt_line_standing_detail(standing: belt_head_line_standing(instance: instance, envelope: envelope, head: head_commit.reference)) {
               Present { value: line_detail } => PublishDeltaRefused { detail: line_detail }
               Absent =>
@@ -11652,9 +12068,6 @@ fn belt_publish_head_delta(
                 }
             }
             }
-          }
-      }
-  }
 }
 
 fn belt_publish_project_for_instance(
@@ -11663,14 +12076,12 @@ fn belt_publish_project_for_instance(
   attempt_key: String,
   project_key: String,
 ) -> BeltPublishOutcome {
-  match belt_scm_base_sha_observe(
-    instance: instance,
-    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-    attempt_key: attempt_key,
-  ) {
-    BaseShaUnobserved { reason } =>
-      PublishEvidenceUnreadable { node_id: node_id, detail: reason }
-    BaseShaObserved { base_sha } =>
+  let envelope_path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
+  match belt_publish_subject_of(path: envelope_path) {
+    PublishSubjectUnreadable { detail } =>
+      PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+    PublishSubjectRead { envelope, head_commit, base } => {
+      let base_sha = base.sha
       match belt_publish_project_worktree(instance: instance, project_key: project_key, base_sha: base_sha) {
         ExecFailed { program, exit_code, stderr } =>
           PublishEvidenceUnreadable {
@@ -11712,26 +12123,7 @@ fn belt_publish_project_for_instance(
                     detail: belt_commit_exec_detail(step: "integration-clean", outcome: ExecRefused { program: program, reason: reason }),
                   }
                 ExecOk { stdout: _ } => {
-                  let envelope_path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
-                  match load_repository_indexed(path: envelope_path) {
-                    RepositoryLoadRefused { cause } =>
-                      PublishEvidenceUnreadable { node_id: node_id, detail: belt_scm_load_refusal_detail(cause: cause) }
-                    RepositoryLoaded { path: _, envelope, generation: _ } =>
-                      match envelope.checked_out {
-                        Absent =>
-                          PublishEvidenceUnreadable {
-                            node_id: node_id,
-                            detail: "the project envelope selects no integration head, so there is nothing to publish",
-                          }
-                        Present { value: head } =>
-                          match commit_at_reference(commits: envelope.commits, reference: head) {
-                            Absent =>
-                              PublishEvidenceUnreadable {
-                                node_id: node_id,
-                                detail: "the integration head is not a commit of its own envelope, which is envelope damage",
-                              }
-                            Present { value: head_commit } =>
-                              match belt_publish_head_delta(instance: instance, path: envelope_path, envelope: envelope, head_commit: head_commit, base_sha: base_sha) {
+                              match belt_publish_head_delta(instance: instance, path: envelope_path, envelope: envelope, head_commit: head_commit, base: base) {
                                 PublishDeltaRefused { detail } =>
                                   PublishEvidenceUnreadable { node_id: node_id, detail: detail }
                                     PublishDeltaFiles { files, deletes } =>
@@ -11811,14 +12203,12 @@ fn belt_publish_project_for_instance(
                                           }
                                       }
                               }
-                          }
-                      }
                   }
                 }
               }
           }
         }
-      }
+    }
   }
 }
 

@@ -31,7 +31,11 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
   commit_at_reference,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseRevisionAlreadyPlaced,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
 }
+import gunbc.scm.intake { IntakeRevision }
 import gunbc.scm.squash_merge {
   squash_merge,
   SquashMerged,
@@ -134,6 +138,68 @@ fn mb_commit(build: MbBuild, message: String) -> MbBuild {
             RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
             RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
             RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// THE INTAKE STEPS: the staged manifest frozen as an intake base (a root commit) or as an advance of
+// the cursor's line, through the production intake mints and nothing else. The cursor and the stage
+// move to the new commit exactly as mb_commit moves them; a refusal is a broken fixture.
+fn mb_settle(repository: RepositoryEnvelope, reference: RepositoryCommitRef) -> MbBuild {
+  match commit_at_reference(commits: repository.commits, reference: reference) {
+    Absent => MbSetupFailed
+    Present { value: c } =>
+      MbBuilt {
+        repository: RepositoryEnvelope {
+          store: repository.store,
+          commits: repository.commits,
+          commit_allocator: repository.commit_allocator,
+          checked_out: Present { value: reference },
+          staged: Present { value: c.root },
+        },
+        at: Present { value: reference },
+      }
+  }
+}
+
+fn mb_intake_base(build: MbBuild, message: String, revision: IntakeRevision) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match repository.staged {
+        Absent => MbSetupFailed
+        Present { value: candidate } =>
+          match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: candidate.locator }, message: message, revision: revision) {
+            IntakeBaseMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+            IntakeBaseAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            IntakeBaseRootRefused { cause: _ } => MbSetupFailed
+            IntakeBaseRevisionAlreadyPlaced { commit: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+fn mb_intake_advance(build: MbBuild, message: String, from: IntakeRevision, to: IntakeRevision) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match at {
+        Absent => MbSetupFailed
+        Present { value: parent } =>
+          match repository.staged {
+            Absent => MbSetupFailed
+            Present { value: candidate } =>
+              match mint_intake_advance(repository: repository, root: CorpusManifestTarget { locator: candidate.locator }, message: message, parent: parent, from: from, to: to) {
+                IntakeAdvanceMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+                IntakeAdvanceAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+                IntakeAdvanceParentMissing { parent: _ } => MbSetupFailed
+                IntakeAdvanceRootRefused { cause: _ } => MbSetupFailed
+                IntakeAdvanceDoesNotMove { revision: _ } => MbSetupFailed
+                IntakeAdvanceDiscontinuous { parent: _, line: _ } => MbSetupFailed
+                IntakeAdvanceRevisionAlreadyPlaced { commit: _ } => MbSetupFailed
+                IntakeAdvanceLineAlreadyAdvanced { commit: _ } => MbSetupFailed
+              }
           }
       }
   }

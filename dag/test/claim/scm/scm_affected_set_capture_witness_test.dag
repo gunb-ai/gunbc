@@ -170,7 +170,7 @@ fn indexed_of(whole: RepositoryEnvelope) -> RepositoryEnvelope? {
           match index.roster {
             ObjectRosterAbsentByFormat => none
             ObjectRosterDeclared { rows } =>
-              match decode_repository_v7_finish(v: index.document, store: rostered_store(rostered: rows_by_digest(rows: rows), shards: index.shard_digests)) {
+              match decode_repository_v7_finish(v: index.document, store: rostered_store(rostered: rows_by_digest(rows: rows), shards: index.shard_digests), commit_policy: index.commit_policy) {
                 RepositoryDecodeRefused { cause: _ } => none
                 RepositoryDecoded { envelope } => Present { value: envelope }
               }

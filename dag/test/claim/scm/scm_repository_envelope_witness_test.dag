@@ -76,6 +76,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitParentNotInCommits,
   RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
   RepositoryEncodeStoreIsPartial,
+  RepositoryEncodeIntakeNotInWholeFormat,
   RepositoryEncodeAppendCarriesSemanticNode,
   RepositoryEncodeAppendShadowsRosteredIdentity,
   RepositoryIndexHasNoObjectRoster,
@@ -711,6 +712,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryEncodeStoreIsPartial { rostered_shards: _ } => "store_is_partial"
         RepositoryEncodeAppendCarriesSemanticNode { target: _ } => "append_carries_semantic_node"
         RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } => "append_shadows_rostered_identity"
+        RepositoryEncodeIntakeNotInWholeFormat { commit: _ } => "intake_not_in_whole_format"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
       }
@@ -1016,6 +1018,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryEncodeStoreIsPartial { rostered_shards: _ } => false
         RepositoryEncodeAppendCarriesSemanticNode { target: _ } => false
         RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } => false
+        RepositoryEncodeIntakeNotInWholeFormat { commit: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
       }
