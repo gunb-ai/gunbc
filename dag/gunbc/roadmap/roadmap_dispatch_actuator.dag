@@ -117,6 +117,7 @@ import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit }
 import gunbc.dispatch_selection {
   ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
   claude_dispatch_credential, inventory_with_claude_standing, claude_offer_for_instance,
+  inventory_with_codex_standing, inventory_with_cursor_standing, OfferCodex, OfferClaude, OfferCursor,
   ExecutionProfile,
   ProfileAutomatic,
   ProviderSelectionRequest,
@@ -200,6 +201,7 @@ import gunbc.roadmap_provider_events {
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
+import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_for_instance }
 import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
@@ -570,6 +572,73 @@ fn dispatch_actuator_claude_selection_observed(sizing_expectation: SizingProfile
   }
 }
 
+// THE CODEX AND CURSOR DRAWS OBSERVE BEFORE THEY SELECT, as the Claude draw does: the declared row's
+// standing admits no draw, so each request runs its custody-bound observation
+// (gunbc.worker_turn_standing), substitutes it into the declared row and selects over that. A rejected
+// credential, an exhausted codex bucket, a busy codex lock or a credential held on another host
+// therefore refuses typed before any spawn.
+fn codex_offer_provider_instance(inventory: ProviderInventory) -> ProviderInstance? {
+  fold(inventory.offers, init: none, f: (acc, offer) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match offer {
+          OfferCodex { offer: o } => Present { value: o.instance }
+          OfferClaude { offer: _ } => acc
+          OfferCursor { offer: _ } => acc
+        }
+    }
+  )
+}
+
+fn worker_turn_observed_inventory(instance: HostDashboardInstance, provider: DispatchCliProvider) -> ProviderInventory {
+  let inventory = provider_inventory_for_instance(instance: instance)
+  match provider {
+    CodexDispatchProvider =>
+      inventory_with_codex_standing(
+        inventory: inventory,
+        standing: match codex_offer_provider_instance(inventory: inventory) {
+          Absent => ProviderStandingUnobserved { reason: "this instance's inventory declares no codex offer" as NonEmptyStr }
+          Present { value: provider_instance } => codex_observed_standing_for_instance(instance: instance, provider: provider_instance)
+        },
+        account_state_root: codex_worker_turn_codex_home as FilePath,
+      )
+    CursorDispatchProvider =>
+      inventory_with_cursor_standing(inventory: inventory, standing: cursor_observed_standing_for_instance(instance: instance))
+    ClaudeCodeProvider => inventory
+    GunbcHarnessProvider => inventory
+  }
+}
+
+fn dispatch_actuator_worker_turn_selection_observed(
+  instance: HostDashboardInstance,
+  provider: DispatchCliProvider,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  match dispatch_cli_to_provider_kind(provider: provider) {
+    DispatchExecutorHasNoVendorKind { executor: e } =>
+      DispatchActuatorSelectionRefused {
+        reason: join(["worker-turn selection was asked for a non-vendor executor (", e, ")"], "") as NonEmptyStr,
+      }
+    DispatchProviderKindIs { kind: vendor_kind } =>
+      match resolve_dispatch_selection(
+        inventory: worker_turn_observed_inventory(instance: instance, provider: provider),
+        request: provider_selection_request_for_kind(kind: vendor_kind),
+        sizing_expectation: sizing_expectation,
+      ) {
+        DispatchSelectionResolved { receipt } =>
+          DispatchActuatorSelectionOk {
+            provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+            effort: receipt.applied_effort,
+            model: resolved_model_selection(resolved: receipt.resolved_selection),
+            process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+          }
+        DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+          DispatchActuatorSelectionRefused { reason: reason }
+      }
+  }
+}
+
 fn dispatch_actuator_selection_for_request(
   request: DispatchExecutorRequest,
   sizing_expectation: SizingProfileExpectation,
@@ -579,8 +648,10 @@ fn dispatch_actuator_selection_for_request(
     ExecutorVendor { provider } =>
       match provider {
         ClaudeCodeProvider => dispatch_actuator_claude_selection_observed(sizing_expectation: sizing_expectation)
-        CodexDispatchProvider => dispatch_actuator_selection_for_provider(provider: provider, sizing_expectation: sizing_expectation)
-        CursorDispatchProvider => dispatch_actuator_selection_for_provider(provider: provider, sizing_expectation: sizing_expectation)
+        CodexDispatchProvider =>
+          dispatch_actuator_worker_turn_selection_observed(instance: srv1_live_dashboard_instance(), provider: provider, sizing_expectation: sizing_expectation)
+        CursorDispatchProvider =>
+          dispatch_actuator_worker_turn_selection_observed(instance: srv1_live_dashboard_instance(), provider: provider, sizing_expectation: sizing_expectation)
         GunbcHarnessProvider => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
       }
   }

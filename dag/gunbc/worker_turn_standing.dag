@@ -1,0 +1,192 @@
+module gunbc.worker_turn_standing
+
+import std.types { String, NonEmptyStr, List, FilePath, Int }
+import std.claim_evidence { RecordedFactId }
+import v2.std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import v2.std.orchestration { EnvSet }
+import v2.std.compilers.cli_surface { process_argv_expansion, cli_surface_of_literal_words }
+import extdeps.exec.command { LocalExec }
+import extdeps.posix.sh_invocation {
+  posix_sh_export_from_file_then_exec_command,
+  PosixShExportExecReady,
+  PosixShExportExecEmitRefused,
+  posix_sh_export_from_file_unreadable_exit,
+}
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
+import extdeps.llm.cursor_cli { cursor_cli_program, cursor_api_key_env_var }
+import gunbc.command_runner { run_shell_command_observe }
+import extdeps.llm.cli_lifecycle { ProviderInstance }
+import gunbc.provider_standing {
+  ProviderStanding,
+  ProviderStandingUnobserved,
+  ProviderInstallationStanding,
+  InstallationReady,
+  InstallationStandingUnobserved,
+  ToolEnvironmentReady,
+  provider_standing_from_observed_bundle,
+}
+import gunbc.provider_standing_probe_bridge { provider_standing_bundle_from_codex_account_evidence }
+import gunbc.codex_app_server_press {
+  AmbientCodexCredentialContext,
+  codex_press_account_trip_request_lines,
+  parse_account_trip_session,
+  AccountTripDigestStructural,
+}
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_provider_executable }
+import gunbc.codex_harness_credential {
+  codex_worker_turn_custody_host,
+  codex_worker_turn_codex_home,
+  codex_harness_turn_argv,
+  codex_harness_turn_busy_exit,
+  codex_harness_credential_context,
+}
+import gunbc.cursor_harness_credential {
+  cursor_worker_turn_custody_host,
+  cursor_worker_turn_api_key_host_path,
+  cursor_status_reading,
+  CursorStatusReading,
+  CursorStatusAuthenticated,
+  CursorStatusUnauthenticated,
+  CursorStatusUnreadable,
+}
+
+// THE CODEX AND CURSOR OFFERS ARE JUDGED ON THE CREDENTIAL THE SPAWN BINDS, the way the Claude draw
+// is (gunbc.roadmap_dispatch_actuator claude_observed_standing_for_instance). Before this, both offers
+// carried the declared inventory's unobserved standing, so creating the secrets and converging their
+// custody could not change selection: a declared row admits no draw. Each observation here runs on
+// the custody host against the custody credential and nothing ambient, so a login someone made by hand
+// on the host cannot change the verdict. They run only on an operator's explicit executor request.
+
+data codex_harness_standing_trip_fact_id: RecordedFactId = "codex-harness-standing-trip" as RecordedFactId
+
+// THE CODEX STANDING TRIP is the existing app-server account trip (initialize, account/read,
+// account/rateLimits/read; gunbc.codex_app_server_press) with CODEX_HOME set to the custody directory
+// and run under the same flock as a turn, because account/read may refresh the token and a refresh
+// rotates it: a trip racing a turn would present one refresh token twice. A trip that finds the lock
+// held reports the credential busy rather than a codex failure. Exhausted rate-limit buckets and a
+// dead login reach selection through provider_standing_bundle_from_codex_account_evidence, the same
+// projection the press receipt uses, and refuse there before any spawn.
+fn codex_harness_trip_words(executable: FilePath) -> List<String> {
+  codex_harness_turn_argv(
+    command: concat(
+      [env_path_resolved_program().invocation as String],
+      env_prefixed_args(
+        bindings: [EnvSet { name: "CODEX_HOME", value: codex_worker_turn_codex_home as String }],
+        command_argv: [executable as String, "app-server", "--stdio"],
+      ),
+    ),
+  )
+}
+
+fn codex_observed_standing_for_instance(instance: HostDashboardInstance, provider: ProviderInstance) -> ProviderStanding {
+  if (instance.host_identity as String) != (codex_worker_turn_custody_host as String) {
+    ProviderStandingUnobserved {
+      reason: join(["the codex worker-turn credential is held only on ", codex_worker_turn_custody_host as String, "; this instance runs on ", instance.host_identity as String], "") as NonEmptyStr,
+    }
+  } else {
+    match dashboard_instance_provider_executable(instance: instance) {
+      Absent => ProviderStandingUnobserved { reason: "no codex executable is placed for this instance" as NonEmptyStr }
+      Present { value: executable } => {
+        let words = codex_harness_trip_words(executable: executable)
+        let run = shell.Exec.RunArgvStdin(
+          program: list_head_or_empty(items: words),
+          arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: list_tail(items: words))),
+          stdin_payload: codex_press_account_trip_request_lines(),
+        )
+        if run.exit_code == codex_harness_turn_busy_exit {
+          ProviderStandingUnobserved { reason: "the codex worker-turn credential is in use by another turn" as NonEmptyStr }
+        } else {
+          provider_standing_from_observed_bundle(
+            fact_id: codex_harness_standing_trip_fact_id,
+            provider: provider,
+            bundle: provider_standing_bundle_from_codex_account_evidence(
+              evidence: parse_account_trip_session(
+                stdout: run.stdout,
+                stderr: run.stderr,
+                evidence_root: instance.instance_root,
+                mode: AccountTripDigestStructural,
+              ),
+              credential: codex_harness_credential_context(),
+              installation: codex_trip_installation(exit_code: run.exit_code, stderr: run.stderr),
+              tool_environment: ToolEnvironmentReady,
+            ),
+          )
+        }
+      }
+    }
+  }
+}
+
+fn codex_trip_installation(exit_code: Int, stderr: String) -> ProviderInstallationStanding {
+  if exit_code == 0 {
+    InstallationReady
+  } else {
+    InstallationStandingUnobserved {
+      reason: join(["the codex app-server trip exited ", to_string(value: exit_code), ": ", stderr], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn list_head_or_empty(items: List<String>) -> String {
+  match items.first() {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+fn list_tail(items: List<String>) -> List<String> {
+  skip(items, 1)
+}
+
+// THE CURSOR STANDING. cursor-agent status runs under the custody key, exported inside the child as
+// the spawn does it, and answers only whether Cursor accepts the key. A rejected key refuses here. An
+// accepted key still does not make the offer selectable: entitlement and quota are observed by a
+// one-word turn (operator ruling D2, 2026-10-05), whose result shape is modeled from its first live
+// call, so until then the standing is unobserved and the draw refuses -- never a fabricated
+// "available".
+data cursor_entitlement_trip_pending_reason: NonEmptyStr = "cursor accepts the custody key, but entitlement and quota are read by a one-word turn whose result shape is modeled from its first live call (operator ruling D2, 2026-10-05); until then the cursor draw refuses" as NonEmptyStr
+
+fn cursor_standing_from_status(reading: CursorStatusReading) -> ProviderStanding {
+  match reading {
+    CursorStatusAuthenticated => ProviderStandingUnobserved { reason: cursor_entitlement_trip_pending_reason }
+    CursorStatusUnauthenticated { status } =>
+      ProviderStandingUnobserved { reason: join(["cursor rejects the custody key (status ", status, ")"], "") as NonEmptyStr }
+    CursorStatusUnreadable { detail } =>
+      ProviderStandingUnobserved { reason: join(["cursor-agent status output unreadable: ", detail], "") as NonEmptyStr }
+  }
+}
+
+fn cursor_observed_standing_for_instance(instance: HostDashboardInstance) -> ProviderStanding {
+  if (instance.host_identity as String) != (cursor_worker_turn_custody_host as String) {
+    ProviderStandingUnobserved {
+      reason: join(["the cursor worker-turn credential is held only on ", cursor_worker_turn_custody_host as String, "; this instance runs on ", instance.host_identity as String], "") as NonEmptyStr,
+    }
+  } else {
+    match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
+      PosixShellNameRefused { spelling } =>
+        ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
+      PosixShellNameAdmitted { name } =>
+        match posix_sh_export_from_file_then_exec_command(
+          name: name,
+          path: cursor_worker_turn_api_key_host_path,
+          command: [cursor_cli_program, "status", "--format", "json"],
+        ) {
+          PosixShExportExecEmitRefused { name: n } =>
+            ProviderStandingUnobserved { reason: join(["the sh emitter refused the export-and-exec program for ", n as String], "") as NonEmptyStr }
+          PosixShExportExecReady { command } => {
+            let run = run_shell_command_observe(command: command, transport: LocalExec)
+            if run.exit_code == posix_sh_export_from_file_unreadable_exit {
+              ProviderStandingUnobserved {
+                reason: join(["the cursor custody key ", cursor_worker_turn_api_key_host_path as String, " is unreadable on this host: ", run.stderr], "") as NonEmptyStr,
+              }
+            } else {
+              cursor_standing_from_status(reading: cursor_status_reading(stdout: run.stdout))
+            }
+          }
+        }
+    }
+  }
+}

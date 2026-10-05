@@ -12,7 +12,9 @@ import extdeps.uri { Uri, Https }
 // exactly the command's lifetime and the kernel drops it when the process dies, so a crashed command
 // leaves no lock to recover. Only the exclusive, non-blocking form is modeled: -n/--nonblock ("fail
 // rather than wait") with -E/--conflict-exit-code naming the exit status a conflict reports, so a
-// caller can tell "someone else holds it" apart from the command's own failures.
+// caller can tell "someone else holds it" apart from the command's own failures. -F/--no-fork
+// ("execute command without forking") execs the command in flock's place with the lock fd inherited,
+// so the process a terminal shows in the foreground is the command, not flock.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -24,7 +26,7 @@ fn flock_program() -> ProgramIdentity = uncataloged_program(invocation: "flock")
 
 fn flock_exclusive_nonblocking_words(lock_path: NonEmptyStr, conflict_exit_code: Int, command: List<String>) -> List<String> {
   concat(
-    [flock_program().invocation as String, "--exclusive", "--nonblock", "--conflict-exit-code", to_string(value: conflict_exit_code), lock_path as String],
+    [flock_program().invocation as String, "--exclusive", "--nonblock", "--no-fork", "--conflict-exit-code", to_string(value: conflict_exit_code), lock_path as String],
     command,
   )
 }

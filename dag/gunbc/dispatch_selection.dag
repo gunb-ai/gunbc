@@ -711,6 +711,52 @@ fn inventory_with_claude_standing(inventory: ProviderInventory, standing: Provid
   }
 }
 
+// The offer the codex draw is judged on names the custody CODEX_HOME the standing was observed against
+// and the spawn binds, never the instance's ambient account state root.
+fn inventory_with_codex_standing(inventory: ProviderInventory, standing: ProviderStanding, account_state_root: FilePath) -> ProviderInventory {
+  ProviderInventory {
+    offers: map(inventory.offers, offer =>
+      match offer {
+        OfferCodex { offer: o } =>
+          OfferCodex {
+            offer: CodexOffer {
+              instance: o.instance,
+              account_state_root: account_state_root,
+              account_binding: o.account_binding,
+              standing: standing,
+              default_effort: o.default_effort,
+              deep: o.deep,
+              process_fingerprint: o.process_fingerprint,
+            },
+          }
+        OfferClaude { offer: _ } => offer
+        OfferCursor { offer: _ } => offer
+      }
+    ),
+  }
+}
+
+fn inventory_with_cursor_standing(inventory: ProviderInventory, standing: ProviderStanding) -> ProviderInventory {
+  ProviderInventory {
+    offers: map(inventory.offers, offer =>
+      match offer {
+        OfferCursor { offer: o } =>
+          OfferCursor {
+            offer: CursorOffer {
+              instance: o.instance,
+              credential: o.credential,
+              standing: standing,
+              default_model: o.default_model,
+              process_fingerprint: o.process_fingerprint,
+            },
+          }
+        OfferClaude { offer: _ } => offer
+        OfferCodex { offer: _ } => offer
+      }
+    ),
+  }
+}
+
 fn claude_offer_for_instance_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
