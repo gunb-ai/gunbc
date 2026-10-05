@@ -1,6 +1,32 @@
 module test.claim.live_deploy.unit_standing_witness
 
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import extdeps.systemd { systemd_duration_usec }
+import gunbc.live_deploy.emit { live_deploy_belt_service_unit_file, live_deploy_belt_timer_unit_file }
+import gunbc.live_deploy.unit_standing {
+  BeltOneshotConverged,
+  BeltOneshotRefused,
+  BeltTimerConverged,
+  BeltTimerRefused,
+  DashboardServiceConverged,
+  DashboardServiceRefused,
+  ExecStartArgv,
+  ExecStartUnparseable,
+  ServiceExpectationDerived,
+  ServiceExpectationUnderivable,
+  ServiceUnitExpectation,
+  ServiceUnitObserved,
+  TimerExpectationDerived,
+  TimerExpectationUnderivable,
+  TimerUnitExpectation,
+  TimerUnitObserved,
+  exec_start_argv_of_show_value,
+  judge_belt_oneshot,
+  judge_belt_timer,
+  judge_dashboard_service,
+  service_unit_expectation_of,
+  timer_unit_expectation_of,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
