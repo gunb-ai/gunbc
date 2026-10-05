@@ -396,6 +396,7 @@ pub enum TypeDeclReferenceRoute {
     RouteCarriedDeclaration,
     RouteCarriedBinder,
     RouteDeclaringSpan,
+    RouteReferencingModuleDeclarer,
     RouteLeafSpelling,
 }
 
@@ -450,19 +451,93 @@ pub fn resolve_type_decl_routed(
                     route: TypeDeclReferenceRoute::RouteDeclaringSpan,
                     resolution: type_decl_resolution_at_identity(index.clone(), identity.clone()),
                 }),
-                std::option::Option::None => Rc::new(TypeDeclRoutedResolution {
-                    route: TypeDeclReferenceRoute::RouteLeafSpelling,
-                    resolution: resolve_type_decl_leaf(
-                        index.clone(),
-                        crate::v1_std_core::qualified_last_segment(
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                type_expr.clone(),
-                            ),
+                std::option::Option::None => {
+                    let leaf = crate::v1_std_core::qualified_last_segment(
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            type_expr.clone(),
                         ),
-                    ),
-                }),
+                    );
+                    let by_spelling = resolve_type_decl_leaf(index.clone(), leaf.clone());
+                    let referencing_module_identity = match (*by_spelling.clone()).clone() {
+                        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
+                            type_decl_referencing_module_declarer(
+                                index.clone(),
+                                l.clone(),
+                                type_expr.clone(),
+                            )
+                        }
+                        TypeDeclResolution::TypeDeclResolved { .. } => std::option::Option::None,
+                        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                            std::option::Option::None
+                        }
+                        TypeDeclResolution::TypeDeclNotDeclared => std::option::Option::None,
+                    };
+                    match referencing_module_identity.clone() {
+                        Some(identity) => Rc::new(TypeDeclRoutedResolution {
+                            route: TypeDeclReferenceRoute::RouteReferencingModuleDeclarer,
+                            resolution: type_decl_resolution_at_identity(
+                                index.clone(),
+                                identity.clone(),
+                            ),
+                        }),
+                        std::option::Option::None => Rc::new(TypeDeclRoutedResolution {
+                            route: TypeDeclReferenceRoute::RouteLeafSpelling,
+                            resolution: by_spelling.clone(),
+                        }),
+                    }
+                }
             }
+        }
+    }
+}
+
+pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer dissolves when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then the arm and type_decl_referencing_module_declarer are deleted and such a reference refuses unless carried.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn type_decl_referencing_module_declarer(
+    index: Rc<TypeDeclIndex>,
+    leaf: String,
+    reference: Rc<Node>,
+) -> Option<String> {
+    {
+        let local = Rc::new({
+            let mut __result = Vec::new();
+            for identity in type_decl_identities_of_leaf(index.clone(), leaf.clone())
+                .iter()
+                .cloned()
+            {
+                if match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+                    Some(decl) => {
+                        (decl.span.clone().file.clone() == reference.span.clone().file.clone())
+                    }
+                    std::option::Option::None => false,
+                } {
+                    __result.push(identity);
+                }
+            }
+            __result
+        });
+        if (local
+            .iter()
+            .cloned()
+            .fold(0, |n: i64, _identity: String| v1_rt::int_add(n, 1))
+            == 1)
+        {
+            local
+                .iter()
+                .cloned()
+                .fold(std::option::Option::None, |acc: _, identity: String| {
+                    Some(identity.clone())
+                })
+        } else {
+            std::option::Option::None
         }
     }
 }
@@ -483,6 +558,9 @@ pub fn type_decl_routed_resolution_label(routed: Rc<TypeDeclRoutedResolution>) -
             TypeDeclReferenceRoute::RouteCarriedDeclaration => "carried_declaration".to_string(),
             TypeDeclReferenceRoute::RouteCarriedBinder => "carried_binder".to_string(),
             TypeDeclReferenceRoute::RouteDeclaringSpan => "declaring_span".to_string(),
+            TypeDeclReferenceRoute::RouteReferencingModuleDeclarer => {
+                "referencing_module_declarer".to_string()
+            }
             TypeDeclReferenceRoute::RouteLeafSpelling => "leaf_spelling".to_string(),
         };
         match (*routed.resolution.clone()).clone() {
@@ -1644,5 +1722,7 @@ pub struct RouteCarriedDeclaration;
 pub struct RouteCarriedBinder;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteDeclaringSpan;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteReferencingModuleDeclarer;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteLeafSpelling;
