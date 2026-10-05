@@ -1,0 +1,38 @@
+module test.claim.lambda_return_solves_generic_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+
+// THE EXECUTING EVIDENCE for the lambda-return member of gunbc.recurring_failure_mode
+// unbound_generic_reaches_conformance_unjudged, closed by solving a generic from a lambda
+// argument's return (v1.compiler.infer infer_call_arguments_generic_pass, lambda_callable_type,
+// unify_callable_generics). Before that, each red source below was Accepted with zero blocking
+// diagnostics: R stayed unbound and the wrong value reached a Bool position unjudged. The reds
+// assert the refusal on the real acceptance path; the control asserts that the same calls at
+// the type the lambda actually returns are still accepted, so a compiler that refused every
+// lambda-fed generic would fail it. Both helpers return -1 when the census cannot run, so a
+// broken harness fails the reds (>= 1) and the control (== 0) alike.
+
+data lambda_return_into_argument_source: String = "module test.claim.lrs_into_argument\nimport std.types { Bool, Int }\nfn lrs_idf<R>(f: fn() -> R) -> R { f() }\nfn lrs_take(b: Bool) -> Bool { b }\nfn probe() -> Bool { lrs_take(b: lrs_idf(f: fn() { 5 })) }\n"
+
+data lambda_return_into_declared_return_source: String = "module test.claim.lrs_into_declared_return\nimport std.types { Bool, Int }\nfn lrs_idf<R>(f: fn() -> R) -> R { f() }\nfn probe() -> Bool { lrs_idf(f: fn() { 5 }) }\n"
+
+data lambda_return_after_its_argument_source: String = "module test.claim.lrs_after_argument\nimport std.types { Bool, Int }\nfn lrs_app<T, R>(x: T, f: fn(T) -> R) -> R { f(x) }\nfn lrs_take(b: Bool) -> Bool { b }\nfn probe() -> Bool { lrs_take(b: lrs_app(x: 1, f: fn(v) { v })) }\n"
+
+data lambda_return_at_its_own_type_source: String = "module test.claim.lrs_own_type\nimport std.types { Int }\nfn lrs_idf<R>(f: fn() -> R) -> R { f() }\nfn lrs_app<T, R>(x: T, f: fn(T) -> R) -> R { f(x) }\nfn probe() -> Int { lrs_idf(f: fn() { 5 }) }\nfn probe_after() -> Int { lrs_app(x: 1, f: fn(v) { v }) }\n"
+
+test fn a_generic_fixed_by_a_lambda_return_refuses_a_wrong_argument_position() -> Bool {
+  blocking_class_count_for(source: lambda_return_into_argument_source, wanted_class: "TypeMismatch") >= 1
+}
+
+test fn a_generic_fixed_by_a_lambda_return_refuses_a_wrong_declared_return() -> Bool {
+  blocking_class_count_for(source: lambda_return_into_declared_return_source, wanted_class: "TypeMismatch") >= 1
+}
+
+test fn a_lambda_after_the_argument_that_fixes_its_parameter_solves_the_result() -> Bool {
+  blocking_class_count_for(source: lambda_return_after_its_argument_source, wanted_class: "TypeMismatch") >= 1
+}
+
+test fn the_same_calls_at_the_type_the_lambda_returns_are_accepted() -> Bool {
+  total_blocking_count_for(source: lambda_return_at_its_own_type_source) == 0
+}

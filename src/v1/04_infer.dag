@@ -7597,12 +7597,12 @@ fn is_lambda_expr(e: Node) -> Bool {
 // binding derivable in one forward pass regardless of authored order. Re-running is
 // sound rather than merely convenient because the substitution is a fixed point of the
 // second round: a lambda argument contributes to the substitution in ROUND 1 ONLY
-// (unify_lambda_solves), and only informative bindings that solve an Absent slot or the
-// minted empty-literal placeholder; in round 2 lambdas are skipped, so deferring what they
+// (unify_lambda_solves), and only informative bindings that fill an Absent slot; in
+// round 2 lambdas are skipped, so deferring what they
 // would contribute cannot change the result, and a formal whose generic slot is already
 // bound is substituted to a concrete node that unify_generics no longer binds.
 // The narrowing this note used to state -- a binding derivable only from a lambda's
-// return, such as fold_list's accumulator when `empty` is an empty literal -- is LIFTED by
+// return -- is LIFTED by
 // that round-1 contribution (unify_callable_generics unifies the callable's params and
 // return). It stays bounded at two rounds: a round-2 return is not fed back again, and a
 // return that depends on a binding only round 2 supplies contributes nothing.
@@ -9487,7 +9487,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     Absent => unit_type
                   }
                 } else { unit_type }
-              Absent => type_variable_node(id: empty_list_element_variable_id)
+              Absent => type_variable_node(id: "empty_list_element")
             }
           }
       }
@@ -13688,10 +13688,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 
     match map_get(acc, bind_name) {
       Absent => map_insert(acc, bind_name, actual)
-      Present { value: existing } =>
-        if unify_binding_is_placeholder(n: existing) && !unify_binding_is_placeholder(n: actual) {
-          map_insert(acc, bind_name, actual)
-        } else { acc }
+      Present { value: _ } => acc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
@@ -13751,7 +13748,7 @@ fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_
 // return is computed under a substitution that may not yet bind its own parameters, so it can be
 // an unresolved type variable (callable_param), and binding a parameter to that would fix it first
 // and keep it against the informative argument that follows. Such an entry is dropped, so a later
-// argument or round 2 decides it. An entry solves only an Absent binding or the minted placeholder.
+// argument or round 2 decides it. An entry fills only an Absent binding; it never overrides one.
 fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>) -> Map<String, Node> {
   fold(generic_names, init: acc, f: (st, g) =>
     match map_get(solved, g) {
@@ -13761,7 +13758,7 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
         } else {
           match map_get(st, g) {
             Absent => map_insert(st, g, candidate)
-            Present { value: existing } => if unify_binding_is_placeholder(n: existing) { map_insert(st, g, candidate) } else { st }
+            Present { value: _ } => st
           }
         }
       Absent => st
@@ -13777,26 +13774,6 @@ fn unify_binding_is_uninformative(n: Node) -> Bool {
       if n.children |> count == 1 {
         match n.children |> first {
           Present { value: c } => unify_binding_is_uninformative(n: child_type_node(ch: c))
-          Absent => false
-        }
-      } else { false }
-  }
-}
-
-// The type variable an empty list literal with no expected type mints for its element: one
-// authority for the mint in infer_expr ExprListLit and the check in unify_binding_is_placeholder.
-data empty_list_element_variable_id: String = "empty_list_element"
-
-// That placeholder is an unsolved variable, not a binding: it carries no information about the
-// parameter, so a later informative actual solves it. Only the minted placeholder yields; a type
-// parameter in scope is a TypeVariable too and is information, so it never yields.
-fn unify_binding_is_placeholder(n: Node) -> Bool {
-  match n.inferred {
-    Present { value: TypeVariable { id: tv } } => tv == empty_list_element_variable_id
-    _ =>
-      if n.children |> count == 1 {
-        match n.children |> first {
-          Present { value: c } => unify_binding_is_placeholder(n: child_type_node(ch: c))
           Absent => false
         }
       } else { false }
