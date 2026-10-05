@@ -188,7 +188,7 @@ import v1.compiler.infer_sigs {
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
-  TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
@@ -17132,16 +17132,9 @@ type EnumVariantShapeSets {
   positional_payload: Set<String>
 }
 
-fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   let item_name = authored_name_at(source_indices: si, node: item)
-  let is_enum = match map_get(type_summaries, item_name) {
-    Present { value: summary } => match summary.repr {
-      EnumRepr { unit_only: _ } => true
-      _ => false
-    }
-    Absent => false
-  }
-  if is_enum {
+  if is_enum_in_summaries(type_summaries: type_summaries, type_name: item_name) {
     item.children |> fold(init: acc, f: (vacc, variant) =>
       let qualified = concat(item_name, "::", authored_name_at(source_indices: si, node: variant))
       let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)
@@ -17157,7 +17150,7 @@ fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: M
   } else { acc }
 }
 
-fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   modules |> fold(init: EnumVariantShapeSets { fielded: empty_set(), positional_payload: empty_set() }, f: (acc, m) =>
     m.items |> fold(init: acc, f: (inner, item) =>
       enum_variant_shape_sets_for_item(acc: inner, item: item, si: m.type_env.source_indices, type_summaries: type_summaries)
@@ -17241,7 +17234,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     Absent => empty_symbol_index()
   }
   let init = EmitInfoBuildState {
-    type_summaries: empty_map(),
+    type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
