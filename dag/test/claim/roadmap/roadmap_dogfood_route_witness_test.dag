@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_result_returned { ResultNotReturned }
 import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotCloseFailed }
 import gunbc.roadmap_service_evidence {
   ServiceEvidenceReceipt, ServiceEvidenceInputs, SessionPlacementRead, MeteringRead, ResultReturnedRead, AttemptBinding, ServiceEvidenceJoined,
-  service_evidence_receipt_wire, service_evidence_snapshot_of_receipt, SnapshotDecoded, SnapshotInvalid,
+  service_evidence_receipt_wire, service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode, SnapshotDecoded, SnapshotInvalid,
 }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
 import std.content_hash { content_hash_of_value }
@@ -57,7 +57,7 @@ import gunbc.roadmap_dogfood_route {
   MeteringReading, MeteringEstablished, MeteringGap, dogfood_metering_reading, dogfood_result_returned_reading_of, dogfood_occupied_slot_record, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
   dogfood_route_receipt, dogfood_submission_reading, dogfood_review_reading, dogfood_publication_reading,
-  dogfood_start_receipt_wire, dogfood_start_receipt_decode, dogfood_durable_g3_g4_defect, StartReceiptDecoded, StartReceiptInvalid,
+  dogfood_start_receipt_wire, dogfood_start_receipt_decode, dogfood_durable_g3_g4_defect, dogfood_pinned_g3_g4_defect_of, StartReceiptDecoded, StartReceiptInvalid,
   dogfood_start_step, StartNoCandidate, StartClockRefused, StartTimestamp, dogfood_unproduced, dogfood_unproduced_stages,
 }
 
@@ -635,9 +635,17 @@ test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool {
 // Each claim decodes one receipt whose only difference from good() is the named edit. The pinned
 // service evidence must establish a Final meter and a published result, the result must answer the
 // pinned request's claim, and its PR and head must be the receipt's publication.
+// Supplied at the snapshot interface the pinned check reads (one decode per claim); the receipt-level
+// decode of the same check is a_result_answering_another_claim_than_the_pinned_request_is_not_a_start
+// and a_complete_start_receipt_decodes.
 fn pinned_with(ev: String) -> Bool {
-  decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: ev, ev_digest: digest_of(wire: ev)))
+  match service_evidence_snapshot_decode(wire: ev) {
+    SnapshotInvalid { reason: _ } => false
+    SnapshotDecoded { snapshot } => dogfood_pinned_g3_g4_defect_of(snapshot: snapshot, pr_url: pr_url, head_sha: head) == ""
+  }
 }
+
+test fn observed_g3_and_g4_evidence_at_the_publication_establishes_both() -> Bool { pinned_with(ev: evidence_observed_n1) }
 
 test fn all_owed_g3_and_g4_evidence_is_not_a_start() -> Bool { !pinned_with(ev: evidence_wire_n1) }
 

@@ -687,14 +687,18 @@ type DogfoodStartReceipt sole_constructor {
 // (both token totals and seat time observed) and a published result whose PR and head are the
 // receipt's publication. Empty when they hold; otherwise the first failure.
 fn dogfood_pinned_g3_g4_defect(r: DogfoodStartReceipt) -> String {
-  match service_evidence_snapshot_final_metering(snapshot: r.service_evidence) {
+  dogfood_pinned_g3_g4_defect_of(snapshot: r.service_evidence, pr_url: r.pr_url, head_sha: r.head_sha)
+}
+
+fn dogfood_pinned_g3_g4_defect_of(snapshot: ServiceEvidenceSnapshot, pr_url: String, head_sha: String) -> String {
+  match service_evidence_snapshot_final_metering(snapshot: snapshot) {
     Absent => "the pinned service evidence does not establish a Final metering record (execution_time and billable_usage observed)"
     Present { value: _ } =>
-      match service_evidence_snapshot_published_result(snapshot: r.service_evidence) {
+      match service_evidence_snapshot_published_result(snapshot: snapshot) {
         Absent => "the pinned service evidence does not establish a published result (failure_attribution and completion_time observed)"
         Present { value: p } =>
-          if p.pr != r.pr_url { "the pinned result names another pull request than the receipt's publication" }
-          else if p.head != r.head_sha { "the pinned result names another head than the receipt's submission" }
+          if p.pr != pr_url { "the pinned result names another pull request than the receipt's publication" }
+          else if p.head != head_sha { "the pinned result names another head than the receipt's submission" }
           else { "" }
       }
   }
