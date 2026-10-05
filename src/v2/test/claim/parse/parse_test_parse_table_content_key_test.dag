@@ -1,0 +1,107 @@
+module test.claim.parse_test_parse_table_content_key
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
+  let base = parse_table_empty(materialization: Memoize)
+  ParseTableRealization {
+    artifact_kind: base.artifact_kind,
+    provider_id: base.provider_id,
+    materialization: base.materialization,
+    grammar_digest: grammar,
+    token_stream_digest: tokens,
+    entries: base.entries,
+    memo_hits: base.memo_hits,
+    memo_misses: base.memo_misses,
+    memo_lookup_calls: base.memo_lookup_calls,
+    furthest: base.furthest,
+    nullable_set: base.nullable_set,
+    first_rows: base.first_rows,
+    productions_by_name: base.productions_by_name,
+    prepared_exprs: base.prepared_exprs,
+    layout: base.layout,
+    refusal: base.refusal
+  }
+}
+
+fn grammar_one() -> Hash { symbol_identity_digest(sym: ^ctk_grammar_one) }
+fn grammar_two() -> Hash { symbol_identity_digest(sym: ^ctk_grammar_two) }
+fn tokens_one() -> Hash { symbol_identity_digest(sym: ^ctk_tokens_one) }
+fn tokens_two() -> Hash { symbol_identity_digest(sym: ^ctk_tokens_two) }
+
+fn table_g1_t1() -> ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_one()) }
+fn table_g2_t1() -> ParseTable { mk_table(grammar: grammar_two(), tokens: tokens_one()) }
+fn table_g1_t2() -> ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_two()) }
+
+fn key_p0_a() -> ParsePositionKey { ParsePositionKey { position: 0, production: ^ctk_prod_a } }
+fn key_p1_a() -> ParsePositionKey { ParsePositionKey { position: 1, production: ^ctk_prod_a } }
+fn key_p0_b() -> ParsePositionKey { ParsePositionKey { position: 0, production: ^ctk_prod_b } }
+
+test fn witness_subject_deterministic() -> Bool {
+  let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
+  let b = parse_table_subject(table: mk_table(grammar: grammar_one(), tokens: tokens_one()), key: key_p0_a())
+  a == b
+}
+
+test fn witness_subject_position_sensitive() -> Bool {
+  let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
+  let b = parse_table_subject(table: table_g1_t1(), key: key_p1_a())
+  a != b
+}
+
+test fn witness_subject_production_sensitive() -> Bool {
+  let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
+  let b = parse_table_subject(table: table_g1_t1(), key: key_p0_b())
+  a != b
+}
+
+test fn witness_subject_grammar_scope_sensitive() -> Bool {
+  let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
+  let b = parse_table_subject(table: table_g2_t1(), key: key_p0_a())
+  a != b
+}
+
+test fn witness_subject_token_stream_scope_sensitive() -> Bool {
+  let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
+  let b = parse_table_subject(table: table_g1_t2(), key: key_p0_a())
+  a != b
+}
+
+// DOMAINS PAST ONE BYTE LIMB. The subject and the stream digest used to send positions, offsets
+// and lexeme codepoints through the single-byte-limb digest, which gives every value above 255 one
+// tag: positions 256 and 257 hashed equal, as did two token streams differing only in an offset
+// past byte 255 or only in a non-Latin-1 lexeme. Each witness below returned false under it.
+fn key_at(position: Int) -> ParsePositionKey { ParsePositionKey { position: position, production: ^ctk_prod_a } }
+
+fn subject_at(position: Int) -> Hash {
+  parse_table_subject(table: table_g1_t1(), key: key_at(position: position))
+}
+
+test fn witness_subject_positions_255_256_257_pairwise_distinct() -> Bool {
+  (subject_at(position: 255) != subject_at(position: 256))
+    && (subject_at(position: 256) != subject_at(position: 257))
+    && (subject_at(position: 255) != subject_at(position: 257))
+}
+
+fn ctk_token(lexeme: Lexeme, start: Int, end: Int) -> Token {
+  Token { class: ^ctk_token_class, lexeme: lexeme, file: ^ctk_token_file, start: start, end: end }
+}
+
+fn stream_digest_one(tok: Token) -> Hash {
+  parse_token_stream_digest(all_tokens: Cons { head: tok, tail: std.algebra.Empty })
+}
+
+test fn witness_stream_digest_offsets_past_one_limb_distinct() -> Bool {
+  stream_digest_one(tok: ctk_token(lexeme: "a", start: 300, end: 301))
+    != stream_digest_one(tok: ctk_token(lexeme: "a", start: 301, end: 302))
+}
+
+test fn witness_stream_digest_lexemes_past_latin1_distinct() -> Bool {
+  stream_digest_one(tok: ctk_token(lexeme: "λ", start: 0, end: 2))
+    != stream_digest_one(tok: ctk_token(lexeme: "μ", start: 0, end: 2))
+}
+
+test fn witness_stream_digest_deterministic() -> Bool {
+  stream_digest_one(tok: ctk_token(lexeme: "λ", start: 300, end: 302))
+    == stream_digest_one(tok: ctk_token(lexeme: "λ", start: 300, end: 302))
+}

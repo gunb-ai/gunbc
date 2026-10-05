@@ -6,18 +6,15 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { argv_words }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_boot_export_host_target }
+import gunbc.boot_medium { BootImageExport, BootMedium, BootMediumReadbackHeld, BootMediumReadbackDigestDiffers, bmc_boot_image_export, boot_medium_readback }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
-import gunbc.machine_intake_mtcollins1_boot_authorization {
-  MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_image_name,
-}
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImage, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+import gunbc.machine_intake_mtcollins1_census_image { CensusMediumQualification, CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, mtcollins1_census_medium_qualification, boot_image_export_text, mtcollins1_census_image, Mtcollins1CensusImage, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_record_path, seeded_install_media_build_key }
 
 // THE PUBLICATION RECEIPT IS NOT BOOT-TIME EVIDENCE. The medium row carries the digest the publish
@@ -44,14 +41,15 @@ type CensusMediumReadback
   | CensusMediumReadbackMeasureMalformed { served_path: NonEmptyStr, content: String }
   | CensusMediumReadbackDiverged { served_path: NonEmptyStr, recorded: NonEmptyStr, measured: NonEmptyStr }
   | CensusMediumReadbackNotCensus
+  | CensusMediumReadbackExporterUnsupported { supported: BootImageExport, named: BootImageExport }
   | CensusMediumReadbackInputUnderived { reason: String }
 
-fn mtcollins1_census_medium_served_path(medium: MtCollins1BootMedium) -> NonEmptyStr {
-  boot_image_published_path(export_dir: mtcollins1_boot_export_dir, image_name: mtcollins1_boot_medium_image_name(medium: medium))
+fn mtcollins1_census_medium_served_path(medium: BootMedium) -> NonEmptyStr {
+  boot_image_published_path(export_dir: medium.export.dir, image_name: medium.image_name)
 }
 
 fn mtcollins1_census_record_path(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
-  ubuntu_seeded_install_media_record_path(dir: mtcollins1_boot_export_dir, input: input)
+  ubuntu_seeded_install_media_record_path(dir: bmc_boot_image_export.dir, input: input)
 }
 
 fn mtcollins1_census_build_key(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
@@ -102,10 +100,11 @@ type CensusRecordStanding
   = CensusRecordAdmitted { recorded: NonEmptyStr }
   | CensusRecordRefused { readback: CensusMediumReadback }
 
-fn mtcollins1_census_record_standing(medium: MtCollins1BootMedium, input: UbuntuSeededInstallMediaBuildInput, record: RemoteAnswer) -> CensusRecordStanding {
-  match medium {
-    MtCollins1StockInstallerMedium => CensusRecordRefused { readback: CensusMediumReadbackNotCensus }
-    MtCollins1CensusMedium { output_digest: selected } => {
+fn mtcollins1_census_record_standing(medium: BootMedium, input: UbuntuSeededInstallMediaBuildInput, record: RemoteAnswer) -> CensusRecordStanding {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => CensusRecordRefused { readback: CensusMediumReadbackNotCensus }
+    CensusMediumExporterUnsupported { supported: sup, named: n } => CensusRecordRefused { readback: CensusMediumReadbackExporterUnsupported { supported: sup, named: n } }
+    CensusMediumQualified { digest: selected, export: _ } => {
       let record_path = mtcollins1_census_record_path(input: input)
       if record.exit_code != 0 {
         CensusRecordRefused { readback: CensusMediumReadbackRecordUnreadable { record_path: record_path, reason: concat("exit=", to_string(record.exit_code), " ", trim(s: record.stderr)) } }
@@ -124,9 +123,11 @@ fn mtcollins1_census_record_standing(medium: MtCollins1BootMedium, input: Ubuntu
   }
 }
 
-// STAGE TWO: the measurement, joined with an already-admitted record.
+// STAGE TWO: the measurement, joined with an already-admitted record. The record was admitted only
+// when it equals the medium's digest, so the served bytes are judged by the one readback rule every
+// boot medium is judged by (gunbc.boot_medium boot_medium_readback).
 fn mtcollins1_census_measure_join(
-  medium: MtCollins1BootMedium,
+  medium: BootMedium,
   input: UbuntuSeededInstallMediaBuildInput,
   host: NonEmptyStr,
   recorded: NonEmptyStr,
@@ -139,17 +140,17 @@ fn mtcollins1_census_measure_join(
     match sha256sum_digest(line: measure.stdout) {
       Absent => CensusMediumReadbackMeasureMalformed { served_path: served_path, content: trim(s: measure.stdout) }
       Present { value: measured } =>
-        if measured == (recorded as String) {
-          CensusMediumReadbackAgreed {
+        match boot_medium_readback(medium: medium, observed: measured as NonEmptyStr) {
+          BootMediumReadbackHeld => CensusMediumReadbackAgreed {
             host: host,
             build_key: mtcollins1_census_build_key(input: input),
             recorded_digest: recorded,
-            image_name: mtcollins1_boot_medium_image_name(medium: medium),
+            image_name: medium.image_name,
             served_path: served_path,
             measured_digest: measured as NonEmptyStr,
           }
-        } else {
-          CensusMediumReadbackDiverged { served_path: served_path, recorded: recorded, measured: measured as NonEmptyStr }
+          BootMediumReadbackDigestDiffers { image_name: _, expected: _, observed: o } =>
+            CensusMediumReadbackDiverged { served_path: served_path, recorded: recorded, measured: o }
         }
     }
   }
@@ -159,7 +160,7 @@ fn mtcollins1_census_measure_join(
 // current census build input; a derivation the YAML writer refused has no build key and so no record
 // to read, and that is refused before either leg.
 fn mtcollins1_census_medium_readback_from_answers(
-  medium: MtCollins1BootMedium,
+  medium: BootMedium,
   host: NonEmptyStr,
   record: RemoteAnswer,
   measure: RemoteAnswer,
@@ -180,6 +181,8 @@ fn mtcollins1_census_readback_refusal(readback: CensusMediumReadback) -> String?
   match readback {
     CensusMediumReadbackAgreed { host: _, build_key: _, recorded_digest: _, image_name: _, served_path: _, measured_digest: _ } => none
     CensusMediumReadbackNotCensus => Present { value: "mtcollins1 boot: the medium is not the census image, so there is no served digest to read back" }
+    CensusMediumReadbackExporterUnsupported { supported: sup, named: n } =>
+      Present { value: concat("mtcollins1 boot: the census medium names the exporter ", boot_image_export_text(export: n), " but the census is published to and read back from ", boot_image_export_text(export: sup), "; refusing rather than reading back bytes the medium does not name") }
     CensusMediumReadbackRecordUnreadable { record_path: p, reason: why } =>
       Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " could not be read on srv2 (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackRecordMalformed { record_path: p, content: c } =>
@@ -217,10 +220,6 @@ fn mtcollins1_census_readback_refusal_before_attach(readback: CensusMediumReadba
 
 data mtcollins1_census_readback_attempt_raw: String = "mtcollins1-census-readback"
 
-fn mtcollins1_census_readback_target() -> SshTarget {
-  mtcollins1_boot_export_host_target()
-}
-
 fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
   match outcome {
     TypedArgvExecRefused { reason: r } => RemoteAnswer { exit_code: 255, stdout: "", stderr: r }
@@ -228,15 +227,17 @@ fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
   }
 }
 
-// THE ONE PRODUCER: two read-only legs on srv2 as the fleet principal, IN ORDER -- cat the
-// derivation record, and only once it is admitted sha256sum the multi-gigabyte served image. A
-// refused leg is unreadable, never diverged: the bytes were never read. The argv of each leg is the
-// coreutils / crypto authority's own command projected through argv_words, not a local spelling.
-fn mtcollins1_census_medium_readback(medium: MtCollins1BootMedium) -> CensusMediumReadback
+// THE ONE PRODUCER: two read-only legs on the qualified medium's own exporter (its SSH target,
+// never a substituted one), IN ORDER -- cat the derivation record, and only once it is admitted
+// sha256sum the multi-gigabyte served image. A refused leg is unreadable, never diverged: the bytes
+// were never read. The argv of each leg is the coreutils / crypto authority's own command projected
+// through argv_words, not a local spelling.
+fn mtcollins1_census_medium_readback(medium: BootMedium) -> CensusMediumReadback
 {
-  match medium {
-    MtCollins1StockInstallerMedium => CensusMediumReadbackNotCensus
-    MtCollins1CensusMedium { output_digest: _ } =>
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => CensusMediumReadbackNotCensus
+    CensusMediumExporterUnsupported { supported: sup, named: n } => CensusMediumReadbackExporterUnsupported { supported: sup, named: n }
+    CensusMediumQualified { digest: _, export: export } =>
       match mtcollins1_census_image {
         Mtcollins1CensusImageRefused { reason: r } => CensusMediumReadbackInputUnderived { reason: r }
         Mtcollins1CensusImageDerived { input: input } =>
@@ -244,7 +245,7 @@ fn mtcollins1_census_medium_readback(medium: MtCollins1BootMedium) -> CensusMedi
             FleetSshContextRefused { cause: c } =>
               CensusMediumReadbackRecordUnreadable { record_path: mtcollins1_census_record_path(input: input), reason: c }
             FleetSshContextReady { context: context, receipt: _ } => {
-              let target = mtcollins1_census_readback_target()
+              let target = export.target
               let record = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: mtcollins1_census_record_argv(record_path: mtcollins1_census_record_path(input: input))))
               match mtcollins1_census_record_standing(medium: medium, input: input, record: record) {
                 CensusRecordRefused { readback: r } => r

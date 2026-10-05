@@ -1,9 +1,9 @@
 module test.claim.spark.spark_fabric_rail_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address, ipv4_address_eq }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv9, operator_host_srv12, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv9, operator_host_srv12, operator_host_srv1 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_desired, fabric_rail_desired_for, fabric_rail_address, fabric_rail_link_gbps }
 import gunbc.spark.fabric_rail_apply { fabric_rail_apply_plans }
 

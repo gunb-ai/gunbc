@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_refused_secondary_read_aborts_an_observer_before_its_receipt
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_refused_secondary_read_aborts_an_observer_before_its_receipt: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refused_secondary_read_aborts_an_observer_before_its_receipt" as NonEmptyStr,
+
+  receipts: [
+    "**a refused secondary read aborts an observer before its receipt** (an observer that reads several independent facts writes its receipt only from the conjunction of all of them, so one later read refusing throws away the earlier facts it had already established, and the run leaves no record of what it did observe).",
+
+    "INVALID STATE: gunbc.fleet.app_control_plane_inspection app_control_plane_receipt_text took a HookObserved, so the receipt was constructible only when the hook config read succeeded. On a hook read refusal, and on any non-satisfied registration (which never attempts the hook), app_control_plane_inspect_wet reached exit_failure with nothing written.",
+
+    "HARM: fleet-converge run 37215976003 (2026-10-04, app_control_plane_observe). GetAppRegistrationJson succeeded and the registration was assessed satisfied, then GetAppHookConfigJson answered `curl: (22) The requested URL returned error: 404`. The App's permission map was read and discarded, and a pending ruleset decision that needed to know whether gunbai-ci holds administration:write got no evidence from a run that had fetched exactly that.",
+
+    "DISTINGUISHING FACTS: whether the observer's receipt is a function of each read's ATTEMPT (established or refused) or only of the established values. The repair is not to read the refusal as success, and not to read an undocumented status as absence: GitHub's reference for GET /app/hook/config (extdeps.github.app app_webhook_config_citation) documents only 200 and no 'no webhook' answer, and the curl --fail-with-body transport exposes no status, so a 404 stays HookConfigReadRefused. The refusal becomes the hook's typed standing (HookStanding HookConfigUnread) in a receipt that still carries the registration, and the exit still fails (app_control_plane_failure). Neighbour, not this class: gunbc.recurring_failure_mode absent_reads_identically_to_never_looked, which is about conflating absence with not having looked; here the look happened, refused, and its sibling facts were dropped.",
+
+    "RUNG: found at 1 (mitigatable -- a human could re-run with the hook read removed). Now 2 for this observer: dag/test/claim/fleet/app_control_plane_inspection_witness_test.dag witness_hook_404_still_writes_the_permission_receipt_and_fails (receipt carries observed_permissions plus hook=unread, and the exit fails) with the RED witness_every_non_success_hook_read_refuses (a 404 and a 500 both refuse; neither establishes a hook). CEILING 3: a receipt type built from per-read ObservationAttempt values, so no multi-read observer can construct its receipt only from the conjunction of successes. NEXT-RUNG TRIGGER: std.goal_assessment gaining a multi-subject inspection whose receipt carrier takes each subject's GoalInspection (refused or inspected), SUFFICIENT FOR no observer in the corpus to sequence a second read whose refusal drops the first read's established standing.",
+  ],
+
+  evidence: [],
+}

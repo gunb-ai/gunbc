@@ -26,7 +26,7 @@ import gunbc.runner_microvm_network {
 import gunbc.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired,
   CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
-  InFlightAttempt, CellBoundAttempt, AttemptCellBinding, AttemptBoundToCell, AttemptCellMismatch,
+  MicroVmWorkload, microvm_workload_same, InFlightAttempt, CellBoundAttempt, AttemptCellBinding, AttemptBoundToCell, AttemptCellMismatch,
   bind_attempt_to_cell, in_flight_attempt_unit,
 }
 
@@ -67,19 +67,17 @@ type AttemptIdentity {
   attempt: MicroVmAttempt
   allocation_generation: Int
   invocation_id: NonEmptyStr
-  jit_registration_id: NonEmptyStr
+  workload: MicroVmWorkload
   credential_device_path: String
-  guest_image: RunnerGuestImage
 }
 
-// The guest image is not compared: two incarnations of one attempt id at one generation under one
-// InvocationID with one registration are one incarnation, and a comparison on a record with no
-// equality would be a second spelling of the tuple's identity.
+// The workload identity travels with the incarnation: runner registration or workspace
+// bootstrap/image/lease, without requiring one workload to invent the other's fields.
 fn attempt_identity_same(a: AttemptIdentity, b: AttemptIdentity) -> Bool {
   (runner_microvm_attempt_unit_name(attempt: a.attempt) as String) == (runner_microvm_attempt_unit_name(attempt: b.attempt) as String)
     && a.allocation_generation == b.allocation_generation
     && (a.invocation_id as String) == (b.invocation_id as String)
-    && (a.jit_registration_id as String) == (b.jit_registration_id as String)
+    && microvm_workload_same(a: a.workload, b: b.workload)
 }
 
 // AN IDENTITY IS BOUND TO THE ADMITTED CELL BEFORE THE CONTROLLER MAY ACT ON IT, AND THE BINDING IS
@@ -90,7 +88,6 @@ fn attempt_identity_same(a: AttemptIdentity, b: AttemptIdentity) -> Bool {
 // bind_identity_to_admission, which joins BOTH axes, so every consumer that holds one holds the join.
 type CellBoundIdentity sole_constructor {
   attempt: CellBoundAttempt
-  guest_image: RunnerGuestImage
 }
 
 type CellBinding
@@ -102,7 +99,7 @@ fn in_flight_attempt_of_identity(identity: AttemptIdentity) -> InFlightAttempt {
   InFlightAttempt {
     attempt: identity.attempt,
     invocation_id: identity.invocation_id,
-    jit_registration_id: identity.jit_registration_id,
+    workload: identity.workload,
     credential_device_path: identity.credential_device_path,
   }
 }
@@ -115,7 +112,7 @@ fn bind_identity_to_admission(cell: CellId, generation: Int, identity: AttemptId
     CellBindingRefusedGeneration { admitted: generation, identity_generation: identity.allocation_generation }
   } else {
     match bind_attempt_to_cell(cell: cell, generation: generation, attempt: in_flight_attempt_of_identity(identity: identity)) {
-      AttemptBoundToCell { bound: b } => CellBound { bound: CellBoundIdentity { attempt: b, guest_image: identity.guest_image } }
+      AttemptBoundToCell { bound: b } => CellBound { bound: CellBoundIdentity { attempt: b } }
       AttemptCellMismatch { cell: c, attempt_cell: ac } => CellBindingRefusedCell { admitted: c, identity_cell: ac }
     }
   }

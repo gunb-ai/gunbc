@@ -1,0 +1,33 @@
+module test.claim.workspace_dispatch_witness
+
+import std.types { Bool, String }
+import gunbc.workspace_commissioning_dispatch { workspace_dispatch_stage_cli, workspace_dispatch_complete_cli }
+import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text, workspace_commissioning_input_decode, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputRefused }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
+import test.claim.workspace_executor_plan_witness { executor_plan_fixture_body, executor_plan_fixture_receipt, executor_plan_fixture_credential }
+
+fn dispatch_fixture() -> WorkspaceCommissioningInputBytes {
+  let body = executor_plan_fixture_body()
+  WorkspaceCommissioningInputBytes { body: body, shell: "reviewed-shell",
+    receipt: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential() }
+}
+
+fn protected_bundle_roundtrips_as_one_value_control() -> Bool {
+  let bytes = dispatch_fixture()
+  match workspace_commissioning_input_decode(text: workspace_commissioning_input_text(bytes: bytes)) {
+    WorkspaceCommissioningInputPresent { bytes: stored, plan: _ } => stored == bytes
+    _ => false
+  }
+}
+
+fn torn_or_substituted_bundle_is_refused_control() -> Bool {
+  let bytes = dispatch_fixture()
+  let changed = WorkspaceCommissioningInputBytes { body: bytes.body, shell: "changed", receipt: bytes.receipt, credential: bytes.credential }
+  (match workspace_commissioning_input_decode(text: workspace_commissioning_input_text(bytes: changed)) { WorkspaceCommissioningInputRefused { reason: _ } => true _ => false })
+    && (match workspace_commissioning_input_decode(text: "\{}") { WorkspaceCommissioningInputRefused { reason: _ } => true _ => false })
+}
+
+test fn protected_bundle_roundtrips_as_one_value() -> Bool { protected_bundle_roundtrips_as_one_value_control() }
+
+test fn torn_or_substituted_bundle_is_refused() -> Bool { torn_or_substituted_bundle_is_refused_control() }

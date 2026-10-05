@@ -1,0 +1,142 @@
+module v2.test.claim.long.program_assembly_advisory_route
+
+import v2.compiler.program_assembly {
+  ProgramAssemblyLocatedFoldOk,
+  ProgramAssemblyLocatedFoldFailed,
+  dag_prepared_grammar,
+  program_assembly_fold_step,
+  program_assembly_ingest_scope_outcome
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.provenance { span_index_empty }
+import std.occurrence_identity { occurrence_id_allocator_initial }
+import std.algebra { Empty }
+import v2.std.algebra { length }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Rejected,
+  Some,
+  Unavailable,
+  diagnostics_fatal_reason,
+  diagnostics_singleton,
+  invariant_port_locus
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL ASSEMBLY FOLD CARRIES EACH ACCEPTED FILE'S ADVISORIES (advisories step 1b, the
+// program_assembly half). No advisory reaches this route from real source today -- the dag grammar's
+// overlap residue is empty (gunbc#13056) and body lowering's postfix_suffix_carried advisory has no
+// known reaching source -- so the one advisory input is SUPPLIED at the boundary the fold already
+// takes it through: program_assembly_fold_step's `residue`, which the real parse merges into every
+// file's accepted outcome. One real read goes through the real fold step; the supplied advisory must
+// reach the fold's chain, once. Before the fold carried advisories it matched them
+// away, so this reds there. It lives in the long home because a real parse exceeds the new-witness
+// CPU margin; the extend's own discrimination is the cheap supplied claim
+// v2.test.provenance.occurrence_file_attribution
+// the_assembly_advisory_extend_keeps_every_files_advisories_in_order_holds.
+// ONE minimal accepted read: the claim's subject is the fold's carry, not parsing, so the smallest
+// module the front end accepts is the honest input (two reads measured 280014 eval steps on CI,
+// past the new-witness budget).
+fn advisory_route_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module v2.test.fixture.advisory_route\n", fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^advisory_route_read, file_path: "src/v2/test/fixture/advisory_route.dag" },
+    compilation_unit: ^advisory_route_file,
+    source_root: DagTree
+  }
+}
+
+test fn a_supplied_residue_rides_each_accepted_file_through_the_real_assembly_fold_holds() -> Bool {
+  let advisory = Some {
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: ^program_assembly_supplied_advisory,
+      at: invariant_port_locus(port: ^program_assembly_advisory_route, invariant: ^program_assembly_supplied_advisory),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  }
+  let reads = [advisory_route_read()]
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: reads) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: scope, diagnostics: _ } =>
+          let start = ProgramAssemblyLocatedFoldOk {
+            located: Empty,
+            index: source_root_index_empty(),
+            alloc: occurrence_id_allocator_initial(),
+            spans: span_index_empty(),
+            advisories: None
+          }
+          match program_assembly_fold_step(state: start, read: advisory_route_read(), lex: prepare_lex_rules(rules: dag_language_model().lex), prepared: prepared, residue: advisory, scope: scope) {
+            ProgramAssemblyLocatedFoldFailed { diagnostics: _, spans: _ } => false
+            ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: carried } =>
+              length(xs: located) == 1
+                && (match carried {
+                  None => false
+                  Some { diagnostics: d } =>
+                    d.head.reason == ^program_assembly_supplied_advisory
+                      && length(xs: d.tail) == 0
+                })
+          }
+      }
+  }
+}
+
+// A REFUSING FILE KEEPS THE ADVISORIES THE INGEST ACCUMULATED BEFORE IT. The fold state is supplied
+// already holding one accepted file's advisory (adv_a); the next real read refuses at parse. The
+// failed state must carry adv_a ahead of the refusal, exactly as rejected_with_pending orders a
+// pending chain before a refusal, and the fatal cause stays the refusal's own.
+data advisory_route_refusing_source: String = "module v2.test.fixture.advisory_route_refused\n\ndata x: Int = 1 2\n"
+
+fn advisory_route_refusing_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: advisory_route_refusing_source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^advisory_route_refusing_read, file_path: "src/v2/test/fixture/advisory_route_refused.dag" },
+    compilation_unit: ^advisory_route_refusing_file,
+    source_root: DagTree
+  }
+}
+
+test fn a_later_refusal_keeps_the_accumulated_advisories_ahead_of_its_fatal_holds() -> Bool {
+  let reads = [advisory_route_refusing_read()]
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: reads) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: scope, diagnostics: _ } =>
+          let accumulated = ProgramAssemblyLocatedFoldOk {
+            located: Empty,
+            index: source_root_index_empty(),
+            alloc: occurrence_id_allocator_initial(),
+            spans: span_index_empty(),
+            advisories: Some {
+              diagnostics: diagnostics_singleton(d: Diagnostic {
+                reason: ^adv_a,
+                at: invariant_port_locus(port: ^program_assembly_advisory_route, invariant: ^adv_a),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            }
+          }
+          match program_assembly_fold_step(state: accumulated, read: advisory_route_refusing_read(), lex: prepare_lex_rules(rules: dag_language_model().lex), prepared: prepared, residue: None, scope: scope) {
+            ProgramAssemblyLocatedFoldOk { located: _, index: _, alloc: _, spans: _, advisories: _ } => false
+            ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
+              d.head.reason == ^adv_a
+                && diagnostics_fatal_reason(d: d) == ^parse_g0_tokens_remain
+          }
+      }
+  }
+}

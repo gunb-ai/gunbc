@@ -29,8 +29,8 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, call_semantics_target, callable_identity, expr_call_func_at,
-    expr_var_name_at, field_access_base, field_access_field_at, method_receiver, no_span,
-    param_node_type_expr, unit_type,
+    expr_var_name_at, field_access_base, field_access_field_at, is_rest_transport, method_receiver,
+    no_span, param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclarationMarker,
@@ -53,12 +53,14 @@ pub struct OpEntry {
     pub name: String,
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
+    pub rest: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
     pub result_type: Rc<Node>,
     pub op_params: Rc<Vec<Rc<Node>>>,
+    pub rest: bool,
 }
 
 pub fn service_receiver_resolved_name(
@@ -859,6 +861,7 @@ pub fn check_service_method_call_node(
                             Some(Rc::new(ServiceMethodResult {
                                 result_type: unit_type(),
                                 op_params: op.params.clone(),
+                                rest: op.rest.clone(),
                             }))
                         } else {
                             Some(Rc::new(ServiceMethodResult {
@@ -925,6 +928,7 @@ pub fn check_service_method_call_node(
                                     ident: None,
                                 }),
                                 op_params: op.params.clone(),
+                                rest: op.rest.clone(),
                             }))
                         }
                     }
@@ -938,8 +942,23 @@ pub fn check_service_method_call_node(
     }
 }
 
+pub fn service_operation_is_rest(
+    op: Rc<Node>,
+    service: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match op.transport.clone() {
+        Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
+        std::option::Option::None => match service.transport.clone() {
+            Some(t) => crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone()),
+            std::option::Option::None => false,
+        },
+    }
+}
+
 pub fn service_op_entry(
     child: Rc<Node>,
+    service: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OpEntry> {
     Rc::new(OpEntry {
@@ -950,5 +969,6 @@ pub fn service_op_entry(
             source_indices.clone(),
         ),
         params: child.params.clone(),
+        rest: service_operation_is_rest(child.clone(), service.clone(), source_indices.clone()),
     })
 }

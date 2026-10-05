@@ -1,0 +1,95 @@
+module test.claim.runner.runner_microvm_ci_admission_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
+import product.fabric.sanitation { CellId }
+import product.host_identity { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_executor_class { ExecutorSanctioned, ExecutorUnclassified, fleet_cell_sanction }
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, srv3_fabric_first_slot, workspace_execution_slot_identities, gunbc_runner_slot_desired_for }
+import std.measure { byte_size_count }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, CellNeverSettled,
+  InFlightAttempt, MicroVmWorkload, GitHubRunnerWorkload, WorkspaceWorkload,
+  bind_attempt_to_cell, AttemptBoundToCell,
+}
+import gunbc.runner_microvm_ci_admission {
+  microvm_ci_admission, MicrovmCiLaunchAdmitted, MicrovmCiRecoveryRequired, MicrovmCiAdmissionRefused,
+}
+
+test fn workspace_purpose_blocks_direct_ci_launch() -> Bool {
+  let readiness = CellIncarnationAdmitted { cell: "srv1-13" as CellId, generation: 3 }
+  let ci = microvm_ci_admission(executor: "srv1-13" as NonEmptyStr,
+    sanction: ExecutorSanctioned { executor: "srv1-13" as NonEmptyStr, sanctioned: ControlPlaneCapacity }, readiness: readiness)
+  let workspace = microvm_ci_admission(executor: "srv1-13" as NonEmptyStr,
+    sanction: ExecutorSanctioned { executor: "srv1-13" as NonEmptyStr, sanctioned: CustomerExecutableCapacity }, readiness: readiness)
+  match ci { MicrovmCiLaunchAdmitted => match workspace { MicrovmCiAdmissionRefused { reason: _ } => true _ => false } _ => false }
+}
+
+test fn missing_or_foreign_authority_cannot_launch() -> Bool {
+  let ready = CellIncarnationAdmitted { cell: "srv1-13" as CellId, generation: 3 }
+  let outcomes = [
+    microvm_ci_admission(executor: "srv1-13" as NonEmptyStr,
+      sanction: ExecutorUnclassified { executor: "srv1-13" as NonEmptyStr }, readiness: ready),
+    microvm_ci_admission(executor: "srv1-13" as NonEmptyStr,
+      sanction: ExecutorSanctioned { executor: "srv1-12" as NonEmptyStr, sanctioned: ControlPlaneCapacity }, readiness: ready),
+    microvm_ci_admission(executor: "srv1-12" as NonEmptyStr,
+      sanction: ExecutorSanctioned { executor: "srv1-12" as NonEmptyStr, sanctioned: ControlPlaneCapacity }, readiness: ready),
+    microvm_ci_admission(executor: "srv1-13" as NonEmptyStr,
+      sanction: ExecutorSanctioned { executor: "srv1-13" as NonEmptyStr, sanctioned: ControlPlaneCapacity },
+      readiness: CellWithdrawn { cell: "srv1-13" as CellId, withdrawal: CellNeverSettled }),
+  ]
+  fold(outcomes, init: true, f: (ok, next) => ok && match next { MicrovmCiAdmissionRefused { reason: _ } => true _ => false })
+}
+
+fn recovery_check(workload: MicroVmWorkload, expect_recovery: Bool) -> Bool {
+  match microvm_attempt(slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 13 }, attempt_id: "withdrawal-test") {
+    MicroVmAttemptAccepted { attempt } => match bind_attempt_to_cell(cell: "srv1-13" as CellId, generation: 2,
+      attempt: InFlightAttempt { attempt: attempt, invocation_id: "inv-withdrawal" as NonEmptyStr,
+        workload: workload, credential_device_path: "/fixture/bootstrap" }) {
+      AttemptBoundToCell { bound } => {
+        let readiness = CellRecoveryRequired { bound: bound }
+        let result = microvm_ci_admission(executor: "srv1-13" as NonEmptyStr,
+          sanction: ExecutorSanctioned { executor: "srv1-13" as NonEmptyStr, sanctioned: CustomerExecutableCapacity }, readiness: readiness)
+        let foreign = microvm_ci_admission(executor: "srv1-12" as NonEmptyStr,
+          sanction: ExecutorUnclassified { executor: "srv1-12" as NonEmptyStr }, readiness: readiness)
+        let expected = match result {
+          MicrovmCiRecoveryRequired { bound: actual } => expect_recovery && actual == bound
+          MicrovmCiAdmissionRefused { reason: _ } => !expect_recovery
+          _ => false
+        }
+        expected && match foreign { MicrovmCiAdmissionRefused { reason: _ } => true _ => false }
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn withdrawal_preserves_ci_cleanup_without_new_registration() -> Bool {
+  recovery_check(workload: GitHubRunnerWorkload { registration_id: "original-registration" as NonEmptyStr }, expect_recovery: true)
+}
+
+test fn workspace_recovery_cannot_bypass_owner_settlement() -> Bool {
+  recovery_check(workload: WorkspaceWorkload { bootstrap_identity: "original-bootstrap" as NonEmptyStr,
+    image_identity: "original-image" as NonEmptyStr, lease_expires_unix: 42 }, expect_recovery: false)
+}
+
+// Exercise the real designation, not a caller-authored CustomerExecutableCapacity fixture.
+test fn desired_workspace_transfer_withdraws_only_the_budgeted_demo_cell_from_ci() -> Bool {
+  let slot = srv1_microvm_shakedown_slot()
+  let other = srv3_fabric_first_slot()
+  let cell = runner_slot_instance_name(slot: slot) as NonEmptyStr
+  let other_cell = runner_slot_instance_name(slot: other) as NonEmptyStr
+  let retired = microvm_ci_admission(executor: cell, sanction: fleet_cell_sanction(slot: slot),
+    readiness: CellIncarnationAdmitted { cell: cell as CellId, generation: 1 })
+  let retained = microvm_ci_admission(executor: other_cell, sanction: fleet_cell_sanction(slot: other),
+    readiness: CellIncarnationAdmitted { cell: other_cell as CellId, generation: 1 })
+  workspace_execution_slot_identities() == [slot]
+    && byte_size_count(b: gunbc_runner_slot_desired_for(slot: slot).memory_max) == 30064771072
+    && byte_size_count(b: gunbc_runner_slot_desired_for(slot: slot).memory_swap_max) == 0
+    && match retired { MicrovmCiAdmissionRefused { reason: _ } => true _ => false }
+    && match retained { MicrovmCiLaunchAdmitted => true _ => false }
+}

@@ -10,7 +10,7 @@ import extdeps.tools.xorriso { xorriso_extract_command, xorriso_list_long_comman
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
@@ -22,10 +22,9 @@ import gunbc.host_command_binding {
   CreationNotRequested,
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import gunbc.boot_medium { BootImageExport, BootMedium }
+import gunbc.machine_intake_mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, mtcollins1_census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
@@ -123,6 +122,7 @@ type CensusMemberReadback
   | BootChainIsoNotPinned { side: IsoSide, expected: NonEmptyStr, observed: String }
   | BootChainUnread { member: CensusIsoMember, side: IsoSide, reason: String }
   | BootChainMediumNotCensus
+  | BootChainMediumExporterUnsupported { supported: BootImageExport, named: BootImageExport }
   | BootChainHostUnreached { reason: String }
   | BootChainWorkspaceUnavailable { reason: String }
 
@@ -165,10 +165,11 @@ type CensusPinGate
   = PinsAdmitted { stock_iso: NonEmptyStr, census_iso: NonEmptyStr }
   | PinsRefused { readback: CensusMemberReadback }
 
-fn census_pin_gate(medium: MtCollins1BootMedium, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
-  match medium {
-    MtCollins1StockInstallerMedium => PinsRefused { readback: BootChainMediumNotCensus }
-    MtCollins1CensusMedium { output_digest: census_pin } =>
+fn census_pin_gate(medium: BootMedium, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => PinsRefused { readback: BootChainMediumNotCensus }
+    CensusMediumExporterUnsupported { supported: sup, named: n } => PinsRefused { readback: BootChainMediumExporterUnsupported { supported: sup, named: n } }
+    CensusMediumQualified { digest: census_pin, export: _ } =>
       match iso_pin_refusal(side: StockSide, expected: noble_numbat_2404_3_live_server_arm64.content_sha256, reading: stock_iso) {
         Present { value: refused } => PinsRefused { readback: refused }
         Absent =>
@@ -201,7 +202,7 @@ type CensusMemberReadings {
 
 // The pure join over pins and six readings, composed as the producer composes it.
 fn census_member_readback_from_readings(
-  medium: MtCollins1BootMedium,
+  medium: BootMedium,
   stock_iso: IsoReading,
   census_iso: IsoReading,
   stock_grub: MemberReading, census_grub: MemberReading,
@@ -227,6 +228,7 @@ fn census_member_readback_holds(readback: CensusMemberReadback) -> Bool {
     BootChainIsoNotPinned { side: _, expected: _, observed: _ } => false
     BootChainUnread { member: _, side: _, reason: _ } => false
     BootChainMediumNotCensus => false
+    BootChainMediumExporterUnsupported { supported: _, named: _ } => false
     BootChainHostUnreached { reason: _ } => false
     BootChainWorkspaceUnavailable { reason: _ } => false
   }
@@ -247,6 +249,8 @@ fn render_census_member_readback(readback: CensusMemberReadback) -> String {
     BootChainUnread { member: m, side: s, reason: r } =>
       concat("verdict=unread\nmember=", census_iso_member_path(member: m) as String, "\nside=", iso_side_slug(side: s) as String, "\nreason=", r, "\n")
     BootChainMediumNotCensus => "verdict=medium_not_census\n"
+    BootChainMediumExporterUnsupported { supported: sup, named: n } =>
+      concat("verdict=medium_exporter_unsupported (nothing read)\nnamed=", boot_image_export_text(export: n), "\nsupported=", boot_image_export_text(export: sup), "\n")
     BootChainHostUnreached { reason: r } => concat("verdict=host_unreached\nreason=", r, "\n")
     BootChainWorkspaceUnavailable { reason: r } => concat("verdict=workspace_unavailable (nothing extracted)\nreason=", r, "\n")
   }
@@ -254,7 +258,7 @@ fn render_census_member_readback(readback: CensusMemberReadback) -> String {
 
 // ---- the one producer: read-only legs on srv2 over fleet SSH, like the medium readback ----
 //
-// srv2 has had no runner slots since 2026-09-19 (gunbc.machine_intake_mtcollins1_boot_authorization),
+// srv2 has had no runner slots since 2026-09-19 (gunbc.boot_medium bmc_boot_image_export),
 // so this reaches the host that serves /srv/bmc the way the boot's medium readback does, as the fleet
 // principal over typed argv. ONE TRANSACTION PER ATTEMPT:
 //   1. measure both ISOs; a pin refusal ends the attempt before any extraction;
@@ -364,10 +368,6 @@ fn iso_reading_of(measure: RemoteAnswer) -> IsoReading {
   }
 }
 
-fn census_member_readback_target() -> SshTarget {
-  mtcollins1_boot_export_host_target()
-}
-
 // ONE LEG ON ANY HOST, AS THE ANSWER THE READINGS JOIN OVER. A leg that was never dispatched carries no
 // exit code of its own; it is reported with -1 and its reason, so it reads as unread and never as a
 // remote status.
@@ -426,33 +426,44 @@ fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: Arg
   host_run(host: FleetSshCommandHost { target: target, context: context }, command: command)
 }
 
-fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackAttempt {
-  match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
-    FleetSshContextRefused { cause: c } =>
-      CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
-    FleetSshContextReady { context: context, receipt: _ } => {
-      let target = census_member_readback_target()
-      let stock_path = mtcollins1_census_image_stock_path()
-      let census_path = mtcollins1_census_medium_served_path(medium: medium)
-      let gate = census_pin_gate(
-        medium: medium,
-        stock_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: stock_path as String))),
-        census_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: census_path as String))),
-      )
-      match gate {
-        PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
-        PinsAdmitted { stock_iso: _, census_iso: _ } =>
-          census_member_attempt_of(
-            kind: FleetSshTransport,
-            gate: gate,
-            creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
-            readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
-            cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
+// THE MEDIUM IS QUALIFIED BEFORE ANY LEG IS DISPATCHED, and every leg goes to the export the qualification
+// returned: a medium naming an unsupported exporter is refused with nothing read, never measured on the
+// supported one. The read body lives inside the qualified arm, so no entry takes a medium and an export
+// as two separately supplied values.
+fn census_member_readback(medium: BootMedium) -> CensusMemberReadbackAttempt {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => CensusMemberReadbackAttempt { readback: BootChainMediumNotCensus, workspace: CreationNotRequested }
+    CensusMediumExporterUnsupported { supported: sup, named: n } =>
+      CensusMemberReadbackAttempt { readback: BootChainMediumExporterUnsupported { supported: sup, named: n }, workspace: CreationNotRequested }
+    CensusMediumQualified { digest: _, export: export } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+        FleetSshContextRefused { cause: c } =>
+          CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
+        FleetSshContextReady { context: context, receipt: _ } => {
+          let target = export.target
+          let stock_path = mtcollins1_census_image_stock_path()
+          let census_path = mtcollins1_census_medium_served_path(medium: medium)
+          let gate = census_pin_gate(
+            medium: medium,
+            stock_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: stock_path as String))),
+            census_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: census_path as String))),
           )
+          match gate {
+            PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
+            PinsAdmitted { stock_iso: _, census_iso: _ } =>
+              census_member_attempt_of(
+                kind: FleetSshTransport,
+                gate: gate,
+                creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
+                readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
+                cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
+              )
+          }
+        }
       }
-    }
   }
 }
+
 
 // CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_member_readback,
 // which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
@@ -474,10 +485,16 @@ fn mtcollins1_census_member_readback_wet() -> ProcessExit {
 // The pinned census ISO's mapped members as the served image records them. A REPORT beside the
 // verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
 // boot chain matches stock.
-fn census_member_mapped_attributes(medium: MtCollins1BootMedium) -> String {
-  match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
-    FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
-    FleetSshContextReady { context: context, receipt: _ } =>
-      census_mapped_attributes_on(host: FleetSshCommandHost { target: census_member_readback_target(), context: context }, iso_path: mtcollins1_census_medium_served_path(medium: medium))
+fn census_member_mapped_attributes(medium: BootMedium) -> String {
+  match mtcollins1_census_medium_qualification(medium: medium) {
+    CensusMediumNotCensus => "UNREAD: the medium is not the census image"
+    CensusMediumExporterUnsupported { supported: sup, named: n } =>
+      concat("UNREAD: the medium names the unsupported exporter ", boot_image_export_text(export: n), " (supported: ", boot_image_export_text(export: sup), ")")
+    CensusMediumQualified { digest: _, export: export } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+        FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
+        FleetSshContextReady { context: context, receipt: _ } =>
+          census_mapped_attributes_on(host: FleetSshCommandHost { target: export.target, context: context }, iso_path: mtcollins1_census_medium_served_path(medium: medium))
+      }
   }
 }
