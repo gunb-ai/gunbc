@@ -2,7 +2,8 @@ module v2.test.parse.type_decl_modifier_g0_parse_probe
 
 import std.types { List }
 import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -26,7 +27,7 @@ data probe_cached_lm: LanguageModel = dag_language_model()
 
 fn parse_outcome(src: String) -> String {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
@@ -85,7 +86,7 @@ test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
 // v2.workflow.floor_pure_producer_share) and each claim reads the list rather than re-parsing.
 fn caret_tree_atom_identities() -> List<Symbol> {
   let lm = probe_cached_lm
-  match tokenize(text: modifier_spelling_as_caret_source, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: modifier_spelling_as_caret_source, file: ^probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => [^caret_probe_tokenize_refused]
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
@@ -111,7 +112,7 @@ fn caret_tree_carries(identity: Symbol) -> Bool {
 
 fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {

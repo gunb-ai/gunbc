@@ -1,9 +1,8 @@
 module v2.test.parse.layout_line_break
 
 import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared, parse_token_stream_digest, parse_token_stream_layout_digest }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.algebra { length }
 import std.types { List }
 import v2.std.collection { list_at_optional }
@@ -72,7 +71,7 @@ data same_line_text: String = "x - 1"
 data next_line_text: String = "x\n- 1"
 
 fn lexed(text: String, file: Symbol) -> Outcome<TokenStream> {
-  tokenize(text: text, file: file, rules: dag_lex())
+  tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex())
 }
 
 // The gap before the second token (`-`): from the end of `x` to the start of `-`.

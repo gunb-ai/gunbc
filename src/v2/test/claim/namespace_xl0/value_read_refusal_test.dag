@@ -2,9 +2,9 @@ module v2.test.claim.namespace_xl0.value_read_refusal
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
@@ -143,7 +143,7 @@ fn vrr_observe(source: String) -> VrrObserved {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
     Accepted { value: prepared, diagnostics: residue } =>
-      match tokenize(text: source, file: ^value_read_refusal_file, rules: dag_lex()) {
+      match tokenize_prepared(text: source, file: ^value_read_refusal_file, prepared: dag_prepared_lex()) {
         Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
         Accepted { value: token_stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {

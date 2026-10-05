@@ -1,9 +1,8 @@
 module v2.test.claim.parse.admit_callers_trailing_comma
 
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
@@ -26,7 +25,7 @@ fn admit_parse(text: String) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: text, file: ^admit_trailing_comma_probe, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: ^admit_trailing_comma_probe, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }

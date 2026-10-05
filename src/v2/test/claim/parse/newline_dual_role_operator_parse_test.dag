@@ -1,9 +1,9 @@
 module v2.test.parse.newline_dual_role_operator_parse
 
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, dag_lex_rules, dag_target_model, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_target_model, parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list }
 import v2.std.collection { map_lookup }
 import v2.std.compilers.lexing { lex_rule_set_matching_rules, lex_rule_token_class_optional }
@@ -53,7 +53,7 @@ fn n_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }

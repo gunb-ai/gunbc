@@ -1,8 +1,7 @@
 module v2.test.parse.d5_expression_grammar_parse
 
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -16,7 +15,7 @@ fn d5_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(
             tokens: token_stream,

@@ -4,9 +4,8 @@ import std.types { List }
 import v2.compiler.body_lowering_fold { body_lower_binary_operators, body_lower_prefix_operators }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import std.algebra { list_append }
 import v2.std.collection { list_at_optional }
 import v2.std.compilers.body_lowering {
@@ -90,7 +89,7 @@ fn body_shape_normalized_root() -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: body_shape_source, file: ^body_shape_contract_file, rules: dag_lex()),
+        o: tokenize_prepared(text: body_shape_source, file: ^body_shape_contract_file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }

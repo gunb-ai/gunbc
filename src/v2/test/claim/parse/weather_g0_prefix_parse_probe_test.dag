@@ -12,7 +12,8 @@ import v2.compiler.resolve {
   resolve_node,
   scope_from_namespace
 }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
   dag_language_model
@@ -57,7 +58,7 @@ data probe_cached_lm: LanguageModel = dag_language_model()
 
 fn parses(src: String) -> Bool {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => true
@@ -68,8 +69,7 @@ fn parses(src: String) -> Bool {
 }
 
 fn lexed_tokens(src: String) -> Outcome<TokenStream> {
-  let lm = probe_cached_lm
-  tokenize(text: src, file: ^probe, rules: lm.lex)
+  tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex())
 }
 
 fn three_classes(src: String, a: Symbol, b: Symbol, c: Symbol) -> Bool {

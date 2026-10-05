@@ -3,9 +3,8 @@ module v2.test.parse.supplied_token_stream_support
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.compilers.lexing { Token, TokenStream }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Node, symbol_lexeme }
@@ -44,7 +43,7 @@ fn supplied_stream_projection(ts: TokenStream) -> String {
 }
 
 fn supplied_stream_matches_tokenize(text: String, file: Symbol, supplied: TokenStream) -> Bool {
-  match tokenize(text: text, file: file, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: real, diagnostics: _ } =>
       supplied_stream_projection(ts: real) == supplied_stream_projection(ts: supplied)

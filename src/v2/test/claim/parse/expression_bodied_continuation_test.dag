@@ -3,9 +3,8 @@ module v2.test.claim.parse.expression_bodied_continuation
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -53,7 +52,7 @@ fn cont_parse(text: String, file: Symbol) -> Outcome<Node> {
     o: dag_prepared_grammar(),
     f: fn(prepared) {
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           bind_outcome(
             o: parse_module_prepared(

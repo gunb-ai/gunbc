@@ -3,9 +3,9 @@ module v2.test.claim.body_lowering.peeled_shell_fold_head
 import v2.compiler.body_lowering_fold { body_lower_is_pass_through_emitted }
 import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
@@ -29,10 +29,10 @@ fn peeled_shell_fold_head_parsed() -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(
+        o: tokenize_prepared(
           text: peeled_shell_fold_head_source,
           file: ^peeled_shell_fold_head_file,
-          rules: dag_lex()
+          prepared: dag_prepared_lex()
         ),
         f: fn(token_stream) {
           match parse_module_prepared(

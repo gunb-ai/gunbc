@@ -2,8 +2,9 @@ module v2.test.parse.newline_dual_role_operator_mutation
 
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.std.diagnostic { Outcome }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_grammar, dag_lex }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { dag_grammar }
 import v2.std.algebra { fold_list }
 import v2.std.grammar {
   AfterLineBreak,
@@ -163,7 +164,7 @@ fn accepts_prepared(text: String, file: Symbol, prepared: Outcome<PreparedGramma
   match prepared {
     Rejected { diagnostics: _ } => false
     Accepted { value: p, diagnostics: residue } =>
-      match tokenize(text: text, file: file, rules: dag_lex()) {
+      match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
         Rejected { diagnostics: _ } => false
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: p, validation_residue: residue) {

@@ -9,13 +9,13 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
 }
-import v2.extdeps.languages.dag { dag_language_model, dag_lex }
+import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
@@ -331,7 +331,7 @@ test fn mab_binder_spelling_a_variant_declared_in_two_modules_refuses() -> Bool 
 // capture itself is asserted, over all four spellings: a record, a nullary record, a where-alias,
 // and a coproduct with a fielded variant -- exactly the two records, in declaration order.
 fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
-  match tokenize(text: src, file: ^match_arm_binder_record_probe, rules: dag_lex()) {
+  match tokenize_prepared(text: src, file: ^match_arm_binder_record_probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: tokens, diagnostics: _ } =>
       match dag_prepared_grammar() {

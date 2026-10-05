@@ -2,10 +2,9 @@ module v2.test.parse.d1_declaration_grammar_parse
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
-  dag_lex,
   parse_subtree_find_production_captured,
   ParseSubtreeAbsent,
   ParseSubtreeFound,
@@ -24,7 +23,7 @@ fn d1_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(
             tokens: token_stream,

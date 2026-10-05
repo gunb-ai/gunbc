@@ -2,7 +2,8 @@ module v2.test.parse.g0_service_decl_parse_probe
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { ParseArtifact, parse_module }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.language_model { LanguageModel }
@@ -24,7 +25,7 @@ data probe_cached_lm: LanguageModel = dag_language_model()
 
 fn parse_src(src: String) -> Outcome<ParseArtifact> {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -50,7 +51,7 @@ fn smallest_service_parsed() -> Outcome<ParseArtifact> {
 // stage is pinned and a fixture that dies in the lexer reds instead of flattering the claim.
 fn refuses_at_parse(src: String) -> Bool {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => false

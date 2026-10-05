@@ -1,9 +1,8 @@
 module v2.test.claim.parse.transport_kind_closed_choice
 
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -37,7 +36,7 @@ fn transport_parse(text: String) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: text, file: ^transport_kind_probe, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: ^transport_kind_probe, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -67,7 +66,7 @@ test fn the_local_transport_kind_parses_holds() -> Bool { transport_kind_parses(
 
 // The byte offset of the first token spelled `lexeme`, from the same lexer the parse reads.
 fn token_start(text: String, lexeme: String) -> Int {
-  match tokenize(text: text, file: ^transport_kind_probe, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: ^transport_kind_probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => -1
     Accepted { value: ts, diagnostics: _ } =>
       fold(ts.all, init: -1, f: fn(acc, t) { if acc < 0 && t.lexeme == lexeme { t.start } else { acc } })
