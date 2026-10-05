@@ -447,3 +447,45 @@ test fn a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_matc
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
+
+// THE TYPED RESPONSE FORMAT IS HONOURED (gunbc.recurring_failure_mode
+// response_format_variant_silently_read_as_json). RED before the fix: the interpreter read
+// response_format only as a string literal, so `response_format: Text` fell back to Json and this
+// plain-text body answered RestBodyUndecodable at status 200.
+test fn a_text_response_format_reads_a_plain_body_as_text() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "TextBody",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "diff --git a/x b/x\n+plain text, not JSON" } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.TextBody() {
+        RestAnswered { answer } => answer.text == "diff --git a/x b/x\n+plain text, not JSON"
+        RestRefused { refusal: _ } => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// ANY OTHER SPELLING REFUSES. The quoted string is the one that used to be the only working
+// spelling in the interpreter and was read as Json by emitted code; now neither realization
+// can take it, and the interpreter says so instead of guessing.
+test fn an_unrecognized_response_format_refuses_rather_than_defaulting_to_json() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "FormatUnrecognized",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "plain" } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.FormatUnrecognized() }
+  )
+  match result {
+    WitnessReturned { value } => false
+    WitnessRefused { diagnostic } => contains(witness_diagnostic_rendered_reason(diagnostic: diagnostic), "response_format must be a std.serialization WireFormat variant")
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}

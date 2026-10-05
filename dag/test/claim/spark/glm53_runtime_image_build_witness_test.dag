@@ -11,7 +11,10 @@ import gunbc.spark.vllm_image_identity {
 }
 import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
 import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq, HostIdentity }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.group_image_produce { distribution_source_candidates }
+import gunbc.spark.glm53_kvplan_image { glm53_kvplan_produced_image_held }
 import extdeps.docker.cli { docker_image_save_command, docker_image_load_command }
 import extdeps.ssh.openssh_client_commands { scp_download_command, scp_upload_command }
 import extdeps.vllm.source_build {
@@ -162,6 +165,34 @@ test fn the_distribution_roster_excludes_exactly_the_source() -> Bool {
       targets.length() == hosts.length() - 1
         && !any(targets, h => host_identity_eq(a: h, b: source))
         && all(hosts, h => host_identity_eq(a: h, b: source) || any(targets, t => host_identity_eq(a: t, b: h)))
+    }
+  }
+}
+
+// THE DISTRIBUTION SOURCE IS ASKED FOR PRODUCTION HOST FIRST (ruling of valiant-crab-775, 2026-10-03):
+// the GLM image's receipt names srv7, so srv7 is asked first; then every other Group A host, never the
+// target. Whichever first reads back the digest is the source (distribution_source_for over the live
+// readings). The rest of the group follows the fabric roster's order, which this does not pin.
+fn w_names(hs: List<HostIdentity>) -> List<String> {
+  map(hs, x => x as String)
+}
+
+fn w_first_is(xs: List<String>, want: String) -> Bool {
+  match first(xs) {
+    Absent => false
+    Present { value: x } => x == want
+  }
+}
+
+test fn the_distribution_asks_the_production_host_first_then_the_group_never_the_target() -> Bool {
+  match glm53_kvplan_produced_image_held() {
+    Absent => false
+    Present { value: h } => {
+      let to5 = w_names(hs: distribution_source_candidates(h: h, target: "srv5" as HostIdentity))
+      let to7 = w_names(hs: distribution_source_candidates(h: h, target: "srv7" as HostIdentity))
+      length(to5) == 3 && w_first_is(xs: to5, want: "srv7") && !any(to5, x => x == "srv5")
+        && any(to5, x => x == "srv6") && any(to5, x => x == "srv8")
+        && length(to7) == 4 && w_first_is(xs: to7, want: "srv7") && any(to7, x => x == "srv5")
     }
   }
 }

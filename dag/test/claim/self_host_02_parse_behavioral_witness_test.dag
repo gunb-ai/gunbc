@@ -2,7 +2,7 @@ module test.claim.self_host_02_parse_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (02_parse): the driver (the roster's driver_rel) checks the .dag
+// Wet self-host behavioral receipt (02_parse): the rendered driver (the roster row's contract, also run interpreted) checks the .dag
 // contract on the EMITTED module with no seed oracle -- emitted prepare_grammar admits dag_grammar
 // and refuses a grammar naming an undefined nonterminal; --inject-fault feeds the refused input
 // where the accepted one is expected, so the fault run is red only if the emitted module really

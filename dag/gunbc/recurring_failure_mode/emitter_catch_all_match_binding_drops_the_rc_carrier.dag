@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.emitter_catch_all_match_binding_drops_the_rc_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emitter_catch_all_match_binding_drops_the_rc_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitter_catch_all_match_binding_drops_the_rc_carrier" as NonEmptyStr,
+
+  receipts: [
+    "a catch-all match binding drops the Rc carrier: the Rust emitter lowers a match over a coproduct to a match on the dereferenced carrier, so a catch-all arm that BINDS the scrutinee (`other => ...`) binds a borrow of the enum, and the emitter clones that borrow wherever the binding is used. Where the use is a position whose Rust type is the Rc carrier -- a record field of that coproduct type -- `other.clone()` is the enum and rustc refuses (E0308, expected Rc<T>, found T). INVALID STATE: an accepted .dag match whose emission is not a Rust program.",
+
+    "HARM: loud, not silent -- the closure stops building, located at the emitted field rather than at the arm. The cost is the author's: the .dag is correct and accepted, and the refusal reads as a type error in generated code. The working spelling names every arm of the coproduct, which over a closed coproduct is the better spelling anyway, so the defect stays hidden behind the authors who happen to write that way.",
+
+    "SPECIMEN, found by lane 2K (gunbc#13164, where v1.compiler.infer_emit_info resolve_type_decl_routed lands; not on main when this row was filed, so it is named here and not cited as evidence) wrote `other => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: other }` and the seed build refused at v1_compiler_infer_emit_info.rs, `resolution: other.clone()`, expected Rc<TypeDeclResolution>. MINIMAL FIXTURE gunbc.instruments.native_emission_catch_all_rc_specimen specimen_card_of: wired as one case into gunbc.instruments.native_emission_controls on a throwaway branch off main 6f281043bf, `gunbc test //gunbc/instruments:native-emission-controls` refused EmittedCompilerBuildFailed with exactly one error, E0308 at `shade: other.clone()`, expected Rc<SpecimenShade>.",
+
+    "RUNG: mitigatable -- rustc stops the build; nothing in the emitter refuses or lowers the binding correctly. ATTAINABLE CEILING: structurally guaranteed -- the emitter knows the binding's .dag type and the use position's Rust carrier, so it can wrap (or bind the carrier instead of the borrow) by construction. NEXT-RUNG TRIGGER, at capability grain: a catch-all binding over a coproduct emits as the carrier the coproduct's positions use, at every use position (record field, call argument, return, list element), and the specimen is enrolled in gunbc.instruments.native_emission_controls as a held case with a red beside it. Fixing the record-field position alone is not that capability.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.instruments.native_emission_catch_all_rc_specimen", decl_name: "specimen_card_of"),
+  ],
+}

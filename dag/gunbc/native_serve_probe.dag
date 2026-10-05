@@ -131,6 +131,11 @@ fn native_serve_probe_door_cases() -> List<NativeServeProbeCase> {
       expect: ExpectBody { status: 500, body: "the handler's response cannot be written: a header value carries CR, LF or NUL\n" },
     },
     NativeServeProbeCase {
+      identity: "door_refuses_to_write_a_content_type_carrying_crlf",
+      request: "GET /split-content-type HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler's response cannot be written: the content type carries CR, LF or NUL\n" },
+    },
+    NativeServeProbeCase {
       identity: "liveness_is_answered_before_the_handler_and_names_the_release",
       request: "GET /livez HTTP/1.1\r\n\r\n",
       expect: ExpectLiveness,

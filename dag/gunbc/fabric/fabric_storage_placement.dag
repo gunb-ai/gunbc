@@ -3,10 +3,12 @@ module gunbc.fabric_storage_placement
 import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
 
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance, dashboard_instance_child }
 import std.effect_grant { Read, Write, Execute }
+import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
 import gunbc.ownership { Ensured }
 import gunbc.managed_directory {
   ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal,
@@ -60,7 +62,7 @@ fn fabric_storage_door_socket() -> NonEmptyStr {
 // The peer the tailscale proxy connects as. tailscaled runs as root, and since v1.98.9 only root may
 // configure a unix proxy target at all (TS-2026-005), so a root peer is the proxy and its request's
 // login header is the principal; every other peer is its own principal and the header is ignored.
-data fabric_storage_door_proxy_peer: NonEmptyStr = "root" as NonEmptyStr
+data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_peer
 
 
 

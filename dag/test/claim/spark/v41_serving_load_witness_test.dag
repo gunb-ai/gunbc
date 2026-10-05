@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { microsecond, microsecond_count, millisecond, millisecond_count, token_count_value }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest }
 import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable }
 import extdeps.linux.diskstats { DiskstatsReading, DiskstatsDeviceRead, DiskstatsDeviceAbsent, DiskstatsUnparseable, DiskstatsRow }

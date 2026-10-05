@@ -5,7 +5,7 @@ import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
 import extdeps.transports.rest { RestResult }
 import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 
 // ── The publish binding: transport and address, in the layer that owns them ──────────────────

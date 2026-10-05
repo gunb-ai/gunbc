@@ -14,10 +14,9 @@ import v2.compiler.body_lowering_fold {
 import v2.compiler.normalize { normalize }
 import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
-  dag_lex,
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
@@ -75,15 +74,15 @@ data nfbcp_fn_type_param_source: String = "module m\nfn g(h: fn(Int) -> Int) -> 
 // specification-without-execution.
 data nfbcp_no_return_type_source: String = "module m\nfn g(h: fn(Int) -> Int) { true }\n"
 
-// The PREPARED grammar, not the whole language model. dag_prepared_grammar is enrolled in
-// floor_cross_claim_pure_producers_warm, so the required floor fills it during strict
+// The PREPARED grammar, not the whole language model. dag_prepared_grammar is admitted by the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share), so the required floor fills it during strict
 // preparation -- outside every per-claim budget -- and a claim here pays the lookup rather
 // than the construction. Building dag_language_model() per claim instead charged ~107k eval
 // steps to every probe below, which is the parse subject and not this claim's.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nfbcp_parsed(text: String) -> Optional<Node> {
-  match tokenize(text: text, file: ^nfbcp_probe_file, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: ^nfbcp_probe_file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: ts, diagnostics: _ } =>
       match dag_prepared_grammar() {

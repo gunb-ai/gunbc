@@ -7,10 +7,8 @@ import std.realization_width { byte_size_saturating_sub }
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // WHAT A HOST HAS, READ FROM THE HOST -- SEPARATED FROM WHAT CI DOES WITH IT. Every declaration
 // here came from gunbc.ci_floor_measurement and the extraction is the whole
@@ -19,7 +17,7 @@ import gunbc.fleet_intent_network {
 // derive from gunbc.runner_slot_desired gunbc_runner_slot_desired. Co-locating the two made
 // gunbc.ci_floor_measurement import the slot authority, which in turn made these facts unreachable
 // FROM that authority -- the cycle named in gunbc.runner_slot_allocation
-// host_runner_memory_envelope_bytes as its dissolve-on: "the usable-RAM and fixed-overhead facts
+// runner_memory_envelope_bytes_of as its dissolve-on: "the usable-RAM and fixed-overhead facts
 // become reachable from this module without a cycle -- today they sit in gunbc.ci_floor_measurement
 // and gunbc.ci_runner_placement, both of which import this one".
 //

@@ -358,8 +358,9 @@ data native_serve_handler_name: String = "native_serve_handle"
 
 // ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
 // Every response the main writes passes here first, whoever produced it. The status must be an
-// HTTP status (RFC 9110 section 15: three digits, 100-599) and every header value must be free of
-// CR, LF and NUL, because a value is handler data and one carrying a line break would split the
+// HTTP status (RFC 9110 section 15: three digits, 100-599), and the content type and every header
+// value must be free of CR, LF and NUL (the content type is an unrestricted String the main writes
+// into the header block just like a header value), because a value is handler data and one carrying a line break would split the
 // header block. The seed makes the same two checks in hand Rust after evaluation; here they are a
 // fold, and a response that fails them is answered as a typed 500 naming why, never written.
 // Header NAMES need no check: ServeWireHeaderName is closed, and its spelling is
@@ -395,6 +396,8 @@ fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
   let unsafe_headers = r.headers |> filter(h => !native_serve_value_is_field_safe(value: h.value))
   if r.status < 100 || r.status > 599 {
     native_serve_unwritable(reason: concat("status ", concat(to_string(value: r.status), " is not an HTTP status")))
+  } else if !native_serve_value_is_field_safe(value: r.content_type_label) {
+    native_serve_unwritable(reason: "the content type carries CR, LF or NUL")
   } else if (unsafe_headers |> count) > 0 {
     native_serve_unwritable(reason: "a header value carries CR, LF or NUL")
   } else {

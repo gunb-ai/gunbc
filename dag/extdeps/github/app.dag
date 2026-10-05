@@ -53,6 +53,11 @@ data installation_auth_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// GET /app/hook/config documents exactly one response status, 200 OK (read 2026-10-04 against
+// API version 2026-03-10). No 404 is documented, and nothing reads a 404 as "this App has no
+// webhook configured", so a consumer may not mint hook absence from a non-success: it is a refused
+// read (gunbc.fleet.app_control_plane_inspection hook_config_attempt_of_response). The shell
+// transport of GetAppHookConfigJson also carries no status code, only exit success.
 data app_webhook_config_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

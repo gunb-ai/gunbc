@@ -7,6 +7,18 @@ import std.measure { ByteSize }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
+import gunbc.deployment_risk {
+  DeploymentId,
+  DeploymentRiskClass,
+  deployment_risk_class,
+  prod_role_selection,
+  srv1_daily_workspace_deployment,
+  srv1_lab_codex_feedback_deployment,
+  srv2_preview_codex_feedback_deployment,
+  srv2_deploy_deployment,
+  srv2_lab_v1_deletion_deployment,
+  macbook_local_deployment,
+}
 import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.provider_account {
   AdmittedAccountBinding,
@@ -184,7 +196,12 @@ type DispatchStateScope
       attempt_state_root: FilePath,
     }
 
+// deployment IDENTIFIES THE CONVERGENCE SUBJECT THIS INSTANCE REALIZES (gunbc.deployment_risk). It is a
+// required field so every constructor answers it; the instance's risk class is DERIVED from it
+// through prod_role_selection (dashboard_instance_risk_class) and never from instance_id, host,
+// or a constructor's name -- srv1_live is a migration-era name and determines nothing.
 type HostDashboardInstance {
+  deployment: DeploymentId
   instance_id: NonEmptyStr
   host_identity: NonEmptyStr
   provision_parent_root: FilePath
@@ -253,6 +270,11 @@ type DashboardAdmittedRevisionSource {
   ref_name: GitRef
 }
 
+// THE INSTANCE'S RISK CLASS, derived through the one switchable row. Nothing else may answer it.
+fn dashboard_instance_risk_class(instance: HostDashboardInstance) -> DeploymentRiskClass {
+  deployment_risk_class(selection: prod_role_selection, deployment: instance.deployment)
+}
+
 // The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than
 // spelled at each instance so that the fleet answer stays one value across every fleet host.
 data fleet_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
@@ -288,6 +310,14 @@ data dashboard_environment_binding_executable: FilePath = env_absolute_program()
 
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
+}
+
+// THE INSTANCE'S TAILNET DOOR: the unix socket its door unit serves on and tailscale serve proxies
+// to. It sits in the instance root, which the service principal owns; who may open it is not what
+// the door relies on -- the handler is handed the kernel-attested peer of every connection
+// (`gunbc serve --unix-socket`, peer_user) and only tailscaled's is the proxy.
+fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_instance_child(root: instance.instance_root, child: "tailnet-door.sock") as String as NonEmptyStr
 }
 
 fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
@@ -795,6 +825,7 @@ data macbook_local_codex_home: FilePath = codex_account_state_root(
 // what may be launched on it.
 fn macbook_local_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
+    deployment: macbook_local_deployment,
     instance_id: macbook_local_dashboard_id,
     host_identity: "macbook" as NonEmptyStr,
     provision_parent_root: "/Users/briansrls/.local/share" as FilePath,
@@ -878,6 +909,7 @@ data macbook_local_admitted_revision_source: DashboardAdmittedRevisionSource = D
 
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
+    deployment: srv1_daily_workspace_deployment,
     instance_id: srv1_dashboard_live_id,
     host_identity: srv1_dashboard_host_identity,
     provision_parent_root: "/opt/gunbc" as FilePath,
@@ -956,6 +988,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
 // legitimately serve different refs; the ref belongs to the instance, not the machine.
 
 fn isolated_dashboard_instance(
+  deployment: DeploymentId,
   instance_id: NonEmptyStr,
   layout: GunbcHostLayout,
   root: FilePath,
@@ -966,6 +999,7 @@ fn isolated_dashboard_instance(
   provision_transport: DashboardProvisionTransport,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
+    deployment: deployment,
     instance_id: instance_id,
     host_identity: layout.host_identity,
     provision_parent_root: "/home/briansrls/.local/share" as FilePath,
@@ -1010,6 +1044,7 @@ fn isolated_dashboard_instance(
 
 fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: srv1_lab_codex_feedback_deployment,
     instance_id: srv1_dashboard_lab_id,
     layout: srv1_host_layout(),
     root: srv1_dashboard_lab_root,
@@ -1023,6 +1058,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
 
 fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: srv2_preview_codex_feedback_deployment,
     instance_id: srv2_dashboard_preview_id,
     layout: srv2_host_layout(),
     root: srv2_dashboard_preview_root,
@@ -1104,6 +1140,7 @@ data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = Das
 // attempts are published against main (dispatch_base_branch); the admitted revision stays the local ref.
 fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
+    deployment: srv2_deploy_deployment,
     instance_id: srv2_deploy_dashboard_id,
     host_identity: srv2_host_layout().host_identity,
     provision_parent_root: "/home/briansrls/.local/share" as FilePath,
@@ -1148,6 +1185,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
 // collision; it is not an ownership determination or an observation of either live listener.
 fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: srv2_lab_v1_deletion_deployment,
     instance_id: srv2_dashboard_lab_id,
     layout: srv2_host_layout(),
     root: srv2_dashboard_lab_root,
@@ -1361,12 +1399,14 @@ type DashboardAuthStore
   | DashboardAuthLoginTransactions
   | DashboardAuthJwksCache
   | DashboardAuthProfiles
+  | DashboardIssueViewPreferences
 
 data dashboard_auth_stores: List<DashboardAuthStore> = [
   DashboardAuthSessions,
   DashboardAuthLoginTransactions,
   DashboardAuthJwksCache,
   DashboardAuthProfiles,
+  DashboardIssueViewPreferences,
 ]
 
 fn dashboard_auth_store_segment(store: DashboardAuthStore) -> String {
@@ -1375,6 +1415,7 @@ fn dashboard_auth_store_segment(store: DashboardAuthStore) -> String {
     DashboardAuthLoginTransactions => "auth-login-transactions"
     DashboardAuthJwksCache => "auth-jwks"
     DashboardAuthProfiles => "auth-profiles"
+    DashboardIssueViewPreferences => "issue-view-preferences"
   }
 }
 

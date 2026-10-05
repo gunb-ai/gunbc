@@ -1,4 +1,5 @@
 module v2.extdeps.languages.dag
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
@@ -186,7 +187,11 @@ import v2.std.compilers.target_model {
   Prepend,
   BlockEvaluationMode,
   ValueProducing,
-  derive_bodied_arrow_scaffold}
+  derive_bodied_arrow_scaffold,
+  TargetBindLetShape,
+  TargetLoopShape,
+  TargetRecordConstructShape
+}
 import v2.std.logic { bool_node }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
@@ -202,7 +207,10 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
-  invariant_port_locus
+  invariant_port_locus,
+  bind_outcome,
+  diagnostics_merge,
+  outcome_with_diagnostics
 }
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
@@ -466,14 +474,14 @@ fn dag_surface_operator_canonicalization_lookup(
 fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: KeywordPattern { text: chars(s: text) }
+    pattern: KeywordPattern { text: unicode_scalar_unfold(s: text) }
   }
 }
 
 fn dag_literal_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: unicode_scalar_unfold(s: text) }
   }
 }
 
@@ -3851,7 +3859,7 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 }
 
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
+// derive_cross_claim_share). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
 //
 // WHAT THE SET HOLDS: the names the language model mints as atoms a resolved body may carry --
@@ -5019,7 +5027,7 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
 // The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the quote
 // and there are at least two of them.
 fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
-  let cs = chars(s: lexeme)
+  let cs = unicode_scalar_unfold(s: lexeme)
   let n = length(xs: cs)
   if n < 2 {
     optional_absent()
@@ -5129,7 +5137,7 @@ fn dag_string_literal_encoded(value: String) -> String {
   concat(
     "\"",
     concat(
-      fold(chars(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
+      fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
       "\""
     )
   )
@@ -7751,7 +7759,15 @@ type DagEmitText {
 fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -> Outcome<DagEmitText> {
   match t {
     GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true })
-    _ =>
+    GrammarEmitClassTerminal { token_class: _, captured: _ } =>
+      bind_outcome(
+        o: dag_emit_token_spelling(lex: lex, terminal: t),
+        f: fn(spelled) {
+          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+        }
+      )
+    GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {

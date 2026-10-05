@@ -58,7 +58,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -1053,6 +1052,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         MethodExistenceFrontierAdmitted { method: s(), receiver_type: s(), trigger: s(), span: no_span() },
         ReceiverTypeUnestablished { method: s(), span: no_span() },
         TextRepresentationUnidentifiedAtBoundary { position: s(), span: no_span() },
+        TextCrossingHasNoImplicitRoute { expected: s(), got: s(), route: s(), span: no_span() },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
@@ -1079,6 +1079,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         OwnershipViolation { binding: s(), fn_name: s(), consumers: 0, span: no_span() },
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
+        KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
         OptionalCastNotEliminated { source_type: s(), target_type: s(), span: no_span() },
         BareNoneNotAdmittedByFieldType { field: s(), type_name: s(), declared_type: s(), span: no_span() },
         SourceAnnotationRefused {
@@ -1541,6 +1542,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => {
             "TextRepresentationUnidentifiedAtBoundary"
         }
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => {
+            "TextCrossingHasNoImplicitRoute"
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -1566,6 +1570,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
             "BareNoneNotAdmittedByFieldType"
@@ -1650,6 +1655,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position, .. } => {
             position.clone()
         }
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { route, .. } => route.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::TestCodeReferenceAdmitted { referrer, .. } => referrer.clone(),
@@ -1679,6 +1685,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::KernelMintShapeMismatch {
+            declaration_name, ..
+        } => declaration_name.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
