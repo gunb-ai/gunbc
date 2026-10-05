@@ -53,7 +53,7 @@ data workspace_transcript_rate_root_labels: List<NonEmptyStr> = ["claude-agent-s
 // stage-0 checkpoint-lag target, so one row is one target-length of appends; the window spans
 // sixty of them, which is the smallest population whose 95th percentile is not its maximum.
 data workspace_transcript_rate_window: Second = second(count: 600)
-data workspace_transcript_rate_interval: Second = second(count: 10)
+data workspace_transcript_rate_sample_interval: Second = second(count: 10)
 
 data workspace_transcript_rate_receipt_path: String = "target/workspace-transcript-rate-receipt.txt"
 
@@ -366,7 +366,7 @@ fn workspace_transcript_rate_window_of(baseline: TranscriptRateSample, remaining
     TranscriptRateSampleRefused { refusals: rs } => TranscriptRateRefused { reason: concat("a transcript root could not be read; no permission is widened here: ", join(rs, "; ")), rows: reverse(rows) }
     TranscriptRateSampled { at: at, files: files } =>
       if remaining <= 0 {
-        TranscriptRateObserved { rate: TranscriptAppendRate { host: workspace_source_pack_host, window: workspace_transcript_rate_window, interval: workspace_transcript_rate_interval, rows: reverse(rows), caveat: workspace_transcript_rate_caveat } }
+        TranscriptRateObserved { rate: TranscriptAppendRate { host: workspace_source_pack_host, window: workspace_transcript_rate_window, interval: workspace_transcript_rate_sample_interval, rows: reverse(rows), caveat: workspace_transcript_rate_caveat } }
       } else if pause(remaining) == false {
         TranscriptRateRefused { reason: "the pause between samples failed; the interval is not what the window declares", rows: reverse(rows) }
       } else {
@@ -386,7 +386,7 @@ fn workspace_transcript_rate_window_of(baseline: TranscriptRateSample, remaining
 }
 
 fn workspace_transcript_rate_interval_count() -> Int {
-  second_count(s: workspace_transcript_rate_window) / second_count(s: workspace_transcript_rate_interval)
+  second_count(s: workspace_transcript_rate_window) / second_count(s: workspace_transcript_rate_sample_interval)
 }
 
 // ── THE SUMMARY, DERIVED FOR THE RECEIPT ───────────────────────────────────────────────────────
@@ -447,7 +447,7 @@ fn workspace_transcript_rate_summary(rate: TranscriptAppendRate) -> String {
 fn workspace_transcript_rate_receipt_head(roots: List<WorkspaceSourceRoot>) -> String {
   join([
     "workspace_transcript_rate_observe host=", workspace_source_pack_host as String, "\n",
-    "window_s=", to_string(second_count(s: workspace_transcript_rate_window)), " interval_s=", to_string(second_count(s: workspace_transcript_rate_interval)), "\n",
+    "window_s=", to_string(second_count(s: workspace_transcript_rate_window)), " interval_s=", to_string(second_count(s: workspace_transcript_rate_sample_interval)), "\n",
     "observed=", workspace_exclusion_spellings(exclusions: workspace_transcript_exclusions), " (the pack's TranscriptExclusion rows; size and mtime only, content never read)\n",
     join(map(roots, r => join(["root ", r.label as String, " path=", r.path as String], "")), "\n"), "\n",
     workspace_transcript_rate_caveat as String, "\n",
@@ -488,7 +488,7 @@ fn workspace_transcript_rate_observe_wet() -> ProcessExit {
           baseline: workspace_transcript_rate_sample_wet(roots: roots, label: "workspace-transcript-rate-baseline"),
           remaining: workspace_transcript_rate_interval_count(),
           next: k => workspace_transcript_rate_sample_wet(roots: roots, label: concat("workspace-transcript-rate-sample-", to_string(k))),
-          pause: _ => sleep_delay_seconds_second_carrier_projection(duration: workspace_transcript_rate_interval),
+          pause: _ => sleep_delay_seconds_second_carrier_projection(duration: workspace_transcript_rate_sample_interval),
           rows: [],
         )
         let receipt = workspace_transcript_rate_receipt(head: head, observation: observation)
