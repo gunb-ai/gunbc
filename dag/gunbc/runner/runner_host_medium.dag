@@ -22,7 +22,7 @@ import extdeps.github.actions_runner {
   actions_runner_binary_artifact_for_arch, actions_runner_release_digest, actions_runner_download_url, actions_runner_tarball_filename,
   actions_runner_base_dir, actions_runner_listener_relative_path,
 }
-import extdeps.crypto.hash { digest_shell_verify_line }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
@@ -58,8 +58,10 @@ import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 // no egress, gunbc.runner_throughput_qualification_route stage_egress). It is a seed ARTIFACT
 // (extdeps.provisioning.ubuntu_seeded_install_media NoCloudSeedArtifact): the build fetches it from
 // the upstream release URL and refuses unless its sha256 is the release's cited arm64 digest, and
-// that digest is in the build key. The live program verifies it once more off the medium before
-// extracting, so a medium whose seed was altered after the build refuses the runner-install section.
+// that digest is in the build key. The live program reads the tarball's sha256 back off the medium
+// as its own section, and the acceptance predicate refuses a mismatch with a typed cause; each
+// install step (clear, create, extract) is its own section with its own exit code, so no step's
+// refusal depends on the shell stopping.
 //
 // THE HOST PARAMETERS ARE THE CALLER'S. Which machine name the envelope carries (it must equal the
 // boot subject's machine, gunbc.managed_host_boot boot_subject_machine) and which serial console the
@@ -92,18 +94,6 @@ fn runner_host_medium_seed_artifact(artifact: ActionsRunnerBinaryArtifact) -> No
   }
 }
 
-// THE INSTALL, OFF THE MEDIUM. The live environment runs as root, so the place verbs are bare; the
-// tarball is verified against the same cited digest the build admitted it under before tar reads it.
-fn runner_host_medium_install_command(artifact: ActionsRunnerBinaryArtifact) -> NonEmptyStr {
-  let tarball = runner_host_medium_tarball_on_medium(artifact: artifact)
-  join([
-    "set -e",
-    digest_shell_verify_line(digest: actions_runner_release_digest(artifact: artifact), file_path: tarball as NonEmptyStr),
-    shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)),
-    shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)),
-    shell_command_render(command: tar_extract_command(archive: tarball, into_directory: actions_runner_base_dir, strip_components: 0)),
-  ], "\n") as NonEmptyStr
-}
 
 fn runner_host_listener_path() -> String {
   concat(actions_runner_base_dir, actions_runner_listener_relative_path)
@@ -112,7 +102,10 @@ fn runner_host_listener_path() -> String {
 // THE SECTION NAMES ARE READ BACK BY NAME, so the program's roster and the predicate's reads are one
 // set of rows.
 data runner_host_section_boot_media: NonEmptyStr = "boot-media"
-data runner_host_section_runner_install: NonEmptyStr = "runner-install"
+data runner_host_section_tarball_digest: NonEmptyStr = "runner-tarball-digest"
+data runner_host_section_runner_clear: NonEmptyStr = "runner-clear"
+data runner_host_section_runner_dir: NonEmptyStr = "runner-dir"
+data runner_host_section_runner_extract: NonEmptyStr = "runner-extract"
 data runner_host_section_runner_listener: NonEmptyStr = "runner-listener"
 data runner_host_section_systemd: NonEmptyStr = "systemd-manager"
 data runner_host_section_meminfo: NonEmptyStr = "meminfo"
@@ -121,7 +114,10 @@ data runner_host_section_machine: NonEmptyStr = "uname-machine"
 
 data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_boot_media,
-  runner_host_section_runner_install,
+  runner_host_section_tarball_digest,
+  runner_host_section_runner_clear,
+  runner_host_section_runner_dir,
+  runner_host_section_runner_extract,
   runner_host_section_runner_listener,
   runner_host_section_systemd,
   runner_host_section_meminfo,
@@ -137,7 +133,10 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCaptureStage> {
   [
     HostCaptureStage { name: runner_host_section_boot_media, command: shell_command_render(command: ls_one_per_line_command(path: udev_disk_by_label_dir)) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_runner_install, command: runner_host_medium_install_command(artifact: artifact) },
+    HostCaptureStage { name: runner_host_section_tarball_digest, command: shell_command_render(command: sha256sum_file_command(path: runner_host_medium_tarball_on_medium(artifact: artifact))) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_clear, command: shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
@@ -237,6 +236,8 @@ type RunnerHostUpRefusal
   | RunnerHostNprocUnreadable { observed: String }
   | RunnerHostMachineNotAarch64 { observed: String }
   | RunnerHostLabelAbsent { expected: NonEmptyStr, observed: List<String> }
+  | RunnerHostTarballDigestDiffers { expected: NonEmptyStr, observed: String }
+  | RunnerHostRunnerUnpublished { binary_release: ActionsRunnerRelease }
   | RunnerHostMediumTerminalNotRunnerHostUp { image: NonEmptyStr }
 
 type RunnerHostUpReadback
@@ -253,6 +254,8 @@ fn runner_host_up_refusal_text(refusal: RunnerHostUpRefusal) -> String {
     RunnerHostMeminfoFieldAbsent { field: f } => concat("meminfo carries no ", f as String)
     RunnerHostNprocUnreadable { observed: o } => concat("nproc printed ", o, ", not a positive count")
     RunnerHostMachineNotAarch64 { observed: o } => concat("uname -m printed ", o, ", the runner image is arm64")
+    RunnerHostTarballDigestDiffers { expected: e, observed: o } => concat("the runner tarball on the medium read back sha256 ", concat(o, concat(", the release cites ", e as String)))
+    RunnerHostRunnerUnpublished { binary_release: r } => concat("no arm64 runner tarball is published for release ", r.version as String)
     RunnerHostLabelAbsent { expected: e, observed: o } => concat("no block device carries the admitted medium's label ", concat(e as String, concat("; labels read: ", join(o, ", "))))
     RunnerHostMediumTerminalNotRunnerHostUp { image: i } => concat("the admitted medium ", concat(i as String, " does not name the runner-host-up terminal"))
   }
@@ -293,6 +296,29 @@ fn runner_host_section_output(read: RunnerHostSectionRead) -> List<String> {
   }
 }
 
+// THE TARBALL'S DIGEST IS READ BACK AND COMPARED HERE, as a typed refusal, rather than gated in the
+// program: the medium's bytes are already established by the build (the seed artifact's readback)
+// and by the export's readback of the whole image before attach, so this reading is the boot's
+// evidence that the tarball it extracted is the cited release -- a mismatch refuses the terminal.
+fn runner_host_tarball_digest_refusals(read: RunnerHostSectionRead) -> List<RunnerHostUpRefusal> {
+  match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
+    Absent => [RunnerHostRunnerUnpublished { binary_release: host_unit_slot_runner_release }]
+    Present { value: artifact } => {
+      let expected = actions_runner_release_digest(artifact: artifact).hex
+      match read {
+        RunnerHostSectionRefused { refusal: r } => [r]
+        RunnerHostSectionHeld { output: out } => {
+          let line = runner_host_last_line(out: out)
+          match sha256sum_line_digest(line: line) {
+            Present { value: d } => if (d.hex as String) == (expected as String) { [] } else { [RunnerHostTarballDigestDiffers { expected: expected, observed: d.hex as String }] }
+            Absent => [RunnerHostTarballDigestDiffers { expected: expected, observed: line }]
+          }
+        }
+      }
+    }
+  }
+}
+
 // EVERY REFUSAL IS NAMED, NOT THE FIRST: a host whose runner install failed AND whose nproc is short
 // reports both, so one boot answers both questions.
 fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmptyStr) -> RunnerHostUpReadback {
@@ -303,8 +329,9 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
     RunnerHostSectionHeld { output: _ } =>
       if any(labels, l => l == (label as String)) { [] } else { [RunnerHostLabelAbsent { expected: label, observed: labels }] }
   }
-  let gates = append(media_refusals, items: flat_map(
-    [runner_host_section_runner_install, runner_host_section_runner_listener, runner_host_section_systemd],
+  let digest_refusals = runner_host_tarball_digest_refusals(read: runner_host_section_read(envelope: envelope, name: runner_host_section_tarball_digest))
+  let gates = append(append(media_refusals, items: digest_refusals), items: flat_map(
+    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_systemd],
     n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
   ))
   let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)

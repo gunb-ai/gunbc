@@ -27,7 +27,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
-  RunnerHostSectionFailed, RunnerHostMachineNotAarch64, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
+  RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
   runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id,
 }
 
@@ -62,9 +62,16 @@ data end_line: String = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-000
 data meminfo_body: String = "MemTotal:       134217728 kB\nMemFree:        130000000 kB\nMemAvailable:   131000000 kB\nBuffers:            1024 kB\nCached:          2000000 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nHugePages_Total:       0\n"
 
 fn sections(install_exit: String, machine: String) -> String {
+  sections_with_digest(install_exit: install_exit, machine: machine, tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String)
+}
+
+fn sections_with_digest(install_exit: String, machine: String, tarball_digest: String) -> String {
   concat(
     section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
-    section(name: "runner-install", argv: "(the rendered extract)", body: "", exit_code: install_exit),
+    section(name: "runner-tarball-digest", argv: "sha256sum -- (the tarball on the medium)", body: concat(tarball_digest, "  /cdrom/gunbc-runner/actions-runner-linux-arm64-2.337.0.tar.gz\n"), exit_code: "0"),
+    section(name: "runner-clear", argv: "rm -rf /opt/actions-runner", body: "", exit_code: "0"),
+    section(name: "runner-dir", argv: "mkdir -p /opt/actions-runner", body: "", exit_code: "0"),
+    section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
     section(name: "meminfo", argv: "cat /proc/meminfo", body: meminfo_body, exit_code: "0"),
@@ -94,7 +101,8 @@ test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_h
       let program = fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String))
       (runner.binary_release.version as String) == (actions_runner_release_2_337_0.version as String)
         && (input.volume_id as String) == (runner_host_medium_volume_id as String)
-        && string_contains(s: program, pattern: "sha256sum -c")
+        && string_contains(s: program, pattern: "sha256sum")
+        && !string_contains(s: program, pattern: "set -e")
         && !string_contains(s: program, pattern: "curl")
         && count(input.seed_artifacts) == 1
         && all(input.seed_artifacts, a => (a.sha256 as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
@@ -135,15 +143,15 @@ test fn a_closed_envelope_with_every_section_held_reads_the_runner_host_up() -> 
 test fn a_failed_install_and_a_foreign_machine_both_refuse() -> Bool {
   match readback(capture: closed(install_exit: "1", machine: "x86_64")) {
     Present { value: RunnerHostUpRefused { refusals: rs } } =>
-      any(rs, r => match r { RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "runner-install" && c == "1" _ => false })
+      any(rs, r => match r { RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "runner-extract" && c == "1" _ => false })
         && any(rs, r => match r { RunnerHostMachineNotAarch64 { observed: o } => o == "x86_64" _ => false })
     _ => false
   }
 }
 
 test fn an_open_envelope_refuses_early_on_a_failed_install_and_otherwise_waits() -> Bool {
-  let failed_open = concat(begin_line, section(name: "runner-install", argv: "(the rendered extract)", body: "sha256sum: WARNING: 1 computed checksum did NOT match\n", exit_code: "1"))
-  let held_open = concat(begin_line, section(name: "runner-install", argv: "(the rendered extract)", body: "", exit_code: "0"))
+  let failed_open = concat(begin_line, section(name: "runner-extract", argv: "(the rendered extract)", body: "tar: Unexpected EOF in archive\n", exit_code: "2"))
+  let held_open = concat(begin_line, section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: "0"))
   (match readback(capture: failed_open) { Present { value: RunnerHostUpRefused { refusals: _ } } => true _ => false })
     && (match readback(capture: held_open) { Present { value: RunnerHostUpPending { reason: _ } } => true _ => false })
 }
@@ -304,5 +312,17 @@ test fn the_accepted_reading_reaches_the_boot_attempt_result() -> Bool {
         }
         _ => false
       }
+  }
+}
+
+// THE TARBALL'S DIGEST IS EVIDENCE THE PREDICATE JUDGES, NOT A SHELL GATE: a capture whose
+// runner-tarball-digest section reads another sha256 (here the x86_64 tarball's) refuses with the typed
+// cause naming both digests, even though every install section exited 0.
+test fn a_tarball_that_reads_back_another_digest_refuses_the_terminal() -> Bool {
+  let wrong = actions_runner_release_2_337_0.digest_x86_64.hex as String
+  match readback(capture: concat(begin_line, sections_with_digest(install_exit: "0", machine: "aarch64", tarball_digest: wrong), end_line)) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } =>
+      any(rs, r => match r { RunnerHostTarballDigestDiffers { expected: e, observed: o } => o == wrong && (e as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String) _ => false })
+    _ => false
   }
 }
