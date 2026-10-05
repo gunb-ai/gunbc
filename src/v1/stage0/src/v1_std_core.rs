@@ -739,6 +739,11 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    KernelMintShapeMismatch {
+        declaration_name: String,
+        cause: String,
+        span: Rc<SourceSpan>,
+    },
     OptionalCastNotEliminated {
         source_type: String,
         target_type: String,
@@ -1034,6 +1039,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
+        CompilerDiagnostic::KernelMintShapeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
@@ -1114,6 +1120,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
+    CompilerDiagnostic::KernelMintShapeMismatch { declaration_name: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel mint binding: '".to_string(), d.clone()), "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ".to_string()), c.clone()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
     CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
@@ -1338,6 +1345,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::SoleConstructorViolation { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::KernelMintShapeMismatch { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
