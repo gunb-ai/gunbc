@@ -17,6 +17,14 @@ import gunbc.roadmap_service_evidence {
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
+import gunbc.roadmap.roadmap_attempt_request_record { AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestClaimBound, RequestAutonomous }
+import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventId, LegacyEmailPrincipal, ResultPublished }
+import gunbc.roadmap_attempt_metering { AttemptMeteringObservation, AttemptMeteringRecord, MeteredRoleUsage, MeteredWorker, TokensObserved, SeatReleased, ComputeNotAttributable, MeteringObserved, MeteringProvisional, MeteringRefused }
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
+import product.capacity.event_chain { PartitionId }
+import gunbc.roadmap_model { RoadmapNodeId }
+import std.measure { token_count }
 import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.github { Repository }
@@ -40,7 +48,10 @@ import gunbc.roadmap_dogfood_route {
   CleanupReading, CleanupEstablished, CleanupGap, dogfood_cleanup_reading,
   DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
   StageGap, StageOwed, StageRefused,
-  ProducerPending, DogfoodStageReadings, dogfood_occupied_slot_record, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
+  ProducerPending, DogfoodStageReadings,
+  RequestReading, RequestEstablished, RequestGap, dogfood_request_reading,
+  ResultReturnedReading, ResultReturnedEstablished, ResultReturnedGap, dogfood_result_returned_reading,
+  MeteringReading, MeteringEstablished, MeteringGap, dogfood_metering_reading, dogfood_occupied_slot_record, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
   dogfood_route_receipt, dogfood_submission_reading, dogfood_review_reading, dogfood_publication_reading,
   dogfood_start_receipt_wire, dogfood_start_receipt_decode, StartReceiptDecoded, StartReceiptInvalid,
@@ -227,6 +238,51 @@ test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool {
     && cleanup_refused(r: dogfood_cleanup_reading(p: SessionPlacementUnreadable { unit: "gunbc-session-n1-k1", detail: "torn" }))
 }
 
+// ── G4 AND G3 STAGES, READ FROM THEIR RECORDS ──
+//
+// Supplied at the readers' interface: the request record, the result reader's observation and the
+// metering reader's observation. The producers' own shapes are their modules' witnesses
+// (test.claim.roadmap.roadmap_result_returned_witness_test, roadmap_attempt_metering_witness_test).
+fn request_bound() -> AttemptRequestBindingRead { RequestBindingRead { binding: RequestClaimBound { claim: "evt-claim" as NonEmptyStr as RoadmapEventId } } }
+
+fn result_published(claim: String, h: String) -> ResultReturnedObservation {
+  ResultReturnedObserved {
+    node: "n1" as NonEmptyStr as RoadmapNodeId, event: "evt-result" as NonEmptyStr as RoadmapEventId, claim: claim as NonEmptyStr as RoadmapEventId,
+    return_to: LegacyEmailPrincipal { email: "requester@example.com" as NonEmptyStr, authentication_unestablished: true },
+    outcome: ResultPublished { pr: "4242" as NonEmptyStr, head: h as NonEmptyStr }, recorded_at: "2026-10-03T07:00:00Z",
+  }
+}
+
+fn metering_record() -> AttemptMeteringRecord {
+  AttemptMeteringRecord {
+    node_id: "n1", attempt_key: "k1", metered_at: 1000, sealed_roster: Present { value: "seal" },
+    roles: [MeteredRoleUsage {
+      role: MeteredWorker,
+      tokens: TokensObserved { rounds: 1, input_tokens: token_count(count: 10), output_tokens: token_count(count: 5), terminal: true },
+      seat: SeatReleased { pointer: HarnessSeatPointer { partition: "group-b" as NonEmptyStr as PartitionId, reference: "ref" as NonEmptyStr, owner: "owner" as NonEmptyStr }, granted_at: 100, released_at: 142 },
+    }],
+    compute: ComputeNotAttributable { reason: "fixture" as NonEmptyStr },
+  }
+}
+
+test fn a_request_record_naming_a_claim_establishes_the_request_and_an_autonomous_one_refuses() -> Bool {
+  (match dogfood_request_reading(r: request_bound()) { RequestEstablished { evidence } => evidence.claim == "evt-claim"  RequestGap { gap: _ } => false })
+    && (match dogfood_request_reading(r: RequestBindingRead { binding: RequestAutonomous }) { RequestGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  RequestEstablished { evidence: _ } => false })
+    && (match dogfood_request_reading(r: RequestBindingAbsent) { RequestGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  RequestEstablished { evidence: _ } => false })
+}
+
+test fn only_a_published_result_establishes_the_return_and_other_outcomes_refuse() -> Bool {
+  (match dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: head)) { ResultReturnedEstablished { evidence } => evidence.claim == "evt-claim" && evidence.head == head && evidence.event == "evt-result"  ResultReturnedGap { gap: _ } => false })
+    && (match dogfood_result_returned_reading(r: ResultNotReturned { attempt_key: "k1" }) { ResultReturnedGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  ResultReturnedEstablished { evidence: _ } => false })
+    && (match dogfood_result_returned_reading(r: ResultNotOwed { reason: "autonomous" }) { ResultReturnedGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  ResultReturnedEstablished { evidence: _ } => false })
+}
+
+test fn only_a_final_metering_record_establishes_metering() -> Bool {
+  (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }) { MeteringEstablished { evidence: _ } => true  MeteringGap { gap: _ } => false })
+    && (match dogfood_metering_reading(m: MeteringProvisional { record: metering_record() }) { MeteringGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  MeteringEstablished { evidence: _ } => false })
+    && (match dogfood_metering_reading(m: MeteringRefused { cause: "torn" }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
+}
+
 // ── THE FOLD ──
 
 // CLEANUP MUST RETURN THE GRANT THAT WAS PLACED. With every produced stage established, the carried
@@ -234,17 +290,17 @@ test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool {
 // another (dogfood_route_complete_of, the one constructor of the complete arm).
 fn all_readings(placement: SessionPlacementObservation, returned_of: SessionPlacementObservation) -> DogfoodStageReadings {
   DogfoodStageReadings {
-    request: ProducerPending { owed_by: "G4" },
+    request: dogfood_request_reading(r: request_bound()),
     immutable_subject: ProducerPending { owed_by: "G1" },
     shared_computation: ProducerPending { owed_by: "G1" },
     placement_grant: dogfood_placement_grant_reading(p: placement),
     isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: dogfood_submission_reading(attempt_key: "k1", capture: capture_at(h: head)),
-    metering: ProducerPending { owed_by: "G3" },
+    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }),
     independent_review: dogfood_review_reading(node_id: "n1", head_sha: head, report: review_at(complete: true)),
     candidate_published: dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: head) }, evidence_source: ReceiptSourcePresent { text: bound_receipt_text(h: head) }),
     cleanup: dogfood_cleanup_reading(p: returned_of),
-    result_returned: ProducerPending { owed_by: "G4" },
+    result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: head)),
   }
 }
 
@@ -268,6 +324,14 @@ fn fn_complete(c: DogfoodCarried?) -> String {
   }
 }
 
+test fn a_result_answering_another_claim_or_head_does_not_complete() -> Bool {
+  let a = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-7", fence: 7) }, returned: released())
+  let base = all_readings(placement: a, returned_of: a)
+  let other_claim = DogfoodStageReadings { request: base.request, immutable_subject: base.immutable_subject, shared_computation: base.shared_computation, placement_grant: base.placement_grant, isolated_execution: base.isolated_execution, durable_result: base.durable_result, metering: base.metering, independent_review: base.independent_review, candidate_published: base.candidate_published, cleanup: base.cleanup, result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-other", h: head)) }
+  let wrong_head = DogfoodStageReadings { request: base.request, immutable_subject: base.immutable_subject, shared_computation: base.shared_computation, placement_grant: base.placement_grant, isolated_execution: base.isolated_execution, durable_result: base.durable_result, metering: base.metering, independent_review: base.independent_review, candidate_published: base.candidate_published, cleanup: base.cleanup, result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: other_head)) }
+  fn_complete(c: dogfood_route_carried(r: other_claim)) == "result-returned" && fn_complete(c: dogfood_route_carried(r: wrong_head)) == "result-returned"
+}
+
 test fn a_cleanup_of_another_grant_does_not_carry_completion() -> Bool {
   let a = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-7", fence: 7) }, returned: released())
   let b = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-9", fence: 9) }, returned: released())
@@ -280,17 +344,17 @@ test fn a_cleanup_of_another_grant_does_not_carry_completion() -> Bool {
 fn readings_with(s: SubmissionReading, r: ReviewReading, p: PublicationReading) -> DogfoodStageReadings {
   let placement = observed(grant: SessionGrantRecorded { record: placement_record() }, returned: released())
   DogfoodStageReadings {
-    request: ProducerPending { owed_by: "G4" },
+    request: dogfood_request_reading(r: request_bound()),
     immutable_subject: ProducerPending { owed_by: "G1" },
     shared_computation: ProducerPending { owed_by: "G1" },
     placement_grant: dogfood_placement_grant_reading(p: placement),
     isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: s,
-    metering: ProducerPending { owed_by: "G3" },
+    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }),
     independent_review: r,
     candidate_published: p,
     cleanup: dogfood_cleanup_reading(p: placement),
-    result_returned: ProducerPending { owed_by: "G4" },
+    result_returned: dogfood_result_returned_reading(r: result_published(claim: "evt-claim", h: head)),
   }
 }
 
@@ -307,7 +371,7 @@ fn established_three() -> DogfoodStageReadings {
 test fn every_existing_producer_established_is_still_incomplete_with_the_rest_named() -> Bool {
   match dogfood_route_receipt(node_id: "n1", attempt_key: "k1", r: established_three()) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed, refused } =>
-      wires(stages: owed) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
+      wires(stages: owed) == "immutable-subject,shared-computation,isolated-execution"
         && length(refused) == 0
     DogfoodRouteComplete { node_id: _, attempt_key: _, placement: _, submission: _, review: _, publication: _, cleanup: _ } => false
   }
@@ -344,7 +408,7 @@ fn evidence_wire(node: String) -> String { if node == "n2" { evidence_wire_n2 } 
 
 fn payload_with(node: String, attempt: String, h: String, subject: String, pr: Int, when: String, ev_wire: String, ev_digest: String) -> String {
   serialize_json(v: json_object([
-    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v3")),
+    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v4")),
     json_kv(key: "node_id", value: json_string(s: node)),
     json_kv(key: "attempt_key", value: json_string(s: attempt)),
     json_kv(key: "head_sha", value: json_string(s: h)),
@@ -357,6 +421,10 @@ fn payload_with(node: String, attempt: String, h: String, subject: String, pr: I
     json_kv(key: "grant_identity", value: json_string(s: "evt-7")),
     json_kv(key: "fence_generation", value: json_int(n: 7)),
     json_kv(key: "cleanup_outcome", value: json_string(s: "released")),
+    json_kv(key: "request_claim", value: json_string(s: "evt-claim")),
+    json_kv(key: "result_event", value: json_string(s: "evt-result")),
+    json_kv(key: "metering_tokens", value: json_int(n: 5)),
+    json_kv(key: "metering_seat_seconds", value: json_int(n: 42)),
     json_kv(key: "service_evidence_digest", value: json_string(s: ev_digest)),
     json_kv(key: "service_evidence_wire", value: json_string(s: ev_wire)),
     json_kv(key: "established_at", value: json_string(s: when)),
@@ -458,8 +526,8 @@ test fn a_candidate_with_no_usable_clock_refuses() -> Bool {
 // While any stage has no producer, the recorder answers NoCompleteAttempt without scanning history:
 // the stages it reads are the same record the fold reads, and they are exactly the fold's owed set
 // when every existing producer is established (the claim above).
-test fn the_unproduced_stages_are_the_six_owed_in_route_order() -> Bool {
-  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
+test fn the_unproduced_stages_are_the_three_owed_in_route_order() -> Bool {
+  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "immutable-subject,shared-computation,isolated-execution"
 }
 
 // ── THE PINNED SERVICE EVIDENCE ──

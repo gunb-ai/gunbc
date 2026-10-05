@@ -83,7 +83,7 @@ fn wire(pr: String) -> String { wire_for(pr: pr, instance_id: "dogfood-wet") }
 fn wire_for(pr: String, instance_id: String) -> String {
   let ev = evidence_wire(instance_id: instance_id)
   serialize_json(v: json_object([
-    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v3")),
+    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v4")),
     json_kv(key: "node_id", value: json_string(s: "n1")),
     json_kv(key: "attempt_key", value: json_string(s: "k1")),
     json_kv(key: "head_sha", value: json_string(s: head)),
@@ -96,6 +96,10 @@ fn wire_for(pr: String, instance_id: String) -> String {
     json_kv(key: "grant_identity", value: json_string(s: "evt-7")),
     json_kv(key: "fence_generation", value: json_int(n: 7)),
     json_kv(key: "cleanup_outcome", value: json_string(s: "released")),
+    json_kv(key: "request_claim", value: json_string(s: "evt-claim")),
+    json_kv(key: "result_event", value: json_string(s: "evt-result")),
+    json_kv(key: "metering_tokens", value: json_int(n: 5)),
+    json_kv(key: "metering_seat_seconds", value: json_int(n: 42)),
     json_kv(key: "service_evidence_digest", value: json_string(s: wire_content_hash_to_hex(hash: content_hash_of_value(value: ev as NonEmptyStr)))),
     json_kv(key: "service_evidence_wire", value: json_string(s: ev)),
     json_kv(key: "established_at", value: json_string(s: "2026-10-03T07:00:00Z")),
