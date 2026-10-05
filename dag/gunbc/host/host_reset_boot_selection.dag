@@ -1,7 +1,8 @@
 module gunbc.host_reset_boot_selection
 
 import product.host_identity { host_identity_eq }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootSelection, aarch64_uefi_once_boot_selection }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_virtual_media_boot_selection }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host { ManagedHost }
 
@@ -13,7 +14,7 @@ import gunbc.managed_host { ManagedHost }
 // however capable its controller.
 fn reset_boot_selection(host: ManagedHost) -> IpmiBootSelection? {
   if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
-    Present { value: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom) }
+    Present { value: mtcollins1_virtual_media_boot_selection }
   } else {
     none
   }
