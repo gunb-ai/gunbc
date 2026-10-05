@@ -1764,6 +1764,7 @@ fn infer_branch_operand_resolved_type_in_tree(
     node: node,
     facts: facts,
     entries: Empty,
+    instances: infer_no_type_variable_instances(),
     resolved: resolved
   )
 }
@@ -1772,6 +1773,7 @@ fn infer_branch_operand_resolved_type_with_entries(
   node: Node,
   facts: InferredFacts,
   entries: List<InferredFactsEntry>,
+  instances: List<TypeVariableInstance>,
   resolved: ResolvedTree,
 ) -> Witness<Node> {
   match dag_canonical_literal_from_node(node: node) {
@@ -1781,7 +1783,15 @@ fn infer_branch_operand_resolved_type_with_entries(
       match resolved_tree_lexical_binding(tree: resolved, reference: node) {
         Present { value: binding } =>
           match binding.declared {
-            Present { value: declared } => Holds { value: declared }
+            Present { value: declared } =>
+              match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
+                Present { value: instantiated } => Holds { value: instantiated }
+                Absent =>
+                  match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
+                    Present { value: value_type } => Holds { value: value_type }
+                    Absent => inferred_facts_resolved_type(facts: facts)
+                  }
+              }
             Absent =>
               match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
                 Present { value: value_type } => Holds { value: value_type }
@@ -1790,6 +1800,37 @@ fn infer_branch_operand_resolved_type_with_entries(
           }
         Absent => inferred_facts_resolved_type(facts: facts)
       }
+  }
+}
+
+// THE DECLARED TYPE AN OPERAND READS IS THE INSTANTIATED ONE. The lexical facts instantiate a
+// binding's declared type with infer_frame_instantiated before deriving from it; a read that
+// preempts the facts with the raw declared node skips exactly that step, so a generic coproduct's
+// field (`Some { value: T }`) would hand the arm body the formal `T` instead of the scrutinee's
+// argument (DESIGN 5: no fabricated plausible output). The instantiation is the same one the facts
+// path performs. A formal no instance in scope binds is NOT held -- the read falls through to the
+// facts, which is the answer the caller would have had before the read existed.
+// THE DECLARED TYPE AN OPERAND READS IS THE INSTANTIATED ONE. The lexical facts instantiate a
+// binding's declared type with infer_frame_instantiated before deriving from it; a read that
+// preempts the facts with the raw declared node skips exactly that step, so a generic coproduct's
+// field (`Some { value: T }`) would hand the arm body the formal `T` instead of the scrutinee's
+// argument (DESIGN 5: no fabricated plausible output). The instantiation is the one the construct
+// read holds -- at a match, the scrutinee coproduct's instances. An atom no instance binds is held
+// only when it names a type-denoting binding (a concrete literal type, by the same
+// dag_binding_denotation test the facts fold applies); a free formal is NOT held -- the read falls
+// through to the facts, the answer the caller had before the read existed.
+fn infer_operand_declared_type_instantiated(declared: Node, instances: List<TypeVariableInstance>) -> Optional<Node> {
+  match node_atom_identity_optional(node: declared) {
+    Present { value: id } =>
+      match type_variable_instance_lookup(instances: instances, binder: id) {
+        Present { value: instance } => optional_present(value: instance)
+        Absent =>
+          match dag_binding_denotation(sym: id) {
+            Present { value: _ } => optional_present(value: declared)
+            Absent => optional_absent()
+          }
+      }
+    Absent => optional_present(value: declared)
   }
 }
 
@@ -2305,6 +2346,7 @@ fn infer_match_bool(
                           node: scrutinee_target,
                           facts: scrutinee_facts,
                           entries: entries,
+                          instances: infer_no_type_variable_instances(),
                           resolved: resolved
                         ) {
                           Violates { diagnostic: d } => outcome_rejected(d)
@@ -2727,13 +2769,14 @@ type InferArmBodyTypes {
 fn infer_coproduct_arm_body_types(
   rows: List<InferCoproductArmRow>,
   entries: List<InferredFactsEntry>,
+  instances: List<TypeVariableInstance>,
   resolved: ResolvedTree
 ) -> InferArmBodyTypes {
   fold(rows, init: InferArmBodyTypes { derived: Absent, mismatch: false, underived: None }, f: fn(acc, row) {
     let body_type = match lookup_inferred_facts_in_entries(entries: entries, key: row.body) {
       Absent => Absent
       Present { value: facts } =>
-        match infer_branch_operand_resolved_type_with_entries(node: row.body, facts: facts, entries: entries, resolved: resolved) {
+        match infer_branch_operand_resolved_type_with_entries(node: row.body, facts: facts, entries: entries, instances: instances, resolved: resolved) {
           Holds { value: t } => Present { value: t }
           Violates { diagnostic: _ } => Absent
         }
@@ -2800,7 +2843,7 @@ fn infer_match_coproduct_rows(
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: _ } =>
           {
-            let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, resolved: resolved)
+            let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, instances: coproduct.instances, resolved: resolved)
             if bodies.mismatch {
               outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
             } else {
@@ -2848,7 +2891,7 @@ fn infer_match_coproduct(
                 match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
                   Present { value: scrutinee_facts } =>
-                    match infer_branch_operand_resolved_type_with_entries(node: scrutinee_target, facts: scrutinee_facts, entries: entries, resolved: resolved) {
+                    match infer_branch_operand_resolved_type_with_entries(node: scrutinee_target, facts: scrutinee_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
                       Violates { diagnostic: _ } =>
                         infer_match_frontier(
                           node: node,
@@ -3106,13 +3149,14 @@ fn infer_unify_transform_operand_types(
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
 ) -> Outcome<Node> {
-  match infer_branch_operand_resolved_type_with_entries(node: left_node, facts: left_facts, entries: entries, resolved: resolved) {
+  match infer_branch_operand_resolved_type_with_entries(node: left_node, facts: left_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
     Violates { diagnostic: d } => outcome_rejected(d)
     Holds { value: left_type } =>
       match infer_branch_operand_resolved_type_with_entries(
         node: right_node,
         facts: right_facts,
         entries: entries,
+        instances: infer_no_type_variable_instances(),
         resolved: resolved
       ) {
         Violates { diagnostic: d } => outcome_rejected(d)
@@ -4364,7 +4408,7 @@ fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, res
   match lookup_inferred_facts_in_entries(entries: entries, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
     Present { value: facts } =>
-      match infer_branch_operand_resolved_type_with_entries(node: element, facts: facts, entries: entries, resolved: resolved) {
+      match infer_branch_operand_resolved_type_with_entries(node: element, facts: facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
         Violates { diagnostic: d } => outcome_rejected(d)
         Holds { value: t } => outcome_accepted(value: t)
       }

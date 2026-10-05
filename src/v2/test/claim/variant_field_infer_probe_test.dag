@@ -220,6 +220,12 @@ data vfp_round_trip_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { v
 
 data vfp_partial_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn partial(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n  }\n}"
 
+// THE GENERIC CONTROL, the review's discriminating case: a payload field declared by the coproduct's
+// formal (`value: T`), eliminated at the scrutinee's argument (Outcome<Int>). The arm binder must
+// read as the argument (Int), never the formal T -- without instantiation the operand read hands
+// the arm body a bare formal, and this claim goes red on exactly that.
+data vfp_generic_src: String = "module p\n\ntype Diagnostics { head: Int }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: Diagnostics }\n\nfn pick(o: Outcome<Int>) -> Int {\n  match o {\n    Accepted { value: v } => v\n    Rejected { diagnostics: d } => d.head\n  }\n}"
+
 fn vfp_reading(src: String) -> VfpReading {
   match vfp_assemble(src: src) {
     Rejected { diagnostics: r } => VfpReading {
@@ -295,6 +301,13 @@ test fn vfp_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
 // be the non-exhaustive reason the coverage obligation reports on the inhabitance relation's refusal.
 test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Bool {
   vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
+}
+
+// THE GENERIC COPRODUCT CONTROL: the payload binder under a formal-typed field instantiates at the
+// scrutinee's argument. The arm body is `v`, whose only declared type is the variant field's raw
+// formal T; the read must hold Int (the instance) and never the formal. Red without instantiation.
+test fn vfp_the_generic_arm_binder_types_at_the_scrutinees_argument_holds() -> Bool {
+  vfp_reading(src: vfp_generic_src).arm_body_fact == ^Int
 }
 // THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
 // want of coverage, resolve has already bound the construction's tag to its variant's declaring

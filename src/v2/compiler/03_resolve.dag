@@ -2706,7 +2706,7 @@ fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Op
 }
 
 // The declared-payload paths among a candidate set, in lookup order.
-fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: List<QualifiedName>) -> List<QualifiedName> {
+fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: FreeMonoid<QualifiedName>) -> FreeMonoid<QualifiedName> {
   match paths {
     Empty => Empty
     Cons { head: p, tail: rest } =>
