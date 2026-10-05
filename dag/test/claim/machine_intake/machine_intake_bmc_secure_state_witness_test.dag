@@ -856,7 +856,7 @@ test fn a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted() -
 
 // BLOCKER 2. The published replacement is the goal's exact break-glass generation: the managed
 // secret's generation and an unrelated secret's generation refuse; the predeclared one is planned.
-test fn the_published_replacement_must_be_the_goal_bound_break_glass_generation(i: i) -> Bool {
+test fn the_published_replacement_must_be_the_goal_bound_break_glass_generation() -> Bool {
   let i = ScheduleInstants {
     store: observer_clock_modeled(millis: t_store, realization: schedule_realization),
     fetch: observer_clock_modeled(millis: t_fetch, realization: schedule_realization),
