@@ -611,7 +611,7 @@ fn admit_route_qualification_request(
           match approval {
             RedemptionRefused { cause: c } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationApprovalRefused { cause: c } } }
             RedemptionAdmitted { claims: cl, decided_by: by } =>
-              match administrator_retention_refusal(standing: standing, request: req, readback: readback, approved_attempt: cl.attempt) {
+              match qualification_retention_refusal(standing: standing, request: req, readback: readback, approved_attempt: cl.attempt) {
                 Present { value: c } => RouteQualificationRequestRefused { cause: QualificationRequestWouldLeaveNoAdministrator { cause: c } }
                 Absent =>
                   RouteQualificationRequestAdmitted {
@@ -627,6 +627,39 @@ fn admit_route_qualification_request(
     RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
     RouteGroundedByCitedSource { request: _, citation: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
     RouteUngrounded => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+  }
+}
+
+// AT THE QUALIFICATION BOUNDARY a privilege-limit request that does not lower anything is admitted
+// only as an IDEMPOTENT RE-ASSERTION OF THE MANAGED ACCOUNT'S OWN CURRENT VALUE: the request's target user
+// IS the readback's managed account, and that account's unique row for the target channel already holds
+// exactly the requested limit. So a managed id that changed after the reflash, or a target that does not
+// already hold the value, issues no request at all, rather than granting a privilege. A lowering request
+// at qualification is an effectful act and passes the ordinary retention precondition.
+fn qualification_retention_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
+  match administrator_retention_refusal(standing: standing, request: request, readback: readback, approved_attempt: approved_attempt) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match request {
+        IpmiSetUserPrivilegeLimit { access: x } =>
+          if lowers_privilege(privilege: x.privilege) {
+            none
+          } else {
+            match readback {
+              Absent => Present { value: ManagedReadbackAbsent }
+              Present { value: r } =>
+                if (r.managed_user as Int) != (x.user as Int) {
+                  Present { value: QualificationTargetIsNotTheManagedAccount { target: x.user, managed_user: r.managed_user } }
+                } else if any(r.access, a => (a.user as Int) == (x.user as Int) && (a.channel as Int) == (x.channel as Int) && ipmi_privilege_eq(a: a.privilege, b: x.privilege)) {
+                  none
+                } else {
+                  Present { value: QualificationTargetDoesNotAlreadyHoldTheLimit { target: x.user } }
+                }
+            }
+          }
+        IpmiSetUserPassword { user: _ } => none
+        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
+      }
   }
 }
 
@@ -678,7 +711,7 @@ fn admit_privilege_limit_route_qualification(
 }
 
 data route_qualification_live_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live realization of the route-qualification request mints RouteQualificationLiveResponse in this module from a transport call against the controller made ONLY from an AdmittedRouteQualificationRequest (admit_password_route_qualification or admit_privilege_limit_route_qualification, so every pre-write guard including the same-run administrator-retention receipt has held) and, for a privilege-limit request, issued in the privilege-limit-only mode of Set User Access, bound to the exact RouteQualificationSubject it was made against, under that controller's own operator go-ahead redeemed through gunbc.auth.approval_broker, with request and response bytes committed as content-addressed evidence, and qualify_rotation_route is called with it; until then RouteQualificationLiveResponse has no mint and no candidate can be grounded by qualification. NOT satisfied by the dry realization over gunbc.bmc_model BmcWorld (its ModeledRouteQualificationResponse cannot construct a standing), by a workflow entry that has not executed, or by a receipt that names no controller and build" as NonEmptyStr,
+  description: "dissolves when a live realization of the route-qualification request mints RouteQualificationLiveResponse in this module from a transport call against the controller made ONLY from an AdmittedRouteQualificationRequest whose pre-write receipt satisfied managed_administrator_readback_live_frontier in full (goal-bound account authentication and subject binding, unique channel/user evidence, pre-write ordering) (admit_password_route_qualification or admit_privilege_limit_route_qualification, so every pre-write guard including the same-run administrator-retention receipt has held) and, for a privilege-limit request, issued in the privilege-limit-only mode of Set User Access, bound to the exact RouteQualificationSubject it was made against, with its effect standing computed from an ESTABLISHED pre-write reading of the target that DIFFERS from the requested value and a post-write readback that MATCHES it (EffectObserved), and AcceptedEffectUnobserved otherwise -- a missing or unread pre-state is never evidence of a difference, under that controller's own operator go-ahead redeemed through gunbc.auth.approval_broker, with request and response bytes committed as content-addressed evidence, and qualify_rotation_route is called with it; until then RouteQualificationLiveResponse has no mint and no candidate can be grounded by qualification. NOT satisfied by the dry realization over gunbc.bmc_model BmcWorld (its ModeledRouteQualificationResponse cannot construct a standing), by a workflow entry that has not executed, or by a receipt that names no controller and build" as NonEmptyStr,
 )
 
 // ── THE ORDINARY ROTATION APPLY CONSUMES ONLY A GROUNDED ROUTE ──────────────────────────────────
@@ -716,7 +749,8 @@ type RotationApplyAdmission
 // production mint is the Get User Access read performed in the run against the controller, which does
 // not exist in this cut (managed_administrator_readback_live_frontier): until it lands, no production
 // caller can satisfy the precondition, and every privilege-lowering write refuses. The one other mint
-// is admitted only to this module's witness, which needs readbacks to exercise every refusal arm.
+// is admitted only to the exact witness claims that consume the readback they mint and return a Bool,
+// so no admitted caller hands a readback to anyone else.
 type ManagedAdministratorReadback sole_constructor {
   endpoint: BmcControllerEndpoint
   firmware: BmcFirmwareReleaseIdentity
@@ -733,14 +767,19 @@ fn managed_administrator_readback_fixture(
   access: List<IpmiUserChannelAccess>,
 ) -> ManagedAdministratorReadback
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "readback_at"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_readback_from_another_controller_or_build_does_not_unlock_a_close"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_duplicated_managed_readback_row_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "the_prewrite_admission_admits_only_with_the_same_run_receipt"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value"),
   ]
 {
   ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
 }
 
 data managed_administrator_readback_live_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live Get User Access read of the managed account, performed in the same run against the controller, mints ManagedAdministratorReadback in this module bound to that controller's endpoint, its observed firmware build and the run's attempt, with the response bytes committed as content-addressed evidence; until then no production caller can satisfy the administrator-retention precondition and every privilege-lowering channel-access write refuses. NOT satisfied by the witness fixture mint, by a readback read in another run, or by a readback of another controller or build" as NonEmptyStr,
+  description: "dissolves when ManagedAdministratorReadback is minted in this module ONLY from a live read in the same run, against the controller, that establishes ALL of: (1) successful authentication of the GOAL-BOUND managed account (the account the BmcSecure goal names, bound to the machine/intake subject), so the reading is that account's and not a cached or supplied row; (2) the endpoint and the firmware build observed in that run, and the run's attempt; (3) a Get User Access result for every (channel, user) pair it carries, unique per pair, with the response bytes committed as content-addressed evidence; (4) an observer-clock time ordered BEFORE the write the readback admits. Missing, unreadable, duplicated or conflicting, stale, other-controller, other-build or other-account readings refuse. Until then no production caller can satisfy the administrator-retention precondition and every privilege-limit write refuses. NOT satisfied by the witness fixture, by a reading from another run, by a cached access row, or by a reading timed after the write" as NonEmptyStr,
 )
 
 type AdministratorRetentionRefusal
@@ -751,6 +790,8 @@ type AdministratorRetentionRefusal
   | ManagedAccountIsTheClosedAccount { user: IpmiUserId }
   | ManagedAccountNotAdministratorOnChannel { managed_user: IpmiUserId }
   | ManagedReadbackDuplicateRow { managed_user: IpmiUserId, count: Int }
+  | QualificationTargetIsNotTheManagedAccount { target: IpmiUserId, managed_user: IpmiUserId }
+  | QualificationTargetDoesNotAlreadyHoldTheLimit { target: IpmiUserId }
 
 fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
   match privilege {
@@ -823,7 +864,8 @@ fn route_effect_observed(standing: BmcRotationRouteStanding) -> Bool {
 }
 
 // THE WITNESS'S EXECUTED-ROUTE FIXTURE: the only way to hold an executed grounding with a chosen effect
-// standing while no live response mint exists. Admitted to the witness helper only.
+// standing while no live response mint exists. Admitted only to the one claim that consumes it and
+// returns a Bool.
 fn rotation_route_executed_fixture(
   endpoint: BmcControllerEndpoint,
   firmware: BmcFirmwareReleaseIdentity,
@@ -832,7 +874,7 @@ fn rotation_route_executed_fixture(
   effect: RouteEffectStanding,
 ) -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "executed_route_at"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
   ]
 {
   BmcRotationRouteStanding {

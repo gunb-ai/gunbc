@@ -18,7 +18,7 @@ import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
 import gunbc.auth.privileged_effect_census { Conforms, privileged_effect_census, site_verdict }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts, bmc_ipmi_get_user_access, bmc_ipmi_set_user_access }
-import extdeps.bmc.ipmi_channel { IpmiChannelPrivilegeLimit, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator, IpmiPrivilegeUser, ipmi_user_channel_access }
+import extdeps.bmc.ipmi_channel { IpmiChannelPrivilegeLimit, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator, IpmiPrivilegeOperator, IpmiPrivilegeUser, IpmiUserChannelAccess, ipmi_user_channel_access }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_digest }
 import gunbc.machine_intake_mtjade1_access_observation { read_mtjade1_recorded_manager_identity }
@@ -37,7 +37,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved, RotationApplyApprovalRefused,
   EffectObserved, AcceptedEffectUnobserved, RouteEffectStanding, rotation_route_executed_fixture, RotationApplyApprovalDenied,
   RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest, RotationApplyWouldLeaveNoAdministrator,
-  ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel, ManagedReadbackDuplicateRow,
+  ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel, ManagedReadbackDuplicateRow, QualificationTargetIsNotTheManagedAccount, QualificationTargetDoesNotAlreadyHoldTheLimit,
   RouteQualificationRequestAdmitted, RouteQualificationRequestRefused, QualificationRequestForAnotherOperation,
   QualificationRequestRefusedByClassifier, QualificationRequestWouldLeaveNoAdministrator,
   admit_password_route_qualification, admit_privilege_limit_route_qualification,
@@ -550,25 +550,24 @@ fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
           ManagedAccountIsTheClosedAccount { user: _ } => "managed-is-closed"
           ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
           ManagedReadbackDuplicateRow { managed_user: _, count: _ } => "duplicate-row"
+          QualificationTargetIsNotTheManagedAccount { target: _, managed_user: _ } => "target-not-managed"
+          QualificationTargetDoesNotAlreadyHoldTheLimit { target: _ } => "target-not-holding"
         }
       }
     _ => "other-refusal"
   }
 }
 
-// The one way this witness obtains a readback: the fixture mint, admitted to this function only.
-fn readback_at(endpoint: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, attempt: NonEmptyStr, managed_user: Int, access: List<IpmiUserChannelAccess>) -> ManagedAdministratorReadback? {
-  Present { value: managed_administrator_readback_fixture(endpoint: endpoint, firmware: firmware, attempt: attempt as AttemptIdentity, managed_user: managed_user, access: access) }
-}
-
+// Every readback below is minted by managed_administrator_readback_fixture IN THE CLAIM THAT CONSUMES IT:
+// the fixture admits exactly those claims, and no function here returns a readback or a standing.
 test fn a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable() -> Bool {
   let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
   let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
   lockout_verdict(readback: none) == "readback-absent"
-    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "admitted"
-    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-0" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "another-run"
-    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 2, access: [ipmi_user_channel_access(channel: 2, user: 2, privilege: IpmiPrivilegeAdministrator)])) == "managed-is-closed"
-    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1)) == "not-administrator-on-channel"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "admitted"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-0" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "another-run"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 2, access: [ipmi_user_channel_access(channel: 2, user: 2, privilege: IpmiPrivilegeAdministrator)]) }) == "managed-is-closed"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) }) == "not-administrator-on-channel"
 }
 
 // A READBACK FROM CONTROLLER A CANNOT UNLOCK A CLOSE ON CONTROLLER B, nor one from another build of the
@@ -576,18 +575,18 @@ test fn a_channel_access_write_that_could_lock_out_every_administrator_is_unplan
 // the route's controller B and on build 0.33.
 test fn a_readback_from_another_controller_or_build_does_not_unlock_a_close() -> Bool {
   let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
-  lockout_verdict(readback: readback_at(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "another-controller"
-    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "another-build"
-    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "admitted"
+  lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "another-controller"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "another-build"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "admitted"
 }
 
 // A DUPLICATE (channel, user) RESULT REFUSES: an ADMINISTRATOR row beside a contradictory NO ACCESS row
 // for the same managed user and channel is not a unique reading.
 test fn a_duplicated_managed_readback_row_refuses() -> Bool {
-  lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: [
+  lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [
     ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator),
     ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeNoAccess),
-  ])) == "duplicate-row"
+  ]) }) == "duplicate-row"
 }
 
 // ── THE PRE-WRITE QUALIFICATION ADMISSION (side-chat review of 7887d74ed2, item 1) ──────────────────
@@ -628,17 +627,12 @@ test fn the_prewrite_admission_admits_only_with_the_same_run_receipt() -> Bool {
   let c = lab_candidate(request: request)
   let exact = qualification_approval_for(standing: c, request: request)
   let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
-  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1))) == "admitted"
-    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: readback_at(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1))) == "retention-refused"
-    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: rotation_approval_for(s: c), readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1))) == "another-authority"
+  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "admitted"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "retention-refused"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: rotation_approval_for(s: c), readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "another-authority"
 }
 
 // ── WHAT A QUALIFICATION GROUNDS: acceptance, and effect only when the run could tell ───────────────
-
-// The witness's one way to hold an executed grounding with a chosen effect standing.
-fn executed_route_at(request: BmcAccountWriteRequest, effect: RouteEffectStanding) -> BmcRotationRouteStanding {
-  rotation_route_executed_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), request: request, receipt: lab_surface_receipt, effect: effect)
-}
 
 fn modeled_effect(candidate: BmcRotationRouteStanding, world: BmcWorld, request: BmcAccountWriteRequest) -> String {
   match classify_modeled_route_qualification(standing: candidate, approval: qualification_approval_for(standing: candidate, request: request), response: dry_route_qualification_request(world: world, subject: subject_at(endpoint: lab_endpoint, request: request), password: "unused").response) {
@@ -664,15 +658,14 @@ test fn an_idempotent_qualifying_write_grounds_acceptance_only() -> Bool {
 // AN ACCEPT-ONLY GROUNDING DOES NOT ADMIT THE CLOSING WRITE. A grounded privilege-limit route whose
 // effect was unobserved, with an exact approval of closing user 2 on channel 2 and a valid same-run
 // managed-administrator readback, refuses as effect-unobserved; the same with EffectObserved is admitted.
-fn closing_verdict(effect: RouteEffectStanding) -> String {
-  let route = executed_route_at(request: access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator), effect: effect)
+fn closing_verdict(route: BmcRotationRouteStanding, readback: ManagedAdministratorReadback?) -> String {
   let close = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
   match admit_rotation_apply(
     standing: route,
     target_endpoint: lab_endpoint,
     target_firmware: lab_firmware(),
     request: close,
-    managed_readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]),
+    managed_readback: readback,
     approval: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: route, request: close)),
   ) {
     RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
@@ -682,6 +675,21 @@ fn closing_verdict(effect: RouteEffectStanding) -> String {
 }
 
 test fn an_accept_only_grounding_does_not_admit_the_closing_write() -> Bool {
-  closing_verdict(effect: AcceptedEffectUnobserved) == "effect-unobserved"
-    && closing_verdict(effect: EffectObserved) == "admitted"
+  let qualifying = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let readback = Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]) }
+  closing_verdict(route: rotation_route_executed_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), request: qualifying, receipt: lab_surface_receipt, effect: AcceptedEffectUnobserved), readback: readback) == "effect-unobserved"
+    && closing_verdict(route: rotation_route_executed_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), request: qualifying, receipt: lab_surface_receipt, effect: EffectObserved), readback: readback) == "admitted"
+}
+
+// THE NON-DESTRUCTIVE QUALIFICATION RE-ASSERTS THE MANAGED ACCOUNT'S OWN CURRENT VALUE (side-chat review
+// of 6d277411fd, item 2). For the target (user 3, channel 1, ADMINISTRATOR): a receipt only for managed
+// user 4, though ADMINISTRATOR on channel 1, issues no qualification request; a receipt for user 3 whose
+// channel-1 row is OPERATOR issues none; the exact current ADMINISTRATOR reading for user 3 is admitted.
+test fn the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value() -> Bool {
+  let request = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let c = lab_candidate(request: request)
+  let exact = qualification_approval_for(standing: c, request: request)
+  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 4, access: [ipmi_user_channel_access(channel: 1, user: 4, privilege: IpmiPrivilegeAdministrator)]) })) == "retention-refused"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeOperator)]) })) == "retention-refused"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]) })) == "admitted"
 }
