@@ -4,7 +4,9 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, NonEmptyStr, List, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.dissolution { DissolutionCondition, retires_dissolution }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
@@ -85,15 +87,32 @@ fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
 // that cannot be read exits 78 before the command runs, never an empty value exported.
 data posix_sh_export_from_file_unreadable_exit: Int = 78
 
+// DECLARED SCAFFOLD, MEDIUM-AS-STRING (review 76293). The script below is POSIX sh syntax assembled
+// as a String, not a sh command Node emitted through grammar rows: the corpus has no modeled POSIX sh
+// emission to build it from (extdeps.languages.bash carries invocation and subject only). It is
+// admitted as the least-exposure realization of one boundary -- placing a secret read from a file
+// into ONE child's environment -- because every shell-free route measured puts the value in some
+// process's argument vector (tmux -e, systemd-run --setenv, tmux set-environment). DISSOLVES ON: a
+// modeled sh command emission (structured command substitution, export and exec) from which this
+// script is projected; when it lands this declaration is deleted, and the trigger below FIRES.
+data posix_sh_export_from_file_then_exec_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.posix.sh_invocation",
+    decl_name: "posix_sh_export_from_file_then_exec_script",
+    field: WholeDeclaration
+  }
+}
+
+data posix_sh_export_from_file_then_exec_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_script")
+)
+
 fn posix_sh_export_from_file_then_exec_script(name: NonEmptyStr) -> String {
   join([
     name as String, "=\"$(cat -- \"$0\")\" || exit ", to_string(value: posix_sh_export_from_file_unreadable_exit),
     "; export ", name as String, "; exec \"$@\"",
   ], "")
-}
-
-fn posix_sh_export_from_file_then_exec_words(name: NonEmptyStr, path: NonEmptyStr, command: List<String>) -> List<String> {
-  concat([posix_sh_program().invocation as String, "-c", posix_sh_export_from_file_then_exec_script(name: name), path as String], command)
 }
 
 fn posix_sh_export_from_file_then_exec_command(name: NonEmptyStr, path: NonEmptyStr, command: List<String>) -> ArgvCommand {
