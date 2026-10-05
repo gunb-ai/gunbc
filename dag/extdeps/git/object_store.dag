@@ -1225,19 +1225,24 @@ fn git_index_local_pointers(
             expected: GitExpectedObjectKind { kind: TreeObj },
           },
         ]
-      _ =>
-        [
-          GitRepositoryPointer {
-            origin: GitIndexPointer {
-              path: entry.path,
-              stage: entry.stage,
-            },
-            target: entry.oid,
-            expected: GitExpectedObjectKind { kind: BlobObj },
-          },
-        ]
+      GitRegularBlobMode => git_index_blob_pointers(entry: entry)
+      GitExecutableBlobMode => git_index_blob_pointers(entry: entry)
+      GitSymlinkMode => git_index_blob_pointers(entry: entry)
     }
   )
+}
+
+fn git_index_blob_pointers(entry: GitIndexEntry) -> List<GitRepositoryPointer> {
+  [
+    GitRepositoryPointer {
+      origin: GitIndexPointer {
+        path: entry.path,
+        stage: entry.stage,
+      },
+      target: entry.oid,
+      expected: GitExpectedObjectKind { kind: BlobObj },
+    },
+  ]
 }
 
 fn git_repository_local_pointers(
@@ -2290,9 +2295,9 @@ fn git_project_repository_after_repository_decode(
           unavailable: repo.unavailable,
         }
       }
-      _ => GitProjectionRefused {
-        cause: ObjectFound { stored: stored }
-      }
+      ObjectBlob { blob: _ } => GitProjectionRefused { cause: ObjectFound { stored: stored } }
+      ObjectCommit { commit: _ } => GitProjectionRefused { cause: ObjectFound { stored: stored } }
+      ObjectTag { tag: _ } => GitProjectionRefused { cause: ObjectFound { stored: stored } }
     }
     other => GitProjectionRefused { cause: other }
   }

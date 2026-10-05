@@ -452,7 +452,15 @@ fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: Po
     sequence.parameters,
     parameter => match parameter {
       OpenPage(PdfOpenPage { page: n }) => n == page
-      _ => false
+      OpenNamedDest(_) => false
+      OpenStructElem(_) => false
+      OpenZoom(_) => false
+      OpenComment(_) => false
+      OpenView(_) => false
+      OpenViewRect(_) => false
+      OpenHighlight(_) => false
+      OpenSearch(_) => false
+      OpenFdf(_) => false
     },
   )
 }

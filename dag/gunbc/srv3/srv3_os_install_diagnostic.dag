@@ -9,10 +9,19 @@ import extdeps.bmc.types {
   RedfishBootSourceOverrideEnabled,
   BootTargetCd,
   BootTargetNone,
+  BootTargetPxe,
+  BootTargetHdd,
+  BootTargetUsb,
+  BootTargetBiosSetup,
+  BootTargetDiags,
+  BootTargetUefiHttp,
   BootOverrideOnce,
   BootOverrideDisabled,
+  BootOverrideContinuous,
   On,
   Off,
+  PoweringOn,
+  PoweringOff,
 }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 import extdeps.bmc.webui.nbd_proxy {
@@ -28,6 +37,8 @@ import extdeps.dhcp.v4 {
   DynamicDhcpLease,
   StaticDhcpReservation,
   Active,
+  Inactive,
+  Expired,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
@@ -376,9 +387,15 @@ fn redfish_power_on_boot_verdict(
     BootOverrideOnce =>
       match target {
         BootTargetCd => BootOverrideCdOnceArmed
-        _ => PowerOnFirmware
+        BootTargetNone => PowerOnFirmware
+        BootTargetPxe => PowerOnFirmware
+        BootTargetHdd => PowerOnFirmware
+        BootTargetUsb => PowerOnFirmware
+        BootTargetBiosSetup => PowerOnFirmware
+        BootTargetDiags => PowerOnFirmware
+        BootTargetUefiHttp => PowerOnFirmware
       }
-    _ => PowerOnFirmware
+    BootOverrideContinuous => PowerOnFirmware
   }
 }
 
@@ -394,7 +411,8 @@ fn classify_redfish_system_boot(obs: RedfishSystemBootObservation) -> RedfishSys
           target: obs.boot_override_target,
           enabled: obs.boot_override_enabled,
         )
-        _ => PowerOnFirmware
+        PoweringOn => PowerOnFirmware
+        PoweringOff => PowerOnFirmware
       }
     BootProgressUnknown =>
       match obs.power_state {
@@ -403,7 +421,8 @@ fn classify_redfish_system_boot(obs: RedfishSystemBootObservation) -> RedfishSys
           target: obs.boot_override_target,
           enabled: obs.boot_override_enabled,
         )
-        _ => PowerOnFirmware
+        PoweringOn => PowerOnFirmware
+        PoweringOff => PowerOnFirmware
       }
   }
 }
@@ -475,7 +494,10 @@ fn router_table_has_wrong_dynamic_hostname(
         || match row.lease {
           DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Active } =>
             !network_identity_subsumes_fleet_slot(fleet_slot: fleet_slot, lease: row.lease)
-          _ => false
+          DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: _ } => false
+          DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Inactive } => false
+          DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Expired } => false
+          StaticDhcpReservation { reservation_label: _, status: _ } => false
         },
   )
 }
@@ -857,16 +879,9 @@ fn diagnose_os_install_actuation(
 
   match router {
     Srv3OsLeasePresent => OsInstalledVerdict
-    _ =>
-      diagnose_when_router_not_installed(
-        intent: intent,
-        observations: observations,
-        serve: serve,
-        redfish: redfish,
-        virtual_media: virtual_media,
-        sol: sol,
-        router: router,
-      )
+    Srv3OsLeaseAbsent => diagnose_when_router_not_installed(intent: intent, observations: observations, serve: serve, redfish: redfish, virtual_media: virtual_media, sol: sol, router: router)
+    WrongHostnameLeasePresent => diagnose_when_router_not_installed(intent: intent, observations: observations, serve: serve, redfish: redfish, virtual_media: virtual_media, sol: sol, router: router)
+    OnlyBmcLeasePresent => diagnose_when_router_not_installed(intent: intent, observations: observations, serve: serve, redfish: redfish, virtual_media: virtual_media, sol: sol, router: router)
   }
 }
 
@@ -984,9 +999,16 @@ fn redfish_boot_override_is_disabled_none(obs: RedfishBootObservation) -> Bool {
     BootOverrideDisabled =>
       match obs.boot_override_target {
         BootTargetNone => true
-        _ => false
+        BootTargetPxe => false
+        BootTargetHdd => false
+        BootTargetCd => false
+        BootTargetUsb => false
+        BootTargetBiosSetup => false
+        BootTargetDiags => false
+        BootTargetUefiHttp => false
       }
-    _ => false
+    BootOverrideOnce => false
+    BootOverrideContinuous => false
   }
 }
 
@@ -1069,26 +1091,39 @@ fn diagnose_srv3_install(
 
   match router {
     Srv3OsLeasePresent => OsInstalled
-    _ =>
-      match observation.actuator_serve {
-        ServeUnknown =>
-          if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
-            && !install_has_progress_evidence(sol: sol, router: router) {
-            InconclusiveNeedsServeObservation
-          } else {
-            Inconclusive
-          }
-        ServeObserved { process: _, port: _, session: _, iso: _ } =>
-          diagnose_srv3_install_when_serve_observed(
-            intent: intent,
-            observation: observation,
-            serve_readiness: serve_readiness,
-            redfish: redfish,
-            sol: sol,
-            router: router,
-            elapsed: elapsed,
-          )
+    Srv3OsLeaseAbsent => diagnose_srv3_install_when_router_not_installed(intent: intent, observation: observation, serve_readiness: serve_readiness, redfish: redfish, sol: sol, router: router, elapsed: elapsed)
+    WrongHostnameLeasePresent => diagnose_srv3_install_when_router_not_installed(intent: intent, observation: observation, serve_readiness: serve_readiness, redfish: redfish, sol: sol, router: router, elapsed: elapsed)
+    OnlyBmcLeasePresent => diagnose_srv3_install_when_router_not_installed(intent: intent, observation: observation, serve_readiness: serve_readiness, redfish: redfish, sol: sol, router: router, elapsed: elapsed)
+  }
+}
+
+fn diagnose_srv3_install_when_router_not_installed(
+  intent: OsInstallAttemptIntent,
+  observation: Srv3InstallDebugObservation,
+  serve_readiness: NbdServeReadinessVerdict,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+  elapsed: Milliseconds,
+) -> Srv3InstallDiagnostic {
+  match observation.actuator_serve {
+    ServeUnknown =>
+      if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
+        && !install_has_progress_evidence(sol: sol, router: router) {
+        InconclusiveNeedsServeObservation
+      } else {
+        Inconclusive
       }
+    ServeObserved { process: _, port: _, session: _, iso: _ } =>
+      diagnose_srv3_install_when_serve_observed(
+        intent: intent,
+        observation: observation,
+        serve_readiness: serve_readiness,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+        elapsed: elapsed,
+      )
   }
 }
 
@@ -1599,9 +1634,12 @@ fn install_serve_session_active(observation: Srv3InstallDebugObservation) -> Boo
                 TokenPresent => true
                 TokenMissing => false
               }
-            _ => false
+            ServePortAbsent => false
+            ServePortListening { owner_matches_expected: false, port: _ } => false
+            ServePortConflict => false
           }
-        _ => false
+        NbdkitAbsent => false
+        WebsocatAbsent => false
       }
     ServeUnknown => false
   }

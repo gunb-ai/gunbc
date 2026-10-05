@@ -700,7 +700,26 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+// THE EMITTED ORDERING-KEY ADMISSION: the counterpart of the interpreter's admit_emitted_ord_keys.
+// Only String, i64 and bool (and their aliases) are admitted, because on exactly those kinds the
+// native Ord IS the canonical content order (std.algebra TotalOrder). Any other key type -- a
+// derived-Ord record or enum (declaration order), or f64 (no total Ord) -- fails to compile here,
+// at the call, rather than sorting in an order the interpreter would not produce.
+#[diagnostic::on_unimplemented(
+    message = "EMIT REFUSED: `{Self}` is not an admitted ordering key; sorted_map_keys and sort_by admit only String, Int and Bool keys, whose order is the canonical content order in both realizations",
+    label = "ordering key of a type with no canonical emitted order"
+)]
+pub trait CanonicalOrdKey: Ord {}
+impl CanonicalOrdKey for String {}
+impl CanonicalOrdKey for RcStr {}
+impl CanonicalOrdKey for i64 {}
+impl CanonicalOrdKey for bool {}
+
+pub fn canonical_key_cmp<K: CanonicalOrdKey>(a: &K, b: &K) -> std::cmp::Ordering {
+    a.cmp(b)
+}
+
+pub fn sorted_map_keys<K: CanonicalOrdKey + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     let mut keys = map_keys(m);
     keys.sort();
     keys
@@ -1047,12 +1066,6 @@ fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
         v = v * 16 + chars.next()?.to_digit(16)?;
     }
     Some(v)
-}
-
-pub fn from_code_point(cp: i64) -> String {
-    char::from_u32(cp as u32)
-        .map(|c| c.to_string())
-        .unwrap_or_default()
 }
 
 pub fn is_xid_start(cp: i64) -> bool {

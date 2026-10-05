@@ -94,6 +94,7 @@
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
 // src/std_types.rs
+// src/std_unicode_scalar.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
 // src/std_workspace_artifact.rs

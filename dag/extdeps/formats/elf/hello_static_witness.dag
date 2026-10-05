@@ -57,29 +57,74 @@ fn witness_format_atom_is_elf() -> Bool {
 
 fn witness_truncated_ehdr_rejects() -> Bool {
   match decode_elf64_ehdr(static_hello_truncated_ehdr_bytes) {
-    ElfRejected { reason: Truncated { required_bytes: _, available_bytes: _ } } => true
-    _ => false
+    ElfDecoded { value: _ } => false
+    ElfRejected { reason: r } =>
+      match r {
+        Truncated { required_bytes: _, available_bytes: _ } => true
+        InvalidElfMagic { mag0: _, mag1: _, mag2: _, mag3: _ } => false
+        ElfClassNotElf64 { class: _ } => false
+        UnsupportedElfClass { raw: _ } => false
+        UnsupportedElfData { raw: _ } => false
+        UnsupportedElfFileType { raw: _ } => false
+        UnsupportedElfMachine { raw: _ } => false
+        UnsupportedElfSegmentType { raw: _ } => false
+      }
   }
 }
 
 fn witness_unknown_class_rejects() -> Bool {
   match decode_elf64_ehdr(static_hello_bad_class_ehdr_bytes) {
-    ElfRejected { reason: UnsupportedElfClass { raw: 99 } } => true
-    _ => false
+    ElfDecoded { value: _ } => false
+    ElfRejected { reason: r } =>
+      match r {
+        Truncated { required_bytes: _, available_bytes: _ } => false
+        InvalidElfMagic { mag0: _, mag1: _, mag2: _, mag3: _ } => false
+        ElfClassNotElf64 { class: _ } => false
+        UnsupportedElfClass { raw: raw } => raw == 99
+        UnsupportedElfData { raw: _ } => false
+        UnsupportedElfFileType { raw: _ } => false
+        UnsupportedElfMachine { raw: _ } => false
+        UnsupportedElfSegmentType { raw: _ } => false
+      }
   }
 }
 
 fn witness_invalid_magic_rejects() -> Bool {
   match decode_elf64_ehdr(static_hello_bad_magic_ehdr_bytes) {
-    ElfRejected { reason: InvalidElfMagic { mag0: 0, mag1: 69, mag2: 76, mag3: 70 } } => true
-    _ => false
+    ElfDecoded { value: _ } => false
+    ElfRejected { reason: r } =>
+      match r {
+        Truncated { required_bytes: _, available_bytes: _ } => false
+        InvalidElfMagic { mag0: m0, mag1: m1, mag2: m2, mag3: m3 } => m0 == 0 && m1 == 69 && m2 == 76 && m3 == 70
+        ElfClassNotElf64 { class: _ } => false
+        UnsupportedElfClass { raw: _ } => false
+        UnsupportedElfData { raw: _ } => false
+        UnsupportedElfFileType { raw: _ } => false
+        UnsupportedElfMachine { raw: _ } => false
+        UnsupportedElfSegmentType { raw: _ } => false
+      }
   }
 }
 
 fn witness_elf32_class_rejects() -> Bool {
   match decode_elf64_ehdr(static_hello_elf32_class_ehdr_bytes) {
-    ElfRejected { reason: ElfClassNotElf64 { class: ElfClass32 } } => true
-    _ => false
+    ElfDecoded { value: _ } => false
+    ElfRejected { reason: r } =>
+      match r {
+        Truncated { required_bytes: _, available_bytes: _ } => false
+        InvalidElfMagic { mag0: _, mag1: _, mag2: _, mag3: _ } => false
+        ElfClassNotElf64 { class: c } =>
+          match c {
+            ElfClassNone => false
+            ElfClass32 => true
+            ElfClass64 => false
+          }
+        UnsupportedElfClass { raw: _ } => false
+        UnsupportedElfData { raw: _ } => false
+        UnsupportedElfFileType { raw: _ } => false
+        UnsupportedElfMachine { raw: _ } => false
+        UnsupportedElfSegmentType { raw: _ } => false
+      }
   }
 }
 
