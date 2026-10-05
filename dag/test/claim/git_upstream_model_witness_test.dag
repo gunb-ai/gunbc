@@ -720,7 +720,10 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
         mode: "100644",
         object_type: "blob",
         oid_hex: git_object_id_wire_hex(oid: sha1_blob_regular) as String,
-        name: concat(from_code_point(255), ".dag"),
+        // U+00FF as TEXT (a Char, not a byte): utf8_encode_bytes yields C3 BF, which is the
+        // expected name_non_ascii. Raw 0xFF is the subject of
+        // witness_git_ls_tree_z_preserves_non_utf8_path_octets, supplied via octets_bytes.
+        name: concat(char_text(c: 255), ".dag"),
       ),
     ),
   )
