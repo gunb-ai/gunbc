@@ -1,0 +1,22 @@
+module test.claim.ascii_decode_octets_witness_test
+
+import std.logic { Bool }
+import std.encoding { ascii_decode_octets, AsciiDecoded, AsciiNonAscii }
+import std.unicode.scalar { char_text }
+
+// The declared octet -> text route is exact on 0x00..0x7F (NUL included: it is ASCII) and refuses
+// the first octet >= 0x80 by position and value, never reading it as Latin-1. 0xFF is the octet a
+// total octet-as-char fold used to spell as U+00FF; here it refuses.
+test fn ascii_octets_decode_exactly_including_nul() -> Bool {
+  match ascii_decode_octets(octets: [0, 9, 65, 127]) {
+    AsciiDecoded { text } => text == concat(concat(char_text(c: 0), char_text(c: 9)), concat("A", char_text(c: 127)))
+    AsciiNonAscii { at: _, octet: _ } => false
+  }
+}
+
+test fn a_high_octet_refuses_at_its_position_rather_than_becoming_latin1() -> Bool {
+  match ascii_decode_octets(octets: [46, 255, 128]) {
+    AsciiNonAscii { at: 1, octet: 255 } => true
+    _ => false
+  }
+}

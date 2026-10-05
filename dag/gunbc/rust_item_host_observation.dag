@@ -1,5 +1,6 @@
 module gunbc.rust_item_host_observation
 
+import std.unicode.scalar { char_text }
 import extdeps.git
 import std.decimal { decimal_digit_char }
 import extdeps.git.inspect
@@ -1031,7 +1032,7 @@ fn current_rust_item_change_observation() -> RustItemChangeObservation {
 
 fn rust_paths_from_nul(raw: String) -> List<String> {
   filter(
-    xs: split(s: raw, delimiter: from_code_point(0)),
+    xs: split(s: raw, delimiter: char_text(c: 0)),
     predicate: fn(path) { path_is_rust_source(path: path) }
   )
 }

@@ -1,5 +1,6 @@
 module extdeps.git
 
+import std.unicode.scalar { char_text }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -136,7 +137,7 @@ type GitDiffNameStatusParseState {
   entries: List<GitDiffStatusEntry>
 }
 
-data git_diff_name_status_field_separator: String = from_code_point(0)
+data git_diff_name_status_field_separator: String = char_text(c: 0)
 
 fn git_diff_change_status_from_token(token: String) -> GitDiffChangeStatus {
   let letter = substring(s: token, start: 0, end: 1)

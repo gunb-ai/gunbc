@@ -1,5 +1,6 @@
 module test.claim.spark_grant_privileged_operation_witness
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.spark.bootstrap_credential {
@@ -198,7 +199,7 @@ test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
 // whatever writes the secret version, not to the consumer delivering it -- and if it is wrong, sudo
 // rejecting it as the wrong credential is the correct layer and the correct remedy.
 test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool {
-  let tabs = join([from_code_point(cp: 9), from_code_point(cp: 9)], "")
+  let tabs = join([char_text(c: 9), char_text(c: 9)], "")
   match classify_credential_read(success: true, error: "", content: "  ") {
     BootstrapCredentialReady { secret: a } =>
       a == "  "
@@ -217,8 +218,8 @@ test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool
 // reporting success. sudo -S reads only the first line, so such a secret cannot be delivered by this
 // protocol at all -- and saying so is the honest arm.
 test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
-  let lf = from_code_point(cp: 10)
-  let crlf = join([from_code_point(cp: 13), from_code_point(cp: 10)], "")
+  let lf = char_text(c: 10)
+  let crlf = join([char_text(c: 13), char_text(c: 10)], "")
   fold([join(["password", lf], ""), join(["password", crlf], ""), lf], init: true, f: fn(acc, c) {
     acc && match classify_credential_read(success: true, error: "", content: c) {
       BootstrapCredentialNotMaterialized { cause: why } => string_contains(why as String, "line break")
@@ -230,7 +231,7 @@ test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
 // An embedded break refuses for the same reason and is called out separately because its harm
 // differs: sudo would authenticate on the first line and feed the remainder to the command as input.
 test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
-  let content = join(["pass", from_code_point(cp: 10), "word"], "")
+  let content = join(["pass", char_text(c: 10), "word"], "")
   match classify_credential_read(success: true, error: "", content: content) {
     BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "line break")
     BootstrapCredentialReady { secret: _ } => false
@@ -240,7 +241,7 @@ test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
 // A lone carriage return is a line break wherever it sits, and refuses rather than being deleted
 // from the middle or the end of a password.
 test fn a_bare_carriage_return_refuses() -> Bool {
-  let content = join(["password", from_code_point(cp: 13)], "")
+  let content = join(["password", char_text(c: 13)], "")
   match classify_credential_read(success: true, error: "", content: content) {
     BootstrapCredentialNotMaterialized { cause: _ } => true
     BootstrapCredentialReady { secret: _ } => false

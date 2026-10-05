@@ -1,5 +1,6 @@
 module extdeps.uri
 
+import std.unicode.scalar { char_text }
 import std.algebra { trim }
 
 import std.types { NonEmptyStr, List, Char }
@@ -391,7 +392,7 @@ fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> Int {
 fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPercentEncodeFoldState {
   let cp = uri_validated_scalar_code_point(scalar: scalar)
   if uri_component_is_unreserved(cp: cp) {
-    UriPercentEncodeBuilding { wire: from_code_point(cp: cp) }
+    UriPercentEncodeBuilding { wire: char_text(c: cp) }
   } else if cp < 128 {
     match uri_utf8_octet_construction(byte: cp) {
       UriUtf8OctetOutOfRangeRefused { value: v } =>

@@ -1,5 +1,6 @@
 module gunbc.live_deploy.candidate
 
+import std.unicode.scalar { char_text }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
@@ -157,7 +158,7 @@ fn scan_checkout_status_field(acc: CheckoutStatusScan, field: String) -> Checkou
 
 fn scan_checkout_status(entries_nul: String) -> CheckoutStatusScan {
   fold(
-    split(s: entries_nul, delimiter: from_code_point(0)),
+    split(s: entries_nul, delimiter: char_text(c: 0)),
     init: CheckoutStatusScan {
       staged: [],
       tracked: [],
@@ -171,7 +172,7 @@ fn scan_checkout_status(entries_nul: String) -> CheckoutStatusScan {
 
 fn scan_ignored_deployed_paths(paths_nul: String) -> List<String> {
   fold(
-    split(s: paths_nul, delimiter: from_code_point(0)),
+    split(s: paths_nul, delimiter: char_text(c: 0)),
     init: [],
     f: (acc, path) =>
       if path != "" && path_is_deployed(path: path) { list_append(acc, [path]) } else { acc },
