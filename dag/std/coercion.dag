@@ -1,6 +1,6 @@
 module std.coercion
 
-import std.literal_elaboration { LiteralHomomorphism }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
 
 type TypeCheckpoint {
   dag_name: String
