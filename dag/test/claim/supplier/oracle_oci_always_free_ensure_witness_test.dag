@@ -6,6 +6,9 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list }
 import extdeps.network.ipv4 { ipv4_same_network, render_ipv4_prefix }
 import v2.std.optional { Absent, Present }
+import gunbc.oracle_oci.tenancy_usage {
+  OciUsagePart, UsagePart, UsagePartRefused, oci_instance_usage, oci_volume_usage, oci_usage_part_add,
+}
 import gunbc.oracle_oci.network_ensure {
   oci_free_vcn_cidr, oci_free_subnet_cidr,
   OciNamedDecision, NamedReady, NamedCreate, NamedStop,
@@ -193,4 +196,38 @@ test fn the_subnet_sits_inside_the_vcn() -> Bool {
     && oci_free_subnet_cidr.length >= oci_free_vcn_cidr.length
     && render_ipv4_prefix(p: oci_free_vcn_cidr) == "10.0.0.0/16"
     && render_ipv4_prefix(p: oci_free_subnet_cidr) == "10.0.0.0/24"
+}
+
+// ── TENANCY USAGE ─────────────────────────────────────────────────────────────────────────────
+
+fn usage_text(u: OciUsagePart) -> String {
+  match u {
+    UsagePart { a1_ocpus, a1_memory_gb, micros, block_gb } => join([to_string(a1_ocpus), to_string(a1_memory_gb), to_string(micros), to_string(block_gb)], "/")
+    UsagePartRefused { line } => "refused"
+  }
+}
+
+// What each live instance holds: an A1 its shapeConfig OCPUs and memory, read exactly from Oracle's
+// float numerals; a micro one micro. A terminated instance holds nothing. A stopped one still counts.
+test fn instances_contribute_their_allocation_and_terminated_ones_nothing() -> Bool {
+  usage_text(u: oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":2.0,\"memoryInGBs\":12.0}}"))) == "2/12/0/0"
+    && usage_text(u: oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"STOPPED\",\"shape\":\"VM.Standard.E2.1.Micro\"}"))) == "0/0/1/0"
+    && usage_text(u: oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"TERMINATED\",\"shape\":\"VM.Standard.A1.Flex\"}"))) == "0/0/0/0"
+}
+
+// A fractional or missing allocation refuses rather than being rounded or read as zero, and a refusal
+// absorbs every later sum, so a usage total can never silently omit a row.
+test fn an_unreadable_allocation_refuses_and_stays_refused_through_the_sum() -> Bool {
+  let fractional = oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":1.5,\"memoryInGBs\":6}}"))
+  let missing = oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\"}"))
+  usage_text(u: fractional) == "refused"
+    && usage_text(u: missing) == "refused"
+    && usage_text(u: oci_usage_part_add(a: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"AVAILABLE\",\"sizeInGBs\":50}")), b: fractional)) == "refused"
+}
+
+// Volumes hold storage in every state but TERMINATED, including a boot volume a terminated instance
+// left behind.
+test fn volumes_hold_storage_until_terminated() -> Bool {
+  usage_text(u: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"AVAILABLE\",\"sizeInGBs\":50}"))) == "0/0/0/50"
+    && usage_text(u: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"TERMINATED\",\"sizeInGBs\":50}"))) == "0/0/0/0"
 }

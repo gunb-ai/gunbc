@@ -13,8 +13,9 @@ import product.supplier.oracle_oci {
   OciPlannedInstance, OciInstanceSize, A1FlexSize, E2MicroSize,
   InHomeRegion, InMicroEligibleDomain,
   OciAllowanceFit, FitsAlwaysFree, ExceedsAlwaysFree, OciAllowanceBreach,
-  oci_always_free_fit, oci_instance_shape,
+  oci_always_free_fit, oci_always_free_fit_beside, oci_instance_shape,
 }
+import gunbc.oracle_oci.tenancy_usage { oci_tenancy_usage, TenancyUsageObserved, TenancyUsageRefused }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
 import gunbc.oracle_oci.api {
   OciExchange, OciAnswered, OciExchangeRefused,
@@ -26,8 +27,8 @@ import gunbc.oracle_oci.api {
 // THE OPERATOR'S ALWAYS FREE INSTANCES, LAUNCHED INTO THE gunbc-always-free COMPARTMENT AND SUBNET.
 //
 // The plan is the operator's choice of 2026-10-05: two AMD micros and one A1 instance with 2 OCPUs
-// and 12 GB. It is checked by product.supplier.oracle_oci oci_always_free_fit BEFORE anything is
-// launched, and a plan that does not fit launches nothing. Each boot volume is 50 GB, the smallest
+// and 12 GB. Before anything is launched, its members still to launch are fitted beside the whole
+// tenancy's observed usage (oci_free_instances), and a plan that does not fit launches nothing. Each boot volume is 50 GB, the smallest
 // size the launch API accepts, so the three take 150 of the shared 200 GB.
 //
 // Nothing about placement is guessed. The micro's availability domain is the one whose shape list
@@ -413,28 +414,46 @@ fn oci_breach_text(b: OciAllowanceBreach) -> String {
   to_string(b)
 }
 
-// THE INSTANCE STEP. The fit is decided first and a plan that does not fit launches nothing, whatever
-// is already running. Then the instance list and the availability domains are read once, and each
-// planned instance is converged against them.
+// THE INSTANCE STEP. The instance list of this compartment is read first, to learn which plan
+// members already exist. Then the whole tenancy's usage is observed (gunbc.oracle_oci.tenancy_usage),
+// and the members still to launch are fitted beside it. That makes the fit a claim about the tenancy,
+// not just the plan (review 76384). A plan that would not fit, or a usage observation that refused,
+// launches nothing. Members that already exist are counted in the observed usage, not twice.
+fn oci_launch_pending(planned: OciPlannedInstance, observed: List<OciObservedInstance>) -> Bool {
+  match oci_instance_decision(planned: planned, observed: observed) {
+    InstanceLaunch => true
+    InstanceHeld { line } => false
+    InstanceStop { line } => false
+  }
+}
+
+fn oci_not_launched(line: String) -> List<OciInstanceOutcome> {
+  [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", line), held: false }]
+}
+
 fn oci_free_instances(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<OciInstanceOutcome> uses net: Network {
-  match oci_always_free_fit(plan: oci_free_plan) {
-    ExceedsAlwaysFree { breaches } => [OciInstanceOutcome { line: join(["oci instances NOT LAUNCHED: the plan does not fit the Always Free allowance: ", join(map(breaches, b => oci_breach_text(b: b)), "; ")], ""), held: false }]
-    FitsAlwaysFree =>
-      match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "") as NonEmptyStr) {
-        OciListRefused { cause } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ListInstances refused: ", cause as String), held: false }]
-        OciListInaccessible { status, body } => [OciInstanceOutcome { line: join(["oci instances NOT LAUNCHED: ListInstances refused by OCI (", to_string(status), "): ", body], ""), held: false }]
-        OciListed { items } =>
-          match oci_admit_rows(operation: "ListInstances", rows: items, keys: oci_instance_required_fields) {
-            OciRowRefused { cause } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", cause as String), held: false }]
-            OciRowsAdmitted { rows } =>
-          match oci_availability_domains() {
-            OciNamesRefused { line } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", line), held: false }]
-            OciNamesListed { names: domains } => {
-              let observed = map(rows, i => oci_observed_instance_of(v: i))
-              map(oci_free_plan, p => oci_ensure_instance(planned: p, compartment: compartment, subnet: subnet, observed: observed, domains: domains))
-            }
+  match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "") as NonEmptyStr) {
+    OciListRefused { cause } => oci_not_launched(line: concat("ListInstances refused: ", cause as String))
+    OciListInaccessible { status, body } => oci_not_launched(line: join(["ListInstances refused by OCI (", to_string(status), "): ", body], ""))
+    OciListed { items } =>
+      match oci_admit_rows(operation: "ListInstances", rows: items, keys: oci_instance_required_fields) {
+        OciRowRefused { cause } => oci_not_launched(line: cause as String)
+        OciRowsAdmitted { rows } => {
+          let observed = map(rows, i => oci_observed_instance_of(v: i))
+          match oci_tenancy_usage() {
+            TenancyUsageRefused { line } => oci_not_launched(line: line)
+            TenancyUsageObserved { usage, compartments } =>
+              match oci_always_free_fit_beside(plan: filter(oci_free_plan, p => oci_launch_pending(planned: p, observed: observed)), other: usage) {
+                ExceedsAlwaysFree { breaches } => oci_not_launched(line: join(["the members still to launch do not fit the Always Free allowance beside what the tenancy already uses (", to_string(compartments), " compartments read): ", join(map(breaches, b => oci_breach_text(b: b)), "; ")], ""))
+                FitsAlwaysFree =>
+                  match oci_availability_domains() {
+                    OciNamesRefused { line } => oci_not_launched(line: line)
+                    OciNamesListed { names: domains } =>
+                      map(oci_free_plan, p => oci_ensure_instance(planned: p, compartment: compartment, subnet: subnet, observed: observed, domains: domains))
+                  }
+              }
           }
-          }
+        }
       }
   }
 }
