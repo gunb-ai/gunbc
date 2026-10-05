@@ -3,6 +3,7 @@ module test.claim.spark.native_serving_resumable_apply_witness_test
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import product.host_identity { HostIdentity }
 
+import std.measure { second }
 import std.types { Bool, String, NonEmptyStr, Int }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -421,8 +422,8 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
   let others = [
     spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name),
     spark_native_commit_script(unit_name: unit, transaction_id: "T"),
-    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800),
-    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1800, container: glm_native_container_name),
+    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800)),
+    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within: second(count: 1800), container: glm_native_container_name),
   ]
   all(others, t => !string_contains(s: t, pattern: "reset-failed"))
 }
@@ -433,7 +434,7 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
 // the single capture, so the head refused 'transport verdict unread' and the arm rolled back.
 
 test fn w_the_announcement_wait_polls_for_both_facts_the_verdict_folds() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800)
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800))
   string_contains(s: t, pattern: "'Using network '")
     && string_contains(s: t, pattern: "' via NET/'")
     && string_contains(s: t, pattern: "nccl-transport-announcement-observed-incarnation=")
@@ -443,8 +444,8 @@ test fn w_the_announcement_wait_polls_for_both_facts_the_verdict_folds() -> Bool
 // derives from VLLM_ENGINE_READY_TIMEOUT_S, and the same incarnation stop. A second number would show
 // here as a deadline the caller did not pass.
 test fn w_the_announcement_and_front_door_share_one_deadline_and_incarnation_stop() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1234)
-  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1234, container: glm_native_container_name)
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1234))
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within: second(count: 1234), container: glm_native_container_name)
   all([t, d], s => string_contains(s: s, pattern: "deadline=$(( started + 1234 ))")
     && string_contains(s: s, pattern: "READBACK-REFUSED-incarnation-changed-before-")
     && !string_contains(s: s, pattern: "1800"))
@@ -458,8 +459,8 @@ test fn w_the_announcement_and_front_door_share_one_deadline_and_incarnation_sto
 // its host, and neither may start a clock of its own; so a transport announcement just before the
 // deadline leaves the front door only what is left of the same window.
 test fn w_no_wait_starts_a_fresh_window() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 3600)
-  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 3600, container: glm_native_container_name)
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 3600))
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within: second(count: 3600), container: glm_native_container_name)
   all([t, d], s => string_contains(s: s, pattern: "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\"")
     && string_contains(s: s, pattern: "deadline=$(( started + 3600 ))")
     && !string_contains(s: s, pattern: "start=$(date +%s)")
@@ -473,7 +474,7 @@ test fn w_no_wait_starts_a_fresh_window() -> Bool {
 // capture of the captured id's log (never the name, never two reads), and the observed id is printed for
 // the readback to bind to.
 test fn w_a_successful_probe_is_accepted_only_on_the_captured_incarnation() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 3600)
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 3600))
   let accepted_only_after_the_check = join(["; then\n", spark_native_incarnation_check(stage: "after", waited_for: "nccl-transport-announcement" as NonEmptyStr), "    break\n"], "")
   string_contains(s: t, pattern: accepted_only_after_the_check)
     && string_contains(s: t, pattern: "docker logs \"$incarnation\" > ")

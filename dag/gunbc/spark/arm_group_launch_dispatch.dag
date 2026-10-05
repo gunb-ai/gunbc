@@ -260,21 +260,27 @@ fn arm_group_load_ci() -> ProcessExit {
 data arm_launch_apply_budget: Second = second(count: 1800)
 data arm_launch_rollback_budget: Second = second(count: 1200)
 
-// An unreadable timeout contributes nothing here and is refused by that arm's own front-door plan before
-// any wait.
-fn arm_launch_readiness(env: List<DockerEnvAssignment>) -> Second {
-  match engine_ready_timeout_for(env: env) {
-    EngineReadyTimeoutResolved { timeout: t } => t
-    EngineReadyTimeoutUnreadable { cause: _ } => second(count: 0)
-  }
-}
+// AN UNREADABLE TIMEOUT REFUSES THE DERIVATION; IT DOES NOT CONTRIBUTE ZERO (review 76374). The
+// derivation is the only check guarding the step's literal timeout, so an arm whose
+// VLLM_ENGINE_READY_TIMEOUT_S cannot be read must make the derivation refuse by name -- a zero would
+// shrink the budget and let the check pass over exactly the arm it cannot account for.
+type ArmLaunchStepNeed
+  = ArmLaunchStepNeedDerived { need: Second }
+  | ArmLaunchStepNeedRefused { causes: List<String> }
 
 // Every arm the step can launch: the GLM staircase's steps and the V4.1 arm.
-fn arm_launch_step_needed() -> Second {
-  let glm = map(glm53_staircase_steps, s => second_count(s: arm_launch_readiness(env: glm53_step_deployment_env(s: s))))
-  let v41 = second_count(s: arm_launch_readiness(env: v41_group_a_deployment_env()))
-  let longest = fold(concat(glm, [v41]), init: 0, f: fn(a, m) { if m > a { m } else { a } })
-  second(count: longest + second_count(s: arm_launch_apply_budget) + second_count(s: arm_launch_rollback_budget))
+fn arm_launch_step_needed() -> ArmLaunchStepNeed {
+  let envs = concat(map(glm53_staircase_steps, s => glm53_step_deployment_env(s: s)), [v41_group_a_deployment_env()])
+  let read = map(envs, e => engine_ready_timeout_for(env: e))
+  let causes = flat_map(read, r => match r {
+    EngineReadyTimeoutResolved { timeout: _ } => [] as List<String>
+    EngineReadyTimeoutUnreadable { cause: c } => [c as String]
+  })
+  if count(causes) > 0 { ArmLaunchStepNeedRefused { causes: causes } }
+  else {
+    let longest = fold(map(read, r => match r { EngineReadyTimeoutResolved { timeout: t } => second_count(s: t)  EngineReadyTimeoutUnreadable { cause: _ } => 0 }), init: 0, f: fn(a, m) { if m > a { m } else { a } })
+    ArmLaunchStepNeedDerived { need: second(count: longest + second_count(s: arm_launch_apply_budget) + second_count(s: arm_launch_rollback_budget)) }
+  }
 }
 
 // THE STEP'S TIMEOUT IS A LITERAL ONLY BECAUSE THE LANGUAGE CANNOT YET CONSTRUCT A Duration FROM A

@@ -789,7 +789,8 @@ fn spark_native_incarnation_check(stage: String, waited_for: NonEmptyStr) -> Str
   ], "")
 }
 
-fn spark_native_incarnation_wait(container: NonEmptyStr, ready_within_seconds: Nat, probe: String, last: String, waited_for: NonEmptyStr) -> String {
+fn spark_native_incarnation_wait(container: NonEmptyStr, ready_within: Second, probe: String, last: String, waited_for: NonEmptyStr) -> String {
+  let ready_within_seconds = second_count(s: ready_within)
   join([
     "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
     "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-container-absent-before-", waited_for as String, "; exit 1; fi\n",
@@ -819,27 +820,27 @@ fn spark_native_incarnation_wait(container: NonEmptyStr, ready_within_seconds: N
 // incarnation's log (by id, never by name) carries both the network announcement and at least one
 // channel `via NET/` line -- the two facts extdeps.nvidia.nccl nccl_transport_verdict folds -- so the
 // two facts can never come from two incarnations.
-fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_within_seconds: Nat) -> String {
+fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_within: Second) -> String {
   let cap = join([spark_native_readback_dir, "/transport-announcement.log"], "")
   join([
     "set -e\n",
     "mkdir -p ", spark_native_readback_dir, "\n",
     spark_native_incarnation_wait(
       container: container,
-      ready_within_seconds: ready_within_seconds,
+      ready_within: ready_within,
       probe: join(["docker logs \"$incarnation\" > ", cap, " 2>&1 && grep -Fq ", shell_quote(arg: nccl_using_network_marker), " ", cap, " && grep -Fq ", shell_quote(arg: nccl_channel_via_marker), " ", cap], ""),
       last: join(["tail -n 1 ", cap, " 2>/dev/null | tr -d '\\n' | cut -c1-200"], ""),
       waited_for: "nccl-transport-announcement" as NonEmptyStr),
   ], "")
 }
 
-fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, ready_within_seconds: Nat, container: NonEmptyStr) -> String {
+fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, ready_within: Second, container: NonEmptyStr) -> String {
   join([
     "set -e\n",
     "mkdir -p ", spark_native_readback_dir, "\n",
     spark_native_incarnation_wait(
       container: container,
-      ready_within_seconds: ready_within_seconds,
+      ready_within: ready_within,
       probe: join(["curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>", spark_native_readback_dir, "/models.err"], ""),
       last: join(["tr '\\n' ' ' < ", spark_native_readback_dir, "/models.err | cut -c1-200"], ""),
       waited_for: "front-door" as NonEmptyStr),
@@ -1337,7 +1338,7 @@ fn spark_native_preserve_plans(steps: List<SparkNativeHostStep>, transaction_id:
 fn spark_native_transport_announcement_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
   map(steps, st => spark_native_plan_of(step: st, script: match engine_ready_timeout_for(env: st.launch.container.env) {
     EngineReadyTimeoutUnreadable { cause: c } => join(["echo ", shell_quote(arg: join(["READBACK-REFUSED-engine-ready-timeout-unreadable: ", c as String], "")), "; exit 1\n"], "")
-    EngineReadyTimeoutResolved { timeout: t } => spark_native_transport_announcement_script(container: st.launch.container.name, ready_within_seconds: second_count(s: t))
+    EngineReadyTimeoutResolved { timeout: t } => spark_native_transport_announcement_script(container: st.launch.container.name, ready_within: t)
   }))
 }
 
@@ -1349,7 +1350,7 @@ fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>) -> List<Spark
         EngineReadyTimeoutResolved { timeout: t } => spark_native_front_door_script(
           port_text: to_string(st.serve_port),
           served_alias: st.served_alias,
-          ready_within_seconds: second_count(s: t),
+          ready_within: t,
           container: st.launch.container.name)
       })]
     } else {
