@@ -44,7 +44,7 @@ import gunbc.instruments.argv_word_construction_census {
   argv_word_construction_census_roster,
   argv_word_construction_census_roster_modules
 }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
@@ -86,7 +86,11 @@ fn fact_named(xs: List<ArgvWordsFact>, want: String) -> Optional<ArgvWordsFact> 
   fold_list(xs: xs, empty: Absent, cons: fn(acc, f) {
     match acc {
       Present { value: _ } => acc
-      Absent => if f.decl == want { Present { value: f } } else { Absent }
+      Absent =>
+        match f.decl == want {
+          true => Present { value: f }
+          false => Absent
+        }
     }
   })
 }
@@ -104,6 +108,11 @@ test fn census_fixture_route_counts_its_members() -> Bool {
   }
 }
 
+// The data-decl classes the lens reports on this fixture: wait_flags carries flag vocabulary
+// unreached by any argv-typed body (candidates, not counted); commit_args is reached BY NAME
+// (fixture_transient_unit_argv's tail), so it is counted while its flag words stay empty (the
+// reach is a reference, not a body literal); layout_rows has no vocabulary and no reach, so it is
+// not a census member at all.
 test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
   match fixture_facts() {
     Absent => false
@@ -117,17 +126,12 @@ test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
               match fact_named(xs: facts, want: "fixture_layout_rows") {
                 Absent => false
                 Present { value: layout_rows } =>
-                  // wait_flags carries flag vocabulary unreached by any argv-typed body:
-                  // candidates, not counted. commit_args is reached BY NAME
-                  // (fixture_transient_unit_argv's tail): counted, and because the reach is a
-                  // reference rather than a body literal, its flag words stay empty.
                   (wait_flags.decl_kind == DataDecl) && (wait_flags.counted == false)
                   && (length(xs: wait_flags.candidates) == 3) && (length(xs: wait_flags.flag_words) == 0)
                   && (wait_flags.list_string_data == true)
                   && (commit_args.decl_kind == DataDecl) && (commit_args.counted == true)
                   && (length(xs: commit_args.candidates) == 0) && (length(xs: commit_args.flag_words) == 0)
                   && (commit_args.list_string_data == true)
-                  // layout_rows has no flag vocabulary and no reach: not a census member at all.
                   && (layout_rows.counted == false) && (length(xs: layout_rows.candidates) == 0)
                   && (layout_rows.list_string_data == true)
               }
@@ -136,6 +140,10 @@ test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
   }
 }
 
+// The fn signals: the gluing builders are counted and argv-returning with their flag literals
+// named; a List<String> parameter IS the argv-interface class per the census contract whether or
+// not the body glues flags (counted, no flag words); a flag literal outside an argv position is
+// candidate class (not counted) but still a member because candidates are reported.
 test fn census_fixture_route_reads_fn_signals() -> Bool {
   match fixture_facts() {
     Absent => false
@@ -152,7 +160,6 @@ test fn census_fixture_route_reads_fn_signals() -> Bool {
                   match fact_named(xs: facts, want: "fixture_waits_quietly") {
                     Absent => false
                     Present { value: waits } =>
-                      // The gluing builders: counted, argv-returning, their flag literals named.
                       (transient.decl_kind == FnDecl) && (transient.counted == true)
                       && (transient.returns_argv_words == true)
                       && (transient.list_string_params == 0)
