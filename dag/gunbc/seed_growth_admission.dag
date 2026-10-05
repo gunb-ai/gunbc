@@ -79,10 +79,12 @@ import gunbc.joint_claim_join_seed_growth { joint_claim_join_seed_growth_justifi
 import gunbc.floor_arm_set_consumer_seed_growth { floor_arm_set_consumer_seed_growth_justification }
 import gunbc.floor_corpus_census_allowance_seed_growth { floor_corpus_census_allowance_seed_growth_justification }
 import gunbc.enrolment_dead_band_seed_growth { enrolment_dead_band_seed_growth_justification }
+import gunbc.host_speed_calibration_seed_growth { host_speed_calibration_seed_growth_justification }
 import gunbc.modeled_operation_realization_seed_growth { modeled_operation_realization_seed_growth_justification }
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
 import gunbc.regen_round_cost_instrument_seed_growth { regen_round_cost_instrument_seed_growth_justification }
+import gunbc.regen_scope_worktree_seed_growth { regen_scope_worktree_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
 import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
@@ -336,6 +338,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     regen_convergence_seed_growth_justification,
     dag_artifact_identity_seed_growth_justification,
     regen_round_cost_instrument_seed_growth_justification,
+    regen_scope_worktree_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
     collect_authored_string_literals_seed_growth_justification,
     authored_string_literal_edge_seed_growth_justification,
@@ -361,6 +364,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     unimported_bare_provider_gate_seed_growth_justification,
     native_cache_root_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,
+    host_speed_calibration_seed_growth_justification,
     modeled_operation_realization_seed_growth_justification,
     observation_file_effect_seed_growth_justification,
     floor_checker_input_seed_growth_justification,

@@ -7761,6 +7761,40 @@ pub fn render_scope_selection(
     }
 }
 
+/// Run `v2.workflow.regen_scope_worktree` `regen_scope_observe_worktree_refusal` against the
+/// real working tree. An empty answer admits the scoped round; any other answer is its refusal.
+fn regen_scope_worktree_admitted(source_roots: &[String]) -> Result<(), String> {
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    let entry = source_roots
+        .iter()
+        .map(|root| Path::new(root).join("workflow/regen_scope_worktree.dag"))
+        .find(|candidate| candidate.is_file())
+        .map(|found| found.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "refusal: workflow/regen_scope_worktree.dag is not under any declared source \
+                 root {source_roots:?}, so the scoped round cannot establish that its edit \
+                 observation sees every edit"
+            )
+        })?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
+        .map_err(|e| format!("refusal: {entry} did not resolve: {e}"))?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let answer = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context(&ctx, "regen_scope_observe_worktree_refusal", false)
+    })
+    .map_err(|e| format!("refusal: regen_scope_observe_worktree_refusal did not answer: {e}"))?;
+    match &answer {
+        Value::Str(s) if s.is_empty() => Ok(()),
+        Value::Str(s) => Err(s.to_string()),
+        other => Err(format!(
+            "refusal: regen_scope_observe_worktree_refusal returned {} where a String was expected",
+            other.type_label_public()
+        )),
+    }
+}
+
 /// Where `v2.workflow.required_regen` lives under the declared source roots.
 fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String> {
     source_roots
@@ -7789,6 +7823,10 @@ pub fn regen_emission_scope_for_diff(
     workspace: &Path,
     source_roots: &[String],
 ) -> Result<RegenEmissionScope, String> {
+    // THE EDIT OBSERVATION SEES COMMITS ONLY, so a tree carrying an uncommitted .dag edit
+    // refuses before the diff is read rather than being scoped by an observation blind to it.
+    // `v2.workflow.regen_scope_worktree` owns the predicate and the refusal text.
+    regen_scope_worktree_admitted(source_roots)?;
     let diff_text = super::required_floor_runner::floor_git_diff_range()?;
     let population = edited_population_from_diff(workspace, &diff_text);
     let bound = affected_set_bound_for(

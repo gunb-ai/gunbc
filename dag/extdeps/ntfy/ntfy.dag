@@ -3,7 +3,7 @@ module extdeps.ntfy.ntfy
 import std.types { NonEmptyStr, String, Int, Secret, List, Bool, brand }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, mutation_status_is_commit_ambiguous }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, mutation_status_is_commit_ambiguous }
 import extdeps.ietf.http_semantics { POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -107,24 +107,25 @@ type NtfyPublishOutcome
   | NtfyPublishUnreached { cause: String }
   | NtfyPublishUndecodable { status: Int, cause: String }
 
-// THE OPERATION DECLARES `outcome: RestOutcome`, AND WITHOUT IT THIS TYPE IS UNREACHABLE. The rest
-// transport raises an untyped TypeError on any status >= 400 UNLESS the operation opts in to an
-// outcome field (extdeps.transports.rest, which documents the opt-in and its dissolution). An
-// earlier revision of this module declared the `response { 401 => ... 5xx => ... }` block WITHOUT
-// the field, which made that block decoration: NtfyPublishRefused had no constructor on any real
-// path, and a 401 from a bad credential arrived as `TypeError { msg: "HTTP 401: ..." }` -- an
-// untyped throw where the model promised a typed refusal. MEASURED, not reasoned: a wet probe
-// against ntfy.sh with a junk bearer produced exactly that TypeError before this field landed.
+// THE FOLD BELOW IS THE ONLY ROUTE FROM A TRANSPORT RESULT TO THIS TYPE. Every rest operation
+// yields extdeps.transports.rest RestResult over its decoded body, so the publish receipt's id is
+// reachable only in the answered arm and each refusal maps to its own arm here. An earlier revision
+// of this module declared the `response { 401 => ... 5xx => ... }` block while the realization
+// still threw on any status >= 400, which made that block decoration: NtfyPublishRefused had no
+// constructor on any real path, and a 401 from a bad credential arrived as
+// `TypeError { msg: "HTTP 401: ..." }`. MEASURED, not reasoned: a wet probe against ntfy.sh with a
+// junk bearer produced exactly that TypeError.
 //
 // That is the §4b rung-honesty failure in miniature -- the model described a refusal arm the
-// realization could not produce -- and it is why the outcome fold below is the only route from a
-// transport observation to this type.
-fn ntfy_publish_outcome_of(rest: RestOutcome, message_id: String) -> NtfyPublishOutcome {
+// realization could not produce.
+fn ntfy_publish_outcome_of(rest: RestResult<String>) -> NtfyPublishOutcome {
   match rest {
-    RestOk => NtfyPublished { message_id: message_id as NonEmptyStr }
-    RestStatusRefused { status, body } => NtfyPublishRefused { status: status, detail: body }
-    RestTransportRefused { cause } => NtfyPublishUnreached { cause: cause as String }
-    RestBodyUndecodable { status, cause } => NtfyPublishUndecodable { status: status, cause: cause as String }
+    RestAnswered { answer } => NtfyPublished { message_id: answer as NonEmptyStr }
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status, body } => NtfyPublishRefused { status: status, detail: body }
+      RestTransportRefused { cause } => NtfyPublishUnreached { cause: cause as String }
+      RestBodyUndecodable { status, cause } => NtfyPublishUndecodable { status: status, cause: cause as String }
+    }
   }
 }
 

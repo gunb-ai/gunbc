@@ -6,10 +6,9 @@ import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpPermissionProbeWire }
 import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
-import extdeps.transports.rest { RestOutcome }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -30,9 +29,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // version 1 mangles conditional bindings, which reconcile_gcp_policy refuses as
 // GcpPolicyRepresentationLossy rather than replacing somebody's restricted access.
 //
-// EVERY OPERATION HERE CARRIES A RestOutcome, INCLUDING THE CREATES, and the reason is 409. A
+// EVERY OPERATION HERE ANSWERS WITH A RestResult, INCLUDING THE CREATES, and what that buys is 409. A
 // provisioning run that creates a pool, a provider and an account performs three writes that cannot
-// be one request, so a failure at the third leaves the first two committed; without an outcome the
+// be one request, so a failure at the third leaves the first two committed; without a typed refusal the
 // rerun aborts at the first 409 and can never reach the step that failed, which is precisely the
 // pressure that turns a modelled provisioning route into an operator doing the rest by hand. A 409
 // is a fact the caller must be able to read and decide about -- it establishes that a resource with
@@ -94,7 +93,7 @@ service gcp.IamAdmin {
   operation GetProjectRole {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, role_id: NonEmptyStr }
-    output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool?, outcome: RestOutcome }
+    output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool? }
     readonly
     transport rest { method: GET, path: "/v1/projects/\{project_id\}/roles/\{role_id\}" }
     response {
@@ -110,7 +109,7 @@ service gcp.IamAdmin {
   operation CreateProjectRole {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, role_id: NonEmptyStr, title: NonEmptyStr, permissions: List<String> }
-    output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool?, outcome: RestOutcome }
+    output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool? }
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/roles",
       body: { roleId: role_id, role: { title: title, includedPermissions: permissions, stage: "GA" } } }
     response {
@@ -126,7 +125,7 @@ service gcp.IamAdmin {
   operation GetWorkloadIdentityPoolIamPolicy {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
-    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int?, outcome: RestOutcome }
+    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int? }
     readonly
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:getIamPolicy",
       body: { options: { requestedPolicyVersion: 3 } } }
@@ -143,7 +142,7 @@ service gcp.IamAdmin {
   operation SetWorkloadIdentityPoolIamPolicy {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, policy: GcpPolicy }
-    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int?, outcome: RestOutcome }
+    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int? }
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:setIamPolicy", body: { policy: policy } }
     response {
       200 => GcpPoolPolicyWire
@@ -160,7 +159,7 @@ service gcp.IamAdmin {
   operation TestServiceAccountIamPermissions {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, service_account: ServiceAccountEmail, permissions: List<String> }
-    output { permissions: List<String>?, outcome: RestOutcome }
+    output { permissions: List<String>? }
     readonly
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/serviceAccounts/\{service_account\}:testIamPermissions", body: { permissions: permissions } }
     response {
@@ -175,7 +174,7 @@ service gcp.IamAdmin {
   operation TestWorkloadIdentityPoolIamPermissions {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, permissions: List<String> }
-    output { permissions: List<String>?, outcome: RestOutcome }
+    output { permissions: List<String>? }
     readonly
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:testIamPermissions", body: { permissions: permissions } }
     response {
@@ -198,7 +197,6 @@ service gcp.IamAdmin {
     output {
       email: ServiceAccountEmail
       sa_name: String from "name"
-      outcome: RestOutcome
     }
 
     idempotent
@@ -224,7 +222,7 @@ service gcp.IamAdmin {
       project_id: GcpProjectId
       service_account: ServiceAccountEmail
     }
-    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
 
     idempotent
     transport rest {
@@ -246,7 +244,7 @@ service gcp.IamAdmin {
   operation GetServiceAccount {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
-    output { email: ServiceAccountEmail, sa_name: String from "name", outcome: RestOutcome }
+    output { email: ServiceAccountEmail, sa_name: String from "name" }
     readonly
     transport rest {
       method: GET,
@@ -270,7 +268,7 @@ service gcp.IamAdmin {
       service_account: ServiceAccountEmail
       policy: GcpPolicy
     }
-    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
 
     transport rest {
       method: POST,
@@ -297,7 +295,7 @@ service gcp.IamAdmin {
       pool_id: NonEmptyStr
       display_name: NonEmptyStr
     }
-    output { operation_name: String from "name", outcome: RestOutcome }
+    output { operation_name: String from "name" }
 
     idempotent
     transport rest {
@@ -327,7 +325,7 @@ service gcp.IamAdmin {
       attribute_mapping: Map<String, String>
       attribute_condition: NonEmptyStr
     }
-    output { operation_name: String from "name", outcome: RestOutcome }
+    output { operation_name: String from "name" }
 
     idempotent
     transport rest {
@@ -353,7 +351,7 @@ service gcp.IamAdmin {
   operation GetWorkloadIdentityPool {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
-    output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String?, outcome: RestOutcome }
+    output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String? }
     readonly
     transport rest {
       method: GET,
@@ -372,7 +370,7 @@ service gcp.IamAdmin {
   operation ListWorkloadIdentityPoolProviders {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
-    output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
+    output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders" }
     readonly
     transport rest {
       method: GET,

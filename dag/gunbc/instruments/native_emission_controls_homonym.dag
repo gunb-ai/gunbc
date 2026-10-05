@@ -1,0 +1,34 @@
+module gunbc.instruments.native_emission_controls_homonym
+
+import std.types { Bool, String }
+
+// THE SECOND DECLARER OF A LEAF, for gunbc.instruments.native_emission_controls. That module declares
+// ControlSlot<A, B>; this one declares ControlSlot<T>. One closure, one leaf, two declarations with
+// different parameter lists -- the shape of std.access AccessRequest beside
+// gunbc.auth.access_request AccessRequest. It lives in its own module because a module declares a
+// name once; the controls reach this ControlSlot only through the functions below, so neither
+// module ever spells the other's ControlSlot.
+//
+// ControlBoxed is declared ONCE, here, and both ControlSlots name it: its header is Clone-bounded
+// (a bare `value: C` field), so each ControlSlot owes its OWN parameters that bound. An emitter that
+// keys the declaration on the leaf holds one ControlSlot row and prints the other's header bare,
+// which rustc refuses at the field.
+type ControlBoxed<C> {
+  value: C
+}
+
+type ControlSlot<T> {
+  held: ControlBoxed<T>
+}
+
+fn narrow_slot(value: String) -> ControlSlot<String> {
+  ControlSlot { held: ControlBoxed { value: value } }
+}
+
+fn narrow_slot_value(value: String) -> String {
+  narrow_slot(value: value).held.value
+}
+
+fn narrow_slots_equal(left: String, right: String) -> Bool {
+  narrow_slot(value: left) == narrow_slot(value: right)
+}
