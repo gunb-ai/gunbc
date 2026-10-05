@@ -1184,7 +1184,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
       ) {
         SystemdRunCommandRefused { cause: why } => VmmStartFailed { unit: unit, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
         SystemdRunCommandReady { command: command } => {
-          let started = systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command))
+          let started = systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command))
           if started.success { VmmStarted { unit: unit, receipt: receipt } }
           else { VmmStartFailed { unit: unit, detail: trim(s: started.stderr) } }
         }

@@ -299,8 +299,8 @@ fn quiet_summary(stderr: String) -> SystemdRunWaitSummary {
   match systemd_run_transient_wait_unit_command(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) {
     SystemdRunCommandRefused { cause: _ } =>
       SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } }
-    SystemdSummaryPrintingWaitReady { wait: launcher } =>
-      systemd_run_wait_summary(launcher: launcher, standing: grounded_standing, stderr: stderr)
+    SystemdRunCommandReady { command: command } =>
+      systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait { command: command }, standing: grounded_standing, stderr: stderr)
   }
 }
 

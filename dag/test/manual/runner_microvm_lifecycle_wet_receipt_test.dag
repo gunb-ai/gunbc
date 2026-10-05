@@ -421,7 +421,7 @@ fn start_retained_payload(unit: NonEmptyStr, properties: List<SystemdRunProperty
   match systemd_run_transient_retained_unit_command(unit: unit, properties: properties, command_argv: command_argv) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
-      systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command)).success
+      systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command)).success
   }
 }
 

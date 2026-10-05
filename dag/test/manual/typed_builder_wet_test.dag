@@ -41,7 +41,7 @@ test fn a_real_retained_transient_is_still_known_after_a_failing_exit() -> Bool
   match systemd_run_transient_retained_unit_command(unit: unit, properties: [], command_argv: ["/bin/sh", "-c", "exit 86"]) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
-      let started = systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command))
+      let started = systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command))
       let load_state = systemd.Systemctl.ShowLoadState(unit: unit)
       let reset = systemd.Systemctl.ResetFailedUnit(unit: unit)
       started.success && (trim(s: load_state.value) == "loaded") && reset.success

@@ -296,8 +296,9 @@ fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, comman
 // Word order: --unit, the properties, --collect, then -- (main's green nbd witness pins this
 // order over the retired blob's --unit, --collect, properties; the union cannot hold both, and
 // main is the landed authority). The retained variant below is the same builder WITHOUT the
-// --collect arm, because RunTransientRetained exists precisely so the terminal state stays
-// observable.
+// --collect arm, because the RETAINED invocation exists precisely so the terminal state stays
+// observable (the service op is the same RunTransient either way -- retained vs collected is a
+// decision the typed option model renders into the words, not a service-side contract).
 fn systemd_run_transient_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [Collect, EndOfOptions])), command_argv: command_argv)
 }
@@ -320,7 +321,7 @@ fn systemd_run_transient_wait_unit_command(unit: NonEmptyStr, properties: List<S
 }
 
 
-// RunTransient AND RunTransientRetained DIFFER BY --collect AND THAT IS A DECISION ABOUT EVIDENCE.
+// RETAINED AND COLLECTED DIFFER BY --collect AND THAT IS A DECISION ABOUT EVIDENCE.
 //
 // The argument is already made in this file for the user-manager variant and it holds identically
 // here: --collect unloads the unit the moment it exits, which discards Result, ExecMainStatus and
@@ -371,24 +372,6 @@ service systemd.SystemdRun {
     }
   }
 
-
-  operation RunTransientRetained {
-    requires opaque
-    input { command_argv: List<String> }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["systemd-run", command_argv] }
-    exit {
-      0 => Unit
-      nonzero => String "systemd-run transient unit start failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "Running as unit: demo.service", stderr: "" } "hermetic systemd.SystemdRun.RunTransientRetained"
-    }
-  }
 
   operation RunTransientAndWait {
     requires opaque
