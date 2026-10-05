@@ -2,7 +2,7 @@ module extdeps.systemd.systemd_run
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, List, Bool, Int, Unit }
+import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim }

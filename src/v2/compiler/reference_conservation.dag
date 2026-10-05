@@ -1,5 +1,6 @@
 module v2.compiler.reference_conservation
 
+import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
 import std.types { List }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -148,11 +149,9 @@ type ReferenceConservationUnmeasured
 //     an argument label).
 //   `header_channel`: a segment of the module header. HeaderSegmentsNotRefusalSites: no resolve
 //     refusal is located at a header segment (measured on the XL-2 rehearsal composition with a
-//     module whose header names no existing path). CAVEAT, stated so the exclusion is not read
-//     wider than it is: a header DOES change what resolves -- a module nested under a provider's
-//     namespace resolves that provider's names with no import -- so relocating a module would make
-//     its header a rewrite target. That is the rehearsal's NestingScopedReferencesUncounted
-//     population, not this count.
+//     module whose header names no existing path). Nesting under a namespace grants no scope
+//     (operator ruling 2026-10-04), so a header does not change what a module's own references
+//     resolve to.
 // `role_not_yet_read` and `role_reader_refused` carry the role producer's own gaps, so a binder the
 // producer could not read is a number here too; such a binder stays in `locus_erased`.
 // `advisories` IS THE ACCEPTED SUBJECT'S ADVISORIES, KEPT RATHER THAN MATCHED AWAY. A parse or
@@ -1094,12 +1093,12 @@ type ReferenceConservationSubject {
 // this one subject, never across modules.
 fn reference_conservation_subject_of_read(
   read: DagSourceReadWitness,
-  lm: LanguageModel,
+  lex: PreparedLexRules,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationSubject {
   let parsed = program_assembly_phase_parse_measured_seeded(
-    tokens: program_assembly_phase_tokenize(read: read, lm: lm),
+    tokens: program_assembly_phase_tokenize(read: read, lex: lex),
     prepared: prepared,
     residue: residue,
     seed: occurrence_id_allocator_initial()
@@ -1201,11 +1200,12 @@ fn report_snoc_unmeasured(report: ReferenceConservationReport, item: ReferenceCo
 fn reference_conservation_of_read(
   read: DagSourceReadWitness,
   lm: LanguageModel,
+  lex: PreparedLexRules,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationReport {
   reference_conservation_of_subject(
-    subject: reference_conservation_subject_of_read(read: read, lm: lm, prepared: prepared, residue: residue),
+    subject: reference_conservation_subject_of_read(read: read, lex: lex, prepared: prepared, residue: residue),
     token_classes: declared_token_classes(lm: lm)
   )
 }
@@ -1216,13 +1216,14 @@ fn reference_conservation_of_ingest(
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> FreeMonoid<ReferenceConservationReport> {
+  let lex = prepare_lex_rules(rules: lm.lex)
   fold_list(
     xs: ingest,
     empty: Empty,
     cons: fn(acc, read) {
       list_snoc_item(
         xs: acc,
-        item: reference_conservation_of_read(read: read, lm: lm, prepared: prepared, residue: residue)
+        item: reference_conservation_of_read(read: read, lm: lm, lex: lex, prepared: prepared, residue: residue)
       )
     }
   )

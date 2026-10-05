@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_xl0.reference_conservation
 
+import v2.compiler.tokenize { prepare_lex_rules }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.reference_conservation {
   ReferenceConservationReport,
@@ -67,7 +68,7 @@ fn conservation_subject(id_tail: String, source: String) -> ReferenceConservatio
     Accepted { value: prepared, diagnostics: residue } =>
       reference_conservation_subject_of_read(
         read: conservation_fixture_read(id_tail: id_tail, source: source),
-        lm: dag_language_model(),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
         prepared: prepared,
         residue: residue
       )

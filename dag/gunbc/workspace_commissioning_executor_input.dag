@@ -1,0 +1,105 @@
+module gunbc.workspace_commissioning_executor_input
+
+import gunbc.workspace_commissioning_input_store { workspace_commissioning_input_read, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputRefused }
+
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
+
+import std.types { String, NonEmptyStr, CommitSha, Bool }
+import std.algebra { trim }
+import extdeps.systemd.systemctl
+import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script }
+import gunbc.workspace_commissioning_executor_artifact { workspace_executor_helper_script }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_script_name, workspace_executor_helper_name, workspace_executor_unit_path, workspace_executor_unit_text, workspace_executor_unit_instance_name, workspace_executor_wait_bound }
+import gunbc.fleet_generation_execution { fleet_generation_lock }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.workspace_commissioning_executor_plan {
+  WorkspaceExecutorPlanBytes, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified,
+}
+import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_observe, WorkspaceExecutorActorObserved, WorkspaceExecutorActorRefused }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_controller_root }
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.runner_microvm_slot_controller {
+  bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused,
+}
+import gunbc.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+
+// The reviewed artifacts are one immutable protected CAS value, published by fleet dispatch.
+type WorkspaceExecutorInput sole_constructor {
+  plan: WorkspaceExecutorPlanBytes
+  release_dir: NonEmptyStr
+  login: NonEmptyStr
+  network: SlotNetworkSanitationSubject
+}
+
+type WorkspaceExecutorInputRead
+  = WorkspaceExecutorInputObserved { input: WorkspaceExecutorInput }
+  | WorkspaceExecutorInputRefused { reason: String }
+
+fn workspace_executor_protected_text(path: String) -> String? {
+  match read_store_ownership(path: path) {
+    OwnershipRead { ownership: StoreRootOwned } => {
+      let read = Filesystem.Read(path: path)
+      if read.success { Present { value: read.content } } else { none }
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => none
+    OwnershipUnread { reason: _ } => none
+  }
+}
+
+fn workspace_executor_input_observe(slot: NonEmptyStr, executor: NonEmptyStr) -> WorkspaceExecutorInputRead {
+  match workspace_executor_actor_observe(slot: slot) {
+    WorkspaceExecutorActorObserved { actor } => if actor.invocation != executor {
+      WorkspaceExecutorInputRefused { reason: "input reader is not this executor" }
+    } else { match workspace_commissioning_input_read(slot: slot) {
+      WorkspaceCommissioningInputPresent { bytes: _, plan } => workspace_executor_input_from_plan(plan: plan)
+      WorkspaceCommissioningInputAbsent => WorkspaceExecutorInputRefused { reason: "protected reviewed input is unavailable" }
+      WorkspaceCommissioningInputRefused { reason: _ } => WorkspaceExecutorInputRefused { reason: "protected reviewed input is unavailable" }
+    } }
+    WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorInputRefused { reason: "input reader is outside the actual executor" }
+  }
+}
+
+fn workspace_executor_input_from_plan(plan: WorkspaceExecutorPlanBytes) -> WorkspaceExecutorInputRead {
+  let slot = runner_slot_instance_name(slot: plan.provenance.slot)
+  match bind_slot_host(slot: plan.provenance.slot) {
+    MicrovmHostBound { spec, host: _ } => match resolve_network_subject(slot: plan.provenance.slot) {
+      NetworkSubjectResolved { subject } => {
+        let installed = approval_broker_release_dir(root: microvm_controller_root,
+          revision: RevisionBoundAtEmission { revision: plan.provenance.source_revision as CommitSha })
+        if !workspace_executor_installed_adapter_matches(release_dir: installed, slot: slot) {
+          WorkspaceExecutorInputRefused { reason: "installed executor artifacts or loaded unit differ from the reviewed release" }
+        } else { WorkspaceExecutorInputObserved { input: WorkspaceExecutorInput {
+          plan: plan, release_dir: installed as NonEmptyStr, login: spec.job_user, network: subject,
+        } } }
+      }
+      NetworkSubjectRefused { refusal: _ } => WorkspaceExecutorInputRefused { reason: "commissioning network subject is unavailable" }
+    }
+    MicrovmHostBindingRefused { cause: _ } => WorkspaceExecutorInputRefused { reason: "commissioning input is not on its selected host" }
+  }
+}
+
+fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool {
+  match workspace_executor_protected_text(path: path) {
+    Present { value } => value == expected
+    Absent => false
+  }
+}
+
+fn workspace_executor_installed_adapter_matches(release_dir: String, slot: NonEmptyStr) -> Bool {
+  let unit = workspace_executor_unit_instance_name(slot: slot)
+  let fragment = systemd.Systemctl.ShowProperty(unit: unit, property: "FragmentPath")
+  let dropins = systemd.Systemctl.ShowProperty(unit: unit, property: "DropInPaths")
+  let reload = systemd.Systemctl.ShowProperty(unit: unit, property: "NeedDaemonReload")
+  fragment.success && trim(s: fragment.value) == (workspace_executor_unit_path() as String)
+    && dropins.success && trim(s: dropins.value) == ""
+    && reload.success && trim(s: reload.value) == "no"
+    && workspace_executor_owned_text_equals(path: workspace_dispatch_grant_path, expected: concat(workspace_dispatch_grant_content(release_dir: release_dir as NonEmptyStr), "\n"))
+    && workspace_executor_owned_text_equals(path: workspace_executor_unit_path() as String,
+      expected: workspace_executor_unit_text(release_dir: release_dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))
+    && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_script_name], ""), expected: workspace_commissioning_executor_script())
+    && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_helper_name], ""), expected: workspace_executor_helper_script(release_dir: release_dir))
+}

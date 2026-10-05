@@ -121,6 +121,9 @@ fn rotation_route_from_citation(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
   ]
 {
   BmcRotationRouteStanding {
@@ -515,13 +518,13 @@ fn admit_rotation_apply(
 
 // ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (DESIGN §3c) ────────────────────────────────
 //
-// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. The BmcSecure
-// Apply (cut O1b) imports admit_rotation_apply and refuses on any arm but RotationApplyAdmitted, so
-// the refusal for an ungrounded route is that module's to type; mapping a route onto its rotation-event
-// vocabulary here would make the import graph cyclic the moment O1b lands. The executing consumer
-// today is test.claim.machine_intake_bmc_rotation_route_witness_test.
+// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. Cut O1b supplies
+// the consumer's CODE: gunbc.machine_intake_bmc_secure plan_bmc_account_action computes each write's
+// admission with admit_rotation_apply and refuses on every arm but RotationApplyAdmitted. It does not yet
+// supply the consumer's PRODUCTION ROUTE: that planner is reached only by its dry realization and
+// witness while mtcollins1's cut-over is held (operator ruling C, 2026-10-04), so this frontier stands.
 data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the cut O1b BmcSecure Apply in gunbc.machine_intake_bmc_secure calls admit_rotation_apply on the route standing for the controller and build it writes, and refuses before any account write on every arm other than RotationApplyAdmitted; NOT satisfied by this module typechecking, by the witness exercising the arms, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
+  description: "dissolves when gunbc.machine_intake_bmc_secure plan_bmc_account_action runs on a production path -- the held O1b transition, where a unit's BmcSecure standing is derived by the state-shaped fold and the rotation-event path is deleted -- admitting each account write with admit_rotation_apply over the route standing for the controller and build it read; NOT satisfied by the planner's code existing, by its dry realization or witness, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
 )
 
 // The modeled Redfish account-password operation and action shape, by reference, for a candidate

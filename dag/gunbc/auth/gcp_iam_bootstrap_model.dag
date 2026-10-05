@@ -1,0 +1,151 @@
+module gunbc.auth.gcp_iam_bootstrap_model
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.list { distinct_by_key }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell }
+import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member }
+import gunbc.auth.gcp_iam_converge {
+  IamConvergeRole, ConvergeCreateRole, ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole,
+  iam_converge_role_id, iam_converge_role_permissions, iam_observe_role_permissions, iam_converge_denied_permissions,
+  iam_observe_service_account, iam_converge_service_account, iam_converge_service_account_id,
+  gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_reach_excludes_its_own_trust, same_key_set, cell_preimage,
+}
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_cell }
+import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
+
+// Bootstrap owns the job's trust. Ongoing iam-converge never receives authority over these subjects.
+type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret | BootstrapProbeToken
+
+type IamBootstrapResource = BootstrapProject | BootstrapPool { pool: NonEmptyStr } | BootstrapAccount { account: ServiceAccountEmail } | BootstrapSecret { secret: NonEmptyStr }
+
+type IamBootstrapBinding { resource: IamBootstrapResource, cell: GcpIamBindingCell }
+
+data iam_bootstrap_roles: List<IamBootstrapRole> = [
+  BootstrapApplyRole { role: ConvergeCreateRole }, BootstrapApplyRole { role: ConvergeProviderRole },
+  BootstrapApplyRole { role: ConvergeAccountPolicyRole }, BootstrapApplyRole { role: ConvergeSecretPolicyRole },
+  BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapProbeToken,
+]
+
+fn iam_bootstrap_project_role_name(role_id: String) -> NonEmptyStr {
+  join(["projects/", fleet_secrets_project_id as String, "/roles/", role_id], "") as NonEmptyStr
+}
+
+fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
+  match role {
+    BootstrapApplyRole { role: r } => iam_converge_role_id(r: r) as NonEmptyStr
+    BootstrapObservePool => iam_bootstrap_project_role_name(role_id: "gunbcIamObservePool")
+    BootstrapObserveAccount => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveAccount")
+    BootstrapObserveSecret => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveSecret")
+    BootstrapProbeToken => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapProbeToken")
+  }
+}
+
+fn iam_bootstrap_role_id(role: IamBootstrapRole) -> NonEmptyStr {
+  let name = iam_bootstrap_role_name(role: role) as String
+  let prefix = join(["projects/", fleet_secrets_project_id as String, "/roles/"], "")
+  substring(s: name, start: string_length(s: prefix), end: string_length(s: name)) as NonEmptyStr
+}
+
+fn iam_bootstrap_role_permissions(role: IamBootstrapRole) -> List<String> {
+  match role {
+    BootstrapApplyRole { role: r } => iam_converge_role_permissions(r: r)
+    BootstrapObservePool => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "iam.workloadIdentity"))
+    BootstrapObserveAccount => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "iam.serviceAccounts"))
+    BootstrapObserveSecret => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "secretmanager."))
+    BootstrapProbeToken => ["iam.serviceAccounts.getAccessToken"]
+  }
+}
+
+fn iam_bootstrap_role_matches(role: IamBootstrapRole, name: String, permissions: List<String>?, stage: String?, deleted: Bool?) -> Bool {
+  name == (iam_bootstrap_role_name(role: role) as String)
+    && match deleted { Present { value: d } => !d  Absent => true }
+    && match stage { Present { value: s } => s == "GA"  Absent => false }
+    && match permissions { Present { value: ps } => same_key_set(a: ps, b: iam_bootstrap_role_permissions(role: role)) Absent => false }
+}
+
+fn iam_bootstrap_apply_federation() -> DedicatedFederation {
+  let base = gcp_iam_observe_dedicated_federation()
+  DedicatedFederation { label: "gcp iam converge apply bootstrap", pool_id: base.pool_id, pool_display_name: base.pool_display_name,
+    provider_id: base.provider_id, attribute_mapping: base.attribute_mapping, attribute_condition: base.attribute_condition,
+    principal_set: base.principal_set, service_account: iam_converge_service_account, service_account_id: iam_converge_service_account_id,
+    service_account_display_name: "GCP IAM converge apply (WIF-only, approval-gated)",
+    service_account_member: federated_service_account_member(email: iam_converge_service_account), secret_grants: [] }
+}
+
+fn iam_bootstrap_resource_key(resource: IamBootstrapResource) -> String {
+  match resource {
+    BootstrapProject => join(["projects/", fleet_secrets_project_id as String], "")
+    BootstrapPool { pool } => join(["projects/", fleet_secrets_project_number, "/locations/global/workloadIdentityPools/", pool as String], "")
+    BootstrapAccount { account } => join(["projects/", fleet_secrets_project_id as String, "/serviceAccounts/", account as String], "")
+    BootstrapSecret { secret } => join(["projects/", fleet_secrets_project_number, "/secrets/", secret as String], "")
+  }
+}
+
+fn iam_bootstrap_binding(resource: IamBootstrapResource, role: IamBootstrapRole, account: ServiceAccountEmail) -> IamBootstrapBinding {
+  IamBootstrapBinding { resource: resource, cell: GcpIamBindingCell { role: iam_bootstrap_role_name(role: role) as String,
+    member: federated_service_account_member(email: account), condition: none } }
+}
+
+// Apply rights are projected from the same target roster as ongoing convergence. Observer rights
+// use the same subjects plus the job's own trust; no project-wide metadata reader is introduced.
+fn iam_bootstrap_capability_bindings() -> List<IamBootstrapBinding> {
+  let apply = [iam_bootstrap_binding(resource: BootstrapProject, role: BootstrapApplyRole { role: ConvergeCreateRole }, account: iam_converge_service_account)]
+    + flat_map(gcp_iam_converge_targets, f => [
+      iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapApplyRole { role: ConvergeProviderRole }, account: iam_converge_service_account),
+      iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapApplyRole { role: ConvergeAccountPolicyRole }, account: iam_converge_service_account),
+    ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account)))
+  let observe = flat_map(gcp_iam_converge_targets + [gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f => [
+    iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapObservePool, account: iam_observe_service_account),
+    iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapObserveAccount, account: iam_observe_service_account),
+  ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
+  let custody = flat_map(gcp_iam_converge_grant_set_secrets(), id => [
+    iam_bootstrap_binding(resource: BootstrapSecret { secret: id }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account),
+    iam_bootstrap_binding(resource: BootstrapSecret { secret: id }, role: BootstrapObserveSecret, account: iam_observe_service_account),
+  ])
+  let submission = flat_map(gcp_iam_observe_dedicated_federation().secret_grants, g => map(
+    secret_access_desired_cells(member: federated_service_account_member(email: iam_observe_service_account), grant: g), c =>
+    IamBootstrapBinding { resource: BootstrapSecret { secret: g.target.secret }, cell: c }))
+  distinct_by_key(xs: apply + observe + custody + submission, key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
+}
+
+// Workload trust is a separate final stage, after deny and resource-local permission readbacks.
+fn iam_bootstrap_trust_bindings() -> List<IamBootstrapBinding> {
+  map([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f =>
+    IamBootstrapBinding { resource: BootstrapAccount { account: f.service_account }, cell: impersonation_cell(f: f) })
+}
+
+data iam_bootstrap_deny_policy_id: NonEmptyStr = "gunbc-iam-converge-boundary"
+
+fn iam_bootstrap_attachment_point() -> NonEmptyStr {
+  concat("cloudresourcemanager.googleapis.com%2Fprojects%2F", fleet_secrets_project_number) as NonEmptyStr
+}
+
+fn iam_bootstrap_deny_rules() -> List<GcpDenyPolicyRule> {
+  [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule {
+    denied_principals: [concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_converge_service_account as String)],
+    denied_permissions: iam_converge_denied_permissions, exception_principals: none, exception_permissions: none, denial_condition: none,
+  } } }]
+}
+
+fn iam_bootstrap_deny_matches(rules: List<GcpDenyPolicyRule>?) -> Bool {
+  match rules {
+    Absent => false
+    Present { value: rows } => count(rows) == 1 && all(rows, row => match row.deny_rule {
+      Absent => false
+      Present { value: rule } => same_key_set(a: rule.denied_principals,
+        b: [concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_converge_service_account as String)])
+        && same_key_set(a: rule.denied_permissions, b: iam_converge_denied_permissions)
+        && match rule.exception_principals { Absent => true Present { value: xs } => count(xs) == 0 }
+        && match rule.exception_permissions { Absent => true Present { value: xs } => count(xs) == 0 }
+        && match rule.denial_condition { Absent => true  Present { value: _ } => false }
+    })
+  }
+}
+
+fn iam_bootstrap_model_admitted() -> Bool {
+  iam_converge_reach_excludes_its_own_trust()
+    && all(iam_bootstrap_roles, r => count(iam_bootstrap_role_permissions(role: r)) > 0)
+    && count(iam_bootstrap_trust_bindings()) == 2
+}

@@ -65,7 +65,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -1025,7 +1024,6 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     diff_text: &str,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
-    let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
     // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
@@ -1034,7 +1032,6 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
-        &changed,
         &departed,
         &added,
         None,
@@ -1048,14 +1045,12 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
-    let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
     let rename_from = parse_unified_diff_rename_sources(diff_text);
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
-        &changed,
         &departed,
         &added,
         Some(base_test_decl_names),
@@ -1075,7 +1070,6 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
     floor_diff_edits_from_line_ranges_reading(
         index,
         &parse_unified_diff_line_ranges(diff_text),
-        &parse_unified_diff_changed_new_lines(diff_text),
         &parse_unified_diff_departed_paths(diff_text),
         &parse_unified_diff_added_paths(diff_text),
         Some(base_test_decl_names),
@@ -1090,7 +1084,6 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
 pub(crate) fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
@@ -1099,7 +1092,6 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     floor_diff_edits_from_line_ranges_reading(
         index,
         line_ranges_by_file,
-        changed_new_lines_by_file,
         departed_paths,
         added_paths,
         base_test_decl_names,
@@ -1127,7 +1119,6 @@ fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
 pub(crate) fn floor_diff_edits_from_line_ranges_reading(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
@@ -1205,21 +1196,16 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m
         });
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        // (start line, name, is_data, last line). The last line is filled after sorting: the
-        // last non-blank line before the next declaration starts. It is what lets a
-        // pure-deletion gap between two declarations be told from one inside a declaration. It
-        // errs toward CHARGING: a leading comment of the next declaration counts as the
-        // previous one's tail, so deleting it over-selects, never under-selects.
-        let mut decls: Vec<(i64, String, bool, Option<i64>)> = Vec::new();
+        let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data, None));
+            decls.push((line, name, is_data));
         }
         for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _, _)| n == &name) {
-                decls.push((line, name, false, None));
+            if !decls.iter().any(|(_, n, _)| n == &name) {
+                decls.push((line, name, false));
             }
         }
         if decls.is_empty() {
@@ -1232,42 +1218,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             touched_entry_files.insert(file_norm.clone());
             continue;
         }
-        decls.sort_by_key(|(line, _, _, _)| *line);
-        {
-            let lines: Vec<&str> = content.lines().collect();
-            let count = decls.len();
-            for i in 0..count {
-                let start = decls[i].0;
-                let next = if i + 1 < count {
-                    decls[i + 1].0 - 1
-                } else {
-                    lines.len() as i64
-                };
-                let mut last = start;
-                for l in start..=next {
-                    if lines
-                        .get((l - 1).max(0) as usize)
-                        .is_some_and(|t| !t.trim().is_empty())
-                    {
-                        last = l;
-                    }
-                }
-                decls[i].3 = Some(last);
-            }
-        }
-        let first_decl_line = decls[0].0;
-        let mut changed =
-            changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
-        // Deletion-only hunks (`-` rows, zero `+` width) still carry a new-side anchor in the
-        // hunk header; fall back to parsed ranges when no `+`/`-` rows were attributed.
-        if changed.is_empty() {
-            for r in ranges {
-                let end = if r.end < r.start { r.start } else { r.end };
-                for l in r.start..=end {
-                    changed.insert(l);
-                }
-            }
-        }
+        decls.sort_by_key(|(line, _, _)| *line);
         // A PATH WHOSE DECLARATION SET IS ESTABLISHED FRESH CONTRIBUTES EVERY DECLARATION IT
         // CARRIES, and the line ranges do not establish that set — they only report which lines
         // the diff happened to print.
@@ -1298,71 +1249,33 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         // THIS NARROWS NOTHING AND WIDENS NOTHING BEYOND THE PATH'S OWN DECLARATIONS: the
         // universe is this file's parsed decl list, not the corpus, so it is the precise answer
         // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
-        if added_paths.contains(&file_norm) {
-            for (line, _, _, _) in &decls {
-                changed.insert(*line);
-            }
-        }
-        // Module-line edits (line 1) stay fail-closed for modifies — renaming can
-        // change entry identity. Wholly-added files necessarily touch line 1.
-        if changed.contains(&1) && !added_paths.contains(&file_norm) {
-            return Err(format!("diff before first declaration in {file_path}"));
-        }
-        // PURE-DELETION GAPS ARE CHARGED BY WHERE THE GAP LIES, NOT BY THE LINE AFTER IT. Under
-        // `-U0` a deletion-only hunk names no surviving line; both parsers anchor it at L+1, the
-        // line after the gap, which charged the NEXT declaration whenever whole declarations were
-        // deleted between two others -- force-running an unchanged neighbour under the
-        // changed-witness policy (`gunbc.recurring_failure_mode`
-        // `a_pure_deletion_force_runs_its_unchanged_neighbour`, measured on gunbc#13103). A gap
-        // at or before the first declaration stays a pre-declaration (file-grain) edit; a gap
-        // strictly inside a declaration's span charges that declaration; a gap between
-        // declarations charges none, because what it removed no longer exists to select.
-        // The module-line refusal above already read the gap at line 1.
-        let gaps: HashSet<i64> = if added_paths.contains(&file_norm) {
-            HashSet::new()
+        let charged: HashSet<usize> = if added_paths.contains(&file_norm) {
+            (0..decls.len()).collect()
         } else {
-            ranges
-                .iter()
-                .filter(|r| r.deletion_gap)
-                .map(|r| r.start)
-                .collect()
+            // A DECLARATION IS CHANGED WHEN ITS OWN TEXT DIFFERS AT BASE AND HEAD, joined by
+            // name -- never by which lines a hunk names. Git's `-U0` alignment is free to print a
+            // deletion between two similar declarations as a hunk that starts or ends inside the
+            // neighbour, and any line-ownership rule then charges a declaration nobody touched
+            // (`gunbc.recurring_failure_mode` `a_pure_deletion_force_runs_its_unchanged_neighbour`,
+            // both the gap form of gunbc#13103 and the leading-comment form of gunbc#13126). The
+            // base is reconstructed from the head and the diff's own removed lines, so this is
+            // the same single observation, read without its alignment.
+            let head_lines: Vec<&str> = content.lines().collect();
+            let starts: Vec<(i64, String)> =
+                decls.iter().map(|(l, n, _)| (*l, n.clone())).collect();
+            let attribution = declaration_text_attribution(&head_lines, &starts, ranges);
+            // Module-line edits stay fail-closed for modifies — renaming can change entry
+            // identity. Wholly-added files necessarily touch line 1.
+            if attribution.module_line_changed {
+                return Err(format!("diff before first declaration in {file_path}"));
+            }
+            if attribution.pre_declaration_changed {
+                touched_entry_files.insert(file_norm.clone());
+            }
+            attribution.changed
         };
-        let mut gap_pre_decl = false;
-        let mut gap_charged: HashSet<usize> = HashSet::new();
-        for &g in &gaps {
-            changed.remove(&g);
-            if g <= first_decl_line {
-                gap_pre_decl = true;
-                continue;
-            }
-            for (i, (start, _, _, last)) in decls.iter().enumerate() {
-                let bound = last.unwrap_or_else(|| {
-                    decls
-                        .get(i + 1)
-                        .map(|(l, _, _, _)| l - 1)
-                        .unwrap_or(i64::MAX)
-                });
-                if *start < g && g <= bound {
-                    gap_charged.insert(i);
-                }
-            }
-        }
-        let has_pre_decl = gap_pre_decl || changed.iter().any(|&l| l < first_decl_line);
-        let has_post_decl =
-            !gap_charged.is_empty() || changed.iter().any(|&l| l >= first_decl_line);
-        if has_pre_decl {
-            touched_entry_files.insert(file_norm.clone());
-            if !has_post_decl {
-                continue;
-            }
-        }
-        for i in 0..decls.len() {
-            let (line, name, is_data, _) = &decls[i];
-            let decl_end = decls
-                .get(i + 1)
-                .map(|(l, _, _, _)| l - 1)
-                .unwrap_or(i64::MAX);
-            if !gap_charged.contains(&i) && !changed.iter().any(|&l| l >= *line && l <= decl_end) {
+        for (i, (_, name, is_data)) in decls.iter().enumerate() {
+            if !charged.contains(&i) {
                 continue;
             }
             if test_fn_names.contains(name) {
@@ -1406,6 +1319,126 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         touched_entry_files,
         touched_declarations,
     })
+}
+
+/// What one modified file's declarations look like once each is compared with itself at the
+/// diff base. `changed` holds indices into the head declaration list the caller supplied.
+struct DeclarationTextAttribution {
+    module_line_changed: bool,
+    pre_declaration_changed: bool,
+    changed: HashSet<usize>,
+}
+
+/// A declaration's OWN text: from its first line up to the next declaration, without the
+/// trailing blank and `//` lines. Those trailing lines are the NEXT declaration's leading
+/// annotation (DESIGN §4c: an annotation is not program data), so deleting a neighbour and its
+/// comment never changes this declaration's text.
+fn declaration_own_text(lines: &[String], start: usize, next: usize) -> String {
+    let mut end = next.min(lines.len());
+    while end > start {
+        let t = lines[end - 1].trim();
+        if t.is_empty() || t.starts_with("//") {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    lines[start..end].join("\n")
+}
+
+/// Whether a line REMOVED by the diff opens a declaration at the base. Removed lines are not
+/// parsed, so this reads layout: a column-0 line that is not a comment or a closing bracket. It
+/// errs toward splitting -- a false split shortens a base declaration and so CHARGES its head
+/// counterpart, and a missed one lengthens it and charges too; neither direction un-charges an
+/// edited declaration.
+fn removed_line_opens_declaration(line: &str) -> Option<String> {
+    let first = line.chars().next()?;
+    if first.is_whitespace() || matches!(first, '}' | ')' | ']' | '"') || line.starts_with("//") {
+        return None;
+    }
+    const MARKERS: [&str; 6] = ["test", "pub", "fn", "data", "type", "probe"];
+    line.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty() && !MARKERS.contains(w))
+        .map(str::to_string)
+        .next()
+        .or_else(|| Some(String::new()))
+}
+
+/// Compare every head declaration with the base declaration of the same name. The base file is
+/// the head with each hunk's new-side lines replaced by its removed lines, which `-U0` carries
+/// in full, so the comparison needs no second read and no alignment.
+fn declaration_text_attribution(
+    head: &[&str],
+    decls: &[(i64, String)],
+    ranges: &[FileLineRange],
+) -> DeclarationTextAttribution {
+    let mut hunks: Vec<&FileLineRange> = ranges.iter().collect();
+    hunks.sort_by_key(|r| r.new_start);
+    let mut base: Vec<String> = Vec::new();
+    let mut base_opens: Vec<(usize, String)> = Vec::new();
+    let mut head_to_base: Vec<Option<usize>> = vec![None; head.len()];
+    let mut h = 0usize;
+    for r in hunks {
+        let before = if r.new_count > 0 {
+            r.new_start - 1
+        } else {
+            r.new_start
+        };
+        let before = (before.max(0) as usize).min(head.len());
+        while h < before {
+            head_to_base[h] = Some(base.len());
+            base.push(head[h].to_string());
+            h += 1;
+        }
+        for line in &r.removed {
+            if let Some(name) = removed_line_opens_declaration(line) {
+                base_opens.push((base.len(), name));
+            }
+            base.push(line.clone());
+        }
+        h = (h + r.new_count.max(0) as usize).min(head.len());
+    }
+    while h < head.len() {
+        head_to_base[h] = Some(base.len());
+        base.push(head[h].to_string());
+        h += 1;
+    }
+    let head_owned: Vec<String> = head.iter().map(|l| l.to_string()).collect();
+    for (line, name) in decls {
+        if let Some(Some(b)) = head_to_base.get((*line - 1).max(0) as usize) {
+            base_opens.push((*b, name.clone()));
+        }
+    }
+    base_opens.sort();
+    base_opens.dedup_by_key(|(b, _)| *b);
+    let first_head = (decls[0].0 - 1).max(0) as usize;
+    let first_base = base_opens.first().map(|(b, _)| *b).unwrap_or(base.len());
+    let pre_declaration_changed =
+        head_owned[..first_head.min(head_owned.len())] != base[..first_base.min(base.len())];
+    let module_line_changed = head_owned.first() != base.first();
+    let mut changed = HashSet::new();
+    for (i, (line, name)) in decls.iter().enumerate() {
+        let start = (*line - 1).max(0) as usize;
+        let next = decls
+            .get(i + 1)
+            .map(|(l, _)| (*l - 1).max(0) as usize)
+            .unwrap_or(head_owned.len());
+        let text = declaration_own_text(&head_owned, start, next);
+        let unchanged = base_opens.iter().enumerate().any(|(j, (b, n))| {
+            n == name && {
+                let next_b = base_opens.get(j + 1).map(|(x, _)| *x).unwrap_or(base.len());
+                declaration_own_text(&base, *b, next_b) == text
+            }
+        });
+        if !unchanged {
+            changed.insert(i);
+        }
+    }
+    DeclarationTextAttribution {
+        module_line_changed,
+        pre_declaration_changed,
+        changed,
+    }
 }
 
 /// One projected row of the CHANGED-WITNESS PROJECTION. The standing vocabulary is
@@ -1474,7 +1507,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     for path in &changed_paths {
         line_ranges_by_file.entry(path.clone()).or_default();
     }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let rename_from = parse_unified_diff_rename_sources(&diff_text);
     // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
@@ -1503,7 +1535,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
-        &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
         Some(&base_test_decl_names),
@@ -5510,16 +5541,6 @@ pub(crate) fn install_pure_producer_share(
                  seed and must be in every required-floor subject: {why}"
             )
         })?;
-    let warm_rows = floor_decode_module_prefix_roster(
-        &roster_frame,
-        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"),
-    )?;
-    let claim_forced_rows = floor_decode_module_prefix_roster(
-        &roster_frame,
-        &format!(
-            "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
-        ),
-    )?;
     // The two carried-input rosters are decoded HERE, beside the other two, because their
     // producers are part of the ADMITTED population: admission is one node set, and a producer
     // that warms into the tier but is not admitted would store nothing while the receipt read
@@ -5572,18 +5593,44 @@ pub(crate) fn install_pure_producer_share(
         .iter()
         .map(|m| (m.type_env.module_path.as_str(), m.as_ref()))
         .collect();
-    let mut admitted_by_qualified: std::collections::HashMap<
-        String,
-        std::rc::Rc<crate::v1_std_core::Node>,
-    > = std::collections::HashMap::new();
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
-    for qualified in warm_rows
-        .iter()
-        .chain(claim_forced_rows.iter())
-        .chain(carried_producers.iter())
-    {
+    // The frozen runtime-identity residual: producers whose every call site carries arguments
+    // computed inside the claim, so the derivation cannot join their demand before the run. The
+    // population is closed in `.dag` (`FrozenRuntimeIdentityProducer`); the tier keys and verifies
+    // their fills by declaration and argument row like any other.
+    let residual_name = format!(
+        "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_runtime_identity_residual_producers"
+    );
+    let residual_producers: Vec<String> = {
+        let value = v1_interpreter::run_in_context(&roster_frame, &residual_name, false).map_err(
+            |e| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} did not evaluate: {e}"
+                )
+            },
+        )?;
+        let items = v1_interpreter::list_value_items(&roster_frame, &value).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                  {residual_name} is not a list"
+            )
+        })?;
+        let mut out = Vec::new();
+        for item in &items {
+            let v1_interpreter::Value::Str(producer) = item else {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} carries a member that is not a String"
+                ));
+            };
+            out.push(producer.to_string());
+        }
+        out
+    };
+    // THE PRODUCERS ADMITTED HERE ARE THE CARRIED-INPUT ONES AND THE FROZEN RESIDUAL. Plain pure
+    // producers are no longer a roster: they are derived from the planned claims' call-site
+    // demand once planning has fixed the claims (`derive_and_install_cross_claim_share`).
+    for qualified in carried_producers.iter().chain(residual_producers.iter()) {
         let (module, decl) = match qualified.rsplit_once('.') {
             Some((module, decl)) => (module.to_string(), decl),
             None => (qualified.clone(), qualified.as_str()),
@@ -5611,7 +5658,6 @@ pub(crate) fn install_pure_producer_share(
                      module; fix or delete the roster row"
                 )
             })?;
-        admitted_by_qualified.insert(qualified.clone(), node.clone());
         admitted_nodes.push(node);
         admitted_qualified.push(qualified.clone());
     }
@@ -5699,7 +5745,6 @@ pub(crate) fn install_pure_producer_share(
         .iter()
         .map(|i| module_of(&i.acquisition))
         .chain(carried_rows.iter().map(|r| module_of(&r.producer)))
-        .chain(warm_rows.iter().map(|q| module_of(q)))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -5903,134 +5948,6 @@ pub(crate) fn install_pure_producer_share(
                 }
             }
         }
-
-        for qualified in warm_rows.iter().filter(|q| &module_of(q) == group) {
-            let module = match qualified.rsplit_once('.') {
-                Some((module, _)) => module.to_string(),
-                None => qualified.clone(),
-            };
-            // Resolution above either framed this row's module or recorded it as outside the
-            // prepared subject (not evaluated here, counted below); a stale row already refused.
-            let Some(producer_frame) = frames.frame(
-                prepared,
-                corpus_modules,
-                &mut outside_subject,
-                &module,
-                "producer",
-                qualified,
-            )?
-            else {
-                continue;
-            };
-            let framed = producer_frame.lookup_fn_node(qualified);
-            let admitted = admitted_by_qualified.get(qualified.as_str());
-            if !matches!((&framed, admitted), (Some(f), Some(a)) if std::rc::Rc::ptr_eq(f, a)) {
-                return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameLookupDiverges producer={qualified} \
-                 — the module frame resolves the producer to a different declaration than admission \
-                 read from the prepared graph, so the admitted identity is not the one evaluated"
-            ));
-            }
-            // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
-            // first revision of this line got that wrong in the direction DESIGN section 4b names.
-            // It passed `already_built: false` unconditionally, on the reasoning that the outcome
-            // below is the authority for whether the value was already retained. THAT REASONING
-            // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
-            // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
-            // Two representations of one fact with one of them lying is worse than either alone, and
-            // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
-            // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
-            //
-            // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
-            // does not exist until the call returns. So the observation is corrected AFTER the fact,
-            // from the outcome that owns it.
-            //
-            // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
-            // and not who caused it, so the label names the boundary that is knowable rather than
-            // fabricating a call site -- inside this loop the only writer that can already have
-            // stored a rostered producer's value is an earlier rostered producer whose traversal
-            // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
-            // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
-            // deliberately weaker than a call-site name because a call site is not recorded.
-            let (warm_result, mut warm_observation) =
-                observe_shared_build(false, "floor-preparation", || {
-                    v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
-                });
-            if let Ok(outcome) = &warm_result {
-                if matches!(
-                    outcome,
-                    v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
-                ) {
-                    warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
-                        triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
-                    };
-                }
-            }
-            match warm_result {
-                Ok(outcome) => {
-                    // A NON-SERVABLE outcome means nothing is retained for later claims, so a
-                    // silent decline would relocate the fill onto the first toucher: stop the
-                    // line, naming the ONE cause rather than a disjunction of three. An
-                    // `AlreadyPresent` outcome is servable and therefore not a refusal — a
-                    // rostered producer reachable from an earlier rostered producer is stored
-                    // by that traversal, and its own warm correctly finds the work done.
-                    if !outcome.is_servable() {
-                        // The located detail comes from the OUTCOME, so a cause can only ever be
-                        // paired with its own evidence. Reading the retained slot here instead
-                        // would decorate a byte-budget or entry-cap refusal with a stale path
-                        // left by an earlier producer's unportable value (review 57554).
-                        let detail = match outcome.not_portable_detail() {
-                            Some(refusal) => format!(
-                                "{} path={} kind={}",
-                                outcome.cause(),
-                                if refusal.path_into_value.is_empty() {
-                                    "<root>"
-                                } else {
-                                    refusal.path_into_value.as_str()
-                                },
-                                refusal.encountered_kind
-                            ),
-                            None => outcome.cause().to_string(),
-                        };
-                        return Err(format!(
-                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
-                         producer={qualified} — the rostered producer evaluated but its value \
-                         was refused by the cross-claim store: {detail}"
-                        ));
-                    }
-                    floor_warm_row_identity(qualified);
-                    eprintln!(
-                        "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} disposition={} cpu_ms={} wall_ms={} \
-                     rss_growth_bytes={} provenance={}",
-                        outcome.cause(),
-                        warm_observation.cpu_ms,
-                        warm_observation.wall_ms,
-                        warm_observation.rss_growth_bytes,
-                        warm_observation.provenance.render(),
-                    );
-                    warm_observations.push((
-                        format!("CrossClaimPureProducerWarm/{qualified}"),
-                        warm_observation,
-                    ));
-                }
-                Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
-                     producer={qualified} effects={effects} — the warm row reached the world, \
-                     so the value depends on an input its empty argument row cannot represent; \
-                     roster the read as a prepared effect input and the fold as a carried-input \
-                     warm row instead"
-                    ));
-                }
-                Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
-                     producer={qualified} — {why}"
-                    ));
-                }
-            }
-        }
     }
     // Disposition 2 is COUNTED, one line, so a subject that quietly stopped evaluating rows
     // it should carry is visible in the run's own announcement.
@@ -6067,6 +5984,465 @@ pub(crate) fn install_pure_producer_share(
     );
     drop(frames);
     Ok(warm_observations)
+}
+
+/// THE DERIVED CROSS-CLAIM SHARE: admit, for this run, exactly the pure computations its PLANNED
+/// claims demand from more than one claim with one closed identity.
+///
+/// The seed observes (`claim_call_site_demand`, one realization of the `.dag` row type
+/// `CallSiteDemandObservation`) and `v2.workflow.floor_pure_producer_share`
+/// `floor_cross_claim_share_derivation` decides; the seed then admits the decided rows at their call
+/// sites. There is no warm: the first planned claim that evaluates an admitted site fills it (see the
+/// install note at the end of this function). Every arm refuses: a planned claim the prepared subject does not carry, a fold
+/// that does not evaluate or decode, a partition that does not reconcile, and an admitted producer
+/// with no declaration node or an unparseable site.
+pub(crate) fn derive_and_install_cross_claim_share(
+    prepared: &PreparedRepository,
+    claims: &[RequiredFloorClaim],
+    declared: &[(String, String)],
+    in_flight_wall_cap_ms: u64,
+) -> Result<(), String> {
+    use super::claim_call_site_demand::{
+        CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
+    };
+    use v1_interpreter::Value;
+    const MODULE: &str = "v2.workflow.floor_pure_producer_share";
+    let started = std::time::Instant::now();
+    let mut population: Vec<(String, String)> = claims
+        .iter()
+        .map(|c| (c.module_path.clone(), c.function.clone()))
+        .collect();
+    let planned_count = population.len();
+    let mut observer =
+        CallSiteDemandObserver::new(&prepared.graph, prepared.source_indices.clone());
+    // THE DECLARED POPULATION: every other claim declared in a module the prepared subject carries.
+    // Recurrence is judged over it (so a claim's budget does not depend on which other claims a diff
+    // plans); a declared claim whose module is outside the subject cannot be walked and is counted.
+    let planned_set: std::collections::HashSet<(String, String)> =
+        population.iter().cloned().collect();
+    let mut declared_outside_subject = 0usize;
+    for d in declared {
+        if planned_set.contains(d) {
+            continue;
+        }
+        if observer.decl(&d.0, &d.1).is_some() {
+            population.push(d.clone());
+        } else {
+            declared_outside_subject += 1;
+        }
+    }
+    let (rows, unresolved) = observer.observe(&population, planned_count);
+    if !unresolved.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CallSiteDemandClaimUnresolved claims=[{}] -- a planned \
+             claim's declaration is not in the prepared subject, so its call-site demand cannot be \
+             observed and the derived share would omit it",
+            unresolved.join(",")
+        ));
+    }
+    let observe_ms = started.elapsed().as_millis();
+    for (producer, cause, claims_n, sites_n) in observer.open_producers() {
+        eprintln!(
+            "[cross-claim-share-unadmissible] producer={producer} cause={} claims={claims_n} \
+             sites={sites_n}",
+            cause.variant()
+        );
+    }
+    let frame = floor_authority_frame(prepared, MODULE).map_err(|why| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRosterOutsidePreparedSubject \
+             module={MODULE} -- {why}"
+        )
+    })?;
+    let ctx = &frame;
+    let sym = |s: &str| ctx.sym(s);
+    let unit = |ty: &str, variant: &str| Value::Variant {
+        type_name: sym(ty),
+        variant_name: sym(variant),
+        fields: std::rc::Rc::new(vec![]),
+    };
+    let closed_rows = rows
+        .iter()
+        .filter(|r| matches!(r, CallSiteDemandRow::Closed { .. }))
+        .count();
+    let values: Vec<Value> = rows
+        .iter()
+        .map(|row| match row {
+            CallSiteDemandRow::Closed {
+                producer,
+                argument_preimage,
+                claims,
+                planned_claims,
+                sites,
+            } => Value::Variant {
+                type_name: sym("CallSiteDemandObservation"),
+                variant_name: sym("ClosedCallSiteDemand"),
+                fields: std::rc::Rc::new(vec![
+                    (sym("producer"), str_value(producer)),
+                    (sym("argument_preimage"), str_value(argument_preimage)),
+                    (
+                        sym("identity"),
+                        Value::Variant {
+                            type_name: sym("ComputationIdentity"),
+                            variant_name: sym("NormalizedIdentical"),
+                            fields: std::rc::Rc::new(vec![(
+                                sym("normalizer"),
+                                str_value(CLOSED_ARGUMENT_NORMALIZER),
+                            )]),
+                        },
+                    ),
+                    (
+                        sym("claims"),
+                        list_value_from_vec(claims.iter().map(str_value).collect()),
+                    ),
+                    (sym("planned_claims"), Value::Int(*planned_claims as i64)),
+                    (
+                        sym("sites"),
+                        list_value_from_vec(sites.iter().map(str_value).collect()),
+                    ),
+                ]),
+            },
+            CallSiteDemandRow::Unadmissible {
+                cause,
+                claims,
+                sites,
+            } => Value::Variant {
+                type_name: sym("CallSiteDemandObservation"),
+                variant_name: sym("UnadmissibleCallSiteDemand"),
+                fields: std::rc::Rc::new(vec![
+                    (sym("cause"), unit("CallSiteDemandCause", cause.variant())),
+                    (sym("claims"), Value::Int(*claims as i64)),
+                    (sym("sites"), Value::Int(*sites as i64)),
+                ]),
+            },
+        })
+        .collect();
+    let result = v1_interpreter::run_in_context_with_args(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_derivation"),
+        &[(
+            Some("observations".to_string()),
+            list_value_from_vec(values),
+        )],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationFailed -- \
+             floor_cross_claim_share_derivation did not evaluate: {e}"
+        )
+    })?;
+    let derive_ms = started.elapsed().as_millis() - observe_ms;
+    let malformed = |what: &str| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationUndecodable -- {what} (got `{}`)",
+            ctx.format_value(&result)
+        )
+    };
+    let Value::Record { fields, .. } = &result else {
+        return Err(malformed("expected a CrossClaimShareDerivation record"));
+    };
+    // The fold's lists may be kernel lists or v2.std.algebra FreeMonoid chains; both decode.
+    let list_of = |name: &str| -> Result<Vec<Value>, String> {
+        ctx.field(fields, name)
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed(&format!("no `{name}` list")))
+    };
+    let text_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
+        match ctx.field(row, name) {
+            Some(Value::Str(s)) => Ok(s.to_string()),
+            _ => Err(malformed(&format!("a row has no `{name}` String"))),
+        }
+    };
+    let int_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<i64, String> {
+        match ctx.field(row, name) {
+            Some(Value::Int(n)) => Ok(*n),
+            _ => Err(malformed(&format!("a row has no `{name}` Int"))),
+        }
+    };
+    let variant_of =
+        |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
+            match ctx.field(row, name) {
+                Some(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(*variant_name)),
+                _ => Err(malformed(&format!("a row has no `{name}` variant"))),
+            }
+        };
+    let admitted = list_of("admitted")?;
+    let declined = list_of("declined")?;
+    let unadmissible = list_of("unadmissible")?;
+    if admitted.len() + declined.len() != closed_rows {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationDoesNotReconcile \
+             closed_observations={closed_rows} admitted={} declined={} -- every closed observation \
+             must be admitted or declined exactly once",
+            admitted.len(),
+            declined.len()
+        ));
+    }
+    let mut nodes = Vec::new();
+    let mut sites: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
+    let mut admitted_qualified = Vec::new();
+    let mut billed_debt_claims: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut net_only_sites: std::collections::HashSet<(String, i64, i64)> =
+        std::collections::HashSet::new();
+    for row in &admitted {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed("an admitted row is not a DerivedShareRow record"));
+        };
+        let producer = text_of(r, "producer")?;
+        let preimage = text_of(r, "argument_preimage")?;
+        let claims_n = int_of(r, "claims")?;
+        let (module, decl) = producer.rsplit_once('.').ok_or_else(|| {
+            malformed(&format!("admitted producer `{producer}` is not qualified"))
+        })?;
+        let node = observer.decl(module, decl).cloned().ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=DerivedShareProducerUnresolved producer={producer} \
+                 -- the derivation admitted a producer the prepared subject carries no declaration for"
+            )
+        })?;
+        let row_sites = ctx
+            .field(r, "sites")
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed("an admitted row has no `sites` list"))?;
+        let mut row_keys: Vec<(String, i64, i64)> = Vec::new();
+        for site in &row_sites {
+            let Value::Str(text) = site else {
+                return Err(malformed("a site is not a String"));
+            };
+            let parsed = text.rsplit_once(':').and_then(|(file, span)| {
+                let (start, end) = span.split_once('-')?;
+                Some((file.to_string(), start.parse().ok()?, end.parse().ok()?))
+            });
+            let Some(key) = parsed else {
+                return Err(malformed(&format!(
+                    "site `{text}` is not <file>:<start>-<end>"
+                )));
+            };
+            row_keys.push(key);
+        }
+        // WHY the row is admitted, printed so a single-claim fill debt is never read as sharing.
+        let mut row_is_debt = false;
+        let basis = match ctx.field(r, "basis") {
+            Some(Value::Variant {
+                variant_name,
+                fields: b,
+                ..
+            }) => {
+                let variant = ctx.resolve(*variant_name);
+                if variant == "SingleClaimFillDebt" {
+                    let claim = text_of(b, "claim")?;
+                    billed_debt_claims.insert(claim.clone());
+                    row_is_debt = true;
+                    format!("SingleClaimFillDebt:{claim}")
+                } else {
+                    variant
+                }
+            }
+            _ => return Err(malformed("an admitted row has no `basis` variant")),
+        };
+        // A debt row's sites are NET-ONLY: the fill is netted from its one claim and no value is
+        // retained, since no other claim will ever ask for it.
+        for key in row_keys {
+            if row_is_debt {
+                net_only_sites.insert(key.clone());
+            }
+            sites.insert(key);
+        }
+        eprintln!(
+            "[cross-claim-share-admitted] producer={producer} basis={basis} claims={claims_n} \
+             sites={} argument_preimage={preimage}",
+            row_sites.len()
+        );
+        admitted_qualified.push(producer);
+        nodes.push(node);
+    }
+    let mut decline_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for row in &declined {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed("a declined row is not a DeclinedShareRow record"));
+        };
+        *decline_counts.entry(variant_of(r, "decline")?).or_default() += 1;
+        // EVERY decline is printed, single-claim ones included, so each producer's disposition is
+        // readable by identity from the run's own log.
+        {
+            eprintln!(
+                "[cross-claim-share-declined] producer={} decline={} argument_preimage={}",
+                text_of(r, "producer")?,
+                variant_of(r, "decline")?,
+                text_of(r, "argument_preimage")?
+            );
+        }
+    }
+    let mut unadmissible_rendered = Vec::new();
+    for row in &unadmissible {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed(
+                "an unadmissible row is not an UnadmissibleDemandCount record",
+            ));
+        };
+        unadmissible_rendered.push(format!(
+            "{}:claims={}:sites={}",
+            variant_of(r, "cause")?,
+            int_of(r, "claims")?,
+            int_of(r, "sites")?
+        ));
+    }
+    eprintln!(
+        "[floor-phase] phase=cross-claim-share-derivation state=completed planned_claims={} \
+         declared_claims_observed={} declared_outside_subject={declared_outside_subject} \
+         closed_identities={closed_rows} admitted={} admitted_sites={} declined=[{}] \
+         unadmissible=[{}] observe_ms={observe_ms} derive_ms={derive_ms}",
+        claims.len(),
+        population.len(),
+        admitted.len(),
+        sites.len(),
+        decline_counts
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(","),
+        unadmissible_rendered.join(",")
+    );
+    // THE DEBT CONTRACT'S IDENTITY JOIN (v2.workflow.floor_pure_producer_share
+    // floor_single_claim_fill_debt, a monotone debt set): every ACTIVE member this run PLANS must
+    // have at least one single-claim fixture identity admitted on its behalf. A planned member with
+    // none is STALE -- it was restructured, or its fixture became shared, or its cost is not a
+    // closed fixture at all -- and a stale row would keep asserting a transfer that no longer
+    // happens, so it stops the line and names the remedy.
+    let active_debt = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_single_claim_fill_debt_active_claims"),
+        false,
+    ) {
+        Ok(v) => v1_interpreter::list_value_items(ctx, &v)
+            .ok_or_else(|| malformed("floor_single_claim_fill_debt_active_claims is not a list"))?,
+        Err(e) => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtUnreadable -- \
+                 floor_single_claim_fill_debt_active_claims did not evaluate: {e}"
+            ))
+        }
+    };
+    let planned_identities: std::collections::HashSet<String> = claims
+        .iter()
+        .map(|c| format!("{}.{}", c.module_path, c.function))
+        .collect();
+    let mut active_planned = 0usize;
+    let mut stale_debt: Vec<String> = Vec::new();
+    for member in &active_debt {
+        let Value::Str(member) = member else {
+            return Err(malformed("a fill-debt member is not a String"));
+        };
+        let member = member.to_string();
+        if planned_identities.contains(&member) {
+            active_planned += 1;
+            if !billed_debt_claims.contains(&member) {
+                stale_debt.push(member);
+            }
+        }
+    }
+    eprintln!(
+        "[floor-phase] phase=single-claim-fill-debt state=completed active_members={} \
+         planned_members={active_planned} billed_members={} stale_members={}",
+        active_debt.len(),
+        billed_debt_claims.len(),
+        stale_debt.len()
+    );
+    if !stale_debt.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtStale members=[{}] -- each is an ACTIVE \
+             member of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt that this \
+             run plans, and no single-claim fixture identity was admitted for it, so the row asserts \
+             a cost transfer that no longer happens. Retire the row with its typed disposition \
+             (RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted).",
+            stale_debt.join(",")
+        ));
+    }
+    v1_interpreter::install_cross_claim_derived_share_with_net_only(nodes, sites, net_only_sites);
+    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+        if let Some(roster) = r.borrow_mut().as_mut() {
+            roster.admitted_qualified.extend(admitted_qualified);
+        }
+    });
+    // NO WARM. An admitted site fills on the FIRST planned claim that actually evaluates it, so a
+    // site the static reach over-approximates costs nothing, and no frame is built just to measure
+    // a value (the first derived runs built one frame per site module -- 169 -- to warm 2523
+    // identities and then discarded 2404 below the floor). The fill's evaluator steps are netted
+    // from the paying claim's budget by the existing fill guard, so budgets stay deterministic; its
+    // wall is excused from the claim's wall deadline only in proportion to the steps it has
+    // performed (a declared ns-per-step ceiling), under the preparation wall safety limit as the
+    // outer hard cap, so a stalled fill and a runaway one both still interrupt; and the cost floor
+    // is applied to the fill's own measured steps at the moment it would be retained.
+    let cost_floor_steps = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_eval_steps"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorUnreadable -- \
+                 floor_cross_claim_share_cost_floor_eval_steps must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
+    // The floor has a CPU arm: a fill whose thread CPU reaches the declared floor is retained
+    // however few steps it performed. A fill whose cost is native (keying a served producer's
+    // argument row) is otherwise declined on its step count and re-paid by every claim.
+    let cost_floor_cpu_ms = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_cpu_millisecond_count"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorCpuUnreadable -- \
+                 floor_cross_claim_share_cost_floor_cpu_millisecond_count must be a positive \
+                 Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_cpu_ms(cost_floor_cpu_ms);
+    let ns_per_step_ceiling = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimFillWallCeilingUnreadable -- \
+                 floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_in_flight_wall_bound(
+        in_flight_wall_cap_ms,
+        ns_per_step_ceiling,
+    );
+    eprintln!(
+        "[floor-phase] phase=cross-claim-share-install state=completed \
+         cost_floor_eval_steps={cost_floor_steps} fill_wall_ns_per_step_ceiling={ns_per_step_ceiling} \
+         in_flight_wall_outer_cap_ms={in_flight_wall_cap_ms}"
+    );
+    Ok(())
 }
 
 /// One row of `v2.workflow.floor_pure_producer_share.floor_cross_claim_refused_candidates`:
@@ -9560,6 +9936,25 @@ pub fn run_required_floor(
         );
     }
     let claims_planned = claims.len();
+    // THE DERIVED CROSS-CLAIM SHARE, admitted now that planning has fixed the claims: the share's
+    // demand is these claims' reach and nothing wider (`derive_and_install_cross_claim_share`).
+    floor_seam("cross-claim-share-derivation");
+    // The derived warms are shared builds like every preparation warm, so they answer to the same
+    // three preparation limits; they run here only because their demand is the planned claims.
+    let declared_claims: Vec<(String, String)> = files
+        .iter()
+        .flat_map(|f| {
+            f.functions
+                .iter()
+                .map(move |function| (f.module_path.clone(), function.clone()))
+        })
+        .collect();
+    derive_and_install_cross_claim_share(
+        &prepared,
+        &claims,
+        &declared_claims,
+        preparation_wall_limit_ms,
+    )?;
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
@@ -10644,6 +11039,22 @@ pub fn run_required_floor(
     // next claim to touch it pays the same seconds — so a paring decision that reads only the
     // per-row wall time is deciding on an attribution artifact.
     eprint!("{}", shared_fill::report());
+    // WHAT THE TIER DECLINED TO RETAIN. An admitted fill whose store is declined stays on the
+    // claim that paid it; without these lines such a claim reads as over budget for no visible
+    // reason. One line per (producer, cause), then the tier's own totals.
+    for (producer, cause, count) in v1_interpreter::cross_claim_store_declines() {
+        eprintln!(
+            "[cross-claim-share-store-declined] producer={producer} cause={cause} count={count}"
+        );
+    }
+    {
+        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
+        eprintln!(
+            "[cross-claim-share-tier] retained_keys={stores} overflow_refusals={overflow} \
+             below_cost_floor={}",
+            v1_interpreter::cross_claim_below_cost_floor_count()
+        );
+    }
     // AND THE LEDGER IS ADJUDICATED, NOT ONLY RENDERED. The lines above are what a paring
     // decision reads; this call is what refuses one. It runs after the render so an operator has
     // the whole ledger in the log above the refusal that cites two of its rows.
@@ -12104,78 +12515,6 @@ mod pure_producer_share_tests {
         extra.iter().map(|m| m.to_string()).collect()
     }
 
-    const EMPTY_ROSTER_TAIL: &str =
-        "data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n";
-
-    fn roster_naming(row: &str) -> String {
-        format!(
-            "module v2.workflow.floor_pure_producer_share\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"{row}\"]\n{EMPTY_ROSTER_TAIL}"
-        )
-    }
-
-    /// THE gunbc#11452 SHAPE: a row naming a LIVE producer whose module the corpus carries but
-    /// this narrow subject does not is not evaluated, and the install succeeds.
-    #[test]
-    fn a_live_row_outside_the_prepared_subject_is_not_evaluated() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
-        )]);
-        let warms =
-            install_pure_producer_share(&prepared, &fixture_corpus(&["test.claim.elsewhere.emit"]))
-                .expect("a live row outside the subject must not stop the line");
-        assert!(warms.is_empty(), "nothing outside the subject warms");
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// The discriminating RED beside it: the SAME row, with its module absent from the corpus,
-    /// is stale and refuses with the cause that tells the author to delete it.
-    #[test]
-    fn a_row_whose_module_no_root_carries_refuses_as_stale() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("a row naming no corpus module must refuse");
-        assert!(
-            err.contains("PureProducerShareRowModuleAbsentFromCorpus") && err.contains("stale"),
-            "refusal must name the stale cause: {err}"
-        );
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
     /// THE CLOSURE RED the review asked for: a prepared subject WITHOUT the roster module
     /// must REFUSE, never skip — a skip leaves admission empty while the floor reads green,
     /// memoizing nothing.
@@ -12195,235 +12534,6 @@ mod pure_producer_share_tests {
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
-    /// Positive control: a subject carrying the roster module warms its nullary rows into
-    /// the cross-claim store.
-    #[test]
-    fn a_carried_roster_warms_and_stores_its_nullary_rows() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             fn tm_local() -> Bool { true }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [\n\
-               RefusedShareCandidate {\n\
-                 producer: \"v2.workflow.floor_pure_producer_share.tm_refused\",\n\
-                 verdict: MeasuredServeAboveRecompute,\n\
-                 carrier_modules: [\"v2.test.fixture.a_consumer\"],\n\
-                 measurement: \"fixture\",\n\
-                 next_trigger: \"fixture\"\n\
-               }\n\
-             ]\n",
-        )]);
-        let observations = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("carried roster installs and warms");
-        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
-        assert_eq!(overflow, 0);
-        assert!(stores >= 1, "the warm must land in the store, got {stores}");
-        // THE DISCRIMINATING ASSERTION, and it is why this control is no longer only positive:
-        // the warm is a shared preparation build, and a shared build that produces no
-        // observation is bounded by nothing -- the preparation refusal is denominated over the
-        // observations collected here. Before the observation existed this function returned
-        // `()`, so this assertion could not be written at all, which is precisely the shape of
-        // the gap: the cost was real, printed, and invisible to the only wall that could stop it.
-        assert_eq!(
-            observations.len(),
-            1,
-            "one observation per warm row, got {observations:?}"
-        );
-        let (label, observed) = &observations[0];
-        assert_eq!(
-            label, "CrossClaimPureProducerWarm/v2.workflow.floor_pure_producer_share.tm_local",
-            "the label must name the ROW, since the refusal names one phase and a reader must \
-             reach one roster row from it"
-        );
-        // The three axes the preparation refusal reads. Asserting they are PRESENT rather than
-        // asserting a magnitude: a fixture's absolute cost is a property of the fixture and the
-        // runner it ran on, and a threshold copied from this tree would be the measurement-as-
-        // oracle DESIGN section 5 refuses.
-        let _: u64 = observed.cpu_ms;
-        let _: u64 = observed.wall_ms;
-        let _: u64 = observed.rss_growth_bytes;
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// THE RED FOR THE CONTENT-BLIND WARM: a nullary row that performs one confirmed checkout
-    /// read, rostered as a PLAIN warm row. Before the guard the warm path stored it under the
-    /// empty argument row — `Stored`, no refusal — so a changed file would have been served the
-    /// old value by every later claim. The read is a real hermetic checkout-input dispatch (the
-    /// test's cwd is inside the checkout and `Cargo.toml` is committed), not a stubbed counter,
-    /// so the wall is exercised on the path the floor runs. The positive control is
-    /// `a_carried_roster_warms_and_stores_its_nullary_rows`: a pure nullary row still stores.
-    #[test]
-    fn a_plain_warm_row_that_dispatches_an_effect_stops_the_line() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             service Filesystem {\n\
-               operation Read {\n\
-                 input { path: String }\n\
-                 output {\n\
-                   content: String from \"content\"\n\
-                   success: Bool from \"read_success\"\n\
-                   error: String from \"error\"\n\
-                   error_kind: String from \"error_kind\"\n\
-                 }\n\
-                 readonly\n\
-                 transport file { path: \"{path}\" }\n\
-               }\n\
-             }\n\
-             fn reads_checkout() -> String {\n\
-               let read = Filesystem.Read(path: \"Cargo.toml\")\n\
-               read.content\n\
-             }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.reads_checkout\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("an effectful plain warm row must refuse, never store content-blind");
-        assert!(
-            err.contains("cause=PureProducerShareWarmDispatchedEffect")
-                && err.contains("producer=v2.workflow.floor_pure_producer_share.reads_checkout")
-                && err.contains("effects=1"),
-            "the refusal must name the cause, the row and the dispatch it saw: {err}"
-        );
-        let (stores, _) = v1_interpreter::cross_claim_pure_memo_counts();
-        assert_eq!(stores, 0, "nothing may be retained for the refused row");
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
-    /// The discriminating red for review 59035: before the fix this asserted
-    /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
-    /// produced an artifact it merely found. Running the install TWICE without clearing the
-    /// memos in between is what puts the second warm on that path, and nothing else in this
-    /// module reaches it — which is why the defect survived the first round of tests.
-    #[test]
-    fn a_second_warm_of_the_same_producer_reports_that_it_was_found_not_built() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             fn tm_local() -> Bool { true }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
-        )]);
-
-        let first = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("first install warms");
-        assert!(
-            matches!(
-                first[0].1.provenance,
-                SharedBuildProvenance::BuiltByPreparation
-            ),
-            "the first warm BUILDS it: {:?}",
-            first[0].1.provenance
-        );
-
-        // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
-        // whole subject of this test.
-        let second = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("second install re-warms");
-        match &second[0].1.provenance {
-            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
-                // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
-                // establishes presence and not cause. Asserting the exact string keeps a
-                // future edit from quietly upgrading it into a fabricated attribution.
-                assert_eq!(
-                    *triggered_by,
-                    "an-earlier-rostered-producer-in-this-warm-loop"
-                );
-            }
-            other => panic!("a warm that found the value must not claim it built it: {other:?}"),
-        }
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
     /// The fixture roster for the carried-input tests: one acquisition (`carrier_a`), one
     /// producer that reaches it nullary (`projection`), and a SECOND acquisition returning
     /// different content (`carrier_b`) which exists only so a test can bind a different carrier
@@ -12438,8 +12548,6 @@ mod pure_producer_share_tests {
                  fn carrier_b() -> String {{ \"content-B\" }}\n\
                  fn projection() -> String {{ concat(\"projected:\", carrier_a()) }}\n\
                  fn consumer() -> String {{ projection() }}\n\
-                 data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-                 data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
                  type CarriedInputDependence =\n\
                      BoundParameter {{ parameter: String }}\n\
                    | ImplicitAcquisition\n\
@@ -12481,7 +12589,8 @@ mod pure_producer_share_tests {
                    measurement: String\n\
                    next_trigger: String\n\
                  }}\n\
-                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+                 fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {{ [] }}\n",
                 dependence = dependence,
                 dependence_input = "v2.workflow.floor_pure_producer_share.carrier_a",
             ),
@@ -12658,8 +12767,6 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn carrier_a() -> String { \"content-A\" }\n\
              fn projection() -> String { concat(\"projected:\", carrier_a()) }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
              type CarriedInputDependence =\n\
                  BoundParameter { parameter: String }\n\
                | ImplicitAcquisition\n\
@@ -12694,7 +12801,8 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a row naming an unprepared input must stop the line");
@@ -12715,8 +12823,6 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn carrier_a(seed: String) -> String { concat(\"content-\", seed) }\n\
              fn projection() -> String { \"projected\" }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
              type CarriedInputDependence =\n\
                  BoundParameter { parameter: String }\n\
                | ImplicitAcquisition\n\
@@ -12751,52 +12857,14 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a non-nullary acquisition must stop the line");
         assert!(
             err.contains("PreparedEffectInputAcquisitionFailed") && err.contains("NULLARY"),
             "refusal must name the cause and the reason: {err}"
-        );
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// A warm row naming a producer the subject cannot resolve stops the line.
-    #[test]
-    fn a_stale_warm_row_stops_the_line() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_gone\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-",
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("a stale warm row must stop the line");
-        // The stop now lands at roster RESOLUTION (admission is by resolved declaration
-        // identity), before any warm runs — same line-stop, more precisely located.
-        assert!(
-            err.contains("PureProducerShareProducerUnresolved"),
-            "refusal must name the cause: {err}"
         );
         v1_interpreter::clear_cross_claim_pure_memos();
     }
