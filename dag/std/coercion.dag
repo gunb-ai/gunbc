@@ -2,7 +2,7 @@ module std.coercion
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef }
-import std.literal_elaboration { LiteralHomomorphism }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
 
 type TypeCheckpoint {
   dag_name: String
