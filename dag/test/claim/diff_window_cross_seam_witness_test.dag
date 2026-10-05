@@ -77,7 +77,8 @@ fn resolve_with_diff_window(
       base_ref: base_ref,
       push_before: none,
       head_sha: none,
-      diff_window: diff_window
+      diff_window: diff_window,
+      merge_group_base: none
     },
     push_parent_ref: gunbc_merge_target_ref,
     default_remote_name: gunbc_default_remote_name

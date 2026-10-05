@@ -237,13 +237,27 @@ fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> 
   let steps = srv3_os_install_actuate_workflow_steps()
   srv3_os_install_actuate_workflow_step_count() == 8
     && match steps.skip(n: 5).first() {
-      WorkflowOperatorApproval { request: r } =>
+      Present { value: WorkflowOperatorApproval { request: r } } =>
         r.escalation_id == srv3_boot_once_cd_authorization_request.escalation_id
-      _ => false
+      Present { value: WorkflowEnsureActuatorToolchain } => false
+      Present { value: WorkflowEnsureSeededInstallMedia } => false
+      Present { value: WorkflowBmcCredentialProbeAndResolve } => false
+      Present { value: WorkflowBmcwebSessionLogin } => false
+      Present { value: WorkflowNbdProxyServe } => false
+      Present { value: WorkflowBootOnceCd } => false
+      Present { value: WorkflowSolConsoleCapture } => false
+      Absent => false
     }
     && match steps.skip(n: 6).first() {
-      WorkflowBootOnceCd => true
-      _ => false
+      Present { value: WorkflowBootOnceCd } => true
+      Present { value: WorkflowEnsureActuatorToolchain } => false
+      Present { value: WorkflowEnsureSeededInstallMedia } => false
+      Present { value: WorkflowBmcCredentialProbeAndResolve } => false
+      Present { value: WorkflowBmcwebSessionLogin } => false
+      Present { value: WorkflowNbdProxyServe } => false
+      Present { value: WorkflowOperatorApproval { request: _ } } => false
+      Present { value: WorkflowSolConsoleCapture } => false
+      Absent => false
     }
 }
 
