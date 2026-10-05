@@ -18241,7 +18241,6 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
     }
     if compiler_pipeline_entry_is_native_claim(modules: modules) {
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
-      )
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
       return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
