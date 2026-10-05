@@ -548,30 +548,34 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // committed standing grant covers is admitted by that grant, never filed to the broker. The selection
 // decides the pattern from the effect's parameters with the ruling as the witness discharge, conditional on
 // its interlock (D0's durable claim, rostered in privileged_effect_interlocks); the census does not assert it.
-// THE OPERATOR'S 2026-10-03 RUNNER-LIFECYCLE RULING, VERBATIM, AND ITS SCOPE INTERPRETATION AS A
-// SEPARATE CITED FACT. The ruling text names registration and deregistration. Whether it also
-// covers dispatching the qualification floor is not in its words; that coverage is an
-// interpretation made by eager-gull-22 on 2026-10-04 and reported to the operator, who may narrow
-// it. The two are kept apart so narrowing the interpretation is an edit to one row that changes the
-// discharge of exactly the sites it names, and the ruling text is never rewritten to say more than
-// the operator said. The interlock is the host-generic unit hold (gunbc.managed_host_unit_hold
-// UnitHoldProof): the dispatch takes the proof and refuses unless it is the slot's own host's.
+// THE OPERATOR'S 2026-10-03 RUNNER-LIFECYCLE RULING, VERBATIM, AND THE OPERATOR'S 2026-10-05 SCOPE
+// RULING BESIDE IT. The 10-03 text names registration and deregistration and is never rewritten to
+// say more. Its scope beyond those words is the operator's own second ruling, decided through
+// escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb: no agent's reading discharges a site (review
+// 76234, DESIGN §5: approval is external to the diff, so the row cites where the operator decided).
+// covers is the single source of which census sites take the 10-03 discharge; narrowing it is an
+// edit to one list that changes the discharge of exactly the sites it names. The interlock is the
+// host-generic unit hold (gunbc.managed_host_unit_hold UnitHoldProof): the dispatch takes the proof
+// and refuses unless it is the slot's own host's.
 data runner_lifecycle_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "Runner registration and deregistration are PRE-APPROVED. Approval moves up to the workflow dispatcher (the fleet-converge run's own authorization). There is no per-registration approval step. Classify this through gunbc.auth.authorization_pattern_selection, recording that ruling rather than a per-effect ntfy approval. (operator decision, 2026-10-03)" as NonEmptyStr,
-  effect_subject: "ephemeral JIT runner lifecycle: registration, deregistration, and the dispatch of the qualification floor to the attempt's own runner" as NonEmptyStr,
+  effect_subject: "ephemeral JIT runner lifecycle: registration and deregistration" as NonEmptyStr,
   interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
 }
 
-type RulingScopeInterpretation {
+type OperatorScopeRuling {
   ruling: StandingDestructiveAuthorization
+  scope_text: NonEmptyStr
+  decided_on: NonEmptyStr
+  decided_through: NonEmptyStr
   covers: List<DeclarationRef>
-  interpreted_by: NonEmptyStr
-  interpreted_on: NonEmptyStr
-  standing: NonEmptyStr
 }
 
-data runner_lifecycle_ruling_scope_interpretation: RulingScopeInterpretation = RulingScopeInterpretation {
+data runner_lifecycle_scope_ruling: OperatorScopeRuling = OperatorScopeRuling {
   ruling: runner_lifecycle_operator_ruling,
+  scope_text: "decision: 'Yes, confirm the wider scope' (operator, 2026-10-05). Scope as relayed with it by quiet-stag-623 (msg_24760d96-078a-46cf-809e-2c92968dba31): the 2026-10-03 runner pre-approval covers registration, deregistration, the qualification CreateDispatch on that attempt's runner, and the per-attempt qualification/<attempt> branch create and delete" as NonEmptyStr,
+  decided_on: "2026-10-05" as NonEmptyStr,
+  decided_through: "escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb" as NonEmptyStr,
   covers: [
     decl_ref(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
     decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
@@ -579,16 +583,13 @@ data runner_lifecycle_ruling_scope_interpretation: RulingScopeInterpretation = R
     decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
     decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "remove_qualification_ref_pin"),
   ],
-  interpreted_by: "eager-gull-22" as NonEmptyStr,
-  interpreted_on: "2026-10-04" as NonEmptyStr,
-  standing: "covers register, deregister and the qualification dispatch, and -- as part of registration -- the create-once per-attempt branch refs/heads/qualification/<attempt> at the pinned revision, its removal on every exit, and pinning the DEDICATED qualification runner group's selected workflow to that branch; reported to the operator, who may narrow it" as NonEmptyStr,
 }
 
-// A SITE IS DISCHARGED BY THE RULING ONLY WHILE THE INTERPRETATION NAMES IT. Removing a site from
-// covers turns its discharge into NoWitnessDischarge, and the selection then decides it afresh.
-fn ruling_discharge_for(interpretation: RulingScopeInterpretation, site_ref: DeclarationRef) -> WitnessDischarge {
-  if declaration_ref_in_list(target: site_ref, refs: interpretation.covers) {
-    StandingRulingUnderInterlock { ruling: interpretation.ruling }
+// A SITE IS DISCHARGED BY THE RULING ONLY WHILE THE OPERATOR'S SCOPE RULING NAMES IT. Removing a site
+// from covers turns its discharge into NoWitnessDischarge, and the selection then decides it afresh.
+fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) -> WitnessDischarge {
+  if declaration_ref_in_list(target: site_ref, refs: scope.covers) {
+    StandingRulingUnderInterlock { ruling: scope.ruling }
   } else {
     NoWitnessDischarge
   }
@@ -657,7 +658,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
       witness_discharge: ruling_discharge_for(
-        interpretation: runner_lifecycle_ruling_scope_interpretation,
+        scope: runner_lifecycle_scope_ruling,
         site_ref: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
       ),
     },
@@ -674,7 +675,10 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
+      witness_discharge: ruling_discharge_for(
+        scope: runner_lifecycle_scope_ruling,
+        site_ref: site(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
+      ),
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -689,7 +693,10 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
+      witness_discharge: ruling_discharge_for(
+        scope: runner_lifecycle_scope_ruling,
+        site_ref: site(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "remove_qualification_ref_pin"),
+      ),
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,

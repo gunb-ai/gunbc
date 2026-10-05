@@ -89,9 +89,9 @@ import gunbc.runner.runner_qualification_ref_pin {
 // AUTHORIZATION. The dispatch runs under the gunbai-ci installation token the registration was
 // minted with (gunbc.github_effect_perform ControllerInstallationToken, App key read over WIF); the
 // credential is checked against the DispatchWorkflow effect (actions: write) before any request, and
-// a token for another App or installation refuses. The operator's 2026-10-03 ruling, as interpreted
-// to cover this dispatch (gunbc.auth.privileged_effect_census
-// runner_lifecycle_ruling_scope_interpretation), stands only beside its interlock:
+// a token for another App or installation refuses. The operator's 2026-10-03 ruling, whose scope the
+// operator confirmed on 2026-10-05 to cover this dispatch (gunbc.auth.privileged_effect_census
+// runner_lifecycle_scope_ruling), stands only beside its interlock:
 // dispatch_qualification_floor takes the host-generic unit hold proof
 // (gunbc.managed_host_unit_hold UnitHoldProof) and refuses unless it is the slot's own host's.
 
