@@ -1,0 +1,91 @@
+module v2.test.claim.emit.supplemental_bound_requirement_order
+
+import std.algebra { Cons, Empty }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.rust.derive_contracts { im_15_1_0_vector_clone_impl_authority }
+import v2.std.compilers.target_model {
+  TargetDeriveSupplementalGenericBoundContractAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementSet,
+  target_derive_supplemental_generic_bound_contract_requirements_empty,
+  target_derive_supplemental_generic_bound_requirement_set_empty,
+  target_derive_supplemental_generic_bound_requirement_nodes_for_contract,
+  target_collection_node_atom_identity,
+}
+import v2.std.node_query { find_named_child }
+import v2.std.node { Node }
+import v2.std.algebra { fold_list, length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// THE #12890 WARM-ROW SPECIMEN, AS A CONTROL AT ITS CAUSE (node adhoc-77383faf-d07). Two identical
+// runs of v2.extdeps.languages.rust_test rust_classical_not_ingested_target_model_staging produced
+// four different digests across four runs, because
+// target_derive_supplemental_generic_bound_requirement_nodes_for_contract built its Node child list
+// by folding map_keys -- HostUnspecifiedOrder, re-randomised per process. With sorted_map_keys the
+// pair was confirmed identical on srv1 (neat-boar-16: digest 3a21d8751a3a6e8a in both runs, all 264
+// warm rows equal, raw dump diff 0 outside binding_spellings).
+//
+// WHY ONE PROCESS DISCRIMINATES HERE. The claim drives the REAL producer over sixteen representation
+// parameters and asserts the emitted order is the canonical (sorted) one. Under host order a
+// sixteen-key map iterates in sorted order with probability about 1/16!, so a regression to map_keys
+// reds on essentially every run without needing a second process; the full producer is a 40-minute
+// floor run and is not the subject of a claim. The parameter is read back through the producer's own
+// field name and atom decoder, so the claim asserts the route, not a shape it assembled itself.
+
+fn sbro_requirement_set(authority: ExternalAuthority) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_requirement_set_empty(),
+    key: ^target_capability_clone,
+    value: TargetDeriveSupplementalGenericBoundRequirementAuthority { authority: authority }
+  )
+}
+
+data sbro_parameters: List<Symbol> = [
+  ^sbro_p09, ^sbro_p03, ^sbro_p14, ^sbro_p00, ^sbro_p11, ^sbro_p06, ^sbro_p01, ^sbro_p15,
+  ^sbro_p04, ^sbro_p12, ^sbro_p07, ^sbro_p02, ^sbro_p13, ^sbro_p05, ^sbro_p10, ^sbro_p08
+]
+
+data sbro_sorted_parameters: List<String> = [
+  "sbro_p00", "sbro_p01", "sbro_p02", "sbro_p03", "sbro_p04", "sbro_p05", "sbro_p06", "sbro_p07",
+  "sbro_p08", "sbro_p09", "sbro_p10", "sbro_p11", "sbro_p12", "sbro_p13", "sbro_p14", "sbro_p15"
+]
+
+fn sbro_contract() -> TargetDeriveSupplementalGenericBoundContractAuthority {
+  TargetDeriveSupplementalGenericBoundContractAuthority {
+    authority: im_15_1_0_vector_clone_impl_authority,
+    requirements: fold_list(
+      xs: sbro_parameters,
+      empty: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+      cons: fn(acc, p) {
+        map_insert(m: acc, key: p, value: sbro_requirement_set(authority: im_15_1_0_vector_clone_impl_authority))
+      }
+    )
+  }
+}
+
+fn sbro_parameter_of(node: Node) -> String {
+  match find_named_child(root: node, name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter) {
+    Accepted { value: parameter_node, diagnostics: _ } =>
+      match target_collection_node_atom_identity(node: parameter_node) {
+        Accepted { value: id, diagnostics: _ } => id as String
+        Rejected { diagnostics: _ } => "<undecodable>"
+      }
+    Rejected { diagnostics: _ } => "<missing>"
+  }
+}
+
+fn sbro_emitted_parameters() -> List<String> {
+  target_derive_supplemental_generic_bound_requirement_nodes_for_contract(contract_authority: sbro_contract())
+    |> map(n => sbro_parameter_of(node: n))
+}
+
+test fn requirement_nodes_are_emitted_in_canonical_parameter_order() -> Bool {
+  sbro_emitted_parameters() == sbro_sorted_parameters
+}
+
+// Positive control: every parameter is emitted exactly once, so the order claim above is about a
+// complete list and not about a truncated one that happens to be sorted.
+test fn every_requirement_is_emitted_once() -> Bool {
+  length(xs: sbro_emitted_parameters()) == 16
+}
