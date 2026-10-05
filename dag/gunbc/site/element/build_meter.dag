@@ -301,7 +301,7 @@ data build_meter_arm_class: String = "el-build-meter-arm"
 data build_meter_droop_class: String = "el-build-meter-droop"
 // The hover digest wraps at a short measure rather than running past the page: it names the failure
 // and the target the link opens, which can be longer than the strip.
-data build_meter_digest_measure: String = "32ch"
+data build_meter_digest_measure: String = "24ch"
 data build_meter_sleep_class: String = "el-build-meter-sleep"
 data build_meter_blink_class: String = "el-build-meter-blink"
 data build_meter_name_class: String = "el-build-meter-name"
