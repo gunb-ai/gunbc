@@ -1,0 +1,167 @@
+module gunbc.spark.glm53_staircase_load
+
+import std.types { String, List, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
+import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint }
+import gunbc.spark.serving_arm { serving_checkpoint_row, serving_runtime_row, runtime_pin_reference }
+import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
+import gunbc.spark.model_snapshot_acquisition { HubCachePlacement, snapshot_install_path }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing }
+import gunbc.spark.serving_load_probe { ClientRateQualificationFrontier, client_rate_qualification_frontier }
+import gunbc.spark.serving_load_runner { ServingLoadSubject, serving_load_records, serving_load_receipt_body, ServingLoadRunObserved, ServingLoadRunRefused }
+import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
+import gunbc.spark.glm_serving_load { glm_native_sweep_dataset, glm_native_bench_seed }
+import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlanned, GroupArmLaunchRefused, group_arm_launch_plan }
+import gunbc.spark.group_arm_serving_load { read_group_rank_pressure, load_step_result, load_step_verdict_wire, floor_and_ceiling_concurrencies, load_requests, load_trace_digest, calibration_receipt }
+import gunbc.spark.glm53_arm_staircase { Glm53StaircaseStep, glm53_step_inputs, glm53_step_wire, glm53_step_ceiling, glm53_step_title }
+import gunbc.spark.group_b_serving_capacity { group_b_experiment_subject_seats }
+
+// ── THE GLM STAIRCASE STEP'S LOAD: THE ARM'S INPUTS TO THE ONE LOAD PATH (deforking cut 8b) ──────────
+//
+// The head and the roster are the step's own plan's (rank zero serves the front door; every rank is
+// read), the container and alias are the staircase's names, the dataset and seed are the GLM arm's
+// existing rows (gunbc.spark.glm_serving_load glm_native_sweep_dataset, glm_native_bench_seed), and the
+// subject is derived from the step's launch profile by the constructor every arm uses. What is run is
+// gunbc.spark.serving_load_runner over gunbc.spark.group_arm_serving_load's rank reading and stop rules.
+//
+// THE PROTOCOL DOES NOT EXERCISE THE COLD WINDOW, and the receipt says so: 256 tokens in and 128 out
+// load the scheduler's seats, not 262144-token sequences, so a held step shows the ceiling's seats are
+// admitted and served without breaking the floor at short context -- not that 8 full-window sequences
+// fit. The cold window's own reading is the launch's memory wall and its allocation plan, not this load.
+data glm53_staircase_load_window_frontier: String = "the cold window (8 x 262144) is NOT exercised: the protocol is the GLM arm's 256-in/128-out shape, so this receipt reads seat admission and stability at short context; full-window fit is the memory wall's and the allocation plan's reading"
+
+data glm53_staircase_qualification_frontier: ClientRateQualificationFrontier = client_rate_qualification_frontier(
+  request_start_events: "per-request start events so ArrivalSkewObserved can be minted; SendAllImmediately stays ArrivalSkewUnread until that producer exists" as NonEmptyStr,
+  reserved_window: "subject-bound LeaseGrant and ExclusionEstablished over the staircase step; the step runs under Group A's D0 suspension for its successor key, which is the window's authority but not yet an exclusion receipt" as NonEmptyStr,
+  interval_occupancy: "occupancy as a time-series over the client interval; BoundaryOccupancyReceipt is two scrapes and cannot count positively" as NonEmptyStr,
+  serve_py_digest: "bind vllm_bench_serve_source_standing to the serve.py digest inside the produced GLM image, or an explicit policy that admits TranscribedUncited" as NonEmptyStr,
+)
+
+type Glm53StepLoad
+  = Glm53StepLoadReady { subject: ServingLoadSubject, performance: ServingPerformanceSubject, roster: List<HostIdentity>, inputs: GroupArmLaunchInputs }
+  | Glm53StepLoadRefused { cause: String }
+
+fn glm53_step_performance_subject(inputs: GroupArmLaunchInputs) -> ServingPerformanceSubject? {
+  match serving_runtime_row(r: inputs.assignment.runtime) {
+    Absent => none
+    Present { value: rt } => Present { value: serving_subject_for_launch(
+      checkpoint_revision: match serving_checkpoint_row(c: inputs.assignment.checkpoint) { Present { value: row } => Present { value: row.revision }  Absent => none },
+      runtime: inputs.assignment.runtime,
+      runtime_image_reference: runtime_pin_reference(p: rt.artifact.pin),
+      topology: inputs.assignment.topology,
+      profile: inputs.profile,
+      collective_transport: none,
+    ) }
+  }
+}
+
+fn glm53_step_load(s: Glm53StaircaseStep) -> Glm53StepLoad {
+  match glm53_step_inputs(s: s) {
+    Absent => Glm53StepLoadRefused { cause: "the step's profile did not derive" }
+    Present { value: inputs } =>
+      match group_arm_launch_plan(inputs: inputs) {
+        GroupArmLaunchRefused { causes: c } => Glm53StepLoadRefused { cause: join(["the step's plan refused, so it has no head or roster to load: ", join(c, "; ")], "") }
+        GroupArmLaunchPlanned { lines: ls, profile: _, master_endpoint: _ } =>
+          match first(filter(ls, l => l.node.node_rank == 0)) {
+            Absent => Glm53StepLoadRefused { cause: "the plan has no rank zero, so no rank serves the front door" }
+            Present { value: head } =>
+              match spark_reach_endpoint(host: head.node.host, path: ReachManagementLan) {
+                Absent => Glm53StepLoadRefused { cause: join(["the head ", head.node.host as String, " has no management-LAN endpoint"], "") }
+                Present { value: address } =>
+                  match glm53_step_performance_subject(inputs: inputs) {
+                    Absent => Glm53StepLoadRefused { cause: "the step's runtime has no row, so no subject derives" }
+                    Present { value: perf } => Glm53StepLoadReady {
+                      subject: ServingLoadSubject {
+                        host: head.node.host,
+                        host_address: address,
+                        group: inputs.assignment.group,
+                        container: inputs.container.container_name,
+                        base_url: join(["http://127.0.0.1:", to_string(inputs.profile.serve_port)], "") as NonEmptyStr,
+                        served_alias: inputs.profile.served_alias,
+                        standing: serving_subject_standing(
+                          subject: perf,
+                          believed: "the running Group A arm is believed to be this step's launch: its image is the step's runtime pin and its argv the step's profile; collective transport is unread" as NonEmptyStr,
+                          would_settle: "read the head container's image Id and launch argv on this incarnation, and the NCCL transport announcement on every rank" as NonEmptyStr,
+                        ),
+                        admission: AdmissionCostUnestablished { cause: "the GLM arm's per-request KV cost is unread: no cache-group roster is observed for this launch" as NonEmptyStr },
+                        qualification_frontier: glm53_staircase_qualification_frontier,
+                        principal: "group-A administrator" as NonEmptyStr,
+                        receipt_heading: join([glm53_step_title(s: s), " load"], "") as NonEmptyStr,
+                        receipt_path: "target/arm-group-load-receipt.txt",
+                      },
+                      performance: perf,
+                      roster: map(ls, l => l.node.host),
+                      inputs: inputs,
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn glm53_step_concurrencies(s: Glm53StaircaseStep) -> List<Nat> {
+  floor_and_ceiling_concurrencies(cold_floor: group_b_experiment_subject_seats, ceiling: glm53_step_ceiling(s: s))
+}
+
+fn glm53_step_tokenizer(inputs: GroupArmLaunchInputs) -> NonEmptyStr? {
+  match serving_checkpoint_row(c: inputs.assignment.checkpoint) {
+    Absent => none
+    Present { value: row } => Present { value: snapshot_install_path(placement: HubCachePlacement { cache_root: glm_native_weights_container_dir }, repo: row.repo, revision: row.revision) }
+  }
+}
+
+fn count_wire(n: Nat?) -> String {
+  match n { Present { value: v } => to_string(v)  Absent => "UNREAD" }
+}
+
+fn calibration_wire(r: WorkloadCalibrationReceipt) -> String {
+  join([
+    "calibration receipt: sustained_concurrency=", to_string(r.sustained_concurrency),
+    " preemptions=", count_wire(n: r.preemptions), " engine_restarts=", count_wire(n: r.engine_restarts),
+    " oom_events=", count_wire(n: r.out_of_memory_events), " stalls_or_lost=", count_wire(n: r.stalls_or_lost_requests),
+    " accepted_turns=", count_wire(n: r.accepted_turns), " realized_transport=UNREAD (a declared frontier: no NCCL transport reading is taken by this load)\n",
+  ], "")
+}
+
+// THE SESSION, ON THE HEAD (the bench and the scrape address its loopback). It loads the step at the
+// floor and at the ceiling, judges each, and folds the calibration receipt. Converged means every load
+// ran and was judged; whether the step HELD is in the receipt, and is what the next step's admission
+// will read once the receipt is recorded.
+fn glm53_step_load_session(s: Glm53StaircaseStep, run_id: NonEmptyStr, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
+  match glm53_step_load(s: s) {
+    Glm53StepLoadRefused { cause: c } => SparkBuildHostWork { receipt: join(["load REFUSED: ", c, "\n"], ""), converged: false }
+    Glm53StepLoadReady { subject: subject, performance: perf, roster: roster, inputs: inputs } =>
+      match glm53_step_tokenizer(inputs: inputs) {
+        Absent => SparkBuildHostWork { receipt: "load REFUSED: the checkpoint has no row, so no tokenizer path derives\n", converged: false }
+        Present { value: tokenizer } => {
+          let concurrencies = glm53_step_concurrencies(s: s)
+          let steps = load_requests(base_url: subject.base_url, model: subject.served_alias, tokenizer: tokenizer, dataset: glm_native_sweep_dataset, seed: glm_native_bench_seed, concurrencies: concurrencies)
+          match serving_load_records(ctx: ctx, subject: subject, steps: steps, host_read: fn(c) { read_group_rank_pressure(ctx: c, roster: roster, container: subject.container) }) {
+            ServingLoadRunRefused { reason: r } => SparkBuildHostWork { receipt: join(["load REFUSED: ", r, "\n"], ""), converged: false }
+            ServingLoadRunObserved { records: rs } => {
+              let results = map(rs, r => load_step_result(cold_floor: group_b_experiment_subject_seats, roster: roster, r: r))
+              let receipt = calibration_receipt(
+                subject: perf,
+                trace: load_trace_digest(dataset: glm_native_sweep_dataset, seed: glm_native_bench_seed, concurrencies: concurrencies),
+                run_id: run_id,
+                results: results,
+                evidence: join(["fleet-converge mode spark_arm_group_load, arm glm53-group-a, step ", glm53_step_wire(s: s) as String, ", run ", run_id as String], "") as NonEmptyStr)
+              let extra = join([
+                "step: ", glm53_step_wire(s: s) as String, " run_id: ", run_id as String, "\n",
+                join(map(results, r => load_step_verdict_wire(concurrency: r.concurrency, v: r.verdict)), ""),
+                calibration_wire(r: receipt),
+                "window: ", glm53_staircase_load_window_frontier, "\n",
+              ], "")
+              SparkBuildHostWork { receipt: serving_load_receipt_body(subject: subject, records: rs, extra: extra), converged: true }
+            }
+          }
+        }
+      }
+  }
+}
