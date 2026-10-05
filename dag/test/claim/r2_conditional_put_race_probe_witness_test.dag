@@ -1,0 +1,163 @@
+module test.claim.r2_conditional_put_race_probe
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import v2.std.optional { Present, Absent }
+import extdeps.object_storage { ObjectEntityTag, PutIfMatch }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.curl {
+  curl_sigv4_s3_parallel_upload_command, curl_parallel_transfer_report, S3ParallelUpload,
+  CurlParallelTransferReport, CurlParallelTransferReported, CurlParallelTransferUnreported,
+}
+import gunbc.cloudflare.r2_conditional_put_race_probe {
+  RaceRoundObservation, RaceRoundUnseeded, RaceRoundRaced,
+  RaceRoundConsistent, RaceRoundBothSucceeded, RaceRoundInconclusive, race_round_verdict,
+  RaceProbePassed, RaceProbeFalsified, RaceProbeInconclusive, race_probe_verdict,
+  race_writer_a, race_writer_b,
+}
+
+// Supplied values at the verdict's own interface: what curl reported for each writer is constructed
+// here. The real producer is run_r2_conditional_put_race_probe under the fleet-converge mode
+// r2_conditional_put_race_probe, whose receipt is the live reading; the route claim below runs the
+// real argv builder and the real line parser over the format that builder emits.
+
+fn rep(status: Int, pre: Int, start: Int) -> CurlParallelTransferReport {
+  CurlParallelTransferReported { status: status, pretransfer_us: pre, starttransfer_us: start }
+}
+
+fn raced(a: CurlParallelTransferReport, b: CurlParallelTransferReport) -> RaceRoundObservation { RaceRoundRaced { a: a, b: b } }
+
+fn won() -> CurlParallelTransferReport { rep(status: 200, pre: 1000, start: 9000) }
+fn lost() -> CurlParallelTransferReport { rep(status: 412, pre: 1100, start: 8000) }
+fn consistent_round() -> RaceRoundObservation { raced(a: won(), b: lost()) }
+
+fn rounds_of(o: RaceRoundObservation, n: Int, acc: List<RaceRoundObservation>) -> List<RaceRoundObservation> {
+  if n <= 0 { acc } else { rounds_of(o: o, n: n - 1, acc: concat(acc, [o])) }
+}
+
+fn is_consistent(o: RaceRoundObservation) -> Bool {
+  match race_round_verdict(observation: o) { RaceRoundConsistent => true  RaceRoundBothSucceeded => false  RaceRoundInconclusive { cause: _ } => false }
+}
+
+fn is_falsifying(o: RaceRoundObservation) -> Bool {
+  match race_round_verdict(observation: o) { RaceRoundBothSucceeded => true  RaceRoundConsistent => false  RaceRoundInconclusive { cause: _ } => false }
+}
+
+fn is_inconclusive(o: RaceRoundObservation) -> Bool {
+  match race_round_verdict(observation: o) { RaceRoundInconclusive { cause: _ } => true  RaceRoundConsistent => false  RaceRoundBothSucceeded => false }
+}
+
+test fn one_2xx_and_one_412_over_overlapping_requests_is_consistent_either_way_round() -> Bool {
+  is_consistent(o: raced(a: won(), b: lost())) && is_consistent(o: raced(a: lost(), b: won()))
+}
+
+test fn two_2xx_falsify_whether_or_not_the_requests_overlapped() -> Bool {
+  is_falsifying(o: raced(a: won(), b: rep(status: 204, pre: 1200, start: 8500)))
+    && is_falsifying(o: raced(a: rep(status: 200, pre: 10, start: 20), b: rep(status: 200, pre: 30, start: 40)))
+}
+
+test fn a_split_whose_requests_did_not_overlap_proves_nothing() -> Bool {
+  is_inconclusive(o: raced(a: rep(status: 200, pre: 10, start: 20), b: rep(status: 412, pre: 30, start: 40)))
+}
+
+test fn both_412_any_other_status_and_any_non_answer_are_inconclusive() -> Bool {
+  is_inconclusive(o: raced(a: lost(), b: lost()))
+    && is_inconclusive(o: raced(a: won(), b: rep(status: 503, pre: 1100, start: 8000)))
+    && is_inconclusive(o: raced(a: rep(status: 403, pre: 1000, start: 9000), b: lost()))
+    && is_inconclusive(o: raced(a: won(), b: CurlParallelTransferUnreported { cause: "no write-out line" }))
+    && is_inconclusive(o: RaceRoundUnseeded { cause: "seed answered 500" })
+}
+
+test fn every_declared_round_consistent_passes() -> Bool {
+  match race_probe_verdict(declared_rounds: 5, observations: rounds_of(o: consistent_round(), n: 5, acc: [])) {
+    RaceProbePassed { rounds: n } => n == 5
+    RaceProbeFalsified { rounds: _, witnesses: _ } => false
+    RaceProbeInconclusive { rounds: _, cause: _, witnesses: _ } => false
+  }
+}
+
+test fn one_double_success_falsifies_the_probe_and_names_its_round() -> Bool {
+  let obs = concat(concat(rounds_of(o: consistent_round(), n: 2, acc: []), [raced(a: won(), b: won())]), [raced(a: lost(), b: lost())])
+  match race_probe_verdict(declared_rounds: 4, observations: obs) {
+    RaceProbeFalsified { rounds: n, witnesses: ws } => n == 4 && length(ws) == 1 && (match ws.first() { Present { value: w } => w.round == 3  Absent => false })
+    RaceProbePassed { rounds: _ } => false
+    RaceProbeInconclusive { rounds: _, cause: _, witnesses: _ } => false
+  }
+}
+
+test fn one_inconclusive_round_or_a_short_run_or_no_rounds_never_passes() -> Bool {
+  let one_bad = match race_probe_verdict(declared_rounds: 3, observations: concat(rounds_of(o: consistent_round(), n: 2, acc: []), [RaceRoundUnseeded { cause: "no tag" }])) {
+    RaceProbeInconclusive { rounds: _, cause: _, witnesses: ws } => length(ws) == 1
+    RaceProbePassed { rounds: _ } => false
+    RaceProbeFalsified { rounds: _, witnesses: _ } => false
+  }
+  let short = match race_probe_verdict(declared_rounds: 3, observations: rounds_of(o: consistent_round(), n: 2, acc: [])) {
+    RaceProbeInconclusive { rounds: n, cause: _, witnesses: _ } => n == 2
+    RaceProbePassed { rounds: _ } => false
+    RaceProbeFalsified { rounds: _, witnesses: _ } => false
+  }
+  let empty = match race_probe_verdict(declared_rounds: 0, observations: []) {
+    RaceProbeInconclusive { rounds: _, cause: _, witnesses: _ } => true
+    RaceProbePassed { rounds: _ } => false
+    RaceProbeFalsified { rounds: _, witnesses: _ } => false
+  }
+  one_bad && short && empty
+}
+
+// ── ROUTE: the argv the run executes, and the parser over the format that argv carries ──────────
+
+fn parallel_argv() -> List<String> {
+  argv_words(command: curl_sigv4_s3_parallel_upload_command(
+    uploads: [
+      S3ParallelUpload { label: race_writer_a, url: "https://h/b/k", local_path: "/tmp/a", precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"t1\"" } } },
+      S3ParallelUpload { label: race_writer_b, url: "https://h/b/k", local_path: "/tmp/b", precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"t1\"" } } },
+    ],
+    netrc_path: "/tmp/n" as FilePath, sigv4_region: "auto",
+  ))
+}
+
+fn count_word(ws: List<String>, w: String) -> Int { length(filter(ws, x => x == w)) }
+
+test fn the_parallel_argv_races_both_writers_on_one_tag_through_one_netrc() -> Bool {
+  let ws = parallel_argv()
+  count_word(ws: ws, w: "-Z") == 1 && count_word(ws: ws, w: "--parallel-immediate") == 1
+    && count_word(ws: ws, w: "--next") == 1
+    && count_word(ws: ws, w: "If-Match: \"t1\"") == 2
+    && count_word(ws: ws, w: "/tmp/n") == 2
+    && count_word(ws: ws, w: "-w") == 2
+}
+
+fn substitute_line(format: String, code: String) -> String {
+  replace(s: replace(s: replace(s: format, from: "%\{http_code\}", to: code), from: "%\{time_pretransfer\}", to: "0.001000"), from: "%\{time_starttransfer\}", to: "0.009000")
+}
+
+fn write_out_after(ws: List<String>, label: NonEmptyStr) -> String {
+  match first(filter(ws, w => starts_with(s: w, prefix: concat(label as String, " ")))) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+test fn the_parser_reads_each_writer_from_the_format_the_builder_emits() -> Bool {
+  let ws = parallel_argv()
+  let stdout = concat(substitute_line(format: write_out_after(ws: ws, label: race_writer_b), code: "412"), substitute_line(format: write_out_after(ws: ws, label: race_writer_a), code: "200"))
+  let a_ok = match curl_parallel_transfer_report(stdout: stdout, label: race_writer_a) {
+    CurlParallelTransferReported { status: s, pretransfer_us: p, starttransfer_us: t } => s == 200 && p == 1000 && t == 9000
+    CurlParallelTransferUnreported { cause: _ } => false
+  }
+  let b_ok = match curl_parallel_transfer_report(stdout: stdout, label: race_writer_b) {
+    CurlParallelTransferReported { status: s, pretransfer_us: _, starttransfer_us: _ } => s == 412
+    CurlParallelTransferUnreported { cause: _ } => false
+  }
+  a_ok && b_ok
+}
+
+fn unrep(r: CurlParallelTransferReport) -> Bool {
+  match r { CurlParallelTransferUnreported { cause: _ } => true  CurlParallelTransferReported { status: _, pretransfer_us: _, starttransfer_us: _ } => false }
+}
+
+test fn a_missing_duplicated_or_000_writer_line_is_unreported() -> Bool {
+  unrep(r: curl_parallel_transfer_report(stdout: "writer-b 412 0.001000 0.002000\n", label: race_writer_a))
+    && unrep(r: curl_parallel_transfer_report(stdout: "writer-a 200 0.001000 0.002000\nwriter-a 412 0.001000 0.002000\n", label: race_writer_a))
+    && unrep(r: curl_parallel_transfer_report(stdout: "writer-a 000 0.001000 0.000000\n", label: race_writer_a))
+    && unrep(r: curl_parallel_transfer_report(stdout: "writer-a 200 0.001 0.002000\n", label: race_writer_a))
+}

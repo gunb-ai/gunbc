@@ -346,6 +346,162 @@ fn curl_sigv4_s3_download_command(
   )
 }
 
+// DeleteObject OVER THE SAME SIGV4 BRACKET. -X DELETE on the object URL; the store answers 204 for a
+// removed key and, on S3 and R2 alike, 204 for a key that was never there, so a 2xx is "the key is
+// absent now", never "this call removed it". Status only on stdout, as ReportStatus prints it.
+fn curl_sigv4_s3_delete_command(url: String, netrc_path: FilePath, sigv4_region: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: curl_program(),
+    arguments: [
+      "-fsS",
+      "--netrc-file", netrc_path as String,
+      "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
+      "-X", "DELETE",
+      "-o", "/dev/null",
+      "-w", curl_http_code_write_out_format,
+      url,
+    ],
+  )
+}
+
+// ── PARALLEL TRANSFERS IN ONE INVOCATION ────────────────────────────────────────────────────────
+//
+// -Z, --parallel performs the command line's transfers concurrently rather than in series (curl.se/docs/
+// manpage.html, "-Z, --parallel": "Added in 7.66.0"), and --parallel-immediate makes curl open a new
+// connection for every transfer at once instead of waiting to multiplex onto the first ("Added in
+// 7.68.0"). Both are GLOBAL options. -:, --next starts a fresh option set for the following URL, so
+// every per-transfer option -- the netrc, the SigV4 provider, the precondition header, -o and -w -- is
+// repeated after it, and every transfer reads the same netrc file.
+//
+// WHAT THIS GUARANTEES AND WHAT IT DOES NOT. curl starts every transfer in the same pass of its event
+// loop; it cannot make the SERVER see the requests overlap -- one TLS handshake can finish long before
+// the other, and a request can be answered before its sibling is even sent. So a parallel transfer
+// reports its own timing, and a consumer that needs the requests to have overlapped must check it.
+// The timing variables are each transfer's own clock: time_pretransfer is the moment its request was
+// about to be sent, time_starttransfer the moment its first response byte arrived (manpage, "-w,
+// --write-out"), both in seconds. Their common origin is the shared start of the parallel pass -- a
+// bet stated here, not a reading of curl's source -- so overlap is decided on that origin.
+data curl_parallel_min_version: VersionConstraint = ">= 7.68"
+
+data curl_parallel_cli_tool: CliTool = CliTool {
+  program: curl_program(),
+  min_version: Present { value: curl_parallel_min_version },
+  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
+}
+
+// ONE TRANSFER OF A PARALLEL UPLOAD. label is printed at the head of the transfer's write-out line, so
+// a status is attributable to the transfer it belongs to even though -Z prints in completion order and
+// every transfer may share one URL; a label must be one word.
+type S3ParallelUpload {
+  label: NonEmptyStr
+  url: String
+  local_path: String
+  precondition: ObjectPutPrecondition
+}
+
+// The per-transfer line: label, status, then the two timing variables. %{http_code} is 000 when no
+// response was received.
+fn curl_parallel_write_out_format(label: NonEmptyStr) -> String {
+  join([label as String, " %\{http_code\} %\{time_pretransfer\} %\{time_starttransfer\}\n"], "")
+}
+
+fn curl_sigv4_s3_parallel_upload_arguments(upload: S3ParallelUpload, netrc_path: FilePath, sigv4_region: NonEmptyStr) -> List<String> {
+  concat(
+    [
+      "-fsS",
+      "--netrc-file", netrc_path as String,
+      "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
+      "-o", "/dev/null",
+      "-w", curl_parallel_write_out_format(label: upload.label),
+    ],
+    concat(curl_put_precondition_arguments(precondition: upload.precondition), ["-T", upload.local_path, upload.url]),
+  )
+}
+
+fn curl_sigv4_s3_parallel_upload_command(uploads: List<S3ParallelUpload>, netrc_path: FilePath, sigv4_region: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: curl_program(),
+    arguments: concat(
+      ["-Z", "--parallel-immediate"],
+      fold(uploads, init: [], f: (acc, u) => concat(
+        if length(acc) == 0 { acc } else { concat(acc, ["--next"]) },
+        curl_sigv4_s3_parallel_upload_arguments(upload: u, netrc_path: netrc_path, sigv4_region: sigv4_region),
+      )),
+    ),
+  )
+}
+
+// WHAT ONE LABELLED TRANSFER REPORTED. Timings are whole microseconds: curl prints them with six
+// decimals. Exactly one line must carry the label; none, two, a 000 status or an unparseable field is
+// unreported, never a guess.
+type CurlParallelTransferReport
+  = CurlParallelTransferReported { status: HttpStatus, pretransfer_us: Int, starttransfer_us: Int }
+  | CurlParallelTransferUnreported { cause: NonEmptyStr }
+
+fn curl_word_at(words: List<String>, index: Int) -> String {
+  match words.skip(n: index).first() {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+fn curl_seconds_as_microseconds(text: String) -> Int? {
+  let parts = split(s: text, delimiter: ".")
+  if length(parts) != 2 {
+    none
+  } else {
+    let frac = curl_word_at(words: parts, index: 1)
+    match parse_int(s: curl_word_at(words: parts, index: 0)) {
+      Absent => none
+      Present { value: whole } =>
+        if string_length(s: frac) != 6 { none } else {
+          match parse_int(s: frac) {
+            Absent => none
+            Present { value: f } => Present { value: whole * 1000000 + f }
+          }
+        }
+    }
+  }
+}
+
+fn curl_parallel_report_of_fields(fields: List<String>) -> CurlParallelTransferReport {
+  if length(fields) != 4 {
+    CurlParallelTransferUnreported { cause: "the transfer's write-out line does not have four fields" }
+  } else {
+    let code = curl_word_at(words: fields, index: 1)
+    match parse_int(s: code) {
+      Absent => CurlParallelTransferUnreported { cause: join(["the transfer printed no HTTP status: ", code], "") as NonEmptyStr }
+      Present { value: n } =>
+        match http_status_of(n: n) {
+          Absent => CurlParallelTransferUnreported { cause: join(["no HTTP status was received (", code, ")"], "") as NonEmptyStr }
+          Present { value: status } =>
+            match curl_seconds_as_microseconds(text: curl_word_at(words: fields, index: 2)) {
+              Absent => CurlParallelTransferUnreported { cause: "the transfer's time_pretransfer did not parse" }
+              Present { value: pre } =>
+                match curl_seconds_as_microseconds(text: curl_word_at(words: fields, index: 3)) {
+                  Absent => CurlParallelTransferUnreported { cause: "the transfer's time_starttransfer did not parse" }
+                  Present { value: start } => CurlParallelTransferReported { status: status, pretransfer_us: pre, starttransfer_us: start }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn curl_parallel_transfer_report(stdout: String, label: NonEmptyStr) -> CurlParallelTransferReport {
+  let lines = filter(map(split(s: stdout, delimiter: "\n"), l => split(s: trim(s: l), delimiter: " ")), ws => curl_word_at(words: ws, index: 0) == label as String)
+  if length(lines) == 0 {
+    CurlParallelTransferUnreported { cause: join(["no write-out line for transfer ", label as String], "") as NonEmptyStr }
+  } else if length(lines) > 1 {
+    CurlParallelTransferUnreported { cause: join(["more than one write-out line for transfer ", label as String], "") as NonEmptyStr }
+  } else {
+    match lines.first() {
+      Present { value: fields } => curl_parallel_report_of_fields(fields: fields)
+      Absent => CurlParallelTransferUnreported { cause: join(["no write-out line for transfer ", label as String], "") as NonEmptyStr }
+    }
+  }
+}
+
 // CURL'S EXIT STATUS AS THE UPSTREAM NAMES IT (curl.se/docs/manpage.html, EXIT CODES). Only the
 // codes a caller acts on are named; any other nonzero status is carried as the number it was, never
 // guessed into a named kind. Zero means curl completed the transfer -- with -f absent, an HTTP
