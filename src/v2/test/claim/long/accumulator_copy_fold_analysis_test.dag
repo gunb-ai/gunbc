@@ -266,8 +266,22 @@ fn edge_is_seq_left(e: Edge) -> Bool {
   }
 }
 
+// THE HEAD POSITION ON EITHER ROUTE: the surface call's sequence-left projection, and the lowered
+// call's operator -- a Positional edge (v2.compiler.body_lowering_fold body_lower_call_arg_edge puts
+// every NAMED actual on an Authored edge, so in this specimen `mystery_op` is the only positional atom).
+// The sole-body fold lowers to a seam Loop, so the surface form never reaches the lens and a mutation
+// keyed on sequence-left alone rewrote nothing: the witness read the intact head and was red for the
+// fixture, not for the lens.
+fn edge_is_head_slot(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    StructuralLabel { label: _ } => false
+    Authored { name: _ } => edge_is_seq_left(e: e)
+  }
+}
+
 fn rebuilt_edge(e: Edge) -> Edge {
-  if edge_is_seq_left(e: e) {
+  if edge_is_head_slot(e: e) {
     if edge_target_is_mystery(e: e) {
       Edge { label: e.label, target: opaque_head_node() }
     } else {
@@ -307,8 +321,8 @@ test fn named_step_fold_refuses_accumulator_unread() -> Bool {
   }
 }
 
-// RED, rostered at gunbc.explicit_witness_admission: the planted copy after a `let` is admitted in
-// silence. Greens with no edit when the fold site reaches the lens at this position.
+// REGRESSION CONTROL (was a rostered RED): the planted copy after a `let`. Body lowering now carries
+// the fold site at this position, so the planted copy reaches the lens and mints a suspect.
 test fn let_prefixed_fold_copy_is_caught() -> Bool {
   match findings_of(source_text: let_prefixed_planted_snippet, file: ^letplanted_file) {
     Absent => false
@@ -316,7 +330,7 @@ test fn let_prefixed_fold_copy_is_caught() -> Bool {
   }
 }
 
-// RED, rostered at gunbc.explicit_witness_admission: the same planted copy in a match arm.
+// REGRESSION CONTROL (was a rostered RED): the same planted copy in a match arm.
 test fn match_arm_fold_copy_is_caught() -> Bool {
   match findings_of(source_text: match_arm_planted_snippet, file: ^matchplanted_file) {
     Absent => false

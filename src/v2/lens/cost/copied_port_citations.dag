@@ -13,6 +13,7 @@ import v2.lens.cost.copied_port_derivation {
   copied_port_index_from_registry
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
+import v2.std.collection { optional_absent, optional_present }
 import v2.std.optional {
   Absent,
   Optional,
@@ -192,18 +193,18 @@ fn citation_arrow_two_param_loop(
 data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^list_append,
   arrow: citation_arrow_two_param_loop(
-    left_sym: ^copied_port_citation_list_append_left,
-    right_sym: ^copied_port_citation_list_append_right,
-    measure: citation_param_ref(sym: ^copied_port_citation_list_append_right)
+    left_sym: ^left,
+    right_sym: ^right,
+    measure: citation_param_ref(sym: ^right)
   )
 }
 
 data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^list_snoc_item,
   arrow: citation_arrow_two_param_loop(
-    left_sym: ^copied_port_citation_list_snoc_left,
-    right_sym: ^copied_port_citation_list_snoc_right,
-    measure: citation_param_ref(sym: ^copied_port_citation_list_snoc_left)
+    left_sym: ^xs,
+    right_sym: ^item,
+    measure: citation_param_ref(sym: ^xs)
   )
 }
 
@@ -234,6 +235,24 @@ fn copied_port_derived_registry_rows() -> List<CopiedPortFact> {
       match derive_copied_port_fact(combiner: cite.combiner, arrow: cite.arrow) {
         Absent => acc
         Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
+      }
+    }
+  )
+}
+
+// THE CITED ARROW OF A COMBINER, the declared signature a call to it binds against. Its parameter labels
+// are the real declaration's (std.algebra list_append(left, right), list_snoc_item(xs, item)), so a named
+// actual binds to the parameter it names through v2.std.arrow_signature application_binding_plan.
+// map_merge has no .dag declaration to take names from; its citation keeps its own labels, so a NAMED
+// call to it binds no parameter and refuses rather than binding a guessed one.
+fn copied_port_citation_arrow_of(combiner: Symbol) -> Optional<Node> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: optional_absent(),
+    cons: fn(acc, cite) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => if cite.combiner == combiner { optional_present(value: cite.arrow) } else { acc }
       }
     }
   )
