@@ -1,5 +1,6 @@
 module v2.compiler.body_lowering_fold
 
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import v2.compiler.service_realization { realization_refusal_diagnostic, service_realization_refusal }
 import v2.std.service_realization_labels {
   realization_arm_doc_label,
@@ -6657,19 +6658,40 @@ fn body_lower_string_template_chain(parts: List<StringTemplatePart>, shell: Node
         match chain {
           Absent => outcome_accepted(value: optional_present(value: operand))
           Present { value: left } =>
-            outcome_accepted(value: optional_present(value: node_with_occurrence_id(
-              kind: ComputationNode { behavior: Transform },
-              children: [
-                Edge { label: Positional, target: body_lower_param_ref_atom(source: shell, identity: ^concat) },
-                Edge { label: Positional, target: left },
-                Edge { label: Positional, target: operand }
-              ],
-              occurrence_id: body_lower_string_template_part_source(part: part).occurrence_id
+            outcome_accepted(value: optional_present(value: body_lower_string_template_concat(
+              left: left,
+              operand: operand,
+              cause: body_lower_string_template_part_source(part: part)
             )))
         }
       })
     })
   })
+}
+
+// THE GENERATED CONCAT AND ITS OPERATOR ARE PENDING MEMBERS CAUSED BY THE PART THEY APPEND. They stand
+// for no authored text of their own, and reusing the part's MINTED id would put two nodes under one
+// authored occurrence, which normalize refuses (normalize_reason_minted_occurrence_duplicated). So
+// each is OccurrencePending { caused_by: <the part's id> } (std.occurrence_identity, the lowering
+// member arm): normalization's final pass allocates it a fresh id and records the cause, and a
+// refusal located at it resolves through that cause to the part's source span. A part with no minted
+// id (synthetic) leaves the concat synthetic.
+fn body_lower_string_template_concat(left: Node, operand: Node, cause: Node) -> Node {
+  let occurrence = match cause.occurrence_id {
+    OccurrenceMinted { id: id } => OccurrencePending { caused_by: id }
+    OccurrenceProjected { id: id, caused_by: _ } => OccurrencePending { caused_by: id }
+    OccurrencePending { caused_by: c } => OccurrencePending { caused_by: c }
+    OccurrenceSynthetic => OccurrenceSynthetic
+  }
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^concat } }, children: [], occurrence_id: occurrence) },
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: operand }
+    ],
+    occurrence_id: occurrence
+  )
 }
 
 // EACH CONCAT IS LOCATED AT THE PART IT APPENDS. infer locates an argument refusal at its

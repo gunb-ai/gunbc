@@ -3,10 +3,11 @@ module v2.test.claim.compiler.string_template_hole_type
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import v2.std.diagnostic { Accepted, ByteRange, Locus, NodeLocus, Rejected, Textual, WholeFile, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
-import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
-import v2.std.optional { Absent, Present }
+import v2.std.provenance { SpanIndex, span_index_textual_locus_optional }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol }
+import v2.std.node { Node, Symbol }
 import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -68,10 +69,21 @@ fn sth_textual_starts_within(locus: Locus, start: Int, end: Int) -> Bool {
   }
 }
 
+// The refused application is a lowering member: its occurrence was allocated at normalize and
+// records the hole that caused it. The authored occurrence a reader is pointed at is that cause.
+fn sth_authored_cause_optional(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: cause } => Present { value: cause.occurrence }
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrencePending { caused_by: cause } => Present { value: cause }
+    OccurrenceSynthetic => Absent
+  }
+}
+
 fn sth_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> Bool {
   match at {
     NodeLocus { anchor: a } =>
-      match node_occurrence_id_optional(node: a.at) {
+      match sth_authored_cause_optional(node: a.at) {
         Present { value: id } =>
           match span_index_textual_locus_optional(index: index, id: id) {
             Present { value: locus } => sth_textual_starts_within(locus: locus, start: start, end: end)
