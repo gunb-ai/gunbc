@@ -1,0 +1,136 @@
+module v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skeleton
+
+// RED FOR THE MARSHAL'S LIVE-REFERENCE DEFECT (owning link: coproduct_reflection.rs
+// node_local_reference_name, the permissive companion of node_references_param).
+//
+// The skeleton marshal's let-liveness set is fed by node_local_reference_name, which counted only
+// `ExprVar` and `ExprCall` as value reads. A FIELD projection (`read.success`) reads its base just
+// as much, but did not count -- so a `let read = Filesystem.Read(path: p)` whose bound record is
+// only projected fell out of the live set, the let was treated as dead, and its RHS -- the raw wire
+// read itself -- was grafted OUT of the body skeleton. FnArrowDecl.output and the .dag decl facts
+// are built by that same marshal (marshal_fn_body_skeleton), so this shape vanished from the only
+// body grain the .dag substrate exposes, for EVERY consumer of marshal_fn_body_skeleton and
+// fn_arrow_output_skeleton -- not for any one lens.
+//
+// The fix under test: a field projection counts as a live reference to its base (the function's own
+// documented contract is "every value read"), resolved through nested projections to the base
+// binding's authored name. Atom emission is untouched -- identity atoms stay on the strict
+// node_references_param -- so reachability queries see no new atoms; only previously dropped
+// let-RHS structure comes back.
+//
+// THE DISCRIMINATOR is the specimen's CONTINUATION residue, not just the wire call: a bare
+// `Filesystem.Read` call node could in principle appear for other reasons, so the claim also
+// requires the downstream `trim` call to be present in the same skeleton. Today BOTH are absent,
+// because the whole let (RHS and continuation) drops as dead.
+//
+// The positive control is the mirror shape: the same bound record passed WHOLE to a receiver. Its
+// let was always live by the old analysis too, so its wire read and its consumption residue must be
+// present both before and after the fix -- proving the fix neither manufactured the specimen's
+// residue nor suppressed the control's.
+
+import std.algebra { trim }
+import v2.std.algebra { list_find_first }
+import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.fn_index { atom_identities_in_subtree, fn_arrow_decl_facts_live }
+import v2.std.optional { Absent, Optional, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadOutcome }
+
+data por_pool_roots: List<String> = []
+data por_pool_files: List<String> = [
+  "src/v2/test/claim/body_lowering/projected_only_let_survives_in_fn_arrow_skeleton_test.dag",
+]
+
+// THE SPECIMEN (the red): a bound wire read whose record is used only through field projections.
+fn por_projected_only_record(p: String) -> String {
+  let read = Filesystem.Read(path: p)
+  if read.success {
+    trim(read.content)
+  } else {
+    ""
+  }
+}
+
+// POSITIVE CONTROL: the same bound record passed WHOLE to a receiver. Always live, old and new.
+fn por_record_passed_whole(p: String) -> String {
+  let read = Filesystem.Read(path: p)
+  por_sink(r: read)
+}
+
+fn por_sink(r: FilesystemReadOutcome) -> String {
+  if r.success {
+    r.content
+  } else {
+    ""
+  }
+}
+
+data por_wire_callee_id: String = "extdeps.filesystem.filesystem_io::Filesystem.Read"
+data por_trim_callee_id: String = "std.algebra::trim"
+data por_sink_callee_id: String =
+  "v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skeleton::por_sink"
+
+fn por_symbol_seen(symbols: List<Symbol>, callee_id: String) -> Bool {
+  match list_find_first(xs: symbols, predicate: fn(s) { symbol_lexeme(sym: s) == callee_id }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn por_projected_only_let_survives_in_fn_arrow_skeleton() -> ProcessExit {
+  let por_decl_facts = fn_arrow_decl_facts_live(pool_roots: por_pool_roots, pool_files: por_pool_files)
+  let por_projected_pick = list_find_first(
+    xs: por_decl_facts,
+    predicate: fn(d) { d.name == "por_projected_only_record" },
+  )
+  let por_whole_pick = list_find_first(
+    xs: por_decl_facts,
+    predicate: fn(d) { d.name == "por_record_passed_whole" },
+  )
+  match por_projected_pick {
+    Present { value: por_pd } =>
+      match por_whole_pick {
+        Present { value: por_wd } => {
+          let por_projected_ids = atom_identities_in_subtree(node: por_pd.output)
+          let por_whole_ids = atom_identities_in_subtree(node: por_wd.output)
+          let por_specimen_has_wire = por_symbol_seen(symbols: por_projected_ids, callee_id: por_wire_callee_id)
+          let por_specimen_has_trim = por_symbol_seen(symbols: por_projected_ids, callee_id: por_trim_callee_id)
+          let por_control_has_wire = por_symbol_seen(symbols: por_whole_ids, callee_id: por_wire_callee_id)
+          let por_control_has_sink = por_symbol_seen(symbols: por_whole_ids, callee_id: por_sink_callee_id)
+          if por_control_has_wire {
+            if por_control_has_sink {
+              if por_specimen_has_wire {
+                if por_specimen_has_trim {
+                  ExitSuccess
+                } else {
+                  exit_failure(
+                    reason: "specimen skeleton carries the wire read but lost its continuation residue (trim); the projected-only let is only half-marshalled",
+                  )
+                }
+              } else {
+                exit_failure(
+                  reason: "RED: a projected-only let (bound wire record used only through field projections) was dropped from the fn-arrow skeleton as dead -- no wire read residue in its own body grain",
+                )
+              }
+            } else {
+              exit_failure(
+                reason: "control skeleton lacks the por_sink callee; the whole-record control's consumption is not visible, so the discriminator proves nothing",
+              )
+            }
+          } else {
+            exit_failure(
+              reason: "control skeleton lacks the wire read; the whole-record let itself is not live, so the enumeration route is broken",
+            )
+          }
+        }
+        Absent =>
+          exit_failure(
+            reason: "self-enumeration did not find por_record_passed_whole in this module's own decl facts",
+          )
+      }
+    Absent =>
+      exit_failure(
+        reason: "self-enumeration did not find por_projected_only_record in this module's own decl facts",
+      )
+  }
+}
