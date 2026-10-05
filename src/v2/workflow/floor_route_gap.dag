@@ -2253,8 +2253,8 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
 
 // THE ADMISSION PARTITION, MODELED ON THE AUTHORITY THAT OWNS THE REGISTER. This is the single
 // implementation of the route-gap admission decision: the required floor's runner marshals the
-// run's real values -- the identities suppression removed, each with the label of the ground
-// that removed it, and the discovery walk's declared-identity index -- into this relation
+// run's real values -- the identities suppression removed, each with the ground that removed
+// it, and the discovery walk's declared-identity index -- into this relation
 // through the hermetic frame it already holds. Nothing re-derives the membership test in Rust:
 // a runner-side copy would be a second authority over one decision, the shape the changed-
 // selection capability documented at v2.workflow.required_floor's dissolve-on note retires.
@@ -2265,7 +2265,19 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
 // census roster and this call is not per claim. If the roster or the gate grows the join back
 // into a cost, the corpus census's served-once shape (floor_pure_producer_share) is the named
 // retirement.
-type FloorRouteGapSuppressedRow = { identity: String, ground: String }
+// THE GROUND IS A DECLARED COPRODUCT, NOT A LABEL. Suppression grounds are a closed set -- the
+// floor removes a row as outside the required gate, as withheld cost debt, or as declined for
+// want of a CI wet lane -- so the field carries that set, and a fabricated ground is a
+// construction of a type the runner cannot produce, not a free string. The arms are spelled
+// arm-for-arm after the floor's suppression vocabulary as the seed realizes it
+// (`v1.expected_red_roster_join`'s suppression ground, generated into the runner as a Rust enum
+// whose marshal decodes it here by spelling): the eval universe's discovery roots are `dag` +
+// `src/v2`, so the seed-side type cannot be imported here, and name-alignment is what keeps the
+// two spellings one vocabulary -- a rename on either side breaks the pairing witness
+// (src/v2/test/fixture/route_gap_admission_partition.dag) instead of forking silently.
+type FloorRouteGapSuppressionGround = OutsideRequiredGate | WithheldCostDebt | DeclinedNoCiWetLane
+
+type FloorRouteGapSuppressedRow = { identity: String, ground: FloorRouteGapSuppressionGround }
 
 // THE TWO ARMS AT IDENTITY GRAIN. A declared suppressed row is MEASUREMENT: it keeps its ground
 // and the run names it, and for identities whose module the 2026-08-29 gate cut withdrew that
@@ -2273,7 +2285,7 @@ type FloorRouteGapSuppressedRow = { identity: String, ground: String }
 // join, so no other guard can see it, and an enrollment nothing can observe must never pass as
 // a count.
 type FloorRouteGapAdmissionRow =
-    FloorRouteGapAdmissionMeasuredRow { identity: String, ground: String }
+    FloorRouteGapAdmissionMeasuredRow { identity: String, ground: FloorRouteGapSuppressionGround }
   | FloorRouteGapAdmissionRefusedRow { identity: String }
 
 fn floor_route_gap_string_eq(left: String, right: String) -> Bool {

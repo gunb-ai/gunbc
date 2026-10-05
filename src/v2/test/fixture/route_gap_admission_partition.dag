@@ -16,11 +16,13 @@ import v2.workflow.floor_route_gap {
 // arms at identity grain. The rows span both arms and both grounds the runner produces: a
 // declared suppressed row whose module the gate cut withdrew (measured, ground kept), a
 // cost-debt-withheld row the tree declares (measured, ground kept), and an enrollment the tree
-// does not declare -- renamed, deleted, or fabricated (refused; the wall).
+// does not declare -- renamed, deleted, or fabricated (refused; the wall). Grounds are the
+// declared coproduct arms (`v2.workflow.floor_route_gap`'s `FloorRouteGapSuppressionGround`),
+// bound by the field's declared type -- the same construction route the runner's marshal takes.
 data route_gap_partition_fixture_suppressed: List<FloorRouteGapSuppressedRow> = [
-  FloorRouteGapSuppressedRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: "outside_required_gate" },
-  FloorRouteGapSuppressedRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: "withheld_cost_debt" },
-  FloorRouteGapSuppressedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name", ground: "outside_required_gate" }
+  FloorRouteGapSuppressedRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: OutsideRequiredGate },
+  FloorRouteGapSuppressedRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: WithheldCostDebt },
+  FloorRouteGapSuppressedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name", ground: OutsideRequiredGate }
 ]
 
 data route_gap_partition_fixture_declared: List<String> = [
@@ -29,8 +31,8 @@ data route_gap_partition_fixture_declared: List<String> = [
 ]
 
 data route_gap_partition_fixture_expected: List<FloorRouteGapAdmissionRow> = [
-  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: "outside_required_gate" },
-  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: "withheld_cost_debt" },
+  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: OutsideRequiredGate },
+  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: WithheldCostDebt },
   FloorRouteGapAdmissionRefusedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name" }
 ]
 

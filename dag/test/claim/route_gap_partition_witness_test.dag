@@ -6,6 +6,7 @@ import v2.workflow.floor_route_gap {
   FloorRouteGapAdmissionRow,
   FloorRouteGapAdmissionMeasuredRow,
   FloorRouteGapAdmissionRefusedRow,
+  FloorRouteGapSuppressionGround,
   floor_route_gap_admission_partition,
 }
 import v2.test.fixture.route_gap_admission_partition {
@@ -22,12 +23,17 @@ import v2.test.fixture.route_gap_admission_partition {
 // the run site's only route to the answer. This claim drives that surface over the shared
 // fixture (src/v2/test/fixture/route_gap_admission_partition.dag) and asserts both arms at
 // identity grain on the floor: a declared suppressed row comes back MEASURED with its ground
-// kept, and a misnamed enrollment -- renamed, deleted, or fabricated -- comes back REFUSED, the
-// wall's discriminating arm. Substrate inputs only: constructed lists through the modeled
+// kept (the declared `FloorRouteGapSuppressionGround` arms, not free labels), and a misnamed
+// enrollment -- renamed, deleted, or fabricated -- comes back REFUSED, the wall's discriminating
+// arm. Substrate inputs only: constructed lists through the modeled
 // relation; no host effect, no service, no wet lane. The seed's pairing witness in
 // `required_floor_runner` evaluates the same fixture rows through `run_in_context_with_args`,
 // the real call path the run site uses.
-fn measured_row_holds(row: FloorRouteGapAdmissionRow, identity: String, ground: String) -> Bool {
+fn measured_row_holds(
+  row: FloorRouteGapAdmissionRow,
+  identity: String,
+  ground: FloorRouteGapSuppressionGround
+) -> Bool {
   match row {
     FloorRouteGapAdmissionMeasuredRow { identity: i, ground: g } => i == identity && g == ground
     FloorRouteGapAdmissionRefusedRow { identity: _ } => false
@@ -44,7 +50,7 @@ fn refused_row_holds(row: FloorRouteGapAdmissionRow, identity: String) -> Bool {
 fn count_measured_holding(
   rows: List<FloorRouteGapAdmissionRow>,
   identity: String,
-  ground: String,
+  ground: FloorRouteGapSuppressionGround,
 ) -> Int {
   fold(rows, init: 0, f: fn(acc, r) {
     if measured_row_holds(row: r, identity: identity, ground: ground) {
@@ -77,12 +83,12 @@ test fn the_partition_measures_a_declared_suppressed_row_with_its_ground_kept() 
     && count_measured_holding(
       rows: decided,
       identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
-      ground: "outside_required_gate"
+      ground: OutsideRequiredGate
     ) == 1
     && count_measured_holding(
       rows: decided,
       identity: "test.claim.parse_test.parse_witness_floor_holds",
-      ground: "withheld_cost_debt"
+      ground: WithheldCostDebt
     ) == 1
 }
 

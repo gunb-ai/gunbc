@@ -278,20 +278,38 @@ pub(crate) const ROUTE_GAP_ADMISSION_PARTITION_ENTRY: &str =
     "v2.workflow.floor_route_gap.floor_route_gap_admission_partition";
 
 /// THE MARSHAL the run site and the pairing witness share: a suppressed row reaches the modeled
-/// relation as a `FloorRouteGapSuppressedRow` record carrying its identity and the label of the
-/// ground that removed it, and nothing else. One marshal, so the shape cannot fork between the
-/// real roster and the fixture.
+/// relation as a `FloorRouteGapSuppressedRow` record carrying its identity and its ground — the
+/// runner's suppression enum decoded into the relation's declared coproduct
+/// (`v2.workflow.floor_route_gap`'s `FloorRouteGapSuppressionGround`), arm-for-arm — and
+/// nothing else. One marshal, so the shape cannot fork between the real roster and the fixture.
 pub(crate) fn route_gap_suppressed_rows_value(
     ctx: &v1_interpreter::InterpContext,
-    rows: &[(String, String)],
+    rows: &[(String, SuppressionGround)],
 ) -> v1_interpreter::Value {
+    // The declared arms are spelled arm-for-arm after the runner's suppression enum, so this
+    // decode is the spelling's only authority: a rename on either side breaks this match or the
+    // fixture, never forks silently. Nested so the marshal stays one counted seed item.
+    fn arm(ground: SuppressionGround) -> &'static str {
+        match ground {
+            SuppressionGround::OutsideRequiredGate => "OutsideRequiredGate",
+            SuppressionGround::WithheldCostDebt => "WithheldCostDebt",
+            SuppressionGround::DeclinedNoCiWetLane => "DeclinedNoCiWetLane",
+        }
+    }
     v1_interpreter::list_value(
         rows.iter()
             .map(|(identity, ground)| v1_interpreter::Value::Record {
                 type_name: ctx.sym("FloorRouteGapSuppressedRow"),
                 fields: Rc::new(vec![
                     (ctx.sym("identity"), v1_interpreter::str_value(identity)),
-                    (ctx.sym("ground"), v1_interpreter::str_value(ground)),
+                    (
+                        ctx.sym("ground"),
+                        v1_interpreter::Value::Variant {
+                            type_name: ctx.sym("FloorRouteGapSuppressionGround"),
+                            variant_name: ctx.sym(arm(*ground)),
+                            fields: Rc::new(vec![]),
+                        },
+                    ),
                 ]),
             })
             .collect::<Vec<_>>(),
@@ -9887,8 +9905,9 @@ pub fn run_required_floor(
     // this was the one call site that dropped the list (`let _ =`), so the reverse join below
     // decided only over the identities a gate-bounded run can observe while every other
     // enrollment sat in no ledger the run publishes. The runner now marshals the run's real
-    // values -- the suppressed identities with the label of the ground that removed each, and
-    // the discovery walk's declared-identity index -- into `v2.workflow.floor_route_gap`
+    // values -- the suppressed identities with the ground that removed each, decoded into the
+    // relation's declared coproduct, and the discovery walk's declared-identity index -- into
+    // `v2.workflow.floor_route_gap`
     // `.floor_route_gap_admission_partition` through the hermetic frame the manifest was folded
     // in. There is no Rust copy of the membership test to rot apart from the roster it joins;
     // the arms and their meaning live on the authority's contract, and the pairing witness
@@ -9906,18 +9925,7 @@ pub fn run_required_floor(
     // absence there is absence from the tree — and suppression removed the row BEFORE the
     // reverse join, so the stale arm can never fire for it. The cheapest way to fake a green
     // run, enrolling an identity that does not exist, costs a refusal, never a count.
-    let suppressed_rows_value = route_gap_suppressed_rows_value(
-        &hermetic,
-        &route_gap_suppressed
-            .iter()
-            .map(|(identity, ground)| {
-                (
-                    identity.clone(),
-                    crate::v1_compiler_expected_red_roster_join::suppression_ground_label(*ground),
-                )
-            })
-            .collect::<Vec<_>>(),
-    );
+    let suppressed_rows_value = route_gap_suppressed_rows_value(&hermetic, &route_gap_suppressed);
     let declared_value = v1_interpreter::list_value(
         cost_debt_disposition_index
             .keys()
@@ -9957,6 +9965,15 @@ pub fn run_required_floor(
                 _ => None,
             }
         };
+        let ground_arm = |name: &str| -> Option<String> {
+            let value = hermetic.field(fields, name)?;
+            match value {
+                v1_interpreter::Value::Variant { variant_name, .. } => {
+                    Some(hermetic.resolve(*variant_name).as_str().to_string())
+                }
+                _ => None,
+            }
+        };
         match hermetic.resolve(*variant_name).as_str() {
             "FloorRouteGapAdmissionRefusedRow" => match field_str("identity") {
                 Some(identity) => route_gap_refused.push(identity),
@@ -9968,8 +9985,29 @@ pub fn run_required_floor(
                 }
             },
             "FloorRouteGapAdmissionMeasuredRow" => {
-                match (field_str("identity"), field_str("ground")) {
-                    (Some(identity), Some(ground)) => route_gap_measured.push((identity, ground)),
+                match (field_str("identity"), ground_arm("ground")) {
+                    (Some(identity), Some(arm)) => {
+                        // The relation returns the declared arm; decode it back to the runner's
+                        // suppression enum by the same arm-for-arm spelling the marshal used, and
+                        // refuse an arm the enum does not declare — a fabricated ground can never
+                        // pass as a label.
+                        let ground = match arm.as_str() {
+                            "OutsideRequiredGate" => SuppressionGround::OutsideRequiredGate,
+                            "WithheldCostDebt" => SuppressionGround::WithheldCostDebt,
+                            "DeclinedNoCiWetLane" => SuppressionGround::DeclinedNoCiWetLane,
+                            other => {
+                                return Err(format!(
+                                    "route_gap_admission_partition: a measured row carries unknown suppression ground arm {other}"
+                                ))
+                            }
+                        };
+                        route_gap_measured.push((
+                            identity,
+                            crate::v1_compiler_expected_red_roster_join::suppression_ground_label(
+                                ground,
+                            ),
+                        ));
+                    }
                     _ => {
                         return Err(
                             "route_gap_admission_partition: a measured row carries no identity or ground"
@@ -16979,8 +17017,8 @@ mod route_gap_admission_partition_tests {
         ))
     }
 
-    /// THE FIXTURE'S SUPPRESSED ROWS, decoded to (identity, ground-label) pairs — the shape the
-    /// shared marshal re-encodes.
+    /// THE FIXTURE'S SUPPRESSED ROWS, decoded to (identity, declared-arm) pairs — the shape the
+    /// shared marshal re-encodes into the relation's coproduct.
     fn suppressed_row_pairs(
         ctx: &v1_interpreter::InterpContext,
         value: &Value,
@@ -16997,15 +17035,29 @@ mod route_gap_admission_partition_tests {
                 let Some(Value::Str(identity)) = ctx.field(fields, "identity") else {
                     panic!("a fixture suppressed row has no String identity");
                 };
-                let Some(Value::Str(ground)) = ctx.field(fields, "ground") else {
-                    panic!("a fixture suppressed row has no String ground");
+                let Some(Value::Variant { variant_name, .. }) = ctx.field(fields, "ground") else {
+                    panic!("a fixture suppressed row has no declared ground arm");
                 };
-                (identity.to_string(), ground.to_string())
+                (identity.to_string(), ctx.resolve(*variant_name).to_string())
             })
             .collect()
     }
 
-    /// THE MODELED PARTITION'S RESULT, decoded to (identity, ground-label, refused) triples —
+    /// THE MARSHAL'S INPUT, decoded back to the runner's suppression enum by the arm-for-arm
+    /// spelling the marshal owns. A fixture arm the enum does not declare panics here instead of
+    /// passing as a label.
+    fn ground_arm_enum(arm: &str) -> SuppressionGround {
+        match arm {
+            "OutsideRequiredGate" => SuppressionGround::OutsideRequiredGate,
+            "WithheldCostDebt" => SuppressionGround::WithheldCostDebt,
+            "DeclinedNoCiWetLane" => SuppressionGround::DeclinedNoCiWetLane,
+            other => panic!(
+                "the fixture names a suppression arm the runner's enum does not declare: {other}"
+            ),
+        }
+    }
+
+    /// THE MODELED PARTITION'S RESULT, decoded to (identity, declared-arm, refused) triples —
     /// one arm per suppressed row, at identity grain.
     fn admission_rows(
         ctx: &v1_interpreter::InterpContext,
@@ -17033,9 +17085,15 @@ mod route_gap_admission_partition_tests {
                     };
                     s.to_string()
                 };
+                let arm_field = |name: &str| -> String {
+                    let Some(Value::Variant { variant_name, .. }) = ctx.field(fields, name) else {
+                        panic!("an admission row has no declared {name} arm");
+                    };
+                    ctx.resolve(*variant_name).to_string()
+                };
                 match ctx.resolve(*variant_name).as_str() {
                     "FloorRouteGapAdmissionMeasuredRow" => {
-                        (str_field("identity"), str_field("ground"), false)
+                        (str_field("identity"), arm_field("ground"), false)
                     }
                     "FloorRouteGapAdmissionRefusedRow" => {
                         (str_field("identity"), String::new(), true)
@@ -17094,10 +17152,14 @@ mod route_gap_admission_partition_tests {
                 3,
                 "the fixture carries both arms and both grounds"
             );
+            let marshal_input = suppressed
+                .iter()
+                .map(|(identity, arm)| (identity.clone(), ground_arm_enum(arm)))
+                .collect::<Vec<_>>();
             let args = [
                 (
                     Some("suppressed".to_string()),
-                    route_gap_suppressed_rows_value(&ctx, &suppressed),
+                    route_gap_suppressed_rows_value(&ctx, marshal_input.as_slice()),
                 ),
                 (Some("declared".to_string()), string_list_value(&declared)),
             ];
@@ -17120,7 +17182,7 @@ mod route_gap_admission_partition_tests {
                 rows.iter()
                     .filter(|(i, g, refused)| !refused
                         && i == "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds"
-                        && g == "outside_required_gate")
+                        && g == "OutsideRequiredGate")
                     .count(),
                 1,
                 "the declared suppressed row is MEASURED with its ground kept"
@@ -17129,7 +17191,7 @@ mod route_gap_admission_partition_tests {
                 rows.iter()
                     .filter(|(i, g, refused)| !refused
                         && i == "test.claim.parse_test.parse_witness_floor_holds"
-                        && g == "withheld_cost_debt")
+                        && g == "WithheldCostDebt")
                     .count(),
                 1,
                 "the cost-debt withheld declared row is MEASURED with its ground kept"
@@ -17146,7 +17208,7 @@ mod route_gap_admission_partition_tests {
     }
 
     /// THE MARSHAL SHAPE the run site owes, pinned beside the fixture: a suppressed row carries
-    /// its identity and the label of the ground that removed it, and nothing else.
+    /// its identity and its ground as the declared coproduct arm, and nothing else.
     #[test]
     fn the_marshal_shape_names_identity_and_ground_only() {
         crate::cli_run::on_live_pool_thread(|| {
@@ -17171,7 +17233,7 @@ mod route_gap_admission_partition_tests {
                 &ctx,
                 &[(
                     "test.claim.any_witness_test.any_holds".to_string(),
-                    "suppressed_outside_required_gate".to_string(),
+                    SuppressionGround::OutsideRequiredGate,
                 )],
             );
             let v1_interpreter::Value::List(items) = &value else {
