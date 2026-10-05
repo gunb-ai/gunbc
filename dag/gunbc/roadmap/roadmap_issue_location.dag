@@ -1,0 +1,17 @@
+module gunbc.roadmap_issue_location
+
+import std.types { String }
+
+// THE ONE ROUTE FAMILY OF A NODE: /issue/<id>, with every further location inside it. A page that
+// links to a node, posts a command for it, or anchors into its stream builds the path here, so a
+// node has one address wherever it is shown. The served route table (gunbc.roadmap_serve
+// roadmap_serve_own_route_specs) spells the same family as its match patterns.
+data issue_route_prefix: String = "/issue/"
+
+fn issue_page_path(node_id: String) -> String { concat(issue_route_prefix, node_id) }
+
+fn issue_assign_path(node_id: String) -> String { concat(issue_page_path(node_id: node_id), "/assign") }
+
+fn issue_comment_path(node_id: String) -> String { concat(issue_page_path(node_id: node_id), "/comment") }
+
+fn issue_anchor_path(node_id: String, anchor: String) -> String { join([issue_page_path(node_id: node_id), "#", anchor], "") }

@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
   readiness_is_dispatchable,
 }
-import gunbc.roadmap.roadmap_project { node_project_membership, node_project_membership_in, MembershipMember, project_member_ids, RoadmapMembershipIndex, membership_index, project_member_ids_in }
+import gunbc.roadmap.roadmap_project { node_project_membership_in, MembershipMember, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, IssueAssignmentProjection,
@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
-  roadmap_parent_ids, roadmap_primary_parent,
+  roadmap_primary_parent,
   RoadmapParent, TopLevel, UnderParent,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   node_sizing_derivation,
@@ -35,7 +35,7 @@ import gunbc.roadmap_status {
 }
 import gunbc.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
-  ReadinessGraph, readiness_graph, node_readiness_in_graph, node_unmet_parent_ids,
+  ReadinessGraph, readiness_graph, node_readiness_in_graph,
 }
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, LaunchIdentity, launch_cause_label,
@@ -316,10 +316,6 @@ type WorkScheduling
   | SchedulingDone
   | SchedulingSuperseded
 
-fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
-  node_unmet_parent_ids(nodes: nodes, edges: edges, id: rn.node) |> map(p => p as String)
-}
-
 // A page projects every row's readiness over one graph, so it indexes the graph once
 // (gunbc.roadmap_spawner readiness_graph) and each row's answer is lookups. The page's readiness
 // walks lineage over the rendered graph itself: the projected graph carries every open project, so
@@ -366,7 +362,7 @@ fn work_scheduling_key(s: WorkScheduling) -> String {
 // The dependency line's claim moved to the taskbar (2026-09-21 redesign): the bar's signal slot
 // carries "blocked on X, Y" for every upcoming row — the blocker is visible IN the bar, never
 // gated on a multi-blocker count, because the tree no longer tells it positionally once rows are
-// the page's structure. The seam's scheduling_blockers derivation is unchanged; only the old
+// the page's structure. The blockers are the readiness value's own GapDependencies; the old
 // title-adjacent line's presentation is deleted.
 type SupportingFact {
   label: String
@@ -2049,81 +2045,6 @@ fn workspace_flat_table(
         concat(
           flat_map(done, e => band_entry_flat_rows(e: e)),
           flat_map(superseded, e => band_entry_flat_rows(e: e))))))
-}
-
-// THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies).
-// Blocking lists the node's children — the dependents this issue structurally blocks; Blocked-by
-// lists only the UNMET parents — an edge whose parent has closed is satisfied, not an obstruction,
-// and naming it as one would contradict the bar's "blocked on" signal, which derives from this
-// same scheduling_blockers seam. A link carries node id + headline only: the panel is a pointer
-// to the one place each issue renders, never a second row view.
-type IssueLinkView {
-  node_id: String
-  headline: String
-  status: String
-}
-
-// Nesting and blocking are independent dimensions with one shared ownership authority.
-type IssueLinkPanel {
-  parent: IssueLinkView?
-  children: List<IssueLinkView>
-  blocking: List<IssueLinkView>
-  blocked_by: List<IssueLinkView>
-  prerequisites: List<IssueLinkView>
-  cycle: Bool
-}
-
-fn issue_link_view_of(rn: RoadmapNode, merged: List<Int> = []) -> IssueLinkView {
-  IssueLinkView { node_id: rn.node as String, headline: row_headline(line: rn.line), status: work_lifecycle_key(l: work_lifecycle(rn: rn, merged: merged)) }
-}
-
-// A child is a node that names this one among its parents — the same roadmap_parent_ids read the
-// scheduling seam consumes, so the panel cannot list a dependency the frontier would not.
-fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  filter(xs: nodes, predicate: n =>
-    any(roadmap_parent_ids(edges: edges, node: n.node), p => p == parent))
-}
-
-// MEMBERSHIP IS THE FACT; A TITLE IS ONLY ITS SPELLING. The plan rows the page renders omit
-// authored program rows such as the project root, so a parent looked up only among them read
-// Absent and rendered "top-level" for an issue the breadcrumb (over every declared node) shows
-// under the root -- a membership erased by a missing title. The declared membership decides the
-// relation; the title is looked up among the plan rows, then among `member_titles` (the page passes
-// every declared node), and a target with no title anywhere shows its id -- never absence.
-fn issue_member_link_view(id: String, nodes: List<RoadmapNode>, member_titles: List<RoadmapNode>, merged: List<Int> = []) -> IssueLinkView {
-  match find_node(nodes: nodes, node_id: id) {
-    Present { value: p } => issue_link_view_of(rn: p, merged: merged)
-    Absent => match find_node(nodes: member_titles, node_id: id) {
-      Present { value: p } => issue_link_view_of(rn: p, merged: merged)
-      Absent => IssueLinkView { node_id: id, headline: id, status: "unknown" }
-    }
-  }
-}
-
-fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships(), member_titles: List<RoadmapNode> = [], merged: List<Int> = []) -> IssueLinkPanel {
-  IssueLinkPanel {
-    parent: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
-      MembershipMember { arc } => Present { value: issue_member_link_view(id: arc, nodes: nodes, member_titles: member_titles, merged: merged) }
-      MembershipStandalone => none
-      MembershipAmbiguous { arcs: _ } => none
-    },
-    children: map(project_member_ids(arc: rn.node as String, memberships: memberships), id => issue_member_link_view(id: id, nodes: nodes, member_titles: member_titles, merged: merged)),
-    blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), n => issue_link_view_of(rn: n, merged: merged)),
-    prerequisites: map(roadmap_parent_ids(edges: edges, node: rn.node), id => issue_member_link_view(id: id as String, nodes: nodes, member_titles: member_titles, merged: merged)),
-    cycle: dependency_cycle_touches(node_id: rn.node as String, edges: edges),
-    blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
-      match find_node(nodes: nodes, node_id: pid) {
-        Present { value: p } => [ issue_link_view_of(rn: p, merged: merged) ]
-        Absent => []
-      }),
-  }
-}
-
-fn find_node(nodes: List<RoadmapNode>, node_id: String) -> RoadmapNode? {
-  fold(nodes, init: none, f: (acc, n) => match acc {
-    Present { value: v } => Present { value: v }
-    Absent => if (n.node as String) == node_id { Present { value: n } } else { none }
-  })
 }
 
 // THE WORK TAB'S EXECUTION HISTORY, newest first: the attempt's clocked rounds reversed so the

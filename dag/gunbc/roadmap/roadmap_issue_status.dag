@@ -1,12 +1,12 @@
 module gunbc.roadmap_issue_status
 
-import std.types { Int, List, String }
+import std.types { Bool, Int, List, String }
 
 // The status an issue is shown with, as a closed vocabulary. It is DERIVED and never stored:
 // gunbc.roadmap_presentation issue_display_status projects it from a row's standing, lifecycle,
 // scheduling and activity, and every surface that shows a status renders this value. The label
 // and the sort rank are total matches over it, so a tenth status cannot be added without naming
-// its word and its place in the order.
+// its word, its place in the order and whether it is closed.
 type IssueDisplayStatus
   = DisplayReady
   | DisplayAssigned
@@ -50,5 +50,22 @@ fn issue_display_status_sort_rank(status: IssueDisplayStatus) -> Int {
     DisplayUnknown => 3
     DisplayDone => 2
     DisplaySuperseded => 1
+  }
+}
+
+// CLOSED DESCRIBES THE NODE, NOT ANY EDGE INTO IT: a done or superseded node is closed. Whether a
+// dependency on it is satisfied is the readiness predicate's question
+// (gunbc.roadmap.roadmap_readiness), never this one's.
+fn issue_display_status_is_closed(status: IssueDisplayStatus) -> Bool {
+  match status {
+    DisplayDone => true
+    DisplaySuperseded => true
+    DisplayReady => false
+    DisplayAssigned => false
+    DisplayActive => false
+    DisplayReview => false
+    DisplayBlocked => false
+    DisplayReturned => false
+    DisplayUnknown => false
   }
 }
