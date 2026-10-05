@@ -513,6 +513,6 @@ fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyS
     SecretCredentialWireDecodeRefused {identity_cause:_,payload_cause:_}=>PrinterSessionRefused {cause:"Credential response did not decode"}
     SecretCredentialResolvedVersionMismatch {requested:_,resolved:_}=>PrinterSessionRefused {cause:"Credential response names another exact version"}
    }
-  _=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}
+  PrinterAccessCodeLocusUnknown {printer:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"} PrinterAccessCodeLocusConflict {printer:_,matches:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}
  }
 }

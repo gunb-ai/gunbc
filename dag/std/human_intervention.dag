@@ -54,7 +54,7 @@ type ProvisioningHumanBurden {
 
 fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterventionFrequency) -> Bool {
   match a {
-    EveryOperatorRequest => match b { EveryOperatorRequest => true _ => false }
+    EveryOperatorRequest => match b { EveryOperatorRequest => true FleetOnce=>false DeviceOnce=>false EveryProvision=>false BreakGlassOnly=>false }
     FleetOnce => match b { FleetOnce => true  DeviceOnce => false  EveryProvision => false  BreakGlassOnly => false EveryOperatorRequest => false }
     DeviceOnce => match b { FleetOnce => false  DeviceOnce => true  EveryProvision => false  BreakGlassOnly => false EveryOperatorRequest => false }
     EveryProvision => match b { FleetOnce => false  DeviceOnce => false  EveryProvision => true  BreakGlassOnly => false EveryOperatorRequest => false }

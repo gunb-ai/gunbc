@@ -1,4 +1,7 @@
 module product.printed_chassis.print_preparation
+import extdeps.languages.json.parse {JsonDocumentUnreadable}
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonString,JsonArray}
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 
 import std.types {String,List,Int,NonEmptyStr,Bool,FilePath}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -35,7 +38,7 @@ fn envelope_json() -> JsonValue {
 fn literal(s:String) -> String {serialize_json(v:json_string(s:s))}
 fn run_kernel(script:String,call:String) -> ProcessExit {
  if !Filesystem.WriteCreateNew(path:script,content:concat(source(),call)).success {return exit_failure(reason:"Preparation script path already exists or is not writable")}
- match run_shell_command_capture(command:cadquery_run_program_command(script_path:script),transport:LocalExec) {ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:e) _=>ExitSuccess}
+ match run_shell_command_capture(command:cadquery_run_program_command(script_path:script),transport:LocalExec) {ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:e) ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess}
 }
 
 // Current unpowered PLA process admission. This is explicit product policy, not a
@@ -56,7 +59,7 @@ type StagedProfiles {machine:String,filament:String,process:String}
 fn staged_profiles(output:String) -> StagedProfiles {StagedProfiles {machine:concat(output,".machine.json"),filament:concat(output,".filament.json"),process:concat(output,".process.json")}}
 fn stage_profile(source:String,destination:String) -> Bool {
  let read=Filesystem.Read(path:source)
- if !read.success {false} else {match parse_json_document(s:read.content) {JsonDocumentParsed {value:JsonObject {members:_}}=>Filesystem.WriteCreateNew(path:destination,content:read.content).success _=>false}}
+ if !read.success {false} else {match parse_json_document(s:read.content) {JsonDocumentParsed {value:JsonObject {members:_}}=>Filesystem.WriteCreateNew(path:destination,content:read.content).success JsonDocumentParsed {value:JsonNull}=>false JsonDocumentParsed {value:JsonBool {value:_}}=>false JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>false JsonDocumentParsed {value:JsonString {value:_}}=>false JsonDocumentParsed {value:JsonArray {elements:_}}=>false JsonDocumentUnreadable {gap:_}=>false}}
 }
 fn readback_call(project:String,plan:PlatePreparation,receipt:String) -> String {
  let profiles=staged_profiles(output:project)

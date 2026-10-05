@@ -709,7 +709,7 @@ fn deliver_project_with_session(session:PrinterCredentialSession,payload:Identif
  let printer=session_printer(s:session)
  match printer_endpoint_address(printer:printer) {
   PrinterAddressFound {address:a}=>transfer_with_credential(printer:printer,payload:payload,lan_address:a,credential:session_credential(s:session),credential_version:session_resolved_version(s:session))
-  _=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous")
+  PrinterAddressUnknown {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressAmbiguous {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressWrongClass {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous")
  }
 }
 fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery {

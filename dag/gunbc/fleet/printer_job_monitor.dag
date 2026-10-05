@@ -1,4 +1,6 @@
 module gunbc.fleet.printer_job_monitor
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
+import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
 
 import std.types {String,Int}
 import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_object_unique_member,JsonMemberFound}
@@ -21,16 +23,16 @@ fn observe_job(text:String,remote:String) -> JobObservation {
         else if state=="RUNNING" {JobRunning}
         else if state=="FINISH" {JobCompletedAwaitingInspection}
         else {JobUnresolved}
-       _=>JobUnresolved
+       JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonString {value:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
       }
-      _=>JobUnresolved
+      JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonNumber {lexeme:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
      }
     }
-    _=>JobUnresolved
+    JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonNumber {lexeme:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
    }
-   _=>JobUnresolved
+   JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
   }
-  _=>JobUnresolved
+  JsonDocumentUnreadable {gap:_}=>JobUnresolved
  }
 }
 fn observation_name(observation:JobObservation) -> String {

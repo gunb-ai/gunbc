@@ -1,4 +1,5 @@
 module extdeps.printing.orca_slicer
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 
 import extdeps.exec.program { uncataloged_program }
 
@@ -143,7 +144,7 @@ fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessOutc
         } else {
           match run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0500", path: path), transport: LocalExec) {
             ProcessRefused { exit_code: c, stderr: e } => ProcessRefused { exit_code: c, stderr: e }
-            _ => use(OrcaExecutable { program: path as NonEmptyStr })
+            ProcessOutputAbsent=>use(OrcaExecutable { program: path as NonEmptyStr }) ProcessOutputPresent {text:_}=>use(OrcaExecutable { program: path as NonEmptyStr })
           }
         }
     }

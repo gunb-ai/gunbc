@@ -1,4 +1,5 @@
 module gunbc.fleet.printer_receipt
+import gunbc.fleet.printer_setup_reports {PrinterFilamentUnreported,PrinterFilamentReportsConflict}
 import gunbc.fleet.printer_setup_reports {printer_filament_report,PrinterFilamentReported}
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -20,7 +21,7 @@ fn write_receipt_at(path:String,printer: PhysicalAssetIdentity, standing: String
   let content = serialize_json(v: json_object(members: [
     json_kv(key: "execution_source", value: json_string(s: execution_source(token_source:token_source))),
     json_kv(key: "printer", value: json_string(s: printer as String)),
-    json_kv(key:"reported_filament",value:match printer_filament_report(printer:printer) {PrinterFilamentReported {report:r}=>json_string(s:r.product.packaging as String) _=>json_null()}),
+    json_kv(key:"reported_filament",value:match printer_filament_report(printer:printer) {PrinterFilamentReported {report:r}=>json_string(s:r.product.packaging as String) PrinterFilamentUnreported {printer:_}=>json_null() PrinterFilamentReportsConflict {printer:_}=>json_null()}),
     json_kv(key: "standing", value: json_string(s: standing)),
     json_kv(key: "credential_version", value: json_string(s: version)),
     json_kv(key: "remote_name", value: json_string(s: remote)),

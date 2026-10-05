@@ -1,4 +1,7 @@
 module product.printed_chassis.slice_run
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+import extdeps.languages.json.parse {JsonDocumentUnreadable}
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonString,JsonArray}
 
 import std.types { String, FilePath, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -61,7 +64,7 @@ fn run_with_settings(appimage:String,model:String,output:String,machine:String,f
   let content = match parse_json_document(s: original.content) {
     JsonDocumentParsed { value: JsonObject { members: members } } =>
       serialize_json(v: json_object(members: concat(filter(members, m => !any(overrides, o => o.key == m.key)), overrides)))
-    _ => ""
+    JsonDocumentParsed {value:JsonNull}=>"" JsonDocumentParsed {value:JsonBool {value:_}}=>"" JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>"" JsonDocumentParsed {value:JsonString {value:_}}=>"" JsonDocumentParsed {value:JsonArray {elements:_}}=>"" JsonDocumentUnreadable {gap:_}=>""
   }
   if content == "" || !Filesystem.Write(path: settings, content: content).success {
     return exit_failure(reason: "Cannot parse or write fit-prototype process profile")
@@ -84,14 +87,16 @@ fn slice_profile_in(directory:String,appimage:String,model:String,output:String,
   match with_verified_orca(appimage: appimage as FilePath, use: executable => {
     let probe = run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_version_probe_command(executable: executable)), transport: LocalExec)
     match probe {
-      ProcessRefused { exit_code: _, stderr: _ } => probe
-      _ => run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_slice_to_project_command(
+      ProcessRefused { exit_code: _, stderr: _ } => return probe
+      ProcessOutputAbsent => {}
+      ProcessOutputPresent {text:_} => {}
+    }
+    run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_slice_to_project_command(
         executable: executable, input_model: model, output_project: output,
         printer_profile: machine, filament_profile: filament, process_profile: process,
       )), transport: LocalExec)
-    }
   }) {
     ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
-    _ => ExitSuccess
+    ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
   }
 }

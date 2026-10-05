@@ -28,12 +28,12 @@ fn residential_assembly() -> ResidentialAssembly {
     RearAssemblyGeometry {parts:rear,interfaces:joints}=>match stack_joinery(pitch_um:pitch) {
      StackJoineryGeometry {parts:posts}=>ResidentialAssemblyReady {
       parts:concat(filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4"),concat(filter(hardware(),p=>p.id=="BOARD"||p.id=="RAM1"||p.id=="RAM2"||p.id=="IO"),concat([noctua_envelope(contact_plane_um:30000)],concat(rear,concat(posts,rear_socket_bolt_clearances()))))),joints:joints,pitch:pitch,cooling:selection}
-     _=>ResidentialAssemblyRefused {reason:"Stack joinery height unsupported"}
+     StackJoineryHeightUnsupported=>ResidentialAssemblyRefused {reason:"Stack joinery height unsupported"}
     }
-    _=>ResidentialAssemblyRefused {reason:"Rear assembly refused"}
+    RearAssemblyUnsupportedBank=>ResidentialAssemblyRefused {reason:"Rear assembly refused"} RearAssemblyMountRefused=>ResidentialAssemblyRefused {reason:"Rear assembly refused"}
    }
   }
-  _=>ResidentialAssemblyRefused {reason:"Rear fan selection refused"}
+  RearCoolingInvalidInput=>ResidentialAssemblyRefused {reason:"Rear fan selection refused"} RearCoolingNoFit=>ResidentialAssemblyRefused {reason:"Rear fan selection refused"}
  }
 }
 fn main() -> CliWireResponse {

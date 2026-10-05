@@ -80,6 +80,13 @@ pub enum Quantity {
     Area,
     Volume,
     PlaneAngle,
+    Force,
+    Pressure,
+    VolumeFlow,
+    Density,
+    SpecificHeatCapacity,
+    Acceleration,
+    ResistancePerLength,
     Dimensionless,
 }
 
@@ -2030,6 +2037,177 @@ pub fn compare_instants(a: Rc<ObservationInstant>, b: Rc<ObservationInstant>) ->
     }
 }
 
+pub type Newton = Rc<Measure<Force, One, Nat>>;
+
+pub type Millinewton = Rc<Measure<Force, Milli, Nat>>;
+
+pub fn newton(count: Nat) -> Newton {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn newton_count(f: Newton) -> Nat {
+    measure_count(f.clone())
+}
+
+pub fn millinewton(count: Nat) -> Millinewton {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millinewton_count(f: Millinewton) -> Nat {
+    measure_count(f.clone())
+}
+
+pub type Pascal = Rc<Measure<Pressure, One, Nat>>;
+
+pub type Kilopascal = Rc<Measure<Pressure, Kilo, Nat>>;
+
+pub type Megapascal = Rc<Measure<Pressure, Mega, Nat>>;
+
+pub fn pascal(count: Nat) -> Pascal {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn pascal_count(p: Pascal) -> Nat {
+    measure_count(p.clone())
+}
+
+pub fn kilopascal(count: Nat) -> Kilopascal {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn kilopascal_count(p: Kilopascal) -> Nat {
+    measure_count(p.clone())
+}
+
+pub fn megapascal(count: Nat) -> Megapascal {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn megapascal_count(p: Megapascal) -> Nat {
+    measure_count(p.clone())
+}
+
+pub type CubicMetrePerSecond = Rc<Measure<VolumeFlow, One, Nat>>;
+
+pub type MillilitrePerSecond = Rc<Measure<VolumeFlow, Micro, Nat>>;
+
+pub fn millilitre_per_second(count: Nat) -> MillilitrePerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millilitre_per_second_count(f: MillilitrePerSecond) -> Nat {
+    measure_count(f.clone())
+}
+
+pub type KilogramPerCubicMetre = Rc<Measure<Density, One, Nat>>;
+
+pub fn kilogram_per_cubic_metre(count: Nat) -> KilogramPerCubicMetre {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn kilogram_per_cubic_metre_count(d: KilogramPerCubicMetre) -> Nat {
+    measure_count(d.clone())
+}
+
+pub type JoulePerKilogramKelvin = Rc<Measure<SpecificHeatCapacity, One, Nat>>;
+
+pub fn joule_per_kilogram_kelvin(count: Nat) -> JoulePerKilogramKelvin {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat {
+    measure_count(c.clone())
+}
+
+pub type MicrometrePerSecondSquared = Rc<Measure<Acceleration, Micro, Nat>>;
+
+pub fn micrometre_per_second_squared(count: Nat) -> MicrometrePerSecondSquared {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn micrometre_per_second_squared_count(a: MicrometrePerSecondSquared) -> Nat {
+    measure_count(a.clone())
+}
+
+pub type MicroohmPerMetre = Rc<Measure<ResistancePerLength, Micro, Nat>>;
+
+pub fn microohm_per_metre(count: Nat) -> MicroohmPerMetre {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn microohm_per_metre_count(r: MicroohmPerMetre) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type Kilogram = Rc<Measure<Mass, One, Nat>>;
+
+pub fn kilogram(count: Nat) -> Kilogram {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn kilogram_count(m: Kilogram) -> Nat {
+    measure_count(m.clone())
+}
+
+pub type Milliampere = Rc<Measure<ElectricCurrent, Milli, Nat>>;
+
+pub fn milliampere(count: Nat) -> Milliampere {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn milliampere_count(i: Milliampere) -> Nat {
+    measure_count(i.clone())
+}
+
+pub type GramPerCubicMetre = Rc<Measure<Density, Milli, Nat>>;
+
+pub fn gram_per_cubic_metre(count: Nat) -> GramPerCubicMetre {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn gram_per_cubic_metre_count(d: GramPerCubicMetre) -> Nat {
+    measure_count(d.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Time;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -2084,6 +2262,20 @@ pub struct Area;
 pub struct Volume;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlaneAngle;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Force;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Pressure;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct VolumeFlow;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Density;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SpecificHeatCapacity;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Acceleration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResistancePerLength;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Dimensionless;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

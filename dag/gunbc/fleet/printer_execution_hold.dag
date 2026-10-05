@@ -1,4 +1,6 @@
 module gunbc.fleet.printer_execution_hold
+import gunbc.durable_exclusive_hold_file_store {FileHoldOccupied,FileHoldAcquireLost,FileHoldAcquireStoreUnavailable,FileHoldSlotUndecodable,FileHoldKeyNotSlotAddressable,FileHoldReleaseLost,FileHoldReleaseStoreUnavailable,FileHoldReleaseKeyNotSlotAddressable,FileHoldReleaseNotEligible}
+import std.durable_exclusive_hold {HoldSlotAbsent,HoldSlotFree,HoldSlotUndecodable,HoldObservationUnavailable}
 import std.types {NonEmptyStr,Bool}
 import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -15,7 +17,7 @@ type PrinterExecutionHold sole_constructor {owner:DurableHoldOwnerRef,generation
 fn hold_current(hold:PrinterExecutionHold) -> Bool {
  match observe_file_hold(root:printer_start_claim_directory,key:hold_key) {
   HoldSlotHeld {owner:o,generation:g}=>durable_hold_owner_equal(left:o,right:hold.owner) && cas_generation_count(g:g)==cas_generation_count(g:hold.generation)
-  _=>false
+  HoldSlotAbsent=>false HoldSlotFree {generation:_,released_by:_}=>false HoldSlotUndecodable {generation:_,detail:_}=>false HoldObservationUnavailable {cause:_}=>false
  }
 }
 fn with_execution_hold(owner:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
@@ -24,12 +26,12 @@ fn with_execution_hold(owner:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessEx
    let result=use(PrinterExecutionHold {owner:o,generation:g})
    match result {
     ExitSuccess=>match file_hold_release_assess(root:printer_start_claim_directory,slot_key:hold_key,owner:o,acquired_generation:g,released_by:owner as DurableHoldReleaseRef) {
-     FileHoldReleasePlanned {plan:p}=>match file_hold_release_commit(plan:p) {FileHoldReleased {slot_key:_,generation:_}=>ExitSuccess _=>exit_failure(reason:"Printer controller hold release failed; do not start another controller")}
-     _=>exit_failure(reason:"Printer controller hold changed before release")
+     FileHoldReleasePlanned {plan:p}=>match file_hold_release_commit(plan:p) {FileHoldReleased {slot_key:_,generation:_}=>ExitSuccess FileHoldReleaseLost {slot_key:_}=>exit_failure(reason:"Printer controller hold release failed; do not start another controller") FileHoldReleaseStoreUnavailable {slot_key:_,cause:_}=>exit_failure(reason:"Printer controller hold release failed; do not start another controller") FileHoldReleaseKeyNotSlotAddressable {slot_key:_}=>exit_failure(reason:"Printer controller hold release failed; do not start another controller")}
+     FileHoldReleaseNotEligible {slot_key:_,refusal:_}=>exit_failure(reason:"Printer controller hold changed before release")
     }
     other=>other
    }
   }
-  _=>exit_failure(reason:"Printer fleet controller is occupied or unreadable; no second controller admitted")
+  FileHoldOccupied {slot_key:_,holder:_,generation:_}=>exit_failure(reason:"Printer fleet controller is occupied or unreadable; no second controller admitted") FileHoldAcquireLost {slot_key:_}=>exit_failure(reason:"Printer fleet controller is occupied or unreadable; no second controller admitted") FileHoldAcquireStoreUnavailable {slot_key:_,cause:_}=>exit_failure(reason:"Printer fleet controller is occupied or unreadable; no second controller admitted") FileHoldSlotUndecodable {slot_key:_,generation:_,detail:_}=>exit_failure(reason:"Printer fleet controller is occupied or unreadable; no second controller admitted") FileHoldKeyNotSlotAddressable {slot_key:_}=>exit_failure(reason:"Printer fleet controller is occupied or unreadable; no second controller admitted")
  }
 }

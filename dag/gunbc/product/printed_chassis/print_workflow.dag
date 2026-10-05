@@ -1,4 +1,6 @@
 module product.printed_chassis.print_workflow
+import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
+import std.process {ExitFailure}
 
 import std.types {String,NonEmptyStr,List,FilePath}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -29,14 +31,14 @@ fn prepare_queue(spec:PrinterSpec,output:String,appimage:String,machine:String,f
   match prepare(cad:concat(output,"/cad"),plan:p.plan,output:path,appimage:appimage,machine:machine,filament:filament,process:process) {
    ExitSuccess=>{
     let read=Filesystem.Read(path:concat(path,".readback.json"))
-    let digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>d _=>""} _=>""}} else {""}
+    let digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>d FieldAbsent=>"" FieldMalformed {cause:_}=>""} JsonDocumentUnreadable {gap:_}=>""}} else {""}
     if digest=="" {none} else {Present {value:BatchPlate {path:path,digest:digest,attempt:p.attempt}}}
    }
-   _=>none
+   ExitFailure {code:_,reason:_}=>none
   }
  })
- if any(results,r=>match r {Absent=>true _=>false}) {QueuePreparationRefused {reason:"A plate failed CAD packing, pinned slicing or required readback; no printer start admitted"}}
- else {QueueReadyForApproval {queue:PrinterQueue {printer:spec.printer,version:spec.version,plates:flat_map(results,r=>match r {Present {value:p}=>[p] _=>[]})}}}
+ if any(results,r=>match r {Absent=>true Present {value:_}=>false}) {QueuePreparationRefused {reason:"A plate failed CAD packing, pinned slicing or required readback; no printer start admitted"}}
+ else {QueueReadyForApproval {queue:PrinterQueue {printer:spec.printer,version:spec.version,plates:flat_map(results,r=>match r {Present {value:p}=>[p] Absent=>[]})}}}
 }
 fn run(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,mode:String) -> ProcessExit {
  if mode!="prepare" && mode!="print" {return exit_failure(reason:"Workflow mode must be prepare or print")}
@@ -46,8 +48,8 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
  if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Preparation output must be an absolute writable directory")}
  match check_residential_cad(output:concat(output,"/cad")) {ExitSuccess=>{} other=>return other}
  let results=map(specs,s=>prepare_queue(spec:s,output:output,appimage:appimage,machine:machine,filament:filament,process:process))
- if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true _=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; no approvals or printer starts sent")}
- let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] _=>[]})
+ if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true QueueReadyForApproval {queue:_}=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; no approvals or printer starts sent")}
+ let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] QueuePreparationRefused {reason:_}=>[]})
  if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
  let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
  if !Filesystem.WriteCreateNew(path:concat(output,"/prepared-queues.json"),content:receipt).success {return exit_failure(reason:"Prepared queue receipt already exists or is not writable")}

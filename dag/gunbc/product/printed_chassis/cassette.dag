@@ -5,7 +5,7 @@ import std.measure { micrometer_count }
 import std.affine_space {signed_frame_component_count}
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.assembly_geometry {
-  Primitive, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
+  Primitive, Block, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
   Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
 }
 import product.printed_chassis.tray_panel_features {panel_seam_um,lap_center_offset_um,lap_along_joint_um,rail_foot_width_um,rail_foot_inset_um,rail_wall_width_um,rail_wall_offset_um,handle_center_from_edge_um,handle_depth_um,rear_socket_width_um,rear_socket_inset_um,rear_socket_wall_width_um,handle_support_center_from_edge_um,handle_support_depth_um}
@@ -150,7 +150,7 @@ fn rear_socket_bolt_clearances() -> List<AssemblyPart> {
     adds:[round(diameter:socket_hardware_envelope_diameter_um,length:socket_hardware_envelope_depth_um,axis:Axis3Y,x:0,y:0,z:0)],cuts:[],
     x:signed_frame_component_count(c:socket.at.x)+signed_frame_component_count(c:c.x),y:signed_frame_component_count(c:socket.at.y)-socket_hardware_envelope_depth_um/2,z:signed_frame_component_count(c:socket.at.z)+signed_frame_component_count(c:c.z),
     ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Keep printed material out of this proposed hardware envelope; actual fastener engagement and loaded behavior remain unqualified.")]
-   _=>[]
+   Block {size:_,center:_}=>[]
   })
  })
 }

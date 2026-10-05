@@ -1,4 +1,5 @@
 module product.printed_chassis.cad_check_run
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -33,7 +34,7 @@ fn check_residential_cad(output:String) -> ProcessExit {
     if !Filesystem.Write(path:manifest_path,content:serialize_json(v:manifest_for(parts:parts,joints:joints))).success || !Filesystem.Write(path:script_path,content:source).success {return exit_failure(reason:"Cannot stage generated CAD checks")}
     match run_shell_command_capture(command:cadquery_run_program_command(script_path:script_path),transport:LocalExec) {
      ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:e)
-     _=>ExitSuccess
+     ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
     }
    }
    CliWirePrintable {bytes:_,exit:e}=>e

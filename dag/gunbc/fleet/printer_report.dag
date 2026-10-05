@@ -1,4 +1,8 @@
 module gunbc.fleet.printer_report
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
+import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
+import gunbc.fleet.printer_job_start {PrinterSerialUnknown,PrinterSerialUnrecorded,PrinterSerialAmbiguous}
+import gunbc.fleet.printer_project_delivery {PrinterAddressUnknown,PrinterAddressAmbiguous,PrinterAddressWrongClass}
 
 import std.types { String, NonEmptyStr, Secret, Int, Bool }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
@@ -50,9 +54,9 @@ fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> Pr
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
    PrinterAddressFound {address:a}=>if remaining==1 {report_with_credential(serial:serial,address:a,credential:session_credential(s:session))} else {complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:remaining)}
-   _=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
+   PrinterAddressUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
   }
-  _=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}
+  PrinterSerialUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}
  }
 }
 
@@ -108,17 +112,17 @@ fn report_has_state_and_error(text: String) -> Bool {
       JsonMemberFound { value: p } => {
         let state = match json_object_unique_member(v: p, key: "gcode_state") {
           JsonMemberFound { value: JsonString { value: _ } } => true
-          _ => false
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonNumber {lexeme:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
         }
         let error = match json_object_unique_member(v: p, key: "print_error") {
           JsonMemberFound { value: JsonNumber { lexeme: _ } } => true
-          _ => false
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonString {value:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
         }
         state && error
       }
-      _ => false
+      JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
     }
-    _ => false
+    JsonDocumentUnreadable {gap:_}=>false
   }
 }
 

@@ -553,8 +553,8 @@ fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmpt
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
    PrinterAddressFound {address:a}=>publish_start_with_credential(printer:printer,serial:serial,lan_address:a,remote_name:remote_name,credential:session_credential(s:session))
-   _=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"}
+   PrinterAddressUnknown {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"}
   }
-  _=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"}
+  PrinterSerialUnknown {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"}
  }
 }
