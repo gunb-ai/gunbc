@@ -13,11 +13,12 @@ import std.types { Bool }
 import std.algebra { Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.fold_lowering { collection_roster_carrier_type, collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
-import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_binder_set_structure_bounds, infer_match_generic_formal, infer_type_instantiated }
+import v2.compiler.infer { InferFormalMatched, StructureInhabited, StructureNotInhabited, StructureRowMalformed, infer_instance_structure_inhabitance_in, InferFormalShapeMismatch, infer_binder_set_structure_bounds, infer_match_generic_formal, infer_type_instantiated }
 import v2.std.inhabitance { TypeVariableInstance }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.extdeps.languages.dag { dag_kernel_value_type_first }
+import v2.std.model_core { AlgebraInhabitanceDecl }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -129,6 +130,25 @@ test fn fmb_int_refuses_at_the_free_monoid_bound() -> Bool {
 // SUPPLIED, RED: a type inhabiting another structure (Bool, a boolean algebra) does not inhabit the free monoid.
 test fn fmb_bool_refuses_at_the_free_monoid_bound() -> Bool {
   fmb_bound_reason(instance: fmb_kernel_type(spelling: "Bool")) == ^infer_reason_type_argument_does_not_inhabit_bound
+}
+
+// SUPPLIED, RED: an inhabitance row whose inhabitant IS the instance but whose algebra node is malformed refuses with
+// THE ROW'S OWN cause -- a defect in the authority -- never as the user's type argument failing the bound
+// (review 76678). The row table is supplied; the judge is infer's own.
+fn fmb_malformed_row() -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_malformed_algebra } }, children: []),
+    inhabitant: fmb_kernel_type(spelling: "String"),
+    witness: fmb_carrier()
+  }
+}
+
+test fn fmb_malformed_inhabitance_row_refuses_with_its_own_cause() -> Bool {
+  match infer_instance_structure_inhabitance_in(rows: [fmb_malformed_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier()), declarations: empty_symbol_index()) {
+    StructureRowMalformed { cause: c } => c != ^infer_reason_type_argument_does_not_inhabit_bound
+    StructureInhabited => false
+    StructureNotInhabited => false
+  }
 }
 
 fn fmb_list_of(element: Node) -> Node {

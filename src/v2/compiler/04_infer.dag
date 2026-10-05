@@ -3797,14 +3797,20 @@ fn infer_binder_set_structure_bounds(node: Node, binders: Node, declarations: Sy
                 match type_variable_instance_lookup(instances: instances, binder: name) {
                   Absent => optional_absent()
                   Present { value: instance } =>
-                    if infer_instance_inhabits_structure(instance: instance, structure: structure, declarations: declarations) {
-                      optional_absent()
-                    } else {
-                      optional_present(value: Diagnostic {
-                        reason: ^infer_reason_type_argument_does_not_inhabit_bound,
-                        at: node_locus(node: node),
-                        correction: Unavailable { reason: CorrectionNotModeled }
-                      })
+                    match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: structure, declarations: declarations) {
+                      StructureInhabited => optional_absent()
+                      StructureNotInhabited =>
+                        optional_present(value: Diagnostic {
+                          reason: ^infer_reason_type_argument_does_not_inhabit_bound,
+                          at: node_locus(node: node),
+                          correction: Unavailable { reason: CorrectionNotModeled }
+                        })
+                      StructureRowMalformed { cause: cause } =>
+                        optional_present(value: Diagnostic {
+                          reason: cause,
+                          at: node_locus(node: node),
+                          correction: Unavailable { reason: CorrectionNotModeled }
+                        })
                     }
                 }
               KindBound { kind: _ } => optional_absent()
@@ -3839,18 +3845,45 @@ fn infer_bound_structure_fields(structure: Node) -> List<Symbol> {
   })
 }
 
-fn infer_instance_inhabits_structure(instance: Node, structure: Node, declarations: SymbolIndex) -> Bool {
+// What the inhabitance authority answers for one instance at one bound structure: a row admits it, no row does, or a
+// row whose inhabitant IS the instance has a malformed inhabitance node -- the last refused with ITS cause, never as the
+// user's type argument failing the bound (the same three-way reading as InferAlgebraFieldResult).
+type InferStructureInhabitance
+  = StructureInhabited
+  | StructureNotInhabited
+  | StructureRowMalformed { cause: Symbol }
+
+// Parameterized over the rows so a malformed-row RED is authorable over a supplied table; production passes the one
+// authority, v2.extdeps.languages.dag dag_algebra_inhabitance_decls.
+fn infer_instance_structure_inhabitance_in(rows: List<AlgebraInhabitanceDecl>, instance: Node, structure: Node, declarations: SymbolIndex) -> InferStructureInhabitance {
   let fields = infer_bound_structure_fields(structure: structure)
   let wanted = infer_type_alias_normalized(t: instance, declarations: declarations)
-  fold(dag_algebra_inhabitance_decls(), init: false, f: fn(acc, row) {
-    acc || (infer_row_inhabitant_is(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations)
-      && fold(fields, init: true, f: fn(all, field) {
-        all && (match algebra_inhabitance_field_declaration(inhabitance: row.algebra, field: field) {
-          FieldDeclared => true
-          FieldNotDeclared => false
-          InhabitanceMalformed { cause: _ } => false
-        })
-      }))
+  fold(rows, init: StructureNotInhabited, f: fn(acc, row) {
+    match acc {
+      StructureInhabited => acc
+      StructureRowMalformed { cause: _ } => acc
+      StructureNotInhabited =>
+        if infer_row_inhabitant_is(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations) {
+          infer_row_declares_fields(row: row, fields: fields)
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) -> InferStructureInhabitance {
+  fold(fields, init: StructureInhabited, f: fn(acc, field) {
+    match acc {
+      StructureNotInhabited => acc
+      StructureRowMalformed { cause: _ } => acc
+      StructureInhabited =>
+        match algebra_inhabitance_field_declaration(inhabitance: row.algebra, field: field) {
+          FieldDeclared => acc
+          FieldNotDeclared => StructureNotInhabited
+          InhabitanceMalformed { cause: c } => StructureRowMalformed { cause: c }
+        }
+    }
   })
 }
 
