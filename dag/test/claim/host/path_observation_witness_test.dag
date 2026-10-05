@@ -1,0 +1,57 @@
+module test.claim.host.path_observation_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import gunbc.host_operation_exec { StatFileType, HeadBytes, host_operation_materialize_argv }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.host.path_observation {
+  PathKindRead, PathRegularFile, PathOtherKind, PathAbsent, PathKindUnread, path_kind,
+  SmallFileRead, SmallFileText, SmallFileAbsent, SmallFileUnread, small_file_read,
+}
+
+// THE TWO ROWS' REAL ROUTE: each operation materializes, from its extdeps declaration, the argv the
+// typed leg runs. The decisions below are claimed over session results supplied at the reader's
+// interface, which is sound only while these argv are the ones the real leg executes.
+test fn w_the_rows_materialize_their_declared_argv() -> Bool {
+  (match host_operation_materialize_argv(operation: StatFileType { path: "/etc/x" as NonEmptyStr }) {
+    ArgvMaterialized { argv: a } => join(a, " ") == "/usr/bin/stat -c %F -- /etc/x"
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }) && (match host_operation_materialize_argv(operation: HeadBytes { path: "/etc/x" as NonEmptyStr, count: 300 }) {
+    ArgvMaterialized { argv: a } => join(a, " ") == "head -c 300 -- /etc/x"
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  })
+}
+
+data w_path: NonEmptyStr = "/var/lib/gunbc/arm-committed/u.service"
+
+// A HOST THAT ANSWERS stat WITH ONE RESULT AND head WITH ANOTHER, dispatched on the program the leg runs.
+fn w_host(stat: ArgvRun, head: ArgvRun) -> fn(List<String>) -> ArgvRun {
+  fn(argv) { if starts_with(s: join(argv, " "), prefix: "/usr/bin/stat ") { stat } else if starts_with(s: join(argv, " "), prefix: "head -c 300 -- ") { head } else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", join(argv, " ")], "") } } }
+}
+
+fn w_ran(code: Int, out: String, err: String) -> ArgvRun { ArgvRan { exit_code: code, stdout: out, stderr: err } }
+
+data w_unused: ArgvRun = ArgvLegDidNotRun { cause: "not reached" }
+
+// RED: an absent path reads absent ONLY on stat's ENOENT text; the same exit with any other diagnostic
+// (a refused privilege) is unread, never absent. A regular file in both GNU spellings is regular; a
+// directory is another kind; a leg that did not run is unread.
+test fn w_path_kind_separates_absent_from_unread() -> Bool {
+  let kind = fn(r) { path_kind(run: w_host(stat: r, head: w_unused), path: w_path) }
+  (match kind(w_ran(code: 0, out: "regular file\n", err: "")) { PathRegularFile => true  PathOtherKind { kind: _ } => false  PathAbsent => false  PathKindUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 0, out: "regular empty file\n", err: "")) { PathRegularFile => true  PathOtherKind { kind: _ } => false  PathAbsent => false  PathKindUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 0, out: "directory\n", err: "")) { PathOtherKind { kind: k } => k == "directory"  PathRegularFile => false  PathAbsent => false  PathKindUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/arm-committed/u.service': No such file or directory\n")) { PathAbsent => true  PathRegularFile => false  PathOtherKind { kind: _ } => false  PathKindUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/arm-committed/u.service': Permission denied\n")) { PathKindUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")  PathAbsent => false  PathRegularFile => false  PathOtherKind { kind: _ } => false })
+    && (match kind(ArgvLegDidNotRun { cause: "no route" }) { PathKindUnread { cause: c } => string_contains(s: c, pattern: "no route")  PathAbsent => false  PathRegularFile => false  PathOtherKind { kind: _ } => false })
+}
+
+// RED: the record is read only when it is a regular file, and only its first 300 bytes; absent is
+// absent; a directory at the path, or a head that fails, is unread rather than empty text.
+test fn w_a_small_file_is_read_only_when_it_is_a_regular_file() -> Bool {
+  let read = fn(stat, head) { small_file_read(run: w_host(stat: stat, head: head), path: w_path, limit: 300) }
+  (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 0, out: "fp8-16 4d2e607d", err: "")) { SmallFileText { text: t } => t == "fp8-16 4d2e607d"  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+    && (match read(w_ran(code: 1, out: "", err: "stat: cannot statx: No such file or directory"), w_unused) { SmallFileAbsent => true  SmallFileText { text: _ } => false  SmallFileUnread { cause: _ } => false })
+    && (match read(w_ran(code: 0, out: "directory\n", err: ""), w_unused) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "is a directory")  SmallFileAbsent => false  SmallFileText { text: _ } => false })
+    && (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 1, out: "", err: "head: error reading: Input/output error")) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "Input/output error")  SmallFileAbsent => false  SmallFileText { text: _ } => false })
+}

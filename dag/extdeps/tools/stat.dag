@@ -2,7 +2,7 @@ module extdeps.tools.stat
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { Bool, NonEmptyStr, List, Unit, Int }
+import std.types { Bool, NonEmptyStr, List, Unit, Int, String }
 import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -175,6 +175,7 @@ service stat.File {
     output {
       file_type: String from "stdout"
       success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     readonly
     transport shell { argv: ["/usr/bin/stat", "-c", "%F", "--", "{path}"] }
@@ -183,7 +184,7 @@ service stat.File {
       nonzero => String "stat could not read the path's metadata"
     }
     mock_response {
-      0 => { file_type: "directory", success: true } "hermetic coreutils stat -c %F"
+      0 => { file_type: "directory", success: true, stderr: "" } "hermetic coreutils stat -c %F"
     }
   }
 
