@@ -2,8 +2,9 @@ module extdeps.tools.curl
 
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of, Unit }
 import std.algebra { trim }
+import std.resources { Network }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -384,4 +385,85 @@ fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
     CurlReceiveFailed => "failure receiving data (curl exit 56)"
     CurlExitUnnamed { code: c } => join(["curl exit ", to_string(c)], "")
   }
+}
+
+// ── REQUESTS WHOSE AUTHORIZATION IS AN HTTP SIGNATURE OVER THE EXACT BYTES SENT ─────────────────
+//
+// Some APIs authenticate each request with a signature over its date, its target and, for a request
+// with a body, a digest of the body's bytes (Oracle Cloud Infrastructure is the consumer:
+// extdeps.cloud.oracle_oci_request_signing). The signature can only be checked if the bytes it covers
+// are the bytes on the wire. So the body here is a caller-supplied STRING sent verbatim on stdin with
+// --data-binary, never a structure the transport re-serializes. curl sets Content-Length from those
+// bytes, which is the value the caller signed. The headers are fixed slots, because the set of
+// signed headers is the protocol and not a caller's choice.
+//
+// The Authorization value appears in argv. It is a signature bound to one request and one date
+// (Oracle rejects a date more than 5 minutes off), not the key, which never leaves the signer.
+// The response body comes back followed by a newline and the status, read by
+// classify_curl_http_code_after_newline.
+service curl.HttpSignature {
+  operation SignedGet {
+    requires Network
+    input { url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [curl_program().invocation, "-sS", "--max-time", "60", "-H", "date: {date}", "-H", "authorization: {authorization}", "-w", "\n%\{http_code\}", "{url}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+
+  operation SignedPostJson {
+    requires Network
+    input {
+      url: NonEmptyStr,
+      date: NonEmptyStr,
+      authorization: NonEmptyStr,
+      content_sha256: NonEmptyStr,
+      body: String,
+    }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [curl_program().invocation, "-sS", "--max-time", "60", "-X", "POST", "-H", "date: {date}", "-H", "authorization: {authorization}", "-H", "content-type: application/json", "-H", "x-content-sha256: {content_sha256}", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: body
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+}
+
+// The body is everything before the final newline that the write-out format adds.
+fn curl_body_before_http_code(stdout: String) -> String {
+  let lines = split(s: stdout, delimiter: "\n")
+  let n = lines.length()
+  if n <= 1 { "" } else { join(lines |> take(n: n - 1), "\n") }
+}
+
+type CurlSignedRun {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+fn curl_http_signature_get(url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr) -> CurlSignedRun uses net: Network {
+  let run = curl.HttpSignature.SignedGet(url: url, date: date, authorization: authorization)
+  CurlSignedRun { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
+}
+
+fn curl_http_signature_post_json(url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: NonEmptyStr, body: String) -> CurlSignedRun uses net: Network {
+  let run = curl.HttpSignature.SignedPostJson(url: url, date: date, authorization: authorization, content_sha256: content_sha256, body: body)
+  CurlSignedRun { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
 }
