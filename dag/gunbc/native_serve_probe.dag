@@ -18,7 +18,9 @@ import gunbc.serve_liveness {
 // decides nothing about a case -- it is the same split gunbc.native_claim_program makes for its
 // programs, so the instrument cannot hold on a judgment written in hand Rust.
 //
-// THE BUDGET CASES RUN LAST because the last one ends the process: four requests that never return are
+// THE BUDGET CASES RUN LAST because the last one ends the process. They open with five handlers that
+// panic -- more than the stuck-worker ceiling -- each answered as a handler failure, and then an
+// ordinary request that must still be served: a dead worker is never a stuck one. Then: four requests that never return are
 // each refused at the deadline (with an ordinary request served between them), and the next request
 // meets the stuck-worker ceiling and is refused with the 503 before the process exits.
 //
@@ -114,6 +116,36 @@ fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
       identity: "liveness_is_answered_before_the_handler_and_names_the_release",
       request: "GET /livez HTTP/1.1\r\n\r\n",
       expect: ExpectLiveness,
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_one_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_two_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_three_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_four_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_worker_panic_five_is_a_handler_failure_not_a_stuck_worker",
+      request: "GET /panic HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler ended without an answer and was refused; nothing is left running for it\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_after_more_panics_than_the_ceiling_a_request_is_still_served",
+      request: "GET /hello HTTP/1.1\r\nTailscale-User-Login: alice@example\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "hello, alice@example\n" },
     },
     NativeServeProbeCase {
       identity: "budget_a_handler_that_never_returns_is_refused_at_the_deadline",

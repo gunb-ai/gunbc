@@ -472,6 +472,19 @@ fn native_serve_admission(contract: NativeServeContract, stuck_workers: Int) -> 
   }
 }
 
+// A WORKER THAT ENDS WITHOUT AN ANSWER -- the compiled handler panicked, so its result never reached
+// the loop -- is a handler failure, not a deadline: it is answered with this typed 500 and is never
+// counted as stuck, because nothing is still running. The rendered main runs the worker's cleanup
+// from a guard that also runs during a panic, so the stuck count stays exact either way.
+fn native_serve_handler_failed() -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: "the handler ended without an answer and was refused; nothing is left running for it\n",
+    headers: [],
+  }
+}
+
 fn native_serve_deadline_refused(contract: NativeServeContract) -> ServeWireResponse {
   ServeWireResponse {
     status: 500,
