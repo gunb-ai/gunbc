@@ -727,29 +727,30 @@ fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: Cont
     CollectionRefusedBeforeAnyRead { refusal: r } =>
       QualificationRunRefused { run_id: dispatched.receipt.workflow_run_id, refusal: r }
     CollectionReadsPlanned { run_id: run_id, attempt: attempt } => {
-    let owner = gunbc_repository.owner as NonEmptyStr
-    let repo = gunbc_repository.name as NonEmptyStr
-    let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
-    let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: attempt)
-    match decide_qualification_run(
-      subject: qualification_run_expectation(subject: dispatched.subject),
-      run_id: run_id,
-      run_performance: read.performance,
-      run: read.run,
-      jobs_performance: jobs.performance,
-      jobs: jobs.jobs,
-    ) {
-      RunVerdictRefused { refusal: r } => QualificationRunRefused { run_id: run_id, refusal: r }
-      RunVerdictCollected { run: run, floor_job: floor, conclusion: conclusion } =>
-        QualificationRunCollected {
-          collected: CollectedQualificationRun {
-            dispatched: dispatched,
-            run: run,
-            floor_job: floor,
-            conclusion: conclusion,
-            instruments_unextracted: qualification_instruments,
-          },
-        }
+      let owner = gunbc_repository.owner as NonEmptyStr
+      let repo = gunbc_repository.name as NonEmptyStr
+      let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
+      let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: attempt)
+      match decide_qualification_run(
+        subject: qualification_run_expectation(subject: dispatched.subject),
+        run_id: run_id,
+        run_performance: read.performance,
+        run: read.run,
+        jobs_performance: jobs.performance,
+        jobs: jobs.jobs,
+      ) {
+        RunVerdictRefused { refusal: r } => QualificationRunRefused { run_id: run_id, refusal: r }
+        RunVerdictCollected { run: run, floor_job: floor, conclusion: conclusion } =>
+          QualificationRunCollected {
+            collected: CollectedQualificationRun {
+              dispatched: dispatched,
+              run: run,
+              floor_job: floor,
+              conclusion: conclusion,
+              instruments_unextracted: qualification_instruments,
+            },
+          }
+      }
     }
   }
 }
