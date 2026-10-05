@@ -1,5 +1,7 @@
 module v2.lens.undecidable_verdict_collapse
 
+import v2.std.grammar { node_atom_identity_optional }
+
 import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
@@ -97,14 +99,14 @@ fn symbol_in_roster(sym: Symbol, roster: List<Symbol>) -> Bool {
 // head positional child. Both are read here so the wall does not turn on whether the author
 // happened to bind a field.
 fn pattern_head_identity_optional(pattern: Node) -> Optional<Symbol> {
-  match pattern.kind {
-    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-    _ =>
+  match node_atom_identity_optional(node: pattern) {
+    Present { value: id } => optional_present(value: id)
+    Absent =>
       match list_at_optional(xs: node_positional_child_targets(node: pattern), index: 0) {
         Present { value: head } =>
-          match head.kind {
-            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-            _ => optional_absent()
+          match node_atom_identity_optional(node: head) {
+            Present { value: id } => optional_present(value: id)
+            Absent => optional_absent()
           }
         Absent => optional_absent()
       }

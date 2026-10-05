@@ -6,6 +6,8 @@ import std.algebra { Empty, list_snoc_item }
 import std.content_hash {
   ContentHash,
   ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
   compare_content_hash,
   content_hash_of_value,
   serialize_content_hash
@@ -168,12 +170,10 @@ fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
           },
           observed_hash: observed
         }
-      _ =>
-        SourceRefReadHashMismatch {
-          ref: ref,
-          expected: ref.content_hash,
-          observed: observed
-        }
+      ContentHashDifferent =>
+        SourceRefReadHashMismatch { ref: ref, expected: ref.content_hash, observed: observed }
+      ContentHashCrossFamilyIncomparable =>
+        SourceRefReadHashMismatch { ref: ref, expected: ref.content_hash, observed: observed }
     }
   }
 }

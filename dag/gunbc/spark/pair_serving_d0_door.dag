@@ -34,7 +34,7 @@ import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_dispatch, d0_store_write_wall_standing,
   d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
   d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
-  d0_read_claim, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
+  d0_read_claim, D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
 }
 import gunbc.spark.pair_serving_d0_authorization {
   D0RequestFor, D0RequestUnestablished, D0RequestRefused, d0_authorization_request, d0_request_intent_text,
@@ -366,17 +366,23 @@ fn d0_gate_rerun_by_broker(store: FabricStorageBinding, request: AuthorizationRe
             D0AbsentClaimEnterPoll => d0_poll(request: request, expires: expires)
             D0AbsentClaimDecided { gate: g } => d0_door_gate_of(gate: g)
           }
-        _ =>
-          match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
-            StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
-            StandingReadAt { standing: standing, observed_at: _ } =>
-              match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
-                D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a, basis: D0BasisBroker }
-                D0NotRecorded { cause: c } => D0DoorRefused { reason: join(["the consent's recorded decision does not resume this run: ", approval_refusal_text(cause: c)], "") }
-                D0NotClaimedHere { reason: r } => D0DoorRefused { reason: join(["the consent cannot be resumed by this run: ", r as String], "") }
-              }
-          }
+        D0ClaimAt { state: _, generation: _ } => d0_resume_claimed(claim: claim, transaction: transaction, expires: expires, request: request)
+        D0ClaimUnreadable { reason: _ } => d0_resume_claimed(claim: claim, transaction: transaction, expires: expires, request: request)
       }
+}
+
+// A claim that was read (at a state, or unreadable) resumes only through the recorded decision.
+fn d0_resume_claimed(claim: D0ClaimReading, transaction: NonEmptyStr, expires: Timestamp, request: AuthorizationRequest<D0Subject>) -> D0DoorGate
+{
+  match approval_standing_read(escalation_id: request.escalation_id, expires_at: expires) {
+    StandingClockUnreadable => D0DoorRefused { reason: "clock unreadable; refusing to judge expiry against a fabricated instant" }
+    StandingReadAt { standing: standing, observed_at: _ } =>
+      match d0_resumable_authorization(claim: claim, transaction: transaction, poll: standing, request: request) {
+        D0Resumable { authorization: a } => D0DoorAdmitted { authorization: a, basis: D0BasisBroker }
+        D0NotRecorded { cause: c } => D0DoorRefused { reason: join(["the consent's recorded decision does not resume this run: ", approval_refusal_text(cause: c)], "") }
+        D0NotClaimedHere { reason: r } => D0DoorRefused { reason: join(["the consent cannot be resumed by this run: ", r as String], "") }
+      }
+  }
 }
 
 fn d0_poll(request: AuthorizationRequest<D0Subject>, expires: Timestamp) -> D0DoorGate

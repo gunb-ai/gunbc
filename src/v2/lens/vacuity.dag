@@ -1,5 +1,7 @@
 module v2.lens.vacuity
 
+import v2.std.grammar { node_atom_identity_optional }
+
 import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -503,9 +505,9 @@ fn vacuity_transform_operator_symbol_optional(transform: Node) -> Symbol? {
   match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
     Absent => optional_absent()
     Present { value: op_node } =>
-      match op_node.kind {
-        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-        _ => optional_absent()
+      match node_atom_identity_optional(node: op_node) {
+        Present { value: id } => optional_present(value: id)
+        Absent => optional_absent()
       }
   }
 }

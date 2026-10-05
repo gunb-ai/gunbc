@@ -196,7 +196,7 @@ type LlamaCppRpcDeployment sole_constructor {
 }
 
 fn llama_cpp_rpc_construct(
-  alias: NonEmptyStr,
+  served_alias: NonEmptyStr,
   front_door: LlamaCppRpcFrontDoor,
   weights_peer: LlamaCppRpcWeightsPeer,
   fabric: LlamaCppRpcFabricObserved,
@@ -218,7 +218,7 @@ fn llama_cpp_rpc_construct(
               none
             } else {
               Present { value: LlamaCppRpcDeployment {
-                alias: alias,
+                alias: served_alias,
                 front_door: front_door,
                 weights_peer: weights_peer,
                 fabric: fabric,
@@ -454,7 +454,7 @@ fn llama_cpp_rpc_observed() -> LlamaCppRpcDeployment? {
     Absent => none
     Present { value: peer } =>
       llama_cpp_rpc_construct(
-        alias: llama_cpp_rpc_observed_alias,
+        served_alias: llama_cpp_rpc_observed_alias,
         front_door: llama_cpp_rpc_observed_front_door,
         weights_peer: peer,
         fabric: llama_cpp_rpc_observed_fabric,

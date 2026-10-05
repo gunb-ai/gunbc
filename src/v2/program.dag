@@ -407,7 +407,8 @@ fn program_branch_effect_io_holds() -> Witness<Bool> {
         RuntimeValueEqualityUnavailable { reason: r } =>
           Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
       }
-    _ => Holds { value: false }
+    Accepted { value: _, diagnostics: _ } => Holds { value: false }
+    Rejected { diagnostics: _ } => Holds { value: false }
   }
 }
 
@@ -450,7 +451,8 @@ fn program_pick_if_arrow_holds() -> Witness<Bool> {
             RuntimeValueEqualityUnavailable { reason: r } =>
               Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
           }
-        _ => Holds { value: false }
+        Accepted { value: _, diagnostics: _ } => Holds { value: false }
+        Rejected { diagnostics: _ } => Holds { value: false }
       }
     }
     Rejected { diagnostics: _ } => Holds { value: false }

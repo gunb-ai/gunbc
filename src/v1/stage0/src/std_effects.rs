@@ -16,7 +16,6 @@ use crate::extdeps_ietf_http_semantics::HttpMethod::{
 };
 pub use crate::extdeps_uri_path::PathTemplate;
 pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
-pub use crate::std_optional::Optional;
 pub use crate::std_realization_schedule::string_list_eq;
 pub use crate::std_types::List;
 use crate::v1_rt;
@@ -462,7 +461,27 @@ pub fn check_modifier_vs_derivation(
                             HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
                             HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
                             HttpMethod::TRACE => Rc::new(ModifierAgreement::Agrees),
-                            _ => Rc::new(ModifierAgreement::Disagrees {
+                            HttpMethod::POST => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::PUT => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::DELETE => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::CONNECT => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::PATCH => Rc::new(ModifierAgreement::Disagrees {
                                 reason:
                                     "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
                                         .to_string(),

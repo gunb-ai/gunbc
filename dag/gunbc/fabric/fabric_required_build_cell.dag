@@ -233,11 +233,14 @@ fn fabric_cell_shape(members: List<FabricCellMember>) -> FabricCellShapeBuild {
                 attempt_root: attempt_member,
                 boundary: boundary_member,
               } }
-            _ => FabricCellShapeIncomplete
+            FabricCellMemberMissing => FabricCellShapeIncomplete
+            FabricCellMemberDuplicated => FabricCellShapeIncomplete
           }
-        _ => FabricCellShapeIncomplete
+        FabricCellMemberMissing => FabricCellShapeIncomplete
+        FabricCellMemberDuplicated => FabricCellShapeIncomplete
       }
-    _ => FabricCellShapeIncomplete
+    FabricCellMemberMissing => FabricCellShapeIncomplete
+    FabricCellMemberDuplicated => FabricCellShapeIncomplete
   }
 }
 

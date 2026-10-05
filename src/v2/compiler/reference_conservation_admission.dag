@@ -189,7 +189,10 @@ fn dropped_reference_extent(row: DroppedReference) -> Optional<AtomExtent> {
         ByteRange { start: s, end: e } => optional_present(value: AtomExtent { start: s, end: e })
         WholeFile => Absent
       }
-    _ => Absent
+    NodeLocus { anchor: _ } => Absent
+    SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+    InvariantPortLocus { anchor: _, invariant: _ } => Absent
+    DeclarationLocus { declaration: _ } => Absent
   }
 }
 
@@ -429,7 +432,8 @@ fn changed_scope_observation_of_subjects(subjects: FreeMonoid<ReferenceConservat
       match row {
         ScopeOutside { path: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope, refused: acc.refused }
         ScopeConserved { path: _, report: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused }
-        _ => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
+        ScopeDropped { path: _, report: _, refusals: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
+        ScopeMembershipUnreadable { path: _, diagnostics: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
       }
     }
   )

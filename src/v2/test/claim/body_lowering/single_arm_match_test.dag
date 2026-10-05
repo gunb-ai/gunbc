@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.single_arm_match
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
   ExplainedDrop,
   no_explained_drops,

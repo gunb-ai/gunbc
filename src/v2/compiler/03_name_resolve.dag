@@ -505,7 +505,12 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
         state: fold.state,
         at_conj: match n.kind {
           TypeNode { connective: Conj } => true
-          _ => false
+          TypeNode { connective: Atom { identity: _ } } => false
+          TypeNode { connective: Disj } => false
+          TypeNode { connective: Arrow } => false
+          TypeNode { connective: Cardinality } => false
+          TypeNode { connective: Instantiation } => false
+          ComputationNode { behavior: _ } => false
         },
         scope: fold.scope
       }
@@ -553,7 +558,12 @@ fn admit_named_exports(
         AdmitExportsFold { state: folded_state, origin: _, at_conj: _, scope: _ } =>
           folded_state
       }
-    _ => state
+    TypeNode { connective: Atom { identity: _ } } => state
+    TypeNode { connective: Disj } => state
+    TypeNode { connective: Arrow } => state
+    TypeNode { connective: Cardinality } => state
+    TypeNode { connective: Instantiation } => state
+    ComputationNode { behavior: _ } => state
   }
 }
 

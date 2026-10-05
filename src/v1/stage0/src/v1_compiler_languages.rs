@@ -545,7 +545,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             borrow_arg_template: "&{0}".to_string(),
         }),
         indexing: Rc::new(IndexingSemantics {
-            list_index: "{0}[({1}) as usize].clone()".to_string(),
+            list_index: "({0}).get(({1}) as usize).cloned()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
             list_slice: Some("Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())".to_string()),
@@ -1094,7 +1094,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             borrow_arg_template: "&{0}".to_string(),
         }),
         indexing: Rc::new(IndexingSemantics {
-            list_index: "{0}[({1}) as usize].clone()".to_string(),
+            list_index: "({0}).get(({1}) as usize).cloned()".to_string(),
             map_index: "({0}).get(&{1}).cloned()".to_string(),
             string_index: "v1_rt::char_at(&{0}, {1})".to_string(),
             list_slice: Some("Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())".to_string()),

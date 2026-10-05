@@ -25,6 +25,7 @@ import gunbc.auth.github_apps {
   SignerCustody, SignerCustodyObserved, SignerReadbackFailed, ObservedGitHubAppSigner,
   SignerMaterialAvailabilityUnobserved, SignerMaterialAvailableForImport, SignerKeyGenerationRequired,
   SignerKeyRejected, SignerReadbackNotReached,
+  SignerMaterialAvailabilityUnobserved, SignerMaterialAvailableForImport, SignerKeyGenerationRequired,
   ObservedAppRegistration, AppRegistrationReadback, AppRegistrationReadbackUnavailable,
   ObservedInstallation, InstallationReadback, InstallationReadbackUnavailable,
   InstallationReadbackNotAttempted, InstallationReadbackFailed,

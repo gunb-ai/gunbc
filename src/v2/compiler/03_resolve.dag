@@ -35,6 +35,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
+import v2.std.anonymous_binder { is_anonymous_param_label }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.algebra { any, fold_list, length, skip }
 import v2.std.collection {
@@ -46,7 +47,8 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import std.optional {
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.optional {
   Absent,
   Optional,
   Present,
@@ -133,6 +135,11 @@ import v2.std.node {
   Arrow,
   Atom,
   Bind,
+  Branch,
+  Cardinality,
+  Instantiation,
+  Loop,
+  Value,
   ComputationNode,
   Conj,
   Disj,
@@ -526,7 +533,20 @@ fn admit_value_binders(names: List<Symbol>, outer: Scope) -> BinderAdmission {
   })
 }
 
+// AN ANONYMOUS SLOT HIDES NOTHING. Hiding is the risk that a body reference silently rebinds to the
+// inner binder; an anonymous slot's label is unauthorable (v2.std.anonymous_binder), so no reference
+// can name it. Its label is its position in its OWN list (ruled there), so nested Arrows each mint
+// `<anonymous-parameter-1>`: `fn(Int) -> fn(Int) -> Int` was refused as hiding. It still enters the
+// frame, so the duplicate-in-frame check above applies to it.
 fn admit_one_value_binder(locals: Map<Symbol, Symbol>, name: Symbol, outer: Scope) -> BinderAdmission {
+  if is_anonymous_param_label(sym: name) {
+    BindersAdmitted { locals: map_insert(locals, name, name) }
+  } else {
+    admit_one_named_value_binder(locals: locals, name: name, outer: outer)
+  }
+}
+
+fn admit_one_named_value_binder(locals: Map<Symbol, Symbol>, name: Symbol, outer: Scope) -> BinderAdmission {
   match lookup_chain(s: outer, name: name) {
     Rejected { diagnostics: _ } => BindersAdmitted { locals: map_insert(locals, name, name) }
     Accepted { value: bound, diagnostics: _ } =>
@@ -682,7 +702,17 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
           Absent => a
         }
       })
-    _ => acc
+    TypeNode { connective: Atom { identity: _ } } => acc
+    TypeNode { connective: Disj } => acc
+    TypeNode { connective: Arrow } => acc
+    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Instantiation } => acc
+    ComputationNode { behavior: Value } => acc
+    ComputationNode { behavior: Transform } => acc
+    ComputationNode { behavior: Branch } => acc
+    ComputationNode { behavior: Loop } => acc
+    ComputationNode { behavior: Bind } => acc
+    ComputationNode { behavior: Match } => acc
   }
 }
 
@@ -1087,6 +1117,42 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   }
 }
 
+// THE RESOLVE STAGE'S FATAL REFUSAL-REASON VOCABULARY, CLOSED (v2.std.parse_refusal_reason's shape,
+// homed in the stage that refuses). A reason is FATAL when it can stand last in a rejection -- the
+// cause that refused; the advisories that ride in front of one (declared elsewhere, the ambiguity
+// class, the competing declarations) are not members. The type is the roster the frontier
+// ownership join reflects (gunbc.refusal_reason_ownership_join), so a resolve refusal that no
+// variant names is not producible by that join's reckoning. The producers still spell the Symbol
+// directly; each moves onto this vocabulary in the stage's replacement cut, which deletes the
+// literal in the same change.
+type ResolveRefusalReason
+  = ResolveMalformedTree
+  | ResolveUnboundSymbol
+  | ResolveAnonymousParameterReferenced
+  | ResolveTypeParameterInValuePosition
+  | ResolveFloatLiteralNotLowered
+  | ResolveAmbiguousSymbol
+  | ResolveTestCodeReferenced
+  | ResolveKernelTypeSpellingNamesAForeignDeclaration
+  | ResolveObservationIncomplete
+  | ResolveTypeParameterShadowsVisibleName
+
+// The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
+fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
+  match reason {
+    ResolveMalformedTree => ^resolve_reason_malformed_tree
+    ResolveUnboundSymbol => ^resolve_reason_unbound_symbol
+    ResolveAnonymousParameterReferenced => ^resolve_reason_anonymous_parameter_referenced
+    ResolveTypeParameterInValuePosition => ^resolve_reason_type_parameter_in_value_position
+    ResolveFloatLiteralNotLowered => ^float_literal_not_lowered
+    ResolveAmbiguousSymbol => ^resolve_reason_ambiguous_symbol
+    ResolveTestCodeReferenced => ^resolve_reason_test_code_referenced
+    ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
+    ResolveObservationIncomplete => ^resolve_reason_observation_incomplete
+    ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
+  }
+}
+
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_reason_malformed_tree,
@@ -1149,7 +1215,9 @@ fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name:
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
-    _ => optional_absent()
+    Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -2599,8 +2667,8 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
     Absent => acc
     Present { value: _ } =>
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } =>
+        match node_atom_identity_optional(node: e.target) {
+          Present { value: id } =>
             if is_wildcard_pattern(pattern: e.target) {
               m
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
@@ -2611,7 +2679,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
                 declared: optional_absent()
               })
             }
-          _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
       })
   }
@@ -3929,8 +3997,8 @@ fn type_param_shadows_visible_name_diagnostic(binder: Node) -> Diagnostic {
 // A binder is admitted exactly when its spelling, looked up from the declaration's own scope,
 // is unbound. Any other answer -- a binding, an ambiguity, a test-code wall -- is a visible name.
 fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWalk {
-  match binder.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: binder) {
+    Present { value: id } =>
       match resolve_atom(ctx: ctx, n: binder, identity: id) {
         Rejected { diagnostics: d } =>
           if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
@@ -3941,7 +4009,7 @@ fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWa
         Accepted { value: _, diagnostics: _ } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
       }
-    _ => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
+    Absent => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
   }
 }
 

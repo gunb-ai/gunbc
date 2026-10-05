@@ -57,7 +57,12 @@ fn inhabitance_formal_declaration(declared: Node, type_params: List<Symbol>) -> 
       } else {
         DeclaredType { declared: declared }
       }
-    _ => DeclaredType { declared: declared }
+    TypeNode { connective: Conj } => DeclaredType { declared: declared }
+    TypeNode { connective: Disj } => DeclaredType { declared: declared }
+    TypeNode { connective: Arrow } => DeclaredType { declared: declared }
+    TypeNode { connective: Cardinality } => DeclaredType { declared: declared }
+    TypeNode { connective: Instantiation } => DeclaredType { declared: declared }
+    ComputationNode { behavior: _ } => DeclaredType { declared: declared }
   }
 }
 

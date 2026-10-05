@@ -160,7 +160,7 @@ fn runner_usage_from_observation<P>(
           }
         }
       }
-      _ => RunnerUsageRefused { cause: UsageClockBasisNotWall }
+      CpuClock => RunnerUsageRefused { cause: UsageClockBasisNotWall }
     }
   }
 }

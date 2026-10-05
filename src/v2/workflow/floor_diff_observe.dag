@@ -21,6 +21,9 @@ import gunbc.diff_baseline {
   PushBeforeInputRefused,
   ExactReplayBoundary,
   MergeTarget,
+  MergeGroupBaseInput,
+  MergeGroupBaseSha,
+  MergeGroupBaseInputRefused,
   resolve_diff_baseline,
   diff_baseline_ref,
   diff_baseline_diff_base,
@@ -48,8 +51,15 @@ import extdeps.git {
   git_diff_name_status_field_separator,
   git_remote_ref_parts
 }
-import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push, github_event_path_env }
+import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push, github_event_name_merge_group, github_event_path_env }
 import extdeps.github.actions_environment { github_sha_variable_name }
+import extdeps.github.merge_group_event {
+  merge_group_base_from_event_path,
+  MergeGroupBaseObserved,
+  MergeGroupBaseAbsent,
+  MergeGroupBaseMalformed,
+  MergeGroupEventPayloadReadRefused
+}
 import extdeps.github.push_event {
   push_before_from_event_path,
   PushBeforeObserved,
@@ -92,7 +102,7 @@ fn floor_env_optional(env_name: NonEmptyStr) -> String? {
 // (push self-compare refusal), push before from GITHUB_EVENT_PATH (extdeps.github.push_event), and
 // exact replay from GUNBC_DIFF_WINDOW_PATH (gunbc.git_diff_change_window). pull_request with branch
 // base → MergeTarget (triple-dot); diff window → ExactReplayBoundary (two-dot, typed GitObjectIds);
-// push → PushBefore; other CI events → PushParent. Unrecognized events and malformed diff-window
+// push → PushBefore; merge_group → MergeGroupBase (the group parent, two-dot); other CI events → PushParent. Unrecognized events and malformed diff-window
 // wire REFUSE — never widen. When both GUNBC_DIFF_WINDOW_PATH and GUNBC_CI_DIFF_BASE are set,
 // resolve_diff_baseline refuses with BaselineSourceConflict.
 
@@ -156,6 +166,36 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
   }
 }
 
+fn floor_merge_group_base_refusal(detail: String) -> MergeGroupBaseInput {
+  MergeGroupBaseInputRefused {
+    reason: concat(concat("merge_group event base_sha unobservable — ", detail), "; halting the floor (AFFECTED-SET REFUSAL)")
+  }
+}
+
+// The merge group's parent, from the same GITHUB_EVENT_PATH payload the push arm reads. Only a
+// merge_group event observes it; every unobservable state is a typed refusal the resolver carries.
+fn floor_observe_merge_group_base_input(event_name: String) -> MergeGroupBaseInput? {
+  if event_name != github_event_name_merge_group {
+    none
+  } else {
+    match floor_env_optional(env_name: github_event_path_env) {
+      Absent => Present { value: floor_merge_group_base_refusal(detail: "GITHUB_EVENT_PATH is unset") }
+      Present { value: path } =>
+        if path == "" {
+          Present { value: floor_merge_group_base_refusal(detail: "GITHUB_EVENT_PATH is empty") }
+        } else {
+          match merge_group_base_from_event_path(path: path) {
+            MergeGroupBaseObserved { sha: sha } => Present { value: MergeGroupBaseSha { sha: sha as String } }
+            MergeGroupBaseAbsent { detail: d } => Present { value: floor_merge_group_base_refusal(detail: d) }
+            MergeGroupBaseMalformed { detail: d } => Present { value: floor_merge_group_base_refusal(detail: d) }
+            MergeGroupEventPayloadReadRefused { path: p, cause: c } =>
+              Present { value: floor_merge_group_base_refusal(detail: join(["payload unreadable at ", p, ": ", c], "")) }
+          }
+        }
+    }
+  }
+}
+
 fn floor_observe_diff_window() -> GitDiffWindowObservation? {
   match floor_env_optional(env_name: gunbc_diff_window_path_env) {
     Absent => none
@@ -175,13 +215,15 @@ fn floor_observe_ci_diff_event() -> CiDiffEvent {
   let push_before = floor_observe_push_before_input(event_name: event_name)
   let head_sha = floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr)
   let diff_window = floor_observe_diff_window()
+  let merge_group_base = floor_observe_merge_group_base_input(event_name: event_name)
   CiDiffEvent {
     override_ref: override_ref,
     event_name: event_name,
     base_ref: base_ref,
     push_before: push_before,
     head_sha: head_sha,
-    diff_window: diff_window
+    diff_window: diff_window,
+    merge_group_base: merge_group_base
   }
 }
 
@@ -208,6 +250,7 @@ fn floor_diff_mode_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> D
     ExactReplayBoundary { base: _, head: _, observed_relation: _ } => DiffTwoDot
     MergeTarget { ref: _ } => policy.mode
     PushParent { ref: _ } => policy.mode
+    MergeGroupBase { ref: _ } => DiffTwoDot
     OperatorOverride { ref: _ } => policy.mode
   }
 }

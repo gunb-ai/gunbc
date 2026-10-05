@@ -505,7 +505,8 @@ fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
   let hashes_match =
     match compare_content_hash(left: left.content_hash, right: right.content_hash) {
       ContentHashEqual => true
-      _ => false
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
     }
   paths_match && roots_match && hashes_match
 }
@@ -709,7 +710,17 @@ fn source_ir_artifact_provenance_from_model(
           )
         }
       )
-    _ =>
+    GeneratedSource =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle =>
       outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
@@ -807,10 +818,18 @@ fn module_storage_binding_from_read_prepared(
           )
         }
       )
-    _ =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+    GeneratedSource =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 

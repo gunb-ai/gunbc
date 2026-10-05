@@ -38,7 +38,7 @@ import v2.std.node_query {
   declared_field_list,
   declared_field_named,
   find_arrow_body_child,
-  find_named_child,
+  find_binder_type,
   is_wildcard_pattern,
   node_labeled_child_edges,
   node_positional_child_targets,
@@ -439,6 +439,8 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
 // Named edge, so a match-arm scope frame has exactly what it needs to bind the body's x to the
 // arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
 // resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node_walk.
+// Since #12923 a binder's target is a binder node (type + optional default), so the parameter's
+// type is read through find_binder_type, which refuses a member that is not a binder node.
 test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
   (match vf_first_arm_pattern_of(o: vfs_normalized_16(), fn_lexeme: "pick") {
     Absent => false
@@ -453,7 +455,7 @@ test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
             match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
               Absent => false
               Present { value: domain } =>
-                match find_named_child(root: domain, name: ^x) {
+                match find_binder_type(root: domain, name: ^x) {
                   Accepted { value: t, diagnostics: _ } => vf_type_atom_is(n: t, lexeme: "Int")
                   Rejected { diagnostics: _ } => false
                 }

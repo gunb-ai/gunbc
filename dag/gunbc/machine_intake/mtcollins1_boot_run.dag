@@ -121,6 +121,7 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
   KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
+  KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverFailed, KvmObserverPending,
   megarac_kvm_observer_start, megarac_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
   megarac_kvm_still_allowance,
