@@ -7,8 +7,8 @@ import extdeps.clock {
 }
 import extdeps.auth.jws { JwsSigningKeyRef }
 import extdeps.transports.rest {
-  RestOutcome, RestReadExchange, classify_rest_outcome,
-  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+  RestResult, RestAnswered, RestRefused, RestRefusal, RestReadExchange, classify_rest_refusal,
+  RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
   RestExchangeUnreached, RestExchangeUndecodable,
 }
 import extdeps.github.app {
@@ -48,7 +48,7 @@ import v2.std.optional { Absent, Present }
 // only once custody is observed: a read under a rejected key would be a second 401 reported as a
 // missing installation.
 //
-// The decisions over RestOutcomes are separated from the effects so each arm is reachable from a
+// The decisions over RestResults are separated from the effects so each arm is reachable from a
 // supplied value (DESIGN §3: a witness discriminates at one interface).
 //
 // CONSUMER (DESIGN §3c): gunbc.runner_microvm_slot_controller observe_app_control_plane calls this
@@ -56,9 +56,8 @@ import v2.std.optional { Absent, Present }
 // lifecycle_controller_app_key) with gunbai_ci_declared_installation_id and
 // gunbai_ci_registration_goal's required_permissions, once per attempt, before the JIT mint.
 
-fn rest_read_failure_detail(what: String, outcome: RestOutcome) -> String {
-  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
-    RestExchangeSucceeded => concat(what, ": succeeded")
+fn rest_read_failure_detail(what: String, refusal: RestRefusal) -> String {
+  match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
     RestExchangeStatusRefused { status: s, body: b } =>
       concat(concat(concat(what, ": status "), to_string(s)), concat(" ", b))
     RestExchangeCommitAmbiguous { detail: d } => concat(concat(what, ": "), d)
@@ -71,11 +70,10 @@ fn rest_read_failure_detail(what: String, outcome: RestOutcome) -> String {
 fn signer_custody_of_app_read(
   key: JwsSigningKeyRef,
   observed_at: EpochSecs,
-  outcome: RestOutcome,
-  record: GitHubAppPublicRecord,
+  outcome: RestResult<GitHubAppPublicRecord>,
 ) -> SignerCustody {
-  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
-    RestExchangeSucceeded =>
+  match outcome {
+    RestAnswered { answer: record } =>
       SignerCustodyObserved {
         signer: ObservedGitHubAppSigner {
           key: key,
@@ -83,34 +81,34 @@ fn signer_custody_of_app_read(
           observed_at: observed_at,
         },
       }
-    RestExchangeStatusRefused { status: s, body: b } =>
-      if s == 401 {
-        SignerReadbackFailed { cause: SignerKeyRejected { status: s, body: b } }
-      } else {
-        SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status: s, body: b } =>
+          if s == 401 {
+            SignerReadbackFailed { cause: SignerKeyRejected { status: s, body: b } }
+          } else {
+            SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", refusal: refusal) } }
+          }
+        RestExchangeCommitAmbiguous { detail: _ } =>
+          SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", refusal: refusal) } }
+        RestExchangeUnreached { cause: _ } =>
+          SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", refusal: refusal) } }
+        RestExchangeUndecodable { status: _, cause: _ } =>
+          SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", refusal: refusal) } }
       }
-    RestExchangeCommitAmbiguous { detail: _ } =>
-      SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
-    RestExchangeUnreached { cause: _ } =>
-      SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
-    RestExchangeUndecodable { status: _, cause: _ } =>
-      SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
   }
 }
 
-fn registration_of_app_read(outcome: RestOutcome, record: GitHubAppPublicRecord) -> ObservedAppRegistration {
-  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
-    RestExchangeSucceeded =>
+fn registration_of_app_read(outcome: RestResult<GitHubAppPublicRecord>) -> ObservedAppRegistration {
+  match outcome {
+    RestAnswered { answer: record } =>
       match observed_permissions_from_wire_map(m: record.permissions) {
         ObservedPermissionsDecoded { permissions: perms } =>
           AppRegistrationReadback { app_id: GitHubAppId { value: record.id }, requested_permissions: perms }
         ObservedPermissionAccessUnreadable { wire_name: _, access: _ } => AppRegistrationReadbackUnavailable
         ObservedPermissionKeyUnanswered { wire_name: _ } => AppRegistrationReadbackUnavailable
       }
-    RestExchangeStatusRefused { status: _, body: _ } => AppRegistrationReadbackUnavailable
-    RestExchangeCommitAmbiguous { detail: _ } => AppRegistrationReadbackUnavailable
-    RestExchangeUnreached { cause: _ } => AppRegistrationReadbackUnavailable
-    RestExchangeUndecodable { status: _, cause: _ } => AppRegistrationReadbackUnavailable
+    RestRefused { refusal: _ } => AppRegistrationReadbackUnavailable
   }
 }
 
@@ -120,9 +118,9 @@ fn installation_failed(detail: String) -> ObservedInstallation {
   }
 }
 
-fn installation_of_read(outcome: RestOutcome, record: GitHubAppInstallationRecord) -> ObservedInstallation {
-  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
-    RestExchangeSucceeded =>
+fn installation_of_read(outcome: RestResult<GitHubAppInstallationRecord>) -> ObservedInstallation {
+  match outcome {
+    RestAnswered { answer: record } =>
       match installation_from_record(record: record) {
         InstallationDecoded { installation: i } => InstallationReadback { installation: i }
         InstallationSelectionUnreadable { raw: r } => installation_failed(detail: concat("repository_selection unreadable: ", r))
@@ -130,10 +128,7 @@ fn installation_of_read(outcome: RestOutcome, record: GitHubAppInstallationRecor
         InstallationSlugEmpty => installation_failed(detail: "app_slug empty")
         InstallationHtmlUrlUnreadable { raw: r } => installation_failed(detail: concat("html_url unreadable: ", r))
       }
-    RestExchangeStatusRefused { status: _, body: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
-    RestExchangeCommitAmbiguous { detail: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
-    RestExchangeUnreached { cause: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
-    RestExchangeUndecodable { status: _, cause: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
+    RestRefused { refusal } => installation_failed(detail: rest_read_failure_detail(what: "read", refusal: refusal))
   }
 }
 
@@ -170,17 +165,22 @@ fn observe_github_app_control_plane(
         AppJwtUnsigned { detail: d } =>
           control_plane_unreached(app: app, detail: concat("App JWT unsigned: ", d), required: required, reason: reason)
         AppJwtSigned { jwt: jwt } => {
-          let read = github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: jwt as Secret)
-          let custody = signer_custody_of_app_read(key: key, observed_at: now, outcome: read.outcome, record: read.result)
-          let registration = registration_of_app_read(outcome: read.outcome, record: read.result)
+          let read: RestResult<GitHubAppPublicRecord> = match github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: jwt as Secret) {
+            RestAnswered { answer } => RestAnswered { answer: answer.result }
+            RestRefused { refusal } => RestRefused { refusal: refusal }
+          }
+          let custody = signer_custody_of_app_read(key: key, observed_at: now, outcome: read)
+          let registration = registration_of_app_read(outcome: read)
           match custody {
             SignerCustodyObserved { signer: _ } => {
-              let inst = github.AuthenticatedApp.GetAppInstallation(app_jwt: jwt as Secret, installation_id: installation.value)
               app_control_plane_state(
                 app: app,
                 custody: custody,
                 registration: registration,
-                observed: installation_of_read(outcome: inst.outcome, record: inst.result),
+                observed: installation_of_read(outcome: match github.AuthenticatedApp.GetAppInstallation(app_jwt: jwt as Secret, installation_id: installation.value) {
+                  RestAnswered { answer } => RestAnswered { answer: answer.result }
+                  RestRefused { refusal } => RestRefused { refusal: refusal }
+                }),
                 required: required,
                 reason: reason,
               )

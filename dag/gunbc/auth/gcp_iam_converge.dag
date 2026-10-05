@@ -14,7 +14,7 @@ import extdeps.cloud.gcp.iam {
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
   reconcile_gcp_policy, gcp_policy_from_wire, gcp_cell_in, gcp_policy_cells,
 }
-import extdeps.transports.rest { RestOutcome, RestStatusRefused }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
@@ -23,7 +23,7 @@ import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_c
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
   heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cell, observe_and_classify,
-  rest_ok, rest_refusal_text, outcome_is_not_found,
+  rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
@@ -777,27 +777,27 @@ fn gcp_iam_converge_request(d: GcpIamEstateDiff, attempt: AttemptIdentity) -> Gc
 }
 
 // ── Observation (effectful; the plan above is the pure half) ────────────────────────────────
-fn read_account_policy(f: DedicatedFederation, token: Secret) -> PolicyReading
-{
-  let r = gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: f.service_account)
-  if rest_ok(o: r.outcome) {
-    PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
-  } else if outcome_is_not_found(o: r.outcome) {
+fn policy_reading_of_refusal(refusal: RestRefusal) -> PolicyReading {
+  if outcome_is_not_found(o: refusal) {
     PolicyResourceAbsent
   } else {
-    PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) }
+    PolicyUnreadable { cause: rest_refusal_text(o: refusal) }
+  }
+}
+
+fn read_account_policy(f: DedicatedFederation, token: Secret) -> PolicyReading
+{
+  match gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: f.service_account) {
+    RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+    RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
   }
 }
 
 fn read_secret_policy(g: SecretAccessGrant, token: Secret) -> PolicyReading
 {
-  let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: g.target.secret)
-  if rest_ok(o: r.outcome) {
-    PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
-  } else if outcome_is_not_found(o: r.outcome) {
-    PolicyResourceAbsent
-  } else {
-    PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  match gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: g.target.secret) {
+    RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+    RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
   }
 }
 
@@ -850,18 +850,16 @@ fn observe_and_plan_estate(token: Secret) -> GcpIamEstatePlan
 fn policy_subject_reading(s: PolicySubject, token: Secret) -> PolicyReading
 {
   match s {
-    ServiceAccountPolicy { email: e } => {
-      let r = gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e)
-      if rest_ok(o: r.outcome) { PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) } }
-      else if outcome_is_not_found(o: r.outcome) { PolicyResourceAbsent }
-      else { PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) } }
-    }
-    SecretPolicy { secret: n } => {
-      let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n)
-      if rest_ok(o: r.outcome) { PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) } }
-      else if outcome_is_not_found(o: r.outcome) { PolicyResourceAbsent }
-      else { PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) } }
-    }
+    ServiceAccountPolicy { email: e } =>
+      match gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e) {
+        RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
+      }
+    SecretPolicy { secret: n } =>
+      match gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n) {
+        RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
+      }
   }
 }
 
@@ -872,16 +870,16 @@ type PolicyWrite
 fn policy_subject_write(s: PolicySubject, policy: GcpPolicy, token: Secret) -> PolicyWrite
 {
   match s {
-    ServiceAccountPolicy { email: e } => {
-      let w = gcp.IamAdmin.SetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e, policy: policy)
-      if rest_ok(o: w.outcome) { PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) } }
-      else { PolicyWriteRefused { cause: rest_refusal_text(o: w.outcome) } }
-    }
-    SecretPolicy { secret: n } => {
-      let w = gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n, policy: policy)
-      if rest_ok(o: w.outcome) { PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) } }
-      else { PolicyWriteRefused { cause: rest_refusal_text(o: w.outcome) } }
-    }
+    ServiceAccountPolicy { email: e } =>
+      match gcp.IamAdmin.SetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e, policy: policy) {
+        RestAnswered { answer: w } => PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) }
+        RestRefused { refusal } => PolicyWriteRefused { cause: rest_refusal_text(o: refusal) }
+      }
+    SecretPolicy { secret: n } =>
+      match gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n, policy: policy) {
+        RestAnswered { answer: w } => PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) }
+        RestRefused { refusal } => PolicyWriteRefused { cause: rest_refusal_text(o: refusal) }
+      }
   }
 }
 
@@ -936,9 +934,8 @@ fn execute_policy_add(s: PolicySubject, approved_etag: String, cells: List<GcpIa
   }
 }
 
-fn create_refusal(subject: String, o: RestOutcome) -> String {
-  if rest_ok(o: o) { "" }
-  else if match o { RestOk => false  RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
+fn create_refusal(subject: String, o: RestRefusal) -> String {
+  if match o { RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
   else { join([subject, ": ", rest_refusal_text(o: o)], "") }
 }
 
@@ -946,11 +943,20 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
 {
   match e {
     CreatePool { pool_id: p, display_name: n } =>
-      create_refusal(subject: concat("pool ", p as String), o: gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, display_name: n).outcome)
+      match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, display_name: n) {
+        RestAnswered { answer: _ } => ""
+        RestRefused { refusal } => create_refusal(subject: concat("pool ", p as String), o: refusal)
+      }
     CreateProvider { pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c } =>
-      create_refusal(subject: concat("provider ", v as String), o: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr).outcome)
+      match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr) {
+        RestAnswered { answer: _ } => ""
+        RestRefused { refusal } => create_refusal(subject: concat("provider ", v as String), o: refusal)
+      }
     CreateServiceAccount { account_id: a, display_name: n } =>
-      create_refusal(subject: concat("service account ", a as String), o: gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: a, display_name: n).outcome)
+      match gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: a, display_name: n) {
+        RestAnswered { answer: _ } => ""
+        RestRefused { refusal } => create_refusal(subject: concat("service account ", a as String), o: refusal)
+      }
     AddPolicyCells { subject: _, observed_etag: _, cells: _ } => ""
   }
 }

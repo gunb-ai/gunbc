@@ -14,6 +14,7 @@ import std.types { NonEmptyStr }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
+import extdeps.transports.rest { RestResult }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 

@@ -14942,7 +14942,14 @@ fn eval_service_call(
             OutputChannel::Instrumentation,
             &format!("[hermetic:mock] {}.{}", service_name, op_name),
         );
-        return eval_mock_response(op_node, ctx);
+        // A REST operation's mock is its decoded-200 body, so it reaches the caller in the
+        // answered arm of the same coproduct a wet exchange yields.
+        let mocked = eval_mock_response(op_node, ctx)?;
+        return Ok(if is_rest_transport(transport.clone(), ctx.si()) {
+            rest_answered_value(ctx, mocked)
+        } else {
+            mocked
+        });
     }
 
     let result = dispatch_service_wet(
@@ -20065,10 +20072,10 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
     })
 }
 
-/// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
-/// outcome/replay bridge below it through `dispatch_rest`: bounded growth in the seed
-/// interpreter, not a new Rust authority nor a second transport convention. Every DECISION is
-/// modeled — outcome states `extdeps.transports.rest` `RestOutcome`, observation states
+/// HAND-RUST GATE explicit deferral (review 46616), covering the REST result/replay bridge
+/// below through `dispatch_rest`: bounded growth in the seed interpreter, not a new Rust
+/// authority nor a second transport convention. Every DECISION is modeled — result states
+/// `extdeps.transports.rest` `RestResult` / `RestRefusal`, observation states
 /// `RestExchangeObservation`, replay identity and 0/1/many lookup `rest_bound_invocation_eq` /
 /// `rest_exchange_fixture_lookup`, resolution selected by calling `rest_exchange_resolution`
 /// back into `.dag`. Seed-side is only the projection onto the operation's declared output
@@ -20077,27 +20084,12 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
 /// `v1-honest-frontier`.
 ///
-/// EARLIER, NARROWER deletion condition than the lane's, which should fire first (SCOPE
-/// paragraph of the `rest_outcome_note` annotation): when the `response` block becomes the single authority
-/// and `output` is DERIVED from its 2xx arm, every operation carries its outcome without
-/// declaring one; the opt-in disappears, `transport_outcome_output_field` deletes outright (no
-/// field to detect), and the `if status >= 400` raise below it deletes in the same motion
-/// (it serves only operations declaring no outcome). Checkable by execution:
-/// `rest_operation_without_outcome_still_refuses` pins the opt-in's existence, so it must be
-/// REPLACED (not kept green) when the seam dissolves — a `Legacy` operation with no outcome
-/// field can no longer exist.
+/// The shell opt-in seam declared by `extdeps.transports.shell` `ShellOutcome`.
 ///
-/// The opt-in migration seam declared by extdeps.transports.rest.RestOutcome.
-///
-/// An operation asks for transport observations by declaring an output field of type
-/// RestOutcome. Operations without it keep the legacy raise-on-failure behavior until the
-/// response table becomes the universal result authority; see the rest_outcome_note annotation. Inspect the
-/// field's TYPE, not its spelling, so callers may pick a domain-appropriate name without
-/// another transport convention.
-///
-/// ONE DETECTOR FOR BOTH TRANSPORTS: `outcome_type` names the transport's outcome carrier
-/// (`RestOutcome`, `extdeps.transports.shell` `ShellOutcome`), so the shell opt-in is the same
-/// seam read with a different type name, not a second convention beside this one.
+/// A shell operation asks for transport observations by declaring an output field of type
+/// ShellOutcome; one without it keeps raise-on-failure. Inspect the field's TYPE, not its
+/// spelling. REST no longer has this seam: every REST operation yields `RestResult` over its
+/// declared output, so there is no field to detect and no raise to fall back to.
 fn transport_outcome_output_field(
     op_node: &Rc<Node>,
     ctx: &InterpContext,
@@ -20118,21 +20110,39 @@ fn transport_outcome_output_field(
     })
 }
 
-fn rest_outcome_variant(
+fn rest_refusal_variant(
     ctx: &InterpContext,
     variant: &str,
     mut fields: Vec<(Symbol, Value)>,
 ) -> Value {
     fields.sort_unstable_by_key(|(name, _)| name.0);
     Value::Variant {
-        type_name: ctx.sym("RestOutcome"),
+        type_name: ctx.sym("RestRefusal"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     }
 }
 
-/// `extdeps.transports.shell` `ShellOutcome`, projected the way `rest_outcome_variant` projects
-/// `RestOutcome`.
+/// `extdeps.transports.rest` `RestResult`: the one value a REST operation yields. The body's
+/// fields exist only inside `RestAnswered`, so no output field is ever produced without a value.
+fn rest_answered_value(ctx: &InterpContext, answer: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("RestResult"),
+        variant_name: ctx.sym("RestAnswered"),
+        fields: Rc::new(vec![(ctx.sym("answer"), answer)]),
+    }
+}
+
+fn rest_refused_value(ctx: &InterpContext, refusal: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("RestResult"),
+        variant_name: ctx.sym("RestRefused"),
+        fields: Rc::new(vec![(ctx.sym("refusal"), refusal)]),
+    }
+}
+
+/// `extdeps.transports.shell` `ShellOutcome`, projected the way `rest_refusal_variant` projects
+/// `RestRefusal`.
 fn shell_outcome_variant(
     ctx: &InterpContext,
     variant: &str,
@@ -20147,7 +20157,7 @@ fn shell_outcome_variant(
 }
 
 fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> Value {
-    rest_outcome_variant(
+    rest_refusal_variant(
         ctx,
         "RestStatusRefused",
         vec![
@@ -20158,7 +20168,7 @@ fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> 
 }
 
 fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
-    rest_outcome_variant(
+    rest_refusal_variant(
         ctx,
         "RestTransportRefused",
         vec![(ctx.sym("cause"), str_value(cause))],
@@ -20166,7 +20176,7 @@ fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
 }
 
 fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) -> Value {
-    rest_outcome_variant(
+    rest_refusal_variant(
         ctx,
         "RestBodyUndecodable",
         vec![
@@ -20521,40 +20531,18 @@ fn decide_rest_exchange(
     observation: RestExchangeObservationHost,
     op_node: &Rc<Node>,
     response_format: &str,
-    outcome_field: Option<&str>,
     ctx: &InterpContext,
-) -> InterpResult<Value> {
+) -> Value {
+    let refused = |refusal: Value| rest_refused_value(ctx, refusal);
     let (status, body) = match observation {
         RestExchangeObservationHost::ExchangeRefused(cause) => {
-            return match outcome_field {
-                Some(field) => Ok(attach_transport_outcome(
-                    None,
-                    op_node,
-                    field,
-                    rest_transport_refused_value(ctx, cause),
-                    ctx,
-                )),
-                None => Err(InterpError::TypeError {
-                    msg: format!("HTTP request failed: {}", cause),
-                }),
-            };
+            return refused(rest_transport_refused_value(ctx, cause));
         }
         RestExchangeObservationHost::Response {
             status,
             body: RestBodyObservationHost::ReadRefused(cause),
         } => {
-            return match outcome_field {
-                Some(field) => Ok(attach_transport_outcome(
-                    None,
-                    op_node,
-                    field,
-                    rest_body_undecodable_value(ctx, status, cause),
-                    ctx,
-                )),
-                None => Err(InterpError::TypeError {
-                    msg: format!("HTTP {} body unreadable: {}", status, cause),
-                }),
-            };
+            return refused(rest_body_undecodable_value(ctx, status, cause));
         }
         RestExchangeObservationHost::Response {
             status,
@@ -20562,94 +20550,43 @@ fn decide_rest_exchange(
         } => (status, body),
     };
     if !(200..300).contains(&status) {
-        if let Some(field) = outcome_field {
-            return Ok(attach_transport_outcome(
-                None,
-                op_node,
-                field,
-                rest_status_refused_value(ctx, status, body),
-                ctx,
-            ));
-        }
-    }
-    if status >= 400 {
-        return Err(InterpError::TypeError {
-            msg: format!("HTTP {}: {}", status, body),
-        });
+        return refused(rest_status_refused_value(ctx, status, body));
     }
     let mapped = if response_format == "Text" {
-        map_response_to_value(&body, None, op_node, ctx)?
+        map_response_to_value(&body, op_node, ctx)
     } else {
         let json = match serde_json::from_str::<serde_json::Value>(&body) {
             Ok(json) => json,
             Err(error) => {
                 let cause = format!("JSON body did not decode: {}", error);
-                return match outcome_field {
-                    Some(field) => Ok(attach_transport_outcome(
-                        None,
-                        op_node,
-                        field,
-                        rest_body_undecodable_value(ctx, status, cause),
-                        ctx,
-                    )),
-                    None => Err(InterpError::TypeError {
-                        msg: format!("HTTP {} body undecodable: {}", status, cause),
-                    }),
-                };
+                return refused(rest_body_undecodable_value(ctx, status, cause));
             }
         };
         match map_response_to_value_json(&json, op_node, ctx) {
             Ok(mapped) => mapped,
             Err(refusal) => {
-                return match outcome_field {
-                    Some(field) => Ok(attach_transport_outcome(
-                        None,
-                        op_node,
-                        field,
-                        rest_body_undecodable_value(
-                            ctx,
-                            status,
-                            format!("body did not inhabit the declared output: {}", refusal),
-                        ),
-                        ctx,
-                    )),
-                    None => Err(InterpError::RestResponseUndecodable { refusal }),
-                };
+                return refused(rest_body_undecodable_value(
+                    ctx,
+                    status,
+                    format!("body did not inhabit the declared output: {}", refusal),
+                ));
             }
         }
     };
-    if let Some(missing) = rest_payload_null_fields(&mapped, op_node, outcome_field, ctx) {
+    if let Some(missing) = rest_payload_null_fields(&mapped, op_node, ctx) {
         let cause = format!(
             "HTTP {} body did not inhabit the declared output (null at {})",
             status, missing
         );
-        return match outcome_field {
-            Some(field) => Ok(attach_transport_outcome(
-                None,
-                op_node,
-                field,
-                rest_body_undecodable_value(ctx, status, cause),
-                ctx,
-            )),
-            None => Err(InterpError::TypeError { msg: cause }),
-        };
+        return refused(rest_body_undecodable_value(ctx, status, cause));
     }
-    match outcome_field {
-        Some(field) => Ok(attach_transport_outcome(
-            Some(mapped),
-            op_node,
-            field,
-            rest_outcome_variant(ctx, "RestOk", vec![]),
-            ctx,
-        )),
-        None => Ok(mapped),
-    }
+    rest_answered_value(ctx, mapped)
 }
 
-/// Project an observation into the operation's declared output record. On a non-success
-/// outcome (RestOutcome or ShellOutcome) the transport-derived fields are Null: the outcome is the
-/// only inhabited branch and so the only consumable fact. On success (RestOk, ShellExited) keep
-/// the mapped fields and replace just the outcome field.
+/// Project a shell observation into the operation's declared output record. On a non-success
+/// ShellOutcome the transport-derived fields are Null: the outcome is the only inhabited branch
+/// and so the only consumable fact. On ShellExited keep the mapped fields and replace just the
+/// outcome field. REST does not come through here: its result is the `RestResult` coproduct.
 fn attach_transport_outcome(
     mapped: Option<Value>,
     op_node: &Rc<Node>,
@@ -20979,14 +20916,12 @@ fn dispatch_rest(
     )?;
     let selection = rest_exchange_selection(invocation, ctx)?;
     let observation = observe_rest_exchange(selection, request, body_json);
-    let outcome_field = transport_outcome_output_field(op_node, ctx, "RestOutcome");
-    decide_rest_exchange(
+    Ok(decide_rest_exchange(
         observation,
         op_node,
         &response_format,
-        outcome_field.as_deref(),
         ctx,
-    )
+    ))
 }
 
 pub fn resolve_auth(
@@ -21158,22 +21093,14 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
     result
 }
 
-fn map_response_to_value(
-    text: &str,
-    _json: Option<&serde_json::Value>,
-    op_node: &Rc<Node>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn map_response_to_value(text: &str, op_node: &Rc<Node>, ctx: &InterpContext) -> Value {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(str_value(text.to_string())),
+        _ => return str_value(text.to_string()),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(str_value(text.to_string()));
-    }
-    if children.len() == 1 {
-        return Ok(str_value(text.to_string()));
+        return str_value(text.to_string());
     }
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
@@ -21181,18 +21108,10 @@ fn map_response_to_value(
         fields.push((ctx.sym(&field_name), str_value(text.to_string())));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
-    Ok(Value::Record {
+    Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
-    })
-}
-
-fn rest_output_child_is_outcome(child: &Rc<Node>, ctx: &InterpContext) -> bool {
-    let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
-    else {
-        return false;
-    };
-    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("RestOutcome")
+    }
 }
 
 fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
@@ -21229,7 +21148,6 @@ fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> 
 fn rest_payload_null_fields(
     mapped: &Value,
     op_node: &Rc<Node>,
-    outcome_field: Option<&str>,
     ctx: &InterpContext,
 ) -> Option<String> {
     let optional = rest_optional_output_field_names(op_node, ctx);
@@ -21239,9 +21157,7 @@ fn rest_payload_null_fields(
                 .iter()
                 .filter(|(name, value)| {
                     let field = ctx.resolve(*name);
-                    Some(field.as_str()) != outcome_field
-                        && matches!(value, Value::Null)
-                        && !optional.contains(&field)
+                    matches!(value, Value::Null) && !optional.contains(&field)
                 })
                 .map(|(name, _)| ctx.resolve(*name))
                 .collect();
@@ -21288,16 +21204,10 @@ fn map_response_to_value_json(
         return Ok(json_to_value(json));
     }
 
-    let payload_count = children
-        .iter()
-        .filter(|child| !rest_output_child_is_outcome(child, ctx))
-        .count();
+    let payload_count = children.len();
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        if rest_output_child_is_outcome(child, ctx) {
-            continue;
-        }
         let from_key = extract_from_key(child, ctx);
         let val = match from_key {
             Some(path) => {

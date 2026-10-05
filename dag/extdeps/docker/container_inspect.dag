@@ -23,6 +23,7 @@ import extdeps.languages.json.parse {
   JsonMemberPresence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable,
   json_member_presence,
 }
+import extdeps.transports.rest { RestResult }
 
 type ContainerState
   = Running

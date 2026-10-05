@@ -19,7 +19,7 @@ import extdeps.cloudflare.r2 {
   r2_jurisdiction_wire,
   parse_r2_jurisdiction,
 }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.r2_buckets
 import extdeps.cloudflare.r2_lifecycle
 import extdeps.cloudflare.r2_lifecycle {
@@ -242,14 +242,15 @@ fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
 }
 
 fn read_r2_bucket(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2BucketRead uses net: Network {
-  let got = cloudflare.R2Buckets.Get(
-    auth_token: admin,
-    account_id: account_id as String,
-    bucket_name: bucket_name as String,
-  )
   classify_r2_bucket_get(
-    outcome: got.outcome,
-    bucket: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location },
+    outcome: match cloudflare.R2Buckets.Get(
+      auth_token: admin,
+      account_id: account_id as String,
+      bucket_name: bucket_name as String,
+    ) {
+      RestAnswered { answer: got } => RestAnswered { answer: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location } }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
   )
 }
 
@@ -295,11 +296,11 @@ fn apply_r2_bucket_create(
     Present { value: l } => concat(" (locationHint requested ", concat(r2_bucket_location_wire(location: l), ")"))
     Absent => " (no locationHint)"
   }
-  let create_outcome = match created.outcome {
-    RestOk => "create ok"
-    RestStatusRefused { status: status, body: _ } => join(["create refused with status ", to_string(status)], "")
-    RestTransportRefused { cause: _ } => "create got no response"
-    RestBodyUndecodable { status: status, cause: _ } => join(["create status ", to_string(status), " body undecodable"], "")
+  let create_outcome = match created {
+    RestAnswered { answer: _ } => "create ok"
+    RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["create refused with status ", to_string(status)], "")
+    RestRefused { refusal: RestTransportRefused { cause: _ } } => "create got no response"
+    RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["create status ", to_string(status), " body undecodable"], "")
   }
   let create_status = concat(create_outcome, requested)
   match readback.decision {
@@ -351,12 +352,14 @@ fn classify_r2_lifecycle(desired: List<R2LifecycleRule>, read: R2LifecycleRead) 
 }
 
 fn read_r2_lifecycle(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2LifecycleRead uses net: Network {
-  let got = cloudflare.R2BucketLifecycle.GetRaw(
+  r2_lifecycle_read(outcome: match cloudflare.R2BucketLifecycle.GetRaw(
     auth_token: admin,
     account_id: account_id as String,
     bucket_name: bucket_name as String,
-  )
-  r2_lifecycle_read(outcome: got.outcome, body: got.body)
+  ) {
+    RestAnswered { answer } => RestAnswered { answer: answer.body }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  })
 }
 
 fn ensure_r2_purpose_lifecycle(
@@ -379,11 +382,11 @@ fn ensure_r2_purpose_lifecycle(
         rules: r2_lifecycle_rules_wire(rules: plan.rules),
       )
       let readback = classify_r2_lifecycle(desired: desired, read: read_r2_lifecycle(admin: admin, account_id: account_id, bucket_name: bucket_name))
-      let put_status = match put.outcome {
-        RestOk => "put ok"
-        RestStatusRefused { status: status, body: _ } => join(["put refused with status ", to_string(status)], "")
-        RestTransportRefused { cause: _ } => "put got no response"
-        RestBodyUndecodable { status: status, cause: _ } => join(["put status ", to_string(status), " body undecodable"], "")
+      let put_status = match put {
+        RestAnswered { answer: _ } => "put ok"
+        RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["put refused with status ", to_string(status)], "")
+        RestRefused { refusal: RestTransportRefused { cause: _ } } => "put got no response"
+        RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["put status ", to_string(status), " body undecodable"], "")
       }
       match readback.decision {
         Noop => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: concat(put_status, "; readback converged")), held: true }

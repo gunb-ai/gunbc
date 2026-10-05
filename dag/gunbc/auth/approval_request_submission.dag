@@ -7,7 +7,8 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, F
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
-import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, NtfyRefusedExplicitly, NtfyAcceptanceIndeterminate, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
+import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire, NtfyRefusedExplicitly, NtfyAcceptanceIndeterminate }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
@@ -357,7 +358,10 @@ fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> 
         click: message.click,
         cache: ntfy_cache_wire(c: message.cache),
       )
-      let publish = ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id)
+      let publish = ntfy_publish_outcome_of(rest: match sent {
+        RestAnswered { answer } => RestAnswered { answer: answer.message_id }
+        RestRefused { refusal } => RestRefused { refusal: refusal }
+      })
       NotificationAttempted { publish: publish, acceptance: ntfy_publish_acceptance(o: publish) }
     }
   }
