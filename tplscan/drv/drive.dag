@@ -7,6 +7,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
 import v2.std.node { content_hash }
 import v2.std.diagnostic { Accepted, Rejected }
+import std.process { ProcessExit, ExitFailure }
 data tplscan_paths: List<String> = [
   "dag/extdeps/bmc/http.dag",
   "dag/extdeps/bmc/ipmi.dag",
@@ -99,7 +100,11 @@ data tplscan_paths: List<String> = [
   "src/v1/02_parse.dag",
   "src/v2/lens/grounding.dag"
 ]
-fn run() -> String {
+fn run() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_text()) }
+}
+
+fn run_text() -> String {
   fold_list(xs: tplscan_paths, empty: "", cons: fn(acc, p) {
     let v = match grammar_coverage_ingest_path(path: p) {
       ParsedClean => "ACCEPTED"
@@ -109,7 +114,11 @@ fn run() -> String {
   })
 }
 
-fn roster() -> String {
+fn roster() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", roster_text()) }
+}
+
+fn roster_text() -> String {
   fold_list(xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()), empty: "", cons: fn(acc, row) { concat(acc, concat(symbol_lexeme(sym: row.production), "\n")) })
 }
 
@@ -122,7 +131,11 @@ data tplscan_controls: List<String> = [
   "module c\ndata a: String = \"plain\\t\\\"q\\\\\"\n"
 ]
 
-fn controls() -> String {
+fn controls() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", controls_text()) }
+}
+
+fn controls_text() -> String {
   let lm = dag_language_model()
   fold_list(xs: tplscan_controls, empty: "", cons: fn(acc, src) {
     let line = match tokenize(text: src, file: ^tplscan_control, rules: lm.lex) {

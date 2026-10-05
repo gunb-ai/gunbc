@@ -1,0 +1,84 @@
+module v2.test.claim.compiler.string_template_hole_type
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, ByteRange, Locus, NodeLocus, Rejected, Textual, WholeFile, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: infer over a string template's concat chain (v2.compiler.body_lowering_fold
+// body_lower_string_template). NO IMPLICIT to_string (DESIGN section 4, the coercion law): a hole is
+// one operand of the bare roster `concat`, whose one carrier M takes the template's text, so a hole
+// whose value is not text cannot inhabit it and the template REFUSES at that argument, typed and
+// located. A non-text value reaches a template only through a named, declared conversion written at
+// the hole. BOUNDARY: source text in, through the production assembly route, then infer.
+//
+// The fixtures' own text (braces escaped here so this module's literals stay plain):
+//   fn f(a: String) -> String { "x{a}y" }
+//   fn f(a: Int) -> String { "x{a}y" }
+data sth_text_hole: String = "module p\n\nfn f(a: String) -> String {\n  \"x\{a\}y\"\n}\n"
+data sth_int_hole: String = "module p\n\nfn f(a: Int) -> String {\n  \"x\{a\}y\"\n}\n"
+
+fn sth_reason(src: String) -> Symbol {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: d } => fmi_reason(o: Rejected { diagnostics: d })
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+// GREEN: a text hole concatenates with the template's text and is accepted.
+test fn a_text_hole_is_accepted() -> Bool {
+  sth_reason(src: sth_text_hole) == ^accepted
+}
+
+// RED, LOCATED AT THE HOLE: an Int hole is not converted; it refuses at the concat argument, as an
+// authored concat("x", a) with a: Int does, and the refusal's node resolves through the parse's span
+// index to the hole `a` -- byte 40 of sth_int_hole, inside the template -- not to a generated node
+// with no authored position (body_lowering_fold body_lower_string_template_part_source).
+test fn an_int_hole_refuses_at_the_hole() -> Bool {
+  match fmi_assemble(src: sth_int_hole) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          (diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit)
+            && match conservation_subject_of_text(path: "probe_string_template_hole.dag", text: sth_int_hole).parsed {
+                 Accepted { value: artifact, diagnostics: _ } =>
+                   sth_locus_starts_within(index: artifact.span_index, at: diagnostics_fatal(d: d).at, start: 40, end: 41)
+                 Rejected { diagnostics: _ } => false
+               }
+      }
+  }
+}
+
+fn sth_textual_starts_within(locus: Locus, start: Int, end: Int) -> Bool {
+  match locus {
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: _ } => (s >= start) && (s < end)
+        WholeFile => false
+      }
+    _ => false
+  }
+}
+
+fn sth_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> Bool {
+  match at {
+    NodeLocus { anchor: a } =>
+      match node_occurrence_id_optional(node: a.at) {
+        Present { value: id } =>
+          match span_index_textual_locus_optional(index: index, id: id) {
+            Present { value: locus } => sth_textual_starts_within(locus: locus, start: start, end: end)
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}

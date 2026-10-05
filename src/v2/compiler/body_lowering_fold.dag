@@ -6578,7 +6578,8 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
 // call would name, so the chain types exactly as an authored chain does -- through the free-monoid
 // bound on the roster's concat row. That is why a hole whose value is not text REFUSES at its
 // argument instead of being converted: there is no implicit to_string (DESIGN section 4, the
-// coercion law). Every text part is kept, empty ones included, so even `"{x}"` is a concat and x is
+// coercion law), and the refusal is located at that hole (body_lower_string_template_part_source).
+// Every text part is kept, empty ones included, so even `"{x}"` is a concat and x is
 // judged as text. A shell the reader cannot read, or a hole that lowers to no operand, refuses
 // located; nothing is retained.
 fn body_lower_string_template(shell: Node) -> Outcome<Node> {
@@ -6601,14 +6602,31 @@ fn body_lower_string_template_chain(parts: List<StringTemplatePart>, shell: Node
         match chain {
           Absent => outcome_accepted(value: optional_present(value: operand))
           Present { value: left } =>
-            outcome_accepted(value: optional_present(value: body_lower_transform_call(
-              operator: body_lower_param_ref_atom(source: shell, identity: ^concat),
-              args: [Edge { label: Positional, target: left }, Edge { label: Positional, target: operand }]
+            outcome_accepted(value: optional_present(value: node_with_occurrence_id(
+              kind: ComputationNode { behavior: Transform },
+              children: [
+                Edge { label: Positional, target: body_lower_param_ref_atom(source: shell, identity: ^concat) },
+                Edge { label: Positional, target: left },
+                Edge { label: Positional, target: operand }
+              ],
+              occurrence_id: body_lower_string_template_part_source(part: part).occurrence_id
             )))
         }
       })
     })
   })
+}
+
+// EACH CONCAT IS LOCATED AT THE PART IT APPENDS. infer locates an argument refusal at its
+// application (v2.std.inhabitance application_argument_does_not_inhabit_diagnostic), so the
+// application that appends a hole carries that hole's source occurrence: a hole whose value is not
+// text refuses AT THE HOLE'S SPAN in the template, never at a generated node with no authored
+// position (DESIGN section 5, typed and located).
+fn body_lower_string_template_part_source(part: StringTemplatePart) -> Node {
+  match part {
+    StringTemplateText { value: _, at: at } => at
+    StringTemplateHole { expr: expr } => expr
+  }
 }
 
 fn body_lower_string_template_part(part: StringTemplatePart, shell: Node) -> Outcome<Node> {
