@@ -4378,8 +4378,87 @@ pub(crate) fn string_list_data_from_module_source(
     data_name: &str,
     allow_empty: bool,
 ) -> Vec<String> {
-    use crate::v1_std_core::{ExprData, LiteralValue};
+    string_list_literal_from_module_source(module_rel_path, content, data_name, allow_empty)
+        .unwrap_or_else(|r| {
+            panic!(
+                "lens table reader: {}",
+                string_list_literal_refusal_text(&r)
+            )
+        })
+}
 
+/// Why a module's declared string list could not be read as LITERAL DATA.
+///
+/// One refusal vocabulary for every reader of a declared `List<String>` out of one module's source:
+/// the lens-table callers (which panic on it, their inputs being invariant-established) and the
+/// floor's base cost-debt roster (which refuses the floor typed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum StringListLiteralRefusal {
+    /// The module did not parse.
+    ParseFailed { module: String, cause: String },
+    /// No `data` item and no zero-parameter `fn` by that name is declared in the module.
+    ItemAbsent { module: String, item: String },
+    /// An expression the read reached is not one of the accepted literal-data shapes.
+    NotLiteralData {
+        module: String,
+        item: String,
+        at: String,
+        shape: String,
+    },
+    /// The list is empty and the caller does not admit an empty list (fail-closed).
+    Empty { module: String, item: String },
+}
+
+pub(crate) fn string_list_literal_refusal_text(r: &StringListLiteralRefusal) -> String {
+    match r {
+        StringListLiteralRefusal::ParseFailed { module, cause } => {
+            format!("parse error in {module}: {cause}")
+        }
+        StringListLiteralRefusal::ItemAbsent { module, item } => format!(
+            "no `data {item}` and no zero-parameter `fn {item}` is declared in {module}"
+        ),
+        StringListLiteralRefusal::NotLiteralData {
+            module,
+            item,
+            at,
+            shape,
+        } => format!(
+            "RosterNotLiteralData: `{item}` in {module} reaches {shape} at {at}, which is not literal \
+             data (accepted: a string literal, a list literal, Cons {{ head, tail }} / Empty {{}}, a \
+             zero-argument call to a fn this module declares, list_flat_map(xs: _, f: fn(c) {{ c }})); \
+             it is never evaluated instead"
+        ),
+        StringListLiteralRefusal::Empty { module, item } => {
+            format!("`{item}` in {module} is empty (fail-closed)")
+        }
+    }
+}
+
+/// A declared `List<String>` read out of ONE module's source as LITERAL DATA, through the real
+/// front-end (`tokenize` + `parse`) and nothing else: no resolve, no other module, no evaluator.
+///
+/// THE ACCEPTED SHAPE IS CLOSED. A string literal; a list literal; `Cons { head, tail }` and
+/// `Empty {}`; a zero-argument call to a `fn` this same module declares (followed into its body);
+/// and `list_flat_map(xs: <list of lists>, f: fn(c) { c })` with an exact identity lambda. Any other
+/// expression the read reaches refuses as `NotLiteralData` with its location -- a row that calls
+/// any other function is never evaluated as a fallback. This is what lets a revision's declared
+/// roster be read when its module's import closure is not evaluable by THIS binary (a base that
+/// still uses a builtin this seed deleted): the read touches only the declaring module.
+pub(crate) fn string_list_literal_from_module_source(
+    module_rel_path: &str,
+    content: &str,
+    item_name: &str,
+    allow_empty: bool,
+) -> Result<Vec<String>, StringListLiteralRefusal> {
+    use crate::v1_std_core::{ExprData, LiteralValue, Node, ParsedModuleItemKind};
+    use std::rc::Rc;
+
+    enum Lit {
+        Str(String),
+        List(Vec<Lit>),
+    }
+
+    let module_name = module_rel_path.to_string();
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(
         content.to_string(),
@@ -4390,55 +4469,195 @@ pub(crate) fn string_list_data_from_module_source(
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    let source_indices = Rc::new(source_indices);
+    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
-        panic!(
-            "lens table reader: parse error in {module_rel_path}: {}",
-            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-        );
-    }
-    let module = result
-        .module
-        .as_ref()
-        .unwrap_or_else(|| panic!("lens table reader: {module_rel_path} parsed to no module"));
-    for item in module.children.iter() {
-        if item.name != data_name
-            || item.module_item_kind
-                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
-        {
-            continue;
-        }
-        let body = item.body.as_ref().unwrap_or_else(|| {
-            panic!("lens table reader: `data {data_name}` in {module_rel_path} has no value body")
+        return Err(StringListLiteralRefusal::ParseFailed {
+            module: module_name,
+            cause: crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone()),
         });
-        if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
-            panic!(
-                "lens table reader: `data {data_name}` in {module_rel_path} is not a \
-                 `List<String>` literal"
-            );
-        }
-        let mut values = Vec::new();
-        for el in body.children.iter() {
-            match el.expr_data.as_ref() {
-                ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => values.push(value.clone()),
-                    _ => panic!(
-                        "lens table reader: an element of `{data_name}` in {module_rel_path} is not \
-                         a string literal"
-                    ),
-                },
-                _ => panic!(
-                    "lens table reader: an element of `{data_name}` in {module_rel_path} is not a \
-                     literal"
-                ),
+    }
+    let Some(module) = result.module.as_ref() else {
+        return Err(StringListLiteralRefusal::ParseFailed {
+            module: module_name,
+            cause: "parsed to no module".to_string(),
+        });
+    };
+    let mut bodies: HashMap<String, Rc<Node>> = HashMap::new();
+    for item in module.children.iter() {
+        let readable = match item.module_item_kind {
+            ParsedModuleItemKind::ModuleItemDataValue => true,
+            ParsedModuleItemKind::ModuleItemFunction => item.params.is_empty(),
+            _ => false,
+        };
+        if readable {
+            if let Some(body) = item.body.as_ref() {
+                bodies.insert(item.name.clone(), body.clone());
             }
         }
-        if values.is_empty() && !allow_empty {
-            panic!("lens table reader: `{data_name}` in {module_rel_path} is empty (fail-closed)");
-        }
-        return values;
     }
-    panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
+    let Some(root) = bodies.get(item_name).cloned() else {
+        return Err(StringListLiteralRefusal::ItemAbsent {
+            module: module_name,
+            item: item_name.to_string(),
+        });
+    };
+
+    struct Reader<'a> {
+        module: &'a str,
+        item: &'a str,
+        bodies: &'a HashMap<String, Rc<Node>>,
+        source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+        following: Vec<String>,
+    }
+    impl Reader<'_> {
+        fn refuse(&self, node: &Node, shape: &str) -> StringListLiteralRefusal {
+            StringListLiteralRefusal::NotLiteralData {
+                module: self.module.to_string(),
+                item: self.item.to_string(),
+                at: format!("{}:{}", node.span.file, node.span.start),
+                shape: shape.to_string(),
+            }
+        }
+        fn arg<'n>(&self, call: &'n Node, label: &str) -> Option<&'n Rc<Node>> {
+            call.children
+                .iter()
+                .find(|a| a.name == label)
+                .and_then(|a| a.children.get(0))
+        }
+        fn read(&mut self, node: &Rc<Node>) -> Result<Lit, StringListLiteralRefusal> {
+            match node.expr_data.as_ref() {
+                ExprData::ExprLiteral { value } => match value.as_ref() {
+                    LiteralValue::LitStr { value } => Ok(Lit::Str(value.clone())),
+                    _ => Err(self.refuse(node, "a non-string literal")),
+                },
+                ExprData::ExprListLit => node
+                    .children
+                    .iter()
+                    .map(|c| self.read(c))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(Lit::List),
+                ExprData::ExprRecordLit { .. }
+                    if node.name == "Empty" && node.children.is_empty() =>
+                {
+                    Ok(Lit::List(Vec::new()))
+                }
+                ExprData::ExprRecordLit { .. }
+                    if node.name == "Cons" && node.children.len() == 2 =>
+                {
+                    let field = |label: &str| {
+                        node.children
+                            .iter()
+                            .find(|f| f.name == label)
+                            .and_then(|f| f.children.get(0))
+                            .cloned()
+                    };
+                    let (Some(head), Some(tail)) = (field("head"), field("tail")) else {
+                        return Err(
+                            self.refuse(node, "a Cons literal without exactly head and tail")
+                        );
+                    };
+                    let head = self.read(&head)?;
+                    match self.read(&tail)? {
+                        Lit::List(mut rest) => {
+                            rest.insert(0, head);
+                            Ok(Lit::List(rest))
+                        }
+                        Lit::Str(_) => Err(self.refuse(node, "a Cons whose tail is not a list")),
+                    }
+                }
+                ExprData::ExprCall { .. } if node.name == "list_flat_map" => {
+                    let identity = self.arg(node, "f").is_some_and(|f| {
+                        matches!(f.expr_data.as_ref(), ExprData::ExprLambda)
+                            && f.children.len() == 2
+                            && matches!(f.children[0].expr_data.as_ref(), ExprData::ExprVar { .. })
+                            && crate::v1_std_core::expr_var_name_at(
+                                f.children[0].clone(),
+                                self.source_indices.clone(),
+                            ) == f.children[1].name
+                    });
+                    let xs = self.arg(node, "xs").cloned();
+                    match (identity, xs, node.children.len()) {
+                        (true, Some(xs), 2) => match self.read(&xs)? {
+                            Lit::List(outer) => {
+                                let mut flat = Vec::new();
+                                for inner in outer {
+                                    match inner {
+                                        Lit::List(rows) => flat.extend(rows),
+                                        Lit::Str(_) => return Err(self.refuse(
+                                            node,
+                                            "list_flat_map over a list whose element is not a list",
+                                        )),
+                                    }
+                                }
+                                Ok(Lit::List(flat))
+                            }
+                            Lit::Str(_) => Err(self.refuse(node, "list_flat_map over a non-list")),
+                        },
+                        _ => Err(self.refuse(
+                            node,
+                            "a list_flat_map that is not exactly (xs: _, f: fn(c) { c })",
+                        )),
+                    }
+                }
+                ExprData::ExprCall { .. } if node.children.is_empty() => {
+                    let Some(body) = self.bodies.get(&node.name).cloned() else {
+                        return Err(self.refuse(
+                            node,
+                            &format!(
+                                "a call to `{}`, which this module does not declare",
+                                node.name
+                            ),
+                        ));
+                    };
+                    if self.following.contains(&node.name) {
+                        return Err(self.refuse(node, &format!("a cyclic call to `{}`", node.name)));
+                    }
+                    self.following.push(node.name.clone());
+                    let out = self.read(&body);
+                    self.following.pop();
+                    out
+                }
+                ExprData::ExprCall { .. } => {
+                    Err(self.refuse(node, &format!("a call to `{}` with arguments", node.name)))
+                }
+                other => Err(self.refuse(
+                    node,
+                    &format!("{other:?}")
+                        .split([' ', '{'])
+                        .next()
+                        .unwrap_or("an expression")
+                        .to_string(),
+                )),
+            }
+        }
+    }
+    let mut reader = Reader {
+        module: module_rel_path,
+        item: item_name,
+        bodies: &bodies,
+        source_indices: source_indices.clone(),
+        following: vec![item_name.to_string()],
+    };
+    let rows = match reader.read(&root)? {
+        Lit::List(items) => items
+            .into_iter()
+            .map(|i| match i {
+                Lit::Str(s) => Ok(s),
+                Lit::List(_) => {
+                    Err(reader.refuse(&root, "a list whose element is a list, not a string"))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        Lit::Str(_) => return Err(reader.refuse(&root, "a string, not a list")),
+    };
+    if rows.is_empty() && !allow_empty {
+        return Err(StringListLiteralRefusal::Empty {
+            module: module_rel_path.to_string(),
+            item: item_name.to_string(),
+        });
+    }
+    Ok(rows)
 }
 
 /// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
