@@ -1,5 +1,6 @@
 module v2.lens.disposition_redundancy
 
+import v2.lens.common.construction_justification { ConstructionJustification }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.disposition { Disposition, Scaffold, Terminal }
 

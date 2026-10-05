@@ -182,7 +182,8 @@ fn newly_public_subject_receipt_refusal(
                 },
               }
             }
-          _ => none
+          NewlyWithheld { subject: _ } => none
+          PolicyChanged { from_version: _, to_version: _ } => none
         }
     }
   })
