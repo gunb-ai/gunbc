@@ -6836,15 +6836,15 @@ fn infer_caller_admission_application_diags(
 // THE CALLEE'S ARROW FROM THE RESOLVED-DECLARATIONS INDEX: a cross-module callee's facts are never in
 // the subject's gather (the gather walks the subject root), so the wall reads the callee's own
 // declaration node from resolved_declarations -- declarations WITH RESOLVED BODIES, imported modules
-// included. Absent when the operator is not a qualified reference or names no declaration.
+// included. Absent when the operator's child is not a declaration reference or names no declaration.
 fn infer_callee_arrow_from_declarations(declarations: SymbolIndex, operator: Node) -> Optional<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: operator), index: 0) {
     Absent => optional_absent()
     Present { value: callee_ref } =>
-      match qualified_name_from_node(root: callee_ref) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: qn, diagnostics: _ } =>
-          match map_lookup(m: declarations.entries, key: qn) {
+      match declaration_reference_path_optional(node: callee_ref) {
+        Absent => optional_absent()
+        Present { value: qn } =>
+          match symbol_index_lookup(index: declarations, qualified_path: qn) {
             Absent => optional_absent()
             Present { value: decl } => infer_operator_arrow(operator: decl)
           }
