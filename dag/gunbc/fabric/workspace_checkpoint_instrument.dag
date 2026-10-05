@@ -560,8 +560,7 @@ fn workspace_observed_entry(binding: R2HeadBinding, token_source: AccessTokenSou
 
 // THE CLOSURE FROM THE HEAD, NEWEST FIRST, BOUNDED. Every step is a verified read of the parent the
 // previous entry links; exhausting the bound refuses rather than truncating, and an unreadable step
-// refuses rather than ending the chain early. The bound is small (a closure longer than it refuses),
-// so the newest-first list is built by append within it.
+// refuses rather than ending the chain early.
 type WorkspaceClosure
   = WorkspaceClosureRead { newest_first: List<WorkspaceStoredEntry>, custody: WorkspaceCustody }
   | WorkspaceClosureRefused { detail: String, custody: WorkspaceCustody }
@@ -575,16 +574,18 @@ fn workspace_entry_parent(entry: WorkspaceHeadEntry) -> FabricObjectRef? {
   }
 }
 
-fn workspace_closure_from(object: FabricObjectRef?, token_source: AccessTokenSource, acc: List<WorkspaceStoredEntry>, budget: Int, custody: WorkspaceCustody) -> WorkspaceClosure {
+// Entries and each step's custody are prepended and reversed once when the walk ends, so neither
+// is a copied accumulator (DESIGN 6, bare minimum cost).
+fn workspace_closure_from(object: FabricObjectRef?, token_source: AccessTokenSource, acc: List<WorkspaceStoredEntry>, budget: Int, custodies: List<WorkspaceCustody>) -> WorkspaceClosure {
   match object {
-    Absent => WorkspaceClosureRead { newest_first: acc, custody: custody }
+    Absent => WorkspaceClosureRead { newest_first: reverse(acc), custody: workspace_custody_all(cs: reverse(custodies)) }
     Present { value: o } =>
       if budget <= 0 {
-        WorkspaceClosureRefused { detail: join(["the closure exceeds ", to_string(workspace_closure_bound), " entries at ", fabric_object_ref_wire(object: o) as String], ""), custody: custody }
+        WorkspaceClosureRefused { detail: join(["the closure exceeds ", to_string(workspace_closure_bound), " entries at ", fabric_object_ref_wire(object: o) as String], ""), custody: workspace_custody_all(cs: reverse(custodies)) }
       } else {
         match workspace_stored_entry_read(object: o, token_source: token_source) {
-          WorkspaceStoredEntryUnread { detail: d, custody: c } => WorkspaceClosureRefused { detail: d, custody: workspace_custody_join(a: custody, b: c) }
-          WorkspaceStoredEntryHeld { stored: s, custody: c } => workspace_closure_from(object: workspace_entry_parent(entry: workspace_stored_entry_entry(stored: s)), token_source: token_source, acc: concat(acc, [s]), budget: budget - 1, custody: workspace_custody_join(a: custody, b: c))
+          WorkspaceStoredEntryUnread { detail: d, custody: c } => WorkspaceClosureRefused { detail: d, custody: workspace_custody_all(cs: reverse(Cons { head: c, tail: custodies })) }
+          WorkspaceStoredEntryHeld { stored: s, custody: c } => workspace_closure_from(object: workspace_entry_parent(entry: workspace_stored_entry_entry(stored: s)), token_source: token_source, acc: Cons { head: s, tail: acc }, budget: budget - 1, custodies: Cons { head: c, tail: custodies })
         }
       }
   }
@@ -596,7 +597,7 @@ fn workspace_closure(binding: R2HeadBinding, token_source: AccessTokenSource) ->
   match head.read {
     FabricHeadReadRefused { fault: f } => WorkspaceClosureRefused { detail: fabric_storage_fault_wire(fault: f), custody: custody }
     FabricHeadObserved { reading: FabricHeadAbsent } => WorkspaceClosureRead { newest_first: [], custody: custody }
-    FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } => workspace_closure_from(object: Present { value: o }, token_source: token_source, acc: [], budget: workspace_closure_bound, custody: custody)
+    FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } => workspace_closure_from(object: Present { value: o }, token_source: token_source, acc: [], budget: workspace_closure_bound, custodies: [custody])
   }
 }
 

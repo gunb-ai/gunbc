@@ -282,11 +282,8 @@ fn workspace_source_enumerate(root: WorkspaceSourceRoot) -> WorkspaceSourceEnume
   }
 }
 
-fn workspace_source_enumerate_all(roots: List<WorkspaceSourceRoot>, acc: List<WorkspaceSourceEnumeration>) -> List<WorkspaceSourceEnumeration> {
-  match roots {
-    Empty => acc
-    Cons { head: r, tail: rest } => workspace_source_enumerate_all(roots: rest, acc: concat(acc, [workspace_source_enumerate(root: r)]))
-  }
+fn workspace_source_enumerate_all(roots: List<WorkspaceSourceRoot>) -> List<WorkspaceSourceEnumeration> {
+  map(roots, r => workspace_source_enumerate(root: r))
 }
 
 fn workspace_source_refusals(enumerations: List<WorkspaceSourceEnumeration>) -> List<String> {
@@ -363,7 +360,7 @@ fn workspace_source_pack_wet() -> ProcessExit {
   if host != (workspace_source_pack_host as String) {
     exit_failure(reason: join(["workspace_source_pack: the source lives on ", workspace_source_pack_host as String, " but this job runs on '", host, "'; dispatch it with host=", workspace_source_pack_host as String], ""))
   } else {
-    let enumerations = workspace_source_enumerate_all(roots: workspace_source_roots, acc: [])
+    let enumerations = workspace_source_enumerate_all(roots: workspace_source_roots)
     let head = workspace_source_receipt_head(enumerations: enumerations)
     match workspace_source_refusals(enumerations: enumerations) {
       Cons { head: _, tail: _ } =>
