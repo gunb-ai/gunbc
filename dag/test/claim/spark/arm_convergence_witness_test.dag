@@ -252,6 +252,8 @@ test fn w_a_return_is_admitted_only_when_the_rerender_reproduces_the_record() ->
 // The planned unit's hash is computed by the real sha256_hex; the host's sha256sum line is supplied as
 // that same digest, so "as planned" holds only if the two realizations agree on the same octets.
 data w_unit_text: String = "[Unit]\n"
+// sha256 of w_unit_text, as GNU sha256sum prints it (an independent oracle for arm_planned_unit_sha).
+data w_unit_sha: String = "ae6c63cff33bcfa3b6a2d6d0c9dd19521dedaa351146b1a642d2bfc9cf5a1e1f"
 data w_unit_path: String = "/etc/systemd/system/gunbc-glm53-stair-head.service"
 data w_record_path: String = "/var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service"
 data w_inspect_json: String = "[{\"Id\":\"f7b22cace2ab\",\"Created\":\"2026-10-05T15:28:00Z\",\"Image\":\"sha256:6ef8\",\"State\":{\"Status\":\"running\",\"Running\":true,\"Paused\":false,\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false,\"Pid\":380,\"ExitCode\":0,\"Error\":\"\",\"StartedAt\":\"2026-10-05T15:28:01Z\",\"FinishedAt\":\"0001-01-01T00:00:00Z\"},\"RestartCount\":0}]"
@@ -260,7 +262,7 @@ fn w_host_answers(unit_file: ArgvRun, record: ArgvRun) -> fn(List<String>) -> Ar
   fn(argv) {
     let a = join(argv, " ")
     if a == join(["/usr/bin/stat -c %F -- ", w_unit_path], "") { unit_file }
-    else if a == join(["sha256sum -- ", w_unit_path], "") { ArgvRan { exit_code: 0, stdout: join([arm_planned_unit_sha(planned_unit_text: w_unit_text), "  ", w_unit_path, "\n"], ""), stderr: "" } }
+    else if a == join(["sha256sum -- ", w_unit_path], "") { ArgvRan { exit_code: 0, stdout: join([w_unit_sha, "  ", w_unit_path, "\n"], ""), stderr: "" } }
     else if a == "systemctl show gunbc-glm53-stair-head.service --property=ActiveState --value" { ArgvRan { exit_code: 0, stdout: "active\n", stderr: "" } }
     else if a == "docker container inspect glm53-stair" { ArgvRan { exit_code: 0, stdout: w_inspect_json, stderr: "" } }
     else if a == join(["/usr/bin/stat -c %F -- ", w_record_path], "") { record }
@@ -275,7 +277,7 @@ data w_enoent: ArgvRun = ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cann
 
 fn w_typed(unit_file: ArgvRun, record: ArgvRun) -> ArmRankObservation {
   arm_rank_observe(run: w_host_answers(unit_file: unit_file, record: record), host: "srv6" as HostIdentity,
-    unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr, container_name: "glm53-stair" as NonEmptyStr, planned_unit_text: w_unit_text)
+    unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr, container_name: "glm53-stair" as NonEmptyStr, planned_unit_sha: w_unit_sha)
 }
 
 fn w_read_fact(f: ArmFact, value: String) -> Bool {
@@ -288,8 +290,8 @@ test fn w_the_typed_observe_reads_each_fact_from_its_own_operation() -> Bool {
   match w_typed(unit_file: w_regular, record: w_regular) {
     ArmRankUnread { host: _, cause: _ } => false
     ArmRankRead { observed: o } =>
-      w_read_fact(f: o.unit_sha, value: arm_planned_unit_sha(planned_unit_text: w_unit_text))
-        && w_read_fact(f: o.desired_unit_sha, value: arm_planned_unit_sha(planned_unit_text: w_unit_text))
+      w_read_fact(f: o.unit_sha, value: w_unit_sha)
+        && w_read_fact(f: o.desired_unit_sha, value: w_unit_sha)
         && w_read_fact(f: o.active_state, value: "active")
         && w_read_fact(f: o.container, value: "f7b22cace2ab true 0")
         && w_read_fact(f: o.committed, value: "fp8-16 abcd")
@@ -298,8 +300,7 @@ test fn w_the_typed_observe_reads_each_fact_from_its_own_operation() -> Bool {
 }
 
 // RED: an absent unit file and an absent record read ABSENT; a unit path stat could not examine reads
-// UNREAD, never absent; and the planned hash is the real digest of the planned text (sha256 of
-// "[Unit]\n"), so a renderer that hashed anything else would not equal it.
+// UNREAD, never absent.
 test fn w_the_typed_observe_separates_absent_from_unread() -> Bool {
   let absent = w_typed(unit_file: w_enoent, record: w_enoent)
   let refused = w_typed(unit_file: ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cannot statx: Permission denied\n" }, record: w_enoent)
@@ -308,7 +309,12 @@ test fn w_the_typed_observe_separates_absent_from_unread() -> Bool {
         && (match o.committed { FactAbsent => true  FactRead { value: _ } => false  FactUnread { cause: _ } => false }) })
     && (match refused { ArmRankUnread { host: _, cause: _ } => false  ArmRankRead { observed: o } =>
       match o.unit_sha { FactUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")  FactAbsent => false  FactRead { value: _ } => false } })
-    && arm_planned_unit_sha(planned_unit_text: w_unit_text) == "ae6c63cff33bcfa3b6a2d6d0c9dd19521dedaa351146b1a642d2bfc9cf5a1e1f"
+}
+
+// THE PLANNED HASH IS THE REAL DIGEST of the planned text's octets: GNU sha256sum over the same bytes,
+// so a renderer that hashed anything else (a trailing newline dropped, a different encoding) is red.
+test fn w_the_planned_hash_is_sha256sum_of_the_planned_text() -> Bool {
+  arm_planned_unit_sha(planned_unit_text: w_unit_text) == w_unit_sha
 }
 
 // ── THE SMALLEST ACTION PER DIVERGED COMPONENT (valiant-crab-775, 2026-10-05) ──────────────────

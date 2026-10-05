@@ -110,7 +110,7 @@ type ArmRankObservation
 // (the seam gunbc.spark.deliberate_unit_start already uses), decided here in .dag. No completion word
 // is needed: a read that did not finish is that fact's own Unread, never a missing line.
 //
-// The planned unit's hash is computed HERE, over the exact octets the unit file is written with, by
+// The planned unit's hash is computed by arm_planned_unit_sha (once per rank, by the caller), over the exact octets the unit file is written with, by
 // extdeps.crypto.sha2 sha256_hex, and compared with the installed file's sha256sum (extdeps.crypto.hash),
 // two realizations of one FIPS 180-4 digest over the same bytes.
 data arm_committed_record_read_limit: ByteSize = byte_size(count: 300)
@@ -214,7 +214,7 @@ fn arm_retired_read(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> ArmR
   }
 }
 
-fn arm_rank_observe(run: fn(List<String>) -> ArgvRun, host: HostIdentity, unit_name: NonEmptyStr, container_name: NonEmptyStr, planned_unit_text: String) -> ArmRankObservation {
+fn arm_rank_observe(run: fn(List<String>) -> ArgvRun, host: HostIdentity, unit_name: NonEmptyStr, container_name: NonEmptyStr, planned_unit_sha: String) -> ArmRankObservation {
   let u = arm_unit_path(unit_name: unit_name)
   let retired = map(arm_retired_transaction_suffixes, sfx => arm_retired_read(run: run, path: join([u, sfx], "") as NonEmptyStr))
   let retired_unread = flat_map(retired, r => match r { RetiredUnread { cause: c } => [c]  RetiredPresent { path: _ } => [] as List<String>  RetiredAbsent => [] as List<String> })
@@ -223,7 +223,7 @@ fn arm_rank_observe(run: fn(List<String>) -> ArgvRun, host: HostIdentity, unit_n
   } else {
     ArmRankRead { observed: ArmRankObserved {
       host: host,
-      desired_unit_sha: FactRead { value: arm_planned_unit_sha(planned_unit_text: planned_unit_text) },
+      desired_unit_sha: FactRead { value: planned_unit_sha },
       unit_sha: arm_unit_sha_fact(run: run, path: u as NonEmptyStr),
       active_state: arm_active_state_fact(run: run, unit_name: unit_name),
       container: arm_container_fact(run: run, container_name: container_name),
