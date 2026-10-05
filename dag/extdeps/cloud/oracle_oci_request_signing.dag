@@ -6,6 +6,8 @@ import extdeps.numeric.base16 { base16_decode_lower }
 import v2.std.optional { Absent, Present }
 import std.encoding { base64_encode, Standard }
 import std.types { Int, List, NonEmptyStr, String }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
+import extdeps.units.iso8601_calendar { iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_two_digits }
 
 // OCI API REQUEST SIGNING, the upstream specification: what is signed and how the Authorization
 // header is spelled. It is read from the signing-requests page cited below on 2026-10-05.
@@ -91,8 +93,10 @@ fn oci_sha256_base64(text: String) -> String {
 
 // ── THE HTTP DATE ─────────────────────────────────────────────────────────────────────────────
 //
-// The date is derived from epoch seconds, the magnitude extdeps.clock produces, using the
-// days-to-civil-date conversion of the proleptic Gregorian calendar. 1970-01-01 was a Thursday.
+// The date is derived from epoch seconds, the magnitude extdeps.clock produces. The calendar is
+// extdeps.units.iso8601_calendar's (civil date, floor division and the seconds constants), and only
+// what RFC 7231's IMF-fixdate adds is here: the English weekday and month names and the layout.
+// 1970-01-01 was a Thursday, so day 0 is index 0.
 
 // index 0 is the weekday of day 0, 1970-01-01, which was a Thursday.
 fn oci_weekday_name(index: Int) -> String {
@@ -107,41 +111,22 @@ fn oci_month_name(month: Int) -> String {
   else if month == 10 { "Oct" } else if month == 11 { "Nov" } else { "Dec" }
 }
 
-fn oci_two_digits(n: Int) -> String {
-  if n < 10 { join(["0", to_string(n)], "") } else { to_string(n) }
-}
-
-type OciCivilDate {
-  year: Int
-  month: Int
-  day: Int
-}
-
-fn oci_civil_from_days(days: Int) -> OciCivilDate {
-  let z = days + 719468
-  let era = z / 146097
-  let doe = z - era * 146097
-  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
-  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-  let mp = (5 * doy + 2) / 153
-  let day = doy - (153 * mp + 2) / 5 + 1
-  let month = if mp < 10 { mp + 3 } else { mp - 9 }
-  let year = yoe + era * 400 + (if month <= 2 { 1 } else { 0 })
-  OciCivilDate { year: year, month: month, day: day }
-}
-
 fn oci_http_date(epoch_seconds: Int) -> String {
-  let days = epoch_seconds / 86400
-  let secs = epoch_seconds - days * 86400
-  let civil = oci_civil_from_days(days: days)
+  let days = iso8601_floor_div(a: epoch_seconds, b: iso8601_seconds_per_day())
+  let secs = epoch_seconds - days * iso8601_seconds_per_day()
+  let civil = iso8601_civil_from_days(days: days)
+  let hour = secs / iso8601_seconds_per_hour()
+  let within_hour = secs - hour * iso8601_seconds_per_hour()
+  let per_minute = iso8601_seconds_per_minute() as Int
+  let minute = within_hour / per_minute
   join([
-    oci_weekday_name(index: days % 7), ", ",
-    oci_two_digits(n: civil.day), " ",
+    oci_weekday_name(index: days - iso8601_floor_div(a: days, b: 7) * 7), ", ",
+    iso8601_two_digits(n: civil.day), " ",
     oci_month_name(month: civil.month), " ",
     to_string(civil.year), " ",
-    oci_two_digits(n: secs / 3600), ":",
-    oci_two_digits(n: (secs % 3600) / 60), ":",
-    oci_two_digits(n: secs % 60), " GMT",
+    iso8601_two_digits(n: hour), ":",
+    iso8601_two_digits(n: minute), ":",
+    iso8601_two_digits(n: within_hour - minute * per_minute), " GMT",
   ], "")
 }
 
