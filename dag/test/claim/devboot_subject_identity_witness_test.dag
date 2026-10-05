@@ -242,7 +242,7 @@ fn digests_are_different(left: ContentHash?, right: ContentHash?) -> Bool {
 // express. If this row ever goes red, the three-valued comparison has collapsed back into a boolean
 // and every negative test above has quietly stopped discriminating.
 
-test fn an_unconstructable_digest_satisfies_neither_polarity() -> Bool {
+test fn an_unconstructable_digest_satisfies_neither_polarity() -> Bool  {
   let broken = witness_subject_digest(tree_hex: "not-a-valid-object-id", gnu_abi: true, features: [])
   let good = witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: [])
   !digests_are_equal(left: broken, right: good)
@@ -250,14 +250,14 @@ test fn an_unconstructable_digest_satisfies_neither_polarity() -> Bool {
     && digests_are_equal(left: good, right: good)
 }
 
-test fn identical_subjects_share_one_digest() -> Bool {
+test fn identical_subjects_share_one_digest() -> Bool  {
   digests_are_equal(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
   )
 }
 
-test fn different_trees_never_collide() -> Bool {
+test fn different_trees_never_collide() -> Bool  {
   digests_are_different(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: parent_tree_hex, gnu_abi: true, features: []),
@@ -274,14 +274,14 @@ test fn different_trees_never_collide() -> Bool {
 // cannot load while every record claimed a hit. This test goes red the moment the ABI identity tag
 // stops reaching the digest, which is the failure a reviewer cannot see by reading the fold.
 
-test fn gnu_and_musl_are_different_subjects() -> Bool {
+test fn gnu_and_musl_are_different_subjects() -> Bool  {
   digests_are_different(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: false, features: []),
   )
 }
 
-test fn features_participate_in_identity() -> Bool {
+test fn features_participate_in_identity() -> Bool  {
   digests_are_different(
     left: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: []),
     right: witness_subject_digest(tree_hex: clean_tree_hex, gnu_abi: true, features: ["tracing"]),
@@ -295,7 +295,7 @@ test fn features_participate_in_identity() -> Bool {
 // rows must differ, and they differ on the two distinct ways a product can vary: the target KIND,
 // and the target NAME at one kind.
 
-test fn the_product_being_built_participates_in_identity() -> Bool {
+test fn the_product_being_built_participates_in_identity() -> Bool  {
   let cli = witness_subject_full(
     tree_hex: clean_tree_hex,
     gnu_abi: true,
@@ -348,7 +348,7 @@ fn optional_digest(subject: BuildSubject?) -> ContentHash? {
 // ORDER are genuinely a different build. A digest that folded flags order-insensitively would
 // report these two as one subject.
 
-test fn build_environment_participates_in_identity() -> Bool {
+test fn build_environment_participates_in_identity() -> Bool  {
   let bare = witness_subject_full(
     tree_hex: clean_tree_hex,
     gnu_abi: true,
@@ -392,7 +392,7 @@ test fn build_environment_participates_in_identity() -> Bool {
     )
 }
 
-test fn duplicate_feature_refuses() -> Bool {
+test fn duplicate_feature_refuses() -> Bool  {
   match witness_oid(hex: clean_tree_hex) {
     Absent => false
     Present { value: oid } =>
@@ -420,7 +420,7 @@ test fn duplicate_feature_refuses() -> Bool {
   }
 }
 
-test fn empty_feature_name_refuses() -> Bool {
+test fn empty_feature_name_refuses() -> Bool  {
   match witness_oid(hex: clean_tree_hex) {
     Absent => false
     Present { value: oid } =>
@@ -454,7 +454,7 @@ test fn empty_feature_name_refuses() -> Bool {
 // fabrication class this carrier was reworked to remove. A field that stopped being scanned would
 // show up here and nowhere else.
 
-test fn every_required_string_is_refused_when_empty() -> Bool {
+test fn every_required_string_is_refused_when_empty() -> Bool  {
   empty_profile_refuses() && empty_rustflag_refuses()
 }
 
@@ -549,7 +549,7 @@ fn witness_record(for_subject: BuildSubject) -> StoredArtifactRecord? {
 // reuse that consulted only the digest and the bytes would grant here. Only a comparison of the
 // full retrieved subject refuses.
 
-test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_available() -> Bool {
+test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_available() -> Bool  {
   match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
     Present { value: built_for } =>
@@ -575,7 +575,7 @@ test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_availa
   }
 }
 
-test fn a_record_built_for_the_request_reuses_when_bytes_are_available() -> Bool {
+test fn a_record_built_for_the_request_reuses_when_bytes_are_available() -> Bool  {
   match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
     Present { value: subject } =>
@@ -598,7 +598,7 @@ test fn a_record_built_for_the_request_reuses_when_bytes_are_available() -> Bool
 // reuse must still refuse, because the contract law is about retrievability rather than about
 // records. A service that granted here would report success for bytes nobody can fetch.
 
-test fn a_matching_record_without_bytes_does_not_reuse() -> Bool {
+test fn a_matching_record_without_bytes_does_not_reuse() -> Bool  {
   match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
     Present { value: subject } =>
@@ -655,7 +655,7 @@ fn produced_but_missing_status_holds(subject: BuildSubject) -> Bool {
     && !status_reports_retrievable_artifact(status: status)
 }
 
-test fn produced_yesterday_with_missing_bytes_today_is_representable() -> Bool {
+test fn produced_yesterday_with_missing_bytes_today_is_representable() -> Bool  {
   match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
     Present { value: subject } => produced_but_missing_status_holds(subject: subject)
@@ -667,7 +667,7 @@ test fn produced_yesterday_with_missing_bytes_today_is_representable() -> Bool {
 // exist, they are the right length, and they are the wrong content -- so a service that treated
 // presence as availability would serve them.
 
-test fn only_observed_available_bytes_permit_retrieval() -> Bool {
+test fn only_observed_available_bytes_permit_retrieval() -> Bool  {
   match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
     Present { value: subject } =>
@@ -703,14 +703,14 @@ fn failed_build_status_holds(subject: BuildSubject) -> Bool {
     && execution_is_settled(execution: status.execution)
 }
 
-test fn a_failed_build_never_reports_retrievable() -> Bool {
+test fn a_failed_build_never_reports_retrievable() -> Bool  {
   match witness_subject(tree_hex: clean_tree_hex, gnu_abi: true, features: []) {
     Absent => false
     Present { value: subject } => failed_build_status_holds(subject: subject)
   }
 }
 
-test fn an_interrupted_build_is_not_settled() -> Bool {
+test fn an_interrupted_build_is_not_settled() -> Bool  {
   !execution_is_settled(execution: ExecutionInterrupted { detail: "producer died" })
 }
 
@@ -732,7 +732,7 @@ fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep
   }
 }
 
-test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool {
+test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool  {
   fold(
     deployment_ensured_steps(target: deployment_srv1_target()),
     init: 0,
@@ -750,7 +750,7 @@ fn step_is_devboot_root(step: DeploymentStep) -> Bool {
   }
 }
 
-test fn the_devboot_store_root_reaches_the_deploy_apply_path() -> Bool {
+test fn the_devboot_store_root_reaches_the_deploy_apply_path() -> Bool  {
   let spec = deployment_spec_srv1()
   fold(spec.steps, init: false, f: (acc, step) => acc || step_is_devboot_root(step: step))
 }
@@ -761,7 +761,7 @@ test fn the_devboot_store_root_reaches_the_deploy_apply_path() -> Bool {
 // TeardownActs replaces the refusal and this row goes red -- which is exactly the edit that, last
 // time, would have let a lab twin's retract delete production's artifacts.
 
-test fn no_retract_can_remove_the_devboot_store_root() -> Bool {
+test fn no_retract_can_remove_the_devboot_store_root() -> Bool  {
   let spec = deployment_spec_srv1()
   fold(
     spec.steps,

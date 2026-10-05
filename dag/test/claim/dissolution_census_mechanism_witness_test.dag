@@ -41,7 +41,7 @@ fn planted_rows() -> List<FrontierRow> {
   ]
 }
 
-test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
+test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool  {
   let before = fold_frontier_expiry(rows: planted_rows(), present_decls: [])
   let after = fold_frontier_expiry(rows: planted_rows(), present_decls: [planted_bound_ref()])
   before.fired_still_present_count == 0
@@ -51,7 +51,7 @@ test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
     && !frontier_expiry_clean(report: after)
 }
 
-test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
+test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool  {
   let probes = [
     decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
     planted_bound_ref(),
@@ -80,7 +80,7 @@ fn planted_retires_rows() -> List<FrontierRow> {
 // discharged by withholding it. Both directions are asserted here, so an implementation
 // that answered `present` for both shapes — the pre-change behaviour — fails this test,
 // and so does one that answered `absent` for both.
-test fn a_retirement_trigger_is_pending_while_its_declaration_is_present() -> Bool {
+test fn a_retirement_trigger_is_pending_while_its_declaration_is_present() -> Bool  {
   let present = fold_frontier_expiry(rows: planted_retires_rows(), present_decls: [planted_retires_ref()])
   present.pending_count == 1
     && present.fired_still_present_count == 0
@@ -88,7 +88,7 @@ test fn a_retirement_trigger_is_pending_while_its_declaration_is_present() -> Bo
     && frontier_expiry_clean(report: present)
 }
 
-test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
+test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool  {
   let gone = fold_frontier_expiry(
     rows: planted_retires_rows(),
     present_decls: [decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint")],
@@ -110,7 +110,7 @@ test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
 // declaration no longer exists is complete and a trigger citing an absent declaration is
 // the dead vocabulary this repository removes. Recorded here rather than silently
 // dropped: a census row that vanishes unexplained cannot be told from one never measured.
-test fn migrated_production_retirement_conditions_are_bound() -> Bool {
+test fn migrated_production_retirement_conditions_are_bound() -> Bool  {
   dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
     && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
     && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
@@ -161,7 +161,7 @@ fn live_discriminator_rows() -> List<FrontierRow> {
   ]
 }
 
-test fn opposite_trigger_directions_agree_on_one_live_population() -> Bool {
+test fn opposite_trigger_directions_agree_on_one_live_population() -> Bool  {
   match dissolution_census_verdict_for(
     rows: live_discriminator_rows(),
     facts: decl_facts(pool_roots: live_discriminator_pool_roots),
@@ -193,10 +193,10 @@ fn w_unbound_dissolution_nonempty_literal_green() -> Bool {
   )
 }
 
-test fn unbound_dissolution_empty_literal_refuses() -> Bool {
+test fn unbound_dissolution_empty_literal_refuses() -> Bool  {
   !w_unbound_dissolution_empty_literal_red()
 }
 
-test fn unbound_dissolution_nonempty_literal_accepts() -> Bool {
+test fn unbound_dissolution_nonempty_literal_accepts() -> Bool  {
   w_unbound_dissolution_nonempty_literal_green()
 }

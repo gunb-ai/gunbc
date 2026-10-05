@@ -104,14 +104,14 @@ fn admitted_production_article() -> AdmittedBoardPowerInterfaceArticle? {
   }
 }
 
-test fn w_the_production_article_is_admitted() -> Bool {
+test fn w_the_production_article_is_admitted() -> Bool  {
   match admitted_production_article() {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn w_one_article_feeds_both_emissions() -> Bool {
+test fn w_one_article_feeds_both_emissions() -> Bool  {
   match admitted_production_article() {
     Absent => false
     Present { value: admitted } =>
@@ -153,7 +153,7 @@ fn perturbed_bindings() -> List<ComponentModelBinding> {
   })
 }
 
-test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
+test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool  {
   match project_analog_to_spice(
     article_identity: power_interlock_article.identity,
     intent: article_analog(a: power_interlock_article),
@@ -168,7 +168,7 @@ test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
 // THE DISCRIMINATING RED for Verilog admission. A signal with no binding refuses; it is never
 // spelled by falling back to its logical name, which is the arm that would make a missing
 // binding unobservable.
-test fn w_verilog_refuses_unbound_signal() -> Bool {
+test fn w_verilog_refuses_unbound_signal() -> Bool  {
   match admitted_production_article() {
     Absent => false
     Present { value: admitted } =>
@@ -232,7 +232,7 @@ fn count_bonds(bonds: List<ElectricalBond>, pred: fn(ElectricalBond) -> Bool) ->
 // destroys. The chassis bond is additionally PROPOSED, not observed: this board requires an
 // enclosure bond and no integration has been observed providing one, so the safety-bearing fact
 // is a requirement rather than a claim that a connection exists.
-test fn w_electrical_references_are_not_one_ground() -> Bool {
+test fn w_electrical_references_are_not_one_ground() -> Bool  {
   let bonds = power_interlock_article.bonds
   count_bonds(bonds: bonds, pred: b => bond_is_power_return(b: b)) == 1
     && count_bonds(bonds: bonds, pred: b => bond_is_signal_reference(b: b)) == 1
@@ -242,7 +242,7 @@ test fn w_electrical_references_are_not_one_ground() -> Bool {
 
 // The bond endpoints are identities the analog circuit also uses, so this join is decidable
 // rather than a spelling coincidence between two independently authored prose fields.
-test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
+test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool  {
   fold(power_interlock_article.bonds, init: false, f: fn(acc, b) {
     acc || match b {
       PowerReturnConnection { domain: d, terminal: t } =>
@@ -260,7 +260,7 @@ test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
 // The firmware contract's load-bearing claims are about what it does NOT say: signing is
 // unavailable rather than absent-and-therefore-assumed, and write protection is declared
 // unmodelled rather than defaulted to protected. A contract silent on either would read as safe.
-test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool {
+test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool  {
   match power_interlock_article.platform_firmware.production_signing {
     ProductionSigningUnavailable { reason: r } =>
       match power_interlock_article.platform_firmware.write_protection {
@@ -276,7 +276,7 @@ test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool
 // Both boundaries EXIST and both refuse, and the physical one names a TYPED cause rather than
 // prose. The rung names were corrected with it: an admitted physical interface is not a realized
 // board, and a selected manufacturing profile is not a manufacturable one.
-test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bool {
+test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bool  {
   !article_physical_interface_admitted(a: power_interlock_article)
     && !article_manufacturing_profile_selected(a: power_interlock_article)
     && match power_interlock_article.physical {
@@ -315,7 +315,7 @@ fn establishment_count(kind: String) -> Int {
   })
 }
 
-test fn w_every_precondition_names_what_establishes_it() -> Bool {
+test fn w_every_precondition_names_what_establishes_it() -> Bool  {
   establishment_count(kind: "signal") == 2
     && establishment_count(kind: "component") == 2
     && establishment_count(kind: "not-ours") == 1
@@ -339,7 +339,7 @@ fn precondition_signal_for(kind_matches: fn(HostFirmwareStartPrecondition) -> Bo
   })
 }
 
-test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
+test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool  {
   precondition_signal_for(kind_matches: fn(p) {
     match p.kind {
       PowerPermitAsserted => true
@@ -371,13 +371,13 @@ fn role_is_cited(role: PlatformFirmwareRole) -> Bool {
   }
 }
 
-test fn w_the_three_upstream_roles_resolve_to_cited_subjects() -> Bool {
+test fn w_the_three_upstream_roles_resolve_to_cited_subjects() -> Bool  {
   role_is_cited(role: TrustedFirmwareSecureBootChain)
     && role_is_cited(role: HostUefiFirmware)
     && role_is_cited(role: BaseboardManagementFirmware)
 }
 
-test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool {
+test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool  {
   match platform_firmware_role_upstream(role: SystemControlProcessorFirmware) {
     UpstreamCited { subject: _ } => false
     UpstreamNotModelledHere { reason: r } => (r as String) != ""
@@ -391,7 +391,7 @@ test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool 
 // The cited subjects are DISTINCT modules. Three roles resolving to one subject would mean the
 // decomposition bought nothing — which is the failure the split exists to avoid, and it is not
 // visible from the fact that each role answers UpstreamCited.
-test fn w_the_cited_roles_do_not_collapse_onto_one_subject() -> Bool {
+test fn w_the_cited_roles_do_not_collapse_onto_one_subject() -> Bool  {
   match platform_firmware_role_upstream(role: TrustedFirmwareSecureBootChain) {
     UpstreamNotModelledHere { reason: _ } => false
     UpstreamCited { subject: a } =>

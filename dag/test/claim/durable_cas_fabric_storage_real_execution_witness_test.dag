@@ -88,7 +88,7 @@ fn dcel_reads_absent(store: FabricStorageBinding, key: NonEmptyStr) -> Bool {
   }
 }
 
-test fn one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution() -> Bool {
+test fn one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution() -> Bool  {
   dcel_with_temp_dir(scenario: fn(dir) {
     let e1 = dcel_store(dir: dir)
     let e2 = dcel_store(dir: dir)
@@ -114,7 +114,7 @@ test fn one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_executi
 // object O3 == O1 and that stale advance would pass the head's object comparison; a fresh
 // compare-and-set after the cycle would refuse on either implementation (it re-observes
 // generation 3), so this drives fabric_storage_advance directly with W1's stale expectation.
-test fn a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution() -> Bool {
+test fn a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution() -> Bool  {
   dcel_with_temp_dir(scenario: fn(dir) {
     let store = dcel_store(dir: dir)
     let key = "cycling-slot" as NonEmptyStr

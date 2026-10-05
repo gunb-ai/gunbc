@@ -29,18 +29,18 @@ fn fv_native_return_source() -> String {
   "module fv.probe\n\ntype FvAlpha\n  = FvX\n  | FvY\n\ntype FvBeta\n  = FvZ\n  | FvW\n\nfn fv_get() -> FvBeta {\n  FvW\n}\n"
 }
 
-test fn fv_foreign_variant_in_declared_data_must_refuse() -> Bool {
+test fn fv_foreign_variant_in_declared_data_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(fv_foreign_data_source(), "src/fv_probe.rs", [], [])
 }
 
-test fn fv_foreign_variant_as_declared_return_must_refuse() -> Bool {
+test fn fv_foreign_variant_as_declared_return_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(fv_foreign_return_source(), "src/fv_probe.rs", [], [])
 }
 
-test fn fv_native_variant_in_declared_data_still_compiles() -> Bool {
+test fn fv_native_variant_in_declared_data_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(fv_native_data_source(), "src/fv_probe.rs", [], [])
 }
 
-test fn fv_native_variant_as_declared_return_still_compiles() -> Bool {
+test fn fv_native_variant_as_declared_return_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(fv_native_return_source(), "src/fv_probe.rs", [], [])
 }

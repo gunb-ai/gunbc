@@ -90,7 +90,7 @@ fn lifecycle_unknown(u: UnitLifecycle) -> Bool {
 // honestly carry; on a host
 // without one it asserts the unavailable arm end to end. Deleting the ShellOutcome opt-in makes
 // this cell ABORT rather than answer, which is the control the file's header describes.
-test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting() -> Bool {
+test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting() -> Bool  {
   let present = manager_present()
   let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt_completed: false)
   let lifecycle = observe_unit_lifecycle(unit: compute_unit_name(identity_hex: unaskable_identity))

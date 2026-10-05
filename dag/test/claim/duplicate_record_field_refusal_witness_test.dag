@@ -71,7 +71,7 @@ data red_duplicate_field_source: String = "module probe_duplicate_record_field\n
 
 data green_each_field_once_source: String = "module probe_single_record_field\ntype DupPair {\n  a: Int\n  b: Int\n}\nfn answers() -> Int {\n  let p = DupPair { a: 1, b: 3 }\n  p.a\n}\n"
 
-test fn a_record_literal_assigning_one_field_twice_refuses() -> Bool {
+test fn a_record_literal_assigning_one_field_twice_refuses() -> Bool  {
   blocking_parse_error_count(source: red_duplicate_field_source) >= 1
 }
 
@@ -79,13 +79,13 @@ test fn a_record_literal_assigning_one_field_twice_refuses() -> Bool {
 // satisfied by any malformed source; this reads the refusal's own subject, which for a parse error
 // is its message, and requires the field name and the line:col of BOTH assignments -- line 7,
 // columns 21 and 27 in the fixture above.
-test fn the_refusal_names_the_field_and_both_positions() -> Bool {
+test fn the_refusal_names_the_field_and_both_positions() -> Bool  {
   match census_blocking_count_for_subject(census: census_of(source: red_duplicate_field_source), wanted_class: "ParseError", wanted_subject: "duplicate field 'a' in record literal: first at 7:21, again at 7:27") {
     Present { value: n } => n == 1
     Absent => false
   }
 }
 
-test fn the_same_literal_assigning_each_field_once_is_accepted() -> Bool {
+test fn the_same_literal_assigning_each_field_once_is_accepted() -> Bool  {
   blocking_parse_error_count(source: green_each_field_once_source) == 0
 }

@@ -58,7 +58,7 @@ import gunbc.doc_graph_roots {
 // outside-index rows from the left side, would both make that unrepresentable-to-detect. The
 // three-term identity keeps the sum exact, so a fourth bucket added later reds here too.
 
-test fn doc_graph_production_population_loses_nothing() -> Bool {
+test fn doc_graph_production_population_loses_nothing() -> Bool  {
   length(xs: hand_authored_doc_declaration_refs())
     == length(xs: hand_authored_production_doc_declaration_refs())
       + hand_authored_outside_index_count()

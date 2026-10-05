@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // property it appears to check -- that the declared roster policy matches the executed discovery --
 // is real and unguarded, and is answered by deriving the policy from the discovery chain rather
 // than by comparing a declaration with itself.
-test fn compile_clean_shard_roster_is_well_formed() -> Bool {
+test fn compile_clean_shard_roster_is_well_formed() -> Bool  {
   witness_roster_nonempty_on_fixture_facts()
     && witness_roster_build_admits_on_fixture_facts()
     && witness_roster_build_refuses_synthetic_duplicate_facts()
@@ -63,7 +63,7 @@ test fn compile_clean_shard_roster_is_well_formed() -> Bool {
 // glob_success flag, a hand-written stdout listing, and a literal roster -- so the fn never observes
 // the tree at all. Four of the five are discriminating reds (orphan, double claim, surplus, and a
 // fail-closed arm on glob failure) with a green control beside them.
-test fn compile_clean_shard_totality_algebra_holds() -> Bool {
+test fn compile_clean_shard_totality_algebra_holds() -> Bool  {
   witness_totality_reds_on_synthetic_orphan()
     && witness_totality_reds_on_synthetic_double_claim()
     && witness_totality_reds_on_synthetic_surplus()

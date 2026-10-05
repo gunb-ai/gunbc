@@ -177,7 +177,7 @@ fn is_admitted(a: BoardPowerInterfaceArticle) -> Bool {
 
 // The positive control. Without it every refusal claim below is satisfied by an admission
 // function that refuses everything.
-test fn w_a_coherent_fixture_is_admitted() -> Bool {
+test fn w_a_coherent_fixture_is_admitted() -> Bool  {
   is_admitted(a: coherent_fixture)
 }
 
@@ -189,7 +189,7 @@ data duplicate_component_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   nets: coherent_analog.nets,
 }
 
-test fn w_two_components_sharing_an_identity_refuse() -> Bool {
+test fn w_two_components_sharing_an_identity_refuse() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(analog: duplicate_component_analog, reference: b_net, control: coherent_control, bonds: []),
     wanted: "DuplicateComponentIdentity"
@@ -202,7 +202,7 @@ data duplicate_net_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   nets: concat(coherent_analog.nets, [ElectricalNet { identity: a_net, members: [] }]),
 }
 
-test fn w_two_nets_sharing_an_identity_refuse() -> Bool {
+test fn w_two_nets_sharing_an_identity_refuse() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(analog: duplicate_net_analog, reference: b_net, control: coherent_control, bonds: []),
     wanted: "DuplicateNetIdentity"
@@ -221,7 +221,7 @@ data dangling_member_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   ],
 }
 
-test fn w_a_net_member_naming_no_terminal_refuses() -> Bool {
+test fn w_a_net_member_naming_no_terminal_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(analog: dangling_member_analog, reference: b_net, control: coherent_control, bonds: []),
     wanted: "NetMemberNamesNoTerminal"
@@ -231,7 +231,7 @@ test fn w_a_net_member_naming_no_terminal_refuses() -> Bool {
 // The BRAND does not catch this and was never claimed to: "r1" and "r9" are both perfectly good
 // ComponentInstanceIdentity values. What the brand buys is that a chassis feature cannot be
 // compared to one; what admission buys is that a typo in either is located.
-test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
+test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: AnalogCircuitIntent {
@@ -253,7 +253,7 @@ test fn w_the_terminal_number_is_checked_not_only_the_component() -> Bool {
   )
 }
 
-test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool {
+test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -265,7 +265,7 @@ test fn w_a_reference_net_that_is_not_declared_refuses() -> Bool {
   )
 }
 
-test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
+test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -280,7 +280,7 @@ test fn w_a_bond_on_a_nonexistent_terminal_refuses() -> Bool {
   )
 }
 
-test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
+test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -295,7 +295,7 @@ test fn w_a_bond_on_an_undeclared_net_refuses() -> Bool {
   )
 }
 
-test fn w_two_signals_sharing_a_name_refuse() -> Bool {
+test fn w_two_signals_sharing_a_name_refuse() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -311,7 +311,7 @@ test fn w_two_signals_sharing_a_name_refuse() -> Bool {
   )
 }
 
-test fn w_driving_an_undeclared_signal_refuses() -> Bool {
+test fn w_driving_an_undeclared_signal_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -333,7 +333,7 @@ test fn w_driving_an_undeclared_signal_refuses() -> Bool {
 // Driving an INPUT is a direction contradiction, not a missing declaration, and the two have
 // opposite remedies — declare the signal, or stop driving it. One cause covering both would tell
 // the reader nothing about which.
-test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
+test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -352,7 +352,7 @@ test fn w_driving_an_input_refuses_as_a_direction_conflict() -> Bool {
   )
 }
 
-test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
+test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -374,7 +374,7 @@ test fn w_an_equation_over_an_undeclared_signal_refuses() -> Bool {
   )
 }
 
-test fn w_an_output_nothing_drives_refuses() -> Bool {
+test fn w_an_output_nothing_drives_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -390,7 +390,7 @@ test fn w_an_output_nothing_drives_refuses() -> Bool {
   )
 }
 
-test fn w_an_output_two_equations_drive_refuses() -> Bool {
+test fn w_an_output_two_equations_drive_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_article(
       analog: coherent_analog,
@@ -411,7 +411,7 @@ test fn w_an_output_two_equations_drive_refuses() -> Bool {
 
 // TWO PLANTED DEFECTS PRODUCE TWO CAUSES. This is the claim the collected-refusal shape was
 // built for, and a first-wins fold passes every test above while failing this one.
-test fn w_two_defects_are_both_reported() -> Bool {
+test fn w_two_defects_are_both_reported() -> Bool  {
   let a = fixture_article(
     analog: duplicate_component_analog,
     reference: net_identity(design: fixture_design, local_identity: "not_a_net"),
@@ -426,7 +426,7 @@ test fn w_two_defects_are_both_reported() -> Bool {
 
 // THE PRODUCTION ARTICLE, admitted. The fixtures above prove the mechanism discriminates; this
 // proves it is pointed at the real root rather than only at synthetic ones.
-test fn w_the_production_article_carries_no_cause() -> Bool {
+test fn w_the_production_article_carries_no_cause() -> Bool  {
   fold(article_refusals(a: power_interlock_article), init: 0, f: fn(acc, _r) { acc + 1 }) == 0
     && is_admitted(a: power_interlock_article)
 }
@@ -457,7 +457,7 @@ fn fixture_with_firmware(f: PlatformFirmwareContract) -> BoardPowerInterfaceArti
   }
 }
 
-test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
+test fn w_a_precondition_naming_no_signal_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
@@ -470,7 +470,7 @@ test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
 // Establishing a precondition with an INPUT is the subtler defect: the signal exists, so a
 // declaration check passes, and the board would be claiming to establish a condition it only
 // observes. Direction is the whole content of the distinction.
-test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
+test fn w_a_precondition_established_by_an_input_refuses() -> Bool  {
   refuses_with_exactly_named_cause(
     a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
@@ -480,7 +480,7 @@ test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
   )
 }
 
-test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
+test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool  {
   is_admitted(a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
     kind: PowerPermitAsserted,
     establishment: EstablishedByBoardSignal { signal: out_signal },
@@ -492,7 +492,7 @@ test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
 // membership question that always answers no, for a reason nothing states, is the silent half of
 // the state space. This is the loud half. The fixture is otherwise the coherent article, so the
 // only thing that changed is which design the member's component belongs to.
-test fn w_a_net_member_from_another_board_refuses() -> Bool {
+test fn w_a_net_member_from_another_board_refuses() -> Bool  {
   let elsewhere: ElectricalDesignIdentity = "test.compute_board_admission.other_board" as ElectricalDesignIdentity
   let foreign = ElectricalTerminalRef {
     component: component_instance_identity(design: elsewhere, local_identity: "r_top"),

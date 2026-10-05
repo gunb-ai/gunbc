@@ -24,7 +24,7 @@ fn refused(text: String) -> Bool {
 
 // The three set forms parse and render canonically; relative, repository-qualified, dotted and
 // :all-targets forms refuse (DISCRIMINATING against a parser that reads a pattern as a label).
-test fn the_pattern_grammar_admits_three_set_forms_and_refuses_the_rest() -> Bool {
+test fn the_pattern_grammar_admits_three_set_forms_and_refuses_the_rest() -> Bool  {
   (match parsed(text: "//dag/test/claim/roadmap/...") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap/..."  Absent => false })
     && (match parsed(text: "//dag/test/claim/roadmap:all") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap:all"  Absent => false })
     && (match parsed(text: "//dag/test/claim/roadmap:*") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap:all"  Absent => false })
@@ -55,7 +55,7 @@ fn selected_paths(text: String) -> List<String> {
 // Selection follows the pattern: a subtree takes its packages and their children, :all takes exactly
 // one package, a single target takes one file; a non-.dag path is never a target and a sibling
 // package is never swept in by a shared prefix (RED against substring matching).
-test fn selection_follows_the_pattern_and_never_a_shared_prefix() -> Bool {
+test fn selection_follows_the_pattern_and_never_a_shared_prefix() -> Bool  {
   selected_paths(text: "//dag/test/claim/roadmap/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag"]
     && selected_paths(text: "//dag/test/claim:all") == ["dag/test/claim/harness_chat_shape_test.dag"]
     && selected_paths(text: "//dag/test/claim/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag", "dag/test/claim/harness_chat_shape_test.dag", "dag/test/claim/compute/work_request_witness_test.dag"]
@@ -70,7 +70,7 @@ data specimen: String = "module test.claim.roadmap.roadmap_specimen_test\n\nimpo
 
 // Test functions are read from declarations only; the module path from the module line; the floor's
 // own home policy classifies each function, and a required-gate module under test.claim is planned.
-test fn functions_and_module_are_read_from_declarations_and_classified_by_the_floor() -> Bool {
+test fn functions_and_module_are_read_from_declarations_and_classified_by_the_floor() -> Bool  {
   test_function_names(content: specimen) == ["first_holds", "second_holds"]
     && (match module_path_of(content: specimen) { Present { value: m } => m == "test.claim.roadmap.roadmap_specimen_test"  Absent => false })
     && (match module_path_of(content: "import std.types { Bool }\n") { Absent => true  Present { value: _ } => false })

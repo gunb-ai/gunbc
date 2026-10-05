@@ -84,7 +84,7 @@ fn resolve_with_diff_window(
   )
 }
 
-test fn witness_verification_window_emits_exact_replay_argv() -> Bool {
+test fn witness_verification_window_emits_exact_replay_argv() -> Bool  {
   let json = git_diff_window_json(window: planted_exact_window())
   match git_diff_window_from_json(text: json) {
     GitDiffWindowObserved { window: window } =>
@@ -105,7 +105,7 @@ test fn witness_verification_window_emits_exact_replay_argv() -> Bool {
   }
 }
 
-test fn witness_without_diff_window_binding_stays_merge_target() -> Bool {
+test fn witness_without_diff_window_binding_stays_merge_target() -> Bool  {
   match resolve_with_diff_window(
     diff_window: none,
     base_ref: Present { value: "main" },
@@ -119,7 +119,7 @@ test fn witness_without_diff_window_binding_stays_merge_target() -> Bool {
   }
 }
 
-test fn witness_hex_branch_base_ref_never_enters_exact_replay_route() -> Bool {
+test fn witness_hex_branch_base_ref_never_enters_exact_replay_route() -> Bool  {
   match resolve_with_diff_window(
     diff_window: none,
     base_ref: Present { value: planted_base_hex },
@@ -133,7 +133,7 @@ test fn witness_hex_branch_base_ref_never_enters_exact_replay_route() -> Bool {
   }
 }
 
-test fn witness_malformed_window_refuses_before_diff() -> Bool {
+test fn witness_malformed_window_refuses_before_diff() -> Bool  {
   match git_diff_window_from_json(text: "{\"schema\":\"gunbc-git-diff-window/v2\"}") {
     GitDiffWindowMalformed { detail: _ } =>
       match resolve_with_diff_window(
@@ -151,7 +151,7 @@ test fn witness_malformed_window_refuses_before_diff() -> Bool {
   }
 }
 
-test fn witness_window_identity_is_derived_not_wire_trusted() -> Bool {
+test fn witness_window_identity_is_derived_not_wire_trusted() -> Bool  {
   let window = planted_exact_window()
   let tampered = concat(
     git_diff_window_json(window: window),
@@ -181,7 +181,7 @@ test fn witness_window_identity_is_derived_not_wire_trusted() -> Bool {
   }
 }
 
-test fn witness_baseline_source_conflict_refuses_both_authorities() -> Bool {
+test fn witness_baseline_source_conflict_refuses_both_authorities() -> Bool  {
   let json = git_diff_window_json(window: planted_exact_window())
   match git_diff_window_from_json(text: json) {
     GitDiffWindowObserved { window: window } =>
@@ -199,19 +199,19 @@ test fn witness_baseline_source_conflict_refuses_both_authorities() -> Bool {
   }
 }
 
-test fn witness_env_binding_names_neutral_path_var() -> Bool {
+test fn witness_env_binding_names_neutral_path_var() -> Bool  {
   git_diff_window_env_assignment(path: planted_window_path) == concat(
     gunbc_diff_window_path_env as String,
     concat("=", planted_window_path)
   )
 }
 
-test fn witness_window_identity_hex_matches_derived_digest() -> Bool {
+test fn witness_window_identity_hex_matches_derived_digest() -> Bool  {
   let window = planted_exact_window()
   git_diff_window_identity_hex(identity: window.window_identity) == (window.window_identity.digest as String)
 }
 
-test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool {
+test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool  {
   let json = git_diff_window_json(window: planted_exact_window())
   match git_diff_window_from_json(text: json) {
     GitDiffWindowObserved { window: window } =>

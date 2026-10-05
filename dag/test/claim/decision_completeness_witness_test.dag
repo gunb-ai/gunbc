@@ -172,7 +172,7 @@ data fixture_causal: CausalModelPopulation = CausalModelEstablished {
 }
 
 // Required cells come from the subject authorities (2 terms × 2 variables), not from dispositions.
-test fn required_cells_are_the_cartesian_product_of_term_and_variable_authorities() -> Bool {
+test fn required_cells_are_the_cartesian_product_of_term_and_variable_authorities() -> Bool  {
   let required = required_sensitivity_cells(subject: subject)
   (required |> count) == 4
     && any(required, c => declaration_ref_eq(a: c.term, b: id_term_power) && declaration_ref_eq(a: c.variable, b: id_var_a))
@@ -244,7 +244,7 @@ fn settled_assessment() -> DecisionAssessment {
   }
 }
 
-test fn violated_constraint_refuses_when_causal_model_is_unestablished() -> Bool {
+test fn violated_constraint_refuses_when_causal_model_is_unestablished() -> Bool  {
   match mint_settled_policy(assessment: DecisionAssessment {
     subject: subject,
     sensitivities: closed_sensitivities(),
@@ -274,7 +274,7 @@ test fn violated_constraint_refuses_when_causal_model_is_unestablished() -> Bool
   }
 }
 
-test fn violated_constraint_blocks_settlement() -> Bool {
+test fn violated_constraint_blocks_settlement() -> Bool  {
   match mint_settled_policy(assessment: DecisionAssessment {
     subject: subject,
     sensitivities: closed_sensitivities(),
@@ -301,7 +301,7 @@ test fn violated_constraint_blocks_settlement() -> Bool {
   }
 }
 
-test fn positive_control_closed_subject_mints_settled() -> Bool {
+test fn positive_control_closed_subject_mints_settled() -> Bool  {
   match mint_settled_policy(assessment: settled_assessment()) {
     Settled { policy: p } =>
       declaration_ref_eq(a: p.subject, b: id_subject)
@@ -311,7 +311,7 @@ test fn positive_control_closed_subject_mints_settled() -> Bool {
   }
 }
 
-test fn consumer_accepts_settled_and_rejects_deferred() -> Bool {
+test fn consumer_accepts_settled_and_rejects_deferred() -> Bool  {
   let settled = mint_settled_policy(assessment: settled_assessment())
   let deferred_assessment = DecisionAssessment {
     subject: subject,
@@ -358,7 +358,7 @@ test fn consumer_accepts_settled_and_rejects_deferred() -> Bool {
 }
 
 // Shrink the choice-domain authority: leftover sensitivity cells for the dropped variable are foreign.
-test fn shrinking_choice_domain_makes_extra_cells_foreign() -> Bool {
+test fn shrinking_choice_domain_makes_extra_cells_foreign() -> Bool  {
   let truncated_domain: ChoiceDomain = ChoiceDomain {
     identity: id_domain,
     variables: [var_a],
@@ -392,7 +392,7 @@ test fn shrinking_choice_domain_makes_extra_cells_foreign() -> Bool {
 }
 
 // Remove platform power from the assessment while it remains in the objective term population.
-test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool {
+test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool  {
   let without_power_cells = [
     VariesAlong {
       term: id_term_throughput,
@@ -430,7 +430,7 @@ test fn omitting_objective_term_cell_makes_sensitivity_closure_missing() -> Bool
 }
 
 // Carry platform power but omit its relation to one variable.
-test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
+test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool  {
   let missing_one = [
     InvariantAlong {
       term: id_term_power,
@@ -475,7 +475,7 @@ test fn omitting_one_required_sensitivity_cell_blocks_settlement() -> Bool {
   }
 }
 
-test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
+test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool  {
   let dup = concat(closed_sensitivities(), [
     InvariantAlong {
       term: id_term_power,
@@ -506,7 +506,7 @@ test fn two_answers_for_one_cell_refuse_as_repeated_observed() -> Bool {
   }
 }
 
-test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool {
+test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool  {
   let foreign = concat(closed_sensitivities(), [
     SensitivityUnestablished {
       term: id_foreign_term,
@@ -534,7 +534,7 @@ test fn foreign_term_or_variable_refuses_rather_than_ignored() -> Bool {
   }
 }
 
-test fn overlapping_regions_yield_deferred_never_settled() -> Bool {
+test fn overlapping_regions_yield_deferred_never_settled() -> Bool  {
   let pending = DecisionAssessment {
     subject: subject,
     sensitivities: [
@@ -570,7 +570,7 @@ test fn overlapping_regions_yield_deferred_never_settled() -> Bool {
     && !standing_settled(s: mint_settled_policy(assessment: pending))
 }
 
-test fn scalar_method_without_order_preservation_refuses() -> Bool {
+test fn scalar_method_without_order_preservation_refuses() -> Bool  {
   match term_drop_standing(authority: OrderPreservationAbsent {
     dropped_term: id_term_power,
     obligation: "cannot drop platform power from a ratio objective without order-preservation authority" as NonEmptyStr,
@@ -596,7 +596,7 @@ test fn scalar_method_without_order_preservation_refuses() -> Bool {
   }
 }
 
-test fn order_preservation_authority_admits_term_drop() -> Bool {
+test fn order_preservation_authority_admits_term_drop() -> Bool  {
   match term_drop_standing(authority: OrderPreservationEstablished {
     authority: id_order_auth,
     dropped_term: id_term_power,
@@ -607,7 +607,7 @@ test fn order_preservation_authority_admits_term_drop() -> Bool {
   }
 }
 
-test fn proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() -> Bool {
+test fn proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() -> Bool  {
   match candidate_comparison_standing(verdict: Incomparable) {
     CandidatesIncomparableTradeoff =>
       match candidate_comparison_standing(verdict: DominanceUndecided) {
@@ -635,7 +635,7 @@ test fn proved_tradeoff_is_incomparable_coarse_evidence_is_undecided() -> Bool {
   }
 }
 
-test fn fan_power_missing_from_throughput_per_wall_watt_is_objective_under_modeling() -> Bool {
+test fn fan_power_missing_from_throughput_per_wall_watt_is_objective_under_modeling() -> Bool  {
   let physical = [id_term_throughput, id_term_power, id_term_fan]
   match term_set_join(terms: physical, objective: objective_capacity, subject: id_subject) {
     ObjectiveUnderModeled { subject: s, missing_from_objective: missing } =>
@@ -647,7 +647,7 @@ test fn fan_power_missing_from_throughput_per_wall_watt_is_objective_under_model
   }
 }
 
-test fn objective_under_modeling_refuses_settlement() -> Bool {
+test fn objective_under_modeling_refuses_settlement() -> Bool  {
   match mint_settled_policy(assessment: DecisionAssessment {
     subject: subject,
     sensitivities: closed_sensitivities(),
@@ -671,7 +671,7 @@ test fn objective_under_modeling_refuses_settlement() -> Bool {
   }
 }
 
-test fn required_population_oracle_is_not_the_disposition_list() -> Bool {
+test fn required_population_oracle_is_not_the_disposition_list() -> Bool  {
   let required = required_sensitivity_cells(subject: subject)
   let dispositions = [
     SensitivityUnestablished {
@@ -691,7 +691,7 @@ test fn required_population_oracle_is_not_the_disposition_list() -> Bool {
     }
 }
 
-test fn invariant_along_with_uncited_coupling_must_not_mint_settled() -> Bool {
+test fn invariant_along_with_uncited_coupling_must_not_mint_settled() -> Bool  {
   let uncited = [
     InvariantAlong {
       term: id_term_power,

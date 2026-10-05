@@ -58,7 +58,7 @@ data summary_oom_after_spoof: String = "compiling...\nMemory peak: 1K\nFinished 
 data nine_point_seven_gib_upper_bytes: Int = 10630044058
 data nine_point_seven_gib_lower_bytes: Int = 10415295692
 
-test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands() -> Bool {
+test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands() -> Bool  {
   let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
   compute_summary_is_oom_kill(summary: s)
     && match s.memory_peak {
@@ -79,7 +79,7 @@ test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands()
 // A MISSING PEAK IS NEVER A ZERO PEAK. A manager below v254 omits the line; so does a launcher run
 // with --quiet. Either must read NotReported, because a recorded zero would size a class at its
 // headroom alone. An exact small figure keeps its exact reading.
-test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
+test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool  {
   let absent = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
   let small = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 512B\n")
   let garbled = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
@@ -115,7 +115,7 @@ fn row(class: WorkClass, samples: List<WorkClassPeakSample>) -> WorkClassGrantRo
 // EVERY ARM, from supplied rows. The sized arm is peak (the LARGEST sample, not the last or first)
 // plus headroom; one sample is not a peak; a sized figure at or above the ceiling is the ceiling;
 // two rows for one class decide nothing; a class with no row is the ceiling.
-test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_ceiling() -> Bool {
+test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_ceiling() -> Bool  {
   let sized = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 9), sample(peak_gib: 6)])], ceiling: ceiling())
   let one = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4)])], ceiling: ceiling())
   let over = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 24), sample(peak_gib: 20)])], ceiling: ceiling())
@@ -132,7 +132,7 @@ test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_c
 // ships no rows, so every class the provider can be asked for resolves to the ceiling and no
 // reserved amount moves. When the first row lands from provider-route samples this claim reds for
 // that class and becomes the regression control that production rows reach the sized arm.
-test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
+test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool  {
   let ops = [
     BuildGunbcBinaries { profile: CargoRelease, bins: ["gunbc" as NonEmptyStr] },
     BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] },
@@ -149,7 +149,7 @@ test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
 
 // Only an oom-kill under a grant BELOW the ceiling retries; the same kill at the ceiling ends as the
 // typed refusal, and a grant below the ceiling that ended any other way does not retry.
-test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
+test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool  {
   let below = GrantSized { class: WorkClassCompile, amount: kibibyte(count: 11 * gib), samples: 3, peak_upper: kibibyte(count: 9 * gib), headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture" as NonEmptyStr }
   let at = GrantAtCeiling { class: WorkClassCompile, amount: ceiling(), reason: ClassUnmeasured }
   let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
@@ -164,7 +164,7 @@ test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
 // The summary becomes a WorkClassPeakSample carrying the UPPER bound in KiB, rounded up -- not the
 // printed figure, and not prose. 9.7G's byte upper bound 10630044058 is 10380902.4 KiB, so 10380903.
 // No peak line, or no clock, takes no sample.
-test fn a_summary_becomes_a_typed_sample_at_its_upper_bound_or_no_sample() -> Bool {
+test fn a_summary_becomes_a_typed_sample_at_its_upper_bound_or_no_sample() -> Bool  {
   let op = CompileEntry { entry: "src/v2/compiler/compile.dag" }
   let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
   let taken = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
@@ -189,7 +189,7 @@ fn unlisted(error: String) -> ComputeListing { ComputeListing { listed: false, e
 // counted zero even when another class has exceedances; a class present in the parent but unlistable
 // is unreadable; a root listing without the parent is a host that never recorded; an unlistable root
 // is unreadable. None of the failure arms reads as zero.
-test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> Bool {
+test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> Bool  {
   let counted = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "claims"), class_dir: listed(entries: "r1\nr2\n"), class: WorkClassClaims)
   let healthy = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "claims"), class_dir: unlisted(error: "ENOENT"), class: WorkClassCompile)
   let broken = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "compile"), class_dir: unlisted(error: "EACCES"), class: WorkClassCompile)
@@ -232,7 +232,7 @@ test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> B
 data four_gib_lower_bytes: Int = 4294967296
 data four_gib_upper_bytes: Int = 4509715661
 
-test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads() -> Bool {
+test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads() -> Bool  {
   let no_peak_line = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
   let unit_output_only = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
   let trimmed = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 4.0G")
@@ -269,7 +269,7 @@ test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads()
 // than the peak sitting in the fixture. Deleting the check in systemd_run_wait_summary reds this.
 data quiet_launcher: SystemdSummaryPrintingWait = SystemdSummaryPrintingWait { argv: systemd_run_transient_wait_unit_argv(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) }
 
-test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bool {
+test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bool  {
   let s = systemd_run_wait_summary(launcher: quiet_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
   match s.memory_peak { MemoryPeakNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
     && match s.result { ServiceResultNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
@@ -293,7 +293,7 @@ test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bo
 // So each cause is now asserted in exactly one place: LineAbsent above, CaptureEmpty here,
 // SuppressedByQuietLauncher below. A collapse to any one cause now reds exactly the claims for the
 // OTHER causes, which is what makes the red legible.
-test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() -> Bool {
+test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() -> Bool  {
   let empty = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "")
   match empty.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
     && match empty.result { ServiceResultNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
@@ -317,7 +317,7 @@ test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() ->
 // The other end of the grounding relation: only a major this module has read proceeds to the
 // parser. Its base case is the_grounding_recursion_terminates_because_an_unreadable_version_refuses
 // below -- without that, the version read this check depends on could fail open.
-test fn a_grounded_major_is_the_only_one_that_parses() -> Bool {
+test fn a_grounded_major_is_the_only_one_that_parses() -> Bool  {
   match summary_format_standing(version_line: "systemd 255 (255.4-1ubuntu8)") {
     SummaryFormatGrounded { major } => major == 255
     _ => false
@@ -329,7 +329,7 @@ test fn a_grounded_major_is_the_only_one_that_parses() -> Bool {
 // keyed to the DECLARATION summary_format_grounding_remedy rather than to a literal: rewording the
 // remedy stays green, because the wording is not the claim, while dropping it from the path a
 // consumer actually reads goes red, because the join is.
-test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
+test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool  {
   let newer = summary_format_standing(version_line: "systemd 257 (257.1-1)")
   let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: newer, stderr: summary_oom_after_spoof)
   match newer { SummaryFormatUngroundedMajor { major } => major == 257  _ => false }
@@ -354,7 +354,7 @@ test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
 // read as edge-case tidying, so ordinary edge-case cleanup would have deleted the base case and
 // left the recursion open. A name that understates what depends on a claim is a decay an
 // annotation cannot fully repair, because the annotation is read AFTER the decision to touch it.
-test fn the_grounding_recursion_terminates_because_an_unreadable_version_refuses() -> Bool {
+test fn the_grounding_recursion_terminates_because_an_unreadable_version_refuses() -> Bool  {
   let unknown = summary_format_standing(version_line: "")
   let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: unknown, stderr: summary_oom_after_spoof)
   match unknown { SummaryFormatVersionUnreadable { line } => line == ""  _ => false }
@@ -390,7 +390,7 @@ fn outcome_is_unclassifiable(o: WorkOutcome) -> Bool {
   }
 }
 
-test fn a_recognized_oom_kill_becomes_a_grant_exceeded_refusal() -> Bool {
+test fn a_recognized_oom_kill_becomes_a_grant_exceeded_refusal() -> Bool  {
   match outcome_for(stderr: summary_oom_after_spoof, standing: grounded_standing) {
     WorkRefusedByInfrastructure { identity: _, cause } =>
       match cause { UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => true  _ => false }
@@ -398,22 +398,22 @@ test fn a_recognized_oom_kill_becomes_a_grant_exceeded_refusal() -> Bool {
   }
 }
 
-test fn a_recognized_non_oom_result_becomes_a_plain_work_failure() -> Bool {
+test fn a_recognized_non_oom_result_becomes_a_plain_work_failure() -> Bool  {
   match outcome_for(stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n", standing: grounded_standing) {
     WorkFailed { identity: _, exit_code, log_path: _ } => exit_code == 1
     _ => false
   }
 }
 
-test fn an_unrecognized_result_refuses_rather_than_reporting_a_failure() -> Bool {
+test fn an_unrecognized_result_refuses_rather_than_reporting_a_failure() -> Bool  {
   outcome_is_unclassifiable(o: outcome_for(stderr: "Finished with result: frobnicated\n", standing: grounded_standing))
 }
 
-test fn an_absent_summary_refuses_rather_than_reporting_a_failure() -> Bool {
+test fn an_absent_summary_refuses_rather_than_reporting_a_failure() -> Bool  {
   outcome_is_unclassifiable(o: outcome_for(stderr: "error: linking with `cc` failed\n", standing: grounded_standing))
 }
 
-test fn an_ungrounded_manager_refuses_rather_than_reporting_a_failure() -> Bool {
+test fn an_ungrounded_manager_refuses_rather_than_reporting_a_failure() -> Bool  {
   outcome_is_unclassifiable(o: outcome_for(stderr: summary_oom_after_spoof, standing: summary_format_standing(version_line: "systemd 257 (257.1-1)")))
 }
 
@@ -428,11 +428,11 @@ test fn an_ungrounded_manager_refuses_rather_than_reporting_a_failure() -> Bool 
 // these are equal, and the repair makes them unequal BY CONSTRUCTION rather than by precision.
 data frozen_reference: NonEmptyStr = "abc@1790000000" as NonEmptyStr
 
-test fn the_ceiling_retry_reference_differs_from_the_hold_it_replaces() -> Bool {
+test fn the_ceiling_retry_reference_differs_from_the_hold_it_replaces() -> Bool  {
   compute_ceiling_retry_reference(reference: frozen_reference) as String != frozen_reference as String
 }
 
-test fn the_retry_reference_is_derived_from_the_original_not_reminted() -> Bool {
+test fn the_retry_reference_is_derived_from_the_original_not_reminted() -> Bool  {
   let a = compute_ceiling_retry_reference(reference: frozen_reference) as String
   let b = compute_ceiling_retry_reference(reference: "def@1790000000" as NonEmptyStr) as String
   a != b && a != (frozen_reference as String)

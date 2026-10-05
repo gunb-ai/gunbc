@@ -69,21 +69,21 @@ data whole_declaration_bind_qn: String = "test.fixture.decl_facts_reflection.spe
 data scaffold_with_data_ref_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_with_data_ref"
 data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_external_authority_anchor"
 
-test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool {
+test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool  {
   match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
     Present { value: projection } => value_projection_is_not_variant_value(node: projection)
     Absent => false
   }
 }
 
-test fn decl_facts_reflection_imported_external_authority_positive_control() -> Bool {
+test fn decl_facts_reflection_imported_external_authority_positive_control() -> Bool  {
   match decl_facts_reflection_plain_record_parent(qn: dimensionless_anchor_qn) {
     Present { value: parent } => parent == "extdeps.external_authority.ExternalAuthority"
     Absent => false
   }
 }
 
-test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool {
+test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool  {
   let parent_a = decl_facts_reflection_constructor_parent(qn: local_a_scaffold_qn)
   let parent_b = decl_facts_reflection_constructor_parent(qn: local_b_scaffold_qn)
   let variant_a = decl_facts_reflection_constructor_variant(qn: local_a_scaffold_qn)
@@ -106,7 +106,7 @@ test fn decl_facts_reflection_two_unrelated_scaffold_arms_do_not_alias() -> Bool
   }
 }
 
-test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -> Bool {
+test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -> Bool  {
   match decl_facts_reflection_resolved_nullary_parent(qn: local_a_shared_nullary_qn) {
     Present { value: pa } =>
       match decl_facts_reflection_resolved_nullary_parent(qn: local_b_shared_nullary_qn) {
@@ -126,7 +126,7 @@ test fn decl_facts_reflection_two_unrelated_shared_nullary_arms_do_not_alias() -
   }
 }
 
-test fn decl_facts_reflection_disposition_scaffold_constructor_is_std_disposition() -> Bool {
+test fn decl_facts_reflection_disposition_scaffold_constructor_is_std_disposition() -> Bool  {
   match decl_facts_reflection_constructor_parent(qn: disposition_scaffold_qn) {
     Present { value: parent } =>
       parent == "std.disposition.Disposition"
@@ -135,7 +135,7 @@ test fn decl_facts_reflection_disposition_scaffold_constructor_is_std_dispositio
   }
 }
 
-test fn decl_facts_reflection_terminal_vs_scaffold_constructors_distinct() -> Bool {
+test fn decl_facts_reflection_terminal_vs_scaffold_constructors_distinct() -> Bool  {
   match decl_facts_reflection_constructor_variant(qn: terminal_specimen_qn) {
     Present { value: terminal_ctor } =>
       terminal_ctor == "Terminal"
@@ -144,7 +144,7 @@ test fn decl_facts_reflection_terminal_vs_scaffold_constructors_distinct() -> Bo
   }
 }
 
-test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct() -> Bool {
+test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct() -> Bool  {
   match decl_facts_reflection_resolved_nullary_parent(qn: mechanism_single_authority_qn) {
     Present { value: sp } =>
       match decl_facts_reflection_resolved_nullary_variant_name(qn: mechanism_single_authority_qn) {
@@ -168,7 +168,7 @@ test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct(
   }
 }
 
-test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> Bool {
+test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> Bool  {
   match decl_facts_reflection_field_projection(qn: whole_declaration_bind_qn, field: "bind") {
     Present { value: whole_bind } =>
       match record_field_projection_optional(record: whole_bind, label: "field") {
@@ -195,7 +195,7 @@ test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> 
   }
 }
 
-test fn decl_facts_reflection_scaffold_dissolves_to_resolves_single_authority() -> Bool {
+test fn decl_facts_reflection_scaffold_dissolves_to_resolves_single_authority() -> Bool  {
   match decl_facts_reflection_field_projection(qn: missing_variant_specimen_qn, field: "dissolves_to") {
     Present { value: projection } =>
       value_projection_is_resolved_variant(node: projection)
@@ -211,7 +211,7 @@ data ambiguous_shared_a_shared_bare_arm_qn: String = "test.fixture.decl_facts_re
 data ambiguous_shared_b_shared_bare_arm_qn: String = "test.fixture.decl_facts_reflection.ambiguous_shared_b.SharedBareArm"
 
 // B is in the entry closure because ambiguous_b_specimen imports SharedBareArm from B.
-test fn decl_facts_reflection_closure_b_specimen_resolves_to_b_parent() -> Bool {
+test fn decl_facts_reflection_closure_b_specimen_resolves_to_b_parent() -> Bool  {
   match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_b_arm_specimen_qn) {
     Present { value: parent } =>
       parent == ambiguous_shared_b_shared_bare_arm_qn
@@ -223,7 +223,7 @@ test fn decl_facts_reflection_closure_b_specimen_resolves_to_b_parent() -> Bool 
   }
 }
 
-test fn decl_facts_reflection_explicit_import_resolves_to_a_when_b_also_loaded() -> Bool {
+test fn decl_facts_reflection_explicit_import_resolves_to_a_when_b_also_loaded() -> Bool  {
   match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
     Present { value: parent } =>
       parent == ambiguous_shared_a_shared_bare_arm_qn
@@ -237,34 +237,34 @@ test fn decl_facts_reflection_explicit_import_resolves_to_a_when_b_also_loaded()
 }
 
 // Discriminating negative: A importer must not resolve to B's parent when both modules are loaded.
-test fn decl_facts_reflection_explicit_import_does_not_resolve_to_b() -> Bool {
+test fn decl_facts_reflection_explicit_import_does_not_resolve_to_b() -> Bool  {
   match decl_facts_reflection_resolved_nullary_parent(qn: ambiguous_arm_specimen_qn) {
     Present { value: parent } => parent != ambiguous_shared_b_shared_bare_arm_qn
     Absent => false
   }
 }
 
-test fn decl_facts_reflection_nullary_mechanism_projection_shape() -> Bool {
+test fn decl_facts_reflection_nullary_mechanism_projection_shape() -> Bool  {
   match decl_facts_reflection_nullary_value_projection(qn: mechanism_single_authority_qn) {
     Present { value: projection } => value_projection_is_resolved_variant(node: projection)
     Absent => false
   }
 }
 
-test fn decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates() -> Bool {
+test fn decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_candidates() -> Bool  {
   duplicate_qualified_identity_lookup_names_primary_and_shadow(
     lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
 }
 
-test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_resolution() -> Bool {
+test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_resolution() -> Bool  {
   match decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
     Present { value: node } => data_initializer_is_constructor_resolution_refused_projection(node: node)
     Absent => false
   }
 }
 
-test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool {
+test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool  {
   let bogus_qn: String = "test.fixture.decl_facts_reflection.specimens.nonexistent_data_row"
   decl_fact_lookup_is_missing(lookup: decl_facts_reflection_lookup(qn: bogus_qn))
     && match decl_facts_reflection_fact_node(qn: missing_variant_specimen_qn) {
@@ -274,7 +274,7 @@ test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool 
     }
 }
 
-test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct() -> Bool {
+test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct() -> Bool  {
   match decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
     Present { value: refused_node } =>
       if data_initializer_is_constructor_resolution_refused_projection(node: refused_node) {
@@ -291,20 +291,20 @@ test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct(
   }
 }
 
-test fn decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique() -> Bool {
+test fn decl_facts_duplicate_qn_pool_declaration_lookup_per_candidate_is_unique() -> Bool  {
   duplicate_qn_pool_declaration_lookup_per_candidate_is_unique(
     lookup: decl_facts_reflection_lookup(qn: duplicate_shadowed_specimen_qn)
   )
 }
 
-test fn decl_facts_plain_string_initializer_carries_authored_lexeme() -> Bool {
+test fn decl_facts_plain_string_initializer_carries_authored_lexeme() -> Bool  {
   match decl_facts_reflection_fact_node(qn: planted_plain_string_qn) {
     Present { value: node } => skeleton_contains_authored_string_literal(node: node, lexeme: "hello")
     Absent => false
   }
 }
 
-test fn decl_facts_record_field_string_initializer_carries_authored_lexeme() -> Bool {
+test fn decl_facts_record_field_string_initializer_carries_authored_lexeme() -> Bool  {
   match decl_facts_reflection_fact_node(qn: terminal_specimen_qn) {
     Present { value: node } =>
       skeleton_contains_authored_string_literal(node: node, lexeme: "witness-terminal")
@@ -312,7 +312,7 @@ test fn decl_facts_record_field_string_initializer_carries_authored_lexeme() -> 
   }
 }
 
-test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool {
+test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool  {
   match decl_facts_reflection_fact_node(qn: planted_string_list_qn) {
     Present { value: node } =>
       skeleton_contains_authored_string_literal(node: node, lexeme: "list-alpha")
@@ -321,7 +321,7 @@ test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool {
   }
 }
 
-test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool {
+test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool  {
   match list_head(xs: decl_facts_at(
     pool_roots: authored_string_channel_pool_roots,
     qualified_name: planted_concat_string_qn
@@ -335,7 +335,7 @@ test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool 
   }
 }
 
-test fn decl_facts_authored_string_does_not_fork_constructor_spelling_channel() -> Bool {
+test fn decl_facts_authored_string_does_not_fork_constructor_spelling_channel() -> Bool  {
   match list_head(xs: decl_facts_at(
     pool_roots: authored_string_channel_pool_roots,
     qualified_name: authored_string_channel_qn

@@ -6,7 +6,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn drifted_docs_projection_bytes_refuse_and_name_the_path() -> Bool {
+test fn drifted_docs_projection_bytes_refuse_and_name_the_path() -> Bool  {
   match docs_projection_bytes_agree(
     path: "docs/design-failure-modes.md",
     expected: "authority",
@@ -19,7 +19,7 @@ test fn drifted_docs_projection_bytes_refuse_and_name_the_path() -> Bool {
   }
 }
 
-test fn matching_docs_projection_bytes_succeed() -> Bool {
+test fn matching_docs_projection_bytes_succeed() -> Bool  {
   match docs_projection_bytes_agree(
     path: "docs/design-rung-drops.md",
     expected: "same",

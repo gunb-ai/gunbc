@@ -141,7 +141,7 @@ fn standing_committed(s: ComputeCapacityStanding) -> Int {
 // MUTATION CONTROL: raise the appropriation above the sum of the three requests and the third
 // reservation is admitted, so this cell goes red for the reason it names rather than for any
 // property of the store.
-test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity() -> Bool {
+test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity() -> Bool  {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
   let first = reserve_with_room(subject: subject, reference: "wet-first" as NonEmptyStr)
   let second = reserve_with_room(subject: subject, reference: "wet-second" as NonEmptyStr)
@@ -164,7 +164,7 @@ test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_cap
 // empty), and the remedy is to find out what else is on the host rather than to wait for a seat.
 // The request is the machine's own installed memory, which is strictly above what it reports
 // available on any host that is running anything at all -- including the one running this witness.
-test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool {
+test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool  {
   let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
   let available = kibibyte(count: 4 * one_gibibyte_in_kibibytes)
   let subject = subject_at(root: fresh_root(), appropriation_kib: 52 * one_gibibyte_in_kibibytes, request_kib: 26 * one_gibibyte_in_kibibytes)
@@ -180,7 +180,7 @@ test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool
 // AN APPROPRIATION LARGER THAN THE MACHINE IS A CONFIGURATION ERROR AND SAYS SO, rather than
 // presenting hours later as a build the kernel killed. It is refused ahead of the floor check,
 // because a share that was never backed is wrong whatever this instant's availability happens to be.
-test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting() -> Bool {
+test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting() -> Bool  {
   let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
   let subject = subject_at(root: fresh_root(), appropriation_kib: 64 * one_gibibyte_in_kibibytes + 1, request_kib: one_gibibyte_in_kibibytes)
   match compute_reserve_against(subject: subject, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60, total: total, available: total) {
@@ -195,7 +195,7 @@ test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting()
 // deployment join, and what it must establish is the ROUTE and not only the shape: the ledger a
 // live instance reserves against is rooted under THAT INSTANCE'S compute root, and its partition
 // names that instance, so two instances on one machine cannot silently transact on one pool.
-test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
+test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool  {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
   match compute_capacity_subject(instance: live, request: compute_memory_ceiling(instance: live)) {
@@ -228,7 +228,7 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
 //
 // The pool here has room for BOTH requests, so nothing about capacity can explain the second
 // answer: if this cell ever reports ComputeCapacityFull again, the conflation is back.
-test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool() -> Bool {
+test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool() -> Bool  {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 4, request_kib: one_gibibyte_in_kibibytes)
   let first = reserve_with_room(subject: subject, reference: "wet-same-reference" as NonEmptyStr)
   let again = reserve_with_room(subject: subject, reference: "wet-same-reference" as NonEmptyStr)
@@ -250,7 +250,7 @@ test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool
 // can explain the refusal; only the machine's reading can. The backing ceiling is derived from the
 // live observation, so the fixture states the relation rather than a number: it asks for slightly
 // more than half of what the host reports free, twice.
-test fn two_requests_summing_past_the_observed_headroom_cannot_both_admit() -> Bool {
+test fn two_requests_summing_past_the_observed_headroom_cannot_both_admit() -> Bool  {
   let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
   let available = kibibyte(count: 30 * one_gibibyte_in_kibibytes)
   let subject = subject_at(root: fresh_root(), appropriation_kib: 52 * one_gibibyte_in_kibibytes, request_kib: 26 * one_gibibyte_in_kibibytes)
@@ -268,7 +268,7 @@ test fn two_requests_summing_past_the_observed_headroom_cannot_both_admit() -> B
 // reading of THIS machine, and it is a reading rather than a shape -- installed memory is positive,
 // availability does not exceed it, and the two are not the same number on a host that is running
 // anything. A fixture cannot establish that and the supplied cells do not claim to.
-test fn the_real_observation_reads_this_machine() -> Bool {
+test fn the_real_observation_reads_this_machine() -> Bool  {
   match observe_host_memory() {
     HostMemoryUnobserved { detail: _ } => false
     HostMemoryObserved { total: total, available: available } =>
@@ -290,7 +290,7 @@ test fn the_real_observation_reads_this_machine() -> Bool {
 // event log in a temporary directory, released twice. The capacity reading after the second release
 // is what rules out the opposite error -- an arm that reported success by releasing the seat AGAIN
 // would show the committed figure moving, and it does not.
-test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -> Bool {
+test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -> Bool  {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
   let held = reserve_with_room(subject: subject, reference: "wet-double" as NonEmptyStr)
   let while_held = compute_capacity_standing_on(subject: subject)
@@ -313,7 +313,7 @@ test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -
 // mebibyte, and it is admitted exactly when the host reports at least that free, and otherwise
 // refused below the floor or as unobserved -- never reported as a full pool, since the ledger is
 // empty and its appropriation is twice the request.
-test fn the_real_reservation_route_admits_exactly_what_the_reading_backs() -> Bool {
+test fn the_real_reservation_route_admits_exactly_what_the_reading_backs() -> Bool  {
   let subject = subject_at(root: fresh_root(), appropriation_kib: 2048, request_kib: 1024)
   let reading = observe_host_memory()
   let reserved = compute_reserve_on(subject: subject, reference: "wet-live-route" as NonEmptyStr, term_seconds: 60)

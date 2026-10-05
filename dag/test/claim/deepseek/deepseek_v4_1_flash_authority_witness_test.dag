@@ -45,7 +45,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool {
+test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool  {
   let enc = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_encoder_path)
   let cfg = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_config_path)
   let lic = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_license_path)
@@ -59,12 +59,12 @@ test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool {
       == (uri_wire(uri: extdeps_external_authority_anchor.uri) as String)
 }
 
-test fn yarn_factor_reproduces_the_scaled_window() -> Bool {
+test fn yarn_factor_reproduces_the_scaled_window() -> Bool  {
   token_count_value(t: deepseek_v4_1_flash_yarn_scaled_positions())
     == token_count_value(t: deepseek_v4_1_flash_context_length)
 }
 
-test fn remaining_window_saturates_at_zero() -> Bool {
+test fn remaining_window_saturates_at_zero() -> Bool  {
   let window = token_count(count: 100)
   let used_thirty = token_count(count: 30)
   token_count_value(t: token_count_remaining_in_window(window: window, used: used_thirty)) == 70
@@ -114,13 +114,13 @@ fn frontier_aggregate_covers_groups(aggregate: List<FrontierRow>, groups: List<L
     && all(actual, a => any(expected, e => e == a))
 }
 
-test fn the_flash_frontier_aggregate_is_exactly_its_declared_groups() -> Bool {
+test fn the_flash_frontier_aggregate_is_exactly_its_declared_groups() -> Bool  {
   frontier_aggregate_covers_groups(
     aggregate: deepseek_v4_1_flash_frontier,
     groups: expected_flash_frontier_groups)
 }
 
-test fn a_three_group_aggregate_is_refused() -> Bool {
+test fn a_three_group_aggregate_is_refused() -> Bool  {
   !frontier_aggregate_covers_groups(
     aggregate: concat_frontier_row_groups(groups: [
       deepseek_v4_1_flash_frontier_dsv41_1,
@@ -130,7 +130,7 @@ test fn a_three_group_aggregate_is_refused() -> Bool {
     groups: expected_flash_frontier_groups)
 }
 
-test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() -> Bool {
+test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() -> Bool  {
   let expiry = fold_frontier_expiry(rows: deepseek_v4_1_flash_frontier, present_decls: [])
   frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_1)
     && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_2)
@@ -154,7 +154,7 @@ test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() ->
     && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_system_token")
 }
 
-test fn payload_partition_sums_to_the_index_total_and_is_strictly_below_tree_file_size() -> Bool {
+test fn payload_partition_sums_to_the_index_total_and_is_strictly_below_tree_file_size() -> Bool  {
   let f = deepseek_v4_1_flash_safetensors_payload_footprint
   byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_total(f: f))
     == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
@@ -162,7 +162,7 @@ test fn payload_partition_sums_to_the_index_total_and_is_strictly_below_tree_fil
       > byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
 }
 
-test fn named_effort_is_ordered_and_the_budget_interval_is_closed() -> Bool {
+test fn named_effort_is_ordered_and_the_budget_interval_is_closed() -> Bool  {
   deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortMax)
       > deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortHigh)
     && deepseek_v4_1_flash_named_effort_budget(e: DeepseekV41EffortHigh)
@@ -178,12 +178,12 @@ test fn named_effort_is_ordered_and_the_budget_interval_is_closed() -> Bool {
     && !deepseek_v4_1_flash_budget_is_admissible(budget: 101)
 }
 
-test fn engram_layers_overlap_kv_source_and_not_dspark_targets() -> Bool {
+test fn engram_layers_overlap_kv_source_and_not_dspark_targets() -> Bool  {
   any(deepseek_v4_1_flash_engram.layer_ids, id => any(deepseek_v4_1_flash_kv_source_layer_ids, k => k == id))
     && !any(deepseek_v4_1_flash_engram.layer_ids, id => any(deepseek_v4_1_flash_dspark_target_layer_ids, k => k == id))
 }
 
-test fn effort_preamble_names_the_budget_and_system_token_is_not_a_think_marker() -> Bool {
+test fn effort_preamble_names_the_budget_and_system_token_is_not_a_think_marker() -> Bool  {
   let high = deepseek_v4_1_flash_effort_preamble(budget: 75)
   let low = deepseek_v4_1_flash_effort_preamble(budget: 50)
   high != low
@@ -194,13 +194,13 @@ test fn effort_preamble_names_the_budget_and_system_token_is_not_a_think_marker(
     && string_contains(s: deepseek_v4_1_flash_system_token as String, pattern: "System")
 }
 
-test fn effort_renders_only_on_thinking_at_index_zero() -> Bool {
+test fn effort_renders_only_on_thinking_at_index_zero() -> Bool  {
   deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinking, message_index: 0)
     && !deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderThinking, message_index: 1)
     && !deepseek_v4_1_flash_effort_is_rendered(m: DeepseekV41EncoderChat, message_index: 0)
 }
 
-test fn chat_prefills_the_end_token_and_thinking_the_start() -> Bool {
+test fn chat_prefills_the_end_token_and_thinking_the_start() -> Bool  {
   (deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderChat) as String)
       == (deepseek_v4_1_flash_thinking_end_token as String)
     && (deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinking) as String)
@@ -209,7 +209,7 @@ test fn chat_prefills_the_end_token_and_thinking_the_start() -> Bool {
       != (deepseek_v4_1_flash_encoder_prefill(m: DeepseekV41EncoderThinking) as String)
 }
 
-test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool {
+test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool  {
   (deepseek_v4_1_flash_dsml_tool_calls_block_name as String).starts_with(" ")
     && !(deepseek_v4_1_flash_dsml_tool_calls_block_name as String).contains("tool_calls")
     && string_contains(s: deepseek_v4_1_flash_dsml_tool_calls_open(), pattern: deepseek_v4_1_flash_dsml_token as String)
@@ -230,7 +230,7 @@ test fn dsml_block_name_is_the_encoder_leading_space_not_v4_tool_calls() -> Bool
 // THE INDEX JOIN HAS ITS OWN RED: the same 48 files against an index whose weight_map names one
 // shard fewer, and against one naming a 49th, refuse on the index arm alone.
 // rows 3 and 4 have the same size: drop row 4 and repeat row 3 -- count 48, total unchanged.
-test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size_duplicate() -> Bool {
+test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size_duplicate() -> Bool  {
   let rows = deepseek_v4_1_flash_weight_manifest
   let admitted = match deepseek_v4_1_flash_weight_manifest_standing() {
     WeightManifestAdmitted { files: fs, index: ix, canonical_text: t } =>
@@ -272,7 +272,7 @@ test fn the_weight_manifest_admits_exactly_the_48_shards_and_refuses_a_same_size
 // embedded to not-consumed, or generation defaults re-established at another revision, keep the
 // file set and change the key; the same rows reordered key identically; one published path with
 // two identities refuses.
-test fn the_tokenizer_role_manifest_is_the_identity_and_a_missing_role_refuses() -> Bool {
+test fn the_tokenizer_role_manifest_is_the_identity_and_a_missing_role_refuses() -> Bool  {
   let rows = deepseek_v4_1_flash_tokenizer_roles
   let admitted = match deepseek_v4_1_flash_tokenizer_standing() {
     TokenizerPopulationAdmitted { files: fs, canonical_text: t } =>

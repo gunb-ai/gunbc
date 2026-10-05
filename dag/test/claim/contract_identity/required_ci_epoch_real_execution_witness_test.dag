@@ -202,7 +202,7 @@ fn run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
 
 // THE DISCRIMINATING RED. Exactly one refusal, naming the contract-epoch axis and carrying both
 // epochs, through the live fleet-desired composition.
-test fn a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution() -> Bool {
+test fn a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution() -> Bool  {
   let e = run_epoch_experiment(mismatching: true)
   e.setup_ok
     && match e.observation {
@@ -222,7 +222,7 @@ test fn a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_rea
 
 // THE PAIRED CONTROL. The same experiment at the required epoch admits through the same fold, so
 // the refusal above is the epoch and not the fixture.
-test fn a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -> Bool {
+test fn a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -> Bool  {
   let e = run_epoch_experiment(mismatching: false)
   e.setup_ok
     && match e.observation {
@@ -282,14 +282,14 @@ fn commit_unrelated_fixture(repo: FilePath) -> String {
   }
 }
 
-test fn a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution() -> Bool {
+test fn a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution() -> Bool  {
   match observe_in_fixture_repo(head_sha: fixture_unknown_commit_hex, commit_the_workflow: true) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochCommitUnreadable { detail: _ } } => true
     _ => false
   }
 }
 
-test fn a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution() -> Bool {
+test fn a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution() -> Bool  {
   match observe_in_fixture_repo(head_sha: "", commit_the_workflow: false) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochPathUnreadable { detail: _ } } => true
     _ => false

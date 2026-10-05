@@ -215,7 +215,7 @@ fn acquired_guard() -> TransitionGuard? {
 // `repo_root` would be untracked residue in the tree the convergence reads back, so the
 // convergence's own residue check would refuse on the artifact that exists to protect it. This
 // witness is what makes that a checked property rather than a habit.
-test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
+test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool  {
   let lease = transition_lease_path(instance_root: "/opt/gunbc")
   let inhibition = transition_inhibition_path(instance_root: "/opt/gunbc")
   lease != inhibition
@@ -228,7 +228,7 @@ test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
 // ALL FOUR ACQUISITION ARMS ARE DISTINCT, driven through one function over inputs that differ only
 // in the two facts the decision consumes. Asserting one arm alone would stay green against a fold
 // that answered it unconditionally.
-test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
+test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool  {
   let acquired = acquire_succeeded()
   let held = acquire_with(observed: TransitionFilePresent { record: in_force_record() })
   let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
@@ -243,7 +243,7 @@ test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
 // that exists and does not decode is NOT a free lease: rendering it as absent would hand a second
 // converge the critical section a first one is still inside. This witness reds the moment the
 // undecodable arm is folded into either neighbour.
-test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
+test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool  {
   let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
   corrupt != "acquired" && corrupt != "held"
 }
@@ -251,14 +251,14 @@ test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
 // A CREATE THAT FAILED WITH NOTHING READABLE IS NOT A HELD LEASE EITHER. Permission denied on the
 // directory and a lease held by a peer have opposite remedies -- fix the host, or wait -- so a fold
 // that answered "held" for both would send an operator to wait out a lease that does not exist.
-test fn a_directory_refusal_is_distinguished_from_a_held_lease() -> Bool {
+test fn a_directory_refusal_is_distinguished_from_a_held_lease() -> Bool  {
   acquire_with(observed: absent_observation())
     != acquire_with(observed: TransitionFilePresent { record: in_force_record() })
 }
 
 // THE ROUND TRIP IS THE ORACLE FOR THE ENCODING, not a golden string: what production writes is what
 // production reads back, through the two functions that actually run.
-test fn a_written_record_decodes_back_to_the_same_fields() -> Bool {
+test fn a_written_record_decodes_back_to_the_same_fields() -> Bool  {
   match transition_record_decode(text: transition_record_json(record: in_force_record())) {
     TransitionRecordUndecodable { cause: _ } => false
     TransitionRecordDecoded { record: r } =>
@@ -271,7 +271,7 @@ test fn a_written_record_decodes_back_to_the_same_fields() -> Bool {
   }
 }
 
-test fn the_partial_phase_survives_the_round_trip_distinctly() -> Bool {
+test fn the_partial_phase_survives_the_round_trip_distinctly() -> Bool  {
   match transition_record_decode(text: transition_record_json(record: partial_record())) {
     TransitionRecordUndecodable { cause: _ } => false
     TransitionRecordDecoded { record: r } =>
@@ -281,7 +281,7 @@ test fn the_partial_phase_survives_the_round_trip_distinctly() -> Bool {
 
 // EVERY WAY A RECORD CAN BE WRONG REFUSES, and the positive control above is what stops this from
 // being satisfied by a decoder that refuses everything.
-test fn a_malformed_record_refuses_rather_than_decoding() -> Bool {
+test fn a_malformed_record_refuses_rather_than_decoding() -> Bool  {
   !decoded_ok(d: transition_record_decode(text: "{"))
     && !decoded_ok(d: transition_record_decode(text: "\"a bare string\""))
     && !decoded_ok(d: transition_record_decode(
@@ -296,7 +296,7 @@ test fn a_malformed_record_refuses_rather_than_decoding() -> Bool {
 // of the wrong shape, and a candidate that decoded to "" would compare unequal to every head -- a
 // refusal reached for a fabricated reason, which is worse than the real one because the cause it
 // reports sends the reader somewhere else.
-test fn a_field_of_the_wrong_shape_refuses_and_names_the_field() -> Bool {
+test fn a_field_of_the_wrong_shape_refuses_and_names_the_field() -> Bool  {
   let d = transition_record_decode(
     text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":7,\"phase\":\"in-force\"}")
   !decoded_ok(d: d) && string_contains(s: decode_cause(d: d), pattern: "candidate")
@@ -305,7 +305,7 @@ test fn a_field_of_the_wrong_shape_refuses_and_names_the_field() -> Bool {
 // A DUPLICATED IDENTITY FIELD REFUSES RATHER THAN RESOLVING. RFC 8259 does not say which duplicate
 // wins, so a last-wins reader accepts whichever candidate was written second -- which is exactly how
 // a record carrying two candidates reads as the wrong one.
-test fn a_duplicated_field_refuses_rather_than_picking_one() -> Bool {
+test fn a_duplicated_field_refuses_rather_than_picking_one() -> Bool  {
   !decoded_ok(d: transition_record_decode(
     text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":\"c\",\"candidate\":\"d\",\"phase\":\"in-force\"}"))
 }
@@ -376,7 +376,7 @@ fn read_refused(e: String) -> FilesystemReadOutcome {
 // "absent" hands the belt a permit exactly when the marker it could not read is the one saying stop.
 //
 // The three arms are driven over inputs that differ only in the two observations the fold consumes.
-test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
+test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool  {
   observation_arm(o: observe(
     listed: true,
     listing: "transition-inhibition.json",
@@ -397,7 +397,7 @@ test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
 // A DIRECTORY THAT CANNOT BE LISTED ESTABLISHES NOTHING. Without this arm the fold would fall back
 // on the read, which is the same conflation one level out -- an unreadable directory would present
 // as an empty one.
-test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
+test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool  {
   observation_arm(o: observe(
     listed: false,
     listing: "",
@@ -408,7 +408,7 @@ test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
 // AND THE BELT REFUSES ON IT, which is the half that matters -- the arm above is only a
 // classification until something acts on it. This is the end-to-end statement of the defect: an
 // unreadable marker must not admit actuation.
-test fn an_unreadable_marker_refuses_belt_actuation_rather_than_admitting_it() -> Bool {
+test fn an_unreadable_marker_refuses_belt_actuation_rather_than_admitting_it() -> Bool  {
   !admission_admits(a: actuation_admission(standing: actuation_standing_of(
     observed: observe(
       listed: true,
@@ -430,7 +430,7 @@ test fn an_unreadable_marker_refuses_belt_actuation_rather_than_admitting_it() -
 // clean host; it was pinning the exact state-space conflation this module exists to close, in the
 // witness whose subject is that conflation. The arm below is now the disagreement, so the old
 // control would go RED -- and the replacement control is an absence the substrate established.
-test fn a_marker_the_listing_missed_but_a_read_found_refuses_rather_than_permits() -> Bool {
+test fn a_marker_the_listing_missed_but_a_read_found_refuses_rather_than_permits() -> Bool  {
   let disagreeing = observe(listed: true, listing: "receipts", read: good_bytes())
   observation_arm(o: disagreeing) == "disagree"
     && !admission_admits(a: actuation_admission(standing: actuation_standing_of(
@@ -444,7 +444,7 @@ test fn a_marker_the_listing_missed_but_a_read_found_refuses_rather_than_permits
 // MEMBERSHIP IS LINE-EXACT, so a marker is not found inside a longer neighbouring name. A substring
 // test would report `transition-inhibition.json.tmp` as the marker and inhibit the belt forever on a
 // host that merely has a stray temp file.
-test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
+test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool  {
   observation_arm(o: observe(
     listed: true,
     listing: "transition-inhibition.json.tmp",
@@ -456,7 +456,7 @@ test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
 // ONLY ONE STANDING ADMITS. An unreadable inhibition refuses, which is the direction that matters:
 // a belt tick that proceeded because it could not tell would act on a tree that is mid-transition
 // exactly when the evidence protecting it is damaged.
-test fn only_a_permitted_standing_admits_actuation() -> Bool {
+test fn only_a_permitted_standing_admits_actuation() -> Bool  {
   admission_admits(a: actuation_admission(standing: ActuationPermitted))
     && !admission_admits(a: actuation_admission(
       standing: ActuationInhibited { record: in_force_record() }))
@@ -466,7 +466,7 @@ test fn only_a_permitted_standing_admits_actuation() -> Bool {
 
 // AN UNREADABLE STANDING IS NOT A PERMITTED ONE, driven through the observation fold rather than by
 // constructing the standing directly, so the witness covers the join and not just the last arm.
-test fn an_unreadable_inhibition_refuses_actuation() -> Bool {
+test fn an_unreadable_inhibition_refuses_actuation() -> Bool  {
   let standing = actuation_standing_of(
     observed: observe(
       listed: true,
@@ -480,7 +480,7 @@ test fn an_unreadable_inhibition_refuses_actuation() -> Bool {
 
 // A REFUSAL AN OPERATOR CAN ACT ON. "Refused" alone is a verdict they must trust; naming the
 // repository, the candidate and the holder lets them go and check it on the host.
-test fn an_inhibited_refusal_names_the_holder_and_the_candidate() -> Bool {
+test fn an_inhibited_refusal_names_the_holder_and_the_candidate() -> Bool  {
   let reason = admission_reason(a: actuation_admission(
     standing: ActuationInhibited { record: in_force_record() }))
   string_contains(s: reason, pattern: "/opt/gunbc/gunbc")
@@ -502,7 +502,7 @@ fn evidence(record: TransitionRecord, observed: Bool, head: String) -> ResidueEv
 // is actually at describes a transition that landed whatever killed the process; the same record
 // over any other head describes one that did not, and no elapsed time changes that. The two arms
 // are driven over inputs differing only in the observed head.
-test fn a_residue_resolves_only_when_the_repository_stands_at_its_candidate() -> Bool {
+test fn a_residue_resolves_only_when_the_repository_stands_at_its_candidate() -> Bool  {
   disposition_arm(d: residue_disposition(evidence: evidence(
     record: in_force_record(),
     observed: true,
@@ -520,7 +520,7 @@ test fn a_residue_resolves_only_when_the_repository_stands_at_its_candidate() ->
 // transition failed. A head that matches afterwards means something else moved it, which is more
 // alarming than a mismatch and not less -- so this arm stays separate from the resolvable one over
 // an input the resolvable arm would otherwise accept.
-test fn a_declared_partial_transition_refuses_even_at_a_matching_head() -> Bool {
+test fn a_declared_partial_transition_refuses_even_at_a_matching_head() -> Bool  {
   disposition_arm(d: residue_disposition(evidence: evidence(
     record: partial_record(),
     observed: true,
@@ -531,7 +531,7 @@ test fn a_declared_partial_transition_refuses_even_at_a_matching_head() -> Bool 
 // AN UNOBSERVABLE REPOSITORY DOMINATES EVERY OTHER READING, including the head field that happens to
 // be sitting in the carrier. Reading the head without checking whether it was observed is how a
 // default value becomes a verdict.
-test fn an_unobservable_repository_refuses_rather_than_reading_a_stale_head() -> Bool {
+test fn an_unobservable_repository_refuses_rather_than_reading_a_stale_head() -> Bool  {
   disposition_arm(d: residue_disposition(evidence: evidence(
     record: in_force_record(),
     observed: false,
@@ -541,7 +541,7 @@ test fn an_unobservable_repository_refuses_rather_than_reading_a_stale_head() ->
 
 // THE HOLDER MAY NOT CLEAR ON EXIT STATUS. Both arms run over one guard, so a fold that ignored the
 // readback would go red here rather than quietly clearing an inhibition over a tree nothing verified.
-test fn the_holder_clears_only_after_a_converged_readback() -> Bool {
+test fn the_holder_clears_only_after_a_converged_readback() -> Bool  {
   match acquired_guard() {
     Absent => false
     Present { value: g } =>
@@ -562,7 +562,7 @@ test fn the_holder_clears_only_after_a_converged_readback() -> Bool {
 // clearing process is irrelevant to it -- it is clearing someone else's residue, so its own verdict
 // carries no authority over that record. Passing `true` here would be the tell that the two paths
 // were fused.
-test fn evidence_clearance_admits_only_a_resolvable_residue() -> Bool {
+test fn evidence_clearance_admits_only_a_resolvable_residue() -> Bool  {
   clearance_admits(c: clearance_admission(
     basis: ClearedByEvidence {
       expected: in_force_record(),
@@ -599,7 +599,7 @@ test fn evidence_clearance_admits_only_a_resolvable_residue() -> Bool {
 
 // A REFUSED CLEARANCE SAYS WHY THE INHIBITION STAYS SET, because the operator's next action differs
 // per cause: wait for the transition, repair the tree, or abandon the record.
-test fn a_refused_clearance_names_the_reason_the_inhibition_stands() -> Bool {
+test fn a_refused_clearance_names_the_reason_the_inhibition_stands() -> Bool  {
   let incomplete = clearance_text(c: clearance_admission(
     basis: ClearedByEvidence {
       expected: in_force_record(),
@@ -617,7 +617,7 @@ test fn a_refused_clearance_names_the_reason_the_inhibition_stands() -> Bool {
 // THE OPERATOR PATH HAS TWO WALLS AND BOTH FIRE. An abandonment minted without a fresh observation
 // would be an assertion with no evidence attached, and one minted by a non-operator would be the
 // escape hatch section 5 forbids wearing a different name.
-test fn an_abandonment_refuses_without_an_operator_and_without_an_observation() -> Bool {
+test fn an_abandonment_refuses_without_an_operator_and_without_an_observation() -> Bool  {
   let no_operator = mint_transition_abandonment(
     operator: "belt",
     operator_admitted: false,
@@ -653,7 +653,7 @@ test fn an_abandonment_refuses_without_an_operator_and_without_an_observation() 
 // AN ABANDONMENT IS RECORDED, NOT SILENT. The admitted basis names the operator and what they saw,
 // so retiring a record leaves an account of who retired it and on what -- which is the difference
 // between an actuation and a bypass.
-test fn an_admitted_abandonment_names_the_operator_and_the_observation() -> Bool {
+test fn an_admitted_abandonment_names_the_operator_and_the_observation() -> Bool  {
   match mint_transition_abandonment(
     operator: "operator",
     operator_admitted: true,
@@ -688,7 +688,7 @@ fn newer_record() -> TransitionRecord {
 // marker on disk belongs to a NEWER transition that is still running. A blind delete admits the belt
 // into the tree that newer transition is mutating. Both halves are driven here over one basis: the
 // same clearance that admits against its own record refuses against someone else's.
-test fn a_clearance_cannot_clear_another_transitions_marker() -> Bool {
+test fn a_clearance_cannot_clear_another_transitions_marker() -> Bool  {
   match acquired_guard() {
     Absent => false
     Present { value: g } =>
@@ -708,7 +708,7 @@ test fn a_clearance_cannot_clear_another_transitions_marker() -> Bool {
 // THE REFUSAL NAMES BOTH RECORDS, because an operator seeing it needs to know which transition owns
 // the marker and which one tried to clear it -- a mismatch that reported only "refused" would look
 // identical to a permission problem.
-test fn a_subject_mismatch_names_both_transitions() -> Bool {
+test fn a_subject_mismatch_names_both_transitions() -> Bool  {
   match acquired_guard() {
     Absent => false
     Present { value: g } => {
@@ -728,7 +728,7 @@ test fn a_subject_mismatch_names_both_transitions() -> Bool {
 // Absent is the subtle one: it reads like "already cleared, nothing to do", and it is equally
 // consistent with another actor having replaced the file, so proceeding would delete whatever
 // arrives next. Neither state is the record this clearance was computed against.
-test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
+test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool  {
   match acquired_guard() {
     Absent => false
     Present { value: g } =>
@@ -749,7 +749,7 @@ test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
 // marked itself partial and then recovered must still be able to clear its OWN marker, and the phase
 // is the one field it deliberately rewrote. Matching on it would make a partial transition
 // permanently unclearable by the process that owns it.
-test fn subject_identity_is_the_transition_and_not_its_phase() -> Bool {
+test fn subject_identity_is_the_transition_and_not_its_phase() -> Bool  {
   transition_record_same_subject(a: in_force_record(), b: partial_record())
     && !transition_record_same_subject(a: in_force_record(), b: newer_record())
 }
@@ -758,7 +758,7 @@ test fn subject_identity_is_the_transition_and_not_its_phase() -> Bool {
 // carried the phase as a validated `String`, which conceded that a record with a nonsense phase was
 // writable and made every consumer depend on the decoder having been the only way in. The round trip
 // is the oracle for the boundary; the refusal is the oracle for everything outside the vocabulary.
-test fn the_phase_round_trips_through_its_wire_spelling_and_refuses_anything_else() -> Bool {
+test fn the_phase_round_trips_through_its_wire_spelling_and_refuses_anything_else() -> Bool  {
   match transition_phase_of_wire(text: transition_phase_wire(phase: TransitionInForce)) {
     Absent => false
     Present { value: a } =>
@@ -789,7 +789,7 @@ fn read_arm(o: FilesystemReadOutcome) -> String {
   }
 }
 
-test fn the_read_producer_maps_a_failed_read_to_refused() -> Bool {
+test fn the_read_producer_maps_a_failed_read_to_refused() -> Bool  {
   read_arm(o: filesystem_read_outcome(content: "bytes", success: true, error: "")) == "succeeded"
     && read_arm(o: filesystem_read_outcome(content: "", success: false, error: "EACCES")) == "refused"
     && read_arm(o: filesystem_read_outcome(content: "stale", success: false, error: "EACCES")) == "refused"

@@ -81,17 +81,17 @@ data witness_http_endpoint: DeclarationRef = decl_ref(
   decl_name: "spark_pxe_http_install_image_path",
 )
 
-test fn w_bootloader_filename_matches_cited_page() -> Bool {
+test fn w_bootloader_filename_matches_cited_page() -> Bool  {
   spark_pxe_bootloader_filename == "grubnetaa64.efi.signed"
 }
 
-test fn w_fastos_tftp_layout_matches_cited_page() -> Bool {
+test fn w_fastos_tftp_layout_matches_cited_page() -> Bool  {
   spark_pxe_tftp_relative_path(p: TftpBootloader, image: FastOsRecoveryTarball) == "grubnetaa64.efi.signed"
     && spark_pxe_tftp_relative_path(p: TftpKernelImage, image: FastOsRecoveryTarball) == "fastos/vmlinuz"
     && spark_pxe_http_install_image_path(image: FastOsRecoveryTarball) == "fastos/usb.customer.tar.gz"
 }
 
-test fn w_fastos_unattended_cmdline_carries_pxeinstall_and_image_url() -> Bool {
+test fn w_fastos_unattended_cmdline_carries_pxeinstall_and_image_url() -> Bool  {
   string_contains(
     s: spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
     pattern: "pxeinstall=true",
@@ -106,7 +106,7 @@ test fn w_fastos_unattended_cmdline_carries_pxeinstall_and_image_url() -> Bool {
     )
 }
 
-test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
+test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool  {
   match spark_unattended_image_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -119,7 +119,7 @@ test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
   }
 }
 
-test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
+test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -164,7 +164,7 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
     }
 }
 
-test fn w_red_network_standing_without_observation_is_unobserved() -> Bool {
+test fn w_red_network_standing_without_observation_is_unobserved() -> Bool  {
   match evaluate_pxe_network_standing(
     observation: none,
     dhcp_authority: none,
@@ -200,7 +200,7 @@ fn synthetic_ready_firmware_config() -> SparkUefiPxeConfiguration {
 data witness_claimed_pci_vendor: PciVendorId = "10ec" as PciVendorId
 data witness_claimed_pci_device: PciDeviceId = "8125" as PciDeviceId
 
-test fn w_network_standing_ready_when_all_observations_and_isolation_present() -> Bool {
+test fn w_network_standing_ready_when_all_observations_and_isolation_present() -> Bool  {
   match evaluate_pxe_network_standing(
     observation: Present { value: synthetic_ready_network_observation() },
     dhcp_authority: Present { value: witness_dhcp_authority },
@@ -222,7 +222,7 @@ test fn w_network_standing_ready_when_all_observations_and_isolation_present() -
   }
 }
 
-test fn w_red_reachability_without_isolation_not_ready() -> Bool {
+test fn w_red_reachability_without_isolation_not_ready() -> Bool  {
   match evaluate_pxe_network_standing(
     observation: Present { value: synthetic_ready_network_observation() },
     dhcp_authority: Present { value: witness_dhcp_authority },
@@ -236,7 +236,7 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
   }
 }
 
-test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool {
+test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool  {
   match evaluate_spark_pxe_firmware_standing(
     config: SparkUefiPxeConfiguration {
       secure_boot: SecureBootDisabledForPxe,
@@ -254,7 +254,7 @@ test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool 
   }
 }
 
-test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
+test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool  {
   match evaluate_spark_pxe_firmware_standing(
     config: SparkUefiPxeConfiguration {
       secure_boot: BootloaderEnrolledForPxe { bootloader: "bootaa64.efi" },
@@ -279,7 +279,7 @@ test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
     }
 }
 
-test fn w_enrolled_bootloader_carries_to_boot_plan() -> Bool {
+test fn w_enrolled_bootloader_carries_to_boot_plan() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -308,7 +308,7 @@ test fn w_enrolled_bootloader_carries_to_boot_plan() -> Bool {
   }
 }
 
-test fn w_red_admission_without_observation_refuses() -> Bool {
+test fn w_red_admission_without_observation_refuses() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -329,7 +329,7 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
   }
 }
 
-test fn w_red_admission_without_firmware_config_refuses() -> Bool {
+test fn w_red_admission_without_firmware_config_refuses() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -350,7 +350,7 @@ test fn w_red_admission_without_firmware_config_refuses() -> Bool {
   }
 }
 
-test fn w_admission_with_ready_standings_succeeds() -> Bool {
+test fn w_admission_with_ready_standings_succeeds() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -376,7 +376,7 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
   }
 }
 
-test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
+test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -406,7 +406,7 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
   }
 }
 
-test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
+test fn w_red_admission_with_firmware_gap_refuses() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: DgxOsIsoImage,
     tftp_root: witness_tftp_root,
@@ -437,7 +437,7 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
   }
 }
 
-test fn w_nic_coverage_refuses_ga_kernel_for_8127() -> Bool {
+test fn w_nic_coverage_refuses_ga_kernel_for_8127() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
@@ -467,7 +467,7 @@ test fn w_nic_coverage_refuses_ga_kernel_for_8127() -> Bool {
   }
 }
 
-test fn w_nic_coverage_accepts_hwe_kernel_for_8127() -> Bool {
+test fn w_nic_coverage_accepts_hwe_kernel_for_8127() -> Bool  {
   match admit_spark_unattended_pxe_boot(
     image_kind: DgxOsIsoImage,
     tftp_root: witness_tftp_root,

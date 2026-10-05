@@ -56,7 +56,7 @@ fn violation_count(source: String, wanted: String) -> Int {
 // deleting the kernel route from the relation goes red rather than quiet.
 data kernel_at_structured_source: String = "module probe_inhabit_nega\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [7] }\n"
 
-test fn w_plain_kernel_at_declared_list_element_is_refused() -> Bool {
+test fn w_plain_kernel_at_declared_list_element_is_refused() -> Bool  {
   violation_count(source: kernel_at_structured_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
@@ -66,7 +66,7 @@ test fn w_plain_kernel_at_declared_list_element_is_refused() -> Bool {
 // nothing about the other.
 data payload_at_parent_source: String = "module probe_inhabit_negb\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn mk_inner() -> Inner { Inner { v: 1 } }\nfn probe() -> List<Rel> { [mk_inner()] }\n"
 
-test fn w_arm_payload_where_parent_declared_is_refused() -> Bool {
+test fn w_arm_payload_where_parent_declared_is_refused() -> Bool  {
   violation_count(source: payload_at_parent_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
@@ -76,7 +76,7 @@ test fn w_arm_payload_where_parent_declared_is_refused() -> Bool {
 // and the reds would establish nothing.
 data inhabiting_member_source: String = "module probe_inhabit_pos\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn probe() -> List<Rel> { [SameRev] }\n"
 
-test fn w_declared_coproduct_member_is_accepted() -> Bool {
+test fn w_declared_coproduct_member_is_accepted() -> Bool  {
   violation_count(source: inhabiting_member_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -108,7 +108,7 @@ data undefined_name_source: String = "module probe_inhabit_reach\nimport std.typ
 // artifact of the probe rather than evidence about the name.
 data defined_name_source: String = "module probe_inhabit_reach_ok\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn mk() -> Rel { SameRev }\nfn probe() -> List<Rel> { [mk()] }\n"
 
-test fn w_undefined_name_at_the_list_element_position_still_refuses() -> Bool {
+test fn w_undefined_name_at_the_list_element_position_still_refuses() -> Bool  {
   match compile_dag_diagnostic_census(undefined_name_source) {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError")) > 0
@@ -117,7 +117,7 @@ test fn w_undefined_name_at_the_list_element_position_still_refuses() -> Bool {
   }
 }
 
-test fn w_reachability_control_discriminates_on_the_name() -> Bool {
+test fn w_reachability_control_discriminates_on_the_name() -> Bool  {
   match compile_dag_diagnostic_census(defined_name_source) {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError")) == 0
@@ -135,6 +135,6 @@ test fn w_reachability_control_discriminates_on_the_name() -> Bool {
 // mean "unimplemented" this is the arm that notices.
 data optional_carrier_source: String = "module probe_inhabit_opt\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn maybe() -> Rel? { none }\nfn probe() -> List<Rel?> { [maybe()] }\n"
 
-test fn w_optional_carrier_is_undecidable_not_refused() -> Bool {
+test fn w_optional_carrier_is_undecidable_not_refused() -> Bool  {
   violation_count(source: optional_carrier_source, wanted: "DeclaredTypeNotInhabited") == 0
 }

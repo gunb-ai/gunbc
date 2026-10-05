@@ -38,7 +38,7 @@ fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
   }
 }
 
-test fn environment_materialization_binds_env_not_argv() -> Bool {
+test fn environment_materialization_binds_env_not_argv() -> Bool  {
   let projection = cursor_sdk_project_materialization(
     materialization: cursor_sdk_environment_api_key_materialization(),
     environment_key_plaintext: witness_key,
@@ -53,7 +53,7 @@ test fn environment_materialization_binds_env_not_argv() -> Bool {
     )
 }
 
-test fn argv_api_key_projection_refuses() -> Bool {
+test fn argv_api_key_projection_refuses() -> Bool  {
   match cursor_sdk_refuse_argv_api_key_projection(key: witness_key) {
     CursorSdkCredentialProjectionRefused { reason } =>
       string_contains(s: reason as String, pattern: "argv")
@@ -61,7 +61,7 @@ test fn argv_api_key_projection_refuses() -> Bool {
   }
 }
 
-test fn cli_argument_arm_leaks_key_into_argv_red_control() -> Bool {
+test fn cli_argument_arm_leaks_key_into_argv_red_control() -> Bool  {
   cursor_argv_contains(
     argv: shape_cursor_invocation(
       inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),

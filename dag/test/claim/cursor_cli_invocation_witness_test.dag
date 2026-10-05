@@ -46,7 +46,7 @@ fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
   }
 }
 
-test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool {
+test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool  {
   let shaped = shape_cursor_invocation(
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
   )
@@ -56,7 +56,7 @@ test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool {
     && count(shaped.environment) == 1
 }
 
-test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
+test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool  {
   let shaped = shape_cursor_invocation(
     inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
   )
@@ -68,7 +68,7 @@ test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
 // The direct statement of the defect: the two arms produce different processes. Under the
 // auth-blind shaper this was exactly false — the function never looked at the distinguishing
 // field.
-test fn the_two_auth_arms_produce_different_processes() -> Bool {
+test fn the_two_auth_arms_produce_different_processes() -> Bool  {
   let env_shaped = shape_cursor_invocation(
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
   )
@@ -82,7 +82,7 @@ test fn the_two_auth_arms_produce_different_processes() -> Bool {
 // The automation path cannot reach the leaky arm: it has no parameter selecting one. Asserted
 // through the shaped output rather than by matching the auth field, so it stays true of what the
 // process actually receives, not how the value was labelled.
-test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
+test fn automation_constructor_only_materializes_into_the_env_var() -> Bool  {
   let shaped = shape_cursor_invocation(
     inv: cursor_automation_invocation(
       key: witness_key,
@@ -101,7 +101,7 @@ test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
     && shaped.program == cursor_cli_program
 }
 
-test fn headless_flags_survive_both_arms() -> Bool {
+test fn headless_flags_survive_both_arms() -> Bool  {
   let shaped = shape_cursor_invocation(
     inv: witness_invocation(auth: CursorApiKeyEnvironment { key: witness_key }),
   )

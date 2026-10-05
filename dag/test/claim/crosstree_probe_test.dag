@@ -11,11 +11,11 @@ fn probe_v2_tree() -> v2.std.lens_verdict.LensVerdict {
   v2.std.lens_verdict.Holds
 }
 
-test fn crosstree_dag_ref_resolves() -> Bool {
+test fn crosstree_dag_ref_resolves() -> Bool  {
   match probe_dag_tree() { Permit => true  Deny { refusal: _ } => false }
 }
 
-test fn crosstree_v2_ref_resolves() -> Bool {
+test fn crosstree_v2_ref_resolves() -> Bool  {
   match probe_v2_tree() {
     Holds => true
     _ => false

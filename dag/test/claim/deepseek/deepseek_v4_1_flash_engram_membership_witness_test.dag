@@ -30,7 +30,7 @@ fn w_closure_obligations(c: MembershipClosure) -> Nat {
 
 // THE PINNED SELECTION CLOSES. A selection whose file and name count are the pin's closes membership;
 // extdeps itself carries no live reading, so its own closure stays scoped to the rows read.
-test fn a_selection_over_the_pinned_index_closes_and_extdeps_alone_stays_scoped() -> Bool {
+test fn a_selection_over_the_pinned_index_closes_and_extdeps_alone_stays_scoped() -> Bool  {
   let pinned = deepseek_v4_1_flash_index_engram_selection_of(index: deepseek_v4_1_flash_safetensors_index_file, name_count: 96085, selector: ".engram." as NonEmptyStr, members: deepseek_v4_1_flash_engram_index_members)
   (match deepseek_v4_1_flash_engram_membership_closure_of(selection: pinned, index: deepseek_v4_1_flash_safetensors_index_file, index_count: deepseek_v4_1_flash_index_tensor_count) {
     MembershipClosedAgainstFullIndex { index_population_count: n, how: h } => n == 96085 && (h as String).contains("74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8")
@@ -41,7 +41,7 @@ test fn a_selection_over_the_pinned_index_closes_and_extdeps_alone_stays_scoped(
 
 // THE RED: a thirteenth `.engram.` name in the selection has no header entry, and the population
 // REFUSES naming it -- it is no longer a tensor that passes unreconciled.
-test fn a_thirteenth_engram_tensor_in_the_index_refuses_the_population() -> Bool {
+test fn a_thirteenth_engram_tensor_in_the_index_refuses_the_population() -> Bool  {
   let thirteen = concat(deepseek_v4_1_flash_engram_index_members, [safetensors_index_member(name: "layers.20.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path)])
   let selection = deepseek_v4_1_flash_index_engram_selection_of(index: deepseek_v4_1_flash_safetensors_index_file, name_count: deepseek_v4_1_flash_index_tensor_count, selector: ".engram." as NonEmptyStr, members: thirteen)
   match safetensors_population_standing(
@@ -57,7 +57,7 @@ test fn a_thirteenth_engram_tensor_in_the_index_refuses_the_population() -> Bool
 }
 
 // A SELECTION READ FROM ANOTHER FILE, OR OVER FEWER NAMES, DOES NOT CLOSE MEMBERSHIP AT THIS REVISION.
-test fn a_selection_over_another_index_or_a_partial_count_stays_scoped() -> Bool {
+test fn a_selection_over_another_index_or_a_partial_count_stays_scoped() -> Bool  {
   let other_index = deepseek_v4_1_flash_published_file_row(path: "model.safetensors.index.json" as NonEmptyStr, file_bytes: byte_size(count: 7470294), sha256_hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex)
   let from_other = deepseek_v4_1_flash_index_engram_selection_of(index: other_index, name_count: 96085, selector: ".engram." as NonEmptyStr, members: deepseek_v4_1_flash_engram_index_members)
   let partial = deepseek_v4_1_flash_index_engram_selection_of(index: deepseek_v4_1_flash_safetensors_index_file, name_count: 1200, selector: ".engram." as NonEmptyStr, members: deepseek_v4_1_flash_engram_index_members)

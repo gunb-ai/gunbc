@@ -77,7 +77,7 @@ fn refusals_against(facts: List<DeclFact>) -> Int {
   )
 }
 
-test fn documentary_refs_intact_population_resolves_clean() -> Bool {
+test fn documentary_refs_intact_population_resolves_clean() -> Bool  {
   refusals_against(facts: intact_facts()) == 0
 }
 
@@ -94,7 +94,7 @@ fn facts_without(qualified_name: String) -> List<DeclFact> {
   })
 }
 
-test fn documentary_refs_renamed_system_refuses() -> Bool {
+test fn documentary_refs_renamed_system_refuses() -> Bool  {
   let clean = refusals_against(facts: intact_facts())
   let renamed = refusals_against(
     facts: facts_without(qualified_name: "gunbc.v1_maintenance_standing.v1_seed_standing")
@@ -108,7 +108,7 @@ test fn documentary_refs_renamed_system_refuses() -> Bool {
 // system, which is exactly the §3 fork the citation rule is about, and it must refuse rather than
 // pick the first.
 
-test fn documentary_refs_ambiguous_system_refuses() -> Bool {
+test fn documentary_refs_ambiguous_system_refuses() -> Bool  {
   let forked = concat(
     intact_facts(),
     [
@@ -129,7 +129,7 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
 // text of each row appears in the generated document, so the row and the printed name cannot
 // diverge.
 
-test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
+test fn documentary_refs_generated_document_renders_the_rows() -> Bool  {
   let md = expected_design_md()
   string_contains(s: md, pattern: documentary_ref_symbol_text(reference: v1_maintenance_standing_ref))
     && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: required_gate_prefixes_ref))

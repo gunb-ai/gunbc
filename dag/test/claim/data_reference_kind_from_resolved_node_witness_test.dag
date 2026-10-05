@@ -27,6 +27,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The class's rung, ceiling and next-rung trigger live in its ledger row,
 // gunbc.recurring_failure_mode surface_shorthand_preempts_resolved_identity, not here.
-test fn a_data_reference_is_classified_by_the_declaration_it_resolves_to() -> Bool {
+test fn a_data_reference_is_classified_by_the_declaration_it_resolves_to() -> Bool  {
   (gigabyte.legal_name as String) == "GIGA-BYTE Technology Co., Ltd."
 }

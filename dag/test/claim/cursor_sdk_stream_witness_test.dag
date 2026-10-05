@@ -35,7 +35,7 @@ data usage_message: String = "{\"type\":\"usage\",\"agent_id\":\"a1\",\"run_id\"
 data local_result_event: String = "{\"schemaVersion\":1,\"type\":\"result\",\"agentId\":\"a1\",\"runId\":\"r1\",\"status\":\"finished\"}"
 data unknown_event: String = "{\"type\":\"future_shape\",\"agentId\":\"a1\"}"
 
-test fn finished_run_result_reconciles() -> Bool {
+test fn finished_run_result_reconciles() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(raw: finished_result) {
     CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: _, raw: _ } => true
     CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
@@ -46,7 +46,7 @@ test fn finished_run_result_reconciles() -> Bool {
   }
 }
 
-test fn auth_error_classifies() -> Bool {
+test fn auth_error_classifies() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(raw: auth_error_result) {
     CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
       match err {
@@ -62,7 +62,7 @@ test fn auth_error_classifies() -> Bool {
   }
 }
 
-test fn rate_limit_error_classifies() -> Bool {
+test fn rate_limit_error_classifies() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(raw: rate_limit_result) {
     CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
       match err {
@@ -78,14 +78,14 @@ test fn rate_limit_error_classifies() -> Bool {
   }
 }
 
-test fn malformed_result_refuses() -> Bool {
+test fn malformed_result_refuses() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(raw: malformed_result) {
     CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => true
     CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
   }
 }
 
-test fn assistant_message_classifies() -> Bool {
+test fn assistant_message_classifies() -> Bool  {
   match cursor_sdk_stream_classify_message_line(raw: assistant_message) {
     CursorSdkLineClassified { kind: CursorSdkMessageAssistant } => true
     CursorSdkLineClassified { kind: _ } => false
@@ -96,7 +96,7 @@ test fn assistant_message_classifies() -> Bool {
   }
 }
 
-test fn usage_message_classifies() -> Bool {
+test fn usage_message_classifies() -> Bool  {
   match cursor_sdk_stream_classify_message_line(raw: usage_message) {
     CursorSdkLineClassified { kind: CursorSdkMessageUsage } => true
     CursorSdkLineClassified { kind: _ } => false
@@ -107,7 +107,7 @@ test fn usage_message_classifies() -> Bool {
   }
 }
 
-test fn local_result_event_classifies() -> Bool {
+test fn local_result_event_classifies() -> Bool  {
   match cursor_sdk_stream_classify_local_run_event(raw: local_result_event) {
     CursorSdkLineClassified { kind: CursorSdkLocalRunStreamResult } => true
     CursorSdkLineClassified { kind: _ } => false
@@ -118,7 +118,7 @@ test fn local_result_event_classifies() -> Bool {
   }
 }
 
-test fn unknown_event_stays_unclassified() -> Bool {
+test fn unknown_event_stays_unclassified() -> Bool  {
   match cursor_sdk_stream_classify_local_run_event(raw: unknown_event) {
     CursorSdkLineClassified { kind: CursorSdkLocalRunStreamUnclassified { wire_type: _ } } => true
     CursorSdkLineClassified { kind: _ } => false
@@ -129,7 +129,7 @@ test fn unknown_event_stays_unclassified() -> Bool {
   }
 }
 
-test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
+test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"you hit your usage limit\",\"code\":\"other\"}}",
   ) {
@@ -151,7 +151,7 @@ test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
 data malformed_error_subobject: String = "{\"status\":\"error\",\"error\":[{\"message\":\"bad\"}]}"
 data malformed_error_missing_message: String = "{\"status\":\"error\",\"error\":{\"code\":\"authentication_error\"}}"
 
-test fn malformed_error_subobject_refuses_not_absent() -> Bool {
+test fn malformed_error_subobject_refuses_not_absent() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_subobject) {
     CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
       string_contains(s: reason as String, pattern: "malformed error object")
@@ -159,7 +159,7 @@ test fn malformed_error_subobject_refuses_not_absent() -> Bool {
   }
 }
 
-test fn malformed_error_missing_message_refuses_not_absent() -> Bool {
+test fn malformed_error_missing_message_refuses_not_absent() -> Bool  {
   match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_missing_message) {
     CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
       string_contains(s: reason as String, pattern: "malformed error object")
@@ -183,7 +183,7 @@ test fn malformed_error_missing_message_refuses_not_absent() -> Bool {
 // CLASSIFIED answer, not a reading failure, and a decoder that refused it would break the
 // classifier while satisfying a naive refusal test.
 
-test fn RED_unreadable_cursor_line_is_not_a_missing_type_member() -> Bool {
+test fn RED_unreadable_cursor_line_is_not_a_missing_type_member() -> Bool  {
   match cursor_sdk_stream_classify_message_line(raw: "{ truncated mid-lin") {
     CursorSdkLineUnreadable => true
     CursorSdkLineClassified { kind: _ } => false
@@ -193,7 +193,7 @@ test fn RED_unreadable_cursor_line_is_not_a_missing_type_member() -> Bool {
   }
 }
 
-test fn RED_cursor_line_without_type_member_is_not_unreadable() -> Bool {
+test fn RED_cursor_line_without_type_member_is_not_unreadable() -> Bool  {
   match cursor_sdk_stream_classify_message_line(raw: "{\"role\":\"assistant\"}") {
     CursorSdkLineTypeMemberAbsent => true
     CursorSdkLineClassified { kind: _ } => false

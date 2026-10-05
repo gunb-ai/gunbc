@@ -31,7 +31,7 @@ fn replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.Repli
   )
 }
 
-test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool {
+test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool  {
   return v2.lens.duplicate_computation.duplicate_computation_clean_holds(
     facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 })
   )
@@ -49,7 +49,7 @@ test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool {
 // ShellProgram walker keeps its synthetic lens-unit subjects in v2.test.duplicate_computation and
 // the not-yet-migrated bash-program transports as its domain; it dissolves with the sidecar.
 
-test fn replicated_pair_without_declaration_reds() -> Bool {
+test fn replicated_pair_without_declaration_reds() -> Bool  {
   return v2.lens.duplicate_computation.duplicate_computation_violation_count(
     facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.SingleRun)
   ) == 1

@@ -55,7 +55,7 @@ data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingReali
 // GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
 // M128-30 socket, the W1's supported-board population contains the ALTRAD8UD, and the W1's
 // 250 W design power covers the M128-30's 183 W TDP.
-test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
+test fn installed_srv3_cooling_is_catalog_compatible() -> Bool  {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
     CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
@@ -69,7 +69,7 @@ test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
 // designation, ILM4189 against the board's ILM4926. The name and comment used to say socket, which
 // stopped being true when the qualifier moved to the mount -- a control that describes a mechanism
 // it no longer exercises is the same stale-claim class this PR corrects in the model.
-test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool {
+test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool  {
   let wrong_mount_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
@@ -109,7 +109,7 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
 // Control 3: emptying the supported-board population refuses. This is the control that would
 // have passed vacuously while supported_motherboards was a bare string list compared against a
 // differently-spelled label — grounding it on BaseboardModel is what makes the check real.
-test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
+test fn baseboard_absent_from_supported_population_is_refused() -> Bool  {
   let unsupported_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
@@ -148,7 +148,7 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
 
 // Control 4: lowering design power below the processor TDP refuses. 182 W sits one watt under
 // the M128-30's cited 183 W, so this also proves the comparison is not a coarse bucket.
-test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
+test fn design_power_one_watt_below_tdp_is_refused() -> Bool  {
   let underrated_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
@@ -186,7 +186,7 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
 }
 
 // Boundary: design power exactly equal to TDP is admitted, so the comparison is >= and not >.
-test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
+test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool  {
   let exact_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
@@ -212,7 +212,7 @@ test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
 // Control 1: removing the installed cooler makes qualification incomplete rather than passing.
 // srv1 carries no cooler row in the live fleet inventory, so this reads the real population and
 // proves absence resolves to Unobserved — not to a silent compatibility.
-test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
+test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool  {
   match installed_cooling_verdict_for_host(
     host: operator_host_srv1,
     realizations: installed_cooling_realizations,
@@ -226,7 +226,7 @@ test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
 
 // And the same absence must refuse qualification, since InstalledCoolingUnobserved is the arm a
 // gate would be tempted to treat as "nothing wrong here".
-test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool {
+test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool  {
   !cooling_catalog_verdict_admits_qualification(
     verdict: installed_cooling_verdict_for_host(
       host: operator_host_srv1,
@@ -237,7 +237,7 @@ test fn unobserved_installed_cooling_does_not_admit_qualification() -> Bool {
 
 // The live srv3 row resolves through the real fleet population, not just the locally rebuilt
 // specimen — so the production path and this witness read the same facts.
-test fn live_fleet_population_resolves_srv3_to_compatible() -> Bool {
+test fn live_fleet_population_resolves_srv3_to_compatible() -> Bool  {
   cooling_catalog_verdict_admits_qualification(
     verdict: installed_cooling_verdict_for_host(
       host: operator_host_srv3,
@@ -255,7 +255,7 @@ data cooling_catalog_carries_no_runtime_evidence_note: Bool = true
 // CoolingCatalogCompatible's entire payload is host + cooler asset identity. Reading it back
 // from those two fields alone demonstrates there is nothing else in the verdict to mistake for
 // a measurement.
-test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
+test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool  {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
     CoolingCatalogCompatible { host: host, cooler_asset: asset } =>
       host == operator_host_srv3 && asset == cooler_srv3
@@ -305,14 +305,14 @@ fn verdict_is_ambiguous(v: CoolingCatalogVerdict) -> Bool {
   }
 }
 
-test fn witness_duplicate_installed_cooling_refuses_in_both_orders() -> Bool {
+test fn witness_duplicate_installed_cooling_refuses_in_both_orders() -> Bool  {
   verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: duplicate_cooling_ab))
     && verdict_is_ambiguous(v: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: duplicate_cooling_ba))
     && !cooling_catalog_verdict_admits_qualification(
          verdict: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: duplicate_cooling_ab))
 }
 
-test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
+test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool  {
   cooling_catalog_verdict_admits_qualification(
     verdict: installed_cooling_verdict_for_host(host: operator_host_srv3, realizations: installed_cooling_realizations))
     && !cooling_catalog_verdict_admits_qualification(
@@ -327,7 +327,7 @@ test fn witness_single_row_still_resolves_after_ambiguity_gate() -> Bool {
 //
 // It is not hypothetical that the industry makes this mistake: Dynatron sells LGA4926 cold plates
 // listed as Intel parts, and the contact count is the whole of what makes that label look right.
-test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
+test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool  {
   let foreign_platform_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
@@ -381,7 +381,7 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
 // An AM4 cooler on an AM5 processor is CoolingCatalogCompatible. Under socket equality the same
 // realization refuses, and the sibling assertion pins that the two sockets really are unequal, so
 // the admission cannot be explained by the fixture having accidentally made them the same socket.
-test fn w_am4_cooler_on_an_am5_processor_qualifies_through_the_verdict() -> Bool {
+test fn w_am4_cooler_on_an_am5_processor_qualifies_through_the_verdict() -> Bool  {
   let am4_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
@@ -404,7 +404,7 @@ test fn w_am4_cooler_on_an_am5_processor_qualifies_through_the_verdict() -> Bool
          ))
 }
 
-test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> Bool {
+test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> Bool  {
   let am4_socket = CpuSocket {
     platform_owner: amd,
     termination: SocketedPinGrid,
@@ -424,7 +424,7 @@ test fn w_am4_cooler_fits_an_am5_board_because_the_mount_is_retained() -> Bool {
 // RED control: sharing a platform owner is not sharing a mount. Two Ampere sockets with different
 // retention designations must not qualify each other, or the mount axis would have collapsed into
 // the platform axis it sits beside.
-test fn w_red_same_platform_with_a_different_retention_is_not_one_mount() -> Bool {
+test fn w_red_same_platform_with_a_different_retention_is_not_one_mount() -> Bool  {
   let ilm4926 = ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4926" }
   let ilm4189 = ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4189" }
   cooling_mount_eq(a: ilm4926, b: ilm4926)
@@ -433,7 +433,7 @@ test fn w_red_same_platform_with_a_different_retention_is_not_one_mount() -> Boo
 
 // RED control: the same retention designation under two platform owners is not one mount either.
 // A designation is a name inside a vendor's scheme, not a global identifier.
-test fn w_red_one_designation_under_two_platforms_is_not_one_mount() -> Bool {
+test fn w_red_one_designation_under_two_platforms_is_not_one_mount() -> Bool  {
   !cooling_mount_eq(
     a: ProcessorCoolingMount { platform_owner: ampere_vendor, designation: "ILM4926" },
     b: ProcessorCoolingMount { platform_owner: amd, designation: "ILM4926" },

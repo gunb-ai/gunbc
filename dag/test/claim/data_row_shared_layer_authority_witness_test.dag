@@ -72,7 +72,7 @@ fn shared_required_data_row_source() -> String {
   "module dslreq\n\ntype DslNode = DslNode { child: DslNode? }\n\ndata dsl_req: DslNode = DslNode { child: none }\n"
 }
 
-test fn w_shared_optional_data_row_carries_the_optional() -> Bool {
+test fn w_shared_optional_data_row_carries_the_optional() -> Bool  {
   compile_dag_rust_emit_check(
     shared_optional_data_row_source(),
     "src/dslshared.rs",
@@ -81,7 +81,7 @@ test fn w_shared_optional_data_row_carries_the_optional() -> Bool {
   )
 }
 
-test fn w_unshared_optional_data_row_unchanged() -> Bool {
+test fn w_unshared_optional_data_row_unchanged() -> Bool  {
   compile_dag_rust_emit_check(
     unshared_optional_data_row_source(),
     "src/dslplain.rs",
@@ -90,7 +90,7 @@ test fn w_unshared_optional_data_row_unchanged() -> Bool {
   )
 }
 
-test fn w_shared_required_data_row_unchanged() -> Bool {
+test fn w_shared_required_data_row_unchanged() -> Bool  {
   compile_dag_rust_emit_check(
     shared_required_data_row_source(),
     "src/dslreq.rs",

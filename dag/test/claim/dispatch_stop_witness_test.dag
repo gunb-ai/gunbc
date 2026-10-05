@@ -60,7 +60,7 @@ fn entry() -> TmuxLsEntry {
   TmuxLsEntry { session_name: "gunbc-dispatch-ts-authority-converge", windows: 1 }
 }
 
-test fn stop_pane_parse_holds() -> Bool {
+test fn stop_pane_parse_holds() -> Bool  {
   let one = parse_tmux_pane_line(line: "gunbc-dispatch-ts-authority-converge sleep")
   let multi = parse_tmux_panes_output(output: "main zsh\ngunbc-dispatch-x claude\n")
   return match one {
@@ -72,7 +72,7 @@ test fn stop_pane_parse_holds() -> Bool {
     && match parse_tmux_pane_line(line: "") { Present { value: p2 } => false Absent => true }
 }
 
-test fn stop_gate_kills_only_proven_selected_provider() -> Bool {
+test fn stop_gate_kills_only_proven_selected_provider() -> Bool  {
   let provider_obs = tmux_session_observation_with_panes(
     scope: scope(), entries: [entry()],
     panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "node" }])
@@ -109,7 +109,7 @@ fn live_with_process(process: WorkerProcessEvidence) -> DispatchLiveSession {
   }
 }
 
-test fn cleanup_separates_running_process_from_retained_session() -> Bool {
+test fn cleanup_separates_running_process_from_retained_session() -> Bool  {
   let owned = dispatch_session_cleanup(
     scope: scope(),
     session: live_with_process(
@@ -144,7 +144,7 @@ test fn cleanup_separates_running_process_from_retained_session() -> Bool {
   }
 }
 
-test fn stop_wire_statuses_discriminate() -> Bool {
+test fn stop_wire_statuses_discriminate() -> Bool  {
   let stopped = StopProcessStopped { node_id: "n", session_name: "gunbc-dispatch-n" }
   let cleared = StopRetainedSessionCleared {
     node_id: "n",
@@ -172,7 +172,7 @@ test fn stop_wire_statuses_discriminate() -> Bool {
     && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: foreign)), pattern: "\"status\": \"stop_refused\"")
 }
 
-test fn stop_client_carries_the_chip() -> Bool {
+test fn stop_client_carries_the_chip() -> Bool  {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "'cleanup-chip'")
     && string_contains(s: js, pattern: "session-facts")
@@ -196,14 +196,14 @@ test fn stop_client_carries_the_chip() -> Bool {
 // NEGATIVES: any reappearing in the emitted source is the client re-deriving cleanup or process
 // presentation from raw facts, a second authority beside session_facts_view.
 
-test fn stop_chip_is_styled() -> Bool {
+test fn stop_chip_is_styled() -> Bool  {
   return string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
     && string_contains(s: roadmap_css(), pattern: ".cleanup-chip:disabled")
     && string_contains(s: roadmap_css(), pattern: ".session-facts { display: flex;")
     && !string_contains(s: roadmap_css(), pattern: ".process-chip")
 }
 
-test fn stop_fingerprint_scaffold_is_discharged() -> Bool {
+test fn stop_fingerprint_scaffold_is_discharged() -> Bool  {
   return match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
     Scaffold { dissolves_to: _, bind: _ } => false
     Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")

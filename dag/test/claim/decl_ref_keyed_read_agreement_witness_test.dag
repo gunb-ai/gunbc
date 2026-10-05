@@ -77,7 +77,7 @@ fn routes_agree_on(ref: DeclarationRef, expected: String) -> Bool {
   keyed == population_tag(ref: ref) && keyed == expected
 }
 
-test fn keyed_and_population_routes_agree_on_resolved() -> Bool {
+test fn keyed_and_population_routes_agree_on_resolved() -> Bool  {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "test.fixture.decl_facts_reflection.specimens",
@@ -95,7 +95,7 @@ test fn keyed_and_population_routes_agree_on_resolved() -> Bool {
 // construction -- and required run 34097895230 refused it as CITED-MODULE-ABSENT, so the
 // expectation was wrong and the roster is the route for all three. A planted absence a witness
 // needs and the corpus must not silently carry is exactly what the roster is identity-grained for.
-test fn keyed_and_population_routes_agree_on_module_absent() -> Bool {
+test fn keyed_and_population_routes_agree_on_module_absent() -> Bool  {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "synthetic.keyed_read_module_absent_RED",
@@ -106,7 +106,7 @@ test fn keyed_and_population_routes_agree_on_module_absent() -> Bool {
   )
 }
 
-test fn keyed_and_population_routes_agree_on_declaration_absent() -> Bool {
+test fn keyed_and_population_routes_agree_on_declaration_absent() -> Bool  {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "test.fixture.decl_facts_reflection.specimens",
@@ -117,7 +117,7 @@ test fn keyed_and_population_routes_agree_on_declaration_absent() -> Bool {
   )
 }
 
-test fn keyed_and_population_routes_agree_on_field_absent() -> Bool {
+test fn keyed_and_population_routes_agree_on_field_absent() -> Bool  {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "test.fixture.decl_facts_reflection.specimens",
@@ -130,7 +130,7 @@ test fn keyed_and_population_routes_agree_on_field_absent() -> Bool {
 
 // THE ROW THE BOOL SHORTCUT WOULD HAVE EATEN. Two files declare this qualified name; the keyed read
 // must return BOTH, and the count is asserted rather than the arm alone.
-test fn keyed_and_population_routes_agree_on_ambiguous_with_two_candidates() -> Bool {
+test fn keyed_and_population_routes_agree_on_ambiguous_with_two_candidates() -> Bool  {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module",
@@ -155,7 +155,7 @@ test fn keyed_and_population_routes_agree_on_ambiguous_with_two_candidates() -> 
 // keyed_and_population_routes_agree_on_resolved, which cites the SAME declaration with
 // WholeDeclaration and requires Resolved. A resolver answering FieldAbsent to everything fails that
 // row; one answering Resolved to everything fails these two.
-test fn keyed_and_population_routes_agree_that_an_authored_field_is_still_field_absent() -> Bool {
+test fn keyed_and_population_routes_agree_that_an_authored_field_is_still_field_absent() -> Bool  {
   routes_agree_on(
     ref: DeclarationRef {
       module_path: "test.fixture.decl_facts_reflection.specimens",

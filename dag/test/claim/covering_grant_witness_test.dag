@@ -65,7 +65,7 @@ fn is_no_covering(cg: CoveringGrant) -> Bool {
   }
 }
 
-test fn covering_grant_read_selects_real_transport() -> Bool {
+test fn covering_grant_read_selects_real_transport() -> Bool  {
   covered_binding_is_real(
     cg: covering_grant(
       env: cg_envelope(),
@@ -75,7 +75,7 @@ test fn covering_grant_read_selects_real_transport() -> Bool {
   )
 }
 
-test fn covering_grant_write_selects_replay_with_store() -> Bool {
+test fn covering_grant_write_selects_replay_with_store() -> Bool  {
   covered_binding_replay_store(
     cg: covering_grant(
       env: cg_envelope(),
@@ -86,7 +86,7 @@ test fn covering_grant_write_selects_replay_with_store() -> Bool {
   )
 }
 
-test fn covering_grant_uncovered_is_no_covering() -> Bool {
+test fn covering_grant_uncovered_is_no_covering() -> Bool  {
   is_no_covering(
     cg: covering_grant(
       env: cg_envelope(),
@@ -96,7 +96,7 @@ test fn covering_grant_uncovered_is_no_covering() -> Bool {
   )
 }
 
-test fn admit_effect_projection_admits_covered() -> Bool {
+test fn admit_effect_projection_admits_covered() -> Bool  {
   match admit_effect(
     env: cg_envelope(),
     verb: Read,
@@ -107,7 +107,7 @@ test fn admit_effect_projection_admits_covered() -> Bool {
   }
 }
 
-test fn admit_effect_projection_refuses_uncovered() -> Bool {
+test fn admit_effect_projection_refuses_uncovered() -> Bool  {
   match admit_effect(
     env: cg_envelope(),
     verb: Read,

@@ -99,7 +99,7 @@ fn observation_of(pull_number: Int, diff: String) -> PrDiffObservation {
 // THE ALARMING DIRECTION IS THE ONE THAT COSTS OTHER LANES THEIR TIME, so this witness asserts both
 // halves: no contradiction is reported, AND the pull request is still visible on the key as
 // NetBoth. Asserting only the first would pass equally over a detector that dropped the row.
-test fn single_pr_moving_a_line_is_not_a_contradiction() -> Bool {
+test fn single_pr_moving_a_line_is_not_a_contradiction() -> Bool  {
   let observations = [observation_of(pull_number: 9999, diff: moved_line_diff)]
   let directions = pr_identity_directions(
     pull_number: 9999,
@@ -119,7 +119,7 @@ fn get_direction(directions: List<PrIdentityDirection>) -> NetDirection {
 
 // THE POSITIVE CONTROL, and it is the live shape rather than an invented one: #9569 net-ADDS the
 // identity, #9589 net-REMOVES it, and the merged tree carries a roster row for a passing witness.
-test fn opposite_net_directions_across_two_prs_contradict() -> Bool {
+test fn opposite_net_directions_across_two_prs_contradict() -> Bool  {
   let found = cross_pr_contradictions(
     observations: [
       observation_of(pull_number: 9569, diff: adding_side_diff),
@@ -132,7 +132,7 @@ test fn opposite_net_directions_across_two_prs_contradict() -> Bool {
 
 // SAME-DIRECTION OVERLAP DISAGREES WITH NOBODY. 45 of the 53 multi-pull-request keys the hand run
 // found were this shape; reporting them would bury the one row that matters.
-test fn same_net_direction_across_two_prs_does_not_contradict() -> Bool {
+test fn same_net_direction_across_two_prs_does_not_contradict() -> Bool  {
   cross_pr_contradictions(
     observations: [
       observation_of(pull_number: 9589, diff: deleting_side_diff),
@@ -145,7 +145,7 @@ test fn same_net_direction_across_two_prs_does_not_contradict() -> Bool {
 // one of them leaves the report complete. A detector that rendered an unread pull request as a
 // contentless one would make these two indistinguishable, and this witness is what fails when it
 // does.
-test fn unread_pull_request_and_contentless_one_are_different_states() -> Bool {
+test fn unread_pull_request_and_contentless_one_are_different_states() -> Bool  {
   let derived = contradiction_report(
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
@@ -181,7 +181,7 @@ test fn unread_pull_request_and_contentless_one_are_different_states() -> Bool {
 // the ancestry derivation refuses a branch whose commits net to nothing -- correct in the sense
 // that it does not fabricate, and useless in the sense that its report is permanently incomplete
 // over pull requests that are genuinely empty. The live scan carried exactly two of those.
-test fn a_forge_disagreement_over_an_empty_diff_is_not_an_observation() -> Bool {
+test fn a_forge_disagreement_over_an_empty_diff_is_not_an_observation() -> Bool  {
   let disagreement = contradiction_report(
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
@@ -201,7 +201,7 @@ test fn a_forge_disagreement_over_an_empty_diff_is_not_an_observation() -> Bool 
 }
 
 // A STALE LOCAL REF IS AN UNMADE OBSERVATION, not a branch that touches nothing.
-test fn stale_head_ref_is_unobserved() -> Bool {
+test fn stale_head_ref_is_unobserved() -> Bool  {
   let report = contradiction_report(
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
@@ -219,7 +219,7 @@ test fn stale_head_ref_is_unobserved() -> Bool {
 // FILE HEADERS ARE NOT CHANGED LINES. `+++ b/path` and `--- a/path` begin with the two characters
 // this reader treats as directions, so an ordering mistake here turns every header into a changed
 // line and every path into a candidate key.
-test fn diff_file_headers_are_not_changed_lines() -> Bool {
+test fn diff_file_headers_are_not_changed_lines() -> Bool  {
   let changed = changed_identities(
     diff: "--- a/dag/gunbc/a.b.c.dag\n+++ b/dag/gunbc/a.b.c.dag\n context\n",
     rule: cross_pr_extraction_rule
@@ -227,7 +227,7 @@ test fn diff_file_headers_are_not_changed_lines() -> Bool {
   changed.changed_lines == 0 && changed.added.length() == 0 && changed.removed.length() == 0
 }
 
-test fn diff_line_classes_are_assigned_by_the_longest_prefix() -> Bool {
+test fn diff_line_classes_are_assigned_by_the_longest_prefix() -> Bool  {
   match diff_line_class(line: "+++ b/x") { DiffFileHeader => true, DiffAddedLine => false, DiffRemovedLine => false, DiffOtherLine => false }
     && match diff_line_class(line: "--- a/x") { DiffFileHeader => true, DiffAddedLine => false, DiffRemovedLine => false, DiffOtherLine => false }
     && match diff_line_class(line: "+  row") { DiffAddedLine => true, DiffFileHeader => false, DiffRemovedLine => false, DiffOtherLine => false }
@@ -237,14 +237,14 @@ test fn diff_line_classes_are_assigned_by_the_longest_prefix() -> Bool {
 
 // THE EXTRACTION RULE IS AN UPPER BOUND AND IT IS STILL NOT A FREE-FOR-ALL: an unquoted mention and
 // a two-segment name are both outside it, and a path is excluded by its separator.
-test fn extraction_keeps_quoted_qualified_names_only() -> Bool {
+test fn extraction_keeps_quoted_qualified_names_only() -> Bool  {
   line_identity_keys(line: "+ // see test.fixture.lookup.prose_mention in prose", rule: cross_pr_extraction_rule).length() == 0
     && line_identity_keys(line: "+ \"gunbc.only_two\"", rule: cross_pr_extraction_rule).length() == 0
     && line_identity_keys(line: "+ \"dag/gunbc/a.b.c\"", rule: cross_pr_extraction_rule).length() == 0
     && line_identity_keys(line: "+ \"test.fixture.lookup.probe\"", rule: cross_pr_extraction_rule).length() == 1
 }
 
-test fn net_direction_is_total_over_the_two_observations() -> Bool {
+test fn net_direction_is_total_over_the_two_observations() -> Bool  {
   net_direction_text(direction: net_direction(in_added: true, in_removed: false)) == "ADD"
     && net_direction_text(direction: net_direction(in_added: false, in_removed: true)) == "DEL"
     && net_direction_text(direction: net_direction(in_added: true, in_removed: true)) == "BOTH"
@@ -254,7 +254,7 @@ test fn net_direction_is_total_over_the_two_observations() -> Bool {
 // THE SCOPE TRAVELS WITH THE REPORT. An overlap index computed over a filtered subset is blind to
 // everything outside the filter; stating the scope in a footnote instead of in the output is how
 // that blindness stops being visible to whoever reads the numbers.
-test fn report_states_its_file_scope_and_extraction_rule() -> Bool {
+test fn report_states_its_file_scope_and_extraction_rule() -> Bool  {
   let text = contradiction_report_text(
     report: contradiction_report(
       file_scope: EveryFileInDiff,
@@ -298,7 +298,7 @@ fn only_standing(report: ContradictionReport) -> ContradictionStanding {
 // computed against each branch's own merge base and cannot tell a proposal from a stale re-add; the
 // merge target decides it. Both arms are asserted here because one alone would pass over a standing
 // that always answered the same way.
-test fn the_merge_target_decides_which_side_is_stale() -> Bool {
+test fn the_merge_target_decides_which_side_is_stale() -> Bool  {
   let present = report_with_presence(presence: PresentOnMain)
   let absent = report_with_presence(presence: AbsentFromMain)
   match only_standing(report: present) {
@@ -318,7 +318,7 @@ test fn the_merge_target_decides_which_side_is_stale() -> Bool {
 // A LOOKUP THAT DID NOT HAPPEN IS NOT AN ANSWER, one level in from the empty-diff pair above. A
 // contradiction whose side is undecided names no action, so the report is incomplete and says so
 // rather than presenting the row as if it did.
-test fn an_undecided_standing_makes_the_report_incomplete() -> Bool {
+test fn an_undecided_standing_makes_the_report_incomplete() -> Bool  {
   let unobserved = report_with_presence(
     presence: MainPresenceUnobserved { detail: "the merge target could not be read" }
   )
@@ -334,7 +334,7 @@ test fn an_undecided_standing_makes_the_report_incomplete() -> Bool {
 // A CONTRADICTION WITH NO LOOKUP SUPPLIED AT ALL FAILS CLOSED, rather than defaulting to either
 // side. This is the arm an instrument reaches when it forgets to ask, and it must not be the arm
 // that quietly reports a remedy.
-test fn a_missing_lookup_is_undecided_not_absent() -> Bool {
+test fn a_missing_lookup_is_undecided_not_absent() -> Bool  {
   let no_lookup = contradiction_report(
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
@@ -349,7 +349,7 @@ test fn a_missing_lookup_is_undecided_not_absent() -> Bool {
 // THE STANDING TRAVELS ON THE ROW, beside the net-add and net-delete lists that justify it. A
 // reader who gets the identity without the remedy has to re-derive the remedy, and the whole point
 // of the distinction is that it names an action.
-test fn the_report_row_carries_the_standing_beside_the_directions() -> Bool {
+test fn the_report_row_carries_the_standing_beside_the_directions() -> Bool  {
   let text = contradiction_report_text(report: report_with_presence(presence: PresentOnMain))
   string_contains(s: text, pattern: "net_add\t9569")
     && string_contains(s: text, pattern: "net_delete\t9589")
@@ -363,7 +363,7 @@ test fn the_report_row_carries_the_standing_beside_the_directions() -> Bool {
 // wrong in exactly the case the model's own limitation note describes, and wrong in the direction
 // that tells someone to discard real work. This witness fails if the standing text ever asserts an
 // action again, and if the remedy text ever drops the condition that qualifies it.
-test fn the_standing_asserts_no_remedy_and_the_remedy_carries_its_condition() -> Bool {
+test fn the_standing_asserts_no_remedy_and_the_remedy_carries_its_condition() -> Bool  {
   let present = contradiction_standing_text(standing: AddSideKeyPresentOnTarget)
   let absent = contradiction_standing_text(standing: DeleteSideKeyAbsentFromTarget)
   !string_contains(s: present, pattern: "rebase")
@@ -377,14 +377,14 @@ test fn the_standing_asserts_no_remedy_and_the_remedy_carries_its_condition() ->
 // THE CONDITIONAL TRAVELS WITH THE ROW, not with the model comment. A reader who trusts the report
 // and never opens the source is exactly the reader the grain gap catches, so the caveat has to be
 // in the bytes they read.
-test fn the_report_row_carries_the_remedy_and_its_caveat() -> Bool {
+test fn the_report_row_carries_the_remedy_and_its_caveat() -> Bool  {
   let text = contradiction_report_text(report: report_with_presence(presence: PresentOnMain))
   string_contains(s: text, pattern: "standing\tADD-SIDE-PRESENT-ON-TARGET")
     && string_contains(s: text, pattern: "remedy\tIF the two diffs touch the same row")
     && string_contains(s: text, pattern: "rebase the ADDING branch")
 }
 
-test fn an_undecided_row_recommends_nothing() -> Bool {
+test fn an_undecided_row_recommends_nothing() -> Bool  {
   match contradiction_remedy(standing: StandingUndecided) {
     RemedyUndecided => true
     RebaseAddingBranch => false
@@ -399,7 +399,7 @@ test fn an_undecided_row_recommends_nothing() -> Bool {
 // standing derived from it is confidently wrong while the report still calls itself complete
 // (review 57265). The delimiters the extraction stripped are put back by the model, so the two
 // cannot drift.
-test fn the_merge_target_lookup_uses_the_extraction_semantics() -> Bool {
+test fn the_merge_target_lookup_uses_the_extraction_semantics() -> Bool  {
   let pattern = identity_lookup_pattern(identity: "test.fixture.lookup.probe", rule: cross_pr_extraction_rule)
   let quoted_exact = "  Cons { head: \"test.fixture.lookup.probe\", tail: Empty {} }"
   let quoted_longer = "  Cons { head: \"test.fixture.lookup.probe_extended\", tail: Empty {} }"
@@ -412,7 +412,7 @@ test fn the_merge_target_lookup_uses_the_extraction_semantics() -> Bool {
 // AND THE EXTRACTION IS THE INVERSE OF THE LOOKUP ON THE SAME LINE: a key this rule extracts from a
 // changed line is a key whose lookup pattern that line contains. Asserting the pair is what makes
 // them one authority rather than two spellings that happen to agree today.
-test fn extraction_and_lookup_agree_on_the_same_line() -> Bool {
+test fn extraction_and_lookup_agree_on_the_same_line() -> Bool  {
   let line = "+  Cons { head: \"test.fixture.lookup.probe\", tail: Empty {} }"
   let keys = line_identity_keys(line: line, rule: cross_pr_extraction_rule)
   keys.length() == 1
@@ -433,7 +433,7 @@ test fn extraction_and_lookup_agree_on_the_same_line() -> Bool {
 // the presence oracle answer PRESENT for that key forever, and the derived remedy would tell a
 // future author to rebase a branch that is not stale. This repository cites identities in
 // annotations constantly, so the arm is reachable on ordinary source rather than only on a fixture.
-test fn an_identity_cited_in_an_annotation_is_not_a_key() -> Bool {
+test fn an_identity_cited_in_an_annotation_is_not_a_key() -> Bool  {
   let annotated = "+  // see \"test.fixture.contradiction_alpha.some_claim_holds\" for the reason"
   let enrolled = "+  Cons { head: \"test.fixture.contradiction_alpha.some_claim_holds\", tail: Empty {} }"
   changed_identities(diff: concat(annotated, "\n"), rule: cross_pr_extraction_rule).added.length() == 0
@@ -444,7 +444,7 @@ test fn an_identity_cited_in_an_annotation_is_not_a_key() -> Bool {
 
 // THE DIFF MARKER IS STRIPPED BEFORE THE ANNOTATION TEST, because `+  // note` is an annotation and
 // the leading `+` would otherwise hide it from the check above.
-test fn the_diff_marker_does_not_hide_an_annotation() -> Bool {
+test fn the_diff_marker_does_not_hide_an_annotation() -> Bool  {
   line_is_annotation(body: diff_line_body(line: "+  // a note"))
     && line_is_annotation(body: diff_line_body(line: "-  // a note"))
     && !line_is_annotation(body: diff_line_body(line: "+  Cons { head: \"a.b.c\" }"))
@@ -453,7 +453,7 @@ test fn the_diff_marker_does_not_hide_an_annotation() -> Bool {
 // THE MERGE-TARGET SIDE READS THE SAME EXTRACTION, NOT THE RAW BYTES. A file whose ONLY occurrence
 // of the key is an annotation does not hold it; the same file with an enrolled row does. `git grep`
 // cannot tell those apart, which is why it is a prefilter and this is the decision.
-test fn merge_target_content_is_read_through_the_extraction() -> Bool {
+test fn merge_target_content_is_read_through_the_extraction() -> Bool  {
   let annotation_only = "module a.b\n// cites \"test.fixture.contradiction_alpha.some_claim_holds\"\n"
   let enrolled = "module a.b\ndata rows: List<String> = [\"test.fixture.contradiction_alpha.some_claim_holds\"]\n"
   !content_holds_identity(
@@ -476,7 +476,7 @@ test fn merge_target_content_is_read_through_the_extraction() -> Bool {
 // oracle would answer PRESENT for it forever and a future pull request legitimately enrolling it
 // would be told to rebase a branch that is not stale. A self-inflicted false positive that never
 // expires, sitting on the instrument's own headline example.
-test fn the_fixtures_use_synthetic_identities_only() -> Bool {
+test fn the_fixtures_use_synthetic_identities_only() -> Bool  {
   let keys = append(
     content_identity_keys(content: adding_side_diff, rule: cross_pr_extraction_rule),
     items: append(
@@ -503,7 +503,7 @@ test fn the_fixtures_use_synthetic_identities_only() -> Bool {
 // dotted name. Measured over `dag/` and `src/v2` at 7b507a0b: 126 prose rows quoting a test
 // identity, ZERO yielding a key. These witnesses are what keep that true -- the RED is authorable
 // by relaxing the whole-literal test, which is exactly how someone would break it.
-test fn a_prose_sentence_quoting_an_identity_is_not_an_enrolment() -> Bool {
+test fn a_prose_sentence_quoting_an_identity_is_not_an_enrolment() -> Bool  {
   let prose = "+data note: String = \"These six rows lived in test.fixture.contradiction_alpha.some_claim_holds until the lens died\""
   let enrolment = "+data rows: List<String> = [\"test.fixture.contradiction_alpha.some_claim_holds\"]"
   changed_identities(diff: concat(prose, "\n"), rule: cross_pr_extraction_rule).added.length() == 0
@@ -514,7 +514,7 @@ test fn a_prose_sentence_quoting_an_identity_is_not_an_enrolment() -> Bool {
 // holds such rows -- a module name or a qualified name stored as `data x: String = "<identity>"` --
 // and reading them is correct rather than pollution. Stating it as a witness is what stops a future
 // author from "fixing" the prose class by excluding the carrier.
-test fn an_identity_valued_data_row_is_a_key() -> Bool {
+test fn an_identity_valued_data_row_is_a_key() -> Bool  {
   changed_identities(
     diff: "+data witness_module: String = \"test.fixture.lookup.probe\"\n",
     rule: cross_pr_extraction_rule
@@ -526,7 +526,7 @@ test fn an_identity_valued_data_row_is_a_key() -> Bool {
 // fragment inside it always lands at EVEN parity, which the quoted-segment fold skips. This witness
 // records that argument as an executable fact, because it is the shape a reader would otherwise
 // expect to be a hole.
-test fn an_escaped_quoted_identity_inside_prose_does_not_leak() -> Bool {
+test fn an_escaped_quoted_identity_inside_prose_does_not_leak() -> Bool  {
   let prose = "+data note: String = \"removed \\\"a\\\" and \\\"test.fixture.contradiction_beta.row_that_only_moved\\\" because both pass\""
   changed_identities(diff: concat(prose, "\n"), rule: cross_pr_extraction_rule).added.length() == 0
 }

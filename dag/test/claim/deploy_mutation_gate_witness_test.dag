@@ -58,7 +58,7 @@ fn srv2_host_observation() -> DeployTargetHostObservation {
   )
 }
 
-test fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
+test fn witness_decision_meet_preserves_left_denial_reason() -> Bool  {
   let left = std.access.access_policy_refusal(profile: "host", subject: "runner", action: "deploy", object: "host", reason: "host-deny-reason")
   let right = std.access.access_policy_refusal(profile: "access", subject: "runner", action: "deploy", object: "host", reason: "access-deny-reason")
   match decision_meet(a: left, b: right) {
@@ -67,7 +67,7 @@ test fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
   }
 }
 
-test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool {
+test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool  {
   let gate = deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -82,7 +82,7 @@ test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() ->
   }
 }
 
-test fn witness_wrong_host_unprivileged_both_deny_refused_before_effect() -> Bool {
+test fn witness_wrong_host_unprivileged_both_deny_refused_before_effect() -> Bool  {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: LiveDeployRetract { spec: deployment_spec_srv1() },
@@ -102,7 +102,7 @@ test fn witness_wrong_host_unprivileged_both_deny_refused_before_effect() -> Boo
   }
 }
 
-test fn witness_wrong_host_privileged_gate_denies() -> Bool {
+test fn witness_wrong_host_privileged_gate_denies() -> Bool  {
   let gate = deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
@@ -120,7 +120,7 @@ test fn witness_wrong_host_privileged_gate_denies() -> Bool {
   }
 }
 
-test fn witness_right_host_unprivileged_gate_denies() -> Bool {
+test fn witness_right_host_unprivileged_gate_denies() -> Bool  {
   match deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -131,7 +131,7 @@ test fn witness_right_host_unprivileged_gate_denies() -> Bool {
   }
 }
 
-test fn witness_right_host_privileged_gate_permits() -> Bool {
+test fn witness_right_host_privileged_gate_permits() -> Bool  {
   match deploy_mutation_gate(
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
@@ -144,7 +144,7 @@ test fn witness_right_host_privileged_gate_permits() -> Bool {
   }
 }
 
-test fn witness_wrong_host_privileged_refused_before_effect() -> Bool {
+test fn witness_wrong_host_privileged_refused_before_effect() -> Bool  {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: LiveDeployRetract { spec: deployment_spec_srv1() },
@@ -165,7 +165,7 @@ test fn witness_wrong_host_privileged_refused_before_effect() -> Bool {
   }
 }
 
-test fn witness_right_host_unprivileged_refused_before_effect() -> Bool {
+test fn witness_right_host_unprivileged_refused_before_effect() -> Bool  {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: LiveDeployRetract { spec: deployment_spec_srv1() },
@@ -184,7 +184,7 @@ test fn witness_right_host_unprivileged_refused_before_effect() -> Bool {
   }
 }
 
-test fn witness_right_host_privileged_may_apply() -> Bool {
+test fn witness_right_host_privileged_may_apply() -> Bool  {
   reconciliation_converged(r: live_deploy_fold(
     spec: deployment_spec_srv1(),
     effect: Srv3ReceiptEmit { lines: [mutation_gate_marker] },
@@ -216,7 +216,7 @@ fn srv1_retract_gate_access() -> DeployAccess {
 // RED if the gate before a preamble-carrying effect demands a roster row the preamble installs:
 // the demand is exactly visudo and install, and cp -- in the roster, absent from a pre-#12124 drop-in
 // -- is not demanded before the install.
-test fn witness_preamble_effect_gate_demands_only_the_sudoers_install_spend() -> Bool {
+test fn witness_preamble_effect_gate_demands_only_the_sudoers_install_spend() -> Bool  {
   let paths = gate_command_paths(access: srv1_retract_gate_access())
   paths == [fleet_visudo_binary_path as String, fleet_install_binary_path as String]
     && any(gate_command_paths(access: ci_deploy_srv1_access), p => p == fleet_cp_binary_path as String)
@@ -224,7 +224,7 @@ test fn witness_preamble_effect_gate_demands_only_the_sudoers_install_spend() ->
 
 // RED if the narrowed demand leaked to an effect that installs nothing: a digest readback carries no
 // preamble, so its gate still demands the whole roster, cp included.
-test fn witness_non_preamble_effect_gate_keeps_the_full_roster() -> Bool {
+test fn witness_non_preamble_effect_gate_keeps_the_full_roster() -> Bool  {
   let a = live_deploy_pre_mutation_access(
     effect: LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: deployment_spec_srv1()) },
     access: ci_deploy_srv1_access
@@ -234,7 +234,7 @@ test fn witness_non_preamble_effect_gate_keeps_the_full_roster() -> Bool {
 
 // RED if the full roster is not re-demanded AFTER the drop-in lands: every roster command has a
 // fail-closed probe in the text following the install line, and none in the text before it.
-test fn witness_full_roster_probed_after_the_dropin_install_and_refuses_on_miss() -> Bool {
+test fn witness_full_roster_probed_after_the_dropin_install_and_refuses_on_miss() -> Bool  {
   let sh = deploy_sudoers_install_shell(access: ci_deploy_srv1_access)
   let halves = split(s: sh, delimiter: concat(" '-m' '0440' \"$_gunbc_stage\"'/gunbc-deploy.sudoers' '", concat(gunbc_deploy_sudoers_dropin as String, "'")))
   let before = halves.first()
@@ -255,7 +255,7 @@ test fn witness_full_roster_probed_after_the_dropin_install_and_refuses_on_miss(
 // unprivileged actor before the effect, and the refusal names the drop-in's first demanded row
 // (visudo), which only the narrowed scope makes first. The demand is built from the install's spend,
 // not filtered from the principal's roster, so an access carrying no commands still demands both.
-test fn witness_missing_install_or_visudo_still_refuses_before_mutation() -> Bool {
+test fn witness_missing_install_or_visudo_still_refuses_before_mutation() -> Bool  {
   let empty_roster = DeployAccess {
     principal: ci_deploy_srv1_access.principal,
     host: ci_deploy_srv1_access.host,

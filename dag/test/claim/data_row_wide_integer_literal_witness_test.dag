@@ -35,7 +35,7 @@ fn narrow_literal_row_source() -> String {
   "module probe_narrow_data_row\n\nimport std.types { Int, List }\n\ntype NarrowPair {\n  hi: Int\n  lo: Int\n}\n\ndata narrow_rows: List<NarrowPair> = [NarrowPair { hi: 7, lo: 1 }]\n"
 }
 
-test fn a_wide_integer_in_a_record_data_row_is_parsed_from_json_text() -> Bool {
+test fn a_wide_integer_in_a_record_data_row_is_parsed_from_json_text() -> Bool  {
   compile_dag_rust_emit_check(
     wide_literal_row_source(),
     "src/probe_wide_data_row.rs",
@@ -44,7 +44,7 @@ test fn a_wide_integer_in_a_record_data_row_is_parsed_from_json_text() -> Bool {
   )
 }
 
-test fn a_narrow_integer_row_takes_the_same_route() -> Bool {
+test fn a_narrow_integer_row_takes_the_same_route() -> Bool  {
   compile_dag_rust_emit_check(
     narrow_literal_row_source(),
     "src/probe_narrow_data_row.rs",
