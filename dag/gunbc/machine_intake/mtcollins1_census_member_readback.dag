@@ -426,45 +426,44 @@ fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: Arg
   host_run(host: FleetSshCommandHost { target: target, context: context }, command: command)
 }
 
-// THE MEDIUM IS QUALIFIED BEFORE ANY LEG IS DISPATCHED, and every leg goes to the qualified medium's own
-// exporter: a medium naming an unsupported exporter is refused with nothing read, never measured on the
-// supported one.
+// THE MEDIUM IS QUALIFIED BEFORE ANY LEG IS DISPATCHED, and every leg goes to the export the qualification
+// returned: a medium naming an unsupported exporter is refused with nothing read, never measured on the
+// supported one. The read body lives inside the qualified arm, so no entry takes a medium and an export
+// as two separately supplied values.
 fn census_member_readback(medium: BootMedium) -> CensusMemberReadbackAttempt {
   match mtcollins1_census_medium_qualification(medium: medium) {
     CensusMediumNotCensus => CensusMemberReadbackAttempt { readback: BootChainMediumNotCensus, workspace: CreationNotRequested }
     CensusMediumExporterUnsupported { supported: sup, named: n } =>
       CensusMemberReadbackAttempt { readback: BootChainMediumExporterUnsupported { supported: sup, named: n }, workspace: CreationNotRequested }
-    CensusMediumQualified { digest: _, export: export } => census_member_readback_on(medium: medium, export: export)
+    CensusMediumQualified { digest: _, export: export } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+        FleetSshContextRefused { cause: c } =>
+          CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
+        FleetSshContextReady { context: context, receipt: _ } => {
+          let target = export.target
+          let stock_path = mtcollins1_census_image_stock_path()
+          let census_path = mtcollins1_census_medium_served_path(medium: medium)
+          let gate = census_pin_gate(
+            medium: medium,
+            stock_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: stock_path as String))),
+            census_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: census_path as String))),
+          )
+          match gate {
+            PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
+            PinsAdmitted { stock_iso: _, census_iso: _ } =>
+              census_member_attempt_of(
+                kind: FleetSshTransport,
+                gate: gate,
+                creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
+                readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
+                cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
+              )
+          }
+        }
+      }
   }
 }
 
-fn census_member_readback_on(medium: BootMedium, export: BootImageExport) -> CensusMemberReadbackAttempt {
-  match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
-    FleetSshContextRefused { cause: c } =>
-      CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
-    FleetSshContextReady { context: context, receipt: _ } => {
-      let target = export.target
-      let stock_path = mtcollins1_census_image_stock_path()
-      let census_path = mtcollins1_census_medium_served_path(medium: medium)
-      let gate = census_pin_gate(
-        medium: medium,
-        stock_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: stock_path as String))),
-        census_iso: iso_reading_of(measure: remote(target: target, context: context, command: sha256sum_file_command(path: census_path as String))),
-      )
-      match gate {
-        PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
-        PinsAdmitted { stock_iso: _, census_iso: _ } =>
-          census_member_attempt_of(
-            kind: FleetSshTransport,
-            gate: gate,
-            creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
-            readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
-            cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
-          )
-      }
-    }
-  }
-}
 
 // CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_member_readback,
 // which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
