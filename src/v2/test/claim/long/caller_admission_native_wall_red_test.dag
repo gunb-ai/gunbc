@@ -19,6 +19,7 @@ module v2.test.claim.long.caller_admission_native_wall_red
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
+import std.process { ProcessExit, exit_failure }
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -29,7 +30,8 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String, concat }
 
 // THE CROSS-MODULE PEER: the sealed fn in module aca, naming its one permitted caller by the
 // caller's OWN module path and declaration name.
@@ -92,6 +94,19 @@ test fn the_native_route_refuses_an_outside_cross_module_call_holds() -> Bool {
       match infer(tree: rt) {
         Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
         Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+// DBG-PROBE (temporary): print the fatal reason each stage produces, to pin the inhabitance
+// claim's assertion against the real pipeline verdict.
+fn dbg_red_reason() -> ProcessExit {
+  match wall_red_assembled(subject_src: wall_red_subject_text(), peer_src: wall_red_peer_text()) {
+    Rejected { diagnostics: d } => exit_failure(reason: concat("ASSEMBLE:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))))
+    Accepted { value: rt, diagnostics: _ } =>
+      match infer(tree: rt) {
+        Rejected { diagnostics: d } => exit_failure(reason: concat("INFER:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d))))
+        Accepted { value: _, diagnostics: _ } => exit_failure(reason: "ACCEPTED-NO-DIAGS")
       }
   }
 }
