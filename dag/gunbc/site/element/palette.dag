@@ -7,6 +7,7 @@ import extdeps.google.issue_tracker {
   issue_tracker_measured_palette_light,
   issue_tracker_measured_palette_dark,
   issue_tracker_measured_code_ink_light,
+  issue_tracker_measured_relation_table,
 }
 import gunbc.design.palette { Swatch, swatch_paint }
 import gunbc.design.material { CssDecl, decl }
@@ -33,6 +34,7 @@ type PaletteSlot
   | SlotOnAction
   | SlotCodeInk
   | SlotLeadingBar
+  | SlotClosedRow
   | SlotStatusReady
   | SlotStatusAssigned
   | SlotStatusBlocked
@@ -40,7 +42,7 @@ type PaletteSlot
 data palette_slots: List<PaletteSlot> = [
   SlotText, SlotTextDim, SlotBorder, SlotHover, SlotSubtle, SlotHighlight, SlotAction,
   SlotActionHover, SlotError, SlotGround, SlotSurface, SlotLink, SlotOnAction, SlotCodeInk,
-  SlotLeadingBar, SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
+  SlotLeadingBar, SlotClosedRow, SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
 ]
 
 fn palette_slot_name(slot: PaletteSlot) -> String {
@@ -60,6 +62,7 @@ fn palette_slot_name(slot: PaletteSlot) -> String {
     SlotOnAction => "issue-on-action"
     SlotCodeInk => "issue-code-ink"
     SlotLeadingBar => "issue-leading-bar"
+    SlotClosedRow => "issue-closed-row"
     SlotStatusReady => "status-ready-ink"
     SlotStatusAssigned => "status-assigned-ink"
     SlotStatusBlocked => "status-blocked-ink"
@@ -74,7 +77,8 @@ fn palette_var(slot: PaletteSlot) -> String {
 // from the 2026-10-04 measured row. SlotLink is a local adoption: the action colour on the grey
 // ground is 4.27:1 and fails AA at body size, so link-coloured text there takes the product's own
 // darker action colour (its hover value), which clears it. SlotOnAction is the label on a filled
-// button, which the product draws in the card colour. The three status inks are house colours
+// button, which the product draws in the card colour. SlotClosedRow is the ground of a closed
+// relation row, read from the relation table's own measurement. The three status inks are house colours
 // (green ready, blue assigned, amber blocked) with no upstream counterpart; they moved here
 // from gunbc.site.status so the frontend has one palette.
 fn palette_day(slot: PaletteSlot) -> Srgb8 {
@@ -94,6 +98,7 @@ fn palette_day(slot: PaletteSlot) -> Srgb8 {
     SlotOnAction => issue_tracker_measured_palette_light.card
     SlotCodeInk => issue_tracker_measured_code_ink_light
     SlotLeadingBar => issue_tracker_measured_palette_light.leading_bar
+    SlotClosedRow => issue_tracker_measured_relation_table.closed_row_ground
     SlotStatusReady => Srgb8 { r: 38, g: 105, b: 68 }
     SlotStatusAssigned => Srgb8 { r: 54, g: 90, b: 155 }
     SlotStatusBlocked => Srgb8 { r: 142, g: 83, b: 21 }
@@ -105,6 +110,8 @@ fn palette_day(slot: PaletteSlot) -> Srgb8 {
 // those four keep the values the owner directed on 2026-09-23; they are local until a capture
 // shows them. A filled button's label takes the dark ground, the link needs no adjustment on the
 // dark ground, and code takes the text ink because the dark capture shows no inline code.
+// A closed relation row was not captured in the dark scheme either; it takes the same grey the
+// hovered row was given, which is the pairing the light capture shows.
 fn palette_night(slot: PaletteSlot) -> Srgb8 {
   match slot {
     SlotText => issue_tracker_measured_palette_dark.text
@@ -122,6 +129,7 @@ fn palette_night(slot: PaletteSlot) -> Srgb8 {
     SlotOnAction => issue_tracker_measured_palette_dark.ground
     SlotCodeInk => issue_tracker_measured_palette_dark.text
     SlotLeadingBar => issue_tracker_measured_palette_dark.leading_bar
+    SlotClosedRow => Srgb8 { r: 41, g: 42, b: 45 }
     SlotStatusReady => Srgb8 { r: 146, g: 201, b: 166 }
     SlotStatusAssigned => Srgb8 { r: 146, g: 181, b: 238 }
     SlotStatusBlocked => Srgb8 { r: 226, g: 181, b: 109 }
