@@ -19,7 +19,6 @@ import gunbc.namespace_xl2_rehearsal_census {
   Xl2Strip,
   Xl2KernelCanonicalReferencesUncounted,
   HeaderSegmentsNotRefusalSites,
-  NestingScopedReferencesUncounted,
   Xl2StrippedMember,
   xl2_rehearse_stripped,
   xl2_strip_members
@@ -60,9 +59,9 @@ data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nim
 data xl2_two_failure_control_source: String = "module v2.xl2_control_two\n\nimport std.types { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag, xl2_control_provider_other }\n\nfn xl2_control_two_first(p: Bool) -> Bool { xl2_control_provider_flag }\n\nfn xl2_control_two_second(p: Bool) -> Bool { xl2_control_provider_other }\n"
 
 // THE NESTED CONTROL: a module declared UNDER the provider's namespace, naming the provider's
-// function through an import the strip removes. It is the specimen behind
-// NestingScopedReferencesUncounted: stripped, it still resolves, because nesting grants the
-// namespace's scope, so the cut leaves no residual row for its reference.
+// function through an import the strip removes. Nesting grants no scope (operator ruling
+// 2026-10-04: a module sees only its own declarations and its own imports), so stripped, its
+// reference is an ordinary residual row like any other module's.
 data xl2_nested_control_source: String = "module v2.xl2_control_provider.nested\n\nimport std.types { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_nested_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
 
 data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\nimport std.types { Bool }\n\nfn xl2_control_clean_value(p: Bool) -> Bool { p }\n"
@@ -218,10 +217,9 @@ test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
 test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
   match xl2_cut_run() {
     Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } =>
-      count(walls) == 2 && count(excluded) == 3
+      count(walls) == 2 && count(excluded) == 2
         && any(excluded, e => e == Xl2KernelCanonicalReferencesUncounted)
         && any(excluded, e => e == HeaderSegmentsNotRefusalSites)
-        && any(excluded, e => e == NestingScopedReferencesUncounted)
     _ => false
   }
 }
@@ -241,12 +239,14 @@ test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
   }
 }
 
-// A NESTED MODULE'S REFERENCE SURVIVES THE STRIP: the provider and the module nested under its
-// namespace both resolve after the import is removed, and no residual row is emitted. This is why
-// NestingScopedReferencesUncounted is carried: the cut's residual cannot see this reference.
-test fn xl2_nested_reference_survives_the_strip_holds() -> Bool {
+// A NESTED MODULE'S STRIPPED REFERENCE IS RESIDUAL: nesting under the provider's namespace grants
+// no scope, so once the import is removed the nested module refuses and is the one residual row,
+// and only the provider resolves. Before the 2026-10-04 ruling this specimen resolved and was
+// carried as an uncounted excluded population; that arm dissolved by its own stated condition.
+test fn xl2_nested_reference_is_residual_after_the_strip_holds() -> Bool {
   match xl2_nesting_run() {
-    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 2
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
+      count(residual) == 1 && n == 1 && all(residual, r => r.module == "v2.xl2_control_provider.nested")
     _ => false
   }
 }

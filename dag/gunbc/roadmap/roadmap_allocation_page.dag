@@ -1,13 +1,14 @@
 module gunbc.roadmap_allocation_page
+import gunbc.site.document { site_document, site_extend_styles }
+import gunbc.roadmap_allocation_style { allocation_rules }
+import gunbc.site.document { SiteStyles }
 
 import gunbc.roadmap_auth_route_paths { auth_login_route_path }
 import std.types { String, Bool, List }
 import std.measure { ByteSize, measure_count, gibibyte_scale_factor_bytes, minute_count }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header }
 import gunbc.roadmap_allocation_location { allocation_page_path }
-import gunbc.roadmap_allocation_style { allocation_css }
 import gunbc.workspace_allocation { WorkspaceProfile, workspace_profiles, workspace_profile_wire, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_bound }
 
 // These are navigation identities, shared by the route and its rendered links.
@@ -55,21 +56,12 @@ fn allocation_viewer_signed_in(viewer: AllocationPageViewer) -> Bool {
 }
 
 // THE PAGE OVER ITS ROADMAP STYLESHEET, supplied by the caller as roadmap_page_launch_with_stylesheet
-// takes it for the roadmap page: the serve route passes roadmap_css(), and a claim about the form,
-// the notice or the response headers -- none of which reads the stylesheet -- supplies its own.
-fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, roadmap_stylesheet: String) -> Fragment {
+// takes it for the roadmap page: claims about the form supply styles at this interface.
+fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, roadmap_stylesheet: SiteStyles) -> Fragment {
   let signed_in = allocation_viewer_signed_in(viewer: viewer)
-  el_attrs("html", [attr(name: "lang", value: "en")], [
-    el("head", [
-      el_attrs("meta", [attr(name: "charset", value: "utf-8")], []),
-      el_attrs("meta", [attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1")], []),
-      el("title", [txt("Allocations — gunbc")]),
-      el("style", [txt(roadmap_stylesheet), txt(allocation_css())]),
-    ]),
-    el("body", [
-      roadmap_header(page: "allocations"),
-      el_attrs("main", [attr(name: "id", value: "allocation-workspace"), attr(name: "class", value: "allocation-page"),
-        attr(name: "data-csrf", value: allocation_viewer_csrf(viewer: viewer))], [
+  site_document(title: "gunbc — allocations", heading: "allocations", styles: site_extend_styles(base: roadmap_stylesheet, rules: allocation_rules()), content: [
+    el_attrs("main", [attr(name: "id", value: "allocation-workspace"), attr(name: "class", value: "allocation-page"),
+      attr(name: "data-csrf", value: allocation_viewer_csrf(viewer: viewer))], [
         el_class("p", "allocation-eyebrow", [txt("COMPUTE / MICROVM")]),
         el("h2", [txt("A workspace on the fleet")]),
         el_class("p", "allocation-intro", [txt("Choose a workspace size. Placement selects an eligible srv host; the disk and lease are fixed by policy.")]),
@@ -96,7 +88,6 @@ fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, roadmap_stylesh
           el_attrs("div", [attr(name: "id", value: "allocation-list")], [el_class("p", "allocation-muted", [txt(if signed_in { "Loading your workspaces…" } else { "Sign in to view your workspaces." })])]),
         ]),
       ]),
-      el_attrs("script", [attr(name: "src", value: allocation_client_path), attr(name: "defer", value: "")], []),
-    ]),
+    el_attrs("script", [attr(name: "src", value: allocation_client_path), attr(name: "defer", value: "")], [])
   ])
 }

@@ -2069,10 +2069,14 @@ struct CrossClaimPureMemo {
 }
 
 /// One retained call: its argument row in portable form, each composite argument's content digest
-/// (`None` for a scalar, which is compared directly), and the value served.
+/// (`None` for a scalar, which is compared directly), the served-instance identity each argument
+/// WAS when stored (`None` unless the caller passed a value this tier served), and the value
+/// served. The digest is a 64-bit hash and so only a PRE-FILTER: a match is established by
+/// instance identity or by the portable row, never by digest equality alone.
 struct CrossClaimEntry {
     args: Vec<(Option<String>, PortableValue)>,
     arg_digests: Vec<Option<Rc<str>>>,
+    arg_instances: Vec<Option<ServedInstanceKey>>,
     served: Value,
 }
 
@@ -2113,15 +2117,18 @@ fn portable_is_composite(v: &PortableValue) -> bool {
     )
 }
 
-/// What the lookup holds for one caller argument: the digest of a served instance (no walk), or
-/// the argument reified in full.
+/// What the lookup holds for one caller argument: a served instance's identity and digest (no
+/// walk unless an entry needs the structural fallback), or the argument reified in full.
 enum CrossClaimArgProbe {
-    ServedDigest(Rc<str>),
+    Served {
+        key: ServedInstanceKey,
+        digest: Rc<str>,
+    },
     Reified(PortableValue),
 }
 
 /// One probe per caller argument. AN ARGUMENT THAT IS ITSELF A VALUE THIS TIER SERVED IS NAMED BY
-/// ITS DIGEST, computed once when it was published; reifying it again on every call re-walked the
+/// ITS INSTANCE, with the digest computed once when it was published as a pre-filter; reifying it again on every call re-walked the
 /// whole value each time (a derived site whose argument is a served grammar or target model paid
 /// that per call). Any other argument is reified as before, and refuses the lookup when it is not
 /// portable.
@@ -2132,10 +2139,15 @@ fn cross_claim_arg_probes(
     let mut out = Vec::with_capacity(args.len());
     for (_, value) in args {
         let served = served_instance_key(value).and_then(|key| {
-            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().served_instances.get(&key).cloned())
+            CROSS_CLAIM_PURE_MEMO.with(|m| {
+                m.borrow()
+                    .served_instances
+                    .get(&key)
+                    .map(|digest| (key, digest.clone()))
+            })
         });
         match served {
-            Some(digest) => out.push(CrossClaimArgProbe::ServedDigest(digest)),
+            Some((key, digest)) => out.push(CrossClaimArgProbe::Served { key, digest }),
             None => {
                 let portable = portable_value_from_ctx(ctx, value)?;
                 if portable_is_composite(&portable) {
@@ -2148,26 +2160,52 @@ fn cross_claim_arg_probes(
     Some(out)
 }
 
-/// Whether a retained entry's argument row is the caller's. A digest probe matches the entry's
-/// digest for that argument; a reified probe matches structurally, as it always has.
+/// Whether a retained entry's argument row is the caller's. A served probe matches an entry that
+/// stored the SAME instance (exact: a registered instance is retained for the tier's lifetime, so
+/// its root pointer cannot be reused while the entry stands). A served probe whose instance the
+/// entry did not store falls back to the structural comparison, reifying the caller's argument at
+/// most once per lookup into `fallback` (counted in `reifies`); the digest only rules a candidate
+/// OUT, because a 64-bit FNV digest is not injective and equality of digests proves nothing.
+/// A reified probe matches structurally, as it always has. Returns `None` when a fallback
+/// reification refuses (the argument is not portable), which refuses the lookup.
 fn cross_claim_entry_matches(
+    ctx: &InterpContext,
     entry: &CrossClaimEntry,
     args: &[(Option<String>, Value)],
     probes: &[CrossClaimArgProbe],
-) -> bool {
-    entry.args.len() == args.len()
-        && entry
-            .args
-            .iter()
-            .zip(entry.arg_digests.iter())
-            .zip(args.iter().zip(probes.iter()))
-            .all(|(((sn, sv), sd), ((an, _), probe))| {
-                sn == an
-                    && match probe {
-                        CrossClaimArgProbe::ServedDigest(d) => sd.as_ref() == Some(d),
-                        CrossClaimArgProbe::Reified(p) => portable_value_eq(sv, p),
+    fallback: &mut [Option<PortableValue>],
+    reifies: &mut u64,
+) -> Option<bool> {
+    if entry.args.len() != args.len() {
+        return Some(false);
+    }
+    for (i, ((sn, sv), (an, value))) in entry.args.iter().zip(args.iter()).enumerate() {
+        if sn != an {
+            return Some(false);
+        }
+        let matched = match &probes[i] {
+            CrossClaimArgProbe::Reified(p) => portable_value_eq(sv, p),
+            CrossClaimArgProbe::Served { key, digest } => {
+                if entry.arg_digests[i].as_ref() != Some(digest) {
+                    false
+                } else if entry.arg_instances[i].as_ref() == Some(key) {
+                    true
+                } else {
+                    if fallback[i].is_none() {
+                        fallback[i] = Some(portable_value_from_ctx(ctx, value)?);
+                        *reifies += 1;
                     }
-            })
+                    fallback[i]
+                        .as_ref()
+                        .is_some_and(|p| portable_value_eq(sv, p))
+                }
+            }
+        };
+        if !matched {
+            return Some(false);
+        }
+    }
+    Some(true)
 }
 
 /// Composite-argument reifications performed by lookups so far (see `lookup_arg_reifies`).
@@ -2781,13 +2819,23 @@ fn try_cross_claim_pure_memo(
     // per-context hit cache this path used to maintain is gone with the walk it existed to
     // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
     // machinery it obsoletes.
+    let mut fallback: Vec<Option<PortableValue>> = vec![None; args.len()];
+    let mut reifies = 0u64;
     let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
-        m.borrow().map.get(&memo_key).and_then(|bucket| {
-            bucket.iter().find_map(|entry| {
-                cross_claim_entry_matches(entry, args, &probes).then(|| entry.served.clone())
-            })
-        })
-    })?;
+        let m = m.borrow();
+        let bucket = m.map.get(&memo_key)?;
+        for entry in bucket {
+            match cross_claim_entry_matches(ctx, entry, args, &probes, &mut fallback, &mut reifies)
+            {
+                Some(true) => return Some(Some(entry.served.clone())),
+                Some(false) => {}
+                None => return None,
+            }
+        }
+        Some(None)
+    });
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().lookup_arg_reifies += reifies);
+    let value = value.flatten()?;
     cross_claim_observe_hit(func_name);
     Some(value)
 }
@@ -2964,9 +3012,14 @@ fn store_cross_claim_pure_memo(
                 portable_is_composite(v).then(|| Rc::from(portable_value_digest(v).as_str()))
             })
             .collect();
+        let arg_instances = args
+            .iter()
+            .map(|(_, v)| served_instance_key(v).filter(|k| m.served_instances.contains_key(k)))
+            .collect();
         m.map.entry(memo_key).or_default().push(CrossClaimEntry {
             args: portable_args,
             arg_digests,
+            arg_instances,
             served,
         });
         CrossClaimStoreOutcome::Stored
@@ -4132,13 +4185,13 @@ mod cross_claim_memo_tests {
         super::clear_cross_claim_pure_memos();
     }
 
-    // A SERVED INSTANCE PASSED AS AN ARGUMENT IS VERIFIED BY ITS DIGEST, WITH NO REIFY; anything
+    // A SERVED INSTANCE PASSED AS AN ARGUMENT IS VERIFIED BY ITS INSTANCE, WITH NO REIFY; anything
     // else is still reified and still refuses on a mismatch. Producer A's value is published and
     // served; producer B is published over that served value as its argument. Three lookups of B:
     // with the served instance (hit, zero reifies), with an equal value built afresh (hit, one
     // reify -- the old path, still sound), and with a different value (miss).
     #[test]
-    fn a_served_instance_argument_is_verified_by_digest_and_others_still_reify() {
+    fn a_served_instance_argument_is_verified_by_instance_and_others_still_reify() {
         use super::{
             cross_claim_lookup_arg_reify_count, install_cross_claim_pure_share_roster, list_value,
             store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
@@ -4181,7 +4234,7 @@ mod cross_claim_memo_tests {
         assert_eq!(
             cross_claim_lookup_arg_reify_count(),
             before,
-            "a served instance is named by its digest: no reify"
+            "a served instance is named by its instance: no reify"
         );
         assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(built())).is_some());
         assert_eq!(
@@ -4195,6 +4248,61 @@ mod cross_claim_memo_tests {
             "a different argument is not served another call's value"
         );
         super::clear_cross_claim_pure_memos();
+    }
+
+    // A DIGEST IS NOT AN IDENTITY. `portable_value_digest` is a 64-bit FNV hash, so two distinct
+    // values can share one. An entry is forged whose argument digest EQUALS the served probe's but
+    // whose stored argument is a different value and a different instance: it must not match (the
+    // structural fallback refuses it). The positive control is the same entry carrying the probe's
+    // instance key, which matches with no reify; and an equal digest over an EQUAL value that is
+    // not the stored instance matches through the fallback, reifying once.
+    #[test]
+    fn two_values_sharing_a_digest_are_not_served_as_one_another() {
+        use super::{
+            cross_claim_entry_matches, list_value, served_instance_key, CrossClaimArgProbe,
+            CrossClaimEntry, PortableValue,
+        };
+        let ctx = fresh_ctx();
+        let probe_value = list_value(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let key = served_instance_key(&probe_value).expect("a list has an instance key");
+        let shared_digest: Rc<str> = Rc::from("forged-collision");
+        let args = vec![(Some("x".to_string()), probe_value.clone())];
+        let probes = vec![CrossClaimArgProbe::Served {
+            key,
+            digest: shared_digest.clone(),
+        }];
+        let stored_as = |stored: Vec<i64>, instance| CrossClaimEntry {
+            args: vec![(
+                Some("x".to_string()),
+                PortableValue::List(stored.into_iter().map(PortableValue::Int).collect()),
+            )],
+            arg_digests: vec![Some(shared_digest.clone())],
+            arg_instances: vec![instance],
+            served: Value::Int(7),
+        };
+        let run = |entry: &CrossClaimEntry| {
+            let mut fallback = vec![None];
+            let mut reifies = 0u64;
+            let hit =
+                cross_claim_entry_matches(&ctx, entry, &args, &probes, &mut fallback, &mut reifies)
+                    .expect("the argument is portable");
+            (hit, reifies)
+        };
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 4], None)),
+            (false, 1),
+            "a digest collision over a different value is refused by the structural fallback"
+        );
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 3], Some(key))),
+            (true, 0),
+            "the same served instance matches by identity, with no reify"
+        );
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 3], None)),
+            (true, 1),
+            "an equal value that is not the stored instance matches structurally"
+        );
     }
 
     // THE COST FLOOR COUNTS NATIVE WORK. The pair varies only the CPU rate: one fill that performs

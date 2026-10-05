@@ -767,7 +767,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "xl2_residual_control_resolves_before_the_cut_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "xl2_nested_reference_survives_the_strip_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "xl2_nested_reference_is_residual_after_the_strip_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
