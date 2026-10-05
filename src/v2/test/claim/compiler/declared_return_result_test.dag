@@ -175,10 +175,16 @@ test fn drr_a_wrong_type_argument_count_at_a_generic_record_projection_refuses()
 // this change the call stayed underived and the program was ACCEPTED.
 data drr_route_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
 
-test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
+// The route's verdict is one nullary producer, assembled AND inferred once, so the floor fills the
+// whole real path as this claim's shared fill (its single-claim fill debt) and the claim itself only
+// compares the reason.
+fn drr_route_reason() -> Symbol {
   match fmi_assemble(src: drr_route_source) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      fmi_reason(o: fmi_infer_tree(tree: tree)) == ^application_argument_does_not_inhabit
+    Rejected { diagnostics: _ } => ^drr_assembly_refused
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
   }
+}
+
+test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
+  drr_route_reason() == ^application_argument_does_not_inhabit
 }
