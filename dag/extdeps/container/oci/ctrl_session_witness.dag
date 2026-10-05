@@ -239,7 +239,7 @@ fn witness_manifest_rejects_bad_schema() -> Bool {
 fn witness_descriptor_rejects_negative_size() -> Bool {
   match accept_descriptor(bad_descriptor) {
     DescriptorRejected { reason: _ } => true
-    _ => false
+    DescriptorAccepted { value: _ } => false
   }
 }
 
@@ -292,7 +292,11 @@ fn witness_goarch_label_unrepresentable_armv7() -> Bool {
 fn witness_media_type_other_accepts_extension() -> Bool {
   match parse_oci_media_type("application/vnd.custom.example+json") {
     OciMediaTypeOther { raw: r } => r == "application/vnd.custom.example+json"
-    _ => false
+    OciImageManifestV1 => false
+    OciImageConfigV1 => false
+    OciImageLayerV1TarGzip => false
+    OciImageIndexV1 => false
+    OciDescriptorV1 => false
   }
 }
 
@@ -312,7 +316,7 @@ fn witness_linux_namespaces_count() -> Bool {
     linux =>
       match accept_linux_platform(linux) {
         LinuxPlatformAccepted { value: p } => linux_namespace_count(p) == 6
-        _ => false
+        LinuxPlatformRejected { reason: _ } => false
       }
   }
 }

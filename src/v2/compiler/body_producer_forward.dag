@@ -101,7 +101,11 @@ fn body_producer_forward_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: _ } => true
     TypeNode { connective: Arrow } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
   }
 }
 

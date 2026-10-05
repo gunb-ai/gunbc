@@ -1,5 +1,6 @@
 module v2.lens.leaf_model_verification
 
+import v2.lens.common.construction_justification { ConstructionJustification }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 
 

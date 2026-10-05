@@ -67,6 +67,6 @@ fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Order
   if a == b { Equal } else { Greater }
 }
 
-data git_release_version_scheme: VersionScheme = {
+data git_release_version_scheme: VersionScheme = VersionScheme {
   compare: git_release_compare_identity
 }

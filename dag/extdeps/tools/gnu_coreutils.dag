@@ -253,6 +253,27 @@ fn whoami_command() -> ArgvCommand {
   argv_command(program: whoami_program(), arguments: [])
 }
 
+fn pwd_program() -> ProgramIdentity = uncataloged_program(invocation: "pwd")
+
+// pwd PRINTS the working directory and nothing else (coreutils pwd(1)). The deleted fleet
+// ssh-config pin script embedded the same fact with $(pwd) inside a shell substitution; the
+// typed runner captures the same stdout without a shell, so the path that lands in the ssh
+// config is still absolute and still names the fragment beside the run that wrote it.
+fn pwd_command() -> ArgvCommand {
+  argv_command(program: pwd_program(), arguments: [])
+}
+
+// tee WITHOUT -a OVERWRITES the named file; WITH -a it opens it for APPEND, so bytes written by
+// anyone else before tee opens the file are preserved and a concurrent append cannot be erased by
+// a whole-file rewrite (tee(1), GNU coreutils). The payload arrives on STDIN -- never argv -- so
+// a key line carrying spaces or quotes cannot change the command's meaning. `--` ends the option
+// list, so a path beginning with a dash is a filename.
+fn tee_program() -> ProgramIdentity = uncataloged_program(invocation: "tee")
+
+fn tee_append_command(path: String) -> ArgvCommand {
+  argv_command(program: tee_program(), arguments: ["-a", "--", path])
+}
+
 // readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
 // makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
 // executing", and a non-symlink there is a broken assumption, not empty output.

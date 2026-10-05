@@ -283,7 +283,7 @@ fn emit_severity_of_line(line: String) -> EmitSeverityRead {
 
 fn emit_line_is_severity_summary(line: String) -> Bool {
   string_contains(s: line, pattern: emit_severity_blocking_marker)
-    || ends_with(s: line, suffix: emit_severity_error_suffix)
+    || line.ends_with(suffix: emit_severity_error_suffix)
 }
 
 // The severity anchor takes the same rule as the compiled anchor above, for the same reason. Fixing
