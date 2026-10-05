@@ -1259,9 +1259,9 @@ fn service_evidence_snapshot_published_result(snapshot: ServiceEvidenceSnapshot)
 }
 
 type SnapshotFinalMetering {
-  seat_seconds: Int
-  input_tokens: Int
-  output_tokens: Int
+  seat_time: Second
+  input_tokens: TokenCount
+  output_tokens: TokenCount
 }
 
 // The G3 fields as one Final meter: execution_time and billable_usage both observed (a provisional
@@ -1283,7 +1283,9 @@ fn service_evidence_snapshot_final_metering(snapshot: ServiceEvidenceSnapshot) -
                   let input = value
                   match snapshot_int(v: usage, key: "output_tokens") {
                     Absent => none
-                    Present { value } => Present { value: SnapshotFinalMetering { seat_seconds: seconds, input_tokens: input, output_tokens: value } }
+                    Present { value } =>
+                      if seconds < 0 || input < 0 || value < 0 { none }
+                      else { Present { value: SnapshotFinalMetering { seat_time: second(count: seconds), input_tokens: token_count(count: input), output_tokens: token_count(count: value) } } }
                   }
                 }
               }

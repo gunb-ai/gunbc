@@ -46,7 +46,7 @@ import gunbc.roadmap_service_evidence {
   service_evidence_observe_for_attempt, service_evidence_binding_for_attempt, service_evidence_snapshot_binding_defect,
   ServiceEvidenceInputs, MeteringRead, ResultReturnedRead,
 }
-import std.measure { TokenCount, Second, token_count_value, second_count }
+import std.measure { TokenCount, Second }
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
   RequestClaimBound, RequestAutonomous, attempt_request_binding_read_for_instance,
@@ -996,7 +996,7 @@ fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: At
           match service_evidence_snapshot_final_metering(snapshot: receipt.service_evidence) {
             Absent => "the pinned service evidence has no Final metering"
             Present { value: pinned } =>
-              if token_count_value(t: m.input_tokens) != pinned.input_tokens || token_count_value(t: m.output_tokens) != pinned.output_tokens || second_count(s: m.seat_time) != pinned.seat_seconds { "the attempt's Final metering totals are not the pinned ones" }
+              if m.input_tokens != pinned.input_tokens || m.output_tokens != pinned.output_tokens || m.seat_time != pinned.seat_time { "the attempt's Final metering totals are not the pinned ones" }
               else if m.compute != receipt.metering_compute { "the attempt's metering compute standing is not the pinned one" }
               else { "" }
           }
