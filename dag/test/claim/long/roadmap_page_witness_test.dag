@@ -1927,7 +1927,7 @@ test fn witness_issue_tokens_resolve_in_both_themes() -> Bool {
   string_contains(s: css, pattern: ":root[data-theme=\"night\"]")
     && string_contains(s: css, pattern: "@media (prefers-color-scheme: dark)")
     && string_contains(s: css, pattern: "--issue-text: #202124")
-    && string_contains(s: css, pattern: "--issue-text: #e8eaed")
+    && string_contains(s: css, pattern: "--issue-text: #ffffff")
     && string_contains(s: css, pattern: "--issue-action: #1a73e8")
     && string_contains(s: css, pattern: "--issue-action: #8ab4f8")
     && string_contains(s: css, pattern: "--issue-error: #c5221f")

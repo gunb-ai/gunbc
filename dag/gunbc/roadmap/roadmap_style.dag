@@ -1,5 +1,4 @@
 module gunbc.roadmap_style
-import gunbc.site.status { status_palette }
 import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css }
@@ -46,7 +45,8 @@ import gunbc.fleet_capacity_panel {
 }
 import gunbc.roadmap_component { dispatch_reserved_width, disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width, roadmap_row_height, roadmap_row_gutter, workflow_controls_class, node_activity_class, activity_summary_class, activity_detail_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, activity_located_reason_class, session_facts_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class, dashboard_instance_class, node_attempt_stale_class }
 import extdeps.color.srgb { Srgb8 }
-import extdeps.google.issue_tracker { issue_tracker_visual_tokens, issue_tracker_visual_tokens_dark, IssueTrackerVisualTokens, issue_results_row_tracks }
+import extdeps.google.issue_tracker { issue_results_row_tracks }
+import gunbc.site.element.palette { palette_decls }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.accessibility.wcag_contrast { srgb8_relative_luminance_scaled_for_max, contrast_ratio_x100 }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
@@ -571,39 +571,28 @@ fn roadmap_instance_rules() -> List<BuildRule> {
 // properties — the rules below reference the vars, so a re-capture retunes the surface in ONE
 // place. Only issue content rules consume these variables. The shared shell, identity
 // controls, and focus responses use theme roles and never fall back through this palette.
-// BOTH SCHEMES (owner defect fix 2026-09-23): the capture is light-only, and dark mode painted
-// the light tokens on dark ground. The same token set now resolves under BOTH schemes, emitted
-// with the theme machinery's own three-block grammar (:root base, [data-theme] override,
-// prefers-color-scheme for the un-set case) — one token structure, two scheme values, never a
-// second palette structure. A token declared in one scheme but not the other would strand the
-// surface when the toggle flips; the witness holds the two decl sets identical in NAME.
-fn issue_token_decls(t: IssueTrackerVisualTokens) -> List<CssDecl> {
-  [
-    decl(prop: CustomProperty { name: "issue-text" }, value: swatch_paint(sw: Swatch { name: "issue-text", color: t.text_primary })),
-    decl(prop: CustomProperty { name: "issue-text-dim" }, value: swatch_paint(sw: Swatch { name: "issue-text-dim", color: t.text_secondary })),
-    decl(prop: CustomProperty { name: "issue-border" }, value: swatch_paint(sw: Swatch { name: "issue-border", color: t.border_default })),
-    decl(prop: CustomProperty { name: "issue-bg-hover" }, value: swatch_paint(sw: Swatch { name: "issue-bg-hover", color: t.background_hover })),
-    decl(prop: CustomProperty { name: "issue-bg-subtle" }, value: swatch_paint(sw: Swatch { name: "issue-bg-subtle", color: t.background_subtle })),
-    decl(prop: CustomProperty { name: "issue-highlight" }, value: swatch_paint(sw: Swatch { name: "issue-highlight", color: t.highlight })),
-    decl(prop: CustomProperty { name: "issue-action" }, value: swatch_paint(sw: Swatch { name: "issue-action", color: t.action })),
-    decl(prop: CustomProperty { name: "issue-action-hover" }, value: swatch_paint(sw: Swatch { name: "issue-action-hover", color: t.action_hover })),
-    decl(prop: CustomProperty { name: "issue-error" }, value: swatch_paint(sw: Swatch { name: "issue-error", color: t.error })),
+// BOTH SCHEMES: the palette is gunbc.site.element.palette, whose two scheme functions answer
+// every slot, so a token cannot exist in one scheme and be missing in the other. The dark values
+// are the captured dark palette of 2026-10-04 where the capture reached and the owner-directed
+// 2026-09-23 values where it did not; that module says which is which.
+fn issue_token_decls(night: Bool) -> List<CssDecl> {
+  concat(palette_decls(night: night), [
     decl(prop: CustomProperty { name: "fabric-badge-bg" }, value: swatch_paint(sw: robot_mark_badge_background)),
     decl(prop: CustomProperty { name: "fabric-badge-ink" }, value: swatch_paint(sw: robot_mark_ink)),
     decl(prop: CustomProperty { name: "issue-font" }, value: scale_var(t: font_sans)),
     decl(prop: CustomProperty { name: "issue-font-heading" }, value: scale_var(t: font_sans)),
-  ]
+  ])
 }
 
 fn issue_tracker_root_css() -> String {
   join([
-    css_block(selector: ":root", decls: issue_token_decls(t: issue_tracker_visual_tokens)),
+    css_block(selector: ":root", decls: issue_token_decls(night: false)),
     css_block(
       selector: join([":root[data-theme=\"", night_theme.name, "\"]"], ""),
-      decls: issue_token_decls(t: issue_tracker_visual_tokens_dark)),
+      decls: issue_token_decls(night: true)),
     join([
       "@media (prefers-color-scheme: ", night_theme.scheme, ") { ",
-      css_block(selector: ":root:not([data-theme])", decls: issue_token_decls(t: issue_tracker_visual_tokens_dark)),
+      css_block(selector: ":root:not([data-theme])", decls: issue_token_decls(night: true)),
       " }",
     ], ""),
   ], "\n")
@@ -1675,8 +1664,7 @@ fn roadmap_styles() -> SiteStyles {
   SiteStyles { rules: concat(roadmap_rules(), flat_map(audition_sets, a =>
     if audition_set_resolved(a: a) { [StaticRule { selector: RawSelector { text: join([":root[data-swatch-set=\"", a.set_name, "\"]"], "") }, decls: band_var_decls(rows: audition_paints(a: a)) }] } else { [] })),
     themes: [
-      SiteThemeDecls { day: status_palette(night: false), night: status_palette(night: true) },
-      SiteThemeDecls { day: issue_token_decls(t: issue_tracker_visual_tokens), night: issue_token_decls(t: issue_tracker_visual_tokens_dark) },
+      SiteThemeDecls { day: issue_token_decls(night: false), night: issue_token_decls(night: true) },
       SiteThemeDecls { day: band_var_decls(rows: workspace_band_paints()), night: band_var_decls(rows: workspace_band_paints()) },
     ] }
 }

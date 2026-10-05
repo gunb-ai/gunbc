@@ -1,0 +1,150 @@
+module gunbc.site.element.palette
+
+import std.types { Bool, List, String }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.google.issue_tracker {
+  issue_tracker_visual_tokens,
+  issue_tracker_measured_palette_light,
+  issue_tracker_measured_palette_dark,
+  issue_tracker_measured_code_ink_light,
+}
+import gunbc.design.palette { Swatch, swatch_paint }
+import gunbc.design.material { CssDecl, decl }
+import extdeps.languages.css.properties { CustomProperty }
+
+// The one palette of the internal tools frontend. Each slot is one custom property, and each
+// scheme answers every slot through a total match, so a slot defined for day and missing for
+// night does not compile. The values are ADOPTED: most read an upstream measurement by reference
+// (extdeps.google.issue_tracker), and the ones that depart from it or that the capture never
+// reached are spelled here with the reason, never written back into the upstream rows.
+type PaletteSlot
+  = SlotText
+  | SlotTextDim
+  | SlotBorder
+  | SlotHover
+  | SlotSubtle
+  | SlotHighlight
+  | SlotAction
+  | SlotActionHover
+  | SlotError
+  | SlotGround
+  | SlotSurface
+  | SlotLink
+  | SlotOnAction
+  | SlotCodeInk
+  | SlotLeadingBar
+  | SlotStatusReady
+  | SlotStatusAssigned
+  | SlotStatusBlocked
+
+data palette_slots: List<PaletteSlot> = [
+  SlotText, SlotTextDim, SlotBorder, SlotHover, SlotSubtle, SlotHighlight, SlotAction,
+  SlotActionHover, SlotError, SlotGround, SlotSurface, SlotLink, SlotOnAction, SlotCodeInk,
+  SlotLeadingBar, SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
+]
+
+fn palette_slot_name(slot: PaletteSlot) -> String {
+  match slot {
+    SlotText => "issue-text"
+    SlotTextDim => "issue-text-dim"
+    SlotBorder => "issue-border"
+    SlotHover => "issue-bg-hover"
+    SlotSubtle => "issue-bg-subtle"
+    SlotHighlight => "issue-highlight"
+    SlotAction => "issue-action"
+    SlotActionHover => "issue-action-hover"
+    SlotError => "issue-error"
+    SlotGround => "issue-ground"
+    SlotSurface => "issue-surface"
+    SlotLink => "issue-link"
+    SlotOnAction => "issue-on-action"
+    SlotCodeInk => "issue-code-ink"
+    SlotLeadingBar => "issue-leading-bar"
+    SlotStatusReady => "status-ready-ink"
+    SlotStatusAssigned => "status-assigned-ink"
+    SlotStatusBlocked => "status-blocked-ink"
+  }
+}
+
+fn palette_var(slot: PaletteSlot) -> String {
+  join(["var(--", palette_slot_name(slot: slot), ")"], "")
+}
+
+// Day. Hover, highlight, pressed action and error come from the 2026-09-22 token row; the rest
+// from the 2026-10-04 measured row. SlotLink is a local adoption: the action colour on the grey
+// ground is 4.27:1 and fails AA at body size, so link-coloured text there takes the product's own
+// darker action colour (its hover value), which clears it. SlotOnAction is the label on a filled
+// button, which the product draws in the card colour. The three status inks are house colours
+// (green ready, blue assigned, amber blocked) with no upstream counterpart; they moved here
+// from gunbc.site.status so the frontend has one palette.
+fn palette_day(slot: PaletteSlot) -> Srgb8 {
+  match slot {
+    SlotText => issue_tracker_measured_palette_light.text
+    SlotTextDim => issue_tracker_measured_palette_light.text_muted
+    SlotBorder => issue_tracker_measured_palette_light.hairline
+    SlotHover => issue_tracker_visual_tokens.background_hover
+    SlotSubtle => issue_tracker_measured_palette_light.field
+    SlotHighlight => issue_tracker_visual_tokens.highlight
+    SlotAction => issue_tracker_measured_palette_light.action
+    SlotActionHover => issue_tracker_visual_tokens.action_hover
+    SlotError => issue_tracker_visual_tokens.error
+    SlotGround => issue_tracker_measured_palette_light.ground
+    SlotSurface => issue_tracker_measured_palette_light.card
+    SlotLink => issue_tracker_visual_tokens.action_hover
+    SlotOnAction => issue_tracker_measured_palette_light.card
+    SlotCodeInk => issue_tracker_measured_code_ink_light
+    SlotLeadingBar => issue_tracker_measured_palette_light.leading_bar
+    SlotStatusReady => Srgb8 { r: 38, g: 105, b: 68 }
+    SlotStatusAssigned => Srgb8 { r: 54, g: 90, b: 155 }
+    SlotStatusBlocked => Srgb8 { r: 142, g: 83, b: 21 }
+  }
+}
+
+// Night. Text, muted text, hairline, action, field, ground and card are the measured dark row.
+// The dark capture did not reach a hovered row, a selection, a pressed action or an error, so
+// those four keep the values the owner directed on 2026-09-23; they are local until a capture
+// shows them. A filled button's label takes the dark ground, the link needs no adjustment on the
+// dark ground, and code takes the text ink because the dark capture shows no inline code.
+fn palette_night(slot: PaletteSlot) -> Srgb8 {
+  match slot {
+    SlotText => issue_tracker_measured_palette_dark.text
+    SlotTextDim => issue_tracker_measured_palette_dark.text_muted
+    SlotBorder => issue_tracker_measured_palette_dark.hairline
+    SlotHover => Srgb8 { r: 41, g: 42, b: 45 }
+    SlotSubtle => issue_tracker_measured_palette_dark.field
+    SlotHighlight => Srgb8 { r: 26, g: 58, b: 92 }
+    SlotAction => issue_tracker_measured_palette_dark.action
+    SlotActionHover => Srgb8 { r: 174, g: 203, b: 250 }
+    SlotError => Srgb8 { r: 242, g: 139, b: 130 }
+    SlotGround => issue_tracker_measured_palette_dark.ground
+    SlotSurface => issue_tracker_measured_palette_dark.card
+    SlotLink => issue_tracker_measured_palette_dark.action
+    SlotOnAction => issue_tracker_measured_palette_dark.ground
+    SlotCodeInk => issue_tracker_measured_palette_dark.text
+    SlotLeadingBar => issue_tracker_measured_palette_dark.leading_bar
+    SlotStatusReady => Srgb8 { r: 146, g: 201, b: 166 }
+    SlotStatusAssigned => Srgb8 { r: 146, g: 181, b: 238 }
+    SlotStatusBlocked => Srgb8 { r: 226, g: 181, b: 109 }
+  }
+}
+
+fn palette_color(night: Bool, slot: PaletteSlot) -> Srgb8 {
+  if night { palette_night(slot: slot) } else { palette_day(slot: slot) }
+}
+
+// The ink for action-coloured text is contextual: it defaults to the link colour, which is safe
+// on both the ground and a card, and a card restores the product's action colour for its own
+// contents (gunbc.site.element.card). Elements read this property, never SlotAction, for text.
+data palette_action_ink_name: String = "issue-action-ink"
+
+fn palette_action_ink_var() -> String {
+  join(["var(--", palette_action_ink_name, ")"], "")
+}
+
+fn palette_decls(night: Bool) -> List<CssDecl> {
+  concat(
+    map(palette_slots, s => decl(
+      prop: CustomProperty { name: palette_slot_name(slot: s) },
+      value: swatch_paint(sw: Swatch { name: palette_slot_name(slot: s), color: palette_color(night: night, slot: s) }))),
+    [decl(prop: CustomProperty { name: palette_action_ink_name }, value: palette_var(slot: SlotLink))])
+}
