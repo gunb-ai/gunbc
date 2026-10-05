@@ -399,19 +399,17 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       SystemdSummaryPrintingWaitRefused { cause: why } =>
         ComputeUnitRunRefused { cause: why }
       SystemdSummaryPrintingWaitReady { wait: launcher } => {
-        ComputeUnitRunExecuted { run: ComputeUnitRun {
         let r = compute_exec(
           program: systemd_run,
           workdir: layout.checkout,
           args: systemd_summary_printing_wait_argv(w: launcher),
         )
-        ComputeUnitRun {
+        ComputeUnitRunExecuted { run: ComputeUnitRun {
           exec: r,
           summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
             ComputeExecOk { stdout: _, stderr } => stderr
             ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
           }),
-        }
         } }
       }
     }
