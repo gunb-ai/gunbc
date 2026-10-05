@@ -2356,6 +2356,21 @@ pub fn declared_type_conformance_diags_core(
                             span.clone(),
                             scope.module_name.clone(),
                         )])
+                    } else if product_at_scalar_declared_type(
+                        declared.clone(),
+                        produced.clone(),
+                        scope.clone(),
+                    ) {
+                        declared_type_obligation_diags(
+                            Rc::new(DeclaredTypeObligation {
+                                position: position.clone(),
+                                subject: subject.clone(),
+                                declared: declared.clone(),
+                                produced: produced.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.clone(),
+                        )
                     } else {
                         if nominal_coproduct_applied_argument_conflict(
                             declared.clone(),

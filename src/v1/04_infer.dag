@@ -1667,6 +1667,13 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
+  else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+    declared_type_obligation_diags(
+      obligation: DeclaredTypeObligation {
+        position: position, subject: subject, declared: declared, produced: produced, span: span
+      },
+      scope: scope)
+  }
   else if nominal_coproduct_applied_argument_conflict(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
