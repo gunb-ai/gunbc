@@ -155,7 +155,11 @@ fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservat
   observe_file_hold_retained(root: root, key: key, retention: KeepAllGenerations)
 }
 
-fn observe_file_hold_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> DurableHoldObservation {
+fn observe_file_hold_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> DurableHoldObservation
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
+  ]
+{
   observe_file_hold_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
 }
 
@@ -202,7 +206,6 @@ fn file_hold_acquire_prepare_retained(
 ) -> FileHoldAcquirePreparation
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_prepare"),
-    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_prepare_windowed"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_retained"),
   ]
 {
@@ -224,10 +227,6 @@ fn file_hold_acquire_prepare_retained(
 
 fn file_hold_acquire_prepare(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef) -> FileHoldAcquirePreparation {
   file_hold_acquire_prepare_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepAllGenerations)
-}
-
-fn file_hold_acquire_prepare_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef, window: CasGenerationWindow) -> FileHoldAcquirePreparation {
-  file_hold_acquire_prepare_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepGenerationWindow { window: window })
 }
 
 // EVERY WAY AN ACQUIRE ENDS, TYPED AND SEPARATE, because the remedies differ.
@@ -297,7 +296,12 @@ fn file_hold_acquire(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: 
   file_hold_acquire_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepAllGenerations)
 }
 
-fn file_hold_acquire_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef, window: CasGenerationWindow) -> FileHoldAcquireOutcome {
+fn file_hold_acquire_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef, window: CasGenerationWindow) -> FileHoldAcquireOutcome
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_settled"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "a_hold_left_by_a_dead_writer_is_recovered_by_observation_by_real_execution"),
+  ]
+{
   file_hold_acquire_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepGenerationWindow { window: window })
 }
 
@@ -363,7 +367,11 @@ fn file_hold_release_assess(root: NonEmptyStr, slot_key: NonEmptyStr, owner: Dur
   file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepAllGenerations)
 }
 
-fn file_hold_release_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment {
+fn file_hold_release_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
+  ]
+{
   file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepGenerationWindow { window: window })
 }
 

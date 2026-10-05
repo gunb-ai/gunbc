@@ -102,3 +102,43 @@ test fn a_forged_store_binding_is_refused_at_compile() -> Bool {
 test fn a_forged_clean_sweep_proof_is_refused_at_compile() -> Bool {
   seal_violations(source: forged_clean_sweep_source, subject: "LocalStoreCleanSweep") == 1
 }
+
+// THE WINDOWED CONTRACT IS THE STORE'S ALONE. Keep-all callers use the unchanged file_compare_and_set
+// family; the windowed operations, and the raw helpers beneath both contracts, admit only their named
+// callers. Each probe below is a module outside that list calling one of them, and each is exactly one
+// ConstructorCallAdmissionRefused naming the callee.
+
+// a keep-all caller committing through the windowed operation
+data direct_windowed_compare_and_set_source: String = "module probe_direct_windowed_compare_and_set\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasGenerationPublication, VerifiedCasAttempt, CasGenerationWindow, CasFileWrite, file_compare_and_set_windowed }\nfn direct(r: NonEmptyStr, p: CasGenerationPublication, v: VerifiedCasAttempt, w: CasGenerationWindow) -> CasFileWrite {\n  file_compare_and_set_windowed(root: r, publication: p, verified: v, window: w)\n}\n"
+
+// a hold taken on a windowed slot outside the store
+data direct_windowed_hold_source: String = "module probe_direct_windowed_hold\nimport std.types { NonEmptyStr }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport gunbc.durable_cas_file_store { CasGenerationWindow }\nimport gunbc.durable_exclusive_hold_file_store { FileHoldAcquireOutcome, file_hold_acquire_windowed }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, o: DurableHoldOwnerRef, w: CasGenerationWindow) -> FileHoldAcquireOutcome {\n  file_hold_acquire_windowed(root: r, slot_key: k, requested_owner: o, window: w)\n}\n"
+
+// the raw commit with a caller-chosen retention
+data direct_raw_outcome_source: String = "module probe_direct_raw_outcome\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasGenerationPublication, VerifiedCasAttempt, CasSlotRetention, cas_compare_and_set_outcome }\nimport std.durable_compare_and_set { CasOutcome }\nfn direct(r: NonEmptyStr, p: CasGenerationPublication, t: CasSlotRetention, v: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {\n  cas_compare_and_set_outcome(root: r, publication: p, retention: t, verified: v)\n}\n"
+
+// the raw observation with a caller-chosen retention
+data direct_raw_observe_source: String = "module probe_direct_raw_observe\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasSlotRetention, CasSlotProbe, cas_observe_retained_slot }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, t: CasSlotRetention) -> CasSlotProbe {\n  cas_observe_retained_slot(root: r, key: k, retention: t)\n}\n"
+
+// deleting an audit slot's generations below a caller-chosen head
+data direct_raw_reclaim_source: String = "module probe_direct_raw_reclaim\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.durable_cas_file_store { CasGenerationWindow, CasWindowReclamation, cas_reclaim_below }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, w: CasGenerationWindow, h: CasGeneration) -> CasWindowReclamation {\n  cas_reclaim_below(root: r, key: k, window: w, head: h)\n}\n"
+
+test fn a_direct_windowed_compare_and_set_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_windowed_compare_and_set_source, callee: "file_compare_and_set_windowed") == 1
+}
+
+test fn a_direct_windowed_hold_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_windowed_hold_source, callee: "file_hold_acquire_windowed") == 1
+}
+
+test fn a_direct_raw_outcome_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_raw_outcome_source, callee: "cas_compare_and_set_outcome") == 1
+}
+
+test fn a_direct_raw_observe_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_raw_observe_source, callee: "cas_observe_retained_slot") == 1
+}
+
+test fn a_direct_raw_reclaim_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_raw_reclaim_source, callee: "cas_reclaim_below") == 1
+}
