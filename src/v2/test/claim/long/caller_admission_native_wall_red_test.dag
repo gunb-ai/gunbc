@@ -258,8 +258,8 @@ fn dbg_decl_lookup() -> ProcessExit {
                 Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-RESOLVE", d: d))
                 Accepted { value: rt, diagnostics: _ } =>
                   match find_named_child(root: rt.root, name: ^unlisted_caller) {
-                    Absent => exit_failure(reason: "NO-ARROW")
-                    Present { value: arrow } =>
+                    Rejected { diagnostics: _ } => exit_failure(reason: "NO-ARROW")
+                    Accepted { value: arrow, diagnostics: _ } =>
                       match dbg_admit_decl_lookup_from_arrow(arrow: arrow, declarations: rt.resolved_declarations) {
                         Absent => exit_failure(reason: "LINKS-UNREADABLE")
                         Present { value: report } => exit_failure(reason: report)
