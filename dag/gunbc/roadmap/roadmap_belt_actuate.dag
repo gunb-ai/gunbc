@@ -6697,8 +6697,9 @@ fn belt_scm_intake_base_for(
 // diff names deleted or re-bound to its bytes at S_k+1, every other entry the tip's own -- minted as
 // an IntakeAdvance { from: S_k, to: S_k+1 } child of the tip, whose admission refuses an advance that
 // does not continue the tip's line. Both revisions are first asked whether the bridge can observe
-// them; a revision it cannot observe refuses the advance by name rather than diffing against
-// whatever git resolves instead. The content demand on history is the tip's manifest (one shard),
+// them; a revision it cannot observe POISONS the advance by name (BaseAdvanceRevisionUnobservable:
+// the attempt's object store will not gain it by retrying) rather than diffing against whatever git
+// resolves instead. The content demand on history is the tip's manifest (one shard),
 // plus the shard of any re-bound bytes the repository already holds.
 type BeltBaseAdvance
   = BaseAdvanced { envelope: RepositoryEnvelope, reference: RepositoryCommitRef }
