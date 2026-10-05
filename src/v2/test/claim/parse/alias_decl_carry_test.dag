@@ -31,9 +31,9 @@ import v2.test.parse.alias_decl_parse {
 // own assertion. Producing from source rather than supplying a built tree is deliberate -- the
 // subject IS the route (graft dissolves the declaration, normalize captures its row, the fill binds
 // it), and a supplied tree would assert a shape nothing produced (DESIGN section 3, the pairing rule).
-// The discriminating red: with v2.compiler.namespace_graft namespace_graft_unit_disposition grafting
-// the alias as a member again, the route, lookup, unresolved and disambiguation claims all go false
-// (measured on BuildBuddy claim_batch before this split, gunbc#13428).
+// The discriminating red is enrolled, not transcribed: alias_decl_graft_dissolves_the_declaration_holds
+// asserts the absence of exactly the self-binding member this class names, so it is false whenever
+// v2.compiler.namespace_graft grafts the alias as a member again.
 
 data acd_fill_module: String = "v2.test.parse.alias_decl_fill_probe"
 
