@@ -1,5 +1,7 @@
 module test.claim.json_parse_witness
 
+import std.unicode.scalar { char_text }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the
@@ -65,13 +67,13 @@ test fn trailing_content_after_a_complete_value_is_refused_as_trailing() -> Bool
 }
 
 test fn a_newline_inside_a_string_survives_the_round_trip() -> Bool {
-  let expected = concat("a", concat(from_code_point(cp: 10), "b"))
+  let expected = concat("a", concat(char_text(c: 10), "b"))
   parsed_string_of(text: "\"a\\nb\"") == expected
     && round_trips(text: "\"a\\nb\"")
 }
 
 test fn a_tab_inside_a_string_survives_the_round_trip() -> Bool {
-  let expected = concat("a", concat(from_code_point(cp: 9), "b"))
+  let expected = concat("a", concat(char_text(c: 9), "b"))
   parsed_string_of(text: "\"a\\tb\"") == expected
     && round_trips(text: "\"a\\tb\"")
 }
@@ -86,7 +88,7 @@ test fn a_literal_backslash_t_does_not_become_a_tab() -> Bool {
   let two_chars = concat("\\", "t")
   let emitted = serialize_json(v: JsonString { value: two_chars })
   parsed_string_of(text: emitted) == two_chars
-    && parsed_string_of(text: emitted) != from_code_point(cp: 9)
+    && parsed_string_of(text: emitted) != char_text(c: 9)
 }
 
 test fn a_unicode_escape_is_decoded_not_passed_through() -> Bool {
@@ -94,7 +96,7 @@ test fn a_unicode_escape_is_decoded_not_passed_through() -> Bool {
 }
 
 test fn a_control_character_with_no_short_escape_survives_the_round_trip() -> Bool {
-  let vertical_tab = from_code_point(cp: 11)
+  let vertical_tab = char_text(c: 11)
   parsed_string_of(text: "\"\\u000B\"") == vertical_tab
     && round_trips(text: "\"\\u000B\"")
     && serialize_json(v: JsonString { value: vertical_tab }) == "\"\\u000B\""
@@ -102,18 +104,18 @@ test fn a_control_character_with_no_short_escape_survives_the_round_trip() -> Bo
 
 test fn every_control_character_an_emitter_escapes_comes_back_unchanged() -> Bool {
   let sample = concat(
-    from_code_point(cp: 1),
-    concat(from_code_point(cp: 9),
-    concat(from_code_point(cp: 10),
-    concat(from_code_point(cp: 11),
-    concat(from_code_point(cp: 27), from_code_point(cp: 31))))),
+    char_text(c: 1),
+    concat(char_text(c: 9),
+    concat(char_text(c: 10),
+    concat(char_text(c: 11),
+    concat(char_text(c: 27), char_text(c: 31))))),
   )
   parsed_string_of(text: serialize_json(v: JsonString { value: sample })) == sample
 }
 
 test fn a_lowercase_hex_escape_decodes_the_same_as_uppercase() -> Bool {
   parsed_string_of(text: "\"\\u001b\"") == parsed_string_of(text: "\"\\u001B\"")
-    && parsed_string_of(text: "\"\\u001B\"") == from_code_point(cp: 27)
+    && parsed_string_of(text: "\"\\u001B\"") == char_text(c: 27)
 }
 
 fn parses(text: String) -> Bool {
@@ -208,9 +210,9 @@ test fn a_forged_verdict_escape_does_not_survive_into_a_string() -> Bool {
 // a dropped character. Both answer false against the old kernel.
 
 test fn a_surrogate_pair_decodes_to_its_one_scalar() -> Bool {
-  parsed_string_of(text: "\"\\uD83D\\uDE00\"") == from_code_point(cp: 128512)
-    && parsed_string_of(text: "\"a\\ud83d\\ude00b\"") == "a" + from_code_point(cp: 128512) + "b"
-    && parsed_string_of(text: "\"\\uDBFF\\uDFFF\"") == from_code_point(cp: 1114111)
+  parsed_string_of(text: "\"\\uD83D\\uDE00\"") == char_text(c: 128512)
+    && parsed_string_of(text: "\"a\\ud83d\\ude00b\"") == "a" + char_text(c: 128512) + "b"
+    && parsed_string_of(text: "\"\\uDBFF\\uDFFF\"") == char_text(c: 1114111)
 }
 
 test fn an_unpaired_surrogate_refuses_rather_than_vanishing() -> Bool {

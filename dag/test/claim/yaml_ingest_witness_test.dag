@@ -1,5 +1,7 @@
 module test.claim.yaml_ingest_witness
 
+import std.unicode.scalar { char_text }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // EVERY CLAIM HERE COMPARES DECODED STRUCTURE WITH A HAND-WRITTEN VALUE. Nothing goes through the
@@ -83,7 +85,7 @@ test fn red_a_single_quoted_scalar_with_trailing_text_refuses() -> Bool {
 }
 
 test fn double_quoted_escapes_decode() -> Bool {
-  reads(src: "a: \"x\\ny\\t\\\"q\\\" \\\\ \\u00e9 \\x41\"\n", v: one(key: "a", v: str(s: join(["x\ny\t\"q\" \\ ", from_code_point(cp: 233), " A"], ""))))
+  reads(src: "a: \"x\\ny\\t\\\"q\\\" \\\\ \\u00e9 \\x41\"\n", v: one(key: "a", v: str(s: join(["x\ny\t\"q\" \\ ", char_text(c: 233), " A"], ""))))
     && reads(src: "a: \"#123456\"\n", v: one(key: "a", v: str(s: "#123456")))
 }
 
@@ -210,9 +212,9 @@ test fn literal_keep_chomping_matches_the_independent_reader_for_every_trailing_
 // document whose decoded content legitimately held U+0001 (a double-quoted `\x01`) was then refused as
 // if one of its items had been. Decoded U+0001 is ordinary content, as an item, a value and a key.
 test fn a_decoded_u0001_is_content_as_an_item_a_value_and_a_key() -> Bool {
-  reads(src: "a:\n  - \"\\x01\"\n  - b\n", v: one(key: "a", v: YamlSequence { elements: [str(s: from_code_point(cp: 1)), str(s: "b")] }))
-    && reads(src: "a: \"\\x01\"\nb: c\n", v: YamlMapping { entries: [YamlKeyValue { key: "a", value: str(s: from_code_point(cp: 1)) }, YamlKeyValue { key: "b", value: str(s: "c") }] })
-    && reads(src: "\"\\x01\": a\nb: c\n", v: YamlMapping { entries: [YamlKeyValue { key: from_code_point(cp: 1), value: str(s: "a") }, YamlKeyValue { key: "b", value: str(s: "c") }] })
+  reads(src: "a:\n  - \"\\x01\"\n  - b\n", v: one(key: "a", v: YamlSequence { elements: [str(s: char_text(c: 1)), str(s: "b")] }))
+    && reads(src: "a: \"\\x01\"\nb: c\n", v: YamlMapping { entries: [YamlKeyValue { key: "a", value: str(s: char_text(c: 1)) }, YamlKeyValue { key: "b", value: str(s: "c") }] })
+    && reads(src: "\"\\x01\": a\nb: c\n", v: YamlMapping { entries: [YamlKeyValue { key: char_text(c: 1), value: str(s: "a") }, YamlKeyValue { key: "b", value: str(s: "c") }] })
 }
 
 // THE FLOW FAST PATH'S REFUSALS ARE TYPED ON THEIR OWN, WITH THE DOCUMENT PRE-CHECK BYPASSED: these
@@ -223,9 +225,9 @@ test fn red_a_flow_fast_path_refusal_is_typed_without_the_document_precheck() ->
   (match yaml_flow_plain_entry(e: "*a") { YamlScalarRefused { reason: r } => string_contains(s: r, pattern: "starts with an indicator")  ReadYamlScalar { value: _ } => false })
     && (match yaml_flow_plain_entry(e: "!t") { YamlScalarRefused { reason: r } => string_contains(s: r, pattern: "starts with an indicator")  ReadYamlScalar { value: _ } => false })
     && (match yaml_flow_plain_entry(e: "") { YamlScalarRefused { reason: r } => string_contains(s: r, pattern: "empty flow sequence entry")  ReadYamlScalar { value: _ } => false })
-    && (match yaml_flow_plain_entry(e: from_code_point(cp: 1)) { ReadYamlScalar { value: v } => v == str(s: from_code_point(cp: 1))  YamlScalarRefused { reason: _ } => false })
+    && (match yaml_flow_plain_entry(e: char_text(c: 1)) { ReadYamlScalar { value: v } => v == str(s: char_text(c: 1))  YamlScalarRefused { reason: _ } => false })
     && (match yaml_flow_plain_sequence(inner: "a, *b, c") { YamlScalarRefused { reason: r } => string_contains(s: r, pattern: "`*b`")  ReadYamlScalar { value: _ } => false })
-    && (match yaml_flow_plain_sequence(inner: concat("a, ", from_code_point(cp: 1))) { ReadYamlScalar { value: v } => v == YamlSequence { elements: [str(s: "a"), str(s: from_code_point(cp: 1))] }  YamlScalarRefused { reason: _ } => false })
+    && (match yaml_flow_plain_sequence(inner: concat("a, ", char_text(c: 1))) { ReadYamlScalar { value: v } => v == YamlSequence { elements: [str(s: "a"), str(s: char_text(c: 1))] }  YamlScalarRefused { reason: _ } => false })
 }
 
 test fn red_folded_scalars_and_indentation_indicators_refuse() -> Bool {
@@ -300,6 +302,6 @@ test fn red_document_level_refusals_are_located() -> Bool {
     && refuses_at(src: "a: !!str 1\n", line: 1, reason_part: "tags")
     && refuses_at(src: "a:\n\tb: 1\n", line: 2, reason_part: "tab")
     && refuses_at(src: "a: 1\nb: 2 \n", line: 2, reason_part: "ends in whitespace")
-    && refuses_at(src: concat("a: 1\nb: x", concat(from_code_point(cp: 160), "y\n")), line: 2, reason_part: "U+00A0")
+    && refuses_at(src: concat("a: 1\nb: x", concat(char_text(c: 160), "y\n")), line: 2, reason_part: "U+00A0")
     && refuses_at(src: "a: 1\r\nb: 2\r\n", line: 1, reason_part: "U+000D")
 }

@@ -1,5 +1,6 @@
 module extdeps.github.actions
 
+import std.unicode.scalar { char_text }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.github.log_annotations {
@@ -342,7 +343,7 @@ fn runner_arch_label(arch: Architecture) -> String {
 // DIFFERENT labels, which surfaces as a loud divergence rather than a silent match.
 fn runner_label_match_key(label: String) -> String {
   join(
-    label |> chars |> map(c => if c >= 65 && c <= 90 { from_code_point(cp: c + 32) } else { from_code_point(cp: c) }),
+    label |> chars |> map(c => if c >= 65 && c <= 90 { char_text(c: c + 32) } else { char_text(c: c) }),
     "",
   )
 }

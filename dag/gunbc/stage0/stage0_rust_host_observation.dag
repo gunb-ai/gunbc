@@ -1,5 +1,6 @@
 module gunbc.stage0_rust_host_observation
 
+import std.unicode.scalar { char_text }
 import std.algebra { trim, list_snoc_item }
 
 import extdeps.git
@@ -90,7 +91,7 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
 
 fn rust_paths_from_nul(raw: String) -> List<String> {
   filter(
-    xs: split(s: raw, delimiter: from_code_point(0)),
+    xs: split(s: raw, delimiter: char_text(c: 0)),
     predicate: fn(path) {
       let n = string_length(s: path)
       n >= 3 && substring(s: path, start: n - 3, end: n) == ".rs"

@@ -1,5 +1,6 @@
 module test.claim.git_ls_remote_witness_test
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, String, Int, List, CommitSha }
 import extdeps.git {
   AdvertisedRef,
@@ -16,7 +17,7 @@ data witness_scope_note: String = "What is claimed is the READING of a ref adver
 data fixture_sha_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-fn tab() -> String { from_code_point(cp: 9) }
+fn tab() -> String { char_text(c: 9) }
 
 fn line_of(sha: String, ref_name: String) -> String {
   concat(sha, concat(tab(), ref_name))

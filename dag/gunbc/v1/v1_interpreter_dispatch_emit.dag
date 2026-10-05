@@ -1,5 +1,6 @@
 module gunbc.v1_interpreter_dispatch_emit
 
+import std.unicode.scalar { char_text }
 import std.types { List }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 
@@ -20,9 +21,9 @@ import v2.std.text { String }
 fn to_upper_char(ch: Int) -> String {
   let cp = ch
   if cp >= 97 && cp <= 122 {
-    from_code_point(cp: cp - 32)
+    char_text(c: cp - 32)
   } else {
-    from_code_point(cp: ch)
+    char_text(c: ch)
   }
 }
 
@@ -37,7 +38,7 @@ fn capitalize_first(s: String) -> String {
         if pair.first == 0 {
           to_upper_char(ch: pair.second)
         } else {
-          from_code_point(cp: pair.second)
+          char_text(c: pair.second)
         })
       |> join(separator: "")
   }

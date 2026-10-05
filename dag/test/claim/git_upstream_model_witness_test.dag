@@ -1,5 +1,6 @@
 module test.claim.git_upstream_model_witness
 
+import std.unicode.scalar { char_text }
 import extdeps.git {
   GitAuthor,
   BlobObj,
@@ -667,8 +668,8 @@ test fn witness_git_tree_entry_names_refuse_empty_slash_and_nul() -> Bool {
 
 fn ls_tree_z_record(mode: String, object_type: String, oid_hex: String, name: String) -> String {
   let space = " "
-  let tab = from_code_point(9)
-  let nul = from_code_point(0)
+  let tab = char_text(c: 9)
+  let nul = char_text(c: 0)
   concat(
     concat(join([mode, object_type, oid_hex], space), tab),
     concat(name, nul),
@@ -733,7 +734,7 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
 
 test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
   let space = " "
-  let tab = from_code_point(9)
+  let tab = char_text(c: 9)
   let header = concat(
     join(
       [
@@ -787,7 +788,7 @@ test fn witness_git_object_id_text_has_one_canonical_spelling() -> Bool {
 
 test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path() -> Bool {
   let space = " "
-  let tab = from_code_point(9)
+  let tab = char_text(c: 9)
   let header = concat(
     join(
       [
@@ -824,7 +825,7 @@ test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path()
 
 test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
   let space = " "
-  let tab = from_code_point(9)
+  let tab = char_text(c: 9)
   let header = concat(
     join(
       [
@@ -861,7 +862,7 @@ test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
 
 test fn witness_git_ls_files_stage_z_path_containing_space_and_tab_survives_intact() -> Bool {
   let space = " "
-  let tab = from_code_point(9)
+  let tab = char_text(c: 9)
   let header = concat(
     join(
       [
