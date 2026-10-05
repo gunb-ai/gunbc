@@ -536,23 +536,15 @@ test fn a_refused_normalization_carries_its_fatal_reason_located_in_text_holds()
   match refused_normalization_report().normalize_refusal {
     Absent => false
     Present { value: refusal } =>
-      refusal.reason == ^body_lowering_reason_service_realization_unreachable
-        && match refusal.at {
-          Textual { file: _, extent: extent } =>
-            match extent {
-              ByteRange { start: s, end: e } => s == 47 && e == 54
-              WholeFile => false
-            }
-          _ => false
-        }
+      refusal.fatal.reason == ^body_lowering_reason_service_realization_unreachable
+        && string_contains(s: refusal.located, pattern: " bytes 47..54")
   }
 }
 
 test fn a_refused_normalization_prints_its_reason_and_locus_on_the_summary_line_holds() -> Bool {
-  string_contains(
-    s: conservation_summary_line(report: refused_normalization_report()),
-    pattern: " refusal=normalize:body_lowering_reason_service_realization_unreachable@47-54"
-  )
+  let line = conservation_summary_line(report: refused_normalization_report())
+  string_contains(s: line, pattern: " refusal=normalize:body_lowering_reason_service_realization_unreachable @ ")
+    && string_contains(s: line, pattern: " bytes 47..54")
 }
 
 test fn an_accepted_module_prints_no_refusal_on_the_summary_line_holds() -> Bool {

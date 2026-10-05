@@ -25,17 +25,13 @@ import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules, lex_rule_set_tok
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
-  DeclarationLocus,
   Diagnostic,
   Diagnostics,
-  Extent,
-  InvariantPortLocus,
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
-  SourcePortLocus,
   Textual,
   WholeFile,
   bind_outcome,
@@ -45,7 +41,8 @@ import v2.compiler.normalize { normalize }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_resolve_textual_locus, span_index_textual_locus_optional }
+import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
+import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
 import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
@@ -160,14 +157,15 @@ type ReferenceConservationUnmeasured
 // `role_not_yet_read` and `role_reader_refused` carry the role producer's own gaps, so a binder the
 // producer could not read is a number here too; such a binder stays in `locus_erased`.
 // `normalize_refusal` is WHY a module whose parse was accepted has a `refused` number at all: the
-// fatal diagnostic of the normalization that refused it, with a node locus resolved through this
-// module's own span index to its text where the index has it. conservation_against_refusal used to
+// fatal diagnostic of the normalization that refused it, and its located text rendered once, while
+// this module's span index is in hand, by v2.std.lens_verdict lens_verdict_diagnostic_located_text_in_spans
+// (the one rendering of a diagnostic's locus; a node locus becomes file + bytes where the index has it). conservation_against_refusal used to
 // consume the diagnostics only as a cover, so a refused module reported `refusal-not-at-or-above`
 // per atom and named no cause (gunbc.recurring_failure_mode
 // census_counts_a_stage_refusal_without_naming_its_cause). Absent on every other arm.
 type ReferenceConservationNormalizeRefusal {
-  reason: Symbol
-  at: Locus
+  fatal: Diagnostic
+  located: String
 }
 
 type ReferenceConservationReport {
@@ -1034,30 +1032,9 @@ fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, t
   ).report
 }
 
-// THE FATAL DIAGNOSTIC'S LOCUS, AS TEXT WHERE THE MODULE HAS IT: a node locus goes through the module's span
-// index to its textual extent (the resolution v2.compiler.compile native_file_refusal_at performs
-// for the native census), and stays a node locus when the index does not hold the node.
-fn conservation_refusal_locus_resolved(at: Locus, spans: SpanIndex) -> Locus {
-  match at {
-    NodeLocus { anchor: a } =>
-      match node_occurrence_id_optional(node: a.at) {
-        Absent => at
-        Present { value: id } =>
-          match span_index_textual_locus_optional(index: spans, id: id) {
-            Absent => at
-            Present { value: resolved } => resolved
-          }
-      }
-    Textual { file: _, extent: _ } => at
-    SourcePortLocus { anchor: _, file: _, extent: _ } => at
-    InvariantPortLocus { anchor: _, invariant: _ } => at
-    DeclarationLocus { declaration: _ } => at
-  }
-}
-
 fn conservation_normalize_refusal_of(diagnostics: NonEmptyDiagnostics, spans: SpanIndex) -> ReferenceConservationNormalizeRefusal {
   let fatal = diagnostics_fatal(d: diagnostics)
-  ReferenceConservationNormalizeRefusal { reason: fatal.reason, at: conservation_refusal_locus_resolved(at: fatal.at, spans: spans) }
+  ReferenceConservationNormalizeRefusal { fatal: fatal, located: lens_verdict_diagnostic_located_text_in_spans(d: fatal, index: spans) }
 }
 
 fn conservation_against_refusal(path: String, population: AuthoredAtomPopulation, diagnostics: NonEmptyDiagnostics, spans: SpanIndex) -> ReferenceConservationReport {
@@ -1304,40 +1281,23 @@ fn dropped_reference_line(path: String, row: DroppedReference) -> String {
   path + ":" + authored_atom_extent_text(atom: row.atom) + " " + symbol_lexeme(sym: row.atom.identity) + " " + dropped_reference_cause_word(cause: row.cause) + " " + authored_atom_context_text(atom: row.atom)
 }
 
-// THE STAGE REFUSAL, ON THE SUMMARY LINE: `refusal=<stage>:<fatal reason>@<locus>`, or `refusal=none`.
+// THE STAGE REFUSAL, ON THE SUMMARY LINE: `refusal=<stage>:<fatal reason> @ <locus>`, or `refusal=none`,
+// LAST on the line because the located text carries spaces.
 // A module refused at normalize reads it from the report's normalize_refusal; one refused at
 // tokenize or parse reads it from the TokenizeOrParseRefused row the report already carries. It is
 // always printed, so a refused module and an accepted one differ on the line a reader joins by.
-fn conservation_refusal_extent_text(extent: Extent) -> String {
-  match extent {
-    ByteRange { start: s, end: e } => integer_int_to_decimal_string(value: s) + "-" + integer_int_to_decimal_string(value: e)
-    WholeFile => "whole-file"
-  }
-}
-
-fn conservation_refusal_locus_text(at: Locus) -> String {
-  match at {
-    Textual { file: _, extent: extent } => conservation_refusal_extent_text(extent: extent)
-    SourcePortLocus { anchor: _, file: _, extent: extent } => conservation_refusal_extent_text(extent: extent)
-    NodeLocus { anchor: _ } => "unresolved-node"
-    InvariantPortLocus { anchor: _, invariant: inv } => "invariant:" + symbol_lexeme(sym: inv)
-    DeclarationLocus { declaration: q } =>
-      fold_list(xs: q, empty: "declaration:", cons: fn(acc, segment) { acc + "/" + symbol_lexeme(sym: segment) })
-  }
-}
-
-fn conservation_stage_refusal_text(stage: String, reason: Symbol, at: Locus) -> String {
-  stage + ":" + symbol_lexeme(sym: reason) + "@" + conservation_refusal_locus_text(at: at)
+fn conservation_stage_refusal_text(stage: String, located: String) -> String {
+  stage + ":" + located
 }
 
 fn reference_conservation_refusal_text(report: ReferenceConservationReport) -> String {
   match report.normalize_refusal {
-    Present { value: r } => conservation_stage_refusal_text(stage: "normalize", reason: r.reason, at: r.at)
+    Present { value: r } => conservation_stage_refusal_text(stage: "normalize", located: r.located)
     Absent =>
       fold_list(xs: report.unmeasured, empty: "none", cons: fn(acc, item) {
         match item {
           TokenizeOrParseRefused { diagnostics: d } =>
-            conservation_stage_refusal_text(stage: "tokenize_or_parse", reason: diagnostics_fatal(d: d).reason, at: diagnostics_fatal(d: d).at)
+            conservation_stage_refusal_text(stage: "tokenize_or_parse", located: lens_verdict_diagnostic_located_text_in_spans(d: diagnostics_fatal(d: d), index: span_index_empty()))
           AtomExtentUnreadable { occurrence: _ } => acc
           StringLiteralValueUncarried { occurrence: _ } => acc
           OccurrenceRoleTableUnadmitted { unlisted: _, unknown: _, unkeyed: _ } => acc
