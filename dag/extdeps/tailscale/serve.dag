@@ -97,7 +97,7 @@ fn tailscale_serve_status_funnel_listeners(status_json: String) -> TailscaleFunn
       match json_unique_member_value(v: doc, key: "AllowFunnel") {
         Absent => FunnelListeners { host_ports: [] }
         Present { value: JsonObject { members: ms } } =>
-          FunnelListeners { host_ports: map(filter(ms, m => match m.value { JsonBool { value: b } => b  _ => true }), m => m.key) }
+          FunnelListeners { host_ports: map(filter(ms, m => match m.value { JsonBool { value: b } => b  JsonNull => true  JsonNumber { lexeme: _ } => true  JsonString { value: _ } => true  JsonArray { elements: _ } => true  JsonObject { members: _ } => true }), m => m.key) }
         Present { value: _ } => FunnelStatusUnreadable
       }
   }

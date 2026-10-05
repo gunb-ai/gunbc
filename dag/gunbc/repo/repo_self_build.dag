@@ -118,25 +118,16 @@ fn repo_self_targeted_test_command(package: String, filters: List<String>) -> St
 // The crate the emitted runtime v1_rt.rs is compiled in (the stage0 partition's foundation crate).
 data repo_self_runtime_package: String = "v1-stage0-runtime"
 
-// THE SLICE COST CONTROLS, ENROLLED. Each module carries a RED that runs the copying form a slice
-// used to take and a GREEN that runs the sharing form, on non-ASCII code points, so the pair
-// discriminates the quadratic rather than merely exercising the slice: v1_interpreter
-// slice_cost_tests (the interpreter arms and the Value drop of a shared slice),
-// the three DROP tests of v1_interpreter value_depth_walker_tests (the drop's totality at depth,
-// which the drop's nesting threshold must not lose), and v1_rt list_slice_tests (the emitted
-// runtime's list_skip / list_take against the emit templates they replaced). The rest of
-// value_depth_walker_tests is not this control's subject: its portable round-trip overflowed the
-// fleet runner's test stack on the first run that ever executed it (gunbc#13346, run 37264037792)
-// while passing on main and this change alike off the fleet, so it is a separate finding about the
-// portable form, not evidence about the slice or the drop.
+// THE EMITTED RUNTIME'S SLICE COST CONTROLS, ENROLLED. v1_rt list_slice_tests carries a RED that runs
+// the copying skip / take templates the emit table used to render and a GREEN that runs
+// list_skip / list_take, on non-ASCII code points, so the pair discriminates the quadratic rather
+// than merely exercising the slice. Only this crate is named: the interpreter's slice and drop
+// controls (v1_interpreter slice_cost_tests, value_depth_walker_tests) are in v1-compiler's own
+// unit tests, which the blocking rust-unit-tests lane already runs whole (repo_self_test_command),
+// and running them again here would be the same work twice. v1-stage0-runtime is outside that
+// lane's package, so without this step its controls would only compile.
 fn repo_self_slice_cost_control_command() -> String {
-  join(
-    [
-      repo_self_targeted_test_command(package: repo_self_build_package as String, filters: ["slice_cost_tests", "a_deep_list_drops", "a_deep_variant_chain_drops", "a_shared_deep_chain_drops_once_per_owner"]),
-      repo_self_targeted_test_command(package: repo_self_runtime_package, filters: ["list_slice_tests"])
-    ],
-    "\n"
-  )
+  repo_self_targeted_test_command(package: repo_self_runtime_package, filters: ["list_slice_tests"])
 }
 
 // THE LINT PASS OVER EVERY TARGET, as the one invocation DESIGN's "Building & checks" names.

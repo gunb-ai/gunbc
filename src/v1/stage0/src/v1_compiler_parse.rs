@@ -723,7 +723,8 @@ pub fn mint_parsed_string_part_nodes(
                     }
                 };
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&parts, 1));
+                    let __tco_0 =
+                        Rc::new(parts.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                     let __tco_1 = minted.ctx.clone();
                     let __tco_2 = span;
                     let __tco_3 = v1_rt::rc_list_push(acc, node.clone());
@@ -3239,7 +3240,14 @@ pub fn stamp_parsed_node_list_with_head_role(
             } else {
                 {
                     let stamped_tail = stamp_parsed_node_list(
-                        Rc::new(v1_rt::list_skip(&nodes.clone(), 1)),
+                        Rc::new(
+                            nodes
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        ),
                         ancestors.clone(),
                         stamped_head.ctx.clone(),
                         tail_role.clone(),
@@ -11021,7 +11029,7 @@ pub fn operation_requires_declaration(
 pub fn requires_word_is(member: Rc<Node>, word: String) -> bool {
     match (*member.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
         {
             let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                 unreachable!()

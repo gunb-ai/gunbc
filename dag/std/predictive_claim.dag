@@ -1,5 +1,6 @@
 module std.predictive_claim
 
+import v2.std.algebra { any }
 import std.types { Bool, CommitSha, EpochMs, FilePath, Int, List, Milliseconds, NonEmptyStr }
 import std.claim_evidence { Claim, ClaimId, RecordedFact }
 import std.decl_ref { DeclarationRef, decl_ref }

@@ -866,7 +866,7 @@ pub fn generic_identity_census_tsv(rows: Rc<Vec<Rc<GenericIdentityRow>>>) -> Str
                 __sorted.sort_by(|a: &String, b: &String| {
                     let __ka = (|l: String| l.clone())(a.clone());
                     let __kb = (|l: String| l.clone())(b.clone());
-                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                    v1_rt::canonical_key_cmp(&__ka, &__kb)
                 });
                 __sorted
             }),
@@ -1142,7 +1142,7 @@ pub fn gi_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka = (|k: String| k.clone())(a.clone());
                 let __kb = (|k: String| k.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         })
@@ -1576,7 +1576,15 @@ pub fn gi_owner_argument_arms_discriminate(
                                 xs_param.clone(),
                                 v1_rt::concat(
                                     Rc::new(vec![minted.clone()]),
-                                    Rc::new(v1_rt::list_skip(&xs_param.children.clone(), 1)),
+                                    Rc::new(
+                                        xs_param
+                                            .children
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .collect::<Vec<_>>(),
+                                    ),
                                 ),
                             );
                             (((gi_foreign_label_under_owner(
