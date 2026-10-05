@@ -826,6 +826,13 @@ fn workspace_all_but_last(xs: List<String>) -> List<String> {
 // types and sizes), extracts exactly the placeholder members into a fresh directory, and hashes each
 // extracted file. Every step's failure is a typed refusal; the readback's verdict is returned whole
 // so the caller words it.
+//
+// Two orderings carry the reasons. The placeholder root is made FIRST: the second -C must name a
+// directory even when no transcript was planned, so a workspace with no transcripts packs through
+// the same two-list route with an empty second list, and the staging directory the lists are written
+// into exists whatever was staged. And the LOCATED refusals come before extraction: names, types and
+// sizes are judged from the listings alone, with each placeholder's digest assumed, so a missing or
+// malformed member is refused by name rather than as a failed extract of the whole list.
 type WorkspacePackArchive
   = WorkspacePackBuilt { archive: String, readback: WorkspacePackReadback }
   | WorkspacePackRefused { verdict: String, why: String }
@@ -833,10 +840,6 @@ type WorkspacePackArchive
 fn workspace_pack_archive(staging: String, members: List<NonEmptyStr>, placeholders: List<WorkspaceStagedPlaceholder>, placeholder_root: String) -> WorkspacePackArchive {
   let list_path = join([staging, "/members"], "")
   let placeholder_list_path = join([staging, "/placeholder-members"], "")
-  let archive = join([staging, "/workspace-source.tar"], "")
-  // The second -C must name a directory even when no transcript was planned: a workspace with no
-  // transcripts packs through the same two-list route with an empty second list. Made first, so the
-  // staging directory the lists are written into exists whatever was staged.
   let root_made = shell.Mkdir.Parents(path: placeholder_root as FilePath)
   if root_made.success == false {
     WorkspacePackRefused { verdict: "refused-placeholder-root-unmade", why: concat("the placeholder staging root could not be made: ", placeholder_root) }
@@ -852,9 +855,6 @@ fn workspace_pack_archive(staging: String, members: List<NonEmptyStr>, placehold
           match workspace_archive_listings(archive: archive) {
             Absent => WorkspacePackRefused { verdict: "refused-readback-failed", why: "the archive could not be listed back" }
             Present { value: listings } => {
-              // THE LOCATED REFUSALS FIRST: names, types and sizes are judged from the listings
-              // alone, with each placeholder's digest assumed, so a missing or malformed member is
-              // refused by name before extraction (which would otherwise fail as a whole on it).
               let structural = workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: placeholders, archive_listing: listings.names, size_listing: listings.sizes, archived_digests: fold(placeholders, init: empty_map(), f: (m, p) => map_insert(m: m, key: p.member as String, value: p.expected_digest.hex as String)))
               match workspace_pack_readback_refusal(readback: structural) {
                 Present { value: _ } => WorkspacePackBuilt { archive: archive, readback: structural }
