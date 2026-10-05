@@ -73,6 +73,7 @@ import gunbc.roadmap_dispatch_actuator {
   GunbcHarnessSpawnNeedsInstance,
   ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
+  dispatch_credential_snapshot_path_for_instance,
   CodexDispatchProvider,
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
@@ -170,7 +171,6 @@ import gunbc.roadmap_dashboard_instance {
   srv2_lab_dashboard_instance,
   dashboard_instance_provider_executable,
 }
-import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
 import gunbc.roadmap.roadmap_attempt_continuation {
   ContinueFromAttempt, FreshFromBase,
   continuation_alignment_l0_pointer, continuation_alignment_ask,
@@ -522,7 +522,15 @@ fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashb
       s: pipe_wire,
       pattern: "provider-events.jsonl",
     )
-    && string_contains(s: provider_wire, pattern: claude_code_oauth_harness_host_path as String)
+    && string_contains(
+      s: provider_wire,
+      pattern: dispatch_credential_snapshot_path_for_instance(
+        instance: lab,
+        node_id: "ts-dispatch-provider-events" as NonEmptyStr as RoadmapNodeId,
+        attempt_key: "feedfacefeedface",
+        provider: ClaudeCodeProvider,
+      ) as String,
+    )
 }
 
 // THE LAB INSTANCE MOVES ITS REPO, TMUX SERVER AND ATTEMPT STATE TOGETHER, shown with the Claude
