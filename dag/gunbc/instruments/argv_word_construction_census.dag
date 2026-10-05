@@ -83,14 +83,21 @@ fn argv_word_construction_census_recount() -> ProcessExit {
 }
 
 // The discovered modeled roots' module files, in declaration-index order. Shared by the gated
-// recount above and the roster emitter below so both see the same population.
-fn argv_word_construction_census_root_paths() -> List<String> {
-  let decls = module_declaration_facts_live(pool_roots: argv_word_construction_census_roots)
+// recount above and the roster emitters below so all see the same population. Parameterized by
+// roots: the corpus walk is run ONE ROOT PER PROCESS (a wet lane kills a whole-corpus walk with
+// OOM -- the per-process journal of read+parse dispatches is what grows, so the split is by the
+// roots boundary, the population's own partition).
+fn argv_word_construction_census_root_paths_for_roots(roots: List<String>) -> List<String> {
+  let decls = module_declaration_facts_live(pool_roots: roots)
   let paths_reversed = fold_list(xs: decls, empty: Empty, cons: fn(acc, d) {
     let p = declared_module_path(d: d)
     if p == "" { acc } else { Cons { head: p, tail: acc } }
   })
   list_reverse(xs: paths_reversed)
+}
+
+fn argv_word_construction_census_root_paths() -> List<String> {
+  argv_word_construction_census_root_paths_for_roots(roots: argv_word_construction_census_roots)
 }
 
 // The roster emitter for a wet-lane run (claim_batch --wet): the same discovered population, each
@@ -99,6 +106,14 @@ fn argv_word_construction_census_root_paths() -> List<String> {
 // the write by design -- the emitter exists for the recount, not for CI.
 fn argv_word_construction_census_recount_emit() -> ProcessExit {
   argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths(), out: "target/argv_word_construction_census_recount.tsv")
+}
+
+fn argv_word_construction_census_recount_emit_extdeps() -> ProcessExit {
+  argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths_for_roots(roots: ["dag/extdeps"]), out: "target/argv_word_construction_census_recount_extdeps.tsv")
+}
+
+fn argv_word_construction_census_recount_emit_gunbc() -> ProcessExit {
+  argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths_for_roots(roots: ["dag/gunbc"]), out: "target/argv_word_construction_census_recount_gunbc.tsv")
 }
 
 fn declared_module_path(d: ModuleDeclarationFact) -> String {
