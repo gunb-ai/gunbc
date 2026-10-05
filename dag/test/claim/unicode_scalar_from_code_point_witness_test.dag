@@ -2,6 +2,7 @@ module test.claim.unicode_scalar_from_code_point_witness
 
 import std.error_primitives { Ok, Err }
 import std.unicode.scalar { CodePointOutOfRange, SurrogateCodePoint, char_text, from_code_point }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
