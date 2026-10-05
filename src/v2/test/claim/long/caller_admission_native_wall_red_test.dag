@@ -236,6 +236,90 @@ fn dbg_subject_call_anat() -> ProcessExit {
   }
 }
 
+
+// DBG-PROBE (temporary): the cross callee lookup, link by link -- qn read, index hit, indexed node kind.
+fn dbg_decl_lookup() -> ProcessExit {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "GRAMMAR", d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: wall_red_subject_text(), file: ^wall_red_subject_fixture, rules: dag_lex()) {
+        Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-TOKENIZE", d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match program_assembly_normalized_outcome(
+            phase: program_assembly_phase_normalize_seeded(
+              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
+              seed: OccurrenceIdAllocator { next_id: 10 },
+              scope: Fnv1a64Structural { digest: "00000000000000ad" }
+            )
+          ) {
+            Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-NORMALIZE", d: d))
+            Accepted { value: t, diagnostics: _ } =>
+              match resolve_program_from_ingest(tree: t, symbol_index: t.symbol_index) {
+                Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-RESOLVE", d: d))
+                Accepted { value: rt, diagnostics: _ } =>
+                  match find_named_child(root: rt.root, name: ^unlisted_caller) {
+                    Absent => exit_failure(reason: "NO-ARROW")
+                    Present { value: arrow } =>
+                      match dbg_admit_decl_lookup_from_arrow(arrow: arrow, declarations: rt.resolved_declarations) {
+                        Absent => exit_failure(reason: "LINKS-UNREADABLE")
+                        Present { value: report } => exit_failure(reason: report)
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dbg_admit_decl_lookup_from_arrow(arrow: Node, declarations: SymbolIndex) -> Optional<String> {
+  match dbg_admit_call_comp(node: arrow) {
+    Absent => optional_absent()
+    Present { value: call } =>
+      match list_at_optional(xs: node_positional_child_targets(node: call), index: 0) {
+        Absent => optional_present(value: "NO-OPERATOR-CHILD")
+        Present { value: ref_conj } =>
+          match declaration_reference_path_optional(node: ref_conj) {
+            Absent => optional_present(value: concat("REF-UNREADABLE ", dbg_anat_deep(n: ref_conj, depth: 8)))
+            Present { value: qn } =>
+              match symbol_index_lookup(index: declarations, qualified_path: qn) {
+                Absent => optional_present(value: concat("DECL-MISS ", qualified_name_to_dotted_string(qn: qn)))
+                Present { value: decl } =>
+                  optional_present(
+                    value: concat(
+                      "DECL-HIT ",
+                      qualified_name_to_dotted_string(qn: qn),
+                      " ",
+                      dbg_anat_deep(n: decl, depth: 6)
+                    )
+                  )
+              }
+          }
+      }
+  }
+}
+
+// The LAST comp:transform core edge under the arrow -- the fn body's final (only) statement chain.
+fn dbg_admit_call_comp(node: Node) -> Optional<Node> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+      dbg_admit_last_core_transform(children: node.children)
+    _ => optional_absent()
+  }
+}
+
+fn dbg_admit_last_core_transform(children: List<Edge>) -> Optional<Node> {
+  fold(children, init: optional_absent(), f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: CoreMarker { marker: _ } } =>
+        match e.target.kind {
+          ComputationNode { behavior: Transform } => optional_present(value: e.target)
+          _ => acc
+        }
+      _ => acc
+    }
+  })
+}
+
 // DBG-PROBE (temporary): a trivial fn (no admit clause) through the same normalize — isolates whether
 // the fixture text or the clause itself is refused.
 fn dbg_trivial_normalize() -> ProcessExit {
