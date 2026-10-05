@@ -208,6 +208,33 @@ fn dbg_admit_entries_from_clause(captured: Node) -> Optional<List<Node>> {
   }
 }
 
+
+// DBG-PROBE (temporary): the SUBJECT's real fn-body call anatomy -- pins the head-atom identity a
+// lowered callee carries (dag_token_-prefixed or bare).
+fn dbg_subject_call_anat() -> ProcessExit {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "GRAMMAR", d: d))
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: wall_red_subject_text(), file: ^wall_red_subject_fixture, rules: dag_lex()) {
+        Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-TOKENIZE", d: d))
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match program_assembly_normalized_outcome(
+            phase: program_assembly_phase_normalize_seeded(
+              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
+              seed: OccurrenceIdAllocator { next_id: 10 },
+              scope: Fnv1a64Structural { digest: "00000000000000ad" }
+            )
+          ) {
+            Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-NORMALIZE", d: d))
+            Accepted { value: t, diagnostics: _ } =>
+              match dbg_anat_deep(n: t.root, depth: 26) {
+                _ => exit_failure(reason: concat("SUBJECT-ROOT ", dbg_anat_deep(n: t.root, depth: 26)))
+              }
+          }
+      }
+  }
+}
+
 // DBG-PROBE (temporary): a trivial fn (no admit clause) through the same normalize — isolates whether
 // the fixture text or the clause itself is refused.
 fn dbg_trivial_normalize() -> ProcessExit {
