@@ -73,6 +73,7 @@ import extdeps.cpu.ampere_altra_package {
   altra_package_body_height,
   altra_package_body_width,
 }
+import v2.std.integer { integer_int_to_decimal_string }
 
 // WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a
 // component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever
@@ -748,7 +749,7 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
     let pos = dimm_slot_position_ordinal(p: s.position)
     concat(acc, [obligation(
       g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
-      id: "dimm_ddr{ch}_slot{pos}",
+      id: "dimm_ddr{integer_int_to_decimal_string(value: ch)}_slot{integer_int_to_decimal_string(value: pos)}",
       r: MemoryModuleSlot { slot: s },
       x: 150000 + (pos * 14000),
       y: 20000 + (ch * 12000)

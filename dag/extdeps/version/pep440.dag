@@ -7,6 +7,7 @@ import std.types { List }
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.integer { integer_nat_to_decimal_string }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -230,21 +231,21 @@ fn pep440_pre_release_phase_label(phase: Pep440PreReleasePhase) -> String {
 fn pep440_pre_release_label(pre: Pep440PreRelease) -> String {
   concat(
     pep440_pre_release_phase_label(phase: pre.phase),
-    "{pre.number}"
+    integer_nat_to_decimal_string(value: pre.number)
   )
 }
 
 fn pep440_release_segments_label(segments: Pep440ReleaseSegments) -> String {
-  let head = "{segments.first}"
+  let head = integer_nat_to_decimal_string(value: segments.first)
   if segments.rest.length() == 0 {
     head
   } else {
-    concat(head, concat(".", segments.rest |> map(n => "{n}") |> join(separator: ".")))
+    concat(head, concat(".", segments.rest |> map(n => integer_nat_to_decimal_string(value: n)) |> join(separator: ".")))
   }
 }
 
 fn pep440_epoch_prefix(epoch: NonNegativeInt) -> String {
-  if epoch == 0 { "" } else { concat("{epoch}", "!") }
+  if epoch == 0 { "" } else { concat(integer_nat_to_decimal_string(value: epoch), "!") }
 }
 
 fn pep440_public_version_label(v: Pep440PublicVersion) -> String {
@@ -257,18 +258,18 @@ fn pep440_public_version_label(v: Pep440PublicVersion) -> String {
     Absent => base
   }
   let with_post = match v.post_release {
-    Present { value: n } => concat(with_pre, concat(".post", "{n}"))
+    Present { value: n } => concat(with_pre, concat(".post", integer_nat_to_decimal_string(value: n)))
     Absent => with_pre
   }
   match v.dev_release {
-    Present { value: n } => concat(with_post, concat(".dev", "{n}"))
+    Present { value: n } => concat(with_post, concat(".dev", integer_nat_to_decimal_string(value: n)))
     Absent => with_post
   }
 }
 
 fn pep440_local_segment_label(seg: Pep440LocalSegment) -> String {
   match seg {
-    Pep440LocalNumeric { value: v } => "{v}"
+    Pep440LocalNumeric { value: v } => integer_nat_to_decimal_string(value: v)
     Pep440LocalLexicographic { label: s } => s
   }
 }

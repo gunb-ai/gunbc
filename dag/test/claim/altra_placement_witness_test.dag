@@ -103,6 +103,7 @@ import product.altra_motherboard.minimal_design {
   board_governing_intent,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.integer { integer_int_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -498,7 +499,7 @@ fn every_role_established(template: BoardPlacementPlan) -> BoardPlacementPlan {
     IndexedComponents {
       index: acc.index + 1,
       out: concat(acc.out, [PlannedComponent {
-        identity: "grid_part_{acc.index}",
+        identity: "grid_part_{integer_int_to_decimal_string(value: acc.index)}",
         role: r,
         envelope: board_control_envelope,
         origin: point2(frame: altra_board_frame(), x: 10000 + (col * 30000), y: 10000 + (row * 30000)),
