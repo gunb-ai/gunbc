@@ -81,15 +81,17 @@ fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
 
 data head: String = "b04485cffb000000000000000000000000000000"
 
+// THE PINNED EVIDENCE ESTABLISHES G3 AND G4: the live encoder's wire for this attempt with its two G3
+// fields observed from a Final meter and its two G4 fields observed as a published result.
 fn evidence_wire(instance_id: String) -> String {
-  service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
+  replace(s: replace(s: replace(s: replace(s: service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
     binding: AttemptBinding { instance_id: instance_id as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
     inputs: ServiceEvidenceInputs {
       session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" } },
       metering: MeteringRead { observation: MeteringNotYetWritten },
       result_returned: ResultReturnedRead { observation: ResultNotReturned { attempt_key: "k1" }, close: SnapshotNotOpened },
     },
-  })
+  }), from: "{\"field\": \"execution_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}", to: "{\"field\": \"execution_time\", \"standing\": \"observed\", \"value\": {\"seconds\": 42}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}"), from: "{\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}", to: "{\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 10, \"output_tokens\": 5}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}"), from: "{\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}", to: "{\"field\": \"completion_time\", \"standing\": \"observed\", \"value\": {\"recorded_at\": \"2026-10-03T07:00:00Z\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"), from: "{\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}", to: "{\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"published\", \"pr\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"head\": \"b04485cffb000000000000000000000000000000\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}")
 }
 
 fn wire(pr: String) -> String { wire_for(pr: pr, instance_id: "dogfood-wet") }
@@ -97,7 +99,7 @@ fn wire(pr: String) -> String { wire_for(pr: pr, instance_id: "dogfood-wet") }
 fn wire_for(pr: String, instance_id: String) -> String {
   let ev = evidence_wire(instance_id: instance_id)
   serialize_json(v: json_object([
-    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v5")),
+    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v6")),
     json_kv(key: "node_id", value: json_string(s: "n1")),
     json_kv(key: "attempt_key", value: json_string(s: "k1")),
     json_kv(key: "head_sha", value: json_string(s: head)),
@@ -111,6 +113,9 @@ fn wire_for(pr: String, instance_id: String) -> String {
     json_kv(key: "fence_generation", value: json_int(n: 7)),
     json_kv(key: "cleanup_outcome", value: json_string(s: "released")),
     json_kv(key: "request_binding_wire", value: json_string(s: request_wire())),
+    json_kv(key: "result_event", value: json_string(s: "evt-result")),
+    json_kv(key: "result_claim", value: json_string(s: "evt-claim")),
+    json_kv(key: "metering_compute", value: json_string(s: "not-attributable")),
     json_kv(key: "service_evidence_digest", value: json_string(s: wire_content_hash_to_hex(hash: content_hash_of_value(value: ev as NonEmptyStr)))),
     json_kv(key: "service_evidence_wire", value: json_string(s: ev)),
     json_kv(key: "established_at", value: json_string(s: "2026-10-03T07:00:00Z")),
@@ -155,14 +160,16 @@ fn plant(root: NonEmptyStr, bytes: String) -> Bool {
   }
 }
 
-// A VALID RECEIPT IN THE SLOT is read as recorded: the recorder stops without rewriting it, and the
-// acceptance read holds.
-test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool {
+// A RECEIPT VALID IN EVERY PINNED FACT IS STILL NOT THIS ATTEMPT'S START WHEN ITS LIVE RECORDS DO NOT
+// AGREE: here the attempt has its launch and request records but no Final metering record and no
+// returned-result event, so the instance-bound read refuses on the recorder's path and acceptance does
+// not hold. The positive decode is the pure witness's; a live G4 result needs the event carrier.
+test fn a_pinned_valid_receipt_without_live_g3_g4_records_is_refused() -> Bool {
   let instance = converge_root(instance: fresh_instance(tag: "recorded"))
   plant_launch(instance: instance)
     && plant(root: dogfood_start_store_root(instance: instance), bytes: wire(pr: "4242"))
-    && (match dogfood_start_record_for_instance(instance: instance) { DogfoodStartAlreadyRecorded => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false  DogfoodStartRefused { reason: _ } => false })
-    && dogfood_route_acceptance_holds_on(instance: instance)
+    && is_refused(r: dogfood_start_record_for_instance(instance: instance))
+    && !dogfood_route_acceptance_holds_on(instance: instance)
 }
 
 // AN INVALID RECEIPT IN THE SLOT IS NOT A START: the recorder refuses rather than reporting a
