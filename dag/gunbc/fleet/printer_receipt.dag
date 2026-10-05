@@ -12,6 +12,11 @@ fn execution_source(token_source:AccessTokenSource) -> String {
  match token_source { WorkloadIdentityToken=>"github-actions" OperatorSuppliedToken {token:_}=>"operator-token-file" GcloudPrintToken=>"operator-gcloud" }
 }
 fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, token_source: AccessTokenSource) -> ProcessExit {
+ write_receipt_at(path:printer_workflow_receipt_path,printer:printer,standing:standing,version:version,remote:remote,digest:digest,token_source:token_source)
+}
+
+// Durable per-start receipts must not share the compatibility discovery output path.
+fn write_receipt_at(path:String,printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, token_source: AccessTokenSource) -> ProcessExit {
   let content = serialize_json(v: json_object(members: [
     json_kv(key: "execution_source", value: json_string(s: execution_source(token_source:token_source))),
     json_kv(key: "printer", value: json_string(s: printer as String)),
@@ -24,6 +29,6 @@ fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: Stri
     json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
     json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
   ]))
-  let written = Filesystem.Write(path: printer_workflow_receipt_path, content: content)
+  let written = Filesystem.Write(path: path, content: content)
   if written.success { ExitSuccess } else { exit_failure(reason: "Printer operation completed but receipt write failed; do not replay a start") }
 }

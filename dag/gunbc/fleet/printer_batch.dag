@@ -1,0 +1,185 @@
+module gunbc.fleet.printer_batch
+
+import std.types {String,NonEmptyStr,Int,Bool,List,Timestamp}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import std.measure {second}
+import std.nat {Nat,nat_cata}
+import std.list {first_duplicate_by_key}
+import std.scoped_authorization {AuthorizationRequest}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.languages.json.emit {JsonValue,json_array,json_object,json_kv,json_string,json_int,serialize_json}
+import extdeps.tools.sleep
+import extdeps.shell.exec {ProcessOutputPresent}
+import extdeps.tools.hostname
+import std.algebra {trim}
+import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
+import gunbc.fleet.printer_tool_readiness {printer_mqtt_tool_ready}
+import gunbc.fleet.printer_federation {printer_lan_host_identity}
+import gunbc.fleet.printer_selection {select_printer,PrinterSelected,print_inputs_admitted}
+import gunbc.fleet_asset_identity {PhysicalAssetIdentity}
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
+import gunbc.auth.access_token_source {AccessTokenSource}
+import gunbc.auth.approval_request_client {stored_request_from_authorization,PollStillPending}
+import gunbc.auth.approval_gate {approval_instant_now,approval_expires_at,approval_file_stored_request,ApprovalFiled,ApprovalFilingRefused,approval_standing_read,StandingReadAt,StandingClockUnreadable,approval_gate_from_poll,GateAdmitted,GateRefused,approval_refusal_text}
+import gunbc.fleet.printer_operator_approval {print_request,start_claim_path,batch_attempt_claim_path,start_authorized}
+import gunbc.fleet.printer_job_monitor {observe_job,JobRunning,JobCompletedAwaitingInspection,JobPaused,JobFailed,JobUnresolved}
+import gunbc.fleet.printer_start_reconciliation {ObserveOnFleetTicks,observe_start,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved}
+import gunbc.fleet.printer_receipt {write_receipt_at}
+import gunbc.fleet.printer_report {report_once_using_session}
+
+// Each job is one already prepared plate. Its stable attempt identity must survive
+// replanning; this controller does not infer accepted parts from printer completion.
+type BatchPlate {path:String,digest:String,attempt:String}
+type PrinterQueue {printer:PhysicalAssetIdentity,version:NonEmptyStr,plates:List<BatchPlate>}
+type LanePhase = QueueReady | QueueApprovalPending {request:AuthorizationRequest<String>,expires:Timestamp} | QueueReconciling {request:AuthorizationRequest<String>,remaining:Int} | QueuePrinting {request:AuthorizationRequest<String>,unresolved:Int} | QueueAttention {reason:String} | QueueDone
+
+type PrinterLane {queue:PrinterQueue,session:PrinterCredentialSession,phase:LanePhase}
+type BatchCounts {pending:Int,printing:Int,attention:Int,done:Int}
+
+// One fold observes the whole fleet; no printer is the parent of another printer's
+// lifetime. A blocked lane stays visible while independent lanes continue.
+fn batch_counts(phases:List<LanePhase>) -> BatchCounts {
+ fold(phases,init:BatchCounts {pending:0,printing:0,attention:0,done:0},f:(a,p)=>match p {
+  QueueReady=>BatchCounts {pending:a.pending+1,printing:a.printing,attention:a.attention,done:a.done}
+  QueueApprovalPending {request:_,expires:_}=>BatchCounts {pending:a.pending+1,printing:a.printing,attention:a.attention,done:a.done}
+  QueueReconciling {request:_,remaining:_}=>BatchCounts {pending:a.pending+1,printing:a.printing,attention:a.attention,done:a.done}
+  QueuePrinting {request:_,unresolved:_}=>BatchCounts {pending:a.pending,printing:a.printing+1,attention:a.attention,done:a.done}
+  QueueAttention {reason:_}=>BatchCounts {pending:a.pending,printing:a.printing,attention:a.attention+1,done:a.done}
+  QueueDone=>BatchCounts {pending:a.pending,printing:a.printing,attention:a.attention,done:a.done+1}
+ })
+}
+fn queue_valid(queue:PrinterQueue) -> Bool {
+ (match select_printer(name:queue.printer as String) {PrinterSelected {printer:_}=>true _=>false}) &&
+ all(queue.plates,p=>p.path!="" && p.attempt!="" && print_inputs_admitted(version:queue.version as String,digest:p.digest,bed_clear:"true")) &&
+ (match first_duplicate_by_key(xs:queue.plates,key:p=>p.attempt) {Absent=>true _=>false})
+}
+fn queues_valid(queues:List<PrinterQueue>) -> Bool {
+ count(queues)>0 && all(queues,q=>queue_valid(queue:q)) && (match first_duplicate_by_key(xs:queues,key:q=>q.printer as String) {Absent=>true _=>false}) && (match first_duplicate_by_key(xs:flat_map(queues,q=>q.plates),key:p=>p.attempt) {Absent=>true _=>false})
+}
+fn lane_with(lane:PrinterLane,phase:LanePhase) -> PrinterLane {PrinterLane {queue:lane.queue,session:lane.session,phase:phase}}
+
+// Filing and polling are separate fleet-wide passes. Both ready printers receive
+// requests before either is polled; no per-printer approval sleep blocks a sibling.
+fn file_ready(lane:PrinterLane) -> PrinterLane {
+ match lane.phase {
+  QueueReady=>match lane.queue.plates.first() {
+   Absent=>lane_with(lane:lane,phase:QueueDone)
+   Present {value:plate}=>match print_request(printer:lane.queue.printer,digest:plate.digest,version:lane.queue.version as String,attempt:plate.attempt) {
+    Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Cannot derive approval identity"})
+    Present {value:request}=>{
+     let claim_path=start_claim_path(escalation_id:request.escalation_id)
+     let prior=Filesystem.Read(path:claim_path)
+     if prior.success || Filesystem.Read(path:batch_attempt_claim_path(attempt:plate.attempt)).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Start already claimed; recovery requires observation, never a fresh start"})}
+     match approval_instant_now() {
+      Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Approval clock unavailable"})
+      Present {value:now}=>{
+       let expires=approval_expires_at(issued:now,window:second(count:900))
+       match approval_file_stored_request(stored:stored_request_from_authorization(request:request,issued_at:now,expires_at:expires),body_file_name:concat(request.escalation_id as String,".json"),submit_timeout:second(count:30)) {
+        ApprovalFiled=>lane_with(lane:lane,phase:QueueApprovalPending {request:request,expires:expires})
+        ApprovalFilingRefused {reason:r}=>lane_with(lane:lane,phase:QueueAttention {reason:r})
+       }
+      }
+     }
+    }
+   }
+  }
+  _=>lane
+ }
+}
+fn advance_lane(hold:PrinterExecutionHold,lane:PrinterLane,token_source:AccessTokenSource) -> PrinterLane {
+ match lane.phase {
+  QueueApprovalPending {request:request,expires:expires}=>match approval_standing_read(escalation_id:request.escalation_id,expires_at:expires) {
+   StandingClockUnreadable=>lane_with(lane:lane,phase:QueueAttention {reason:"Approval clock unavailable"})
+   StandingReadAt {standing:PollStillPending,observed_at:_}=>lane
+   StandingReadAt {standing:standing,observed_at:at}=>match approval_gate_from_poll(poll:standing,request:request,observed_at:at) {
+    GateRefused {cause:c}=>lane_with(lane:lane,phase:QueueAttention {reason:approval_refusal_text(cause:c)})
+    GateAdmitted {authorization:a}=>match lane.queue.plates.first() {
+     Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Approved queue lost its plate"})
+     Present {value:plate}=>match start_authorized(observation_policy:ObserveOnFleetTicks,hold:hold,printer:lane.queue.printer,path:plate.path,digest:plate.digest,version:lane.queue.version,token_source:token_source,session:lane.session,authorization:a,request:request) {
+      ExitSuccess=>lane_with(lane:lane,phase:QueueReconciling {request:request,remaining:8})
+      _=>lane_with(lane:lane,phase:QueueAttention {reason:"Start did not confirm; retained claim forbids replay"})
+     }
+    }
+   }
+  }
+  QueueReconciling {request:request,remaining:n}=>match lane.queue.plates.first() {
+   Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Published queue lost its plate"})
+   Present {value:plate}=>{
+    let report=match report_once_using_session(session:lane.session) {ProcessOutputPresent {text:t}=>t _=>""}
+    let prefix=start_claim_path(escalation_id:request.escalation_id)
+    if !Filesystem.Write(path:join([prefix,".after-start-",to_string(9-n),".json"],""),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain start observation"})}
+    let remote=join(["gunbc-",plate.digest,".3mf"],"")
+    match observe_start(text:report,remote:remote) {
+     ExpectedProjectRunning=>match write_receipt_at(path:concat(prefix,".receipt.json"),printer:lane.queue.printer,standing:"running-confirmed by fleet observation",version:lane.queue.version as String,remote:remote,digest:plate.digest,token_source:token_source) {
+      ExitSuccess=>lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:0})
+      _=>lane_with(lane:lane,phase:QueueAttention {reason:"Running observed but receipt could not be retained"})
+     }
+     ExpectedProjectBlocked=>lane_with(lane:lane,phase:QueueAttention {reason:"Expected project blocked after publication; no replay"})
+     StartUnresolved=>if n<=1 {lane_with(lane:lane,phase:QueueAttention {reason:"Start observation budget exhausted; no replay"})} else {lane_with(lane:lane,phase:QueueReconciling {request:request,remaining:n-1})}
+    }
+   }
+  }
+  QueuePrinting {request:request,unresolved:misses}=>match lane.queue.plates.first() {
+   Absent=>lane_with(lane:lane,phase:QueueAttention {reason:"Active queue lost its plate"})
+   Present {value:plate}=>{
+    let report=match report_once_using_session(session:lane.session) {ProcessOutputPresent {text:t}=>t _=>""}
+    if !Filesystem.Write(path:concat(start_claim_path(escalation_id:request.escalation_id),".batch-report.json"),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain fleet monitoring evidence"})}
+    match observe_job(text:report,remote:join(["gunbc-",plate.digest,".3mf"],"")) {
+     JobRunning=>lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:0})
+     JobUnresolved=>if misses>=7 {lane_with(lane:lane,phase:QueueAttention {reason:"Eight unresolved telemetry reads; claim retained; no restart"})} else {lane_with(lane:lane,phase:QueuePrinting {request:request,unresolved:misses+1})}
+     JobPaused=>lane_with(lane:lane,phase:QueueAttention {reason:"Printer paused; inspection required"})
+     JobFailed=>lane_with(lane:lane,phase:QueueAttention {reason:"Printer failed; inspection required"})
+     JobCompletedAwaitingInspection=>{
+      if !Filesystem.WriteCreateNew(path:concat(start_claim_path(escalation_id:request.escalation_id),".completed-awaiting-inspection.json"),content:report).success {return lane_with(lane:lane,phase:QueueAttention {reason:"Cannot retain completion evidence"})}
+      PrinterLane {queue:PrinterQueue {printer:lane.queue.printer,version:lane.queue.version,plates:lane.queue.plates.skip(n:1)},session:lane.session,phase:QueueReady}
+     }
+    }
+   }
+  }
+  _=>lane
+ }
+}
+
+// Fleet polling is paced once per pass, rather than once per printer. The next
+// plate's approval explicitly requires clearing its bed NOW, even after FINISH.
+type DriveState = DriveActive {lanes:List<PrinterLane>} | DriveStopped {exit:ProcessExit}
+fn drive(hold:PrinterExecutionHold,lanes:List<PrinterLane>,token_source:AccessTokenSource,remaining:Nat) -> ProcessExit {
+ if remaining<=0 {return exit_failure(reason:"Fleet observation budget must be positive")}
+ let result=nat_cata(n:remaining,zero:DriveActive {lanes:lanes},succ:state=>drive_tick(hold:hold,state:state,token_source:token_source))
+ match result {DriveStopped {exit:e}=>e DriveActive {lanes:_}=>exit_failure(reason:"Fleet observation budget exhausted; retain start claims and controller hold")}
+}
+fn drive_tick(hold:PrinterExecutionHold,state:DriveState,token_source:AccessTokenSource) -> DriveState {
+ match state {
+  DriveStopped {exit:_}=>state
+  DriveActive {lanes:lanes}=>{
+   if !hold_current(hold:hold) {return DriveStopped {exit:exit_failure(reason:"Fleet controller lost its exclusive hold")}}
+   let filed=map(lanes,l=>file_ready(lane:l))
+   let advanced=map(filed,l=>advance_lane(hold:hold,lane:l,token_source:token_source))
+   let observed_at=match approval_instant_now() {Present {value:t}=>t Absent=>return DriveStopped {exit:exit_failure(reason:"Cannot timestamp fleet progress; controller hold retained")}}
+   if !Filesystem.Write(path:"/var/lib/gunbc/printer-starts/controller/batch-state.json",content:serialize_json(v:json_object(members:[json_kv(key:"schema",value:json_string(s:"gunbc.printer-batch.v1")),json_kv(key:"observed_at",value:json_string(s:observed_at as String)),json_kv(key:"lanes",value:json_array(elements:map(advanced,l=>lane_json(lane:l))))]))).success {return DriveStopped {exit:exit_failure(reason:"Cannot retain fleet progress; controller hold retained")}}
+   let counts=batch_counts(phases:map(advanced,l=>l.phase))
+   if counts.pending==0 && counts.printing==0 {return DriveStopped {exit:if counts.attention==0 {ExitSuccess} else {exit_failure(reason:"Fleet batch has lanes requiring attention; inspect per-start evidence")}}}
+   if !sleep.Delay.Seconds(seconds:"10").success {return DriveStopped {exit:exit_failure(reason:"Fleet polling delay failed; retain start claims")}}
+   DriveActive {lanes:advanced}
+  }
+ }
+}
+
+// Entry wiring follows only after source/slice admission and host ownership are
+// established. Authentication is read once and each printer session once per queue.
+// The caller owns the fleet hold for the full drive lifetime; this helper never
+// treats same-owner text as permission to overlap another controller.
+fn initialize(queues:List<PrinterQueue>,token_source:AccessTokenSource) -> List<PrinterLane>? {
+ let host=os.Hostname.ReadShort()
+ if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !printer_mqtt_tool_ready() || !queues_valid(queues:queues) {return none}
+ let lanes=map(queues,q=>match read_existing_printer_session(printer:q.printer,version:q.version,token_source:token_source) {
+  PrinterSessionReady {session:s}=>Present {value:PrinterLane {queue:q,session:s,phase:QueueReady}}
+  PrinterSessionRefused {cause:_}=>none
+ })
+ if any(lanes,l=>match l {Absent=>true _=>false}) {none} else {Present {value:flat_map(lanes,l=>match l {Absent=>[] Present {value:v}=>[v]})}}
+}
+
+fn lane_json(lane:PrinterLane) -> JsonValue {
+ let standing=match lane.phase {QueueReady=>"ready-for-next-bed-clear-approval" QueueApprovalPending {request:_,expires:_}=>"approval-pending" QueueReconciling {request:_,remaining:_}=>"publication-awaiting-observation" QueuePrinting {request:_,unresolved:_}=>"printing" QueueAttention {reason:r}=>concat("attention: ",r) QueueDone=>"completed-awaiting-part-inspection"}
+ json_object(members:[json_kv(key:"printer",value:json_string(s:lane.queue.printer as String)),json_kv(key:"standing",value:json_string(s:standing)),json_kv(key:"remaining_plates",value:json_int(n:count(lane.queue.plates))),json_kv(key:"attempts",value:json_array(elements:map(lane.queue.plates,p=>json_string(s:p.attempt))))])
+}

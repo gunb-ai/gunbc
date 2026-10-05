@@ -1,7 +1,9 @@
 # Desired-set printing and automatic plate packing
 
 Requested after printer-01 completed the E1/E2 plate on 4 October 2026. This is the
-next workflow milestone, not an implemented scheduler or permission to start a print.
+workflow milestone. The explicit-plate preparation/controller foundation now has a
+[modeled entrypoint](print-workflow-integration.md); the full desired-set scheduler and
+release contract below remain incomplete. This document grants no print start.
 The operator should request parts and quantities once, then clear beds when notified.
 
 ## Contract

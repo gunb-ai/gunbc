@@ -9,7 +9,7 @@ test fn physical_print_requires_an_approval_pattern() -> Bool {
  match select_authorization_pattern(e:printer_start_effect()) { PatternSelected {pattern:OperatorApprovedCapability,receipt:_}=>true _=>false }
 }
 test fn every_new_printer_credential_binding_is_censused() -> Bool {
- let names=["gunbc.fleet.printer_workflow_run","gunbc.fleet.printer_operator_approval","gunbc.fleet.printer_operator_run","gunbc.fleet.printer_report"]
+ let names=["product.printed_chassis.print_workflow","gunbc.fleet.printer_workflow_run","gunbc.fleet.printer_operator_approval","gunbc.fleet.printer_operator_run","gunbc.fleet.printer_report"]
  all(names,n=>{
   let rows=filter(privileged_effect_census,r=>r.site.module_path==n)
   length(rows)==1 && all(rows,r=>match site_verdict(row:r).conformance {Conforms=>true DivergesWithReason {reason:_}=>true _=>false})

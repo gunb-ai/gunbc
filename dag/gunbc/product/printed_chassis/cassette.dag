@@ -2,9 +2,10 @@ module product.printed_chassis.cassette
 
 import std.types { Bool, Int, String, List }
 import std.measure { micrometer_count }
+import std.affine_space {signed_frame_component_count}
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.assembly_geometry {
-  Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
+  Primitive, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
   Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
 }
 import product.printed_chassis.tray_panel_features {panel_seam_um,lap_center_offset_um,lap_along_joint_um,rail_foot_width_um,rail_foot_inset_um,rail_wall_width_um,rail_wall_offset_um,handle_center_from_edge_um,handle_depth_um,rear_socket_width_um,rear_socket_inset_um,rear_socket_wall_width_um,handle_support_center_from_edge_um,handle_support_depth_um}
@@ -135,4 +136,21 @@ fn interfaces() -> List<MechanicalInterface> {
  mechanical_interface(id:"board-support",members:["BOARD","P1","P2","P3","P4"],fastener:BoardSupportPending,quantity:0,status:Unresolved,requirement:"Known hole alignment passes are retained. Standoff thread/height and underside keep-outs remain open; no new gauge sequence."),
  mechanical_interface(id:"shared-power",members:["PSU","PDB","DC","FEEDS"],fastener:ProtectedDcBranch,quantity:4,status:Unresolved,requirement:"Select rated protected/isolatable branches and fixed shared 12 V supply; no live hot-swap."),
  mechanical_interface(id:"rack-ground",members:["FRAME","SHELF","PSU"],fastener:BondingHardwarePending,quantity:0,status:Unresolved,requirement:"Metal rack joining, runner attachment and permanent protective-earth bond remain hardware interfaces.")]
+}
+
+// Conservative proposed M4 head/washer access envelopes used by the workflow CAD
+// check. These are design allowances, not a measured hardware specification.
+data socket_hardware_envelope_diameter_um:Int=10000
+data socket_hardware_envelope_depth_um:Int=6000
+fn rear_socket_bolt_clearances() -> List<AssemblyPart> {
+ flat_map([-1,1],sx=>{
+  let socket=rear_socket(sx:sx,id:"clearance-reference")
+  flat_map(socket.cuts,p=>match p {
+   RoundPrism {diameter:_,length:_,axis:_,center:c}=>[part(id:concat("SOCKET-HARDWARE-",to_string(sx)),name:"Proposed socket bolt-head and washer clearance",kind:Clearance,scope:Cassette,
+    adds:[round(diameter:socket_hardware_envelope_diameter_um,length:socket_hardware_envelope_depth_um,axis:Axis3Y,x:0,y:0,z:0)],cuts:[],
+    x:signed_frame_component_count(c:socket.at.x)+signed_frame_component_count(c:c.x),y:signed_frame_component_count(c:socket.at.y)-socket_hardware_envelope_depth_um/2,z:signed_frame_component_count(c:socket.at.z)+signed_frame_component_count(c:c.z),
+    ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Keep printed material out of this proposed hardware envelope; actual fastener engagement and loaded behavior remain unqualified.")]
+   _=>[]
+  })
+ })
 }

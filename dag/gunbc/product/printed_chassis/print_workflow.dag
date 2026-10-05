@@ -1,0 +1,65 @@
+module product.printed_chassis.print_workflow
+
+import std.types {String,NonEmptyStr,List,FilePath}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import std.bytes {bytes_octets,utf8_encode_bytes}
+import extdeps.crypto.sha2 {sha256_hex}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.shell
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field_string,FieldRead}
+import extdeps.languages.json.emit {json_object,json_kv,json_string,json_array,serialize_json}
+import product.printed_chassis.print_batch_plan {parse_plan,PrinterSpec,PlateSpec}
+import product.printed_chassis.print_preparation {prepare}
+import product.printed_chassis.cad_check_run {check_residential_cad}
+import gunbc.fleet.printer_batch {BatchPlate,PrinterQueue,queues_valid,initialize,drive}
+import gunbc.fleet.printer_execution_hold {with_execution_hold}
+import gunbc.auth.access_token_source {read_supplied_access_token,SuppliedTokenReady,SuppliedTokenUnavailable,OperatorSuppliedToken}
+
+// A single invocation prepares every requested plate, then hands the whole fleet
+// population to the round-robin controller. Nothing is approved/started if any
+// source, CAD realization, slicing or readback stage refuses.
+type QueuePrepared = QueueReadyForApproval {queue:PrinterQueue} | QueuePreparationRefused {reason:String}
+fn plate_path(output:String,printer:PrinterSpec,plate:PlateSpec) -> String {
+ let key=serialize_json(v:json_array(elements:[json_string(s:printer.printer as String),json_string(s:plate.attempt)]))
+ join([output,"/",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:key))) as String,".3mf"],"")
+}
+fn prepare_queue(spec:PrinterSpec,output:String,appimage:String,machine:String,filament:String,process:String) -> QueuePrepared {
+ let results=map(spec.plates,p=>{
+  let path=plate_path(output:output,printer:spec,plate:p)
+  match prepare(cad:concat(output,"/cad"),plan:p.plan,output:path,appimage:appimage,machine:machine,filament:filament,process:process) {
+   ExitSuccess=>{
+    let read=Filesystem.Read(path:concat(path,".readback.json"))
+    let digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>d _=>""} _=>""}} else {""}
+    if digest=="" {none} else {Present {value:BatchPlate {path:path,digest:digest,attempt:p.attempt}}}
+   }
+   _=>none
+  }
+ })
+ if any(results,r=>match r {Absent=>true _=>false}) {QueuePreparationRefused {reason:"A plate failed CAD packing, pinned slicing or required readback; no printer start admitted"}}
+ else {QueueReadyForApproval {queue:PrinterQueue {printer:spec.printer,version:spec.version,plates:flat_map(results,r=>match r {Present {value:p}=>[p] _=>[]})}}}
+}
+fn run(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,mode:String) -> ProcessExit {
+ if mode!="prepare" && mode!="print" {return exit_failure(reason:"Workflow mode must be prepare or print")}
+ let read=Filesystem.Read(path:plan_file)
+ if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
+ let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Preparation output must be an absolute writable directory")}
+ match check_residential_cad(output:concat(output,"/cad")) {ExitSuccess=>{} other=>return other}
+ let results=map(specs,s=>prepare_queue(spec:s,output:output,appimage:appimage,machine:machine,filament:filament,process:process))
+ if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true _=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; no approvals or printer starts sent")}
+ let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] _=>[]})
+ if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
+ let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
+ if !Filesystem.WriteCreateNew(path:concat(output,"/prepared-queues.json"),content:receipt).success {return exit_failure(reason:"Prepared queue receipt already exists or is not writable")}
+ if mode=="prepare" {return ExitSuccess}
+ match read_supplied_access_token() {
+  SuppliedTokenUnavailable {cause:c}=>exit_failure(reason:c as String)
+  SuppliedTokenReady {token:t}=>{
+   let token_source=OperatorSuppliedToken {token:t}
+   match initialize(queues:queues,token_source:token_source) {
+    Absent=>exit_failure(reason:"Cannot bind a pinned credential session for every printer")
+    Present {value:lanes}=>with_execution_hold(owner:sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:receipt))) as NonEmptyStr,use:h=>drive(hold:h,lanes:lanes,token_source:token_source,remaining:8640))
+   }
+  }
+ }
+}

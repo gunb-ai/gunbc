@@ -1,0 +1,48 @@
+module test.claim.print_preparation_kernel_witness_test
+import std.types {String}
+import std.process {ProcessExit}
+import product.printed_chassis.print_preparation {run_kernel,required_settings,deposited_path_edge_allowance_um}
+import extdeps.languages.json.emit {serialize_json}
+fn controls() -> String {join([
+ "import tempfile,copy\n",
+ "leading='G90\\nM83\\nG1 X10 Y10 Z.2\\n; CHANGE_LAYER\\n; FEATURE: Inner wall\\n; printing object X id:0\\nG1 X10.2 Y10 E.025\\n'\n",
+ "p=toolpaths(leading)\n",
+ "assert abs(p['extrusion']['Inner wall']-.025)<1e-9 and p['bounds']==[10.,10.,.2,10.2,10.,.2]\n",
+ "circle='G90\\nM83\\nG1 X20 Y10 Z.2\\n; CHANGE_LAYER\\nG2 X20 Y10 I-5 J0 E.5\\n'\n",
+ "p=toolpaths(circle)\n",
+ "assert p['bounds']==[10.,5.,.2,20.,15.,.2],p\n",
+ "\n",
+ "def must_refuse(f):\n",
+ "    try:f()\n",
+ "    except (AssertionError,ValueError,KeyError):return\n",
+ "    raise AssertionError('Negative control admitted')\n",
+ "must_refuse(lambda:toolpaths(leading+'G1 Xnan Y10 E.5\\n'))\n",
+ "must_refuse(lambda:toolpaths(leading+'G2 X10 Y10 R4 E.5\\n'))\n",
+ "\n",
+ "def fixture(path, g=leading, second=False, object_name='X', transform='1 0 0 0 1 0 0 0 1 0 0 0', bad_digest=False):\n",
+ "    with zipfile.ZipFile(path,'w') as z:\n",
+ "        z.writestr('Metadata/plate_1.gcode',g)\n",
+ "        z.writestr('Metadata/plate_1.gcode.md5','wrong' if bad_digest else hashlib.md5(g.encode()).hexdigest())\n",
+ "        if second:z.writestr('Metadata/plate_2.gcode',g)\n",
+ "        z.writestr('Metadata/project_settings.config',json.dumps(requirements))\n",
+ "        z.writestr('Metadata/plate_1.json',json.dumps(\{'filament_ids':[0]\}))\n",
+ "        z.writestr('Metadata/slice_info.config','<config><plate><metadata key=\"outside\" value=\"false\"/><metadata key=\"prediction\" value=\"1\"/><metadata key=\"weight\" value=\"1\"/><object name=\"'+object_name+'\" skipped=\"false\"/></plate></config>')\n",
+ "        z.writestr('3D/3dmodel.model','<model unit=\"millimeter\"><build><item transform=\"'+transform+'\"/></build></model>')\n",
+ "with tempfile.TemporaryDirectory() as d:\n",
+ "    p=pathlib.Path(d)/'fixture.3mf'\n",
+ "    def check():return readback(p,['X'],requirements,[180,180,180],['X'],[],edge_allowance_um)\n",
+ "    fixture(p);assert check()['objects']==['X']\n",
+ "    fixture(p,second=True);must_refuse(check)\n",
+ "    fixture(p,object_name='Y');must_refuse(check)\n",
+ "    fixture(p,transform='2 0 0 0 1 0 0 0 1 0 0 0');must_refuse(check)\n",
+ "    fixture(p,bad_digest=True);must_refuse(check)\n",
+ "    fixture(p,g=leading+'G1 X181 Y10 E.5\\n');must_refuse(check)\n",
+ "    fixture(p,g=leading+'G1 X10 Y10 Z181 E.5\\n');must_refuse(check)\n",
+ "    fixture(p,g=leading+'; FEATURE: Support\\nG1 X10.4 Y10 E.5\\n');must_refuse(check)\n",
+ "print('PASS: leading-dot extrusion, full-circle bounds, valid archive; nine refusal controls')\n",
+],"")}
+fn exercise_kernel(script:String) -> ProcessExit {
+ run_kernel(script:script,call:join(["\nrequirements=",serialize_json(v:required_settings()),"\nedge_allowance_um=",to_string(deposited_path_edge_allowance_um),"\n",controls()],""))
+}
+
+fn run(script:String) -> ProcessExit {exercise_kernel(script:script)}

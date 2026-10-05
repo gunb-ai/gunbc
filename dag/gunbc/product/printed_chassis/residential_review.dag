@@ -1,6 +1,6 @@
 module product.printed_chassis.residential_review
 import std.measure {micrometer_count}
-import product.printed_chassis.cassette {printed_parts,tray_w,tray_d,board_w,board_d}
+import product.printed_chassis.cassette {printed_parts,tray_w,tray_d,board_w,board_d,rear_socket_bolt_clearances}
 import product.printed_chassis.rack_assembly {hardware}
 import product.printed_chassis.cooler_configuration {noctua_envelope,residential_cooler}
 import product.printed_chassis.stack_geometry {stack_pitch_for_cooler}
@@ -13,32 +13,35 @@ import extdeps.languages.json.emit {serialize_json,json_object,json_kv,json_arra
 import gunbc.cli_wire {CliWireResponse,CliWirePrintable}
 import std.process {ExitSuccess,exit_failure}
 
-fn main() -> CliWireResponse {
+import std.types {List,Int,String}
+import product.printed_chassis.rear_cooling {RearCoolingReading}
+import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterface}
+
+type ResidentialAssembly = ResidentialAssemblyReady {parts:List<AssemblyPart>,joints:List<MechanicalInterface>,pitch:Int,cooling:RearCoolingReading} | ResidentialAssemblyRefused {reason:String}
+fn residential_assembly() -> ResidentialAssembly {
  let pitch=stack_pitch_for_cooler(cooler:residential_cooler,contact_plane_um:30000)
  let selection=select_rear_fans(candidates:rear_fan_candidates,opening:rear_opening(width_um:tray_w,pitch_um:pitch,left_um:20000,right_um:20000,bottom_um:20000,top_um:20000,depth_um:60000),bed_um:170000)
  match selection {
- RearCoolingInvalidInput=>CliWirePrintable {bytes:"Invalid rear opening",exit:exit_failure(reason:"Invalid rear opening")}
- RearCoolingNoFit=>CliWirePrintable {bytes:"No rear fan fits",exit:exit_failure(reason:"No rear fan fits")}
- RearFanGeometry {bank:b}=>{
-  if b.count!=1 || micrometer_count(m:b.fan.pattern.frame_edge)!=140000 {return CliWirePrintable {bytes:"Residential review requires current single 140 mm selection",exit:exit_failure(reason:"Review configuration changed")}}
-  let tray=filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4")
-  let board=filter(hardware(),p=>p.id=="BOARD"||p.id=="RAM1"||p.id=="RAM2"||p.id=="IO")
-  match rear_assembly(bank:b) {
-  RearAssemblyUnsupportedBank=>CliWirePrintable {bytes:"Unsupported rear assembly",exit:exit_failure(reason:"Unsupported rear assembly")}
-  RearAssemblyMountRefused=>CliWirePrintable {bytes:"Rear mount refused",exit:exit_failure(reason:"Rear mount refused")}
-  RearAssemblyGeometry {parts:rear,interfaces:joints}=>{
-  match stack_joinery(pitch_um:pitch) {
-  StackJoineryHeightUnsupported=>CliWirePrintable {bytes:"Stack joinery height unsupported",exit:exit_failure(reason:"Stack joinery height unsupported")}
-  StackJoineryGeometry {parts:posts}=>{
-  let parts=concat(tray,concat(board,concat([noctua_envelope(contact_plane_um:30000)],concat(rear,posts))))
-  match realize_review_parts(parts:parts) {
+  RearFanGeometry {bank:b}=>{
+   if b.count!=1 || micrometer_count(m:b.fan.pattern.frame_edge)!=140000 {return ResidentialAssemblyRefused {reason:"Residential configuration requires single 140 mm fan"}}
+   match rear_assembly(bank:b) {
+    RearAssemblyGeometry {parts:rear,interfaces:joints}=>match stack_joinery(pitch_um:pitch) {
+     StackJoineryGeometry {parts:posts}=>ResidentialAssemblyReady {
+      parts:concat(filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4"),concat(filter(hardware(),p=>p.id=="BOARD"||p.id=="RAM1"||p.id=="RAM2"||p.id=="IO"),concat([noctua_envelope(contact_plane_um:30000)],concat(rear,concat(posts,rear_socket_bolt_clearances()))))),joints:joints,pitch:pitch,cooling:selection}
+     _=>ResidentialAssemblyRefused {reason:"Stack joinery height unsupported"}
+    }
+    _=>ResidentialAssemblyRefused {reason:"Rear assembly refused"}
+   }
+  }
+  _=>ResidentialAssemblyRefused {reason:"Rear fan selection refused"}
+ }
+}
+fn main() -> CliWireResponse {
+ match residential_assembly() {
+  ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+  ResidentialAssemblyReady {parts:parts,joints:joints,pitch:pitch,cooling:cooling}=>match realize_review_parts(parts:parts) {
    ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD refused",exit:exit_failure(reason:"Review CAD refused")}
-   ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"program",value:json_string(s:review_program_source(p:p))),json_kv(key:"parts",value:json_array(elements:map(parts,p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:map(joints,j=>interface_json(i:j)))),json_kv(key:"pitch_um",value:json_int(n:pitch)),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:tray_w),json_int(n:tray_d)])),json_kv(key:"board_um",value:json_array(elements:[json_int(n:board_w),json_int(n:board_d)])),json_kv(key:"cooling",value:rear_cooling_json(reading:selection))])),exit:ExitSuccess}
+   ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"program",value:json_string(s:review_program_source(p:p))),json_kv(key:"parts",value:json_array(elements:map(parts,p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:map(joints,j=>interface_json(i:j)))),json_kv(key:"pitch_um",value:json_int(n:pitch)),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:tray_w),json_int(n:tray_d)])),json_kv(key:"board_um",value:json_array(elements:[json_int(n:board_w),json_int(n:board_d)])),json_kv(key:"cooling",value:rear_cooling_json(reading:cooling))])),exit:ExitSuccess}
   }
  }
- }
-}
-}
-}
-}
 }

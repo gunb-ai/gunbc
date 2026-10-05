@@ -12,7 +12,7 @@ This is the current queue; dated gauge and rack-frame plans are historical. No n
 | CAS-5 | Complete power cassette and harness layout | CAS-2, CAS-4 | Electrical/interface planning exists; physical placement open |
 | CAS-6 | Validate final loads, airflow and materials | CAS-3, CAS-4, CAS-5 | Preliminary screens exist; final assembly qualification open |
 | CAS-7 | Publish combined review and prepare remaining prints | CAS-6 | Tall-cassette joinery review updated; power layout and fabrication release remain open |
-| CAS-8 | Desired-set print orchestration and plate packing | Existing CAD/slicing/start routes | Planned; BATCH-1 through BATCH-6 defined |
+| CAS-8 | Desired-set print orchestration and plate packing | Existing CAD/slicing/start routes | Explicit-plate preparation/controller implemented for review; desired-set planning, recovery and live release outstanding |
 
 ## CAS-1 — Restore green CI
 
@@ -88,5 +88,5 @@ Validation of this allocator change: six allocation checks, eight mechanical-ref
 
 ## CAS-8 — Desired-set print orchestration
 
-Requested next workflow milestone: [batch planning, dense plate packing and durable execution](print-batch-orchestration.md). BATCH-1 through BATCH-6 define the implementation and release checks. This replaces manual per-file queueing; it is planned, not implemented.
+Requested next workflow milestone: [batch planning, dense plate packing and durable execution](print-batch-orchestration.md). BATCH-1 through BATCH-6 define the implementation and release checks. The [explicit-plate workflow foundation](print-workflow-integration.md) now owns preparation and fleet queue execution. Desired-set planning, accepted inventory, crash recovery and the live release checks remain outstanding; CAS-8 is not complete.
 

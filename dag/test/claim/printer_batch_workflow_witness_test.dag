@@ -1,0 +1,75 @@
+module test.claim.printer_batch_workflow_witness_test
+import std.types {Bool,String}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import test.claim.print_preparation_kernel_witness_test {exercise_kernel}
+import test.claim.print_batch_plan_witness_test {fleet_plan_decodes_and_rejects_ambiguous_or_unread_inputs}
+import product.printed_chassis.print_workflow {run}
+import test.claim.printer_job_start_witness_test {the_publish_argv_carries_no_credential_flag,the_publish_argv_is_the_command_it_claims_to_be,the_publish_argv_pins_a_ca,the_options_file_carries_both_halves_of_the_login,two_printers_do_not_share_a_request_topic,the_request_topic_is_not_the_report_topic,a_non_printer_asset_resolves_no_serial,printer_02_resolves_its_recorded_serial,the_two_printers_resolve_different_serials,the_start_command_is_not_published_at_most_once,the_start_payload_names_the_delivered_file,the_start_payload_selects_ams_slot_one,the_lan_broker_endpoint_is_tls,a_lost_connection_is_not_reported_as_a_refusal,an_unknown_outcome_with_residue_is_still_unknown,every_nonzero_publish_result_is_unknown_until_the_table_is_measured,the_unknown_cause_warns_that_the_printer_may_be_printing,no_start_outcome_authorizes_a_second_publish,the_no_replay_law_examined_every_arm,the_population_contains_both_refused_arms,a_clean_publish_is_still_published,a_quote_in_the_subtask_name_is_escaped_rather_than_closing_the_string,a_backslash_in_the_sequence_id_is_escaped,an_ordinary_sequence_id_is_not_altered}
+import test.claim.printer_operator_approval_witness_test {approval_changes_with_device_bytes_version_or_attempt,completed_or_idle_job_needs_nonblocking_error,unknown_errors_and_incomplete_reports_remain_refused,help_exit_one_needs_the_actual_supported_version_banner,partial_telemetry_does_not_count_as_a_complete_observation,durable_claim_is_bound_to_approval_identity}
+import test.claim.printer_start_reconciliation_witness_test {exact_running_project_survives_spurious_vendor_error,other_project_and_finished_previous_job_never_confirm,partial_duplicate_and_display_only_reports_cannot_confirm,expected_project_pause_failure_and_real_errors_are_distinct,unresolved_budget_terminates_and_confirmation_stops_reads}
+import test.claim.printer_job_monitor_witness_test {only_exact_complete_report_finishes_monitoring,finish_with_real_error_does_not_report_completion,attention_and_unknown_never_request_another_start}
+import test.claim.printer_batch_witness_test {two_printers_have_independent_work_and_attention,duplicate_lane_or_attempt_is_refused_before_effects}
+import test.claim.printer_authorization_census_witness_test {physical_print_requires_an_approval_pattern,every_new_printer_credential_binding_is_censused,receipt_source_comes_from_the_selected_credential}
+import test.claim.cassette_residential_joinery_witness {rear_bank_has_bed_sized_interfaces_and_separate_socket_retention,posts_fit_bed_and_invalid_height_cannot_produce_solids,middle_pop_needs_support_and_top_pop_does_not_borrow_it,rear_panels_have_no_geometry_below_the_rail_feet}
+
+test fn checked_workflow_boundaries() -> Bool {
+ all([fleet_plan_decodes_and_rejects_ambiguous_or_unread_inputs(),
+  the_publish_argv_carries_no_credential_flag(),
+  the_publish_argv_is_the_command_it_claims_to_be(),
+  the_publish_argv_pins_a_ca(),
+  the_options_file_carries_both_halves_of_the_login(),
+  two_printers_do_not_share_a_request_topic(),
+  the_request_topic_is_not_the_report_topic(),
+  a_non_printer_asset_resolves_no_serial(),
+  printer_02_resolves_its_recorded_serial(),
+  the_two_printers_resolve_different_serials(),
+  the_start_command_is_not_published_at_most_once(),
+  the_start_payload_names_the_delivered_file(),
+  the_start_payload_selects_ams_slot_one(),
+  the_lan_broker_endpoint_is_tls(),
+  a_lost_connection_is_not_reported_as_a_refusal(),
+  an_unknown_outcome_with_residue_is_still_unknown(),
+  every_nonzero_publish_result_is_unknown_until_the_table_is_measured(),
+  the_unknown_cause_warns_that_the_printer_may_be_printing(),
+  no_start_outcome_authorizes_a_second_publish(),
+  the_no_replay_law_examined_every_arm(),
+  the_population_contains_both_refused_arms(),
+  a_clean_publish_is_still_published(),
+  a_quote_in_the_subtask_name_is_escaped_rather_than_closing_the_string(),
+  a_backslash_in_the_sequence_id_is_escaped(),
+  an_ordinary_sequence_id_is_not_altered(),
+  approval_changes_with_device_bytes_version_or_attempt(),
+  completed_or_idle_job_needs_nonblocking_error(),
+  unknown_errors_and_incomplete_reports_remain_refused(),
+  help_exit_one_needs_the_actual_supported_version_banner(),
+  partial_telemetry_does_not_count_as_a_complete_observation(),
+  durable_claim_is_bound_to_approval_identity(),
+  exact_running_project_survives_spurious_vendor_error(),
+  other_project_and_finished_previous_job_never_confirm(),
+  partial_duplicate_and_display_only_reports_cannot_confirm(),
+  expected_project_pause_failure_and_real_errors_are_distinct(),
+  unresolved_budget_terminates_and_confirmation_stops_reads(),
+  only_exact_complete_report_finishes_monitoring(),
+  finish_with_real_error_does_not_report_completion(),
+  attention_and_unknown_never_request_another_start(),
+  two_printers_have_independent_work_and_attention(),
+  duplicate_lane_or_attempt_is_refused_before_effects(),
+  physical_print_requires_an_approval_pattern(),
+  every_new_printer_credential_binding_is_censused(),
+  receipt_source_comes_from_the_selected_credential(),
+  rear_bank_has_bed_sized_interfaces_and_separate_socket_retention(),
+  posts_fit_bed_and_invalid_height_cannot_produce_solids(),
+  middle_pop_needs_support_and_top_pop_does_not_borrow_it(),
+  rear_panels_have_no_geometry_below_the_rail_feet()
+ ],passed=>passed)
+}
+
+// End-to-end local validation entry. The production root is fixed to preparation;
+// this function cannot file an approval or start a printer.
+fn validate_preparation(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,control_script:String) -> ProcessExit {
+ if !checked_workflow_boundaries() {return exit_failure(reason:"A workflow boundary witness failed")}
+ match exercise_kernel(script:control_script) {
+  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:"prepare")
+  other=>other
+ }
+}

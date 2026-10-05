@@ -1,0 +1,51 @@
+module product.printed_chassis.print_batch_plan
+import std.types {String,NonEmptyStr,List}
+import std.list {first_duplicate_by_key}
+import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number}
+import extdeps.languages.json.emit {JsonValue,JsonArray}
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field,json_field_string,json_field_int,json_field_string_list,FieldRead}
+import gunbc.fleet_asset_identity {PhysicalAssetIdentity}
+import gunbc.fleet.printer_selection {select_printer,PrinterSelected}
+import product.printed_chassis.print_preparation {PlatePlacement,PlatePreparation,placement_admitted}
+
+type PlateSpec {attempt:String,plan:PlatePreparation}
+type PrinterSpec {printer:PhysicalAssetIdentity,version:NonEmptyStr,plates:List<PlateSpec>}
+fn placement(v:JsonValue) -> PlatePlacement? {
+ let id=match json_field_string(obj:v,key:"id") {FieldRead {value:x}=>x _=>return none}
+ let rx=match json_field_int(obj:v,key:"rx") {FieldRead {value:x}=>x _=>return none}
+ let ry=match json_field_int(obj:v,key:"ry") {FieldRead {value:x}=>x _=>return none}
+ let rz=match json_field_int(obj:v,key:"rz") {FieldRead {value:x}=>x _=>return none}
+ let x=match json_field_int(obj:v,key:"x_um") {FieldRead {value:x}=>x _=>return none}
+ let y=match json_field_int(obj:v,key:"y_um") {FieldRead {value:x}=>x _=>return none}
+ let p=PlatePlacement {id:id,rx:rx,ry:ry,rz:rz,x_um:x,y_um:y}
+ if placement_admitted(p:p) {Present {value:p}} else {none}
+}
+fn plate(v:JsonValue) -> PlateSpec? {
+ let attempt=match json_field_string(obj:v,key:"attempt") {FieldRead {value:x}=>x _=>return none}
+ let values=match json_field(obj:v,key:"placements") {FieldRead {value:JsonArray {elements:x}}=>x _=>return none}
+ let support_free=match json_field_string_list(obj:v,key:"support_free") {FieldRead {value:x}=>x _=>return none}
+ let parsed=map(values,v=>placement(v:v))
+ if attempt=="" || count(parsed)==0 || any(parsed,p=>match p {Absent=>true _=>false}) {return none}
+ let placements=flat_map(parsed,p=>match p {Present {value:x}=>[x] _=>[]})
+ let membership=fold(placements,init:empty_map(),f:(acc,p)=>map_insert(acc,p.id,true))
+ if (match first_duplicate_by_key(xs:placements,key:p=>p.id) {Absent=>false _=>true}) || any(support_free,id=>match map_get(membership,id) {Absent=>true _=>false}) {return none}
+ Present {value:PlateSpec {attempt:attempt,plan:PlatePreparation {placements:placements,support_free:support_free}}}
+}
+fn printer(v:JsonValue) -> PrinterSpec? {
+ let name=match json_field_string(obj:v,key:"printer") {FieldRead {value:x}=>x _=>return none}
+ let identity=match select_printer(name:name) {PrinterSelected {printer:p}=>p _=>return none}
+ let version=match json_field_string(obj:v,key:"version") {FieldRead {value:x}=>x _=>return none}
+ let values=match json_field(obj:v,key:"plates") {FieldRead {value:JsonArray {elements:x}}=>x _=>return none}
+ let parsed=map(values,v=>plate(v:v))
+ if !sm_version_id_is_number(version:version) || count(parsed)==0 || any(parsed,p=>match p {Absent=>true _=>false}) {return none}
+ let plates=flat_map(parsed,p=>match p {Present {value:x}=>[x] _=>[]})
+ if (match first_duplicate_by_key(xs:plates,key:p=>p.attempt) {Absent=>false _=>true}) {return none}
+ Present {value:PrinterSpec {printer:identity,version:version as NonEmptyStr,plates:plates}}
+}
+fn parse_plan(text:String) -> List<PrinterSpec>? {
+ let values=match parse_json_document(s:text) {JsonDocumentParsed {value:JsonArray {elements:x}}=>x _=>return none}
+ let parsed=map(values,v=>printer(v:v))
+ if count(parsed)==0 || any(parsed,p=>match p {Absent=>true _=>false}) {return none}
+ let printers=flat_map(parsed,p=>match p {Present {value:x}=>[x] _=>[]})
+ if (match first_duplicate_by_key(xs:printers,key:p=>p.printer as String) {Absent=>false _=>true}) || (match first_duplicate_by_key(xs:flat_map(printers,p=>p.plates),key:p=>p.attempt) {Absent=>false _=>true}) {none} else {Present {value:printers}}
+}
