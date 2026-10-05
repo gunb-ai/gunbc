@@ -1,6 +1,8 @@
 module v2.std.compilers.target_model
 
+import std.types { List }
 
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution {
@@ -33,7 +35,6 @@ import v2.std.algebra {
   list_tail
 }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -64,7 +65,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   invariant_port_locus,
-  rejected_with_pending
+  rejected_with_pending,
+  None,
+  outcome_with_diagnostics
 }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.compilers.lexing {
@@ -83,6 +86,15 @@ import v2.std.compilers.lexing {
   lex_rule_token_class_optional,
   TriviaRule,
   VoidLexRules,
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  EmptyPattern,
+  OneOrMorePattern,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -155,6 +167,10 @@ import v2.std.node {
   core_occurrences,
   edge_is_core,
   production_edge_label,
+  Bind,
+  Loop,
+  PositionalPlusNamedMarkerEdges,
+  PositionalPrefixThenLabeledEdges
 }
 import v2.std.witness {
   StructuralPropertyWitness
@@ -188,9 +204,6 @@ import v2.std.qualified_name {
   parameter_reference_path_optional,
   lexical_reference_label_optional,
   declaration_reference_path_optional
-}
-import v2.std.logic {
-  Bool
 }
 import v2.std.text {
   Char,
@@ -1220,8 +1233,8 @@ fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<Strin
 
 fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
   match pattern {
-    LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-    KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    LiteralPattern { text: text } => optional_present(value: unicode_scalar_fold(xs: text))
+    KeywordPattern { text: text } => optional_present(value: unicode_scalar_fold(xs: text))
     EmptyPattern => optional_absent()
     CharPattern { char: _ } => optional_absent()
     CharClassPattern { class: _ } => optional_absent()
@@ -1477,8 +1490,8 @@ fn target_layout_token_spelled_flat_diagnostic(token_class: Symbol) -> Diagnosti
 }
 
 fn apply_emit_spelling_quote(prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape>, spelling: String) -> String {
-  let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: escapes)
-  concat(prefix, concat(open, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), close)))
+  let escaped = apply_emit_spelling_escapes(spelling: unicode_scalar_unfold(s: spelling), escapes: escapes)
+  concat(prefix, concat(open, concat(unicode_scalar_fold(xs: escaped), close)))
 }
 
 fn apply_emit_spelling_transform(
@@ -4803,28 +4816,36 @@ fn source_atom_value_for_realization_row(
 fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<Symbol> {
   match value {
     SourceAtomSymbol { identity: id } => optional_present(id)
-    _ => optional_absent()
+    SourceAtomBool { value: _ } => optional_absent()
+    SourceAtomChar { codepoint: _ } => optional_absent()
+    SourceAtomString { value: _ } => optional_absent()
   }
 }
 
 fn source_atom_value_as_bool(value: SourceAtomValue) -> Optional<Bool> {
   match value {
     SourceAtomBool { value: b } => optional_present(b)
-    _ => optional_absent()
+    SourceAtomSymbol { identity: _ } => optional_absent()
+    SourceAtomChar { codepoint: _ } => optional_absent()
+    SourceAtomString { value: _ } => optional_absent()
   }
 }
 
 fn source_atom_value_as_char(value: SourceAtomValue) -> Optional<Char> {
   match value {
     SourceAtomChar { codepoint: c } => optional_present(c)
-    _ => optional_absent()
+    SourceAtomSymbol { identity: _ } => optional_absent()
+    SourceAtomBool { value: _ } => optional_absent()
+    SourceAtomString { value: _ } => optional_absent()
   }
 }
 
 fn source_atom_value_as_string(value: SourceAtomValue) -> Optional<Node> {
   match value {
     SourceAtomString { value: s } => optional_present(s)
-    _ => optional_absent()
+    SourceAtomSymbol { identity: _ } => optional_absent()
+    SourceAtomBool { value: _ } => optional_absent()
+    SourceAtomChar { codepoint: _ } => optional_absent()
   }
 }
 
@@ -4921,7 +4942,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
             kind: TypeNode {
               connective: Atom {
                 identity: symbol_intern_lexeme(
-                  lexeme: chars_to_string(chars: list_snoc_item(xs: Empty, item: codepoint), start: 0, end: 1)
+                  lexeme: unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: codepoint))
                 )
               }
             },
@@ -10996,7 +11017,19 @@ fn target_type_expr_emitted_validate_wire_shape(
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    _ =>
+    TargetTypeExprAtom =>
+      target_type_expr_emitted_validate_positional_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprInstantiation =>
+      target_type_expr_emitted_validate_positional_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprCardinality =>
       target_type_expr_emitted_validate_positional_wire(
         node: node,
         kind: kind,
@@ -12989,7 +13022,47 @@ fn target_use_site_ownership_catalog_lookup_step(
 ) -> TargetUseSiteOwnershipCatalogLookup {
   match acc {
     TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
-    _ =>
+    TargetUseSiteOwnershipCatalogMissing =>
+      match edge.label {
+    Authored { name: display_name } =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: display_name,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
+    Positional =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: ^target_use_site_ownership_derived_row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+      }
+    TargetUseSiteOwnershipCatalogUnique { row: _ } =>
+      match edge.label {
+    Authored { name: display_name } =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: display_name,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
+    Positional =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: ^target_use_site_ownership_derived_row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+      }
+    TargetUseSiteOwnershipCatalogAmbiguous =>
       match edge.label {
     Authored { name: display_name } =>
       target_use_site_ownership_catalog_lookup_step_for_row(
@@ -13902,7 +13975,7 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     PositionalPrefixThenLabeledEdges =>
       target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional_prefix_then_labeled)
-    PositionalPlusOneNamedEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    PositionalPlusNamedMarkerEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
 

@@ -26,7 +26,7 @@ import v2.std.compilers.target_model { char_kernel_type_node, symbol_kernel_type
 import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, Rejected, diagnostics_has_reason }
 import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool, bool_node }
+import v2.std.logic { bool_node }
 import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_type_node }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -65,11 +65,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Bool formal holding an Int is judged and refused. The control below pinned the earlier state (accepted
 // with a counted UndecidableFormalUnresolved) and was written to go red exactly then; it is rewritten, as
 // its own note required, to assert the refusal.
-data kvr_return_bad_source: String = "module v2.test.kvr_return_bad\n\nimport v2.std.logic { Bool }\n\nfn kvr_f(x: Int) -> Bool { 3 }\n"
+data kvr_return_bad_source: String = "module v2.test.kvr_return_bad\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { 3 }\n"
 
-data kvr_return_good_source: String = "module v2.test.kvr_return_good\n\nimport v2.std.logic { Bool }\n\nfn kvr_f(x: Int) -> Bool { true }\n"
+data kvr_return_good_source: String = "module v2.test.kvr_return_good\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { true }\n"
 
-data kvr_formal_source: String = "module v2.test.kvr_formal\n\nimport v2.std.logic { Bool }\n\nfn kvr_p(b: Bool) -> Int { 1 }\n\nfn kvr_g(x: Int) -> Int { kvr_p(b: 3) }\n"
+data kvr_formal_source: String = "module v2.test.kvr_formal\n\nimport std.types { Bool }\n\nfn kvr_p(b: Bool) -> Int { 1 }\n\nfn kvr_g(x: Int) -> Int { kvr_p(b: 3) }\n"
 
 data kvr_ingest: SourceRootIngest = [
   rcf_read(source: kvr_return_bad_source, id: ^kvr_return_bad_read, unit: ^kvr_return_bad_cu, path: "src/v2/test/fixture/kernel_value_type_roster/return_bad.dag"),
@@ -136,11 +136,11 @@ test fn kvr_every_kernel_value_type_is_denoted_by_its_own_identity_holds() -> Bo
 
 // THE RESOLVER'S BINDING IS THE JOIN'S KEY, for a spelling and for each declaration a row lists:
 // what `Bool` binds to is what the join denotes as v2.std.logic bool_node. This is the agreement the
-// two if-chains lacked.
+// two if-chains lacked. The retired declaration path v2.std.logic.Bool binds nothing (the Bool de-fork).
 test fn kvr_a_spelling_and_its_declarations_bind_what_the_join_denotes_holds() -> Bool {
   (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Bool")) == kvr_atom_identity(n: bool_node()))
     && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Int")) == kvr_atom_identity(n: integer_int_type_node()))
-    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")) == kvr_atom_identity(n: bool_node()))
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")) == Absent)
     && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "std.types.Bool")) == kvr_atom_identity(n: bool_node()))
     && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.integer.Int")) == kvr_atom_identity(n: integer_int_type_node()))
     && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Symbol")) == kvr_atom_identity(n: symbol_type_node()))

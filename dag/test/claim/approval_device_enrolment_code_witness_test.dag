@@ -3,7 +3,7 @@ module test.claim.approval_device_enrolment_code_witness_test
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, List, Secret, Int }
 import std.process { ExitSuccess }
-import gunbc.auth.approval_device_routes {
+import gunbc.auth.approval_device_enrolment_code {
   EnrolmentCodeDeliveryReceipt, enrolment_code_delivery_line, enrolment_code_notification, approval_enrolment_code_notification_title,
   issue_and_deliver_enrolment_code_until, deliver_enrolment_code, EnrolmentCodeIssued, EnrolmentCodeIssuanceRefused,
   EnrolmentCodeDelivery, DeliveryAccepted, DeliveryRefused, DeliveryIndeterminate, enrolment_code_delivery_of, enrolment_code_issuance_response,
@@ -13,7 +13,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.ntfy.ntfy { ntfy_publish_outcome_of, ntfy_publish_acceptance }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.approval_request_submission { PublisherTokenLoaded, PublisherTokenUnavailable, NotificationAttempted }
-import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_ntfy_publish { hermetic_ntfy_publish_message_id }
 import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
 import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
@@ -21,7 +21,7 @@ import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_re
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import std.measure { byte_size_count }
@@ -83,7 +83,7 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
     + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567 /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
     && !string_contains(s: joined, pattern: "--uid=")
     && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
-    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
+    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_enrolment_code.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
 }
 
 // The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH

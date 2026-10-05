@@ -1,5 +1,7 @@
 module test.claim.runner_microvm_witness_test
 
+import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import std.measure { ByteSize }
 import product.fabric.isolation {
@@ -11,7 +13,7 @@ import product.fabric.isolation {
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner_microvm_attempt { MicroVmAttemptAccepted, microvm_attempt }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined, FactNotObserved, CgroupEmpty }
 import gunbc.runner_microvm_cell_readiness {
@@ -1370,7 +1372,7 @@ test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool {
             records: [CellAttemptInFlight {
               cell: lost_cell,
               generation: 0,
-              attempt: InFlightAttempt { attempt: lost, invocation_id: "inv-lost" as NonEmptyStr, jit_registration_id: "reg-lost" as NonEmptyStr, credential_device_path: "/srv/gunbc/cells/lost/jail/firecracker/w/root/jit.bin" },
+              attempt: InFlightAttempt { attempt: lost, invocation_id: "inv-lost" as NonEmptyStr, workload: GitHubRunnerWorkload { registration_id: "reg-lost" as NonEmptyStr }, credential_device_path: "/srv/gunbc/cells/lost/jail/firecracker/w/root/jit.bin" },
             }],
           },
           cell: lost_cell,

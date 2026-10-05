@@ -2,7 +2,7 @@ module gunbc.spark.serving_arm_launch
 
 import std.types { List, NonEmptyStr, String, Port }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
@@ -54,6 +54,11 @@ import gunbc.spark.serving_arm {
   serving_arm_admits_under,
   ServingLaunchProfile,
 }
+import gunbc.spark.serving_promotion {
+  ServingPromotionReceipts, serving_promotion_standing, promotion_evidence, serving_promotion_policy,
+  PromotionAdmitsNormalServing, PromotionRefused, PromotionMeasurementServeOnly, promotion_standing_text,
+}
+import gunbc.spark.serving_performance_subject { serving_subject_for_launch }
 import gunbc.spark.arm_memory_fit {
   ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
@@ -284,6 +289,10 @@ type ArmContainerIdentity {
 }
 
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
+
+data glm53_staircase_container_name: NonEmptyStr = "gunbc-glm53-stair-tp4" as NonEmptyStr
+
+data glm53_staircase_head_log_path: NonEmptyStr = "/var/log/gunbc/glm53-stair-head.log" as NonEmptyStr
 data glm_native_master_port: Port = 29501
 
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
@@ -722,7 +731,11 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
 //
 // THE PLAN IS COMPUTED FIRST AND GATED SECOND. Planning is pure, so a plan the gate refuses is
 // discarded with nothing sent anywhere, and every execution-wall refusal keeps its own cause.
-fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
+// NORMAL SERVING ALSO PASSES THE ONE PROMOTION STEP (gunbc.spark.serving_promotion, deforking cut 5):
+// the subject derived from this exact launch must carry its own memory, resolved-layout, quality and
+// workload-calibration receipts beside execution compatibility. A bounded experiment does not ask --
+// it is how those receipts get produced.
+fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity, promotion_receipts: ServingPromotionReceipts) -> ArmLaunchPlan {
   match plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: intent, profile: profile, deployment_env: deployment_env, container: container) {
     ArmLaunchRefused { cause: c } => ArmLaunchRefused { cause: c }
     ArmLaunchPlanned { lines: ls, master: m } =>
@@ -742,11 +755,44 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
             deployment_env: deployment_env) {
             ArmWallExperimentRefused { cause: c } => ArmLaunchRefused { cause: c }
             ArmWallExperimentNotRequired =>
-              arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: none), lines: ls, master: m)
+              match arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: none) {
+                Present { value: c } => ArmLaunchRefused { cause: c }
+                Absent =>
+                  arm_memory_gated_plan(
+                    gate: normal_serving_promotion_refusal(intent: intent, checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile, verdict: verdict, receipts: promotion_receipts),
+                    lines: ls, master: m)
+              }
             ArmWallExperimentPlanned { plan: p } =>
               arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: Present { value: p }), lines: ls, master: m)
           }
         }
+      }
+  }
+}
+
+fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, profile: ServingLaunchProfile, verdict: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> NonEmptyStr? {
+  match intent {
+    ArmBoundedExperiment => none
+    ArmNormalServing =>
+      match serving_checkpoint_row(c: checkpoint) {
+        Absent => Present { value: "no checkpoint row, so no promotion subject derives" as NonEmptyStr }
+        Present { value: crow } =>
+          match serving_runtime_row(r: runtime) {
+            Absent => Present { value: "no runtime row, so no promotion subject derives" as NonEmptyStr }
+            Present { value: rrow } => {
+              let subject = serving_subject_for_launch(
+                checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
+                runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
+                collective_transport: none)
+              let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
+              let standing = serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
+              match standing {
+                PromotionAdmitsNormalServing => none
+                PromotionRefused { cause: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
+                PromotionMeasurementServeOnly { missing: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
+              }
+            }
+          }
       }
   }
 }

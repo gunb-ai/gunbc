@@ -1,6 +1,6 @@
 module v2.test.fixture.changed_selection_outside_discovery
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.workflow.required_floor { ChangedSelectionDispositionRow, DeclinedChangedWitnessOutsideDiscovery }
 
 // ONE FIXTURE, READ BY BOTH SIDES. `test.claim.discovery_census_witness` asserts the modeled decider

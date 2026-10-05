@@ -1,5 +1,6 @@
 module v2.lens.cost.copied_port_derivation
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.lens.cost {
   LinearCost,
@@ -7,10 +8,13 @@ import v2.lens.cost {
   SumCost,
   SymbolicCost,
   UnknownCost,
-  symbolic_cost_of_node
-}
-import v2.std.collection {
-  List
+  symbolic_cost_of_node,
+  ConstantCost,
+  ExponentialCost,
+  FactorialCost,
+  LogCost,
+  PolyLogCost,
+  PolynomialCost
 }
 import v2.std.optional {
   Absent,
@@ -19,7 +23,6 @@ import v2.std.optional {
 }
 import v2.std.node_query { declared_field_from_edge }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
@@ -32,6 +35,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   arrow_body_target_lookup,
+  ComputationNode
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 

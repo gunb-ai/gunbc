@@ -2,7 +2,7 @@ module v2.compiler.self_host.compiler_closure_emit
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.program_assembly { assemble_program_from_ingest_located }
@@ -12,7 +12,6 @@ import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 import v2.std.algebra { contains, length }
-import v2.std.collection { List }
 import v2.std.dependency {
   DependencyView,
   dependency_lens,
@@ -36,6 +35,7 @@ import v2.std.program_segment {
   partition_boundary_fail_closed,
   program_segment_whole_program
 }
+import v2.std.text { String }
 
 // FROZEN, AND REPLACED BY v2.compiler.self_host.closure_emission emit_closure_from_ingest_located
 // (gunbc#12218). Both answer "emit an entry's closure as Rust", and this one answers it wrongly for any

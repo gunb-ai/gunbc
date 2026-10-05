@@ -9,7 +9,6 @@ use self::VariantValueRealization::*;
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_kernel_type_name::KernelTypeName;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

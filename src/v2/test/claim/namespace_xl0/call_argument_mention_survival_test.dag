@@ -16,7 +16,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -62,9 +61,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the only difference between them is whether that reference sits inside a call. So a green on the
 // first with a red on the second isolates call erasure and nothing else, while a red on BOTH says
 // the collector is blind to this tree generally and the probe is uninformative.
-data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
+data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport std.types { Bool }\n\ndata xl0_provided_value: Bool = true\n"
 
-data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\ntype Xl0FieldOnly {}\n\ntype Xl0Wrapper { fld: Xl0FieldOnly }\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\ndata xl0_positional_only: Bool = true\n\nfn xl0_positional_inside() -> Bool { xl0_callee(xl0_positional_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n\nfn xl0_qualified_typed(p: v2.test.xl0_provider.Xl0ProvidedType) -> Bool { true }\n"
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport std.types { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\ntype Xl0FieldOnly {}\n\ntype Xl0Wrapper { fld: Xl0FieldOnly }\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\ndata xl0_positional_only: Bool = true\n\nfn xl0_positional_inside() -> Bool { xl0_callee(xl0_positional_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n\nfn xl0_qualified_typed(p: v2.test.xl0_provider.Xl0ProvidedType) -> Bool { true }\n"
 
 fn xl0_provider_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -326,7 +325,7 @@ test fn a_callee_name_is_reachable_by_the_collector_holds() -> Bool {
 // First it asserted a type-position name was ABSENT, which was the truncated census talking. Then
 // it asserted the name REACHED and I renamed it, on the theory that it was green for the wrong
 // reason -- that the collector does not exclude import statements, that `Bool` appears in
-// `import v2.std.logic { Bool }` in both fixture modules, and that a spelling match cannot tell an
+// `import std.types { Bool }` in both fixture modules, and that a spelling match cannot tell an
 // import mention from a type-position one.
 //
 // THAT THEORY IS RETRACTED AND IT IS RECORDED HERE RATHER THAN DELETED, because it was told to two

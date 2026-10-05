@@ -1,0 +1,11 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/gcp-iam-bootstrap
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+PASS bootstrap_role_drift_never_authorizes_adoption
+PASS deny_exceptions_and_incomplete_readback_withhold_trust
+PASS workflow_trust_requires_completed_deny_and_privilege_readback
+PASS authority_deadline_is_bounded_and_retry_does_not_renew_it
+PASS uncertain_publication_cannot_be_settled_from_an_absent_cell
+PASS unknown_policy_and_unowned_grants_never_authorize_changes
+PASS authority_retirement_preserves_existing_human_and_foreign_access

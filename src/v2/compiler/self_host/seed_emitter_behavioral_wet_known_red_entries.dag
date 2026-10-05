@@ -1,5 +1,6 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
 
+import std.types { List }
 import gunbc.explicit_witness_admission { known_red_probe_execution_roster }
 import std.realization_schedule {
   ScheduleWitnessEntry,
@@ -7,8 +8,6 @@ import std.realization_schedule {
   schedule_witness_entry_eq
 }
 import v2.std.algebra { any, fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // The six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under

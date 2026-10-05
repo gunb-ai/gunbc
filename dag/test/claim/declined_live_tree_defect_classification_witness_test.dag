@@ -8,7 +8,6 @@ import gunbc.declined_live_tree_defect_classification {
   real_defect_count,
   wrong_witness_count
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SubstrateInputsOnly is truthful here and is the point: this witness reads the

@@ -336,6 +336,10 @@ data excl_manager_unaskable_dissolve: DissolutionCondition = unbound_dissolution
 
 data excl_shell_spawn_refused_dissolve: DissolutionCondition = unbound_dissolution(description: "the spawn boundary of the shell transport becomes executable under the execution-corpus scope prefix as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and its four schedule rows delete together. Publishing a mock_response for ShellSpawnProbe.Observed does NOT discharge it: a mocked ShellSpawnRefused re-checks the assertions against a fixture, not against the spawn.")
 
+data excl_process_lifecycle_reason: String = "SUBSTANTIATED per-row: the subject of test.claim.process_lifecycle_wet_witness is whether the host can START a real process detached, observe its readiness over a live socket (bounded by both connect and total deadline -- a stalled listener that accepts and never answers must be cut off by the deadline, not hang), and KILL it with the death CONFIRMED by reaping through the closed ProcessReapOutcome (Signaled { signal: 15 } for SIGTERM, distinct from an ordinary exit; ECHILD answers ReapRefused, never a fabricated still-running). All three are facts about the real process boundary, so the file cannot be made hermetic: the operations it calls (extdeps.posix.process StartDetached/Reap) deliberately carry no mock_response -- a hermetic replay of a pid is a fabricated process, the same vacuous pass excl_shell_spawn_refused_reason records once. Its fns are scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, which the required floor executes: the only effects are spawning a local node one-shot server or stalled listener on a loopback port derived from the witness's own mktemp workdir, bounded loopback probes, one SIGTERM, and removal of the workdir the witness created -- no network beyond 127.0.0.1, no cargo, no remote host, no writes outside the tempdir."
+
+data excl_process_lifecycle_dissolve: DissolutionCondition = unbound_dissolution(description: "the spawn/reap boundary of extdeps.posix.process becomes executable under the execution-corpus scope prefix as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and its four schedule rows delete together. Publishing a mock_response for StartDetached or Reap does NOT discharge it: a replayed pid or a replayed lifecycle outcome re-checks the assertions against a fixture, not against a real process.")
+
 // bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the
 // file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they are CLASSIFIED
 // as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in
@@ -399,7 +403,7 @@ data excl_local_repo_wet_enrolment_code_reason: String = "real host-effect execu
 
 data excl_local_repo_wet_enrolment_code_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.DirWithTemplate and the file CAS writes sufficient for the enrolment slot write to be driven under a fixed store, and a fixed-octets mock_response lands for Urandom.ReadBytes; then both fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
-data excl_local_repo_wet_ntfy_runtime_readback_reason: String = "real host-effect execution witness over the approval broker's enrolment-code root, gunbc.auth.approval_device_routes issue_device_enrolment_code, which accepts only a release revision and whose first effect is gunbc.auth.approval_ntfy_access_readback approval_ntfy_runtime_reading: READ-ONLY HOST PROCESS READS through shell.Exec.RunArgv (systemctl show, cat of /proc files, getconf, stat, id, the ntfy binary's version and access listing, tailscale serve status, several under sudo -n), for which the hermetic route has no published mock case. None of them writes; the claim asserts the verb refuses before any code is minted and that the store root is never created, and that holds on EVERY host because every reading's verdict is a refusal (a failed or inactive unit, a runtime gap, or -- the claim passing a revision that is never installed -- the per-release process-observation helper's read failing), so admitting it imports no host-conditional red. The same module's second claim runs that helper entry (gunbc.auth.approval_ntfy_runtime_observe approval_ntfy_runtime_observe) for real and asserts its printed outcome decodes through the verb's codec, which holds on every host (a refusal naming its read, or an observation). Every refusal arm is witnessed hermetically over supplied readings in test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real root. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)."
+data excl_local_repo_wet_ntfy_runtime_readback_reason: String = "real host-effect execution witness over the approval broker's enrolment-code root, gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, which accepts only a release revision and whose first effect is gunbc.auth.approval_ntfy_access_readback approval_ntfy_runtime_reading: READ-ONLY HOST PROCESS READS through shell.Exec.RunArgv (systemctl show, cat of /proc files, getconf, stat, id, the ntfy binary's version and access listing, tailscale serve status, several under sudo -n), for which the hermetic route has no published mock case. None of them writes; the claim asserts the verb refuses before any code is minted and that the store root is never created, and that holds on EVERY host because every reading's verdict is a refusal (a failed or inactive unit, a runtime gap, or -- the claim passing a revision that is never installed -- the per-release process-observation helper's read failing), so admitting it imports no host-conditional red. The same module's second claim runs that helper entry (gunbc.auth.approval_ntfy_runtime_observe approval_ntfy_runtime_observe) for real and asserts its printed outcome decodes through the verb's codec, which holds on every host (a refusal naming its read, or an observation). Every refusal arm is witnessed hermetically over supplied readings in test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real root. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)."
 
 data excl_local_repo_wet_ntfy_runtime_readback_dissolve: DissolutionCondition = unbound_dissolution(description: "a published mock case lands for shell.Exec.RunArgv sufficient to drive every read in the complete gunbc.auth.approval_ntfy_access_readback reads_in_order population that approval_ntfy_runtime_reading takes, under a fixed reading, and issue_device_enrolment_code's refusal before the clock, the entropy read and the store is re-checked under it; then the fn re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
 
@@ -416,6 +420,10 @@ data excl_local_repo_wet_profile_store_dissolve: DissolutionCondition = unbound_
 data excl_local_repo_wet_scm_guarded_save_reason: String = "real host-effect execution witness over the SCM GUARDED SAVE'S WRITE (test.claim.scm_repository_save_real_execution_witness): the fresh-generation claim drives gunbc.scm.repository_save save_repository_sharded_guarded through Filesystem.Write over the committed v7 fixture and reads it back. The hermetic route has no arm for Filesystem.Write (no mock_response), measured as a route gap on gunbc#12787's floor; the write rewrites the bytes the fixture already holds, so it is idempotent on the local-repo wet lane."
 
 data excl_local_repo_wet_scm_guarded_save_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage lands for Filesystem.Write that is SUFFICIENT FOR a write observed by a later Filesystem.Read in the same claim, and the fresh-generation claim is re-checked under it; then the fn re-enrolls as an ordinary hermetic discovery row and this row deletes")
+
+data excl_local_repo_wet_tun_real_reader_reason: String = "real host-read execution witness over the TUN DESCRIPTOR CENSUS (test.claim.workspace_network_real_reader_witness_test): the claim drives extdeps.linux.tun_fdinfo tun_descriptor_census_observe through Filesystem.Read of /proc/self/status and /sys/class/net for a device that cannot exist, and asserts the route the reader's effective uid dictates. It is the inhabitance pair of the supplied-input claims in test.claim.workspace_network_observation_witness_test. The hermetic route has no arm for Filesystem.Read outside the checkout, measured as a route gap on gunbc#13310's floor. It only reads, so it is idempotent on the local-repo wet lane."
+
+data excl_local_repo_wet_tun_real_reader_dissolve: DissolutionCondition = unbound_dissolution(description: "the hermetic route gains host procfs and sysfs read coverage SUFFICIENT FOR the real reader to reach its uid-dictated route, and the claim is re-checked under it; then the fn re-enrolls as an ordinary hermetic discovery row, leaves local_repo_wet_schedule and floor_route_gap, and this row deletes. A canned mock_response for Filesystem.Read does NOT discharge it, because it would replace the real reading the claim exists to make")
 
 data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands and assertions are re-checked under a fixed mock; then the fns re-enroll as ordinary hermetic discovery rows and this row deletes (install_media_real_execution_wet_note)")
 
@@ -960,6 +968,61 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "login_callback_hold_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_acquisition_storage_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_allocation_storage_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_gateway_refresh_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_prelaunch_expiry_hold_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "tailnet_door_cutover_journal_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_allocation_write_seam_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_request_consumer_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "pair_serving_d0_grant_row_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED: the one fn runs git.Plumbing HashObjectStdinNoWrite (`git hash-object --no-filters --stdin`) over caller-held bytes and compares git's own blob id for them; that operation has no mock_response, and an input-blind one would return one id for every input and fabricate the fact under test. THE EXECUTION IS PURELY LOCAL -- one git process reading stdin, no repository, no network -- so it belongs on the local-repo wet lane; the hermetic half is test.claim.spark.pair_serving_d0_release_witness rw_admission_follows_the_captured_row_not_the_path." as String,
+    dissolution: unbound_dissolution(description: "git.Plumbing HashObjectStdinNoWrite gains an input-varying hermetic arm (a modeled git blob-id computation) -- at which point this claim re-enrols as ordinary hermetic discovery and this row deletes. A fixed-output mock does NOT discharge it")},
+  WitnessExclusionRow {
+    pattern: "login_transaction_consume_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "fabric_state_namespace_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "pair_serving_authority_log_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
@@ -994,6 +1057,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_shell_spawn_refused_reason,
     dissolution: excl_shell_spawn_refused_dissolve},
+  WitnessExclusionRow {
+    pattern: "process_lifecycle_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_process_lifecycle_reason,
+    dissolution: excl_process_lifecycle_dissolve},
   WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution_witness_test.dag",
     classification: BinWitnessWet,
@@ -1060,12 +1128,27 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "roadmap_dogfood_route_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "review_sheet_legacy_declaration_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "host_boot_attempt_admission_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "durable_cas_file_store_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "filesystem_link_create_new_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
@@ -1155,7 +1238,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "scm_repository_save_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_scm_guarded_save_reason,
-    dissolution: excl_local_repo_wet_scm_guarded_save_dissolve}
+    dissolution: excl_local_repo_wet_scm_guarded_save_dissolve},
+  WitnessExclusionRow {
+    pattern: "workspace_network_real_reader_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tun_real_reader_reason,
+    dissolution: excl_local_repo_wet_tun_real_reader_dissolve}
 ]
 
 fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {

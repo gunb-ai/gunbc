@@ -5,7 +5,6 @@ import v2.compiler.infer { infer }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
 import v2.std.node_query { field_projection_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_to_dotted_string }
@@ -45,10 +44,12 @@ fn vbp_has_value_projection_of(o: Outcome<ResolvedTree>, field: Symbol) -> Bool 
   }
 }
 
-// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer enrolled in
-// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm: source assembly is the real
-// route this file must exercise (the producer IS that route), and it dominates every claim, so it is paid
-// once in floor preparation and each claim reads the DECIDED, portable value. Claims over one program share
+// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) admits where two or more declared
+// claims read it: source assembly is the real
+// route this file must exercise (the producer IS that route), and it dominates every claim, so it is filled
+// once by the first claim that reads it (netted from that claim) and every later claim reads the DECIDED,
+// portable value. Claims over one program share
 // its producer.
 type VbpCallProjectionReading {
   keeps_field: Bool

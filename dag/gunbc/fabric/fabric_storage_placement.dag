@@ -1,10 +1,14 @@
 module gunbc.fabric_storage_placement
 
+import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
+
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance, dashboard_instance_child }
 import std.effect_grant { Read, Write, Execute }
+import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
 import gunbc.ownership { Ensured }
 import gunbc.managed_directory {
   ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal,
@@ -29,7 +33,7 @@ type FabricStoragePlacement
 
 // The endpoint is the placed host's tailnet name on the store's own HTTPS listener, derived from the
 // fleet network's tailnet domain rather than spelled: an unset domain leaves the store unplaced
-// instead of guessing an address. (gunbc.auth.approval_ntfy_deployment srv1_tailnet_base_url_from
+// instead of guessing an address. (gunbc.fleet_tailnet tailnet_base_url_from
 // derives the same URL shape but answers an undeclared domain with a fabricated .invalid address; a
 // placement must refuse there instead, so it is not reused.)
 //
@@ -37,7 +41,7 @@ type FabricStoragePlacement
 // tailscale strips a mount path before proxying is not modeled in extdeps.tailscale.serve, and a root
 // mount makes the question not arise -- the request path the caller sends is the path the handler
 // routes on. 10000 because srv1's 443 carries the dashboard and its 8443 the approval notification
-// server (gunbc.auth.approval_ntfy_deployment approval_ntfy_serve_port); tailscale serve admits
+// server (gunbc.auth.approval_ntfy_publish approval_ntfy_serve_port); tailscale serve admits
 // HTTPS listeners on 443, 8443 and 10000 only.
 data fabric_storage_https_port: Port = 10000
 
@@ -58,9 +62,9 @@ fn fabric_storage_door_socket() -> NonEmptyStr {
 // The peer the tailscale proxy connects as. tailscaled runs as root, and since v1.98.9 only root may
 // configure a unix proxy target at all (TS-2026-005), so a root peer is the proxy and its request's
 // login header is the principal; every other peer is its own principal and the header is ignored.
-data fabric_storage_door_proxy_peer: NonEmptyStr = "root" as NonEmptyStr
+data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_peer
 
-data fabric_storage_route_prefix: String = "/fabric-storage"
+
 
 // The store root is the placed instance's fabric DB root -- one authority with the deployment that
 // creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root).
@@ -100,7 +104,7 @@ fn fabric_storage_placement() -> FabricStoragePlacement {
 // door socket -- reaches the files only as a request to that process, so the door's admission
 // (gunbc.fabric_storage_serve) is the one wall over every writer. Until 2026-09-27 the CI job
 // principal ALSO wrote the files directly (FabricStorageLocalFiles, bound for the placed host by
-// gunbc.fabric_storage_client fabric_storage_binding_for), and the areas were group ghrunner so it
+// gunbc.fabric_storage_binding fabric_storage_binding_for), and the areas were group ghrunner so it
 // could; that in-process route is retired (operator ruling relayed by proud-deer-538), and with it
 // the group. A writer now needs no filesystem grant on the store at all: it needs to reach the door.
 //
@@ -210,6 +214,21 @@ fn fabric_storage_store_directories() -> List<ManagedDirectoryAdmission> {
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false)),
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)),
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root))),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects)),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads)),
     managed_directory_admit(d: fabric_storage_door_directory()),
   ]
+}
+
+// The authenticated state space shares the fabric DB service and CAS implementation, but never
+// shares its object directory with the legacy CI-writable namespace. A public head alias therefore
+// cannot expose private state objects. Only the store service writes here, even for local callers.
+fn fabric_storage_state_directory(member: NonEmptyStr, path: NonEmptyStr) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: member, path: path as String as FilePath, owner: service, group_principal: service,
+    dependents: [DirectoryDependent { who: service, needs: [Read, Write, Execute] }],
+    ownership: Ensured, entries: EntriesUnmanaged,
+  }
 }

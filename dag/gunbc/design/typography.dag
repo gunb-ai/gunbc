@@ -1,0 +1,37 @@
+module gunbc.design.typography
+
+import std.types { List }
+import gunbc.design.material { CssDecl, decl }
+import gunbc.design.scale { scale_var, font_sans, text_12, text_13, text_14, text_15, text_18 }
+import extdeps.languages.css.properties { FontFamily, FontSize, FontWeight, LineHeight, LetterSpacing }
+
+// One interface family, with roles instead of per-surface font choices.
+// The family follows the observed Issue Tracker body stack; geometry is our compact UI scale.
+// Code and source excerpts retain the separate font_mono token.
+type InterfaceText = InterfaceProse | InterfaceBody | InterfaceLabel | InterfaceMetadata | InterfaceHeading | InterfaceSectionHeading
+
+fn interface_text_decls(role: InterfaceText) -> List<CssDecl> {
+  let size = match role {
+    InterfaceProse => text_14
+    InterfaceBody => text_13
+    InterfaceLabel => text_12
+    InterfaceMetadata => text_12
+    InterfaceHeading => text_18
+    InterfaceSectionHeading => text_15
+  }
+  let weight = match role {
+    InterfaceProse => "400"
+    InterfaceBody => "400"
+    InterfaceMetadata => "400"
+    InterfaceLabel => "500"
+    InterfaceHeading => "500"
+    InterfaceSectionHeading => "500"
+  }
+  [
+    decl(prop: FontFamily, value: scale_var(t: font_sans)),
+    decl(prop: FontSize, value: scale_var(t: size)),
+    decl(prop: FontWeight, value: weight),
+    decl(prop: LineHeight, value: if role == InterfaceProse { "1.55" } else { "1.5" }),
+    decl(prop: LetterSpacing, value: "normal")
+  ]
+}

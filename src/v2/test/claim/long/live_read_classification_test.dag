@@ -1,5 +1,6 @@
 module v2.test.claim.long.live_read_classification_test
 
+import std.types { List }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.live_read_classification {
@@ -32,7 +33,6 @@ import v2.std.live_read {
   DeclFactsReflectionCarrier,
   live_read_carrier_homes_v0
 }
-import v2.std.collection { List }
 import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.fn_index {
   FnArrowDecl,
@@ -41,7 +41,6 @@ import v2.std.fn_index {
 }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.test.claim.complexity.accumulator_copy_roster_gate {
   accumulator_copy_roster_gate_entry_live_tree_disposition

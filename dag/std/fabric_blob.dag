@@ -37,16 +37,11 @@ import extdeps.tools.coreutils_stat
 // PLACEMENT, TRANSPORT AND RETENTION ARE NOT FACTS OF THIS MODULE (DESIGN 3). They belong to its
 // realizations, which spell neither the object key, the size bound nor the verdicts on their own.
 //
-// DECLARED FRONTIER (DESIGN 3c). At this change the module's executing consumer is its own witness
-// (test.claim.std_fabric_blob: the reading mint, the put plan, the address). The outcome shapes
-// FabricBlobPut, FabricBlobGet and fabric_blob_fault_text have no consumer yet. Their consumers land
-// in two named changes, and either one discharges the frontier:
-//   gunbc#13080 -- gunbc.fabric.fabric_blob_r2 (put and get over R2) and its placement and emitted
-//     shell realizations;
-//   the bounded local store's byte parts (quick-gull-60's C1b, stacked on this PR and gunbc#13081),
-//     which mint FabricBlobReading for staged binaries and answer in these outcomes.
-// TRIGGER: the first of those to merge consumes FabricBlobPut and FabricBlobGet; if neither has merged
-// within the lane that owns them, these three are removed rather than left standing.
+// CONSUMERS (DESIGN 3c). The reading mint, the put plan and the address are exercised by
+// test.claim.std_fabric_blob. FabricBlobPut, FabricBlobGet and fabric_blob_fault_text are consumed by
+// gunbc.fabric.fabric_blob_r2 (put and get over R2), which this module's declared frontier named
+// (gunbc#13080) and which discharges it; the bounded local store's byte parts (C1b) are a second
+// consumer.
 
 type FabricBlobAddress {
   key: Sha256Digest

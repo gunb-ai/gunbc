@@ -27,7 +27,6 @@ import v2.std.algebra { list_map }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present }
 
@@ -37,7 +36,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared no separation between tokens, so a Bind rendered as "{letx=(a){x}}" and a conditional as
 // "iftruethen1elsex": the first reads back with no binding in it and the second as one identifier,
 // both ACCEPTED. Each claim here renders an emitted token sequence to text, lexes that text with the
-// dag lex rules and (where a tree is owed) parses it once at the `expr` production. The inputs are
+// dag lex rules and (where a tree is owed) parses it once, entering the grammar at the production
+// under test: `fn_body` (the brace block a Bind renders as; `block_expr` is that production) for a
+// Bind, `if_expr` for the conditional. The inputs are
 // supplied at the rendering interface (the lex rules, the spellings, the transform rows); the last
 // claim is the inhabitance one, on the real route with the dag target model.
 fn trt_ident(binding: Symbol) -> List<ConcreteSyntaxToken> {
@@ -115,7 +116,7 @@ fn trt_token_classes(tokens: List<Token>) -> List<Symbol> {
   list_map(xs: tokens, f: fn(t) { t.class })
 }
 
-fn trt_parse(tokens: List<Token>) -> Optional<Node> {
+fn trt_parse(tokens: List<Token>, production: Symbol) -> Optional<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: prepared, diagnostics: _ } =>
@@ -126,7 +127,7 @@ fn trt_parse(tokens: List<Token>) -> Optional<Node> {
             tokens: tokens,
             validated: modeled.validated,
             analysis: modeled.analysis,
-            production_name: ^dag_production_expr,
+            production_name: production,
             materialization: m
           ) {
             Rejected { diagnostics: _ } => Absent
@@ -181,14 +182,14 @@ fn trt_bind_with_body(body: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxTok
 
 // THE TEXT-GRAIN ROUND TRIP OF ONE EMITTED TOKEN SEQUENCE: rendered with the dag target's rows, the
 // text lexes back to the emitted token classes in order (the join: any merge or split of tokens
-// fails here), and those lexed tokens parse at `expr` to ONE tree holding exactly `lets` bindings.
+// fails here), and those lexed tokens parse at `fn_body` (the block) to ONE tree holding exactly `lets` bindings.
 // `let_under_let` is the tree's shape: a Bind in the VALUE group sits under the outer let node, a
 // Bind in the BODY block does not (the block follows the let as its own statement). The let count is
 // asked only AFTER the join, never instead of it: the unseparated text has the same count.
 fn trt_bind_text_round_trips(tokens: List<ConcreteSyntaxToken>, lets: Int, let_under_let: Bool) -> Bool {
   let read = trt_lex(text: trt_text(tokens: tokens, transforms: dag_token_class_emit_transforms()))
   trt_token_classes(tokens: read) == trt_emitted_classes(tokens: tokens)
-    && match trt_parse(tokens: read) {
+    && match trt_parse(tokens: read, production: ^dag_production_fn_body) {
       Present { value: tree } =>
         trt_count(root: tree, production: ^dag_surface_let_expr) == lets && trt_has_nested_let(root: tree) == let_under_let
       Absent => false
@@ -198,60 +199,37 @@ fn trt_bind_text_round_trips(tokens: List<ConcreteSyntaxToken>, lets: Int, let_u
 fn trt_mixed_text_round_trips() -> Bool {
   let read = trt_lex(text: trt_text(tokens: trt_mixed(), transforms: dag_token_class_emit_transforms()))
   trt_token_classes(tokens: read) == trt_emitted_classes(tokens: trt_mixed())
-    && match trt_parse(tokens: read) {
+    && match trt_parse(tokens: read, production: ^dag_production_if_expr) {
       Present { value: tree } => trt_count(root: tree, production: ^dag_surface_if_expr) == 1
       Absent => false
     }
 }
 
-// THE SIX TEXT ROUND TRIPS, ONE RENDER, ONE LEX AND ONE PARSE EACH. Nullary and pure, enrolled WARM
-// in v2.workflow.floor_pure_producer_share: one expression parse is at or past a new witness's
-// eval-step budget (this PR's first floor run: 67k for the conditional, 122k for the nested Bind,
-// against 72.3k), so each text is round-tripped once at preparation and every claim reads its Bool.
-type TrtVerdicts {
-  bare_body: Bool
-  empty_literal_body: Bool
-  minus_body: Bool
-  bind_body: Bool
-  bind_value: Bool
-  mixed: Bool
-}
-
-fn trt_verdicts() -> TrtVerdicts {
-  TrtVerdicts {
-    bare_body: trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_ident(binding: ^dag_binding_bind_x)), lets: 1, let_under_let: false),
-    empty_literal_body: trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_fixed(classes: [^dag_token_lbrace, ^dag_token_rbrace])), lets: 1, let_under_let: false),
-    minus_body: trt_bind_text_round_trips(
-      tokens: trt_bind_with_body(body: list_append(left: trt_fixed(classes: [^dag_token_minus]), right: trt_ident(binding: ^dag_binding_bind_x))),
-      lets: 1,
-      let_under_let: false
-    ),
-    bind_body: trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_bind(value: trt_ident(binding: ^dag_binding_pick_lit_one))), lets: 2, let_under_let: false),
-    bind_value: trt_bind_text_round_trips(tokens: trt_nested_bind(), lets: 2, let_under_let: true),
-    mixed: trt_mixed_text_round_trips()
-  }
-}
-
 // THE BLOCK-SCOPED BIND `{ let k = (v) { b } }`, AT TEXT GRAIN, for each body the emitter may be
-// handed: a bare name, an empty brace literal, a `-`-led expression, and a Bind.
+// handed: a bare name, an empty brace literal, a `-`-led expression, and a Bind. Each claim pays its
+// own render, lex and parse (only the prepared grammar is shared, by declared demand).
 test fn a_bind_with_a_bare_name_body_round_trips_as_text() -> Bool {
-  trt_verdicts().bare_body
+  trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_ident(binding: ^dag_binding_bind_x)), lets: 1, let_under_let: false)
 }
 
 test fn a_bind_with_an_empty_brace_literal_body_round_trips_as_text() -> Bool {
-  trt_verdicts().empty_literal_body
+  trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_fixed(classes: [^dag_token_lbrace, ^dag_token_rbrace])), lets: 1, let_under_let: false)
 }
 
 test fn a_bind_with_a_minus_led_body_round_trips_as_text() -> Bool {
-  trt_verdicts().minus_body
+  trt_bind_text_round_trips(
+    tokens: trt_bind_with_body(body: list_append(left: trt_fixed(classes: [^dag_token_minus]), right: trt_ident(binding: ^dag_binding_bind_x))),
+    lets: 1,
+    let_under_let: false
+  )
 }
 
 test fn a_bind_with_a_bind_body_round_trips_as_text() -> Bool {
-  trt_verdicts().bind_body
+  trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_bind(value: trt_ident(binding: ^dag_binding_pick_lit_one))), lets: 2, let_under_let: false)
 }
 
 test fn a_bind_with_a_bind_value_round_trips_as_text() -> Bool {
-  trt_verdicts().bind_value
+  trt_bind_text_round_trips(tokens: trt_nested_bind(), lets: 2, let_under_let: true)
 }
 
 // THE RED, KEPT: the same tokens with no transform rows are the rendering the dag target had, and
@@ -264,7 +242,7 @@ test fn nested_bind_text_without_separation_reads_back_as_other_tokens() -> Bool
 }
 
 test fn mixed_expression_text_round_trips() -> Bool {
-  trt_verdicts().mixed
+  trt_mixed_text_round_trips()
 }
 
 // THE CLASS, at its cheapest specimen: unseparated, the six tokens are ONE identifier, which is a

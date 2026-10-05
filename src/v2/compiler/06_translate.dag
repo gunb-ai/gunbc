@@ -1,5 +1,6 @@
 module v2.compiler.translate
 
+import std.types { List }
 import std.occurrence_identity {
   OccurrenceSynthetic
 }
@@ -59,7 +60,8 @@ import v2.std.diagnostic {
   diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
-  rejected_with_pending
+  rejected_with_pending,
+  diagnostics_fatal_reason
 }
 import v2.std.witness {
   Holds,
@@ -168,7 +170,6 @@ import v2.std.compilers.target_model {
   target_reference_layer_apply_value_expression
 }
 import v2.std.collection {
-  List,
   list_at_optional
 }
 import v2.std.arrow_signature {
@@ -200,9 +201,6 @@ import v2.std.algebra {
   fold_list_node,
   is_empty,
   length
-}
-import v2.std.logic {
-  Bool
 }
 import v2.std.text {
   String
@@ -666,7 +664,7 @@ fn translate_arrow_carries_body(node: Node) -> Bool {
   match find_arrow_body_child(root: node) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: r } =>
-      !((r.head.reason == ^arrow_body_child_missing) || (r.head.reason == ^arrow_body_child_not_arrow))
+      !((diagnostics_fatal_reason(d: r) == ^arrow_body_child_missing) || (diagnostics_fatal_reason(d: r) == ^arrow_body_child_not_arrow))
   }
 }
 fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentationChoice> {
@@ -1047,7 +1045,14 @@ fn translate_algebra_finalize(
         Atom { identity: _ } =>
           match acc {
             TypeExprTranslateDone { node: n } => outcome_accepted(n)
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Conj =>
           match acc {
@@ -1065,7 +1070,10 @@ fn translate_algebra_finalize(
                   target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
                 )
               }
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Disj =>
           match acc {
@@ -1074,7 +1082,12 @@ fn translate_algebra_finalize(
               outcome_accepted(
                 target_type_expr_sum_emitted(form: projection.disj_form, variants: variants)
               )
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Instantiation =>
           match acc {
@@ -1092,7 +1105,12 @@ fn translate_algebra_finalize(
                   )
                 }
               )
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Cardinality =>
           match acc {
@@ -1110,12 +1128,24 @@ fn translate_algebra_finalize(
                   )
                 }
               )
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Arrow =>
           match acc {
             TypeExprTranslateDone { node: n } => outcome_accepted(n)
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
       }
     ComputationNode { behavior: _ } =>
@@ -1581,7 +1611,7 @@ fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
 fn translate_outcome_is_catalog_lookup_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
-  diagnostics.head.reason == ^target_atom_realization_lookup_miss
+  diagnostics_fatal_reason(d: diagnostics) == ^target_atom_realization_lookup_miss
 }
 
 fn translate_apply_wrap_gate_to_value_expression(
@@ -2692,5 +2722,5 @@ fn translate_diagnostic_reason_roster() -> List<Symbol> {
 fn translate_diagnostic_reason_head(
   diagnostics: NonEmptyDiagnostics
 ) -> Optional<TranslateDiagnosticReason> {
-  translate_diagnostic_reason_from_symbol(sym: diagnostics.head.reason)
+  translate_diagnostic_reason_from_symbol(sym: diagnostics_fatal_reason(d: diagnostics))
 }

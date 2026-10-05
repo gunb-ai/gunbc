@@ -14,7 +14,7 @@ import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approv
 import extdeps.tools.env { env_prefixed_argv }
 import v2.std.orchestration { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
@@ -39,7 +39,7 @@ import gunbc.live_deploy.release_locus {
 // runner, exactly as gunbc.auth.approval_keyring_converge reaches srv1: the job prepares the fleet
 // SSH context, connects to srv1 as the bootstrap principal, and elevates to the OPERATOR'S POSIX
 // USER -- the owner of approval_device_store_root and a reader of the ntfy publisher token -- to
-// run gunbc.auth.approval_device_routes issue_device_enrolment_code from the broker's admitted
+// run gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code from the broker's admitted
 // release tree. The remote verb writes the code's slot and delivers the code over the operator's
 // ntfy topic. The verb itself refuses before minting unless its own live read on the host shows
 // the channel private and bound to the running server (gunbc.auth.approval_ntfy_access_readback),
@@ -108,7 +108,7 @@ fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<St
     "run",
     "--source-root", release_dir + "/dag",
     "--source-root", release_dir + "/src/v2",
-    "--entry", release_dir + "/dag/gunbc/auth/approval_device_routes.dag",
+    "--entry", release_dir + "/dag/gunbc/auth/approval_device_enrolment_code.dag",
     "--function", "issue_device_enrolment_code",
     "--arg", "revision=" + release_revision_execstart_text(binding: revision),
   ])

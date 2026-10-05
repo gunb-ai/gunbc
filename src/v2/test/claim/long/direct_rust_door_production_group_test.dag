@@ -4,7 +4,6 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   direct_rust_door_production_group,
   direct_rust_door_production_group_holds,
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // INTEGRATION OBSERVATION with an OPEN COST DEFECT (operator witness-cost policy 2026-08-05). This

@@ -1163,8 +1163,12 @@ fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: Str
   join([head_sha, ".", criterion_key, ".json"], "")
 }
 
-fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".provider-events.jsonl"], "")
+// ONE EVENTS STREAM PER LAUNCH. A reviewer is launched per (criterion, head), an auditor per head and
+// a supervisor per escalation turn; a path shared across launches let a later launch rewrite an
+// earlier one's stream, which erased that launch's token usage from the per-attempt metering
+// (gunbc.roadmap_attempt_metering). The launch discriminator is in the name.
+fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, "@", head_sha, ".provider-events.jsonl"], "")
 }
 
 fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
@@ -1271,10 +1275,10 @@ fn dispatch_review_unit_argv(
         brief: brief,
         timeout_program: instance.toolchain.timeout as String,
         request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
         verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
         verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
-        attempt_identity: join(["reviewer:", node_id as String, "-", attempt_key, "-", criterion_key], ""),
+        attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
       ),
     ),
   )
@@ -1294,6 +1298,10 @@ fn dispatch_attempt_audit_verdict_basename(head_sha: String) -> String {
 
 fn dispatch_attempt_audit_verdict_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
   join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], "")
+}
+
+fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
 }
 
 fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
@@ -1334,10 +1342,10 @@ fn dispatch_audit_unit_argv(
         "--arg", join(["brief=", brief], ""),
         "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
         "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-        "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+        "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
         "--arg", join(["verdict_dir=", dir], ""),
         "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
-        "--arg", join(["attempt_identity=auditor:", node_id as String, "-", attempt_key], ""),
+        "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
       ],
     ),
   )
@@ -1356,6 +1364,10 @@ fn dispatch_attempt_supervisor_dir_for_instance(instance: HostDashboardInstance,
 
 fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
   join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
+}
+
+fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
+  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
 }
 
 fn dispatch_supervisor_attempt_identity(node_id: String, attempt_key: String, turn: Int) -> String {
@@ -1401,7 +1413,7 @@ fn dispatch_supervisor_unit_argv(
         "--arg", join(["brief=", brief], ""),
         "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
         "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-        "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+        "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
         "--arg", join(["verdict_dir=", dir], ""),
         "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
         "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
@@ -1561,21 +1573,29 @@ fn dispatch_current_attempt_events_path_for_instance(
   ], "")
 }
 
-fn dispatch_current_attempt_events_projection_argv_for_instance(
+// THE PROVIDER-EVENT PROJECTION OVER ONE EVENTS FILE. The current-attempt projection names the file
+// through the node's current pointer; a reader of a named attempt names it by the attempt's own key.
+// One argv, two addressings.
+fn dispatch_events_projection_argv_at(
   instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  events_path: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
       cap: ProviderEventProjectionCapability,
     ),
-    args: codex_provider_event_projection_args(
-      path: dispatch_current_attempt_events_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ) as FilePath,
-    ),
+    args: codex_provider_event_projection_args(path: events_path as FilePath),
+  )
+}
+
+fn dispatch_current_attempt_events_projection_argv_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> HostExecArgv {
+  dispatch_events_projection_argv_at(
+    instance: instance,
+    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
   )
 }
 
@@ -1924,6 +1944,23 @@ data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner 
 // mint is one function: the unit's --arg and the attempt state's binding file cannot drift apart.
 // node id plus attempt key is the same uniqueness (the key hashes the id and the spawn instant) in
 // a form that is a safe path segment by construction.
+// A REVIEWER'S OR AUDITOR'S LAUNCH IDENTITY NAMES ONE LAUNCH, rendered injectively. The seat ledger
+// and the per-attempt metering (gunbc.roadmap_attempt_metering) key on it, so two launches -- the same
+// criterion at two heads, or the auditor at two heads -- may never render the same text: each part is
+// length-prefixed and the head is a part, as it is of their events streams. The result is a safe
+// path segment (no '/').
+fn dispatch_launch_identity(kind: String, parts: List<String>) -> String {
+  join([kind, ":", join(map(parts, p => join([to_string(string_length(s: p)), ".", p], "")), ".")], "")
+}
+
+fn dispatch_reviewer_attempt_identity(node_id: String, attempt_key: String, criterion_key: String, head_sha: String) -> String {
+  dispatch_launch_identity(kind: "reviewer", parts: [node_id, attempt_key, criterion_key, head_sha])
+}
+
+fn dispatch_auditor_attempt_identity(node_id: String, attempt_key: String, head_sha: String) -> String {
+  dispatch_launch_identity(kind: "auditor", parts: [node_id, attempt_key, head_sha])
+}
+
 fn dispatch_worker_attempt_identity(node_id: String, attempt_key: String) -> String {
   join(["worker:", node_id, "-", attempt_key], "")
 }

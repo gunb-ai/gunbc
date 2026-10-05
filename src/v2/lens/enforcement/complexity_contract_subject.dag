@@ -1,5 +1,6 @@
 module v2.lens.enforcement.complexity_contract_subject
 
+import std.types { List }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding,
@@ -10,9 +11,7 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
-import v2.std.collection { List }
 import v2.std.algebra { contains, for_all, fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 
 // C0(c) of the v2 complexity capability parity program (operator-ruled 2026-08-05). The former

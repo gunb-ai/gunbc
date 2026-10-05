@@ -4,8 +4,7 @@ import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Terminal }
-import std.types { String }
-import v2.std.collection { List }
+import std.types { String, List }
 
 data cli_wire_host_receipt_disposition: Disposition = Terminal {
   reason: "Single authority for the SEED-GROWTH RECEIPT owed by the host renderer that carries a modeled CliWireResponse to a process's stdout and exit status. It declares WHICH hand-authored Rust declarations that change adds to the seed, why they exist, and what retires them. It does NOT admit them: the realization disposition is an operator judgment and fails closed in its absence, because a receipt that also granted its own admission would be the self-authorized dissolution failure DESIGN names. Terminal because the RECEIPT is permanent -- it outlives the code it describes, recording what was owed and on what trigger it was discharged."

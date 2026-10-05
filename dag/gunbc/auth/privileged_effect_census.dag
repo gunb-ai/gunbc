@@ -15,7 +15,8 @@ import gunbc.spark.bootstrap_provision {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
-import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.auth.managed_host_boot_federation { BootFederationProvisioned, BootFederationUnprovisioned, boot_federation_for, boot_federation_service_account_member }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -238,12 +239,13 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 // interlock is rostered in privileged_effect_interlocks below, and a ruling whose interlock is not
 // rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
-// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation for the boot;
+// WORKLOAD IDENTITY: the admitted boot federation's dedicated account
+// (gunbc.auth.managed_host_boot_federation) for the boot, unbindable when the pair is unprovisioned;
 // the fleet-converge run's principal for host reset-return.
 data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
   effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
 }
 
 data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
@@ -269,7 +271,11 @@ fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity:
 fn mtcollins1_boot_effect() -> PrivilegedEffect {
   mtcollins1_destructive_controller_effect(
     root_subject: "the mtcollins1_boot mode (attach, boot device, power, SOL; census medium readback over the pinned fleet key)" as NonEmptyStr,
-    identity: WorkloadIdentityBindable { member: mtcollins1_boot_service_account_member() as NonEmptyStr },
+    identity: match boot_federation_for(host: operator_host_mtcollins1) {
+      BootFederationProvisioned { federation: f } => WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
+      BootFederationUnprovisioned { host: _, cause: _ } =>
+        WorkloadIdentityUnbindable { cause: "mtcollins1 has no admitted boot federation (gunbc.auth.managed_host_boot_federation boot_federation_for)" as NonEmptyStr }
+    },
   )
 }
 
@@ -280,6 +286,49 @@ fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
     root_subject: "the host_reset_return mode (boot device, power)" as NonEmptyStr,
     identity: convergence_principal(),
   )
+}
+
+// ROTATION ROUTE QUALIFICATION (cut O1a). Grounding a controller's account-write route is its own
+// effect, separate from the rotation Apply that consumes the route: one executed account-write
+// request per controller and build. IRREVERSIBLE, AND SAID SO: an account write over an unqualified
+// route can leave an account enabled holding a password nobody stored, and the exposure window it
+// opens is not undone by a reapply (artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt, steps
+// b1 and b1r). It applies a credential to one controller account, so its reach is one resource. No
+// dispatched run carries it: in this cut it is modeled, with a dry realization only. The realization
+// takes an operator-approved capability (gunbc.auth.approval_broker Redemption) bound to the exact
+// controller, build and request, which is what the selection is expected to return.
+fn route_qualification_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "qualify a BMC account-write route: execute one account-write request on one controller at one firmware build and read it back" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "an account write over an unqualified route can leave an account enabled holding an unstored password; the exposure window is not undone by a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries route qualification; in cut O1a it is modeled with a dry realization only" as NonEmptyStr },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
+// account to a stored and exact-fetched generation and retire the published account to a break-glass
+// generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
+// value each write replaces is gone, and the published factory value is not restorable by a reapply
+// (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's accounts, so its reach is one
+// resource. No dispatched run carries it: in this cut it is modeled, with a dry realization only, and
+// the plan mint takes an operator-approved capability (gunbc.auth.approval_broker Redemption) per write,
+// bound to the exact controller, build and request.
+fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "rotate a BMC's managed account to a stored generation and retire its published account, over admitted routes on one controller at one firmware build" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the BmcSecure account rotation; in cut O1b it is modeled with a dry realization only" as NonEmptyStr },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
 }
 
 // ── INTERLOCKS: the state an effect's parameters are honest only under ─────────────────────────
@@ -301,7 +350,7 @@ type PrivilegedEffectInterlock {
 // is closed by the compiler rather than by this list: the BMC write wrappers take a sole_constructor
 // UnitHoldProof, and the generic operations beneath them are admit_callers-sealed to the callers named
 // in sealed_by (oob_boot_handoff -> mtcollins1_drive_handoff and host_reset_return_issue_and_watch;
-// megarac_attach_remote_image -> mtcollins1_attach_diskless_image; the SOL release and activate to
+// megarac_attach_remote_image -> megarac_attach_boot_image; the SOL release and activate to
 // the boot's SOL acquire). A new caller refuses at compile time (ConstructorCallAdmissionRefused), so
 // adding a root means editing a seal, which is where this row is read.
 type InterlockRoot {
@@ -319,7 +368,7 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
     sealed_by: [
       site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_release"),
       site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
-      site(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
+      site(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
       site(module_path: "gunbc.machine_intake_megarac_media_attach", decl_name: "megarac_attach_remote_image"),
       site(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
       site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
@@ -347,14 +396,14 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     hold: mtcollins1_operator_ruling.interlock,
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
     hold: mtcollins1_operator_ruling.interlock,
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
@@ -517,7 +566,22 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
     effect: PrivilegedEffect {
-      subject: "mint a GitHub App installation token from the App key fetched over WIF, then generate a JIT runner config" as NonEmptyStr,
+      subject: "mint a GitHub App installation token from the App key fetched over WIF, then generate a JIT runner config for one slot -- a microVM attempt or a transient unit on a managed host -- pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
+    effect: PrivilegedEffect {
+      subject: "on every slot exit, delete the slot's JIT runner registration from the organization under the controller's installation token and confirm it absent from the organization's runner listing, pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -578,6 +642,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
+    effect: route_qualification_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
+    effect: bmc_secure_account_rotation_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     effect: mtcollins1_boot_effect(),
     realized: RealizedFederatedGrant,
@@ -590,9 +666,9 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.mtcollins1_boot_federation_provision", decl_name: "mtcollins1_boot_federation_provision_with_supplied_token"),
+    site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
-      subject: "create the mtcollins1 boot's dedicated pool, provider and service account, bind who may act as it, and its two version-pinned accessor cells" as NonEmptyStr,
+      subject: "create each provisioned managed-host boot's dedicated pool, provider and service account, bind who may act as it, and its version-pinned accessor cells" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -624,12 +700,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedRunSelected,
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.cloudflare.r2_mint_secret_access", decl_name: "r2_mint_bootstrap_read_access_converge"),
-    effect: accessor_grant(subject: "the four R2 mint cells (bootstrap read, container read, version add, readback)" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
@@ -823,7 +893,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"),
     effect: PrivilegedEffect {
-      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, under one operator approval of the exact diff" as NonEmptyStr,
+      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, including the grant sets (the R2 mint custody cells), under one operator approval of the exact diff" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

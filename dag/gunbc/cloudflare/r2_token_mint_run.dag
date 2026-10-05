@@ -46,6 +46,12 @@ import gunbc.cloudflare.r2_origin {
   BucketPurpose,
   bucket_purpose_key,
   fabric_durable_origin_standing,
+  bucket_purpose_origin_standing,
+  FabricDurableOrigin,
+  FabricBootOrigin,
+  FabricCacheBlobs,
+  FabricWorkspace,
+  origin_credential_secret_id,
   FleetCloudflareAccountStanding,
   CloudflareAccountAllocated,
   CloudflareAccountUnallocated,
@@ -54,8 +60,6 @@ import gunbc.cloudflare.r2_origin {
   BootstrapCustodyUnrecorded,
   fleet_cloudflare_account_standing,
   fleet_cloudflare_bootstrap_custody,
-  fabric_durable_origin_read_secret_id,
-  fabric_durable_origin_write_secret_id,
   cloudflare_r2_bucket_admin_secret_id,
   fleet_r2_bucket_admin_credential,
   OriginCredentialStanding,
@@ -196,11 +200,24 @@ fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: R2OriginBucket) -
   }
 }
 
-fn r2_origin_token_secret_id(profile: R2OriginTokenProfile) -> NonEmptyStr {
+// WHERE A PROFILE'S TOKEN IS STORED, DERIVED FROM THE PURPOSE'S STANDING rather than from a second
+// roster of secret ids. The object profiles read the custody secret the origin declaration already
+// names for that bucket's credential (gunbc.cloudflare.r2_origin origin_credential_secret_id), so a
+// purpose gains a mintable token by declaring its standing and nothing here changes. An unallocated
+// origin has no credential and therefore no custody locus: Absent, and the entry refuses typed.
+fn r2_origin_token_secret_id(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> NonEmptyStr? {
   match profile {
-    R2OriginObjectRead => fabric_durable_origin_read_secret_id
-    R2OriginObjectWrite => fabric_durable_origin_write_secret_id
-    R2AccountBucketAdmin => cloudflare_r2_bucket_admin_secret_id
+    R2AccountBucketAdmin => Present { value: cloudflare_r2_bucket_admin_secret_id }
+    R2OriginObjectRead => origin_token_secret_id_of(profile: profile, origin: origin)
+    R2OriginObjectWrite => origin_token_secret_id_of(profile: profile, origin: origin)
+  }
+}
+
+fn origin_token_secret_id_of(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> NonEmptyStr? {
+  match origin {
+    R2OriginUnallocated { purpose: _ } => none
+    R2OriginAllocated { bucket: bucket } =>
+      Present { value: origin_credential_secret_id(credential: r2_origin_token_credential(profile: profile, bucket: bucket)) }
   }
 }
 
@@ -285,10 +302,10 @@ fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2Mi
 
 // THE CONTAINER IS ENSURED BY THE MINT FLOW: OBSERVED, AND CREATED WHEN ABSENT (operator direction,
 // 2026-09-19). The create runs BEFORE the Cloudflare Create, so a refused or ambiguous create spends
-// nothing at Cloudflare. Whether it succeeds is a fact about the RUNNING identity, not a choice made
-// here: an operator identity holds project-wide secrets.create and converges in one run; the fleet
-// convergence identity holds only per-secret cells and is refused, and the refusal names the
-// project-level permission it lacks rather than widening that identity. An ambiguous create is not
+// nothing at Cloudflare. Every custody container is created bare by the bootstrap
+// (gunbc.auth.gcp_iam_bootstrap, over gunbc.auth.gcp_iam_converge gcp_iam_converge_grant_sets), so a
+// federated run observes it present; the create arm is the refusal for an identity without the
+// project-level permission, which no recurring identity holds (operator decision 2026-10-04, B'). An ambiguous create is not
 // retried (gunbc.secret_provision_actuator SecretCreationOutcome: a later GET cannot establish
 // absence).
 data r2_mint_container_create_permission: NonEmptyStr = "secretmanager.secrets.create"
@@ -322,10 +339,9 @@ fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmpt
 }
 
 fn ensure_r2_mint_custody_container(
-  profile: R2OriginTokenProfile,
+  secret_id: NonEmptyStr,
   gcp_token: Secret,
 ) -> R2MintCustodyContainerStanding {
-  let secret_id = r2_origin_token_secret_id(profile: profile)
   match observe_secret_container(
     project: fleet_secret_ref(secret_id: secret_id).project,
     secret_id: secret_id,
@@ -348,7 +364,7 @@ fn ensure_r2_mint_custody_container(
                 cause as String,
                 "); creating a secret needs the PROJECT-level permission ",
                 r2_mint_container_create_permission as String,
-                ", which the fleet convergence identity deliberately does not hold -- it carries per-secret cells only",
+                ", which no recurring identity holds; the bootstrap creates custody containers (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply), so declare this secret in a gcp_iam_converge grant set and re-run it",
               ], "") as NonEmptyStr,
             ),
           }
@@ -499,8 +515,14 @@ type R2MintBootstrapStanding
 // container GET, which is readonly.
 fn r2_mint_bootstrap(
   profile: R2OriginTokenProfile,
+  purpose: BucketPurpose,
   requirement: R2MintContainerRequirement,
 ) -> R2MintBootstrapStanding {
+  let origin = bucket_purpose_origin_standing(purpose: purpose)
+  match r2_origin_token_secret_id(profile: profile, origin: origin) {
+    Absent =>
+      R2MintBootstrapRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
+    Present { value: secret_id } =>
   match resolve_access_token() {
     AccessTokenUpsertRequired { plan: plan } =>
       R2MintBootstrapRefused {
@@ -511,13 +533,13 @@ fn r2_mint_bootstrap(
     AccessTokenReady { token: gcp_token } => {
       let container_standing = match requirement {
         CustodyContainerNotNeeded { reason: reason } => R2MintCustodyContainerNotObserved { reason: reason }
-        EnsureCustodyContainer => ensure_r2_mint_custody_container(profile: profile, gcp_token: gcp_token)
+        EnsureCustodyContainer => ensure_r2_mint_custody_container(secret_id: secret_id, gcp_token: gcp_token)
       }
       match classify_r2_mint(
     profile: profile,
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
-    origin: fabric_durable_origin_standing(),
+    origin: origin,
     container: r2_mint_container_admission(standing: container_standing),
   ) {
     R2MintCustodyContainerAbsent { intervention: intervention } =>
@@ -567,6 +589,7 @@ fn r2_mint_bootstrap(
   }
       }
   }
+  }
 }
 
 type R2AccountTokenListing
@@ -600,7 +623,7 @@ fn list_account_tokens(
 // the next rotation and deletes the credential the fabric is reading with.
 fn origin_credential_pin_is_exact(credential: OriginCredentialStanding) -> Bool {
   match credential {
-    OriginCredentialUnminted { mint_entry: _ } => false
+    OriginCredentialUnminted { mint_entry: _, secret_id: _ } => false
     OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
     OriginCredentialPinned { access_key_id: _, token_value: locus } =>
       (locus.version as String) != "latest"
@@ -827,6 +850,7 @@ fn store_minted_token(
 fn list_account_tokens_for_reconcile() -> ProcessExit {
   match r2_mint_bootstrap(
     profile: R2OriginObjectRead,
+    purpose: FabricDurableOrigin {},
     requirement: CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason },
   ) {
     R2MintBootstrapRefused { cause: cause } =>
@@ -861,6 +885,7 @@ fn list_account_tokens_for_reconcile() -> ProcessExit {
 fn revoke_unheld_object_read_token() -> ProcessExit {
   match r2_mint_bootstrap(
     profile: R2OriginObjectRead,
+    purpose: FabricDurableOrigin {},
     requirement: CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason },
   ) {
     R2MintBootstrapRefused { cause: cause } =>
@@ -965,15 +990,53 @@ fn revoke_unheld_object_read_token() -> ProcessExit {
 // check revoke_unheld_object_read_token already performs, applied at the mint rather than only at
 // the revoke.
 fn run() -> ProcessExit {
-  mint_origin_token_and_store(profile: R2OriginObjectRead)
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricDurableOrigin {})
 }
 
 fn run_object_write() -> ProcessExit {
-  mint_origin_token_and_store(profile: R2OriginObjectWrite)
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricDurableOrigin {})
 }
 
+// THE BUCKET-ADMIN GRANT NAMES THE ACCOUNT, NOT A BUCKET, so the purpose it passes is only the origin
+// the shared ladder checks is allocated; it is the durable origin, as it was before the mint was
+// parameterized, so this entry's behavior is unchanged.
 fn run_bucket_admin() -> ProcessExit uses net: Network {
-  mint_origin_token_and_store(profile: R2AccountBucketAdmin)
+  mint_origin_token_and_store(profile: R2AccountBucketAdmin, purpose: FabricDurableOrigin {})
+}
+
+// ONE ENTRY PER (PURPOSE, PROFILE), FOR THE SAME REASON run AND run_object_write ARE TWO: an operator
+// invoking an entry knows from its name which credential the Create will spend. The entries carry no
+// name, secret id or policy of their own -- the token name is the purpose's bucket plus the profile
+// suffix, the custody secret is the one the purpose's standing declares, and the policy is the
+// profile's bucket-scoped grant over that bucket. Each writes a NEW Secret Manager version; the
+// standing in gunbc.cloudflare.r2_origin stays Unminted until a human-reviewed row change pins that
+// version as OriginCredentialPinned, after which the entry refuses before any Create.
+fn run_boot_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricBootOrigin {})
+}
+
+fn run_boot_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricBootOrigin {})
+}
+
+fn run_cache_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricCacheBlobs {})
+}
+
+fn run_cache_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricCacheBlobs {})
+}
+
+// THE WORKSPACE PLACEMENT'S TWO ENTRIES, dispatched through fleet-converge modes
+// r2_workspace_object_read_mint and r2_workspace_object_write_mint so the Create spends the bootstrap
+// token only on the federated route; their stored versions are pinned in gunbc.cloudflare.r2_origin
+// fabric_workspace_standing by a reviewed row change after the run.
+fn run_workspace_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricWorkspace {})
+}
+
+fn run_workspace_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricWorkspace {})
 }
 
 fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> Bool {
@@ -1189,13 +1252,18 @@ fn refuse_with_orphan_receipt(
   }
 }
 
-fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit {
-  if origin_credential_already_pinned(profile: profile, origin: fabric_durable_origin_standing()) {
+fn mint_origin_token_and_store(profile: R2OriginTokenProfile, purpose: BucketPurpose) -> ProcessExit {
+  let origin = bucket_purpose_origin_standing(purpose: purpose)
+  match r2_origin_token_secret_id(profile: profile, origin: origin) {
+    Absent =>
+      exit_failure(reason: concat(concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)), ", NOTHING CREATED"))
+    Present { value: secret_id } =>
+  if origin_credential_already_pinned(profile: profile, origin: origin) {
     exit_failure(reason: concat(
       "THE ORIGIN ALREADY PINS THIS CREDENTIAL TO AN EXACT VERSION, NOTHING CREATED: a second mint would leave a token on the account that no declaration names; rotate by editing the pin in gunbc.cloudflare.r2_origin first -- ",
-      r2_origin_token_secret_id(profile: profile) as String))
+      secret_id as String))
   } else {
-  match r2_mint_bootstrap(profile: profile, requirement: EnsureCustodyContainer) {
+  match r2_mint_bootstrap(profile: profile, purpose: purpose, requirement: EnsureCustodyContainer) {
     R2MintBootstrapRefused { cause: cause } =>
       exit_failure(reason: concat(concat(
         cause as String, ", NOTHING CREATED || the dashboard ceremony this is waiting on: "),
@@ -1228,7 +1296,7 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit {
         R2TokenMinted { token: token, pair: _ } =>
           match store_minted_token(
             token: token,
-            locus: fleet_secret_ref(secret_id: r2_origin_token_secret_id(profile: profile)),
+            locus: fleet_secret_ref(secret_id: secret_id),
             gcp_token: gcp_token,
             container: container,
           ) {
@@ -1257,6 +1325,7 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit {
       }
       }
       }
+  }
   }
   }
 }

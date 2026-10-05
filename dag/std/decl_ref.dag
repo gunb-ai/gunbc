@@ -1,6 +1,6 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -16,6 +16,17 @@ type DeclarationRef {
   module_path: NonEmptyStr
   decl_name: NonEmptyStr
   field: DeclField
+}
+
+// WHETHER A REFERENCE NAMES A TYPE PARAMETER, read from the carrier and never from a spelling. It
+// lives beside the type for the reason the constructors do: one authority for what the field arm
+// means (DESIGN section 3).
+fn declaration_ref_is_type_parameter(ref: DeclarationRef) -> Bool {
+  match ref.field {
+    TypeParameter { name: _ } => true
+    WholeDeclaration => false
+    NamedField { field_name: _ } => false
+  }
 }
 
 // The constructors live HERE, beside the type they construct — single authority (DESIGN section 3).

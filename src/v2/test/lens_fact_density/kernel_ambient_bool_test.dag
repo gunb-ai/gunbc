@@ -5,7 +5,6 @@ import v2.lens.fact_density {
   KernelAmbientAtom,
   carrier_spec_fact
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode }
 
 data kernel_ambient_bool_input: Node = Node {

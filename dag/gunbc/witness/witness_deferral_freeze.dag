@@ -44,16 +44,14 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // is not permission any more than detection failure is. gunbc#8818 is the worked
 // instance -- it routed a relocated witness OUT rather than admitting it in.
 //
-// WHY NOTHING REFUSED WHEN THE RULE WAS BROKEN. The refusal exists and is well
-// written: `v1_compiler.cli_run` `refuse_unexecuted_deferred_witnesses` produces
-// UnclassifiedPathDeferral and says in its own text that moving a file under a
-// long/ or offline path "executes it NOWHERE". It has ONE caller,
-// `run_discovery_corpus_with_options_inner` -- the discovery-corpus batch path.
-// `claim_executor --required-ci` runs three phases, parse / regen / floor, and the
-// floor does its own site projection via `v2.workflow.required_floor`
-// `long_home_prefixes` rather than entering that path. No workflow invokes a batch
-// or plan mode. So the host that would have refused is unreachable from every
-// required run, and the rule's breakage could not surface.
+// WHY NOTHING REFUSED WHEN THE RULE WAS BROKEN. A refusal existed
+// (`refuse_unexecuted_deferred_witnesses`, UnclassifiedPathDeferral) but its ONE caller was
+// the discovery-corpus batch path, which no required run entered: `claim_executor
+// --required-ci` runs parse / regen / floor, and the floor does its own site projection via
+// `v2.workflow.required_floor` `long_home_prefixes`. Both the path and that refusal were
+// deleted as unreachable (2026-10-04). The refusal the rule needs is the required floor's own,
+// named as the restoration trigger of `gunbc.rung_drop`
+// `witness_deferral_freeze_forward_rule_rung_drop`.
 //
 // EVIDENCE GRADE, stated because two of the three claims above are about absences.
 // The cadence standing is read from the corpus's own recorded corrections, not
@@ -459,9 +457,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "grammar_coverage_take_n_live_dag_subset10_work_units_by_execution",
       "grammar_coverage_take_n_fixed_roster_saturates_by_execution",
       "grammar_coverage_dag_tree_receipt_by_execution",
-      "grammar_coverage_v1_core_file_reject_locus_by_execution",
-      "grammar_coverage_v1_tokenize_file_reject_locus_by_execution",
-      "grammar_coverage_v1_rejected_rows_identity_by_execution",
       "grammar_coverage_v1_tree_receipt_by_execution",
       "grammar_coverage_v2_tree_receipt_by_execution",
       "grammar_coverage_parse_fraction_is_derived"

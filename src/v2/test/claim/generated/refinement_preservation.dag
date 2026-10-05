@@ -1,5 +1,6 @@
 module v2.test.generated.refinement_preservation
 
+import std.types { List }
 import v2.lens.testgen {
   Generator,
   RefinementPreservationSubject,
@@ -11,7 +12,6 @@ import v2.lens.testgen {
   testgen_scheduled_refinement_preservation_generators
 }
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   None,
