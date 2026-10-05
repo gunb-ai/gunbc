@@ -5,7 +5,7 @@ import std.types { Int }
 import v2.std.optional { Present, Absent }
 import std.content_hash { sha256_hex_digest }
 import product.host_identity { HostIdentity }
-import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory }
+import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory, hub_cli_blob_store_layout, hub_repo_blob_hard_link_argv }
 import gunbc.artifact_acquisition {
   AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquire_artifact, acquisition_refusal_text,
 }
@@ -147,10 +147,10 @@ fn read_snapshot_file_map(ctx: SparkMaterializeContext, paths: SnapshotHubPaths)
   }
 }
 
-// STEP 1, ON THE SOURCE: every blob appears in the fabric blob root under its sha256, by hard link. `-L`
-// because the model directory's blobs/<name> may itself be a SYMLINK into the hub-level shared store
-// (hub/blobs/<xx>/<sha256>, the layout this hf writes); a hard link of the symlink would serve a dangling
-// pointer, so the link follows it to the real file. On the target the file is placed as a regular file in the
+// STEP 1, ON THE SOURCE: every blob appears in the fabric blob root under its sha256, by hard link, through
+// extdeps.huggingface.hub hub_repo_blob_hard_link_argv: in the hub-level shared-store layout this hf writes
+// (hub_cli_blob_store_layout) the model directory's blobs/<name> is a SYMLINK, and the argv follows it to
+// the real file rather than linking a dangling pointer. On the target the file is placed as a regular file in the
 // model's blobs/, a layout hf also reads; its `hf cache verify` stays the oracle.
 fn expose_snapshot_blobs(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, entries: List<SnapshotFileEntry>) -> String? {
   match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", fabric_blob_root as String]) {
@@ -163,7 +163,7 @@ fn expose_snapshot_blobs(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, 
 }
 
 fn expose_one(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, x: SnapshotFileEntry) -> String {
-  match spark_remote_run(ctx: ctx, argv: ["ln", "-fL", join([paths.repo_dir as String, "/blobs/", x.cache_blob as String], ""), fabric_blob_path(hex: x.sha256_hex) as String]) {
+  match spark_remote_run(ctx: ctx, argv: hub_repo_blob_hard_link_argv(layout: hub_cli_blob_store_layout, repo_blob: join([paths.repo_dir as String, "/blobs/", x.cache_blob as String], "") as NonEmptyStr, destination: fabric_blob_path(hex: x.sha256_hex))) {
     RemoteUnreachable { cause: c, reach: _ } => c
     RemoteRan { exit_code: e2, stdout: _, stderr: err2 } =>
       if e2 != 0 { join(["hard-linking ", x.rel_path as String, " into the blob root exited ", to_string(e2), ": ", err2, " (the Hub cache and the blob root must share a filesystem; nothing is copied instead)"], "") } else { "" }

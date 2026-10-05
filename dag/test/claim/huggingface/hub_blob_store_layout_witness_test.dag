@@ -1,0 +1,35 @@
+module test.claim.huggingface.hub_blob_store_layout_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.huggingface.hub {
+  HubBlobStoreLayout, HubSharedBlobStore, RepoLocalBlobs,
+  hub_cli_blob_store_layout, hub_dereferenced_bytes_argv, hub_repo_blob_hard_link_argv,
+}
+
+// THE LAYOUT THE FLEET'S hf WRITES (hf 1.33, srv7 2026-10-03): the repo folder's blobs/<hash> is a
+// symlink into the hub-level store, so the row is the shared store and a hard link of a repo blob
+// must follow the link. Flipping the row to RepoLocalBlobs reds the first claim; deleting -L from the
+// shared arm reds the second.
+test fn w_fleet_cli_writes_the_shared_store() -> Bool {
+  match hub_cli_blob_store_layout {
+    HubSharedBlobStore => true
+    RepoLocalBlobs => false
+  }
+}
+
+test fn w_shared_store_hard_link_follows_the_symlink() -> Bool {
+  join(hub_repo_blob_hard_link_argv(layout: HubSharedBlobStore, repo_blob: "/c/models--o--m/blobs/ab" as NonEmptyStr, destination: "/f/ab" as NonEmptyStr), " ")
+    == "ln -fL /c/models--o--m/blobs/ab /f/ab"
+}
+
+// Red control: a repo-local blob is the regular file, so its argv carries no -L -- the two arms are
+// distinguishable, which is what makes the claim above say something.
+test fn red_control_repo_local_blob_links_without_following() -> Bool {
+  join(hub_repo_blob_hard_link_argv(layout: RepoLocalBlobs, repo_blob: "/c/b" as NonEmptyStr, destination: "/f/b" as NonEmptyStr), " ") == "ln -f /c/b /f/b"
+}
+
+// A repo folder's completed bytes are read DEREFERENCED: undereferenced, a folder whose blobs are all
+// links reads near zero and shrinks as the fetch completes.
+test fn w_completed_bytes_are_read_dereferenced() -> Bool {
+  join(hub_dereferenced_bytes_argv(path: "/c/models--o--m" as NonEmptyStr), " ") == "du -sbL /c/models--o--m"
+}

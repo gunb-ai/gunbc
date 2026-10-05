@@ -26,6 +26,12 @@ import extdeps.networkmanager.nmcli {
   nmcli_active_connections_argv, nm_active_connection_on,
   NmDeviceStateRead, NmDeviceActivated, NmDeviceDisconnected, NmDeviceOtherState, NmDeviceStateUnreadable,
   nmcli_device_state_get_argv, nm_device_state_of_getter,
+  nm_wireless_powersave_numeric, nm_keyfile_wireless_powersave_key,
+  NmConnectionFilename, NmConnectionFilenameUnreadable, nmcli_connection_filenames_argv, nm_connection_filename_of,
+}
+import extdeps.netplan.netplan {
+  NmProfilePersistence, PersistedByNetplanYaml, PersistedByKeyfile, PersistedNowhere, nm_profile_persistence,
+  NetplanPassthroughRead, PassthroughValue, PassthroughKeyAbsent, netplan_passthrough_value,
 }
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv, journalctl_unit_current_boot_argv }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
@@ -160,7 +166,20 @@ type WirelessLinkObservation {
   device: NmDeviceStateRead
   disconnects: KernelDisconnectCount
   no_secrets_failures: JournalLineCount
+  persistence: PersistedAuthorityRead
 }
+
+// WHERE THE PERSISTED SETTING ACTUALLY LIVES (extdeps.netplan.netplan NmProfilePersistence). On the
+// Sparks the Wi-Fi profile is netplan-generated: the authority is /etc/netplan/90-NM-<uuid>.yaml and
+// the /run keyfile nmcli reads is its regenerated projection (spark-2196, 2026-10-05). So nmcli
+// reading 'disable' is a reading of the projection; the observe also reads the YAML, and the decision
+// counts the setting persisted only when the AUTHORITY carries it -- a projection that agrees while
+// the YAML does not is reverted by the next `netplan generate`, which the fabric rail plan runs.
+type PersistedAuthorityRead
+  = AuthorityNetplanYaml { yaml: NonEmptyStr, text: String }
+  | AuthorityKeyfile { path: NonEmptyStr }
+  | AuthorityRuntimeOnly { path: NonEmptyStr }
+  | AuthorityUnreadable { cause: String }
 
 // THE STANDING THE OBSERVE REPORTS BY NAME. Disconnected-with-no-secrets is the state that needed a
 // human on 2026-10-03, so it is its own arm rather than one more "not connected".
@@ -245,6 +264,61 @@ fn persisted_property_run(profile: NmActiveConnection?, active: NmActiveConnecti
   }
 }
 
+fn observe_persisted_authority(profile: NmActiveConnection?, active: NmActiveConnectionRead, run: fn(List<String>) -> ArgvRun) -> PersistedAuthorityRead {
+  match profile {
+    Absent => AuthorityUnreadable { cause: join(["no governing profile: active on the interface is ", active_connection_text(r: active)], "") }
+    Present { value: c } => {
+      let listing = run(nmcli_connection_filenames_argv())
+      match argv_run_failure(run: listing) {
+        Present { value: why } => AuthorityUnreadable { cause: join(["profile FILENAME unreadable: ", why], "") }
+        Absent =>
+          match nm_connection_filename_of(uuid: c.uuid, stdout: argv_run_stdout(run: listing)) {
+            NmConnectionFilenameUnreadable { text: t } => AuthorityUnreadable { cause: join(["profile FILENAME unreadable: ", t], "") }
+            NmConnectionFilename { path: f } =>
+              match nm_profile_persistence(uuid: c.uuid, filename: f) {
+                PersistedByKeyfile { path: k } => AuthorityKeyfile { path: k }
+                PersistedNowhere { path: r } => AuthorityRuntimeOnly { path: r }
+                PersistedByNetplanYaml { yaml: y } => {
+                  let read = run(["cat", y as String])
+                  match argv_run_failure(run: read) {
+                    Present { value: why } => AuthorityUnreadable { cause: join(["netplan YAML ", y as String, " unreadable: ", why], "") }
+                    Absent => AuthorityNetplanYaml { yaml: y, text: argv_run_stdout(run: read) }
+                  }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+// A profile whose persistence is unread, or that nothing persists, is refused before any plan: a
+// setting converged there would be reported persisted and lost at the next reboot.
+fn persisted_authority_refusal(profile: NmActiveConnection, r: PersistedAuthorityRead) -> String? {
+  match r {
+    AuthorityUnreadable { cause: why } => Present { value: join(["where profile ", profile.uuid as String, " persists is unreadable: ", why], "") }
+    AuthorityRuntimeOnly { path: f } => Present { value: join(["profile ", profile.uuid as String, " is loaded from ", f as String, ", which nothing regenerates or persists, so a converged setting would be lost at reboot"], "") }
+    AuthorityKeyfile { path: _ } => none
+    AuthorityNetplanYaml { yaml: _, text: _ } => none
+  }
+}
+
+// Whether the persisted AUTHORITY holds one setting at its wanted numeric value. A keyfile is the
+// file nmcli read, so the projection check already covers it. netplan omits a passthrough key that
+// NetworkManager left at its default, so an absent key reads as that default.
+fn persisted_authority_holds(r: PersistedAuthorityRead, key: NonEmptyStr, want: Int, upstream_default: Int) -> Bool {
+  match r {
+    AuthorityKeyfile { path: _ } => true
+    AuthorityNetplanYaml { yaml: _, text: t } =>
+      match netplan_passthrough_value(yaml: t, key: key) {
+        PassthroughValue { word: w } => w == to_string(want)
+        PassthroughKeyAbsent => want == upstream_default
+      }
+    AuthorityRuntimeOnly { path: _ } => false
+    AuthorityUnreadable { cause: _ } => false
+  }
+}
+
 fn observe_wireless_link(desired: WirelessLinkDesired, run: fn(List<String>) -> ArgvRun) -> WirelessLinkObservation {
   let active_run = run(nmcli_active_connections_argv())
   let active = match argv_run_failure(run: active_run) {
@@ -260,7 +334,9 @@ fn observe_wireless_link(desired: WirelessLinkDesired, run: fn(List<String>) -> 
   let kernel_run = run(journalctl_kernel_current_boot_argv())
   let device_run = run(nmcli_device_state_get_argv(interface: desired.interface))
   let nm_journal_run = run(journalctl_unit_current_boot_argv(unit: networkmanager_unit))
+  let persistence = observe_persisted_authority(profile: profile, active: active, run: run)
   WirelessLinkObservation {
+    persistence: persistence,
     active: active,
     auth_retries: match argv_run_failure(run: auth_run) {
       Present { value: why } => NmRetryBudgetUnreadable { text: why }
@@ -310,8 +386,8 @@ type WirelessLinkPlan {
   autoconnect_retries: NmRetryBudget?
 }
 
-fn retry_budget_step(observed: NmRetryBudget, want: NmRetryBudget) -> NmRetryBudget? {
-  if nm_retry_budget_numeric(v: observed) == nm_retry_budget_numeric(v: want) { none } else { Present { value: want } }
+fn retry_budget_step(observed: NmRetryBudget, want: NmRetryBudget, authority_holds: Bool) -> NmRetryBudget? {
+  if nm_retry_budget_numeric(v: observed) == nm_retry_budget_numeric(v: want) && authority_holds { none } else { Present { value: want } }
 }
 
 fn wireless_link_decide(desired: WirelessLinkDesired, observed: WirelessLinkObservation) -> UpsertDecision<WirelessLinkPlan> {
@@ -324,6 +400,9 @@ fn wireless_link_decide(desired: WirelessLinkDesired, observed: WirelessLinkObse
       if c.name != (desired.connection as String) {
         Refuse { reason: join(["profile ", c.name, " (", c.uuid as String, ") governs ", desired.interface as String, ", not the desired ", desired.connection as String], "") as NonEmptyStr }
       } else {
+        match persisted_authority_refusal(profile: c, r: observed.persistence) {
+          Present { value: why } => Refuse { reason: why as NonEmptyStr }
+          Absent =>
         match observed.runtime {
           IwPowerSaveUnreadable { text: t } => Refuse { reason: join(["runtime power save unreadable: ", t], "") as NonEmptyStr }
           IwPowerSaveReadValue { value: rt } =>
@@ -339,15 +418,16 @@ fn wireless_link_decide(desired: WirelessLinkDesired, observed: WirelessLinkObse
                         let plan = WirelessLinkPlan {
                           profile: c.uuid,
                           runtime: if rt == want_runtime { none } else { Present { value: want_runtime } },
-                          persisted: if ps == want_persisted { none } else { Present { value: want_persisted } },
-                          auth_retries: retry_budget_step(observed: ar, want: desired.auth_retries),
-                          autoconnect_retries: retry_budget_step(observed: acr, want: desired.autoconnect_retries),
+                          persisted: if ps == want_persisted && persisted_authority_holds(r: observed.persistence, key: nm_keyfile_wireless_powersave_key, want: nm_wireless_powersave_numeric(v: want_persisted), upstream_default: 0) { none } else { Present { value: want_persisted } },
+                          auth_retries: retry_budget_step(observed: ar, want: desired.auth_retries, authority_holds: persisted_authority_holds(r: observed.persistence, key: nm_connection_auth_retries_property, want: nm_retry_budget_numeric(v: desired.auth_retries), upstream_default: -1)),
+                          autoconnect_retries: retry_budget_step(observed: acr, want: desired.autoconnect_retries, authority_holds: persisted_authority_holds(r: observed.persistence, key: nm_connection_autoconnect_retries_property, want: nm_retry_budget_numeric(v: desired.autoconnect_retries), upstream_default: -1)),
                         }
                         if wireless_link_plan_is_empty(plan: plan) { Noop } else { Apply { plan: plan } }
                       }
                     }
                 }
             }
+        }
         }
       }
   }
@@ -480,6 +560,22 @@ fn nm_retry_budget_read_text(r: NmRetryBudgetRead) -> String {
   }
 }
 
+fn passthrough_text(yaml: String, key: NonEmptyStr) -> String {
+  match netplan_passthrough_value(yaml: yaml, key: key) {
+    PassthroughValue { word: w } => join([key as String, "=", w], "")
+    PassthroughKeyAbsent => join([key as String, "=absent(default)"], "")
+  }
+}
+
+fn persisted_authority_text(r: PersistedAuthorityRead) -> String {
+  match r {
+    AuthorityNetplanYaml { yaml: y, text: t } => join(["netplan(", y as String, " ", passthrough_text(yaml: t, key: nm_keyfile_wireless_powersave_key), " ", passthrough_text(yaml: t, key: nm_connection_auth_retries_property), " ", passthrough_text(yaml: t, key: nm_connection_autoconnect_retries_property), ")"], "")
+    AuthorityKeyfile { path: k } => join(["keyfile(", k as String, ")"], "")
+    AuthorityRuntimeOnly { path: f } => join(["runtime-only(", f as String, ")"], "")
+    AuthorityUnreadable { cause: c } => join(["unreadable(", c, ")"], "")
+  }
+}
+
 fn wireless_link_standing_text(s: WirelessLinkStanding) -> String {
   match s {
     LinkActivated => "activated"
@@ -495,6 +591,7 @@ fn wireless_link_observation_line(label: String, o: WirelessLinkObservation) -> 
     label, " standing=", wireless_link_standing_text(s: wireless_link_standing(o: o)),
     " power_save_runtime=", iw_power_save_read_text(r: o.runtime),
     " power_save_persisted=", nm_powersave_read_text(r: o.persisted),
+    " persisted_authority=", persisted_authority_text(r: o.persistence),
     " active_profile=", active_connection_text(r: o.active),
     " auth_retries=", nm_retry_budget_read_text(r: o.auth_retries),
     " autoconnect_retries=", nm_retry_budget_read_text(r: o.autoconnect_retries),

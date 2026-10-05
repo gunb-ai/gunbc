@@ -15,7 +15,9 @@ import extdeps.networkmanager.nmcli {
   nm_connection_auth_retries_property, nm_connection_autoconnect_retries_property,
   NmActiveConnectionOn, NmNoActiveConnection, NmActiveConnectionUnreadable, nm_active_connection_on,
   NmDeviceActivated, NmDeviceDisconnected, nm_device_state_of_getter,
+  NmConnectionFilename, NmConnectionFilenameUnreadable, nm_connection_filename_of,
 }
+import extdeps.netplan.netplan { PassthroughValue, PassthroughKeyAbsent, netplan_passthrough_value }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.fleet_host_identity { operator_host_srv7, operator_host_srv12 }
 import gunbc.fleet_wireless_link {
@@ -26,6 +28,7 @@ import gunbc.fleet_wireless_link {
   wireless_link_uncovered_spark_hosts,
   wireless_link_desired_for, spark_wireless_link_desired, wireless_link_decide, wireless_link_converge,
   WirelessLinkAlreadyConverged, WirelessLinkApplied, WirelessLinkRefused,
+  PersistedAuthorityRead, AuthorityNetplanYaml, AuthorityKeyfile, AuthorityRuntimeOnly, AuthorityUnreadable,
 }
 
 fn srv7_desired() -> WirelessLinkDesired { spark_wireless_link_desired(host: operator_host_srv7) }
@@ -186,8 +189,27 @@ test fn witness_plain_disconnect_and_activated_are_not_no_secrets() -> Bool {
 
 // ── decision over supplied observations ──────────────────────────────────────
 
+// The NM YAML netplan writes for the Spark profile, in the shape read on spark-2196 2026-10-05
+// (passthrough values quoted; the quoting style is netplan's and both are accepted).
+fn netplan_yaml_with(powersave: String) -> String {
+  join([
+    "network:\n  version: 2\n  wifis:\n    NM-a653b65d:\n      renderer: NetworkManager\n      networkmanager:\n        uuid: \"a653b65d\"\n        name: \"Verizon_39TTYV\"\n        passthrough:\n",
+    powersave,
+    "          connection.auth-retries: \"0\"\n          connection.autoconnect-retries: \"0\"\n",
+  ], "")
+}
+
+data netplan_yaml_converged: String = netplan_yaml_with(powersave: "          wifi.powersave: \"2\"\n")
+
+data authority_converged: PersistedAuthorityRead = AuthorityNetplanYaml { yaml: "/etc/netplan/90-NM-x.yaml" as NonEmptyStr, text: netplan_yaml_converged }
+
 fn obs_all(runtime: String, persisted: String, auth: String, autoconnect: String, active: String, device: String, journal: String) -> WirelessLinkObservation {
+  obs_authority(runtime: runtime, persisted: persisted, auth: auth, autoconnect: autoconnect, active: active, device: device, journal: journal, authority: authority_converged)
+}
+
+fn obs_authority(runtime: String, persisted: String, auth: String, autoconnect: String, active: String, device: String, journal: String, authority: PersistedAuthorityRead) -> WirelessLinkObservation {
   WirelessLinkObservation {
+    persistence: authority,
     active: nm_active_connection_on(interface: "wlP9s9" as NonEmptyStr, stdout: active),
     runtime: iw_power_save_of_getter(stdout: runtime),
     persisted: nm_wireless_powersave_of_getter(stdout: persisted),
@@ -268,6 +290,8 @@ fn fake_run_full(runtime: String, name_persisted: String, uuid_persisted: String
     else if line == join(["nmcli -g 802-11-wireless.powersave ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: uuid_persisted, stderr: "" } }
     else if line == join(["nmcli -g connection.auth-retries ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
     else if line == join(["nmcli -g connection.autoconnect-retries ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
+    else if line == "nmcli -t -f UUID,FILENAME connection show" { ArgvRan { exit_code: 0, stdout: join([spark_2196_profile_uuid, ":/run/NetworkManager/system-connections/netplan-NM-", spark_2196_profile_uuid, "-Verizon_39TTYV.nmconnection\nffff-other:/etc/NetworkManager/system-connections/Wired.nmconnection"], ""), stderr: "" } }
+    else if line == join(["cat /etc/netplan/90-NM-", spark_2196_profile_uuid, ".yaml"], "") { ArgvRan { exit_code: 0, stdout: netplan_yaml_converged, stderr: "" } }
     else if line == "iw dev wlP9s9 link" { ArgvRan { exit_code: 0, stdout: iw_link_connected_sample, stderr: "" } }
     else if line == "journalctl -k -b --no-pager -o short-unix" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
     else if line == "nmcli -g GENERAL.STATE device show wlP9s9" { ArgvRan { exit_code: 0, stdout: "100 (connected)", stderr: "" } }
@@ -310,6 +334,89 @@ test fn witness_converge_failed_modify_refuses_at_apply() -> Bool {
 test fn witness_converge_unreadable_refuses_at_observe() -> Bool {
   match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "garbage", persisted: "disable", modify_exit: 0)) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "observe"
+    _ => false
+  }
+}
+
+
+// ── the persisted AUTHORITY, not the projection nmcli reads ───────────────────
+//
+// On the Sparks the profile is netplan-generated (spark-2196, 2026-10-05): the /run keyfile nmcli
+// reads is regenerated from /etc/netplan/90-NM-<uuid>.yaml, so the YAML is where a setting persists.
+
+fn obs_with_authority(authority: PersistedAuthorityRead) -> WirelessLinkObservation {
+  obs_authority(runtime: "Power save: off", persisted: "disable", auth: "0", autoconnect: "0", active: active_line_spark, device: "100 (connected)", journal: "", authority: authority)
+}
+
+test fn witness_filename_listing_picks_the_profile_row() -> Bool {
+  let listing = "aaaa:/run/NetworkManager/system-connections/netplan-NM-aaaa-W.nmconnection\nbbbb:/etc/NetworkManager/system-connections/Wired.nmconnection"
+  let picked = match nm_connection_filename_of(uuid: "aaaa" as NonEmptyStr, stdout: listing) {
+    NmConnectionFilename { path: p } => p as String == "/run/NetworkManager/system-connections/netplan-NM-aaaa-W.nmconnection"
+    NmConnectionFilenameUnreadable { text: _ } => false
+  }
+  let missing = match nm_connection_filename_of(uuid: "cccc" as NonEmptyStr, stdout: listing) {
+    NmConnectionFilenameUnreadable { text: _ } => true
+    NmConnectionFilename { path: _ } => false
+  }
+  picked && missing
+}
+
+test fn witness_passthrough_reads_either_quote_and_absence() -> Bool {
+  let dq = match netplan_passthrough_value(yaml: "        passthrough:\n          wifi.powersave: \"2\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughValue { word: w } => w == "2"  PassthroughKeyAbsent => false }
+  let sq = match netplan_passthrough_value(yaml: "          wifi.powersave: '3'\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughValue { word: w } => w == "3"  PassthroughKeyAbsent => false }
+  let absent = match netplan_passthrough_value(yaml: "          connection.auth-retries: \"0\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughKeyAbsent => true  PassthroughValue { word: _ } => false }
+  dq && sq && absent
+}
+
+// THE DISCRIMINATOR: nmcli reads 'disable' from the projection while the YAML authority says enable.
+// The next `netplan generate` would restore enable, so this is drift, planned to the persisted setter.
+test fn witness_projection_agreeing_while_the_yaml_disagrees_is_drift() -> Bool {
+  let yaml = netplan_yaml_with(powersave: "          wifi.powersave: '3'\n")
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityNetplanYaml { yaml: "/etc/netplan/90-NM-x.yaml" as NonEmptyStr, text: yaml })) {
+    Apply { plan: p } => match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false }
+    _ => false
+  }
+}
+
+// netplan omits a passthrough left at NetworkManager's default, so a YAML with no powersave key is the
+// default, which is not 'disable'.
+test fn witness_yaml_without_the_powersave_key_is_the_default_and_drift() -> Bool {
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityNetplanYaml { yaml: "/etc/netplan/90-NM-x.yaml" as NonEmptyStr, text: netplan_yaml_with(powersave: "") })) {
+    Apply { plan: p } => match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false }
+    _ => false
+  }
+}
+
+test fn witness_yaml_retry_drift_is_planned_even_when_nmcli_reads_zero() -> Bool {
+  let yaml = "        passthrough:\n          wifi.powersave: \"2\"\n"
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityNetplanYaml { yaml: "/etc/netplan/90-NM-x.yaml" as NonEmptyStr, text: yaml })) {
+    Apply { plan: p } =>
+      (match p.auth_retries { Present { value: NmRetryIndefinitely } => true  _ => false })
+      && (match p.persisted { Absent => true  Present { value: _ } => false })
+    _ => false
+  }
+}
+
+test fn witness_converged_yaml_and_keyfile_are_noop() -> Bool {
+  let yaml = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: authority_converged)) { Noop => true  _ => false }
+  let keyfile = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityKeyfile { path: "/etc/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Noop => true  _ => false }
+  yaml && keyfile
+}
+
+test fn witness_runtime_only_or_unread_persistence_refuses() -> Bool {
+  let volatile = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityRuntimeOnly { path: "/run/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
+  let unread = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityUnreadable { cause: "x" })) { Refuse { reason: _ } => true  _ => false }
+  volatile && unread
+}
+
+// THE ROUTE: the real observe reads the FILENAME listing, classifies the netplan /run keyfile, reads
+// the YAML it names by UUID, and reports it -- deleting any of those reads reds this claim.
+test fn witness_observe_reads_the_netplan_authority_by_uuid() -> Bool {
+  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "Power save: off", persisted: "disable", modify_exit: 0)) {
+    WirelessLinkAlreadyConverged { observed: o } => match o.persistence {
+      AuthorityNetplanYaml { yaml: y, text: _ } => y as String == join(["/etc/netplan/90-NM-", spark_2196_profile_uuid, ".yaml"], "")
+      _ => false
+    }
     _ => false
   }
 }

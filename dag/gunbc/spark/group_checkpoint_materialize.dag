@@ -17,6 +17,7 @@ import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.serving_arm { ServingCheckpoint, serving_checkpoint_row, serving_checkpoint_wire }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, SnapshotPlacement, SnapshotSeed, LocalDirectoryPlacement, HubCachePlacement, model_snapshot_completion_check_argv, model_snapshot_subject_for, spark_hub_cache_root }
+import extdeps.huggingface.hub { hub_dereferenced_bytes_argv }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, containerized_hub_cli_for, ContainerizedHubCliBuilt, ContainerizedHubCliRefused, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable, spark_snapshot_verify_observation, spark_transfer_cancel, spark_transfer_unit_for, read_instrument, InstrumentVerified, InstrumentRejectedTheSubject, InstrumentDidNotRun, InstrumentContradictedItself, executor_wrap, SparkTransferCancel, TransferCancelled, TransferCancelledNothingRunning, TransferCancelRefused }
 import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
@@ -309,7 +310,7 @@ fn checkpoint_landed_on_host(ctx: SparkMaterializeContext, m: CheckpointMaterial
       match snapshot_hub_paths(snapshot: snapshot) {
         Absent => none
         Present { value: paths } =>
-          match spark_remote_run(ctx: ctx, argv: ["du", "-sbL", paths.repo_dir as String]) {
+          match spark_remote_run(ctx: ctx, argv: hub_dereferenced_bytes_argv(path: paths.repo_dir)) {
             RemoteUnreachable { cause: c, reach: _ } => Present { value: join(["the host's checkpoint size could not be read: ", c], "") }
             RemoteRan { exit_code: code, stdout: out, stderr: err } =>
               if code != 0 { Present { value: join(["du exited ", to_string(code), ": ", err], "") } } else {

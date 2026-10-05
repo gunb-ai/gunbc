@@ -3,6 +3,9 @@ module extdeps.netplan.netplan
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -88,5 +91,58 @@ fn interface_has_link(o: InterfaceObservation) -> Bool {
     CarrierPresent => true
     CarrierAbsent => false
     CarrierUnobserved => false
+  }
+}
+
+// ── THE NETWORKMANAGER YAML BACKEND: WHICH LAYER PERSISTS A PROFILE ────────────────────────────
+//
+// netplan.readthedocs.io/en/stable/netplan-everywhere/ ("NetworkManager YAML settings back end"):
+// on Ubuntu, NetworkManager stores a connection profile it creates or modifies as netplan YAML,
+// /etc/netplan/90-NM-<uuid>.yaml, carrying every keyfile setting netplan has no native key for under
+// `networkmanager: passthrough:`; `netplan generate` renders that YAML into a keyfile under
+// /run/NetworkManager/system-connections/netplan-NM-<uuid>-<name>.nmconnection, which is what
+// NetworkManager loads. The /run keyfile is a PROJECTION regenerated from the YAML: an edit made to it
+// directly is lost on the next generate, while an edit through NetworkManager (nmcli connection
+// modify) is written back to the YAML. Read on spark-2196 (srv12) 2026-10-05 ~16:55Z by
+// valiant-crab-775: the Wi-Fi profile's FILENAME is that /run keyfile, /etc/NetworkManager/
+// system-connections is empty, the YAML carries `wifi.powersave` '2' and the /run keyfile powersave=2.
+data netplan_nm_generated_profile_prefix: NonEmptyStr = "/run/NetworkManager/system-connections/netplan-" as NonEmptyStr
+data networkmanager_keyfile_profile_dir: NonEmptyStr = "/etc/NetworkManager/system-connections/" as NonEmptyStr
+
+fn netplan_nm_profile_yaml_path(uuid: NonEmptyStr) -> NonEmptyStr {
+  join([netplan_config_dir as String, "/90-NM-", uuid as String, ".yaml"], "") as NonEmptyStr
+}
+
+// WHERE A PROFILE'S SETTINGS PERSIST, decided from the file NetworkManager loaded it from. A /run
+// profile that netplan did not generate is runtime-only: nothing regenerates it and it is gone at
+// reboot, so a setting converged there is not persisted anywhere.
+type NmProfilePersistence
+  = PersistedByNetplanYaml { yaml: NonEmptyStr }
+  | PersistedByKeyfile { path: NonEmptyStr }
+  | PersistedNowhere { path: NonEmptyStr }
+
+fn nm_profile_persistence(uuid: NonEmptyStr, filename: NonEmptyStr) -> NmProfilePersistence {
+  let f = filename as String
+  if starts_with(s: f, prefix: netplan_nm_generated_profile_prefix as String) { PersistedByNetplanYaml { yaml: netplan_nm_profile_yaml_path(uuid: uuid) } }
+  else if starts_with(s: f, prefix: networkmanager_keyfile_profile_dir as String) { PersistedByKeyfile { path: filename } }
+  else { PersistedNowhere { path: filename } }
+}
+
+// A passthrough key in the NM YAML, as the word netplan stores (quotes stripped). The key absent is
+// its own reading: netplan omits a passthrough NetworkManager left at its default, so absence is the
+// default, not an unread value.
+type NetplanPassthroughRead
+  = PassthroughValue { word: String }
+  | PassthroughKeyAbsent
+
+fn netplan_passthrough_value(yaml: String, key: NonEmptyStr) -> NetplanPassthroughRead {
+  let pattern = join([key as String, ":"], "")
+  let hits: List<String> = filter(split(s: yaml, delimiter: "\n"), l => starts_with(s: trim(s: l), prefix: pattern))
+  match first(hits) {
+    Absent => PassthroughKeyAbsent
+    Present { value: l } => {
+      let t = trim(s: l)
+      PassthroughValue { word: replace(s: replace(s: trim(s: substring(s: t, start: length(pattern), end: length(t))), from: "'", to: ""), from: "\"", to: "") }
+    }
   }
 }

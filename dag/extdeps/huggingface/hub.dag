@@ -139,6 +139,35 @@ fn hub_snapshot_directory(cache_root: NonEmptyStr, repo: HubRepoId, revision: No
   ], "") as NonEmptyStr
 }
 
+// WHERE A COMPLETED BLOB'S BYTES LIVE DEPENDS ON THE CLI, and the CLI the fleet runs moved them. The
+// cache document above describes `blobs/<hash>` inside each repo folder as the regular file. hf 1.33
+// (read by valiant-crab-775 on srv7 2026-10-03, during the GLM-5.3 fetch) keeps a completed LFS file
+// in a HUB-LEVEL shared store, `<cache_root>/blobs/<2 hex>/<sha256>`, and leaves the repo folder's
+// `blobs/<hash>` as a SYMLINK into it; only the in-flight `.incomplete` partials are regular files in
+// the repo folder. Two consequences a consumer owes: the repo folder SHRINKS as files complete, so its
+// undereferenced size is not progress; and the repo folder alone (a mount, a copy, a hard link of the
+// entry) hands out dangling links. The shared store sits under the cache root, so a mount of the
+// cache root carries both.
+type HubBlobStoreLayout = RepoLocalBlobs | HubSharedBlobStore
+
+data hub_cli_blob_store_layout: HubBlobStoreLayout = HubSharedBlobStore
+
+// THE BYTES A REPO FOLDER (or its snapshots) HOLDS are read dereferenced: snapshot entries are links
+// in every layout and, in the shared-store layout, so are the repo blobs. GNU du counts an inode once
+// per invocation, so following both kinds of link never counts a blob twice.
+fn hub_dereferenced_bytes_argv(path: NonEmptyStr) -> List<String> {
+  ["du", "-sbL", path as String]
+}
+
+// A HARD LINK OF A REPO BLOB must land on the bytes. In the shared-store layout the entry is a
+// symlink, and `ln` without -L links the symlink itself, a dangling pointer once moved; -L follows it.
+fn hub_repo_blob_hard_link_argv(layout: HubBlobStoreLayout, repo_blob: NonEmptyStr, destination: NonEmptyStr) -> List<String> {
+  match layout {
+    HubSharedBlobStore => ["ln", "-fL", repo_blob as String, destination as String]
+    RepoLocalBlobs => ["ln", "-f", repo_blob as String, destination as String]
+  }
+}
+
 // A REVISION IS AN IMMUTABLE COMMIT AND A BRANCH NAME IS NOT. `refs/<branch>` holds the commit the
 // branch pointed at when it was last fetched, and the document is explicit that re-fetching updates
 // it -- so a branch name resolves to different bytes over time while a commit hash never does. A
