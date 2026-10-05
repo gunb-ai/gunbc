@@ -1,35 +1,28 @@
 module v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skeleton
 
-// RED FOR THE MARSHAL'S LIVE-REFERENCE DEFECT (owning link: coproduct_reflection.rs
-// node_local_reference_name, the permissive companion of node_references_param).
+// REGRESSION GUARD for the skeleton marshal's let-liveness rule: A FIELD PROJECTION READS ITS
+// BASE. A `let pair = <named call>` whose bound record is consumed only through field projections
+// (one level, and nested) must keep its producing call in the body skeleton -- the callee
+// identity atom must be present in FnArrowDecl.output exactly as it is for a let whose record is
+// passed whole to a receiver.
 //
-// The skeleton marshal's let-liveness set is fed by node_local_reference_name, which counted only
-// `ExprVar` and `ExprCall` as value reads. A FIELD projection (`pair.left`) reads its base just as
-// much, but did not count -- so a `let pair = <named call>` whose bound record is only projected
-// fell out of the live set, and the let's RHS -- the producing call itself -- was grafted OUT of
-// the body skeleton. The continuation survives (the downstream trim call is still there), but the
-// skeleton now shows a call consuming a projection of a binding whose producing node is absent.
-// FnArrowDecl.output and the .dag decl facts are built by that same marshal (marshal_fn_body_
-// skeleton), so this shape is missing from the only body grain the .dag substrate exposes, for
-// EVERY consumer of marshal_fn_body_skeleton and fn_arrow_output_skeleton.
+// WHY THIS EXISTS: a probe artifact nearly shipped as a defect report. probe4/probe5's nested
+// skeleton dump printed only the root node, which looked like a projected-only let "collapsing"
+// the whole body grain to the parameter atom; on that evidence a marshal fix (an ExprFieldAccess
+// arm in node_local_reference_name) was drafted. The flat walker (probe2's) and this claim show
+// the truth: the marshal has no ExprFieldAccess arm at all -- projections fall through generic
+// child recursion, so the base ExprVar is always visited and contributes its reference, and the
+// let's RHS grafts. The drafted fix was discarded. This claim now pins the correct behavior: if a
+// future marshal change stops counting projection bases, the producing call vanishes from the
+// skeleton and this witness fails.
 //
-// Why a named-call RHS and not a raw wire read: the dump instrument (por_skeleton_probe, scratch)
-// shows that callee identity atoms are BARE fn names (T:Atom(por_sink), T:Atom(trim)), and that a
-// service operation like Filesystem.Read emits no callee atom and no C: node at all -- a projected
-// wire-read let loses its RHS invisibly at node grain. A NAMED-CALL RHS makes the same loss
-// atom-observable: pre-fix the specimen's skeleton lacks T:Atom(por_mk_pair); post-fix it is
-// present. That asymmetry is the discriminator.
-//
-// THE POSITIVE CONTROL is the mirror shape: the same bound record passed WHOLE to a receiver. Its
-// let was always live by the old analysis too, so its producing call's atom must be present both
-// before and after the fix -- proving the enumeration route sees live-call residue and the red is
-// not a route artifact.
-//
-// The fix under test: a field projection counts as a live reference to its base (the function's own
-// documented contract is "every value read"), resolved through nested projections to the base
-// binding's authored name. Atom emission is untouched -- identity atoms stay on the strict
-// node_references_param -- so reachability queries see no new atoms on genuine param-reference
-// sites; only previously dropped let-RHS structure comes back.
+// TWO FACTS the investigation established, kept here because they cost real runs to learn:
+// - Callee identity atoms are BARE fn names (T:Atom(por_sink), T:Atom(trim)) -- not qualified
+//   paths. Probes that compare qualified ids against skeleton atoms always come up empty.
+// - A raw service operation (Filesystem.Read) emits NO callee atom and NO distinctive node at
+//   node grain, live or dead: a projected-only wire-read let loses nothing OBSERVABLE here, which
+//   is exactly why the parked read-outcome census cannot recognize wire sites at node grain. That
+//   blocker is about service-op anonymity, not liveness; the census decision belongs to its row.
 
 import std.algebra { trim }
 import v2.std.algebra { list_find_first }
@@ -117,12 +110,12 @@ fn por_projected_only_let_survives_in_fn_arrow_skeleton() -> ProcessExit {
                       ExitSuccess
                     } else {
                       exit_failure(
-                        reason: "RED (nested): a let consumed only through a two-level projection lost its producing call from the fn-arrow skeleton",
+                        reason: "REGRESSION: a let consumed only through a two-level projection lost its producing call from the fn-arrow skeleton",
                       )
                     }
                   } else {
                     exit_failure(
-                      reason: "RED: a projected-only let lost its producing call from the fn-arrow skeleton -- the body grain carries the projection's consumer but not the call that produced the binding",
+                      reason: "REGRESSION: a projected-only let lost its producing call from the fn-arrow skeleton -- the body grain carries the projection's consumer but not the call that produced the binding",
                     )
                   }
                 } else {
