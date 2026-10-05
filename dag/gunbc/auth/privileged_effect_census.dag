@@ -702,12 +702,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.cloudflare.r2_mint_secret_access", decl_name: "r2_mint_bootstrap_read_access_converge"),
-    effect: accessor_grant(subject: "the four R2 mint cells (bootstrap read, container read, version add, readback)" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
     effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
@@ -899,7 +893,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"),
     effect: PrivilegedEffect {
-      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, under one operator approval of the exact diff" as NonEmptyStr,
+      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, including the grant sets (the R2 mint custody cells), under one operator approval of the exact diff" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
