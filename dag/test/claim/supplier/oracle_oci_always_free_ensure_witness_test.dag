@@ -11,7 +11,7 @@ import gunbc.oracle_oci.network_ensure {
 import gunbc.oracle_oci.instance_ensure {
   OciInstanceDecision, InstanceHeld, InstanceLaunch, InstanceStop,
   oci_instance_decision, oci_observed_instance_of, oci_free_plan, oci_launch_body,
-  oci_percent_encode, oci_out_of_host_capacity, oci_free_authorized_keys,
+  oci_query_value, OciQueryEncoded, OciQueryRefused, oci_out_of_host_capacity, oci_free_authorized_keys,
   oci_select_offering, oci_domain_answer, DomainOffers, DomainLacks, DomainReadRefused,
   CandidateDomains, CandidateDomainsRefused,
 }
@@ -137,9 +137,13 @@ test fn a_stopped_or_wrong_shaped_namesake_stops_rather_than_launching() -> Bool
     && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.E2.1.Micro\"}]") == "stop"
 }
 
-test fn availability_domain_names_are_percent_encoded() -> Bool {
-  oci_percent_encode(s: "Uocm:US-ASHBURN-AD-1") == "Uocm%3AUS-ASHBURN-AD-1"
-    && oci_percent_encode(s: "Oracle Linux") == "Oracle%20Linux"
+// The query values go through extdeps.uri's encoder: an availability domain's colon and the image
+// query's space come out percent-encoded, and an empty value refuses before any read is sent.
+test fn query_values_are_encoded_by_the_shared_uri_encoder() -> Bool {
+  let colon = match oci_query_value(value: "Uocm:US-ASHBURN-AD-1") { OciQueryEncoded { wire } => wire == "Uocm%3AUS-ASHBURN-AD-1"  OciQueryRefused { line } => false }
+  let space = match oci_query_value(value: "Oracle Linux") { OciQueryEncoded { wire } => wire == "Oracle%20Linux"  OciQueryRefused { line } => false }
+  let empty = match oci_query_value(value: "") { OciQueryRefused { line } => true  OciQueryEncoded { wire } => false }
+  colon && space && empty
 }
 
 test fn out_of_host_capacity_is_read_from_oracles_500_text_only() -> Bool {

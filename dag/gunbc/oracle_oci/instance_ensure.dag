@@ -8,6 +8,7 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
 import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, OnDemandCapacity, oci_shape_wire_name }
 import extdeps.ssh { ssh_public_key_line }
+import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import product.supplier.oracle_oci {
   OciPlannedInstance, OciInstanceSize, A1FlexSize, E2MicroSize,
   InHomeRegion, InMicroEligibleDomain,
@@ -65,32 +66,23 @@ fn oci_free_authorized_keys() -> String {
 
 // ── QUERY ENCODING ────────────────────────────────────────────────────────────────────────────
 //
-// The signing page requires query values URL-encoded per RFC 3986, and the signed target and the
-// sent target to be one string. Availability domain names carry a colon, and the image query carries
-// a space. Everything outside the unreserved set is percent-encoded. The values here are ASCII, and a
-// non-ASCII value is caught later by the signer, which refuses rather than signing it.
+// The signing page requires query values URL-encoded per RFC 3986, and the signed target and the sent
+// target to be one string. Availability domain names carry a colon, and the image query carries a
+// space. The encoding is extdeps.uri uri_percent_encode_component, which encodes UTF-8 and refuses
+// with a typed cause. Its refusal stops the read that needed the value.
+type OciQueryValue
+  = OciQueryEncoded { wire: String }
+  | OciQueryRefused { line: String }
 
-fn oci_unreserved(cp: Int) -> Bool {
-  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45 || cp == 46 || cp == 95 || cp == 126
-}
-
-fn oci_hex_digit(n: Int) -> String {
-  if n < 10 { to_string(n) } else { from_code_point(cp: 55 + n) }
-}
-
-fn oci_percent_encode_from(s: String, i: Int, acc: String) -> String {
-  if i >= string_length(s) {
-    acc
+fn oci_query_value(value: String) -> OciQueryValue {
+  if value == "" {
+    OciQueryRefused { line: "an empty query value" }
   } else {
-    let c = char_at(s, i)
-    let cp = code_point(c)
-    let piece = if oci_unreserved(cp: cp) { c } else { join(["%", oci_hex_digit(n: cp / 16), oci_hex_digit(n: cp % 16)], "") }
-    oci_percent_encode_from(s: s, i: i + 1, acc: concat(acc, piece))
+    match uri_percent_encode_component(value: value as NonEmptyStr) {
+      UriPercentComponentEncoded(wire) => OciQueryEncoded { wire: wire as String }
+      UriPercentComponentRefused { cause } => OciQueryRefused { line: join(["query value ", value, " does not percent-encode: ", to_string(cause)], "") }
+    }
   }
-}
-
-fn oci_percent_encode(s: String) -> String {
-  oci_percent_encode_from(s: s, i: 0, acc: "")
 }
 
 // ── INSTANCE STATE ────────────────────────────────────────────────────────────────────────────
@@ -227,8 +219,15 @@ type OciDomainOffer
   | DomainReadRefused { line: String }
 
 fn oci_domain_offers(compartment: NonEmptyStr, domain: String, shape: String) -> OciDomainOffer uses net: Network {
+  match oci_query_value(value: domain) {
+    OciQueryRefused { line } => DomainReadRefused { line: join(["ListShapes for ", domain, " not sent: ", line], "") }
+    OciQueryEncoded { wire } => oci_domain_offers_read(domain: domain, shape: shape, read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", wire], "") as NonEmptyStr))
+  }
+}
+
+fn oci_domain_offers_read(domain: String, shape: String, read: OciListRead) -> OciDomainOffer {
   match oci_names_of(
-    read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", oci_percent_encode(s: domain)], "") as NonEmptyStr),
+    read: read,
     operation: "ListShapes",
     key: "shape",
   ) {
@@ -244,7 +243,17 @@ type OciImageRead
   | OciImageRefused { line: String }
 
 fn oci_newest_image(compartment: NonEmptyStr, shape: String) -> OciImageRead uses net: Network {
-  let path = join(["/20160918/images?compartmentId=", compartment as String, "&operatingSystem=", oci_percent_encode(s: "Oracle Linux"), "&operatingSystemVersion=9&shape=", oci_percent_encode(s: shape), "&sortBy=TIMECREATED&sortOrder=DESC"], "")
+  match oci_query_value(value: "Oracle Linux") {
+    OciQueryRefused { line } => OciImageRefused { line: concat("ListImages not sent: ", line) }
+    OciQueryEncoded { wire: os } =>
+      match oci_query_value(value: shape) {
+        OciQueryRefused { line } => OciImageRefused { line: concat("ListImages not sent: ", line) }
+        OciQueryEncoded { wire: shape_wire } => oci_newest_image_at(compartment: compartment, shape: shape, path: join(["/20160918/images?compartmentId=", compartment as String, "&operatingSystem=", os, "&operatingSystemVersion=9&shape=", shape_wire, "&sortBy=TIMECREATED&sortOrder=DESC"], ""))
+      }
+  }
+}
+
+fn oci_newest_image_at(compartment: NonEmptyStr, shape: String, path: String) -> OciImageRead uses net: Network {
   match oci_names_of(read: oci_list(operation: "ListImages", host: oci_iaas_host, path_and_query: path as NonEmptyStr), operation: "ListImages", key: "id") {
     OciNamesRefused { line } => OciImageRefused { line: line }
     OciNamesListed { names } => match names.first() {
