@@ -1,103 +1,175 @@
 module v2.test.claim.compiler.collection_concat_realization
 
-import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.fold_lowering { collection_roster_primitive_call_row_optional }
+import v2.compiler.fold_lowering { collection_roster_primitive_call_signature_in, CollectionRosterRow, NotARosterPrimitiveCallRow, RosterFreeMonoidPrimitiveCall, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_row_optional, collection_roster_primitive_call_signature_at, collection_roster_signature_arrow }
+import v2.compiler.infer { infer_roster_reference_facts, InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal, infer_type_instantiated }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import std.types { Bool, List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, node_locus }
+import v2.test.claim.compiler.compile_eval_thesis_proof { compile_eval_thesis_termination_proof }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
+import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_subtree_nodes, node_synthetic, symbol_intern_lexeme }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { list_at_optional }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.list_introduction { list_introduction_head_path }
+import v2.extdeps.languages.dag { dag_binding_denotation }
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.primitives { CarrierSensitive, concat_contract }
+import std.algebra { Cons, Empty, NamedTemplate }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: a bare `concat` whose name no declaration claims binds to the std.algebra collection roster's
-// primitive-call row (v2.compiler.fold_lowering collection_roster_rows, collection_concat_shape) through
-// v2.compiler.resolve resolve_atom_unscoped, and v2.compiler.infer types the call BY THAT ROW
-// (collection_roster_signature_arrow: ReceiverSelf is the free monoid over one element binder). BOUNDARY:
-// source text in, through the production assembly route (v2.test.claim.compiler.infer_fold_member_instance
-// fmi_assemble), then v2.compiler.infer infer. RED ON THE BASE for every row-route control: the base had no
-// route, so `concat(` refused resolve_reason_unbound_symbol and the module never reached infer.
-// MUTATION RECEIPT (the route, not the answer): delete the concat row from collection_roster_rows and the
-// accepted control reds on resolve_reason_unbound_symbol; drop the carrier from
-// collection_roster_signature_arrow (ReceiverSelf read as the bare element) and the Int control greens on
-// a refusal it no longer earns, which cca_int_concat_refuses_by_the_row_not_by_resolve then reds on.
+// primitive-call row (collection_concat_shape) through v2.compiler.resolve resolve_atom_unscoped, and v2.compiler.infer
+// types the call BY THAT ROW (v2.compiler.fold_lowering collection_roster_signature_arrow).
+//
+// SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route -- assemble plus
+// infer on a source that exercises it (cca_route_runs_on_the_real_path). Every other claim supplies its input at ONE
+// interface: the row's signature, read through the production projection and the production matcher
+// (v2.compiler.infer infer_match_generic_formal, gunbc#13187), never by re-assembling a module. The two refusals (an
+// Int operand, a mismatched element) are the matcher's and the judge's own subject, controlled by
+// v2.test.claim.compiler.generic_formal_instantiation; here they are asked of THIS route's formal, so the claims say
+// the route presents the shape that subject decides.
+//
+// DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove the concat row from collection_roster_rows and `concat(` is
+// refused resolve_reason_unbound_symbol, so assembly refuses and the reading is false (mutation run cited in the PR).
 
-data cca_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  concat(a, b)\n}\n"
-
-data cca_element_mismatch: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Int>) -> List<Pair> {\n  concat(a, b)\n}\n"
-
-data cca_int_operands: String = "module p\n\nfn f(a: Int, b: Int) -> Int {\n  concat(a, b)\n}\n"
-
-data cca_local_declaration: String = "module p\n\nimport v2.std.collection { List }\n\nfn concat(a: Int, b: Int) -> Int {\n  a\n}\n\nfn f(a: Int, b: Int) -> Int {\n  concat(a, b)\n}\n"
+// The ONE real-path fixture. f joins two lists through the row; g's parameter is spelled `concat`, so its use must bind
+// the parameter -- any binding of the name precedes the roster, which resolve asks last -- never the row.
+data cca_route_source: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  concat(a, b)\n}\n\nfn g(concat: Int) -> Int {\n  concat\n}\n"
 
 data cca_row_path: String = "std.algebra.collection_concat_shape"
 
-fn cca_references_to(tree: ResolvedTree, path: String) -> Int {
-  fold(node_subtree_nodes(root: tree.root), init: 0, f: fn(acc, n) {
-    match declaration_reference_path_optional(node: n) {
-      Present { value: p } => if qualified_name_to_dotted_string(qn: p) == path { acc + 1 } else { acc }
-      Absent => acc
-    }
-  })
+type CcaRouteReading {
+  row_references: Int
+  parameter_named_concat_bound: Bool
+  infer_accepted: Bool
 }
 
-// What one fixture establishes, decided once: whether resolve accepted it, whether its call head is the
-// roster row, and infer's verdict.
-type CcaReading {
-  resolved: Bool
-  binds_row: Bool
-  infer_reason: Symbol
-}
-
-fn cca_reading(src: String) -> CcaReading {
-  match fmi_assemble(src: src) {
-    Rejected { diagnostics: d } =>
-      CcaReading { resolved: false, binds_row: false, infer_reason: fmi_reason(o: Rejected { diagnostics: d }) }
+fn cca_route_reading() -> CcaRouteReading {
+  match fmi_assemble(src: cca_route_source) {
+    Rejected { diagnostics: _ } => CcaRouteReading { row_references: 0, parameter_named_concat_bound: false, infer_accepted: false }
     Accepted { value: tree, diagnostics: _ } =>
-      CcaReading {
-        resolved: true,
-        binds_row: cca_references_to(tree: tree, path: cca_row_path) >= 1,
-        infer_reason: fmi_reason(o: fmi_infer_tree(tree: tree))
+      CcaRouteReading {
+        row_references: fold(node_subtree_nodes(root: tree.root), init: 0, f: fn(acc, n) {
+          match declaration_reference_path_optional(node: n) {
+            Present { value: p } => if qualified_name_to_dotted_string(qn: p) == cca_row_path { acc + 1 } else { acc }
+            Absent => acc
+          }
+        }),
+        parameter_named_concat_bound: fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+          acc || (match parameter_reference_path_optional(node: n) {
+            Present { value: p } =>
+              match qualified_name_last_segment(qn: p) {
+                Present { value: leaf } => leaf == ^concat
+                Absent => false
+              }
+            Absent => false
+          })
+        }),
+        infer_accepted: fmi_reason(o: fmi_infer_tree(tree: tree)) == ^accepted
       }
   }
 }
 
-fn cca_records_reading() -> CcaReading { cca_reading(src: cca_records) }
-fn cca_element_mismatch_reading() -> CcaReading { cca_reading(src: cca_element_mismatch) }
-fn cca_int_operands_reading() -> CcaReading { cca_reading(src: cca_int_operands) }
-fn cca_local_declaration_reading() -> CcaReading { cca_reading(src: cca_local_declaration) }
-
-// POSITIVE, ON THE REAL ROUTE: List<Pair> concat List<Pair> binds the row and infer accepts it.
-test fn cca_list_concat_binds_the_row_and_is_accepted() -> Bool {
-  let r = cca_records_reading()
-  r.resolved && r.binds_row && r.infer_reason == ^accepted
+// THE REAL PATH: f's head binds the row (exactly once -- g's `concat` does not), g's `concat` is its parameter, and
+// infer accepts the module.
+test fn cca_route_runs_on_the_real_path() -> Bool {
+  let r = cca_route_reading()
+  r.row_references == 1 && r.parameter_named_concat_bound && r.infer_accepted
 }
 
-// RED: a mismatched element type resolves through the row and is refused by infer, typed and located.
-test fn cca_element_mismatch_refuses_in_infer() -> Bool {
-  let r = cca_element_mismatch_reading()
-  r.resolved && r.binds_row && r.infer_reason != ^accepted
+// SUPPLIED INPUT: the row's signature formals, through the production projection and reader.
+fn cca_formals() -> List<Node> {
+  match collection_roster_primitive_call_row_optional(head: ^concat) {
+    Absent => Empty
+    Present { value: row } =>
+      match collection_roster_signature_arrow(row: row) {
+        Absent => Empty
+        Present { value: arrow } =>
+          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+            Absent => Empty
+            Present { value: domain } =>
+              match infer_formals_from_domain(domain: domain) {
+                Absent => Empty
+                Present { value: formals } => fold(formals, init: Empty, f: fn(acc, formal) { Cons { head: formal.declared, tail: acc } })
+              }
+          }
+      }
+  }
 }
 
-// RED, THE BINDER TRAP: Int operands bind the row (the name is the row's) and the row's carrier refuses
-// them -- the refusal is infer's, after resolve accepted, never a resolve-side unbound name.
-test fn cca_int_concat_refuses_by_the_row_not_by_resolve() -> Bool {
-  let r = cca_int_operands_reading()
-  r.resolved && r.binds_row && r.infer_reason != ^accepted
+fn cca_int_type() -> Node {
+  match dag_binding_denotation(sym: ^dag_binding_type_int) {
+    Present { value: t } => t
+    Absent => node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: [])
+  }
 }
 
-// PRECEDENCE: a declaration that claims the name wins; the roster row never shadows the corpus.
-test fn cca_a_declared_concat_takes_precedence_over_the_row() -> Bool {
-  let r = cca_local_declaration_reading()
-  r.resolved && !r.binds_row && r.infer_reason == ^accepted
+fn cca_pair_type() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^cca_pair } }, children: [])
 }
 
-// COST AUTHORITY: the row the head binds is the primitive whose contract is std.primitives concat_contract,
-// and that contract -- not the row's ShapeLinearScan (gunbc.recurring_failure_mode
-// primitive_operation_carries_two_cost_authorities) -- carries the persistent-carrier cost log(n + m).
+fn cca_list_of(element: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: element }
+    ]
+  )
+}
+
+fn cca_is_instantiation(t: Node) -> Bool {
+  match t.kind {
+    TypeNode { connective: Instantiation } => true
+    TypeNode { connective: _ } => false
+    _ => false
+  }
+}
+
+// SUPPLIED: the signature has two formals, both the one free monoid over the row's element binder.
+test fn cca_signature_is_two_free_monoid_formals() -> Bool {
+  match cca_formals() {
+    Cons { head: a, tail: Cons { head: b, tail: Empty } } => cca_is_instantiation(t: a) && a == b
+    _ => false
+  }
+}
+
+// SUPPLIED, RED: an Int operand at the row's free-monoid formal is a shape mismatch to the production matcher -- the
+// carrier refusal (`Int concat Int`).
+test fn cca_int_operand_is_a_shape_mismatch_at_the_row_formal() -> Bool {
+  match list_at_optional(xs: cca_formals(), index: 0) {
+    Absent => false
+    Present { value: formal } =>
+      match infer_match_generic_formal(formal: formal, produced: cca_int_type(), type_params: [^collection_roster_element], instances: Empty, declarations: empty_symbol_index()) {
+        InferFormalShapeMismatch => true
+        InferFormalMatched { instances: _ } => false
+      }
+  }
+}
+
+// SUPPLIED, RED: once the first operand binds the element to Pair, the formal instantiates to List<Pair>, which is not
+// a List<Int> -- the mismatched-element refusal the judge then makes.
+test fn cca_mismatched_element_instantiates_to_a_different_list() -> Bool {
+  match list_at_optional(xs: cca_formals(), index: 0) {
+    Absent => false
+    Present { value: formal } =>
+      match infer_match_generic_formal(formal: formal, produced: cca_list_of(element: cca_pair_type()), type_params: [^collection_roster_element], instances: Empty, declarations: empty_symbol_index()) {
+        InferFormalShapeMismatch => false
+        InferFormalMatched { instances: bound } =>
+          infer_type_instantiated(t: formal, instances: bound) == cca_list_of(element: cca_pair_type())
+            && infer_type_instantiated(t: formal, instances: bound) != cca_list_of(element: cca_int_type())
+      }
+  }
+}
+
+// COST AUTHORITY: the row the head binds is the primitive whose contract is std.primitives concat_contract, and that
+// contract -- not the row's ShapeLinearScan (gunbc.recurring_failure_mode primitive_operation_carries_two_cost_authorities)
+// -- carries the persistent-carrier cost log(n + m).
 test fn cca_bound_row_is_the_concat_primitive_at_log_cost() -> Bool {
   let row_is_concat = match collection_roster_primitive_call_row_optional(head: symbol_intern_lexeme(lexeme: concat_contract.name)) {
     Present { value: r } => r.template.name == concat_contract.name
@@ -109,3 +181,43 @@ test fn cca_bound_row_is_the_concat_primitive_at_log_cost() -> Bool {
   }
 }
 
+// SUPPLIED, THE THREE-WAY LOOKUP (review 76235): a primitive-call row's path answers its signature, and a fold row's
+// path (map) answers NotARosterPrimitiveCallRow -- the indexed declaration's business. Neither may fall through to the
+// row's template VALUE.
+test fn cca_signature_lookup_tells_a_primitive_row_from_a_fold_row() -> Bool {
+  (match collection_roster_primitive_call_signature_at(path: "std.algebra.collection_concat_shape") {
+    RosterPrimitiveCallSignature { arrow: _ } => true
+    RosterPrimitiveCallSignatureUnreadable => false
+    NotARosterPrimitiveCallRow => false
+  }) && (match collection_roster_primitive_call_signature_at(path: "std.algebra.collection_map_shape") {
+    NotARosterPrimitiveCallRow => true
+    RosterPrimitiveCallSignature { arrow: _ } => false
+    RosterPrimitiveCallSignatureUnreadable => false
+  })
+}
+
+// SUPPLIED, RED, AT INFER (review 76235; lively-crane-656: a refusal arm whose RED cannot be authored is decoration).
+// A roster holding one primitive-call row whose template the projection cannot read (a result named by a spelling
+// no kernel row carries) is SUPPLIED to the lookup; its answer goes to infer's own roster arm, which must REFUSE with
+// infer_reason_roster_row_signature_unreadable, located at the reference -- never type it by the template value.
+fn cca_unreadable_row() -> CollectionRosterRow {
+  CollectionRosterRow {
+    head: symbol_intern_lexeme(lexeme: "cca_unreadable"),
+    template: { name: "cca_unreadable", param_types: [], return_type: NamedTemplate { name: "cca_no_such_kernel_type" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    row: DeclarationRef { module_path: "v2.test.claim.compiler.collection_concat_realization", decl_name: "cca_unreadable_row", field: WholeDeclaration },
+    form: RosterFreeMonoidPrimitiveCall
+  }
+}
+
+test fn cca_unreadable_roster_row_refuses_at_infer_located() -> Bool {
+  let reference = node_synthetic(kind: TypeNode { connective: Atom { identity: ^cca_unreadable_reference } }, children: [])
+  let lookup = collection_roster_primitive_call_signature_in(rows: [cca_unreadable_row()], path: "v2.test.claim.compiler.collection_concat_realization.cca_unreadable_row")
+  (match lookup {
+    RosterPrimitiveCallSignatureUnreadable => true
+    RosterPrimitiveCallSignature { arrow: _ } => false
+    NotARosterPrimitiveCallRow => false
+  }) && (match infer_roster_reference_facts(lookup: lookup, n: reference, descent_proof: compile_eval_thesis_termination_proof()) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_roster_row_signature_unreadable
+    Accepted { value: _, diagnostics: _ } => false
+  })
+}

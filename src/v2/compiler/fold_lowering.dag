@@ -216,10 +216,10 @@ type CallbackRealization
 // row's own param_types/return_type (collection_roster_signature_arrow) -- the row IS the signature; no
 // body is read. The receiver carrier the row's ReceiverSelf denotes is named by the form, not assumed: the
 // one primitive-call form today is over the free monoid, and a second carrier is a second form.
-// RULING (calm-boar-904, msg_8e2338e7): this reverses the joint ruling that a bare concat reaches its field
-// only through an imported declaration and that infer never reads the template tables. Reason: the only
-// writable declaration (a .dag body for std.algebra list_append) regresses every caller from the
-// persistent carrier's log(n + m) to O(|left|), and an operator-backed body has no writable surface.
+// THIS REVERSES an earlier boundary (that a bare concat reaches its field only through an imported declaration, and that
+// infer never reads the template tables). The reversal, its reason and its approval are recorded on
+// gunbc.recurring_failure_mode algebra_structure_has_two_representations_with_no_declared_mapping (the collection-concat
+// receipt); the approval is the N7 manager's, cited in gunbc#13207's description, not asserted here.
 type CollectionRosterForm
   = RosterAuthoredStep
   | RosterCallbackStep { realization: CallbackRealization }
@@ -364,11 +364,40 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
   }
 }
 
-// The signature a resolved reference to a primitive-call row denotes, keyed on the row's declaring path.
-fn collection_roster_primitive_call_signature_at(path: String) -> Optional<Node> {
-  match collection_roster_row_at(path: path) {
-    Present { value: r } => collection_roster_signature_arrow(row: r)
-    Absent => optional_absent()
+// The signature a resolved reference to a primitive-call row denotes, keyed on the row's declaring path. THREE
+// answers, never two (review 76235): a path that is no roster row is the indexed declaration's business; a row whose
+// signature reads is typed by it; a row whose template the projection cannot read REFUSES -- it must never fall
+// through to the indexed declaration, which is the row's template VALUE, not the operation (DESIGN section 5: a
+// failure arm refuses, it does not widen).
+type RosterSignatureLookup
+  = NotARosterPrimitiveCallRow
+  | RosterPrimitiveCallSignature { arrow: Node }
+  | RosterPrimitiveCallSignatureUnreadable
+
+fn collection_roster_primitive_call_signature_at(path: String) -> RosterSignatureLookup {
+  collection_roster_primitive_call_signature_in(rows: collection_roster_rows, path: path)
+}
+
+// The lookup over a SUPPLIED roster, so the unreadable arm's RED is authorable at this interface (DESIGN section 4b,
+// review 76235): the production lookup above passes the one real roster.
+fn collection_roster_primitive_call_signature_in(rows: List<CollectionRosterRow>, path: String) -> RosterSignatureLookup {
+  match fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if r.row.module_path + "." + r.row.decl_name == path { optional_present(value: r) } else { acc }
+    }
+  }) {
+    Absent => NotARosterPrimitiveCallRow
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => NotARosterPrimitiveCallRow
+        RosterCallbackStep { realization: _ } => NotARosterPrimitiveCallRow
+        RosterFreeMonoidPrimitiveCall =>
+          match collection_roster_signature_arrow(row: r) {
+            Present { value: arrow } => RosterPrimitiveCallSignature { arrow: arrow }
+            Absent => RosterPrimitiveCallSignatureUnreadable
+          }
+      }
   }
 }
 
