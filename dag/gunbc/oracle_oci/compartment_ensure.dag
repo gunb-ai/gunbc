@@ -15,7 +15,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.tools.curl { curl_http_signature_get, curl_http_signature_post_json, CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
 import extdeps.cloud.oracle_oci_request_signing {
   OciApiKeyId, OciRequest, OciHttpMethod, OciGet, OciPost, OciRequestBody, OciNoBody, OciJsonBody,
@@ -159,7 +159,11 @@ fn oci_string_member(obj: JsonValue, key: String) -> String {
   match json_member_presence(obj: obj, key: key) {
     JsonMemberValue { value } => match value {
       JsonString { value: s } => s
-      _ => ""
+      JsonNull => ""
+      JsonBool { value: b } => ""
+      JsonNumber { lexeme } => ""
+      JsonArray { elements } => ""
+      JsonObject { members } => ""
     }
     JsonMemberMissing => ""
     JsonMemberNull => ""
@@ -191,7 +195,11 @@ fn classify_oci_compartment_list(exchange: OciExchange) -> OciCompartmentRead {
           JsonDocumentUnreadable { gap } => CompartmentReadRefused { cause: concat("ListCompartments body is not JSON: ", json_document_gap_text(gap: gap)) as NonEmptyStr }
           JsonDocumentParsed { value } => match value {
             JsonArray { elements } => CompartmentsListed { compartments: map(elements, e => oci_compartment_of_json(v: e)) }
-            _ => CompartmentReadRefused { cause: "ListCompartments answered 200 with a body that is not an array" }
+            JsonObject { members } => CompartmentReadRefused { cause: "ListCompartments answered 200 with an object, not an array" }
+            JsonNull => CompartmentReadRefused { cause: "ListCompartments answered 200 with null, not an array" }
+            JsonBool { value: b } => CompartmentReadRefused { cause: "ListCompartments answered 200 with a boolean, not an array" }
+            JsonNumber { lexeme } => CompartmentReadRefused { cause: "ListCompartments answered 200 with a number, not an array" }
+            JsonString { value: t } => CompartmentReadRefused { cause: "ListCompartments answered 200 with a string, not an array" }
           }
         }
       }
