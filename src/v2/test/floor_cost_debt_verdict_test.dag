@@ -23,9 +23,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reached -- so it asserts the floor's answer for that row and not only one classifier's arm.
 //
 // The base and head roster RESULTS are SUPPLIED (DESIGN section 3, a witness discriminates at one
-// interface). The real path -- the host evaluating the base roster file in an isolated pool and
-// this module reading the head roster -- is exercised by the host's own tests in
-// `v1_compiler.cli_run.required_floor_runner` (an unselected base chunk is not membership) and by
+// interface). The real path -- the host evaluating the roster over the base tree and this module
+// reading the head roster -- is exercised by the host's own tests in
+// `v1_compiler.cli_run.required_floor_runner` (`cost_debt_base_roster_is_evaluated_over_the_base_tree`) and by
 // the required floor of every change that modifies `src/v2/workflow/floor_cost_debt.dag`.
 
 // The base roster's evaluated result carries only `t.w_old`; the head roster adds two rows.

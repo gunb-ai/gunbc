@@ -1558,23 +1558,13 @@ fn changed_and_enrolled_witness_identities_with_index(
     // that adds it, and nothing would ever establish that the claim it withholds passes
     // (`v2.workflow.floor_cost_debt_verdict`). Asked only when the diff modified the roster; a
     // roster ADDED by this change has no base, and every row it carries is then an admission.
-    let mut cost_debt_admitted: Vec<String> = Vec::new();
-    if added_paths.contains(FLOOR_COST_DEBT_ROSTER) {
-        cost_debt_admitted = cost_debt_admitted_by_fold(&[], None)?;
-    } else if changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER) {
-        cost_debt_admitted = cost_debt_admitted_identities()?;
-    }
-    if !cost_debt_admitted.is_empty() || changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER) {
-        eprintln!(
-            "[floor-cost-debt-admission] admitted={}",
-            cost_debt_admitted.len()
-        );
-        for identity in &cost_debt_admitted {
-            eprintln!("[floor-cost-debt-admission] identity={identity} run=unbudgeted-for-verdict");
-        }
-    }
-    let mut changed = changed;
-    merge_cost_debt_admissions(&mut changed, &cost_debt_admitted);
+    let (changed, cost_debt_admitted) = changed_with_cost_debt_admissions(
+        changed,
+        &changed_paths,
+        &added_paths,
+        cost_debt_admitted_identities,
+        || cost_debt_admitted_by_fold(&[], None),
+    )?;
     // THE THIRD PROJECTION IS THE COMPILE SUBJECT, not another witness roster. A helper-fn
     // or type-decl edit lands in `touched_entry_files` and until this was consumed only by
     // skip-before-resolve and module-grain affected proofs -- never by Strict preparation.
@@ -2334,10 +2324,11 @@ const FLOOR_COST_DEBT_VERDICT: &str = "src/v2/workflow/floor_cost_debt_verdict.d
 
 /// THE ROWS THIS CHANGE ADMITS TO THE COST-DEBT ROSTER: the head roster's rows its base result
 /// does not carry, decided by `v2.workflow.floor_cost_debt_verdict`
-/// `cost_debt_admitted_identities_against_base`. BOTH ENDS ARE THE ROSTER'S EVALUATED RESULT --
-/// never a reading of the base file's text, which review on gunbc#13332 showed marks rows the base
-/// roster never selected as carried. A roster this change modifies must exist at the base, so an
-/// absent base refuses rather than admitting every row by reading as empty.
+/// `cost_debt_admitted_identities_against_base`. BOTH ENDS ARE THE ROSTER'S EVALUATED RESULT, and
+/// the base end is evaluated over the BASE TREE: the roster and every module its result depends on
+/// are read at the base commit (`cost_debt_base_tree_extract`), so a provider changed at head
+/// cannot change the base population (review on gunbc#13332). A roster this change modifies must
+/// exist and evaluate at the base; anything else refuses rather than reading as carried.
 fn cost_debt_admitted_identities() -> Result<Vec<String>, String> {
     use crate::cli_run::namespace_baseline::git_stdout;
     let workspace = process_workspace_root();
@@ -2345,19 +2336,114 @@ fn cost_debt_admitted_identities() -> Result<Vec<String>, String> {
         cost_debt_comparison_base_commit(floor_diff_comparison_readout()?, |base, head| {
             git_stdout(&workspace, &["merge-base", base, head])
         })?;
-    let base_source = git_stdout(
-        &workspace,
-        &["show", &format!("{base_commit}:{FLOOR_COST_DEBT_ROSTER}")],
-    )
-    .map_err(|e| {
+    let tree = cost_debt_scratch_dir("base")?;
+    let read = cost_debt_base_tree_extract(&workspace, &base_commit, &tree)
+        .and_then(|()| cost_debt_roster_in_tree(&tree));
+    std::fs::remove_dir_all(&tree).ok();
+    cost_debt_admitted_by_fold(&read?, None)
+}
+
+/// A fresh scratch directory under the ignored build tree, one per read.
+fn cost_debt_scratch_dir(label: &str) -> Result<PathBuf, String> {
+    static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let dir = process_workspace_root().join(format!(
+        "target/floor-cost-debt-{label}-{}-{}",
+        std::process::id(),
+        READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("scratch dir {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// THE SOURCE ROOTS AS THEY STOOD AT `commit`, written under `into`: `git archive` of the floor's
+/// two roots, so the base roster resolves every import against the same revision it was authored
+/// beside. A refused archive or extraction is a typed refusal, never an empty tree.
+pub(crate) fn cost_debt_base_tree_extract(
+    workspace: &Path,
+    commit: &str,
+    into: &Path,
+) -> Result<(), String> {
+    let refuse = |why: String| {
         format!(
-            "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterUnreadableAtBase base={base_commit} \
-             path={FLOOR_COST_DEBT_ROSTER} -- the change modifies the roster, so it must exist at \
-             the base ({e})"
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable base={commit} -- the base \
+             tree could not be materialized ({why}); which rows the base roster carried cannot be \
+             established, and is never assumed"
         )
-    })?;
-    let base_roster = cost_debt_roster_at_base(&base_source)?;
-    cost_debt_admitted_by_fold(&base_roster, None)
+    };
+    let archive = std::process::Command::new("git")
+        .args(["archive", "--format=tar", commit, "dag", "src/v2"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| refuse(format!("spawn git archive: {e}")))?;
+    if !archive.status.success() {
+        return Err(refuse(format!(
+            "git archive: {}",
+            String::from_utf8_lossy(&archive.stderr).trim()
+        )));
+    }
+    let mut tar = std::process::Command::new("tar")
+        .args(["-x", "-C"])
+        .arg(into)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| refuse(format!("spawn tar: {e}")))?;
+    tar.stdin
+        .take()
+        .ok_or_else(|| refuse("tar has no stdin".to_string()))?
+        .write_all(&archive.stdout)
+        .map_err(|e| refuse(format!("feed tar: {e}")))?;
+    let status = tar.wait().map_err(|e| refuse(format!("wait tar: {e}")))?;
+    if !status.success() {
+        return Err(refuse(format!("tar exited {status}")));
+    }
+    Ok(())
+}
+
+/// `floor_cost_debt_roster` evaluated inside ONE source tree (its `dag` and `src/v2` roots), through
+/// an index this read owns -- never the thread's shared slot, which holds the head tree's pool
+/// (`SharedIndexSecondResidentPool`). A tree whose roster does not resolve or evaluate to a list of
+/// identities REFUSES as `CostDebtBaseRosterUnevaluable`.
+pub(crate) fn cost_debt_roster_in_tree(tree: &Path) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    let refuse = |why: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable path={FLOOR_COST_DEBT_ROSTER} \
+             -- {why}; which rows the base roster carried cannot be established, and is never \
+             assumed"
+        )
+    };
+    let roots = vec![
+        tree.join("dag").to_string_lossy().to_string(),
+        tree.join("src/v2").to_string_lossy().to_string(),
+    ];
+    let entry = tree.join(FLOOR_COST_DEBT_ROSTER);
+    if !entry.is_file() {
+        return Err(refuse(format!(
+            "{} is absent from the tree",
+            entry.display()
+        )));
+    }
+    let index = build_multi_entry_index(&roots);
+    let (graph, indices) = resolve_entry_with_index(&index, &entry.to_string_lossy())
+        .map_err(|e| refuse(format!("resolve: {e}")))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        "v2.workflow.floor_cost_debt.floor_cost_debt_roster",
+        false,
+    )
+    .map_err(|e| refuse(format!("floor_cost_debt_roster: {e}")))?;
+    floor_decode_list(&ctx, Some(&value))
+        .map_err(|e| refuse(format!("floor_cost_debt_roster result: {e}")))?
+        .into_iter()
+        .map(|v| match v {
+            Value::Str(s) => Ok(s.to_string()),
+            other => Err(refuse(format!(
+                "a roster row is {}, not a String",
+                floor_value_shape(Some(other))
+            ))),
+        })
+        .collect()
 }
 
 /// THE COMMIT THE BASE ROSTER IS READ AT: the floor's own comparison window, exactly as
@@ -2373,75 +2459,6 @@ pub(crate) fn cost_debt_comparison_base_commit(
         FreezeBaselineComparison::Direct { base, .. } => Ok(base),
         FreezeBaselineComparison::MergeBase { base, head, .. } => merge_base(&base, &head),
     }
-}
-
-/// THE BASE ROSTER'S RESULT: `floor_cost_debt_roster` evaluated over the base file's own source in
-/// an isolated pool. The base and head files declare one module path, so the base copy is placed
-/// under a scratch module name, in its own directory per read, beside the ordinary roots its
-/// imports resolve against, and resolved through an index this read owns. Any base whose
-/// header is not the roster's, or that does not evaluate to a list of identities, REFUSES as
-/// `CostDebtBaseRosterUnevaluable`: uncertain base membership is never read as already carried.
-pub(crate) fn cost_debt_roster_at_base(base_source: &str) -> Result<Vec<String>, String> {
-    use v1_interpreter::Value;
-    const HEADER: &str = "module v2.workflow.floor_cost_debt";
-    const SCRATCH_MODULE: &str = "floor_cost_debt_at_base";
-    let refuse = |why: String| {
-        format!(
-            "REQUIRED-FLOOR REFUSAL cause=CostDebtBaseRosterUnevaluable path={FLOOR_COST_DEBT_ROSTER} \
-             -- {why}; which rows the base roster carried cannot be established, and is never \
-             assumed"
-        )
-    };
-    let mut lines = base_source.lines();
-    let header = lines.by_ref().find(|l| !l.trim().is_empty()).unwrap_or("");
-    if header.trim() != HEADER {
-        return Err(refuse(format!(
-            "the base file's header is `{}`, not `{HEADER}`",
-            header.trim()
-        )));
-    }
-    let renamed = base_source.replacen(HEADER, &format!("module {SCRATCH_MODULE}"), 1);
-    static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let dir = process_workspace_root().join(format!(
-        "target/floor-cost-debt-base-{}-{}",
-        std::process::id(),
-        READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| refuse(format!("scratch dir {}: {e}", dir.display())))?;
-    let entry = dir.join(format!("{SCRATCH_MODULE}.dag"));
-    std::fs::write(&entry, renamed)
-        .map_err(|e| refuse(format!("write {}: {e}", entry.display())))?;
-    let mut roots = default_source_roots();
-    roots.push(dir.to_string_lossy().to_string());
-    let read = (|| -> Result<Vec<String>, String> {
-        // AN INDEX OF ITS OWN, never the thread's shared slot: that slot holds the head tree's pool,
-        // and a second resident pool there is refused (`SharedIndexSecondResidentPool`). The base
-        // pool lives for this read and drops with it.
-        let index = build_multi_entry_index(&roots);
-        let (graph, indices) = resolve_entry_with_index(&index, &entry.to_string_lossy())
-            .map_err(|e| refuse(format!("resolve: {e}")))?;
-        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-        let value = v1_interpreter::run_in_context(
-            &ctx,
-            &format!("{SCRATCH_MODULE}.floor_cost_debt_roster"),
-            false,
-        )
-        .map_err(|e| refuse(format!("floor_cost_debt_roster: {e}")))?;
-        floor_decode_list(&ctx, Some(&value))
-            .map_err(|e| refuse(format!("floor_cost_debt_roster result: {e}")))?
-            .into_iter()
-            .map(|v| match v {
-                Value::Str(s) => Ok(s.to_string()),
-                other => Err(refuse(format!(
-                    "a roster row is {}, not a String",
-                    floor_value_shape(Some(other))
-                ))),
-            })
-            .collect()
-    })();
-    std::fs::remove_dir_all(&dir).ok();
-    read
 }
 
 /// The head roster's rows `base_roster` does not carry, by the `.dag` fold. `head_roster` is the
@@ -2478,6 +2495,37 @@ pub(crate) fn cost_debt_admitted_by_fold(
             )),
         })
         .collect()
+}
+
+/// THE ADMISSION STEP OF THE DIFF PROJECTION, as `changed_and_enrolled_witness_identities_with_index`
+/// runs it: decide whether the diff touched the roster, read the admitted rows (`read_modified`
+/// for a modified roster, against the base; `read_added` for a roster this change adds, where
+/// every row is new), and merge them into the changed set the floor plans from and the wall owes.
+/// Returns the merged changed set and the admitted rows. The readers are parameters so the
+/// integration control drives THIS function -- removing the merge here turns it red.
+pub(crate) fn changed_with_cost_debt_admissions(
+    mut changed: Vec<String>,
+    changed_paths: &[String],
+    added_paths: &HashSet<String>,
+    read_modified: impl FnOnce() -> Result<Vec<String>, String>,
+    read_added: impl FnOnce() -> Result<Vec<String>, String>,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let touched = changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER);
+    let admitted = if added_paths.contains(FLOOR_COST_DEBT_ROSTER) {
+        read_added()?
+    } else if touched {
+        read_modified()?
+    } else {
+        Vec::new()
+    };
+    if touched || !admitted.is_empty() {
+        eprintln!("[floor-cost-debt-admission] admitted={}", admitted.len());
+        for identity in &admitted {
+            eprintln!("[floor-cost-debt-admission] identity={identity} run=unbudgeted-for-verdict");
+        }
+    }
+    merge_cost_debt_admissions(&mut changed, &admitted);
+    Ok((changed, admitted))
 }
 
 /// ADMISSION JOINS THE CHANGED SET, here and nowhere else: the diff projection calls this, so the
@@ -13599,54 +13647,69 @@ mod changed_witness_projection_tests {
         assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
     }
 
-    /// A base roster file whose evaluated result is `live_chunk()` alone, while `unused_chunk`
-    /// spells another row in a genuine `Cons`/list position that the roster never selects.
-    const UNSELECTED_CHUNK_BASE: &str = "module v2.workflow.floor_cost_debt\n\nimport std.types { List }\n\nfn live_chunk() -> List<String> {\n  [\"t.old\"]\n}\n\nfn unused_chunk() -> List<String> {\n  [\"t.new\"]\n}\n\nfn floor_cost_debt_roster() -> List<String> {\n  live_chunk()\n}\n";
+    /// A real source tree at HEAD (the production extraction), with the roster replaced by a
+    /// fixture whose result comes from an IMPORTED provider and that also spells `t.new` in an
+    /// unselected chunk.
+    fn cost_debt_fixture_tree(provider_rows: &str, roster_has_entry: bool) -> PathBuf {
+        let workspace = process_workspace_root();
+        let tree = cost_debt_scratch_dir("fixture").expect("scratch");
+        cost_debt_base_tree_extract(&workspace, "HEAD", &tree).expect("extract HEAD");
+        let provider = format!(
+            "module v2.workflow.cost_debt_fixture_provider\n\nimport std.types {{ List }}\n\nfn selected_rows() -> List<String> {{\n  {provider_rows}\n}}\n"
+        );
+        std::fs::write(
+            tree.join("src/v2/workflow/cost_debt_fixture_provider.dag"),
+            provider,
+        )
+        .expect("write provider");
+        let entry = if roster_has_entry {
+            "fn floor_cost_debt_roster() -> List<String> {\n  selected_rows()\n}\n"
+        } else {
+            ""
+        };
+        let roster = format!(
+            "module v2.workflow.floor_cost_debt\n\nimport std.types {{ List }}\nimport v2.workflow.cost_debt_fixture_provider {{ selected_rows }}\n\nfn unused_chunk() -> List<String> {{\n  [\"t.new\"]\n}}\n\n{entry}"
+        );
+        std::fs::write(tree.join(FLOOR_COST_DEBT_ROSTER), roster).expect("write roster");
+        tree
+    }
 
-    /// RED (base membership): a row spelled in an UNSELECTED chunk is not base membership. The
-    /// base roster is evaluated, so only `t.old` is carried, and a head that activates the unused
-    /// chunk admits `t.new`; the genuinely carried `t.old` is not admitted.
+    /// RED (base membership is the BASE TREE's result): the base and head trees differ only in the
+    /// imported provider. The base tree evaluates to `t.old` alone -- the unselected chunk's
+    /// `t.new` is not membership, and the head provider's `t.new` cannot leak into it -- so the head
+    /// admits `t.new`. POSITIVE: an unchanged provider admits nothing. REFUSAL: a base tree whose
+    /// roster does not evaluate refuses, typed.
     #[test]
-    fn cost_debt_base_row_in_an_unselected_chunk_is_not_membership() {
-        let base = cost_debt_roster_at_base(UNSELECTED_CHUNK_BASE).expect("base evaluates");
+    fn cost_debt_base_roster_is_evaluated_over_the_base_tree() {
+        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true);
+        let head_tree = cost_debt_fixture_tree("[\"t.old\", \"t.new\"]", true);
+        let base = cost_debt_roster_in_tree(&base_tree).expect("base evaluates");
+        let head = cost_debt_roster_in_tree(&head_tree).expect("head evaluates");
         assert_eq!(base, vec!["t.old".to_string()]);
-        let head = vec!["t.old".to_string(), "t.new".to_string()];
-        let admitted = cost_debt_admitted_by_fold(&base, Some(&head)).expect("fold");
-        assert_eq!(admitted, vec!["t.new".to_string()]);
+        assert_eq!(head, vec!["t.old".to_string(), "t.new".to_string()]);
+        assert_eq!(
+            cost_debt_admitted_by_fold(&base, Some(&head)).expect("fold"),
+            vec!["t.new".to_string()]
+        );
+        assert!(cost_debt_admitted_by_fold(&base, Some(&base))
+            .expect("fold")
+            .is_empty());
+        std::fs::remove_dir_all(&head_tree).ok();
+        let broken = cost_debt_fixture_tree("[\"t.old\"]", false);
+        let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
+        assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
+        std::fs::remove_file(broken.join(FLOOR_COST_DEBT_ROSTER)).ok();
+        let err = cost_debt_roster_in_tree(&broken).expect_err("must refuse");
+        assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
+        std::fs::remove_dir_all(&broken).ok();
+        std::fs::remove_dir_all(&base_tree).ok();
     }
 
-    /// RED (unsupported base): a base that is not the roster module, or that does not evaluate a
-    /// roster, refuses with a typed cause instead of reading as carrying anything.
-    #[test]
-    fn cost_debt_base_roster_that_cannot_be_evaluated_refuses() {
-        let foreign = UNSELECTED_CHUNK_BASE.replacen(
-            "module v2.workflow.floor_cost_debt",
-            "module v2.workflow.something_else",
-            1,
-        );
-        let no_roster = UNSELECTED_CHUNK_BASE.replace(
-            "fn floor_cost_debt_roster() -> List<String> {\n  live_chunk()\n}\n",
-            "",
-        );
-        for source in [foreign, no_roster] {
-            let err = cost_debt_roster_at_base(&source).expect_err("must refuse");
-            assert!(err.contains("cause=CostDebtBaseRosterUnevaluable"), "{err}");
-        }
-    }
-
-    /// RED (gunbc#13344): on a merge-base comparison the base roster is read at the MERGE BASE,
-    /// not the base ref's tip. `t.retired` was removed on main after the branch point: absent at
-    /// the tip, present at the merge base and in head. Read at the tip it would be admitted and
-    /// charged to this change; read at the merge base it is carried and not admitted.
+    /// RED (gunbc#13344): on a merge-base comparison the base is the MERGE BASE, not the base
+    /// ref's tip, and a direct comparison reads its base as given. `t.retired` -- absent at the
+    /// tip, present at the merge base and at head -- is admitted only by the tip reading.
     #[test]
     fn cost_debt_row_retired_at_the_tip_but_carried_at_the_merge_base_is_not_admitted() {
-        let tip = "module v2.workflow.floor_cost_debt\n\nimport std.types { List }\n\nfn floor_cost_debt_roster() -> List<String> {\n  [\"t.old\"]\n}\n";
-        let merge_base = "module v2.workflow.floor_cost_debt\n\nimport std.types { List }\n\nfn floor_cost_debt_roster() -> List<String> {\n  [\"t.old\", \"t.retired\"]\n}\n";
-        let source_at = |commit: &str| match commit {
-            "tip" => tip,
-            "mb" => merge_base,
-            other => panic!("no fixture at {other}"),
-        };
         let comparison = FreezeBaselineComparison::MergeBase {
             base: "tip".to_string(),
             head: "head".to_string(),
@@ -13658,18 +13721,6 @@ mod changed_witness_projection_tests {
         })
         .expect("merge base");
         assert_eq!(commit, "mb");
-        let head = vec!["t.old".to_string(), "t.retired".to_string()];
-        let base = cost_debt_roster_at_base(source_at(&commit)).expect("base evaluates");
-        assert!(cost_debt_admitted_by_fold(&base, Some(&head))
-            .expect("fold")
-            .is_empty());
-        // The defect it guards: the tip reading admits the retired row.
-        let at_tip = cost_debt_roster_at_base(source_at("tip")).expect("tip evaluates");
-        assert_eq!(
-            cost_debt_admitted_by_fold(&at_tip, Some(&head)).expect("fold"),
-            vec!["t.retired".to_string()]
-        );
-        // A direct comparison is exact and reads its base as given.
         let direct = FreezeBaselineComparison::Direct {
             base: "tip".to_string(),
             head: "head".to_string(),
@@ -13680,41 +13731,62 @@ mod changed_witness_projection_tests {
                 .unwrap(),
             "tip"
         );
+        let at = |commit: &str| -> Vec<String> {
+            match commit {
+                "tip" => vec!["t.old".to_string()],
+                "mb" => vec!["t.old".to_string(), "t.retired".to_string()],
+                other => panic!("no roster at {other}"),
+            }
+        };
+        let head = vec!["t.old".to_string(), "t.retired".to_string()];
+        assert!(cost_debt_admitted_by_fold(&at(&commit), Some(&head))
+            .expect("fold")
+            .is_empty());
+        assert_eq!(
+            cost_debt_admitted_by_fold(&at("tip"), Some(&head)).expect("fold"),
+            vec!["t.retired".to_string()]
+        );
     }
 
-    /// THE BOUNDED INTEGRATION CONTROL: a roster-only admission through the production pieces the
-    /// floor composes -- the base roster evaluated from source, the admission fold, the merge into
-    /// the diff's changed set, then the wall as `run_required_floor` calls it over that projection
-    /// and the terminal ledger. `t.new` is a declared BinWitnessWet row: planning declines it
-    /// (`DeclinedNoCiWetLane`), so it has no terminal row and must refuse as unreached. `t.old` is
-    /// carried and untouched; `t.pass` is a new row that passed. Dropping the merge at the handoff
-    /// (the projection without its admissions) makes this control fail, which is the assertion
-    /// below the main one.
+    /// THE INTEGRATION CONTROL, through the production admission step of the diff projection
+    /// (`changed_with_cost_debt_admissions`, the function `changed_and_enrolled_witness_identities_with_index`
+    /// calls) and the wall as `run_required_floor` calls it. The diff modified the roster and
+    /// touched no witness; the admission reader evaluates a real base tree and folds against the
+    /// head roster. `t.new` is a declared BinWitnessWet row planning declines, so it has no
+    /// terminal row and must refuse as unreached; the carried `t.old` and the new passing `t.pass`
+    /// do not. Removing the merge from the production step leaves the changed set without `t.new`
+    /// and this control fails.
     #[test]
     fn cost_debt_roster_only_admission_declined_by_planning_refuses_as_unreached() {
-        let base = cost_debt_roster_at_base(UNSELECTED_CHUNK_BASE).expect("base evaluates");
+        let base_tree = cost_debt_fixture_tree("[\"t.old\"]", true);
         let head = vec![
             "t.old".to_string(),
             "t.new".to_string(),
             "t.pass".to_string(),
         ];
-        let admitted = cost_debt_admitted_by_fold(&base, Some(&head)).expect("fold");
-        let mut changed: Vec<String> = Vec::new();
-        merge_cost_debt_admissions(&mut changed, &admitted);
+        let (changed, admitted) = changed_with_cost_debt_admissions(
+            Vec::new(),
+            &[FLOOR_COST_DEBT_ROSTER.to_string()],
+            &HashSet::new(),
+            || {
+                let base = cost_debt_roster_in_tree(&base_tree)?;
+                cost_debt_admitted_by_fold(&base, Some(&head))
+            },
+            || panic!("the roster is modified, not added"),
+        )
+        .expect("admission step");
+        std::fs::remove_dir_all(&base_tree).ok();
+        assert_eq!(admitted, vec!["t.new".to_string(), "t.pass".to_string()]);
         let roster: HashSet<String> = head.iter().cloned().collect();
         let terminal = [terminal("t.pass", ClaimOutcome::Pass)];
         let refused = cost_debt_verdict_wall(Some(&changed), &roster, &terminal);
         assert_eq!(
-            refused.len(),
-            1,
-            "{:?}",
-            refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
+            refused
+                .iter()
+                .map(|b| (b.identity.as_str(), b.cause.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("t.new", "CostDebtRowVerdictUnreached")]
         );
-        assert_eq!(refused[0].identity, "t.new");
-        assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
-        // The handoff mutant: the same run with the admissions dropped owes nothing, so the wall
-        // goes silent -- the control above is what notices.
-        assert!(cost_debt_verdict_wall(Some(&[]), &roster, &terminal).is_empty());
     }
 
     /// RED: a planted cost row over a semantically failing claim is refused, under the cause

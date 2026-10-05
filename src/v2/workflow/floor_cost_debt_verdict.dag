@@ -84,14 +84,14 @@ fn cost_debt_verdict_refuses(standing: CostDebtVerdictStanding) -> Bool {
 // ── ADMISSION: WHICH HEAD ROWS THE BASE DID NOT CARRY ──────────────────────────────────────────
 //
 // MEMBERSHIP AT BOTH ENDS IS THE ROSTER'S OWN RESULT, EVALUATED. The head side is
-// `floor_cost_debt_roster` here; the base side is the same function evaluated over the roster file
-// as it stood at the floor's comparison base, in an isolated pool under a scratch module name, by
-// the host (`v1_compiler.cli_run.required_floor_runner` `cost_debt_roster_at_base`) -- the two
-// revisions declare one module path, so they cannot share a pool under it. An earlier revision of
-// this file read the base at token grain (any string literal, then any `head:` literal) and review
-// on gunbc#13332 showed both readings mark rows as carried that the base roster never selected (a
-// literal in an unselected chunk). Reading the result removes the approximation instead of
-// narrowing it: a base the host cannot evaluate refuses, and is never read as already carrying.
+// `floor_cost_debt_roster` here; the base side is the same function evaluated over the BASE TREE
+// -- the floor's source roots as they stood at its comparison commit (the merge base on a
+// merge-base comparison) -- by the host (`v1_compiler.cli_run.required_floor_runner`
+// `cost_debt_roster_in_tree`), so neither the roster nor any provider its result imports is read
+// from head. Review on gunbc#13332 showed every textual reading of the base (any literal, then any
+// `head:` literal) and an isolated evaluation against head's imports each mark rows as carried
+// that the base roster never carried. A base the host cannot evaluate refuses, and is never read
+// as already carrying.
 //
 // The head rows the base roster's result does not carry, in roster order.
 fn cost_debt_admitted_identities(base_roster: List<String>, head_roster: List<String>) -> List<String> {
