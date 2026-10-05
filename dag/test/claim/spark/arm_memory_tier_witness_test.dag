@@ -5,7 +5,11 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_le, gibibyte, gibibyte_to_byte_size, basis_point, token_count }
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.engine_args { PrefixCachingExplicit }
-import extdeps.vllm.weight_offload { VllmUvaOffload, VllmPrefetchOffload, vllm_weight_offload_split_law }
+import extdeps.vllm.weight_offload {
+  VllmUvaOffload, VllmPrefetchOffload, VllmUvaOffloadReading, Fp8MoeTriton, Fp8MoeDeepGemm,
+  vllm_prefetch_step, VllmPrefetchStepAdmitted, VllmPrefetchStepRefused,
+  vllm_weight_offload_split_standing, VllmWeightOffloadSplitStanding, WeightOffloadSplitRefused,
+}
 import v2.std.algebra { filter }
 import v2.std.optional { Present, Absent }
 import extdeps.systems.types {
@@ -26,7 +30,7 @@ import gunbc.spark.arm_memory_fit {
   ArmRankDemand, ArmSupplyDeductions, ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded, ArmTierSupply,
   ArmMemorySubjectReady, ArmMemorySubjectRefused, arm_memory_fit_subject_with_rank_demands,
   arm_memory_fit_verdict, ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
-  ArmCheckpointTierSplit, ArmCheckpointTierSplitMint, ArmCheckpointTierSplitReady, ArmCheckpointTierSplitRefused, checkpoint_tier_split,
+  ArmCheckpointTierSplit, ArmCheckpointTierSplitMint, ArmCheckpointTierSplitReady, ArmCheckpointTierSplitUnestablished, ArmCheckpointTierSplitRefused, checkpoint_tier_split,
   arm_readback_observation, ArmObservationConsistent, ArmMemoryModelFalsified, ArmKvCache,
   gb10_host_memory, gb10_memory_tier,
 }
@@ -126,9 +130,25 @@ fn tw_intent() -> ServingCapacityIntent {
 
 data tw_store_bytes: ByteSize = byte_size(count: 7249526784)
 
+// The supplied engine reading: UVA available, not disabled, and the SM90 block-FP8 single-GPU
+// default backend (TRITON) realised. Prefetch at step two. These are the hypothesis's own readings,
+// not observations of a unit.
+fn tw_standing(prefetch: Bool) -> VllmWeightOffloadSplitStanding {
+  if prefetch {
+    match vllm_prefetch_step(count: 2) {
+      VllmPrefetchStepAdmitted { step: st } => vllm_weight_offload_split_standing(backend: VllmPrefetchOffload { step: st })
+      VllmPrefetchStepRefused { cause: c } => WeightOffloadSplitRefused { cause: c }
+    }
+  } else {
+    vllm_weight_offload_split_standing(backend: VllmUvaOffload { reading: VllmUvaOffloadReading {
+      uva_available: Present { value: true }, disable_uva_env_set: Present { value: false }, realized_moe_backend: Present { value: Fp8MoeTriton },
+    } })
+  }
+}
+
 fn tw_split(offloaded_layers: Nat, prefetch: Bool) -> ArmCheckpointTierSplitMint {
   checkpoint_tier_split(
-    law: vllm_weight_offload_split_law(backend: if prefetch { VllmPrefetchOffload { prefetch_step: 2 } } else { VllmUvaOffload }),
+    standing: tw_standing(prefetch: prefetch),
     checkpoint_bytes: tw_gib(306),
     offloaded_layers: offloaded_layers,
     offloaded_bytes_per_layer: tw_store_bytes,
@@ -168,6 +188,7 @@ fn tw_host_row(checkpoint: ArmComponentBound) -> ArmRankDemand {
 fn tw_verdict_for(offloaded_layers: Nat) -> ArmMemoryFitVerdict? {
   match tw_split(offloaded_layers: offloaded_layers, prefetch: false) {
     ArmCheckpointTierSplitRefused { cause: _ } => none
+    ArmCheckpointTierSplitUnestablished { obligations: _ } => none
     ArmCheckpointTierSplitReady { split: sp } =>
       match arm_memory_fit_subject_with_rank_demands(
         checkpoint: Glm53NativeFp8,
@@ -307,8 +328,10 @@ test fn w_the_split_law_prices_prefetch_device_copies_and_uva_none() -> Bool {
             && tw_exact_bytes(b: uva.device_residency) == byte_size_count(b: tw_gib(306)) - 42 * byte_size_count(b: tw_store_bytes)
             && tw_exact_bytes(b: uva.host_residency) == 42 * byte_size_count(b: tw_store_bytes)
         ArmCheckpointTierSplitRefused { cause: _ } => false
+        ArmCheckpointTierSplitUnestablished { obligations: _ } => false
       }
     ArmCheckpointTierSplitRefused { cause: _ } => false
+    ArmCheckpointTierSplitUnestablished { obligations: _ } => false
   }
 }
 
@@ -316,6 +339,7 @@ test fn w_an_offload_choice_larger_than_the_checkpoint_is_refused() -> Bool {
   match tw_split(offloaded_layers: 50, prefetch: false) {
     ArmCheckpointTierSplitRefused { cause: c } => string_contains(s: c as String, pattern: "does not describe this checkpoint")
     ArmCheckpointTierSplitReady { split: _ } => false
+    ArmCheckpointTierSplitUnestablished { obligations: _ } => false
   }
 }
 
@@ -328,5 +352,32 @@ test fn w_bytes_observed_where_a_term_was_not_placed_falsify_the_placement() -> 
     && (match arm_readback_observation(component: ArmKvCache, predicted: tw_not_placed(), observed: byte_size(count: 0), receipt: "fixture readback" as NonEmptyStr) {
       ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => true
       ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+    })
+}
+
+
+// THE SPLIT EXISTS ONLY UNDER AN ESTABLISHED ENGINE LAW. An unread UVA reading leaves it
+// unestablished, carrying the engine row's obligations. A relayout backend refuses it, because the
+// engine re-materialises the offloaded stores on the device.
+test fn w_an_unread_or_relayout_engine_reading_never_prices_a_split() -> Bool {
+  (match checkpoint_tier_split(
+    standing: vllm_weight_offload_split_standing(backend: VllmUvaOffload { reading: VllmUvaOffloadReading {
+      uva_available: Absent, disable_uva_env_set: Present { value: false }, realized_moe_backend: Present { value: Fp8MoeTriton },
+    } }),
+    checkpoint_bytes: tw_gib(306), offloaded_layers: 42, offloaded_bytes_per_layer: tw_store_bytes,
+    how: tw_how(text: "unread reading")) {
+    ArmCheckpointTierSplitUnestablished { obligations: os } => count(os) == 1
+    ArmCheckpointTierSplitReady { split: _ } => false
+    ArmCheckpointTierSplitRefused { cause: _ } => false
+  })
+    && (match checkpoint_tier_split(
+      standing: vllm_weight_offload_split_standing(backend: VllmUvaOffload { reading: VllmUvaOffloadReading {
+        uva_available: Present { value: true }, disable_uva_env_set: Present { value: false }, realized_moe_backend: Present { value: Fp8MoeDeepGemm },
+      } }),
+      checkpoint_bytes: tw_gib(306), offloaded_layers: 42, offloaded_bytes_per_layer: tw_store_bytes,
+      how: tw_how(text: "relayout reading")) {
+      ArmCheckpointTierSplitRefused { cause: _ } => true
+      ArmCheckpointTierSplitReady { split: _ } => false
+      ArmCheckpointTierSplitUnestablished { obligations: _ } => false
     })
 }

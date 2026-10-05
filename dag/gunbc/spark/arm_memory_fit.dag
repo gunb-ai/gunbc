@@ -60,7 +60,9 @@ import extdeps.systems.types {
   integrated_system_memory_components, integrated_system_unified_memory, system_memory_component_same, system_memory_component_wire,
 }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
-import extdeps.vllm.weight_offload { VllmWeightOffloadSplitLaw }
+import extdeps.vllm.weight_offload {
+  VllmWeightOffloadSplitStanding, WeightOffloadSplitEstablished, WeightOffloadSplitUnestablished, WeightOffloadSplitRefused,
+}
 
 // ── WHAT THIS MODULE IS ─────────────────────────────────────────────────────────────────────────
 //
@@ -444,12 +446,37 @@ type ArmCheckpointTierSplit {
   host_residency: ArmComponentBound
 }
 
+// The split is priced only from an ESTABLISHED engine law, one minted from a reading of the UVA
+// availability, the disable flag and the realised MoE backend. An unread reading leaves the split
+// unestablished, with those obligations carried. A reading under which the engine re-materialises
+// the offloaded stores refuses it.
 type ArmCheckpointTierSplitMint
   = ArmCheckpointTierSplitReady { split: ArmCheckpointTierSplit }
+  | ArmCheckpointTierSplitUnestablished { obligations: List<NonEmptyStr> }
   | ArmCheckpointTierSplitRefused { cause: NonEmptyStr }
 
 fn checkpoint_tier_split(
-  law: VllmWeightOffloadSplitLaw,
+  standing: VllmWeightOffloadSplitStanding,
+  checkpoint_bytes: ByteSize,
+  offloaded_layers: Nat,
+  offloaded_bytes_per_layer: ByteSize,
+  how: NonEmptyStr,
+) -> ArmCheckpointTierSplitMint {
+  match standing {
+    WeightOffloadSplitUnestablished { obligations: os } => ArmCheckpointTierSplitUnestablished { obligations: os }
+    WeightOffloadSplitRefused { cause: c } => ArmCheckpointTierSplitRefused { cause: c }
+    WeightOffloadSplitEstablished { law: law } =>
+      checkpoint_tier_split_under_law(
+        device_copies: law.device_copies_per_offloaded_parameter,
+        checkpoint_bytes: checkpoint_bytes,
+        offloaded_layers: offloaded_layers,
+        offloaded_bytes_per_layer: offloaded_bytes_per_layer,
+        how: how)
+  }
+}
+
+fn checkpoint_tier_split_under_law(
+  device_copies: Nat,
   checkpoint_bytes: ByteSize,
   offloaded_layers: Nat,
   offloaded_bytes_per_layer: ByteSize,
@@ -467,7 +494,7 @@ fn checkpoint_tier_split(
       ], "") as NonEmptyStr,
     }
   } else {
-    let device = total - host + law.device_copies_per_offloaded_parameter * per_layer
+    let device = total - host + device_copies * per_layer
     ArmCheckpointTierSplitReady { split: ArmCheckpointTierSplit {
       device_residency: ComponentBoundExact {
         bytes: byte_size(count: device),
