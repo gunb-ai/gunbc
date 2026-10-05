@@ -165,3 +165,19 @@ data return_lift_match_arm_red_source: String = "module ret_probe_arm\nfn g(s: S
 test fn required_arm_at_optional_return_refuses_blocking() -> Bool {
   eq_blocking_count(source: return_lift_match_arm_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
+
+// THE SAME CLASS AT A DATA INITIALIZER (ruling A on gunbc#13202). A `data r: T? = <bare T>` row was
+// emitted bare against Option<..> and refused only downstream by rustc; the checker now refuses it.
+// The red's T is a coproduct with a nested-record variant, the specimen that exposed the class; the
+// control is the same row spelled Present { value: .. }.
+data data_row_bare_lift_red_source: String = "module data_probe_lift\ntype Inner {\n  n: Int\n}\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\ndata shape_row: Shape? = Circle { inner: Inner { n: 1 } }\n"
+
+data data_row_present_spelled_green_source: String = "module data_probe_present\ntype Inner {\n  n: Int\n}\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\ndata shape_row: Shape? = Present { value: Circle { inner: Inner { n: 1 } } }\n"
+
+test fn bare_data_initializer_at_optional_row_refuses_blocking() -> Bool {
+  eq_blocking_count(source: data_row_bare_lift_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+}
+
+test fn present_spelled_data_initializer_stays_admitted() -> Bool {
+  eq_admitted(source: data_row_present_spelled_green_source)
+}

@@ -4408,12 +4408,15 @@ fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
 // class C5). A fn declared `-> T?` whose body produces a bare T was accepted: no declared coercion
 // lifts T into T? (DESIGN 4, 2026-09-26), and the Rust emission refused it as E0308 `expected
 // Option<T>, found T` (gunbc.running_release_identity running_release_member_string). It is judged
-// here at the declared return only, the position the ruling names; a bare T bound to a T? PARAMETER
-// or field is a different position whose population was not measured by this change and is not
-// claimed. The none / Absent presence spellings produce an optional and never reach this arm.
+// at the declared return and, by gentle-dove-36 ruling A on gunbc#13202, at a DATA INITIALIZER: a
+// `data r: T? = <bare T>` row was emitted bare against Option<..> on the typed-expression path and
+// refused only downstream by rustc (E0308), which DESIGN 5 does not count as a typed refusal. A bare
+// T bound to a T? PARAMETER or record field is a different position whose population was not
+// measured by this change and is not claimed. The none / Absent presence spellings produce an optional and never reach this arm.
 fn position_is_declared_return(position: DeclaredTypePosition) -> Bool {
   match position {
     PositionDeclaredReturn => true
+    PositionDataInitializer => true
     _ => false
   }
 }
