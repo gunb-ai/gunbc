@@ -501,7 +501,7 @@ jobs:
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib -- slice_cost_tests value_depth_walker_tests
+          ('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib -- slice_cost_tests a_deep_list_drops a_deep_variant_chain_drops a_shared_deep_chain_drops_once_per_owner
           cargo test --release -p v1-stage0-runtime --lib -- list_slice_tests') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
