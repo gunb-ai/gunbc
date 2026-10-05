@@ -109,14 +109,15 @@ test fn the_roadmap_writer_changes_the_endpoint_and_keeps_the_holders_host() -> 
 }
 
 // (4) NoProdRole refuses on both writer arms, whatever the executor is.
-test fn no_prod_role_refuses_on_both_writer_arms() -> Bool {
-  let unresolved = fn(w: ApprovalServingProcess) -> Bool {
-    match approval_origin_admission(origin: approval_loopback_origin_for(writer: w, realization: no_prod_role()), executor: on_host(h: "srv1")) {
-      ApprovalOriginUnresolved { cause: ProdRoleUnheld } => true
-      _ => false
-    }
+fn unresolved_under_no_prod_role(w: ApprovalServingProcess) -> Bool {
+  match approval_origin_admission(origin: approval_loopback_origin_for(writer: w, realization: no_prod_role()), executor: on_host(h: "srv1")) {
+    ApprovalOriginUnresolved { cause: ProdRoleUnheld } => true
+    _ => false
   }
-  unresolved(RoadmapProcess) && unresolved(BrokerProcess)
+}
+
+test fn no_prod_role_refuses_on_both_writer_arms() -> Bool {
+  unresolved_under_no_prod_role(w: RoadmapProcess) && unresolved_under_no_prod_role(w: BrokerProcess)
 }
 
 // An executor that cannot read its own hostname does not dial either.
