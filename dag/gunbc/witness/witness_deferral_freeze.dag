@@ -51,7 +51,8 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // `v2.workflow.required_floor` `long_home_prefixes`. Both the path and that refusal were
 // deleted as unreachable (2026-10-04). The refusal the rule needs is the required floor's own,
 // named as the restoration trigger of `gunbc.rung_drop`
-// `witness_deferral_freeze_forward_rule_rung_drop`.
+// `witness_deferral_freeze_forward_rule_rung_drop`. The STALE-ROW half does run on the live
+// route: `run_required_floor` refuses stale freeze rows before its intersection wall.
 //
 // EVIDENCE GRADE, stated because two of the three claims above are about absences.
 // The cadence standing is read from the corpus's own recorded corrections, not

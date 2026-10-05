@@ -1239,6 +1239,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_profile_store_reason,
     dissolution: excl_local_repo_wet_profile_store_dissolve},
   WitnessExclusionRow {
+    pattern: "roadmap_belt_publish_realization_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "scm_repository_save_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_scm_guarded_save_reason,
