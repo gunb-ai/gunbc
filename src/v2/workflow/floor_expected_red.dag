@@ -805,7 +805,7 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
   Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
 }
 
-// A coproduct arm with no constructor name (`type T = { x: Int } | B | C`) is accepted by v2
+// A coproduct arm with no constructor name (`type T = { x: Int } | B`) is accepted by v2
 // normalize. The claim asserts the refusal normalize owes, and was committed knowing it is red.
 // Recurring failure mode: gunbc.recurring_failure_mode.a_coproduct_arm_without_a_constructor_name_is_accepted.
 // When the declaration fold refuses the arm, this row is deleted and the claim stays as the control.
