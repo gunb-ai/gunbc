@@ -231,7 +231,7 @@ import v1.compiler.infer {
   caller_resource_requirements, established_resource_binding
 }
 import v1.compiler.infer_emit_info {
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer_or_false, type_summary_decided, summary_is_enum_with_variant,
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer_or_false, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
   TypeDeclIndex, type_decl_identity,
   TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
@@ -558,9 +558,14 @@ fn is_host_diagnostics_carrier_alias(name: String) -> Bool {
 // optional and the diagnostics carrier) is a fact about the declaration: whether this declaration is realized as a host carrier is a fact about it, so a coproduct
 // a module declares as `Optional` is not the host option (declaration_owns_host_option).
 fn declaration_is_grounded_coproduct_native_alias(module_path: String, decl_name: String) -> Bool {
+  if contains(decl_name, ".") {
+    let segments = decl_name |> split(delimiter: ".")
+    declaration_is_grounded_coproduct_native_alias(module_path: segments |> take((segments |> count) - 1) |> join(separator: "."), decl_name: qualified_last_segment(name: decl_name))
+  } else {
   is_host_freemonoid_vec_alias(name: decl_name)
     || declaration_owns_host_option(module_path: module_path, decl_name: decl_name)
     || declaration_ref_in_list(target: decl_ref(module_path: module_path, decl_name: decl_name), refs: rust_host_option_carrier_declarations)
+  }
 }
 
 // A TypeSummary key is `<module>.<name>`: the identity type_decl_identity minted for it.
@@ -3286,11 +3291,30 @@ fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type
   }
 }
 
+// THE SHARED SET IS KEYED BY SPELLING, and the declaration and every use of a type read it by that
+// spelling, so what keeps an emission consistent is that one spelling has one answer. A spelling two
+// declarations own is shared only when EVERY declaration of it would be: a coproduct a module
+// declares as `Optional` beside the host option (which is never shared) is then unshared at its
+// declaration and at every use alike, and the host Option is not wrapped because a same-leaf type
+// elsewhere needs sharing. The set is one of the indexes
+// gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer still
+// names as leaf-keyed; this rule is what makes its leaf answer independent of fold order.
+fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Bool {
+  type_summary_keys_of_leaf(index: type_summaries, leaf: name) |> all(key =>
+    match type_summary_decided(index: type_summaries, key: key) {
+      Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing), name)
+      Absent => true
+    }
+  )
+}
+
 fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
   let user_shared = type_summary_values(index: type_summaries) |> fold(init: empty_set(), f: (acc, summary) =>
-    maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
+    if shared_by_every_declarer(type_summaries: type_summaries, name: summary.name, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing) {
+      maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
+    } else { acc }
   )
 
   let collection_keys = sorted_map_keys(rust_container_templates)
@@ -10238,8 +10262,19 @@ fn is_optional_variant_name(name: String) -> Bool {
   name == "Present" || name == "Absent" || name == "Some" || name == "None"
 }
 
+// A parent arrives as a bare name, or -- from variant_to_enum, whose values are owners' identities --
+// as `<module>.<name>`. An identity is decided by the declaration it names (the kernel optional's
+// mint row and rust_host_option_carrier_declarations); only a bare name keeps the spelling rule.
 fn is_optional_like_parent_name(name: String) -> Bool {
-  name == kernel_optional_mint_name || is_host_diagnostics_carrier_alias(name: name)
+  if contains(name, ".") {
+    let segments = name |> split(delimiter: ".")
+    let module_path = segments |> take((segments |> count) - 1) |> join(separator: ".")
+    let decl_name = qualified_last_segment(name: name)
+    declaration_owns_host_option(module_path: module_path, decl_name: decl_name)
+      || declaration_ref_in_list(target: decl_ref(module_path: module_path, decl_name: decl_name), refs: rust_host_option_carrier_declarations)
+  } else {
+    name == kernel_optional_mint_name || is_host_diagnostics_carrier_alias(name: name)
+  }
 }
 
 fn is_some_like_variant_name(name: String) -> Bool {
