@@ -298,6 +298,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       PureRenamingOf { head: head } => map_insert(m: index.renaming_aliases, key: qualified_path, value: head)
       NotARenaming => index.renaming_aliases
     },
+    variant_alias_carriers: index.variant_alias_carriers,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
@@ -553,6 +554,7 @@ fn symbol_index_bind_at(
         bound_declarings: recorded.bound_declarings,
         declared_payloads: recorded.declared_payloads,
         renaming_aliases: recorded.renaming_aliases,
+        variant_alias_carriers: recorded.variant_alias_carriers,
         declared_type_params: recorded.declared_type_params,
         declared_resources: recorded.declared_resources,
         namespace_bodies: recorded.namespace_bodies,

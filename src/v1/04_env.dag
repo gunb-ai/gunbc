@@ -186,7 +186,7 @@ data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, res
 // lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted
 // variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module
 // item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants
-// also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases);
+// also enter global_bare — mirrors v2 symbol_index_fill_containment_node's alias arm);
 // lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on
 // miss — never widens to field-access semantics).
 

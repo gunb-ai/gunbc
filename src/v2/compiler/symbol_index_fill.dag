@@ -234,6 +234,11 @@ fn symbol_index_fill_containment_edge(
 // Conj arm: there, namespace_graft_spine_segment_edge_optional read a one-binder domain whose binder is
 // a record (an operation's ^operation_input, a fn of one record-typed parameter) as a dotted-name
 // segment, and indexed the record's fields at the Arrow's path with the binder's level erased.
+// A UNIQUE MODULE-LEVEL VARIANT SPELLING RESOLVES THROUGH THE ALIAS, WHICH DOES NOT NAME ITS
+// CARRIER: for a uniquely-named variant the walk below mints the alias entry (module plus arm
+// name) AND the alias-to-carrier row on the index together, where the variant's declared path is
+// in hand, so one walk decides both. (The separate alias walk keyed the same alias without a
+// carrier, and the construct read had no way back to the declaring coproduct from `p.Boxed`.)
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
   path: QualifiedName,
@@ -268,11 +273,6 @@ fn symbol_index_fill_containment_node(
               qualified_path: variant_path,
               kind: VariantArmPayload
             )
-            // A UNIQUE MODULE-LEVEL VARIANT SPELLING RESOLVES THROUGH THE ALIAS, WHICH DOES NOT
-            // NAME ITS CARRIER: the alias entry and the alias-to-carrier row are minted here,
-            // where the variant's declared path is in hand, so one walk decides both. (The
-            // separate alias walk keyed the same alias without a carrier, and the construct read
-            // had no way back to the declaring coproduct from `p.Boxed`.)
             if disj_variant_count_of(counts: counts, sym: sym) == 1 {
               let alias_path = qualified_name_snoc(qn: module_qn, segment: sym)
               symbol_index_fill_containment_node(
@@ -340,6 +340,51 @@ fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
     }
     Rejected { diagnostics: _ } => 0
   }
+}
+
+// THE FIXED POINT IS WHAT MAKES ORDER-INDEPENDENCE TRUE ONE LEVEL UP, and one level up is where the
+// first version of this was wrong (review 69735 on gunbc#12009). Splitting declarations from
+// bindings removes the order dependence only for a row whose target is a DECLARATION -- pass A
+// writes every one of those before any row is tried. It does not remove it for a RE-EXPORT CHAIN,
+// where a row's target is another row's binding: `v2.std.collection` imports `Absent` from
+// `v2.std.optional` and declares it nowhere, and `v2.compiler.normalize` imports `Absent` from
+// `v2.std.collection`, so normalize's row can only bind after collection's has. A single pass over
+// the roots resolves that pair in one root order and silently not in the other, and the loser binds
+// NOTHING -- the quiet failure again, surfacing far away as an unbound reference.
+//
+// Retrying the deferred rows removes it for chains of any depth without needing the dependency
+// order computed: each round binds every row whose target has become available. It TERMINATES
+// because each recursion is entered only when the deferred list got strictly shorter, so the
+// measure decreases and the last round is either empty or made no progress. Rows still deferred at
+// the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
+// reference that wanted them refuses, located, at the reference site -- which is where
+// docs/plans/namespace-resolution-design.md section 13 puts that refusal.
+fn symbol_index_fill_bindings_to_fixed_point(
+  index: SymbolIndex,
+  pending: FreeMonoid<PendingBinding>
+) -> SymbolIndex {
+  let round = symbol_index_bind_pending_round(index: index, pending: pending)
+  if is_empty(xs: round.deferred) {
+    round.index
+  } else if length(xs: round.deferred) == length(xs: pending) {
+    round.index
+  } else {
+    symbol_index_fill_bindings_to_fixed_point(
+      index: round.index,
+      pending: round.deferred
+    )
+  }
+}
+
+fn symbol_index_fill_alias_bindings(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  root: Node
+) -> SymbolIndex {
+  symbol_index_fill_bindings_to_fixed_point(
+    index: index,
+    pending: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
+  )
 }
 
 fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
