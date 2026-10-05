@@ -961,7 +961,12 @@ fn conclude_claim_cost_download(artifact_id: Int, performance: RestExchangePerfo
   }
 }
 
-fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> ClaimCostArtifactRead uses net: Network {
+fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> ClaimCostArtifactRead
+  uses net: Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments_under"),
+  ]
+{
   let listed = list_run_artifacts_with(token: token, owner: owner, repo: repo, run_id: run_id)
   let after = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
   match conclude_claim_cost_listing(performance: listed.performance, listed: listed.listed) {
@@ -1041,11 +1046,22 @@ fn collect_qualification_instruments(collected: CollectedQualificationRun, token
     run_id: collected.dispatched.receipt.workflow_run_id,
   ) {
     CollectReadsRefused { token_app: a, token_installation: i } => QualificationCollectUnderAnotherInstallation { token_app: a, token_installation: i }
-    CollectReadsPlanned { job_id: j, run_id: r } => collect_qualification_instruments_under(collected: collected, token: token, job_id: j, run_id: r)
+    CollectReadsPlanned { job_id: _, run_id: _ } => collect_qualification_instruments_under(collected: collected, token: token)
   }
 }
 
-fn collect_qualification_instruments_under(collected: CollectedQualificationRun, token: ControllerInstallationToken, job_id: Int, run_id: Int) -> QualificationCollectOutcome uses net: Network {
+// THE READS, CONFINED TO THE CHECKED ENTRY. Only collect_qualification_instruments may call this, and
+// only after its read plan admitted the token; the job id and run id are the sealed collection's own,
+// never arguments, so no caller can pair a collection with another run's id or read under a token the
+// plan did not admit.
+fn collect_qualification_instruments_under(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome
+  uses net: Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
+  ]
+{
+  let job_id = collected.floor_job.id
+  let run_id = collected.dispatched.receipt.workflow_run_id
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
   match collected.dispatched.subject.registration.slot {
