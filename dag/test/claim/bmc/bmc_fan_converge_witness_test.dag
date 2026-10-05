@@ -76,7 +76,7 @@ data cleanup_debt_test_applied_receipt: BmcFanAppliedReceipt = BmcFanAppliedRece
   },
 }
 
-test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
+test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool  {
   match validate_bmc_fan_curve(
     curve: BmcFanCurve {
       control_sensor: "TEMP_SOC",
@@ -96,7 +96,7 @@ test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
   }
 }
 
-test fn successful_effect_survives_cleanup_failure_as_cleanup_debt() -> Bool {
+test fn successful_effect_survives_cleanup_failure_as_cleanup_debt() -> Bool  {
   match bmc_fan_record_cleanup_debt(
     result: BmcFanAppliedAndVerified {
       receipt: cleanup_debt_test_applied_receipt,
@@ -112,7 +112,7 @@ test fn successful_effect_survives_cleanup_failure_as_cleanup_debt() -> Bool {
   }
 }
 
-test fn digest_mismatched_backup_manifest_is_not_admitted() -> Bool {
+test fn digest_mismatched_backup_manifest_is_not_admitted() -> Bool  {
   let different_digest = sha256_digest(
     hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   )
@@ -137,7 +137,7 @@ test fn digest_mismatched_backup_manifest_is_not_admitted() -> Bool {
   )
 }
 
-test fn stale_backup_manifest_generation_is_not_admitted() -> Bool {
+test fn stale_backup_manifest_generation_is_not_admitted() -> Bool  {
   !bmc_fan_backup_manifest_matches_request(
     manifest: cleanup_debt_test_manifest,
     target: srv4_host.identity,
@@ -159,7 +159,7 @@ fn backup_manifest_identity_differs(
   baseline_identity != changed_identity
 }
 
-test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool {
+test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool  {
   let different_digest = sha256_digest(
     hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   )
@@ -252,14 +252,14 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
     ))
 }
 
-test fn identical_bmc_on_wrong_endpoint_is_not_exact_target() -> Bool {
+test fn identical_bmc_on_wrong_endpoint_is_not_exact_target() -> Bool  {
   !bmc_fan_exact_target_admission_matches(
     target: srv4_host.identity,
     admission_target: srv3_host.identity,
   )
 }
 
-test fn sub_threshold_tach_is_a_discriminating_refusal() -> Bool {
+test fn sub_threshold_tach_is_a_discriminating_refusal() -> Bool  {
   match bmc_fan_first_unhealthy_tach(
     health: [
       OpenBmcTachBelowThreshold {
@@ -276,7 +276,7 @@ test fn sub_threshold_tach_is_a_discriminating_refusal() -> Bool {
   }
 }
 
-test fn threshold_satisfied_tach_is_not_refused() -> Bool {
+test fn threshold_satisfied_tach_is_not_refused() -> Bool  {
   match bmc_fan_first_unhealthy_tach(
     health: [
       OpenBmcTachAtOrAboveThreshold {
@@ -293,7 +293,7 @@ test fn threshold_satisfied_tach_is_not_refused() -> Bool {
   }
 }
 
-test fn semantically_equal_but_digest_different_config_is_not_live_exact() -> Bool {
+test fn semantically_equal_but_digest_different_config_is_not_live_exact() -> Bool  {
   let admitted = sha256_digest(
     hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   )
@@ -307,7 +307,7 @@ test fn semantically_equal_but_digest_different_config_is_not_live_exact() -> Bo
     )
 }
 
-test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
+test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool  {
   match bmc_fan_assess_monitoring_samples(
     samples: [
       BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
@@ -327,7 +327,7 @@ test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
   }
 }
 
-test fn short_monitoring_window_cannot_claim_completion() -> Bool {
+test fn short_monitoring_window_cannot_claim_completion() -> Bool  {
   match bmc_fan_assess_monitoring_samples(
     samples: [
       BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
@@ -342,7 +342,7 @@ test fn short_monitoring_window_cannot_claim_completion() -> Bool {
   }
 }
 
-test fn empty_monitoring_window_cannot_claim_completion() -> Bool {
+test fn empty_monitoring_window_cannot_claim_completion() -> Bool  {
   match bmc_fan_assess_monitoring_samples(
     samples: [],
     required_elapsed: second(360),
@@ -354,7 +354,7 @@ test fn empty_monitoring_window_cannot_claim_completion() -> Bool {
   }
 }
 
-test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
+test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool  {
   match bmc_fan_assess_monitoring_samples(
     samples: [
       BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
@@ -382,7 +382,7 @@ test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
   }
 }
 
-test fn one_late_sample_cannot_claim_monitoring_coverage() -> Bool {
+test fn one_late_sample_cannot_claim_monitoring_coverage() -> Bool  {
   match bmc_fan_assess_monitoring_samples(
     samples: [
       BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },

@@ -15,19 +15,19 @@ import extdeps.tools.gnu_coreutils { cat_command, printf_command }
 // extdeps.storage.nbd, and a golden string repeating it would red on a path correction that changed
 // nothing about quoting. This file witnesses the quoting, so the quoting is what it states
 // literally.
-test fn shell_quote_plain_args_single_quoted() -> Bool {
+test fn shell_quote_plain_args_single_quoted() -> Bool  {
   shell_command_render(command: nbd_client_disconnect_command(device: "/dev/nbd0"))
     == join(["'", nbd_client_program().invocation as String, "' '-d' '/dev/nbd0'"], "")
 }
 
-test fn shell_quote_escapes_embedded_apostrophe() -> Bool {
+test fn shell_quote_escapes_embedded_apostrophe() -> Bool  {
   string_contains(
     s: shell_command_render(command: cat_command(path: "it's")),
     pattern: "'it'\\''s'",
   )
 }
 
-test fn shell_quote_apostrophe_render_reopens_single_quote_context() -> Bool {
+test fn shell_quote_apostrophe_render_reopens_single_quote_context() -> Bool  {
   let rendered = shell_command_render(command: printf_command(format: "%s", values: ["o'brien"]))
   string_contains(s: rendered, pattern: "'\\''")
     && !string_contains(s: rendered, pattern: "'o'brien'")

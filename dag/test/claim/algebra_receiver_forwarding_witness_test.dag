@@ -9,7 +9,7 @@ fn declared_box_rows() -> ApplicationBox<ApplicationRows> {
   ApplicationBoxed { value: declared_application_rows() }
 }
 
-test fn nested_generic_pattern_still_expands_for_lookup() -> Bool {
+test fn nested_generic_pattern_still_expands_for_lookup() -> Bool  {
   let subject = declared_box_rows()
   match subject {
     ApplicationBoxed { value: RowsPresent { rows } } => rows |> any(row => row.label == "kept")
@@ -17,7 +17,7 @@ test fn nested_generic_pattern_still_expands_for_lookup() -> Bool {
   }
 }
 
-test fn whole_value_pattern_retains_application_for_later_destructuring() -> Bool {
+test fn whole_value_pattern_retains_application_for_later_destructuring() -> Bool  {
   let subject = declared_box_rows()
   match subject {
     bound => match bound {

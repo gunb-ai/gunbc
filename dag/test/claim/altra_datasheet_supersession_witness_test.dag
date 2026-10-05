@@ -21,7 +21,7 @@ import extdeps.cpu.ampere {
 // that brief is a stale index. Both are superseded, so the control below no longer leans on them
 // differing -- it constructs the current arm itself.
 
-test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool {
+test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool  {
   match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
@@ -30,7 +30,7 @@ test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool {
   }
 }
 
-test fn w_the_altra_max_citation_is_superseded() -> Bool {
+test fn w_the_altra_max_citation_is_superseded() -> Bool  {
   match ampere_altra_max_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
@@ -58,7 +58,7 @@ test fn w_the_altra_max_citation_is_superseded() -> Bool {
 // match, never to the name in front of it -- collapsing three arms behind a Bool is precisely what
 // would let a new arm slip past its readers unnoticed.
 
-test fn w_neither_citation_claims_to_be_current() -> Bool {
+test fn w_neither_citation_claims_to_be_current() -> Bool  {
   let classic_is_superseded = match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => true
@@ -75,7 +75,7 @@ test fn w_neither_citation_claims_to_be_current() -> Bool {
 // THE POSITIVE CONTROL STAYS ENROLLED. Dissolving the production predicate does not retire the
 // evidence that the current arm is reachable and distinguishable from the superseded ones --
 // section 4b(4) deletes the obsoleted production machinery, never the discriminating control.
-test fn w_RED_the_current_arm_is_reachable_and_separates_from_superseded() -> Bool {
+test fn w_RED_the_current_arm_is_reachable_and_separates_from_superseded() -> Bool  {
   let current: HeldSpecificationSupersessionStanding = HeldRevisionIsCurrentPublicCopy
   let current_reads_current = match current {
     HeldRevisionIsCurrentPublicCopy => true
@@ -106,14 +106,14 @@ fn standing_index_authority_is(s: HeldSpecificationSupersessionStanding, a: Exte
   }
 }
 
-test fn w_both_standings_cite_the_device_documentation_surface() -> Bool {
+test fn w_both_standings_cite_the_device_documentation_surface() -> Bool  {
   standing_index_authority_is(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing, a: ampere_altra_device_documentation_authority)
     && standing_index_authority_is(s: ampere_altra_max_rev_a1_datasheet_supersession_standing, a: ampere_altra_device_documentation_authority)
 }
 
 // EITHER EDGE MATTERS. The conjunction above is only meaningful if a wrong authority on EITHER
 // side is refused, so this constructs a different authority and asserts both standings reject it.
-test fn w_RED_a_wrong_index_authority_is_refused_on_either_standing() -> Bool {
+test fn w_RED_a_wrong_index_authority_is_refused_on_either_standing() -> Bool  {
   let other = ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/not-the-index" } }
   !standing_index_authority_is(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing, a: other)
     && !standing_index_authority_is(s: ampere_altra_max_rev_a1_datasheet_supersession_standing, a: other)
@@ -122,7 +122,7 @@ test fn w_RED_a_wrong_index_authority_is_refused_on_either_standing() -> Bool {
 // AND THE SUCCESSOR IS A TYPED AUTHORITY, not prose. An earlier revision carried the served
 // locator as a bare string, which admits any text at all beside the ExternalAuthority system this
 // vocabulary already owns.
-test fn w_the_served_successor_is_a_typed_authority() -> Bool {
+test fn w_the_served_successor_is_a_typed_authority() -> Bool  {
   match ampere_altra_max_rev_a1_datasheet_supersession_standing {
     HeldRevisionIsCurrentPublicCopy => false
     NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false

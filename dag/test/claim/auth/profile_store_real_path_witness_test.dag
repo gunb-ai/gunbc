@@ -80,7 +80,7 @@ fn ps_read_exactly_one(r: ProfileStoreReadAll, name: String) -> Bool {
 
 // 1. THE CLAIM THAT WAS RED BEFORE THE FIX: one real upsert, then the real read-all over the same
 // directory returns that one profile.
-test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() -> Bool {
+test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() -> Bool  {
   ps_with_temp_dir(scenario: fn(dir) {
     let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
     ps_upserted(u: upsert)
@@ -92,7 +92,7 @@ test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() 
 // that an entry not ending in ".json" is IGNORED -- neither decoded nor recorded as skipped; only a
 // .json entry that fails to read or decode is carried in `skipped`. So the roster is still the one
 // profile with zero skipped.
-test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> Bool {
+test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> Bool  {
   ps_with_temp_dir(scenario: fn(dir) {
     let stray = Filesystem.Write(path: concat(dir as String, "/README.txt"), content: "not a profile")
     let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
@@ -104,7 +104,7 @@ test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> B
 
 // 3. A MISSING STORE DIRECTORY IS AN UNREAD STORE AT STEP "list" -- never an empty roster, which
 // would be indistinguishable from a store nobody has logged into.
-test fn profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution() -> Bool {
+test fn profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution() -> Bool  {
   ps_with_temp_dir(scenario: fn(dir) {
     match profile_store_read_all(layout: ps_layout(dir: concat(dir as String, "/absent-store") as FilePath)) {
       ProfileStoreUnread { step: s, reason: _ } => s == "list"

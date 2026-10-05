@@ -173,29 +173,29 @@ fn expected_unread_standing_identities() -> List<DeclarationRef> {
   ]
 }
 
-test fn every_expected_seller_is_surveyed() -> Bool {
+test fn every_expected_seller_is_surveyed() -> Bool  {
   all(
     expected_seller_identities(),
     p => offers_include_provider(offers: surveyed_arm_linux_offers(), provider: p),
   )
 }
 
-test fn every_surveyed_offer_provider_is_an_expected_seller() -> Bool {
+test fn every_surveyed_offer_provider_is_an_expected_seller() -> Bool  {
   all(
     surveyed_arm_linux_offers(),
     o => provider_in(provider: o.provider, identities: expected_seller_identities()),
   )
 }
 
-test fn every_surveyed_offer_declares_scope() -> Bool {
+test fn every_surveyed_offer_declares_scope() -> Bool  {
   all(surveyed_arm_linux_offers(), o => offer_scope_nonempty(offer: o))
 }
 
-test fn every_surveyed_aarch64_shape_carries_a_cited_label() -> Bool {
+test fn every_surveyed_aarch64_shape_carries_a_cited_label() -> Bool  {
   all(surveyed_arm_linux_offers(), o => offer_aarch64_labels_are_page_cited(offer: o))
 }
 
-test fn wholesale_join_is_github_depot_and_gitlab() -> Bool {
+test fn wholesale_join_is_github_depot_and_gitlab() -> Bool  {
   all(
     expected_reseller_identities(),
     p => offers_include_provider(offers: cloud_arm_reseller_offers(), provider: p),
@@ -206,7 +206,7 @@ test fn wholesale_join_is_github_depot_and_gitlab() -> Bool {
     )
 }
 
-test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
+test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool  {
   all(
     expected_customer_account_identities(),
     p => offers_include_provider(offers: customer_account_cloud_arm_offers(), provider: p),
@@ -217,7 +217,7 @@ test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
     )
 }
 
-test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
+test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool  {
   all(
     expected_not_accepting_identities(),
     p => offers_include_provider(offers: not_accepting_arm_linux_offers(), provider: p),
@@ -228,7 +228,7 @@ test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
     )
 }
 
-test fn unread_standing_join_is_price_page_or_sku_unread() -> Bool {
+test fn unread_standing_join_is_price_page_or_sku_unread() -> Bool  {
   all(
     expected_unread_standing_identities(),
     p => offers_include_provider(offers: unread_standing_arm_linux_offers(), provider: p),
@@ -257,7 +257,7 @@ data rogue_catalog: RunnerCatalogAvailability = RunnerShapesCited {
   rows: [rogue_aarch64_without_cited_label],
 }
 
-test fn later_consumer_frontier_is_enrolled_in_the_census_closure() -> Bool {
+test fn later_consumer_frontier_is_enrolled_in_the_census_closure() -> Bool  {
   frontier_rows_well_formed(rows: arm_ci_seller_census_later_consumer_frontier_rows)
     && all(
       arm_ci_seller_census_later_consumer_frontier_rows,
@@ -274,7 +274,7 @@ test fn later_consumer_frontier_is_enrolled_in_the_census_closure() -> Bool {
     )
 }
 
-test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool {
+test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool  {
   match circleci_arm_list_price {
     ArmCreditsPerMinute { per_minute, priced_label } =>
       credits_per_minute_count(r: per_minute) == 13
@@ -287,7 +287,7 @@ test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool {
   }
 }
 
-test fn a_row_claiming_aarch64_without_a_cited_label_is_red() -> Bool {
+test fn a_row_claiming_aarch64_without_a_cited_label_is_red() -> Bool  {
   count(
     aarch64_rows_missing_cited_label(
       availability: rogue_catalog,

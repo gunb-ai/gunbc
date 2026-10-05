@@ -32,16 +32,16 @@ fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {
   }
 }
 
-test fn an_absent_cookie_header_reads_as_auth_absent() -> Bool {
+test fn an_absent_cookie_header_reads_as_auth_absent() -> Bool  {
   is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", ingress: IngressUnattested, readback: no_readback(), decided_at: "").authentication)
 }
 
-test fn a_header_with_only_other_cookies_reads_as_auth_absent() -> Bool {
+test fn a_header_with_only_other_cookies_reads_as_auth_absent() -> Bool  {
   is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", ingress: IngressUnattested, readback: no_readback(), decided_at: "", cookie_header: "theme=dark; __Host-gunbc-login=x").authentication)
 }
 
 // The discriminating neighbour: a session cookie that is present but malformed is NOT absence.
-test fn a_duplicated_session_cookie_is_a_typed_invalid_standing_not_absence() -> Bool {
+test fn a_duplicated_session_cookie_is_a_typed_invalid_standing_not_absence() -> Bool  {
   match roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", ingress: IngressUnattested, readback: no_readback(), decided_at: "", cookie_header: "gunbc_session=a; gunbc_session=b").authentication {
     SessionStandingInvalid { standing: SessionCookieMalformed { detail: _ } } => true
     SessionStandingInvalid { standing: SessionCookieValid { session: _ } } => false

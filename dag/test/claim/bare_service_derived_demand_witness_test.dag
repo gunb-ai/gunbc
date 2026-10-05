@@ -26,14 +26,14 @@ data bsd_service_source: String = "module bsd_probe\n\nservice BsdStore \{\n  op
 
 data bsd_same_spelled_local_source: String = "module bsd_local_probe\n\nservice BsdStore \{\n  operation Ping \{\n    input \{ arg: String \}\n    output \{ exit_code: Int from \"exit_code\" \}\n    readonly\n    transport shell \{ argv: [\"true\", arg] \}\n    exit \{ 0 => Unit  nonzero => Unit }\n    mock_response \{ 0 => \{ exit_code: 0 } \"hermetic\" }\n  }\n}\n\nfn bsd_keeps_the_local(BsdStore: Int) -> Int \{\n  BsdStore\n}\n"
 
-test fn a_bare_service_call_is_in_derived_demand() -> Bool {
+test fn a_bare_service_call_is_in_derived_demand() -> Bool  {
   compile_dag_rust_emit_check(bsd_service_source, "src/bsd_probe.rs", ["async fn bsd_calls_the_service"], ["unrealized host seam"])
 }
 
-test fn a_function_that_does_not_call_the_service_stays_pure() -> Bool {
+test fn a_function_that_does_not_call_the_service_stays_pure() -> Bool  {
   compile_dag_rust_emit_check(bsd_service_source, "src/bsd_probe.rs", ["fn bsd_does_not_call_it"], ["async fn bsd_does_not_call_it"])
 }
 
-test fn a_same_spelled_local_is_not_a_service() -> Bool {
+test fn a_same_spelled_local_is_not_a_service() -> Bool  {
   compile_dag_rust_emit_check(bsd_same_spelled_local_source, "src/bsd_local_probe.rs", ["fn bsd_keeps_the_local"], ["async fn bsd_keeps_the_local"])
 }

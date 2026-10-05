@@ -66,10 +66,10 @@ data red_arity_zero_member_list_source: String = "module probe_arity_zero_import
 
 data green_one_member_source: String = "module probe_arity_one_import\nimport std.types { Int }\nfn answers() -> Int { 7 }\n"
 
-test fn an_arity_zero_import_member_list_refuses_at_parse() -> Bool {
+test fn an_arity_zero_import_member_list_refuses_at_parse() -> Bool  {
   blocking_parse_error_count(source: red_arity_zero_member_list_source) >= 1
 }
 
-test fn the_same_import_carrying_one_member_is_accepted() -> Bool {
+test fn the_same_import_carrying_one_member_is_accepted() -> Bool  {
   blocking_parse_error_count(source: green_one_member_source) == 0
 }

@@ -17,7 +17,7 @@ fn fixture_request() -> AuthorizationRequest<NonEmptyStr> {
     intent_hash: content_hash_of_value(value: "fixture-intent"), destructive: false }
 }
 
-test fn witness_pending_unreadable_and_other_intent_withhold_gcp_access() -> Bool {
+test fn witness_pending_unreadable_and_other_intent_withhold_gcp_access() -> Bool  {
   let request = fixture_request()
   all([PollStillPending, PollUnreadable { detail: "broker down" }, PollApproved { revision: "another-intent", decided_by: "fixture-operator", decided_at: "2026-09-27T12:00:00Z", execute_by: "2026-09-27T12:05:00Z" }], poll =>
     match approved_gcp_access_from_poll(request: request, poll: poll, observed_at: "2026-09-27T12:01:00Z", token_variable: "GUNBC_TEST_APPROVED_GCP_CREDENTIAL") {
@@ -26,7 +26,7 @@ test fn witness_pending_unreadable_and_other_intent_withhold_gcp_access() -> Boo
     })
 }
 
-test fn witness_expired_approval_cannot_use_available_workload_credential() -> Bool {
+test fn witness_expired_approval_cannot_use_available_workload_credential() -> Bool  {
   let request = fixture_request()
   match approved_gcp_access_from_poll(request: request,
     poll: PollApproved { revision: request_revision_of(request: request), decided_by: "fixture-operator", decided_at: "2026-09-27T12:00:00Z", execute_by: "2026-09-27T12:05:00Z" },
@@ -39,7 +39,7 @@ test fn witness_expired_approval_cannot_use_available_workload_credential() -> B
 // The credential is a SUPPLIED value (DESIGN §3 witness rule): the subject is the join after
 // admission, and the admitted authorization comes from the real gate fold, not a constructed one.
 // The real variable read stays on the refusal claims above through approved_gcp_access_from_poll.
-test fn witness_approval_and_workload_credential_are_both_required() -> Bool {
+test fn witness_approval_and_workload_credential_are_both_required() -> Bool  {
   let request = fixture_request()
   let approved = PollApproved { revision: request_revision_of(request: request), decided_by: "fixture-operator", decided_at: "2026-09-27T12:00:00Z", execute_by: "2026-09-27T12:05:00Z" }
   match approval_gate_from_poll(poll: approved, request: request, observed_at: "2026-09-27T12:01:00Z") {

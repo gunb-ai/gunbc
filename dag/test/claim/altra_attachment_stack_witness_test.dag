@@ -71,7 +71,7 @@ fn count_of(xs: List<LayerBlocker>) -> Int {
 // is 4926, which must equal the socket's declared contact count reached through a different path
 // — the CPU catalog row. Two independent routes to one population make this a join rather than a
 // number typed twice.
-test fn w_the_contact_population_cross_foots_at_4926() -> Bool {
+test fn w_the_contact_population_cross_foots_at_4926() -> Bool  {
   altra_pin_summary_total() == 4926
     && altra_declared_contact_count() == 4926
     && altra_signal_pin_count + altra_power_and_ground_pin_count + altra_reserved_pin_count == altra_declared_contact_count()
@@ -80,7 +80,7 @@ test fn w_the_contact_population_cross_foots_at_4926() -> Bool {
 // The population is the ONE fact that crosses the socket boundary: however the socket terminates,
 // a 4926-contact processor needs 4926 board-side terminations. The geometry does not cross, which
 // is the next test.
-test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
+test fn w_the_board_side_termination_population_follows_the_package() -> Bool  {
   board_side_termination_population() == 4926
 }
 
@@ -95,7 +95,7 @@ test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
 // establish it. Both are established now, by DIFFERENT authorities. A future edit deriving the
 // board land pattern from the package's underside — the category error this module's header makes
 // unwritable — collapses those authorities into one and fails here.
-test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
+test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool  {
   fact_is_established(f: processor_package_standing.fact)
     && fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
@@ -117,7 +117,7 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
 // not represent, since it forced a choice between "publicly cited" and "redistribution
 // undecided". Regression control for the fusion: collapse the axes again and one conjunct becomes
 // unsayable.
-test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool {
+test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool  {
   fact_is_established(f: processor_package_standing.fact)
     && match processor_package_standing.carriage {
       NormalizedFactsMayBeCarried => true
@@ -129,7 +129,7 @@ test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool {
 // AND AN UNRESOLVED FACT HAS NO CARRIAGE QUESTION YET. Carriage asks what may be copied; with
 // nothing established there is nothing to copy, so the arm says so rather than defaulting to a
 // permission or a prohibition nobody decided.
-test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
+test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool  {
   !fact_is_established(f: socket_standing.fact)
     && match socket_standing.fact {
       FactUnresolved { what_is_missing: _ } => true
@@ -158,7 +158,7 @@ test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
 // supplied the drawing. The witness still discriminates all three blocker KINDS, and the
 // reference-board collateral below still carries the commercial one, so no arm of blocker_kind
 // lost coverage.
-test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
+test fn w_the_three_blocker_kinds_are_distinct() -> Bool  {
   let package_blocker = match layer_blocker(row: processor_package_standing) {
     Absent => "none"
     Present { value: b } => blocker_kind(b: b)
@@ -206,7 +206,7 @@ fn undecided_carriage_blocker() -> String {
 // repository can publish, so the gated layer is established. If any layer regresses to
 // FactAccessGated — a future part whose only geometry sits behind Customer Connect — the count
 // goes non-zero and this fails, the alarm the original witness existed to raise.
-test fn w_no_attachment_layer_is_behind_the_nda_boundary() -> Bool {
+test fn w_no_attachment_layer_is_behind_the_nda_boundary() -> Bool  {
   let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
     match row.fact {
       FactAccessGated { subject: _, access_route: _ } => acc + 1
@@ -227,7 +227,7 @@ test fn w_no_attachment_layer_is_behind_the_nda_boundary() -> Bool {
 // SIX LAYERS, SIX BLOCKERS, NONE ESTABLISHED — the honest state of the attachment stack today, not
 // a target. Asserted by count so establishing one layer moves the number instead of silently
 // satisfying a name.
-test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
+test fn w_every_attachment_layer_is_open_and_says_why() -> Bool  {
   let layers = fold(attachment_stack, init: 0, f: fn(acc, _r) { acc + 1 })
   let package_resolved = match layer_blocker(row: processor_package_standing) {
     Absent => true
@@ -247,7 +247,7 @@ test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
 }
 
 // The layers are distinguishable rather than six spellings of one thing.
-test fn w_the_layers_are_named_distinctly() -> Bool {
+test fn w_the_layers_are_named_distinctly() -> Bool  {
   (attachment_layer_name(l: ProcessorPackageLayer) as String) == "processor package"
     && (attachment_layer_name(l: SocketLayer) as String) == "socket"
     && (attachment_layer_name(l: BoardLandPatternLayer) as String) == "board land pattern"
@@ -257,7 +257,7 @@ test fn w_the_layers_are_named_distinctly() -> Bool {
 // EVERY LAYER THIS BOARD CARRIES IS A COHERENT PAIR. Runs over the live population rather than a
 // fixture, so it is the claim that the six standings authored here mean something — and the one
 // that would have caught the defect had it existed when the axes were split.
-test fn w_every_layer_standing_is_a_coherent_pair() -> Bool {
+test fn w_every_layer_standing_is_a_coherent_pair() -> Bool  {
   fold(attachment_stack, init: true, f: fn(acc, st) {
     acc && standing_pair_is_admitted(fact: st.fact, carriage: st.carriage)
   })
@@ -267,7 +267,7 @@ test fn w_every_layer_standing_is_a_coherent_pair() -> Bool {
 // found in the tree. Without them the claim above is satisfied by a refusal function that never
 // fires — what subject_blocker did before this change: answering an established fact with
 // inapplicable carriage as though nothing blocked it.
-test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool {
+test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool  {
   match authority_standing_refusal(
     fact: processor_package_standing.fact,
     carriage: CarriageNotApplicable { because: "planted: carriage moot for a fact that exists" }
@@ -278,7 +278,7 @@ test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool {
   }
 }
 
-test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool {
+test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool  {
   match authority_standing_refusal(
     fact: FactUnresolved { what_is_missing: "planted: nobody has found this document" },
     carriage: NormalizedFactsMayBeCarried
@@ -289,7 +289,7 @@ test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool {
   }
 }
 
-test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool {
+test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool  {
   match authority_standing_refusal(
     fact: reference_board_collateral_standing(),
     carriage: CarriageDecisionRequired { reason: "planted: decided separately from the access terms" }
@@ -302,7 +302,7 @@ test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool {
 
 // AND THE COHERENT PAIRS ARE NOT REFUSED, so the admission is not simply rejecting everything --
 // a refusal function that never admits passes every red above and blocks the whole board.
-test fn w_the_coherent_pairs_are_admitted() -> Bool {
+test fn w_the_coherent_pairs_are_admitted() -> Bool  {
   standing_pair_is_admitted(
     fact: processor_package_standing.fact,
     carriage: NormalizedFactsMayBeCarried
@@ -329,7 +329,7 @@ fn incoherent_row() -> AttachmentLayerStanding {
   }
 }
 
-test fn w_an_incoherent_standing_is_reported_as_a_blocker_not_as_settled() -> Bool {
+test fn w_an_incoherent_standing_is_reported_as_a_blocker_not_as_settled() -> Bool  {
   !standing_pair_is_admitted(fact: incoherent_row().fact, carriage: incoherent_row().carriage)
     && match layer_blocker(row: incoherent_row()) {
          Absent => false

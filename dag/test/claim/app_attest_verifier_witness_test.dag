@@ -77,7 +77,7 @@ fn sample_attestation_refusal_of(e: AttestationExpectation) -> String {
 // verify fold. It asserts the ROUTE by the refusal it names -- steps 2-8 and the chain's names and
 // validity pass on the real object, so the first refusal is step 9's absence, which the 2021 sample
 // cannot satisfy. Every supplied-input claim below leans on this one for the real path.
-test fn the_sample_passes_every_step_before_the_extension_steps() -> Bool {
+test fn the_sample_passes_every_step_before_the_extension_steps() -> Bool  {
   sample_attestation_refusal_of(e: sample_expectation()) == "category-absent"
 }
 
@@ -132,7 +132,7 @@ fn ordered_name(step: AttestationStep, d: AttestationDecoded, e: AttestationExpe
 }
 
 // The nonce step reds by name when its expectation is wrong.
-test fn the_nonce_step_reds_on_other_client_data() -> Bool {
+test fn the_nonce_step_reds_on_other_client_data() -> Bool  {
   let e = sample_expectation()
   match sample_fold_inputs() {
     Absent => false
@@ -144,7 +144,7 @@ test fn the_nonce_step_reds_on_other_client_data() -> Bool {
 // The key id step, paired over the same subject (the #11981 pattern): the real key's id admits and
 // another key id refuses by name. Its honest cost lies in the enrolment gate's dead band, so its
 // enrolment standing is v2.workflow.floor_enrolment_dead_band's (self-staling), not typed cost debt.
-test fn the_key_id_step_admits_the_real_key_and_reds_on_another_key_id() -> Bool {
+test fn the_key_id_step_admits_the_real_key_and_reds_on_another_key_id() -> Bool  {
   let e = sample_expectation()
   match sample_fold_inputs() {
     Absent => false
@@ -155,7 +155,7 @@ test fn the_key_id_step_admits_the_real_key_and_reds_on_another_key_id() -> Bool
 }
 
 // The App ID step reds by name when its expectation is wrong.
-test fn the_app_id_step_reds_on_another_app_id() -> Bool {
+test fn the_app_id_step_reds_on_another_app_id() -> Bool  {
   let e = sample_expectation()
   match sample_fold_inputs() {
     Absent => false
@@ -165,7 +165,7 @@ test fn the_app_id_step_reds_on_another_app_id() -> Bool {
 }
 
 // The environment step reds by name when its expectation is wrong.
-test fn the_environment_step_reds_on_production() -> Bool {
+test fn the_environment_step_reds_on_production() -> Bool  {
   let e = sample_expectation()
   match sample_fold_inputs() {
     Absent => false
@@ -175,7 +175,7 @@ test fn the_environment_step_reds_on_production() -> Bool {
 }
 
 // The credential validity step reds by name when its expectation is wrong.
-test fn the_validity_step_reds_when_observed_in_2026() -> Bool {
+test fn the_validity_step_reds_when_observed_in_2026() -> Bool  {
   let e = sample_expectation()
   match sample_fold_inputs() {
     Absent => false
@@ -186,7 +186,7 @@ test fn the_validity_step_reds_when_observed_in_2026() -> Bool {
 
 // THE ROSTER IS PINNED: a step dropped from, or reordered in, production's fold reds here even while
 // its own unit claim above stays green. The order is Apple's steps as this module sequences them.
-test fn attestation_step_order_is_the_declared_order() -> Bool {
+test fn attestation_step_order_is_the_declared_order() -> Bool  {
   attestation_step_order() == [
     KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
     LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep,
@@ -196,7 +196,7 @@ test fn attestation_step_order_is_the_declared_order() -> Bool {
 
 // The object with one octet of "apple-appattest" changed refuses as a format it does not know;
 // cut to 100 octets it refuses as undecodable.
-test fn a_malformed_object_refuses_before_any_step() -> Bool {
+test fn a_malformed_object_refuses_before_any_step() -> Bool  {
   let mutated = concat(sample_attestation_octets |> take(20), concat([117], sample_attestation_octets |> skip(21)))
   let cut = sample_attestation_octets |> take(100)
   match verify_attestation(object: mutated, e: sample_expectation()) {
@@ -234,7 +234,7 @@ fn assertion_expectation() -> AssertionExpectation? {
 // THE COUNTER THE FOLD CARRIES OUT: the sample assertion's authenticatorData signCount is the
 // corpus's published counter, read at the parts grain because the whole fold refuses on absent
 // extensions before it can hand the counter to step 5.
-test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
+test fn the_sample_assertion_counter_is_the_published_one() -> Bool  {
   match assertion_parts(object: sample_assertion_octets) {
     AssertionPartsOk { parts: p } => p.auth.prefix.sign_count == sample_assertion_counter
     AssertionPartsRefused { cause: _ } => false
@@ -248,7 +248,7 @@ test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
 // The assertion fold: RP ID passes on real bytes and the first refusal is step 7's absence (the
 // 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App
 // ID reds step 4 by name.
-test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool {
+test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool  {
   match assertion_expectation() {
     Absent => false
     Present { value: e } =>
@@ -303,7 +303,7 @@ fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
 // SUBJECT: assertion_signature_verifies' key decoding. The key is the value under test, so it is
 // supplied; it is not read from the attestation, whose join to the assertion is carried by
 // the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions.
-test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool {
+test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool  {
   match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation {
     key_id: sample_key_id_b64 as AttestKeyId,
     public_key_point_b64url: "not*base64url" as NonEmptyStr,
@@ -364,7 +364,7 @@ fn sample_leaf() -> X509Certificate? {
 // test.claim.p384_dag_ecdsa_witness_test enrols over the same sample and are not re-made here
 // (review 69668 of gunbc#11989); their executing route is the native gunbc test row the frontier
 // names.
-test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Bool {
+test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Bool  {
   match sample_certificates() {
     Absent => false
     Present { value: certs } => {

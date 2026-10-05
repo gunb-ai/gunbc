@@ -36,23 +36,23 @@ fn blocking_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -
 
 // THE ACCEPTED CONTROL. A transparent alias of a record receives its own body's literal: no head
 // mismatch on the record it got. This was the red before the head identity reached v1 infer.
-test fn a_record_alias_receives_its_own_body_literal() -> Bool {
+test fn a_record_alias_receives_its_own_body_literal() -> Bool  {
   blocking_count(c: probe_census(name: "alias_head_identity_accepts_probe"), wanted: "TypeMismatch", subject: "Product(WrScratchRec)") == 0
 }
 
 // A DIFFERENT RECORD INTO EITHER ALIAS REFUSES AT THE HEAD.
-test fn a_different_record_into_either_alias_is_refused() -> Bool {
+test fn a_different_record_into_either_alias_is_refused() -> Bool  {
   let c = probe_census(name: "alias_head_identity_refuses_probe")
   blocking_count(c: c, wanted: "TypeMismatch", subject: "Product(WrScratchOtherRec)") >= 1
     && blocking_count(c: c, wanted: "TypeMismatch", subject: "Product(WrScratchOtherFrac)") >= 1
 }
 
 // A LITERAL WHOSE HEAD AGREES IS STILL JUDGED PER FIELD.
-test fn a_wrong_field_through_a_record_alias_is_refused_per_field() -> Bool {
+test fn a_wrong_field_through_a_record_alias_is_refused_per_field() -> Bool  {
   blocking_count(c: probe_census(name: "alias_head_identity_refuses_probe"), wanted: "TypeMismatch", subject: "Primitive(String)") >= 1
 }
 
 // A SAME-LEAF RECORD FROM ANOTHER MODULE IS NOT THE ALIAS'S DECLARATION.
-test fn a_same_leaf_record_from_another_module_is_refused() -> Bool {
+test fn a_same_leaf_record_from_another_module_is_refused() -> Bool  {
   blocking_count(c: probe_census(name: "alias_head_identity_homonym_probe"), wanted: "TypeMismatch", subject: "Product(WrHomRec)") >= 1
 }

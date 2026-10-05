@@ -35,7 +35,7 @@ fn stored_key(toolchain: String) -> ContentHash {
   })
 }
 
-test fn artifact_fs_roundtrip_holds() -> Bool {
+test fn artifact_fs_roundtrip_holds() -> Bool  {
   let key = stored_key(toolchain: "1.93.0")
   let payload = "artifact-payload-bytes-fixture"
   let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: payload) {
@@ -51,7 +51,7 @@ test fn artifact_fs_roundtrip_holds() -> Bool {
   put_ok && served
 }
 
-test fn artifact_fs_refuses_non_scratch_store_root_holds() -> Bool {
+test fn artifact_fs_refuses_non_scratch_store_root_holds() -> Bool  {
   let key = stored_key(toolchain: "refused-root")
   match artifact_fs_get(store_root: non_scratch_store_root, key: key) {
     ArtifactFsRefused { verb: v, target: t, frame: f } =>
@@ -61,7 +61,7 @@ test fn artifact_fs_refuses_non_scratch_store_root_holds() -> Bool {
   }
 }
 
-test fn artifact_fs_delete_then_misses_holds() -> Bool {
+test fn artifact_fs_delete_then_misses_holds() -> Bool  {
   let key = stored_key(toolchain: "delete-case")
   let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: "to-be-evicted") {
     ArtifactFsPutOk => true
@@ -91,7 +91,7 @@ test fn artifact_fs_delete_then_misses_holds() -> Bool {
   put_ok && listed && deleted && missed && unlisted
 }
 
-test fn artifact_fs_mutated_input_misses_holds() -> Bool {
+test fn artifact_fs_mutated_input_misses_holds() -> Bool  {
   let key = stored_key(toolchain: "1.93.0")
   let mutated = stored_key(toolchain: "1.94.0")
   let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: "original-toolchain-artifact") {
@@ -129,7 +129,7 @@ fn fs_list_contains(entries: List<String>, key: ContentHash) -> Bool {
   entries |> any(e => string_contains(e, key))
 }
 
-test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
+test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool  {
   let victim = eviction_key(tag: "eviction-victim")
   let survivor = eviction_key(tag: "eviction-survivor")
   let put_victim = artifact_fs_put(store_root: eviction_store_root, key: victim, payload: "victim-bytes")
@@ -169,7 +169,7 @@ test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
   )
 }
 
-test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool {
+test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool  {
   let solo = eviction_key(tag: "eviction-solo")
   store_put_fold(
     outcome: store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40)),

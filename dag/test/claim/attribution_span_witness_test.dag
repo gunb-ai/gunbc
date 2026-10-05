@@ -78,7 +78,7 @@ fn attributed_count(r: AttributionResult) -> Nat {
 // they cover. parent_total minus sum_of_children answers 100 - (60 + 60) and underflows or reports
 // nonsense; the complement of the union answers the truth: [0,20] and [80,100] are unaccounted, 40
 // in total, and the middle is covered once.
-test fn w_RED_overlapping_children_do_not_double_count_against_the_parent() -> Bool {
+test fn w_RED_overlapping_children_do_not_double_count_against_the_parent() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let a = span_of(id: "occ-a" as NonEmptyStr, low: 20, high: 80)
   let b = span_of(id: "occ-b" as NonEmptyStr, low: 30, high: 70)
@@ -89,7 +89,7 @@ test fn w_RED_overlapping_children_do_not_double_count_against_the_parent() -> B
 
 // Gaps are EXACT intervals, not a scalar remainder: two separate silences of 10 are two spans, and
 // a reducer reporting "20ns unattributed" cannot tell you where to look.
-test fn w_RED_two_separate_silences_are_two_located_spans_not_one_total() -> Bool {
+test fn w_RED_two_separate_silences_are_two_located_spans_not_one_total() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let a = span_of(id: "occ-a" as NonEmptyStr, low: 10, high: 40)
   let b = span_of(id: "occ-b" as NonEmptyStr, low: 50, high: 90)
@@ -98,7 +98,7 @@ test fn w_RED_two_separate_silences_are_two_located_spans_not_one_total() -> Boo
 }
 
 // Order of reading the producer files cannot change the answer.
-test fn w_the_result_is_independent_of_the_order_children_were_read() -> Bool {
+test fn w_the_result_is_independent_of_the_order_children_were_read() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let a = span_of(id: "occ-a" as NonEmptyStr, low: 10, high: 40)
   let b = span_of(id: "occ-b" as NonEmptyStr, low: 50, high: 90)
@@ -109,7 +109,7 @@ test fn w_the_result_is_independent_of_the_order_children_were_read() -> Bool {
 
 // A child on a different clock REFUSES. Summing it into a total would produce a figure describing
 // no single timeline — the 2801s-versus-2076s shape.
-test fn w_RED_a_child_on_a_foreign_clock_refuses_rather_than_being_summed() -> Bool {
+test fn w_RED_a_child_on_a_foreign_clock_refuses_rather_than_being_summed() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let foreign = ExtentSpec {
     occurrence: occ(id: "occ-wall" as NonEmptyStr),
@@ -125,7 +125,7 @@ test fn w_RED_a_child_on_a_foreign_clock_refuses_rather_than_being_summed() -> B
 
 // A child extending past its parent would otherwise steal time from a sibling and drive the
 // remainder negative.
-test fn w_RED_a_child_outside_its_parent_refuses_rather_than_stealing_from_a_sibling() -> Bool {
+test fn w_RED_a_child_outside_its_parent_refuses_rather_than_stealing_from_a_sibling() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let overrun = span_of(id: "occ-overrun" as NonEmptyStr, low: 90, high: 140)
   match attribute_specs(parent: parent, children: [overrun]) {
@@ -136,7 +136,7 @@ test fn w_RED_a_child_outside_its_parent_refuses_rather_than_stealing_from_a_sib
 
 // A parent with NO children is entirely unattributed — one located span covering it, not an empty
 // result that reads as "fully accounted for".
-test fn w_RED_a_parent_with_no_children_is_wholly_unattributed_not_silently_accounted() -> Bool {
+test fn w_RED_a_parent_with_no_children_is_wholly_unattributed_not_silently_accounted() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let gaps = unattributed_widths(r: attribute_specs(parent: parent, children: []))
   length(gaps) == 1 && contains(gaps, 100)
@@ -144,7 +144,7 @@ test fn w_RED_a_parent_with_no_children_is_wholly_unattributed_not_silently_acco
 
 // Full coverage yields NO gap spans — the complement of a covering union is empty, and this is the
 // control that keeps the gap emitter from inventing zero-width spans.
-test fn w_a_fully_covered_parent_reports_no_unattributed_span() -> Bool {
+test fn w_a_fully_covered_parent_reports_no_unattributed_span() -> Bool  {
   let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
   let whole = span_of(id: "occ-a" as NonEmptyStr, low: 0, high: 100)
   length(unattributed_widths(r: attribute_specs(parent: parent, children: [whole]))) == 0
@@ -152,7 +152,7 @@ test fn w_a_fully_covered_parent_reports_no_unattributed_span() -> Bool {
 
 // An extent cannot be assembled from endpoints on different clocks: the width would describe no
 // timeline, so it refuses at construction rather than at attribution.
-test fn w_RED_an_extent_from_two_clocks_refuses_at_construction() -> Bool {
+test fn w_RED_an_extent_from_two_clocks_refuses_at_construction() -> Bool  {
   let begin = ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 10) }
   let end = ObservationInstant { domain: worker_domain(), basis: WallClock, since_origin: nanosecond(count: 90) }
   match occurrence_extent(occurrence: occ(id: "occ-a" as NonEmptyStr), begin: begin, end: end) {
@@ -161,7 +161,7 @@ test fn w_RED_an_extent_from_two_clocks_refuses_at_construction() -> Bool {
   }
 }
 
-test fn w_RED_an_extent_whose_end_precedes_its_begin_refuses() -> Bool {
+test fn w_RED_an_extent_whose_end_precedes_its_begin_refuses() -> Bool  {
   let begin = ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 90) }
   let end = ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 10) }
   match occurrence_extent(occurrence: occ(id: "occ-a" as NonEmptyStr), begin: begin, end: end) {

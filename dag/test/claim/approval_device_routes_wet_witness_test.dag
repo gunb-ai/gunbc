@@ -26,7 +26,7 @@ data fx_unrealized: String = "native device-crypto realization is unavailable"
 // The discriminating control for the four gate claims in test.claim.approval_device_routes_witness_test:
 // the SAME read under a bound realization does not answer the realization reason -- it proceeds past
 // the gate and answers from the store -- so it is the gate, not a later failure, that decided them.
-test fn a_bound_realization_passes_the_read_past_the_gate() -> Bool {
+test fn a_bound_realization_passes_the_read_past_the_gate() -> Bool  {
   !string_contains(s: device_pending_response_at(realization: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]), body: read_authentication_json(a: fx_auth), observed_at: fx_now).body, pattern: fx_unrealized)
 }
 

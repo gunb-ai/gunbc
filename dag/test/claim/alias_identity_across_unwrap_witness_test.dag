@@ -87,22 +87,22 @@ fn a_transparent_primitive_alias_still_unifies_with_its_target() -> Bool {
   )
 }
 
-test fn a_transparent_primitive_alias_is_not_made_nominal() -> Bool {
+test fn a_transparent_primitive_alias_is_not_made_nominal() -> Bool  {
   a_transparent_primitive_alias_still_unifies_with_its_target()
 }
 
-test fn a_qualified_alias_keeps_its_own_declaration_identity() -> Bool {
+test fn a_qualified_alias_keeps_its_own_declaration_identity() -> Bool  {
   qualified_alias_emits_its_own_name()
 }
 
-test fn the_bare_spelling_of_the_same_alias_is_unchanged() -> Bool {
+test fn the_bare_spelling_of_the_same_alias_is_unchanged() -> Bool  {
   bare_alias_emits_its_own_name()
 }
 
-test fn a_second_alias_still_emits_its_own_name_and_not_the_first() -> Bool {
+test fn a_second_alias_still_emits_its_own_name_and_not_the_first() -> Bool  {
   a_second_qualified_alias_emits_its_own_name()
 }
 
-test fn a_direct_reference_to_the_alias_target_stays_structural() -> Bool {
+test fn a_direct_reference_to_the_alias_target_stays_structural() -> Bool  {
   a_direct_target_reference_stays_structural()
 }

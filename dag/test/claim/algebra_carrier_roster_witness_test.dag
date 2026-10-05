@@ -81,15 +81,15 @@ fn carrier_missing_its_alias_surface() -> AlgebraCarrier {
   }
 }
 
-test fn every_alias_resolving_carrier_declares_a_method_surface() -> Bool {
+test fn every_alias_resolving_carrier_declares_a_method_surface() -> Bool  {
   algebra_carriers() |> all(carrier => carrier_alias_canonical_declares_method_surface(carrier: carrier))
 }
 
-test fn a_carrier_without_its_alias_surface_is_refused_by_the_same_predicate() -> Bool {
+test fn a_carrier_without_its_alias_surface_is_refused_by_the_same_predicate() -> Bool  {
   !carrier_alias_canonical_declares_method_surface(carrier: carrier_missing_its_alias_surface())
 }
 
-test fn every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile() -> Bool {
+test fn every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile() -> Bool  {
   sorted_map_keys(carrier_container_alias_rows())
     |> all(spelling =>
       algebra_carriers() |> any(carrier =>
@@ -97,7 +97,7 @@ test fn every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile() 
           && carrier_alias_canonical_declares_method_surface(carrier: carrier)))
 }
 
-test fn the_repaired_instance_is_derived_not_authored() -> Bool {
+test fn the_repaired_instance_is_derived_not_authored() -> Bool  {
   match kernel_algebra_profile |> get("PartialFunction") {
     Absent => false
     Present { value: p } =>

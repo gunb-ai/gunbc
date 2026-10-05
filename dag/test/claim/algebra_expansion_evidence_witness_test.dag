@@ -31,7 +31,7 @@ data nominal_receiver_source: String = "module test.claim.nominal_receiver_probe
 // diagnostic must be raised. It goes red if the diagnostic stops being raised, which is the
 // regression this stall exists to prevent -- including the regression of narrowing the wall's
 // predicate to dodge this shape.
-test fn expansion_receiver_raises_the_evidence_diagnostic() -> Bool {
+test fn expansion_receiver_raises_the_evidence_diagnostic() -> Bool  {
   any_class_count_for(source: expansion_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") >= 1
 }
 
@@ -41,6 +41,6 @@ test fn expansion_receiver_raises_the_evidence_diagnostic() -> Bool {
 // there is nothing to recover positionally. A zero here means the diagnostic is specific to
 // the expansion rather than firing on every fold, which is what makes the cell above mean
 // "this construct" instead of "this compiler".
-test fn nominal_receiver_raises_no_evidence_diagnostic() -> Bool {
+test fn nominal_receiver_raises_no_evidence_diagnostic() -> Bool  {
   any_class_count_for(source: nominal_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
 }

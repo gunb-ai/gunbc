@@ -19,7 +19,7 @@ data annotated_source_alpha_marker_b: String = "module emit_probe_two\n\n// pros
 
 // Arm one (erasure): the authored prose never reaches the emitted program —
 // neither comment string appears anywhere in the emitted Rust.
-test fn w_annotation_prose_is_erased_from_emission_test() -> Bool {
+test fn w_annotation_prose_is_erased_from_emission_test() -> Bool  {
   compile_dag_rust_emit_check(
     annotated_source_alpha_marker_a,
     "src/emit_probe_one.rs",
@@ -32,7 +32,7 @@ test fn w_annotation_prose_is_erased_from_emission_test() -> Bool {
 // whatsoever — a real semantic change (alpha's distinctive marker value) is
 // observable past the erased prose, so an emitter that ignored its input
 // entirely, or one that always answers true, would fail this pair.
-test fn w_semantic_change_is_observable_past_the_erased_prose_test() -> Bool {
+test fn w_semantic_change_is_observable_past_the_erased_prose_test() -> Bool  {
   compile_dag_rust_emit_check(annotated_source_alpha_marker_a, "src/emit_probe_one.rs", ["424242"], ["909192"])
     && compile_dag_rust_emit_check(annotated_source_alpha_marker_b, "src/emit_probe_two.rs", ["909192"], ["424242"])
 }

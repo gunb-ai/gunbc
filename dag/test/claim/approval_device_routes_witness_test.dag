@@ -59,7 +59,7 @@ fn writer_process() -> ApprovalServingProcess {
   if non_writer() { RoadmapProcess } else { BrokerProcess }
 }
 
-test fn malformed_bodies_refuse_400_on_every_route() -> Bool {
+test fn malformed_bodies_refuse_400_on_every_route() -> Bool  {
   device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{", process: writer_process(), observed_at: fx_now), status: 400, fragment: "enrolment request refused at")
     && device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: "[]", process: writer_process(), observed_at: fx_now), status: 400, fragment: "redemption refused at")
     && device_route_refused_with(r: device_pending_response_at(realization: fx_unbound, body: "{\"enrollment_id\":\"e\"}", observed_at: fx_now), status: 400, fragment: "read refused at")
@@ -69,14 +69,14 @@ test fn malformed_bodies_refuse_400_on_every_route() -> Bool {
 }
 
 // A malformed or non-canonical path segment refuses 400 before the body is read.
-test fn a_bad_segment_refuses_400() -> Bool {
+test fn a_bad_segment_refuses_400() -> Bool  {
   device_route_refused_with(r: device_request_response_at(realization: fx_unbound, body: "", segment: "esc-1", observed_at: fx_now), status: 400, fragment: "request path")
     && device_route_refused_with(r: device_enrollment_readback_response_at(realization: fx_unbound, body: "", segment: "id-", observed_at: fx_now), status: 400, fragment: "enrollment path")
 }
 
 // A readback whose body speaks for another enrolment than the path names refuses 403 before any
 // verification.
-test fn a_readback_for_another_enrolment_refuses_403() -> Bool {
+test fn a_readback_for_another_enrolment_refuses_403() -> Bool  {
   device_route_refused_with(r: device_enrollment_readback_response_at(realization: fx_unbound, body: read_authentication_json(a: fx_auth), segment: path_segment(s: "enr-other") as String, observed_at: fx_now), status: 403, fragment: "another enrolment")
 }
 
@@ -84,7 +84,7 @@ test fn a_readback_for_another_enrolment_refuses_403() -> Bool {
 // hold writer authority, the route refuses 503 with the writer reason before the body is decoded, so
 // the body is irrelevant to this subject and is supplied as a bare object. (Which process holds it is
 // the cutover posture's fact; the claim names the non-holder by asking the gate.)
-test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool {
+test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool  {
   let asker = if non_writer() { BrokerProcess } else { RoadmapProcess }
   device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
     && device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
@@ -96,7 +96,7 @@ test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool {
 // naming what is missing; once configured (the operator's Team ID 72HGYAMBVQ, 2026-09-22) the row
 // derives the App ID the verifier expects -- prefix.bundle -- and the read route reaches the store,
 // which the hermetic route cannot follow, so the configured arm asserts the derived expectation.
-test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bool {
+test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bool  {
   match approval_app_attest_verifier {
     AppAttestVerifierAwaitingOperator { missing: _ } =>
       device_route_refused_with(r: device_pending_response_at(realization: fx_unbound, body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: "not configured")
@@ -113,7 +113,7 @@ test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bo
 // observers the device routes hand a body or path-segment identity to answer Unreadable with the
 // store's fixed slot-addressability detail for a separator-carrying key -- the store refuses before
 // any read, so no path outside the root is probed and the detail names no host state.
-test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
+test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool  {
   (match observe_enrollment(root: approval_device_store_root, enrollment_id: "enr-../../../etc/shadow") {
     EnrolmentSlotUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
     _ => false
@@ -128,7 +128,7 @@ test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
 // after is inside, 60 s after is not; a non-canonical claimed time is never inside. The bounds are a
 // pure seconds comparison (gunbc.auth.approval_capability utc_instant_seconds_after), so the claim is
 // hermetic; an observed instant that is not canonical is outside the window too.
-test fn the_read_skew_window_brackets_sixty_seconds() -> Bool {
+test fn the_read_skew_window_brackets_sixty_seconds() -> Bool  {
   requested_at_within_skew(requested_at: "2026-09-21T11:59:00Z", observed_at: fx_now)
     && !requested_at_within_skew(requested_at: "2026-09-21T11:58:59Z", observed_at: fx_now)
     && requested_at_within_skew(requested_at: "2026-09-21T12:00:59Z", observed_at: fx_now)
@@ -142,7 +142,7 @@ test fn the_read_skew_window_brackets_sixty_seconds() -> Bool {
 // The redemption outcome's status map, exhaustive over the closed outcome: the arms the app
 // branches on, plus the two that answer neither 403 nor a store status (a malformed tag is the
 // caller's 400; an unrealized platform is 501).
-test fn redemption_outcomes_map_to_their_statuses() -> Bool {
+test fn redemption_outcomes_map_to_their_statuses() -> Bool  {
   redemption_status(o: DeviceLostTheRace) == 409
     && redemption_status(o: DeviceEnrollmentUnknown) == 404
     && redemption_status(o: DeviceChallengeNotIssuedHere) == 403
@@ -153,7 +153,7 @@ test fn redemption_outcomes_map_to_their_statuses() -> Bool {
 
 // THE ROADMAP NEVER MOUNTS A DEVICE ROUTE, during the cutover or after: the total match in
 // gunbc.roadmap.roadmap_serve classifies all six as the broker's alone.
-test fn the_roadmap_mounts_no_device_route() -> Bool {
+test fn the_roadmap_mounts_no_device_route() -> Bool  {
   !roadmap_mounts_during_cutover(h: DeviceEnrolHandler) && !roadmap_mounts_during_cutover(h: DeviceRedeemHandler)
     && !roadmap_mounts_during_cutover(h: DevicePendingHandler) && !roadmap_mounts_during_cutover(h: DeviceRequestHandler)
     && !roadmap_mounts_during_cutover(h: DeviceEnrollmentReadbackHandler) && !roadmap_mounts_during_cutover(h: DevicePushUpdateHandler)
@@ -166,7 +166,7 @@ test fn the_roadmap_mounts_no_device_route() -> Bool {
 // it reads the enrolment store or calls a verifier, so no crypto can have started.
 data fx_unrealized: String = "native device-crypto realization is unavailable"
 
-test fn the_three_reads_refuse_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool {
+test fn the_three_reads_refuse_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool  {
   device_route_refused_with(r: device_pending_response_at(realization: fx_unbound, body: read_authentication_json(a: fx_auth), observed_at: fx_now), status: 503, fragment: fx_unrealized)
     && device_route_refused_with(r: device_request_response_at(realization: fx_unbound, body: read_authentication_json(a: fx_auth), segment: path_segment(s: "esc-1") as String, observed_at: fx_now), status: 503, fragment: fx_unrealized)
     && device_route_refused_with(r: device_enrollment_readback_response_at(realization: fx_unbound, body: read_authentication_json(a: fx_auth), segment: path_segment(s: "enr-482913") as String, observed_at: fx_now), status: 503, fragment: fx_unrealized)
@@ -176,12 +176,12 @@ fn fx_writer() -> ApprovalServingProcess {
   if non_writer() { RoadmapProcess } else { BrokerProcess }
 }
 
-test fn the_push_update_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool {
+test fn the_push_update_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool  {
   let push = push_update_request_json(r: PushUpdateRequest { auth: fx_auth, push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2" } })
   device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: push, process: fx_writer(), observed_at: fx_now), status: 503, fragment: fx_unrealized)
 }
 
-test fn the_enrolment_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool {
+test fn the_enrolment_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool  {
   writer_route_refused_unrealized(name: "enrolment_request", route: fn(body) { device_enrol_response_at(realization: fx_unbound, body: body, process: fx_writer(), observed_at: fx_now) })
 }
 
@@ -201,7 +201,7 @@ data fx_signed_redemption: String = signed_redemption_json(r: SignedRedemption {
   platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
 })
 
-test fn the_redemption_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool {
+test fn the_redemption_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool  {
   device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: fx_signed_redemption, process: fx_writer(), observed_at: fx_now), status: 503, fragment: fx_unrealized)
 }
 
@@ -218,7 +218,7 @@ fn writer_route_refused_unrealized(name: String, route: fn(String) -> DeviceRout
 // THE RECEIPT MUST COVER THE NAMED POPULATION, THE P-256 ORDER FACT INCLUDED: a bound handler whose
 // receipt covers every verifier but not the base-point order is refused 503 naming that witness and
 // its (n-1)*G control; the full receipt is admitted with its identity and revision.
-test fn a_bound_handler_without_the_base_point_order_fact_is_refused() -> Bool {
+test fn a_bound_handler_without_the_base_point_order_fact_is_refused() -> Bool  {
   (match device_crypto_admission(r: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification])) {
     DeviceCryptoRefused { status: s, reason: why } => s == 503 && string_contains(s: why, pattern: "the_base_point_has_order_n") && string_contains(s: why, pattern: "(n-1)*G != infinity")
     DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => false

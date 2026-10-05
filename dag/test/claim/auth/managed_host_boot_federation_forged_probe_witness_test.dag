@@ -40,11 +40,11 @@ fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
 
 // THE CONTROL IS CLASS-SCOPED: a clean source reading the module through its real producer yields no
 // SoleConstructorViolation, so the red below is the probe's own forgery.
-test fn the_harness_runs_and_a_clean_source_emits_no_sole_constructor_violation() -> Bool {
+test fn the_harness_runs_and_a_clean_source_emits_no_sole_constructor_violation() -> Bool  {
   blocking_count_for_class(c: compile_dag_diagnostic_census(harness_control_source), wanted: "SoleConstructorViolation") == 0
 }
 
 // AN ADMITTED BOOT FEDERATION CANNOT BE AUTHORED OUTSIDE admit_boot_federation.
-test fn a_forged_boot_federation_is_refused_at_its_literal() -> Bool {
+test fn a_forged_boot_federation_is_refused_at_its_literal() -> Bool  {
   blocking_count_for_class_and_subject(c: compile_dag_diagnostic_census(forged_probe_source), wanted: "SoleConstructorViolation", subject: "ManagedHostBootFederation") >= 1
 }

@@ -136,7 +136,7 @@ fn count_tagged(cs: List<PlacementRefusal>, wanted: String) -> Int {
 // than about a plan that does not exist. It is asserted rather than assumed because the plan's
 // refused arm is real: if the outline ever stopped constructing, the tests would otherwise pass
 // vacuously against an absent plan.
-test fn w_the_reference_plan_constructs() -> Bool {
+test fn w_the_reference_plan_constructs() -> Bool  {
   match plan_or_empty() {
     Present { value: _ } => true
     Absent => false
@@ -146,7 +146,7 @@ test fn w_the_reference_plan_constructs() -> Bool {
 // THE PLAN REFUSES, AND THAT IS THE INCREMENT'S HONEST STATE. One envelope is established and the
 // rest are obligations, so a board cannot be laid out yet. Reporting this as admitted would be the
 // fabricated plausible output: a layout built from dimensions nobody established.
-test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool {
+test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -160,7 +160,7 @@ test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool
 // EVERY REQUIRED ROLE IS FILLED. The plan is not short of parts — it names every component the
 // design requires — so the refusal above is exactly about dimensions and not about an incomplete
 // population. Without this, a plan missing half the board would produce the same verdict.
-test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() -> Bool {
+test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -172,7 +172,7 @@ test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() ->
 // THE OBLIGATIONS ARE EXACT AND COUNTED. Twelve of seventeen required components have no
 // established envelope; the five that do are the board-control CPLD, the processor package, and
 // three cited mechanical-candidate bodies for host PHY, power stage, and power-good supervision.
-test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
+test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -187,7 +187,7 @@ test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
 // test reads the two standings directly and never touches placement, so it cannot detect a wrong
 // binding; asserting it separately keeps the control below from passing vacuously if the two
 // standings ever converge.
-test fn w_the_socket_and_package_standings_are_distinguishable() -> Bool {
+test fn w_the_socket_and_package_standings_are_distinguishable() -> Bool  {
   let socket_has_blocker = match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: _ } => true
     Absent => false
@@ -226,7 +226,7 @@ fn socket_layer_gap_text() -> String {
   }
 }
 
-test fn w_the_plan_socket_obligation_carries_the_socket_layers_own_blocker() -> Bool {
+test fn w_the_plan_socket_obligation_carries_the_socket_layers_own_blocker() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -252,7 +252,7 @@ test fn w_the_plan_socket_obligation_carries_the_socket_layers_own_blocker() -> 
 // second member and the one that matters: its envelope comes from a cited datasheet section rather
 // than from a part somebody picked, so this is the join proving an established fact reaches
 // geometry. The socket is deliberately NOT here — same silicon, different subject, still owed.
-test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
+test fn w_only_established_components_reach_the_geometry_bridge() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -283,7 +283,7 @@ test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
 // measurement taken from this tree, so the literals are grounded rather than copied from whatever
 // the row currently says. Micrometres because the datasheet's third decimal place is significant:
 // 77.080 mm is 77080 um exactly, and a carrier in millimetres would have to round it.
-test fn w_the_package_envelope_carries_the_cited_body_extent() -> Bool {
+test fn w_the_package_envelope_carries_the_cited_body_extent() -> Bool  {
   match processor_package_envelope {
     EnvelopeNotEstablished { gap: _ } => false
     EnvelopeEstablished { envelope: e, source: _ } =>
@@ -298,7 +298,7 @@ test fn w_the_package_envelope_carries_the_cited_body_extent() -> Bool {
 // structural check, and would place a server processor in less board area than a 144-pin CPLD. The
 // ordering against a package whose dimensions came from a different authority entirely is what
 // makes the scale claim independent of the row being tested.
-test fn w_the_package_is_larger_than_the_cpld_by_orders_of_magnitude() -> Bool {
+test fn w_the_package_is_larger_than_the_cpld_by_orders_of_magnitude() -> Bool  {
   match processor_package_envelope {
     EnvelopeNotEstablished { gap: _ } => false
     EnvelopeEstablished { envelope: pkg, source: _ } =>
@@ -347,7 +347,7 @@ fn design_over(t: ActiveDdrTopology) -> AltraMinimalMotherboard {
 // describe at all, because it expanded a count into [0..n) and every four-channel design came out
 // as channels zero through three. The eight roles it requires are the cross product of two
 // authored sets, so this witness fails if either axis stops being consulted.
-test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool {
+test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool  {
   let split = design_over(t: ActiveDdrTopology {
     populated_channels: [DdrChannel0, DdrChannel1, DdrChannel4, DdrChannel5],
     positions_per_channel: [FirstDimmOnChannel, SecondDimmOnChannel],
@@ -362,7 +362,7 @@ test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool
 // channels are different roles, and so are the two positions on ONE channel: an equality blind to
 // position would report a two-DIMM channel as filled by its first slot alone, and the second
 // connector would vanish from the population join without any refusal naming it.
-test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
+test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool  {
   let c0p0 = MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel0, position: FirstDimmOnChannel } }
   let c0p1 = MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel0, position: SecondDimmOnChannel } }
   let c1p0 = MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel1, position: FirstDimmOnChannel } }
@@ -380,7 +380,7 @@ fn plan_with_only(cs: List<PlannedComponent>, template: BoardPlacementPlan) -> B
   BoardPlacementPlan { frame: template.frame, outline: template.outline, design: template.design, components: cs }
 }
 
-test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
+test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -398,7 +398,7 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
 
 // AND A COMPONENT THE DESIGN DOES NOT REQUIRE IS ITS OWN REFUSAL, not silence. A ninth memory slot
 // on a four-channel design is a part somebody added; reporting only missing roles would admit it.
-test fn w_a_component_filling_no_required_role_refuses() -> Bool {
+test fn w_a_component_filling_no_required_role_refuses() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -419,7 +419,7 @@ test fn w_a_component_filling_no_required_role_refuses() -> Bool {
 // an obligation never reaches the geometry bridge and physical.dag therefore never saw the
 // duplicate — the collision was authored and dormant, due to fire the moment DIMM envelopes were
 // established. A defect that is invisible until a later increment is worse than one that fails now.
-test fn w_every_planned_component_has_a_distinct_identity() -> Bool {
+test fn w_every_planned_component_has_a_distinct_identity() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -430,7 +430,7 @@ test fn w_every_planned_component_has_a_distinct_identity() -> Bool {
 // THE DISCRIMINATING RED. Two components sharing one identity refuse, and refuse ONCE rather than
 // once per occurrence. Without this the check above is satisfied by a plan-level rule that never
 // fires — which is exactly the state the reference plan was in.
-test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
+test fn w_two_components_sharing_an_identity_refuse_once() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -454,7 +454,7 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
 // existing. Five of seventeen parts have an established envelope, so the body-envelope check ran over
 // five rectangles and found nothing wrong -- and reporting that as a clean board would be a
 // finished-looking answer about a board that is twelve parts short.
-test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check() -> Bool {
+test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -470,7 +470,7 @@ test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check(
 // A COMPONENT WHOSE ENVELOPE IS OWED IS A PART THE GEOMETRY NEVER SAW, and a role nothing fills is
 // another. A defect in a part that IS present is neither, and counting it as one would overstate
 // the gap -- so the two classes are asserted apart rather than through one total.
-test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
+test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -513,7 +513,7 @@ type IndexedComponents {
   out: List<PlannedComponent>
 }
 
-test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool {
+test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -528,7 +528,7 @@ test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool {
 // AND THE DISCRIMINATING RED: the same complete board with two parts stacked on one another is
 // refused rather than admitted. Without this the arm above is satisfied by a check that looks at
 // nothing, which is the shape a geometry verdict most easily degenerates into.
-test fn w_a_complete_board_with_overlapping_bodies_is_refused() -> Bool {
+test fn w_a_complete_board_with_overlapping_bodies_is_refused() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -556,7 +556,7 @@ test fn w_a_complete_board_with_overlapping_bodies_is_refused() -> Bool {
 // answered a requirement, neither was unjustified, nothing was missing, and the board passed. That
 // is the completeness check reporting a wrong board as complete -- the failure mode it exists to
 // prevent, reached through the one direction it was not walking.
-test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
+test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -589,7 +589,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
 
 // AND THE POSITIVE CONTROL, so the arm above is not satisfied by a check that refuses every board.
 // The reference plan fills each of its seventeen roles exactly once and raises no multiplicity cause.
-test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
+test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -602,7 +602,7 @@ test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
 // named mismatch carrying both references. The alternative -- letting the population join speak --
 // would report a list of unjustified parts, which is exactly what a board with spare connectors
 // reports, and the reader would go and delete real components.
-test fn w_a_plan_from_another_design_is_refused_as_incomparable() -> Bool {
+test fn w_a_plan_from_another_design_is_refused_as_incomparable() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -620,7 +620,7 @@ test fn w_a_plan_from_another_design_is_refused_as_incomparable() -> Bool {
 
 // AND THE POSITIVE CONTROL: the reference plan names the design it was built from, so the join is
 // not satisfied by a check that refuses every plan.
-test fn w_the_reference_plan_names_the_design_it_came_from() -> Bool {
+test fn w_the_reference_plan_names_the_design_it_came_from() -> Bool  {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
@@ -641,7 +641,7 @@ fn envelope_source(e: ComponentEnvelopeStanding) -> DeclarationRef? {
 // was invisible -- two plausible sentences, no way to compare them -- and it would have meant this
 // board claiming the processor package's extent came from the CPLD's datasheet or the reverse.
 // Comparing declarations makes that a decidable question, and this asserts the answer.
-test fn w_the_established_envelopes_cite_distinct_declarations() -> Bool {
+test fn w_the_established_envelopes_cite_distinct_declarations() -> Bool  {
   match envelope_source(e: processor_package_envelope) {
     Absent => false
     Present { value: pkg } =>
@@ -655,7 +655,7 @@ test fn w_the_established_envelopes_cite_distinct_declarations() -> Bool {
 // THE CONTROL, on a pair this witness authors: two envelopes citing one declaration ARE detected as
 // the same, so the claim above is capable of failing rather than asserting that two things somebody
 // wrote differently are different.
-test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool {
+test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool  {
   let one = decl_ref(module_path: "planted.module", decl_name: "planted_row")
   let same = decl_ref(module_path: "planted.module", decl_name: "planted_row")
   let other = decl_ref(module_path: "planted.module", decl_name: "a_different_row")
@@ -671,7 +671,7 @@ test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool {
 // either refusal ever does become reachable, the cause travels to BodyLayoutRefused as
 // BoardFrameRegistrationRefused instead of being replaced downstream by BoardFrameUnregistered,
 // which names a different state.
-test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
+test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool  {
   match altra_frame_registry() {
     FrameRegistryEstablished { registry: _ } => true
     FrameRegistryRefused { cause: _ } => false
@@ -687,7 +687,7 @@ test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
 // processor out of reset. The count is asserted BOTH ways rather than only for bring-up, because
 // a gate that dropped roles under every intent would satisfy a one-sided check while quietly
 // removing them from the production board too.
-test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
+test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool  {
   let prod = altra_1p_minimum
   let fixture = AltraMinimalMotherboard {
     design: RevARoutedMemoryDesign {
@@ -718,7 +718,7 @@ test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
 // three features above must survive the bring-up gate. A future edit that makes the power-good
 // supervisor bring-up-only -- the kind of "minimisation" that produces a board which cannot tell a
 // rail that came up from one that did not -- fails here without anyone having to name that role.
-test fn w_every_role_but_the_three_features_survives_the_bring_up_gate() -> Bool {
+test fn w_every_role_but_the_three_features_survives_the_bring_up_gate() -> Bool  {
   fold(every_non_slot_role(), init: true, f: fn(acc, r) {
     let is_feature = roles_equal(a: r, b: HostNetworkPhy)
       || roles_equal(a: r, b: ManagementNetworkPath)
@@ -739,7 +739,7 @@ test fn w_every_role_but_the_three_features_survives_the_bring_up_gate() -> Bool
 // arm can be driven and its behaviour observed. An arm whose red could not be produced anywhere a
 // check can run would be a decoration -- permanently green by construction and worse than absent,
 // because it would be cited as coverage.
-test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool {
+test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool  {
   let planted = RequiredOnlyUnderBringUp {
     basis: RepositoryDesignPolicy { because: "planted: no production role currently claims this arm" },
   }
@@ -761,7 +761,7 @@ test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool {
 // intent one layer up, where minimal_design refuses a debug-only channel count under production
 // intent. This asserts the two mechanisms compose rather than double-count: changing intent alone,
 // with the topology held fixed, must not add or remove a single memory slot.
-test fn w_the_role_gate_does_not_touch_the_memory_slots() -> Bool {
+test fn w_the_role_gate_does_not_touch_the_memory_slots() -> Bool  {
   let prod = altra_1p_minimum
   let fixture = AltraMinimalMotherboard {
     design: RevARoutedMemoryDesign {
@@ -814,7 +814,7 @@ fn four_populated_one_position() -> ActiveDdrTopology {
 // numbers cannot coincide -- this is the control that goes red if either placement derivation is
 // reverted to the active population, which is control 7 stated as an executable arm rather than a
 // promise. Before the cut this expression returned 4.
-test fn w_slot_obligations_follow_routed_copper_not_the_shipped_population() -> Bool {
+test fn w_slot_obligations_follow_routed_copper_not_the_shipped_population() -> Bool  {
   let d = design_routed(routed: eight_routed_one_position(),
                         l: ShipsWithProductionPopulation { production: four_populated_one_position() })
   memory_role_count(d: d) == 8
@@ -835,7 +835,7 @@ test fn w_slot_obligations_follow_routed_copper_not_the_shipped_population() -> 
 // three production-only roles. Both halves are asserted because a lifecycle arm that leaked the
 // bring-up population into the geometry and a lifecycle arm that leaked the bring-up INTENT into
 // the role gate are different defects, and either alone would leave the other's assertion green.
-test fn w_a_bring_up_then_fill_board_owes_the_routed_slots_and_the_production_roles() -> Bool {
+test fn w_a_bring_up_then_fill_board_owes_the_routed_slots_and_the_production_roles() -> Bool  {
   let d = design_routed(
     routed: eight_routed_one_position(),
     l: BringUpThenFill {
@@ -861,7 +861,7 @@ test fn w_a_bring_up_then_fill_board_owes_the_routed_slots_and_the_production_ro
 // judge refuses as unreachable. Placement calls that judge itself rather than accepting a verdict
 // from its caller, so there is no admitted value to forge and no sibling path into geometry: the
 // refusal arrives as a placement cause carrying the design's own cause set.
-test fn w_a_refused_design_refuses_at_placement_carrying_the_design_causes() -> Bool {
+test fn w_a_refused_design_refuses_at_placement_carrying_the_design_causes() -> Bool  {
   let d = design_routed(
     routed: RoutedDdrTopology {
       routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
@@ -883,7 +883,7 @@ test fn w_a_refused_design_refuses_at_placement_carrying_the_design_causes() -> 
 
 // THE PAIRED POSITIVE CONTROL, without which the one above proves only that SOMETHING refuses.
 // The same shape with the fifth channel routed is admitted and raises no admission cause at all.
-test fn w_the_admission_gate_is_silent_on_a_design_that_is_admitted() -> Bool {
+test fn w_the_admission_gate_is_silent_on_a_design_that_is_admitted() -> Bool  {
   let d = design_routed(routed: eight_routed_one_position(),
                         l: ShipsWithProductionPopulation { production: four_populated_one_position() })
   match plan_or_empty() {
@@ -924,7 +924,7 @@ fn a_board_the_judge_refuses() -> AltraMinimalMotherboard {
   }
 }
 
-test fn w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects() -> Bool {
+test fn w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects() -> Bool  {
   match altra_reference_plan_for(d: a_board_the_judge_refuses()) {
     BoardPlanDesignNotAdmitted { causes: _ } => true
     BoardPlanUnavailableForDesign { only_available: _ } => false
@@ -935,7 +935,7 @@ test fn w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects() -> Bool {
 
 // THE PAIRED POSITIVE, so the control above is not merely a function that refuses everything.
 // The canonical board reaches the ready arm through the same parameterized constructor.
-test fn w_the_canonical_board_reaches_the_ready_arm() -> Bool {
+test fn w_the_canonical_board_reaches_the_ready_arm() -> Bool  {
   match altra_reference_plan_for(d: altra_1p_minimum) {
     BoardPlanReady { value: _ } => true
     BoardPlanDesignNotAdmitted { causes: _ } => false
@@ -969,7 +969,7 @@ fn an_admitted_six_channel_board() -> AltraMinimalMotherboard {
   }
 }
 
-test fn w_RED_an_admitted_noncanonical_board_has_no_plan() -> Bool {
+test fn w_RED_an_admitted_noncanonical_board_has_no_plan() -> Bool  {
   match altra_reference_plan_for(d: an_admitted_six_channel_board()) {
     BoardPlanUnavailableForDesign { only_available: r } =>
       declaration_ref_eq(a: r, b: altra_1p_minimum_ref())
@@ -983,7 +983,7 @@ test fn w_RED_an_admitted_noncanonical_board_has_no_plan() -> Bool {
 // what the constructor wrote rather than what a caller handed it: an earlier revision took
 // (d, d_ref) as adjacent arguments with no join, which let a plan claim an identity its components
 // did not come from.
-test fn w_the_ready_plan_names_the_canonical_declaration_it_was_built_from() -> Bool {
+test fn w_the_ready_plan_names_the_canonical_declaration_it_was_built_from() -> Bool  {
   match altra_reference_plan_for(d: altra_1p_minimum) {
     BoardPlanReady { value: p } => declaration_ref_eq(a: p.design, b: altra_1p_minimum_ref())
     BoardPlanUnavailableForDesign { only_available: _ } => false

@@ -70,7 +70,7 @@ fn member_value(v: CborValue, key: String) -> CborValue {
 // (extdeps.apple.app_attest, "Validation, in Apple's order"). The two certificate lengths and the
 // receipt length are the corpus's bytes as decoded, so a decoder that mis-sizes a byte string
 // cannot agree with all three.
-test fn the_sample_attestation_decodes_to_apples_shape() -> Bool {
+test fn the_sample_attestation_decodes_to_apples_shape() -> Bool  {
   let att = sample_attestation()
   let fmt = match cbor_text_string_value(v: member_value(v: att, key: "fmt")) {
     Present { value: t } => t
@@ -110,7 +110,7 @@ fn sample_auth_data() -> AuthenticatorData? {
 // Apple's steps 6, 7 and 8 read from real authData: counter 0, the development AAGUID
 // ("appattestdevelop", extdeps.apple.app_attest AppAttestEnvironment), credentialId equal to the
 // key id. The AT flag is set and no extensions follow.
-test fn the_sample_auth_data_carries_apples_facts() -> Bool {
+test fn the_sample_auth_data_carries_apples_facts() -> Bool  {
   match sample_auth_data() {
     Absent => false
     Present { value: d } =>
@@ -131,7 +131,7 @@ test fn the_sample_auth_data_carries_apples_facts() -> Bool {
 
 // Apple's step 5 on real bytes: rpIdHash equals SHA-256 of "<team id>.<bundle id>", built by
 // app_attest_app_id. This is the one claim that joins extdeps.crypto.sha2 to the sample.
-test fn the_sample_rp_id_hash_is_sha256_of_the_app_id() -> Bool {
+test fn the_sample_rp_id_hash_is_sha256_of_the_app_id() -> Bool  {
   match sample_auth_data() {
     Absent => false
     Present { value: d } =>
@@ -141,7 +141,7 @@ test fn the_sample_rp_id_hash_is_sha256_of_the_app_id() -> Bool {
 
 // Apple's step 4 on real bytes: the credential public key, read as a COSE EC2 P-256 key and
 // rendered as the SEC 1 uncompressed point, hashes to the key id.
-test fn the_sample_credential_key_hashes_to_the_key_id() -> Bool {
+test fn the_sample_credential_key_hashes_to_the_key_id() -> Bool  {
   match sample_auth_data() {
     Absent => false
     Present { value: d } =>
@@ -161,7 +161,7 @@ test fn the_sample_credential_key_hashes_to_the_key_id() -> Bool {
 // counter 1 and a DER ECDSA signature. Its flags octet is 0x40 -- the AT bit with no attested
 // credential data behind it -- so it decodes as the prefix and the full WebAuthn decoder REFUSES
 // it; both arms are claimed so the prefix reader cannot be quietly replaced by the full one.
-test fn the_sample_assertion_decodes_as_a_prefix_with_counter_one() -> Bool {
+test fn the_sample_assertion_decodes_as_a_prefix_with_counter_one() -> Bool  {
   match cbor_decode_document(octets: sample_assertion_octets) {
     CborDocumentRefused { cause: _ } => false
     CborDocumentDecoded { value: v } => {
@@ -184,7 +184,7 @@ test fn the_sample_assertion_decodes_as_a_prefix_with_counter_one() -> Bool {
 
 // CONTROL: the same real authData with its last octet dropped refuses as truncated inside the
 // COSE key, and with one octet appended refuses as trailing. Both name the offset.
-test fn the_sample_auth_data_reds_when_cut_or_extended() -> Bool {
+test fn the_sample_auth_data_reds_when_cut_or_extended() -> Bool  {
   let ad = member_octets(v: sample_attestation(), key: "authData")
   let cut = ad |> take(163)
   let extended = ad |> list_push(0)

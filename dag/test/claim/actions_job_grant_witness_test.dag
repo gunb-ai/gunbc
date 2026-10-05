@@ -247,7 +247,7 @@ data public_fork_policy_allows: ActionsRepositoryPolicyObservation = ActionsRepo
   send_write_tokens_to_fork_pull_requests: true
 }
 
-test fn witness_public_repository_fork_write_is_unreachable() -> Bool {
+test fn witness_public_repository_fork_write_is_unreachable() -> Bool  {
   is_read(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: public_fork_policy_allows))
     && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
     && !fork_write_tokens_reachable(policy: public_fork_policy_allows)
@@ -255,20 +255,20 @@ test fn witness_public_repository_fork_write_is_unreachable() -> Bool {
     && !fork_write_tokens_reachable(policy: ActionsRepositoryPolicyUnobserved)
 }
 
-test fn witness_declared_level_decides_the_grant_not_the_scope_name() -> Bool {
+test fn witness_declared_level_decides_the_grant_not_the_scope_name() -> Bool  {
   is_none(r: contents_resolution(contents: none, origin: SameRepositoryOrigin, policy: same_repo_policy))
     && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: SameRepositoryOrigin, policy: same_repo_policy))
     && is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: SameRepositoryOrigin, policy: same_repo_policy))
     && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy))
 }
 
-test fn witness_fork_origin_downgrades_write_to_read() -> Bool {
+test fn witness_fork_origin_downgrades_write_to_read() -> Bool  {
   is_read(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
     && is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
     && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
 }
 
-test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool {
+test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool  {
   is_fork_policy_unobserved(
     r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
   ) && is_write(
@@ -278,7 +278,7 @@ test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool {
   )
 }
 
-test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
+test fn witness_scope_unavailable_is_not_scope_none() -> Bool  {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
@@ -296,7 +296,7 @@ test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
 // impossible. Both polarities are fixed here: Metadata is undeclarable AND
 // granted read, while the keyless axes that carry no intrinsic grant stay
 // unavailable — so re-fusing the two facts in either direction reds.
-test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
+test fn witness_undeclarable_axis_may_still_be_granted() -> Bool  {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   !actions_token_may_declare_permission(name: MetadataAxis)
     && is_read(r: effective_actions_grant(grant: g, name: MetadataAxis))
@@ -310,7 +310,7 @@ test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
 // higher. A read grant satisfies a read request and refuses a write one, so
 // widening the intrinsic carrier to write would red here rather than silently
 // authorizing a write the live token does not carry.
-test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool {
+test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool  {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   match actions_job_capability(grant: g, required: GitHubAppPermission { name: MetadataAxis, access: AppAccessRead }) {
     CredentialGrants => true
@@ -321,7 +321,7 @@ test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool {
   }
 }
 
-test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool {
+test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool  {
   actions_token_may_declare_permission(name: ActionsAxis)
     && actions_token_may_declare_permission(name: ArtifactMetadataAxis)
     && actions_token_may_declare_permission(name: AttestationsAxis)
@@ -345,7 +345,7 @@ test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool {
     && !actions_token_may_declare_permission(name: OrganizationSelfHostedRunnersAxis)
 }
 
-test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bool {
+test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bool  {
   match permission_level_access(level: PermRead) {
     Absent => false
     Present { value: a } => match a { AppAccessRead => true  _ => false }
@@ -360,7 +360,7 @@ test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bo
     }
 }
 
-test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {
+test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool  {
   github_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessWrite)
     && !github_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessRead)
     && github_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessRead)
@@ -381,7 +381,7 @@ data ordinary_effect: GitHubEffect = AdvanceRepositoryBranch {
   changed_paths: [RepositoryPath { value: ".gitignore" }]
 }
 
-test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
+test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool  {
   let fork_credential = ActionsJobCredential { grant: a_forked_pull_request_job_grant }
   !credential_authorizes(
     authority: fork_credential,
@@ -398,7 +398,7 @@ test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
   )
 }
 
-test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
+test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool  {
   let id_token_read = EffectiveActionsJobGrant {
     workflow: a_pull_request_workflow_ref,
     job: a_pull_request_job_ref,
@@ -427,7 +427,7 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
   }
 }
 
-test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool {
+test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool  {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   match effective_actions_grant(grant: g, name: ChecksAxis) {
     ActionsGrantAxisNotModeled => true
@@ -438,7 +438,7 @@ test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool {
   }
 }
 
-test fn witness_fork_policy_is_required_only_for_a_declared_write() -> Bool {
+test fn witness_fork_policy_is_required_only_for_a_declared_write() -> Bool  {
   is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
     && is_fork_policy_unobserved(
          r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)

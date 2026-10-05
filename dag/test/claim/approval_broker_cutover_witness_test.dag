@@ -144,7 +144,7 @@ fn stage_is_admitted(stage: ApprovalBrokerCutoverStage, e: ApprovalBrokerCutover
 // THE FIRST STAGE IS ADMITTED because deploying dark requires no prior evidence -- that is what
 // makes it first. Every stage after it is refused, and the refusal is what the staging IS: without
 // it, "advance" would mean "somebody decided to", which is a plan that can always proceed.
-test fn cutover_refuses_every_stage_but_the_first_with_nothing_observed() -> Bool {
+test fn cutover_refuses_every_stage_but_the_first_with_nothing_observed() -> Bool  {
   let e = nothing_observed()
   stage_is_admitted(stage: DeployDark, e: e)
     && stage_is_refused(stage: ProveRelease, e: e)
@@ -160,7 +160,7 @@ test fn cutover_refuses_every_stage_but_the_first_with_nothing_observed() -> Boo
 // it together with "probed and answered" is the cannot-tell-versus-not-met collapse. This is the
 // discriminating RED for that: everything else is observed, one probe is missing, and the stage
 // refuses naming that route class.
-test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bool {
+test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -186,7 +186,7 @@ test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bo
 // collapse: the first is a fact about the deployment that names a repair (most likely the
 // front-door prefix question the endpoint module carries as an open read obligation), the second is
 // a measurement someone has to go and take.
-test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
+test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -218,7 +218,7 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
 // The marker is what closes it: every broker response is marked by construction
 // (gunbc.auth.approval_broker_marker threaded through the single response constructor in
 // gunbc.auth.approval_broker_serve), so an unmarked body did not come from the broker.
-test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
+test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -251,7 +251,7 @@ test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
 // The status is identical to a broker that simply has no such route, so a status-only probe folds
 // them together; the marker is the only thing that separates them, and the refusal names the fold
 // that actually answered rather than the one that should have.
-test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> Bool {
+test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -284,7 +284,7 @@ test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> B
 // So this asserts the ROUTE and not just the answer: the reading handed to admission came out of
 // broker_demand_from_incarnations, and MeasureDemand is admitted. Delete the producer and this
 // cannot be written at all; make the producer refuse a well-formed run and it goes red.
-test fn the_production_producer_can_build_a_reading_that_admits_the_measure_stage() -> Bool {
+test fn the_production_producer_can_build_a_reading_that_admits_the_measure_stage() -> Bool  {
   let reading = fixture_demand_reading()
   let measured = match reading {
     DemandMeasured { incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _, declared_concurrency: _ } => true
@@ -298,7 +298,7 @@ test fn the_production_producer_can_build_a_reading_that_admits_the_measure_stag
 // the redemption incarnation and keeps four readings; a count-based check comparing against five
 // would also fail here, so the discriminating case is the SIBLING claim below, which keeps the
 // count at five while naming one phase twice.
-test fn a_phase_with_no_incarnation_refuses_the_whole_reading() -> Bool {
+test fn a_phase_with_no_incarnation_refuses_the_whole_reading() -> Bool  {
   let reading = broker_demand_from_incarnations(
     peaks: [
       PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
@@ -320,7 +320,7 @@ test fn a_phase_with_no_incarnation_refuses_the_whole_reading() -> Bool {
 // and an identity join refuses, so it is what makes the roster join load-bearing rather than
 // decorative -- and it is a real run shape: two runs folded together, one phase measured twice and
 // another never, with the total still looking right.
-test fn five_readings_naming_four_phases_are_refused() -> Bool {
+test fn five_readings_naming_four_phases_are_refused() -> Bool  {
   let reading = broker_demand_from_incarnations(
     peaks: [
       PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
@@ -346,7 +346,7 @@ test fn five_readings_naming_four_phases_are_refused() -> Bool {
 // NUMBER rather than an error. Nothing about the shape is wrong, the run reports success, and the
 // slice gets sized from a process that was never exercised. A peak at or below what the process
 // sits on when idle has not seen the route run.
-test fn a_peak_at_or_below_idle_resident_is_refused_as_unobserved() -> Bool {
+test fn a_peak_at_or_below_idle_resident_is_refused_as_unobserved() -> Bool  {
   let reading = broker_demand_from_incarnations(
     peaks: [
       PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
@@ -371,7 +371,7 @@ test fn a_peak_at_or_below_idle_resident_is_refused_as_unobserved() -> Bool {
 // rather than merely gating (DESIGN section 3c). The discriminating part is that it does NOT return
 // the last reading or the cold-load reading: the fixture`s largest is the submission incarnation,
 // which is neither first nor last in the list.
-test fn the_slice_bound_derives_from_the_largest_incarnation() -> Bool {
+test fn the_slice_bound_derives_from_the_largest_incarnation() -> Bool  {
   byte_size_count(b: broker_demand_observed_max(peaks: fixture_incarnation_peaks())) == 1250000000
 }
 
@@ -385,7 +385,7 @@ test fn the_slice_bound_derives_from_the_largest_incarnation() -> Bool {
 // The stage was ADMITTED in that state, which is the worst possible direction: the next stage
 // deletes the roadmap's approval routes, so the plan would have removed the only working
 // implementation on evidence that implementation produced.
-test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() -> Bool {
+test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -418,7 +418,7 @@ test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() ->
 // for the process's whole life, being on that port is what a correct dark deployment looks like,
 // and an answer from anywhere else means whatever responded is not the unit this plan reasons
 // about, so every later reading would describe a process nobody deployed.
-test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool {
+test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: 18085 },
@@ -445,7 +445,7 @@ test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool {
 // Admission is cumulative, which is the ordering law rather than a convenience. With the six
 // readings absent but every later observation present, repointing is still refused -- because a
 // bound declared over an unmeasured subject is not a bound sized from this process.
-test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
+test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -480,7 +480,7 @@ test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
 // function of the EVIDENCE a caller supplies; completion is a function of a DECLARATION in the
 // corpus (approval_route_ownership). Supplying every observation admits the retirement stage; it
 // does not perform it, and nothing a caller passes can make it look performed.
-test fn cutover_admits_every_stage_once_every_observation_is_taken() -> Bool {
+test fn cutover_admits_every_stage_once_every_observation_is_taken() -> Bool  {
   let e = everything_observed()
   stage_is_admitted(stage: RetireRoadmapRoutes, e: e)
     && count(approval_broker_cutover_stages()) == 6
@@ -495,7 +495,7 @@ test fn cutover_admits_every_stage_once_every_observation_is_taken() -> Bool {
 //
 // It used to read an evidence field an operator supplied, so a caller could declare completion with
 // the rows still mounted (review 68050).
-test fn cutover_is_not_complete_while_the_roadmap_still_mounts_the_routes() -> Bool {
+test fn cutover_is_not_complete_while_the_roadmap_still_mounts_the_routes() -> Bool  {
   roadmap_still_mounts_approval_routes()
     && stage_is_admitted(stage: RetireRoadmapRoutes, e: everything_observed())
     && !approval_broker_cutover_complete(e: everything_observed())
@@ -526,7 +526,7 @@ fn exactly_one_routed(o: ApprovalRouteOwnership) -> Bool {
   (roadmap || broker) && !(roadmap && broker)
 }
 
-test fn exactly_one_party_is_routed_at_every_ownership_value() -> Bool {
+test fn exactly_one_party_is_routed_at_every_ownership_value() -> Bool  {
   exactly_one_routed(o: ApprovalPathsRoutedToRoadmap)
     && exactly_one_routed(o: ApprovalPathsRoutedToBroker)
     && exactly_one_routed(o: ApprovalPathsOwnedByBroker)
@@ -538,7 +538,7 @@ test fn exactly_one_party_is_routed_at_every_ownership_value() -> Bool {
 // The deadlock review 68075 found, now true by there being nothing to disagree about: the mounts
 // and the unit both name the broker's one port. THE RED is reintroducing a second port and deriving
 // either side from it.
-test fn the_front_door_backend_is_the_port_the_broker_is_deployed_on() -> Bool {
+test fn the_front_door_backend_is_the_port_the_broker_is_deployed_on() -> Bool  {
   let lines = map(approval_broker_front_door_enable_argv(https_port: 443), argv => join(argv, " "))
   let expected = to_string(approval_broker_listen_port)
   count(lines) == 2
@@ -550,7 +550,7 @@ test fn the_front_door_backend_is_the_port_the_broker_is_deployed_on() -> Bool {
 // That property was never the one that mattered: a client on the host reaches loopback whatever the
 // front door says, so an unrouted process was still a writable one. What this asserts instead is
 // the pair that actually decides it (side-chat HOLD items 1 and 3).
-test fn while_the_roadmap_answers_the_broker_is_unrouted_and_unauthorized() -> Bool {
+test fn while_the_roadmap_answers_the_broker_is_unrouted_and_unauthorized() -> Bool  {
   match approval_route_ownership {
     ApprovalPathsRoutedToRoadmap =>
       !approval_front_door_mounts_installed()
@@ -565,7 +565,7 @@ test fn while_the_roadmap_answers_the_broker_is_unrouted_and_unauthorized() -> B
 // A DARK STAGE WITH THE BROKER ALREADY HOLDING THE STORE IS REFUSED BY NAME. The stage exists to
 // observe the broker while it cannot mutate; if it already can, the stage is observing the live
 // writer and every reading taken under it describes a different situation than the one it claims.
-test fn the_dark_stage_refuses_a_broker_that_already_holds_writer_authority() -> Bool {
+test fn the_dark_stage_refuses_a_broker_that_already_holds_writer_authority() -> Bool  {
   match approval_write_admission_under(authority: BrokerWriter, asker: RoadmapProcess) {
     ApprovalWriteRefused { holder: _, asker: _ } => true
     ApprovalWriteAdmitted { writer: _ } => false
@@ -575,7 +575,7 @@ test fn the_dark_stage_refuses_a_broker_that_already_holds_writer_authority() ->
 // THE PATHS ARE NEVER UNSERVED. At every arm, whoever is routed also has the routes: the roadmap
 // only counts as routed while it still projects them, and the broker only while a mount names it.
 // A row value where neither holds is the outage the staging exists to prevent, and there isn't one.
-test fn no_ownership_value_leaves_the_approval_paths_unserved() -> Bool {
+test fn no_ownership_value_leaves_the_approval_paths_unserved() -> Bool  {
   let unserved = match approval_route_ownership {
     ApprovalPathsRoutedToRoadmap => !roadmap_still_mounts_approval_routes()
     ApprovalPathsRoutedToBroker => !approval_front_door_mounts_installed()
@@ -589,7 +589,7 @@ test fn no_ownership_value_leaves_the_approval_paths_unserved() -> Bool {
 // a bare `serve --bg <port>` binds the default listener at the root, which is how a second
 // deployment once silently repointed production. Two --set-path endpoints on one listener are two
 // distinct keys, so the argv carry their mount flags and differ from each other.
-test fn front_door_repoint_installs_two_distinct_scoped_mounts() -> Bool {
+test fn front_door_repoint_installs_two_distinct_scoped_mounts() -> Bool  {
   let lines = map(approval_broker_front_door_enable_argv(https_port: 443), argv => join(argv, " "))
   count(lines) == 2
     && count(filter(lines, l => string_contains(s: l, pattern: "--set-path=/approve "))) == 1
@@ -627,7 +627,7 @@ fn probe_answered(body: String) -> ServeLivenessRead {
 
 // A UNIT THAT NEVER CAME UP. This is the most likely real failure of stage 1 -- a bad ExecStart, a
 // missing binary, a slice that does not exist -- and it used to exit success.
-test fn the_dark_install_refuses_when_the_broker_never_answered() -> Bool {
+test fn the_dark_install_refuses_when_the_broker_never_answered() -> Bool  {
   dark_install_refuses(read: serve_liveness_read_from_probe(
     success: false,
     body: "",
@@ -638,7 +638,7 @@ test fn the_dark_install_refuses_when_the_broker_never_answered() -> Bool {
 // A PROCESS THAT ANSWERED A BRANCH NAME. The stage exists to establish WHICH BUILD is listening;
 // every later stage's evidence is about that build, so admitting an unnameable one poisons all of
 // them. This is the case the old annotation claimed to catch and did not.
-test fn the_dark_install_refuses_a_revision_that_is_not_a_revision() -> Bool {
+test fn the_dark_install_refuses_a_revision_that_is_not_a_revision() -> Bool  {
   dark_install_refuses(read: probe_answered(body: join([
     "{\"", running_release_revision_key, "\":\"main\"}",
   ], "")))
@@ -646,14 +646,14 @@ test fn the_dark_install_refuses_a_revision_that_is_not_a_revision() -> Bool {
 
 // SOMETHING ELSE ON THE PORT. During the cutover two gunbc processes and a front door are all live
 // on one host; a well-formed answer from the wrong thing must not be read as this broker.
-test fn the_dark_install_refuses_a_body_that_is_not_the_liveness_document() -> Bool {
+test fn the_dark_install_refuses_a_body_that_is_not_the_liveness_document() -> Bool  {
   dark_install_refuses(read: probe_answered(body: "[1,2,3]"))
     && dark_install_refuses(read: probe_answered(body: "{\"live\":true}"))
 }
 
 // THE POSITIVE CONTROL. Without it every claim above is satisfiable by a fold that refuses
 // everything -- which is the same defect as one that admits everything, wearing the other sign.
-test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
+test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool  {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: probe_answered(body: cutover_fixture_liveness_body),
@@ -668,7 +668,7 @@ test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
 // THE PROBE DECIDES WHETHER A UNIT IS LISTENING, NOT THE CALLER'S PORT ARGUMENT. The evidence used
 // to carry DarkUnitListening built from the port the deploy intended to use, which restated "we
 // asked systemd to start one" as "one is listening".
-test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool {
+test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool  {
   let e = dark_install_evidence(
     listening_port: approval_broker_listen_port,
     read: serve_liveness_read_from_probe(success: false, body: "", error: "no route to host" as NonEmptyStr),
@@ -683,7 +683,7 @@ test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool {
 // ── ADMISSION AND DISCHARGE ARE DIFFERENT QUESTIONS, AND THE FOLD MUST NOT MERGE THEM ────────
 // With the dark deployment observed and nothing else, a caller MAY attempt the release readback and
 // has NOT discharged it. A single fold answering both is how the production gate came to be green.
-test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
+test fn a_stage_may_be_admitted_and_undischarged() -> Bool  {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
@@ -744,7 +744,7 @@ fn broker_serves_at(p: ApprovalCutoverPosture) -> Bool {
 //
 // THE RED: give either derivation an arm that disagrees with the other, and this fails at that
 // posture -- which is exactly the half-landed cut the two-row shape permitted.
-test fn the_process_that_answers_is_the_process_that_writes() -> Bool {
+test fn the_process_that_answers_is_the_process_that_writes() -> Bool  {
   (broker_serves_at(p: RoadmapServesAndWrites) == broker_writes_at(p: RoadmapServesAndWrites))
     && (broker_serves_at(p: BrokerServesAndWrites) == broker_writes_at(p: BrokerServesAndWrites))
     && (broker_serves_at(p: BrokerOwnsAlone) == broker_writes_at(p: BrokerOwnsAlone))
@@ -754,7 +754,7 @@ test fn the_process_that_answers_is_the_process_that_writes() -> Bool {
 // move that changes who writes; stage G changes neither routing target nor authority, only whether
 // the roadmap still projects its rows. A reader scheduling the cut needs to know that the risky
 // move is one edit and the cleanup is a different, safe one.
-test fn only_the_stage_e_move_transfers_the_store() -> Bool {
+test fn only_the_stage_e_move_transfers_the_store() -> Bool  {
   !broker_writes_at(p: RoadmapServesAndWrites)
     && broker_writes_at(p: BrokerServesAndWrites)
     && broker_writes_at(p: BrokerOwnsAlone)
@@ -766,7 +766,7 @@ test fn only_the_stage_e_move_transfers_the_store() -> Bool {
 // stay mounted at BrokerServesAndWrites precisely so the posture can move back without a deploy --
 // and while they are mounted their store effects are refused, so the rollback target is a process
 // that can serve immediately rather than one that must first be re-authorized.
-test fn the_rollback_posture_still_mounts_the_roadmap_rows() -> Bool {
+test fn the_rollback_posture_still_mounts_the_roadmap_rows() -> Bool  {
   match routing_for(p: BrokerServesAndWrites) {
     ApprovalPathsRoutedToBroker => true
     _ => false
@@ -794,7 +794,7 @@ fn liveness_body_naming(revision: NonEmptyStr) -> String {
 // THE RED THAT WAS UNREACHABLE BEFORE. A perfectly well-formed liveness document naming a DIFFERENT
 // admitted release is refused, and the refusal names both revisions so an operator can tell a
 // service that did not restart from one that came back on an older build.
-test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool {
+test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool  {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
@@ -813,7 +813,7 @@ test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool {
 
 // THE POSITIVE CONTROL, and it is what stops the comparison being satisfiable by refusing every
 // readback: the SAME document naming THIS deploy's candidate is admitted.
-test fn a_broker_running_this_candidate_discharges_the_readback() -> Bool {
+test fn a_broker_running_this_candidate_discharges_the_readback() -> Bool  {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
@@ -844,7 +844,7 @@ fn fixture_tree_receipt() -> BrokerTreeReceiptRead {
 // revision it was LAUNCHED with, which this deployment's own emitter wrote into ExecStart. The
 // bytes on disk are from an earlier deploy. Every release-side check passes; only the receipt
 // separates them.
-test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool {
+test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool  {
   let stale = observe_broker_tree_receipt(
     success: true,
     body: join(["candidate_revision=", cutover_other_release as String, "\ninstalled_digest=aaaa\n"], ""),
@@ -868,7 +868,7 @@ test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool {
 // AN ABSENT RECEIPT IS NOT A PASSING ONE. The copy step writes it last, so a missing file means the
 // tree install did not finish -- the unit may be pointed at a directory nothing populated. Folding
 // this into "release not established" would send the operator to the wrong layer.
-test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool {
+test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool  {
   let absent = observe_broker_tree_receipt(
     success: false, body: "", error: "no such file" as NonEmptyStr,
   )
@@ -889,7 +889,7 @@ test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool {
 // A MALFORMED REVISION AND A WRONG REVISION ARE DIFFERENT FACTS with different remedies -- one is a
 // broken launch argument, the other is a process that did not restart -- so they must not fold
 // together into one "release not established".
-test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool {
+test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool  {
   let malformed = dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: "main" as NonEmptyStr)),

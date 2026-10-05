@@ -63,14 +63,14 @@ fn w_refinement_alias_whole_rhs_realizes_natively() -> Bool {
   )
 }
 
-test fn direct_scalar_element_realizes_natively() -> Bool {
+test fn direct_scalar_element_realizes_natively() -> Bool  {
   w_direct_scalar_element_realizes_natively()
 }
 
-test fn refinement_alias_element_realizes_natively() -> Bool {
+test fn refinement_alias_element_realizes_natively() -> Bool  {
   w_refinement_alias_element_realizes_natively()
 }
 
-test fn refinement_alias_whole_rhs_realizes_natively() -> Bool {
+test fn refinement_alias_whole_rhs_realizes_natively() -> Bool  {
   w_refinement_alias_whole_rhs_realizes_natively()
 }

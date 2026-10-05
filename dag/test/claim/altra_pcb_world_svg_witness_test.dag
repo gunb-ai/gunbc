@@ -288,7 +288,7 @@ fn six_channel_design() -> AltraMinimalMotherboard {
   }
 }
 
-test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
+test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool  {
   match altra_pcb_world() {
     PartialPcbWorldReady { value: _ } => true
     AdmittedPcbWorld { value: _ } => false
@@ -302,7 +302,7 @@ test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
 // so it is its own cause and its own count. Component missing-document is zero. The board land
 // pattern is a commercial-access ATTACHMENT obligation (Customer Connect); attachment causes are
 // not folded into pcb_cause_counts or the legend population string.
-test fn w_the_world_carries_five_established_twelve_unselected_and_one_attachment_part_unresolved() -> Bool {
+test fn w_the_world_carries_five_established_twelve_unselected_and_one_attachment_part_unresolved() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -318,7 +318,7 @@ test fn w_the_world_carries_five_established_twelve_unselected_and_one_attachmen
   }
 }
 
-test fn w_the_reference_board_body_layout_is_the_established_subset_with_twelve_parts_owed() -> Bool {
+test fn w_the_reference_board_body_layout_is_the_established_subset_with_twelve_parts_owed() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -331,7 +331,7 @@ test fn w_the_reference_board_body_layout_is_the_established_subset_with_twelve_
   }
 }
 
-test fn w_unmodeled_capabilities_are_pending_with_a_nonempty_obligation() -> Bool {
+test fn w_unmodeled_capabilities_are_pending_with_a_nonempty_obligation() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -360,7 +360,7 @@ test fn w_unmodeled_capabilities_are_pending_with_a_nonempty_obligation() -> Boo
   }
 }
 
-test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -> Bool {
+test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -386,7 +386,7 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
   }
 }
 
-test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
+test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool  {
   match altra_pcb_world_for(d: six_channel_design()) {
     PartialPcbWorldReady { value: _ } => false
     AdmittedPcbWorld { value: _ } => false
@@ -404,7 +404,7 @@ test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
   }
 }
 
-test fn w_the_world_carries_the_plan_design_identity() -> Bool {
+test fn w_the_world_carries_the_plan_design_identity() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -419,7 +419,7 @@ test fn w_the_world_carries_the_plan_design_identity() -> Bool {
   }
 }
 
-test fn w_the_emitted_scene_is_non_empty_and_opens_the_cited_root() -> Bool {
+test fn w_the_emitted_scene_is_non_empty_and_opens_the_cited_root() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -427,7 +427,7 @@ test fn w_the_emitted_scene_is_non_empty_and_opens_the_cited_root() -> Bool {
   }
 }
 
-test fn w_the_authored_outline_is_not_the_cited_mt_jade_board() -> Bool {
+test fn w_the_authored_outline_is_not_the_cited_mt_jade_board() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -435,7 +435,7 @@ test fn w_the_authored_outline_is_not_the_cited_mt_jade_board() -> Bool {
   }
 }
 
-test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool {
+test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -448,7 +448,7 @@ test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool {
 // look for a document with that name; no such document is missing. What is unresolved is which
 // vendor part the designation buys. The marker now carries the designation AND the real reason,
 // and both are asserted here so neither can be dropped back into the other.
-test fn w_the_socket_names_its_designation_and_its_real_unresolved_reason() -> Bool {
+test fn w_the_socket_names_its_designation_and_its_real_unresolved_reason() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -460,7 +460,7 @@ test fn w_the_socket_names_its_designation_and_its_real_unresolved_reason() -> B
   }
 }
 
-test fn w_unselected_roles_render_as_unselected_part() -> Bool {
+test fn w_unselected_roles_render_as_unselected_part() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -477,7 +477,7 @@ test fn w_unselected_roles_render_as_unselected_part() -> Bool {
 // mentioned those names. The emitted stylesheet mentions every one of them, so the old needle
 // started counting its own selectors -- a proxy that silently stopped measuring elements. The
 // attribute form counts elements, which is what the claim was always about.
-test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
+test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -491,14 +491,14 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
   }
 }
 
-test fn w_the_legend_states_the_cause_populations() -> Bool {
+test fn w_the_legend_states_the_cause_populations() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } => string_contains(s: s, pattern: "5 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 7 unrealized-function — body layout admitted over established subset only; 12 parts owed")
   }
 }
 
-test fn w_every_world_component_identity_appears_in_the_scene() -> Bool {
+test fn w_every_world_component_identity_appears_in_the_scene() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -521,7 +521,7 @@ test fn w_every_world_component_identity_appears_in_the_scene() -> Bool {
 // remain open keep their assertions, and the count conjunct is what stops this from silently
 // becoming weaker: it ties the number of emitted labels to the obligation population rather than
 // to a list someone remembered to update, so a layer resolving or regressing moves both together.
-test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
+test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -545,7 +545,7 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
 // attachment_obligations were empty for a reason having nothing to do with the land pattern --
 // an empty-observation narrow, which is the failure mode DESIGN names as strictly worse than the
 // widen it forbids, because a widen is merely expensive and a narrow is silently uncovered.
-test fn w_the_board_land_pattern_is_no_longer_an_open_obligation() -> Bool {
+test fn w_the_board_land_pattern_is_no_longer_an_open_obligation() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -557,7 +557,7 @@ test fn w_the_board_land_pattern_is_no_longer_an_open_obligation() -> Bool {
   }
 }
 
-test fn w_plan_view_unselected_marker_count_follows_population() -> Bool {
+test fn w_plan_view_unselected_marker_count_follows_population() -> Bool  {
   match projected_document(ids: ["m0", "m1", "m2", "m3"]) {
     Absent => false
     Present { value: four_doc } =>
@@ -569,7 +569,7 @@ test fn w_plan_view_unselected_marker_count_follows_population() -> Bool {
   }
 }
 
-test fn w_plan_view_missing_document_count_follows_population() -> Bool {
+test fn w_plan_view_missing_document_count_follows_population() -> Bool  {
   match projected_missing_document(ids: ["p0", "p1"]) {
     Absent => false
     Present { value: two_doc } =>
@@ -582,7 +582,7 @@ test fn w_plan_view_missing_document_count_follows_population() -> Bool {
   }
 }
 
-test fn w_the_projection_matches_the_emission_entry() -> Bool {
+test fn w_the_projection_matches_the_emission_entry() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -606,7 +606,7 @@ test fn w_the_projection_matches_the_emission_entry() -> Bool {
   }
 }
 
-test fn w_established_envelopes_name_the_declaration_read_not_a_datasheet_sentence() -> Bool {
+test fn w_established_envelopes_name_the_declaration_read_not_a_datasheet_sentence() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -621,7 +621,7 @@ test fn w_established_envelopes_name_the_declaration_read_not_a_datasheet_senten
   }
 }
 
-test fn w_the_two_envelope_reads_are_distinct_declarations() -> Bool {
+test fn w_the_two_envelope_reads_are_distinct_declarations() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -635,7 +635,7 @@ test fn w_the_two_envelope_reads_are_distinct_declarations() -> Bool {
   }
 }
 
-test fn w_dropping_an_envelope_read_from_the_document_is_detected() -> Bool {
+test fn w_dropping_an_envelope_read_from_the_document_is_detected() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -651,7 +651,7 @@ test fn w_dropping_an_envelope_read_from_the_document_is_detected() -> Bool {
   }
 }
 
-test fn w_a_blank_scene_reports_a_dropped_obligation() -> Bool {
+test fn w_a_blank_scene_reports_a_dropped_obligation() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -662,7 +662,7 @@ test fn w_a_blank_scene_reports_a_dropped_obligation() -> Bool {
   }
 }
 
-test fn w_the_emitted_scene_drops_no_world_identity() -> Bool {
+test fn w_the_emitted_scene_drops_no_world_identity() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -674,7 +674,7 @@ test fn w_the_emitted_scene_drops_no_world_identity() -> Bool {
   }
 }
 
-test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool {
+test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -688,7 +688,7 @@ test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool {
   }
 }
 
-test fn w_a_longer_attachment_label_does_not_cover_its_prefix() -> Bool {
+test fn w_a_longer_attachment_label_does_not_cover_its_prefix() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -703,7 +703,7 @@ test fn w_a_longer_attachment_label_does_not_cover_its_prefix() -> Bool {
   }
 }
 
-test fn w_the_engineering_scene_is_projected_from_the_world() -> Bool {
+test fn w_the_engineering_scene_is_projected_from_the_world() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -712,21 +712,21 @@ test fn w_the_engineering_scene_is_projected_from_the_world() -> Bool {
   }
 }
 
-test fn w_mutation_control_obligation_count_must_be_twelve() -> Bool {
+test fn w_mutation_control_obligation_count_must_be_twelve() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 12
   }
 }
 
-test fn w_mutation_control_established_count_must_be_five() -> Bool {
+test fn w_mutation_control_established_count_must_be_five() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } => pcb_component_count(p: pcb_world_physical(w: w)) == 5
   }
 }
 
-test fn w_mutation_control_unselected_eleven_and_attachment_part_unresolved_one() -> Bool {
+test fn w_mutation_control_unselected_eleven_and_attachment_part_unresolved_one() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -738,7 +738,7 @@ test fn w_mutation_control_unselected_eleven_and_attachment_part_unresolved_one(
   }
 }
 
-test fn w_mutation_control_population_is_established_plus_obligations() -> Bool {
+test fn w_mutation_control_population_is_established_plus_obligations() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -747,7 +747,7 @@ test fn w_mutation_control_population_is_established_plus_obligations() -> Bool 
   }
 }
 
-test fn w_attachment_label_offsets_are_micrometre_measures() -> Bool {
+test fn w_attachment_label_offsets_are_micrometre_measures() -> Bool  {
   micrometer_count(m: attachment_label_base) > 0
     && micrometer_count(m: attachment_label_step) > 0
 }
@@ -783,7 +783,7 @@ fn all_capabilities_refused(w: PcbWorld) -> PcbWorld {
   )
 }
 
-test fn w_a_world_whose_capabilities_are_all_refused_is_not_admitted() -> Bool {
+test fn w_a_world_whose_capabilities_are_all_refused_is_not_admitted() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -812,7 +812,7 @@ test fn w_a_world_whose_capabilities_are_all_refused_is_not_admitted() -> Bool {
 
 // AND THE PROJECTION ITSELF, asserted directly rather than only through admission, so that a
 // future admission path cannot quietly stop consulting it without a witness going red.
-test fn w_a_refused_capability_is_reported_as_outstanding() -> Bool {
+test fn w_a_refused_capability_is_reported_as_outstanding() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -851,7 +851,7 @@ fn refused_subset_standing() -> BoardBodyLayoutStanding {
   }
 }
 
-test fn w_a_refused_subset_does_not_project_as_a_checked_subset() -> Bool {
+test fn w_a_refused_subset_does_not_project_as_a_checked_subset() -> Bool  {
   match project_body_layout(s: refused_subset_standing()) {
     PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: cs } =>
       n == 13 && match cs.first {
@@ -875,7 +875,7 @@ test fn w_a_refused_subset_does_not_project_as_a_checked_subset() -> Bool {
 // REPORTING UNESTABLISHED FUNCTIONS. Clocks have no providers; host PHY, power stage, and power
 // good have cited bodies but candidate-only justifications — all must reach the scene as functional
 // obligations rather than reading as geometrically established connectivity or control.
-test fn w_unestablished_functions_reach_the_scene_including_candidate_body_providers() -> Bool {
+test fn w_unestablished_functions_reach_the_scene_including_candidate_body_providers() -> Bool  {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
@@ -897,7 +897,7 @@ test fn w_unestablished_functions_reach_the_scene_including_candidate_body_provi
 // AND CLOCKS ARE NOT COMPONENTS
 // "fixed" the missing clock parts by re-adding the roles. No planned component fills a clock
 // function, so nothing in the geometric population claims a clock device exists.
-test fn w_no_clock_device_appears_in_the_physical_population() -> Bool {
+test fn w_no_clock_device_appears_in_the_physical_population() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -913,7 +913,7 @@ test fn w_no_clock_device_appears_in_the_physical_population() -> Bool {
 // outside, which means the artifact was not self-contained and two people looking at the same
 // emission could see different things. The sizes are asserted against the typed rows rather than
 // spelled again here, so editing a size cannot leave this witness agreeing with a stale number.
-test fn w_the_emitted_document_carries_its_own_type_sizing() -> Bool {
+test fn w_the_emitted_document_carries_its_own_type_sizing() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -928,7 +928,7 @@ test fn w_the_emitted_document_carries_its_own_type_sizing() -> Bool {
 // medium's ordinary escape, so a child combinator or an ampersand would arrive as an entity and
 // the rule would be silently dropped -- present in the document, matching nothing. This asserts
 // the escape did not fire, which is the failure that looks like success.
-test fn w_no_style_selector_was_escaped() -> Bool {
+test fn w_no_style_selector_was_escaped() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -955,7 +955,7 @@ fn expected_second_function_label() -> String {
   }
 }
 
-test fn w_the_second_function_label_clears_the_first_ones_cause_line() -> Bool {
+test fn w_the_second_function_label_clears_the_first_ones_cause_line() -> Bool  {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
@@ -994,7 +994,7 @@ fn same_population_different_copper() -> AltraMinimalMotherboard {
   }
 }
 
-test fn w_a_board_differing_only_in_routed_copper_is_refused_the_canonical_plan() -> Bool {
+test fn w_a_board_differing_only_in_routed_copper_is_refused_the_canonical_plan() -> Bool  {
   match altra_pcb_world_for(d: same_population_different_copper()) {
     PcbWorldRefused { cause: c } =>
       match c {
@@ -1014,7 +1014,7 @@ test fn w_a_board_differing_only_in_routed_copper_is_refused_the_canonical_plan(
 // THE PAIRED POSITIVE CONTROL. The canonical board itself still reaches a world, so the witness
 // above is discriminating on the routed axis rather than reporting that this entry point refuses
 // everything handed to it.
-test fn w_the_canonical_board_still_reaches_its_world() -> Bool {
+test fn w_the_canonical_board_still_reaches_its_world() -> Bool  {
   match altra_pcb_world_for(d: altra_1p_minimum) {
     PartialPcbWorldReady { value: _ } => true
     AdmittedPcbWorld { value: _ } => true
@@ -1051,7 +1051,7 @@ fn a_board_unequal_to_the_canonical_one() -> AltraMinimalMotherboard {
   }
 }
 
-test fn w_a_board_unequal_to_the_canonical_one_reaches_no_world() -> Bool {
+test fn w_a_board_unequal_to_the_canonical_one_reaches_no_world() -> Bool  {
   match altra_pcb_world_for(d: a_board_unequal_to_the_canonical_one()) {
     PcbWorldRefused { cause: _ } => true
     PartialPcbWorldReady { value: _ } => false

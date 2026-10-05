@@ -83,35 +83,35 @@ data nested_let_in_match_arm_source: String = "module test.claim.tmp_callable_pr
 // before the cell it served ever ran.
 data function_parameter_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\nfn application_increment(value: Int) -> Int { value + 1 }\nfn parameter_call_probe(f: ApplicationUnary<Int>) -> Bool { f(41) == 42 }\nfn probe() -> Bool { parameter_call_probe(f: application_increment) }\n"
 
-test fn top_level_let_is_callable() -> Bool {
+test fn top_level_let_is_callable() -> Bool  {
   blocking_subject_count_for(source: top_level_let_source, wanted_class: "InternalError", wanted_subject: "function:zq_bound") == 0
 }
 
-test fn top_level_let_colliding_name_is_callable() -> Bool {
+test fn top_level_let_colliding_name_is_callable() -> Bool  {
   blocking_subject_count_for(source: top_level_let_colliding_source, wanted_class: "InternalError", wanted_subject: "function:step") == 0
 }
 
-test fn shorthand_match_binder_is_callable() -> Bool {
+test fn shorthand_match_binder_is_callable() -> Bool  {
   blocking_subject_count_for(source: shorthand_colliding_source, wanted_class: "InternalError", wanted_subject: "function:step") == 0
 }
 
-test fn explicit_match_binder_pool_free_name_is_callable() -> Bool {
+test fn explicit_match_binder_pool_free_name_is_callable() -> Bool  {
   blocking_subject_count_for(source: explicit_pool_free_source, wanted_class: "InternalError", wanted_subject: "function:bound_step") == 0
 }
 
-test fn shorthand_match_binder_pool_free_name_is_callable() -> Bool {
+test fn shorthand_match_binder_pool_free_name_is_callable() -> Bool  {
   blocking_subject_count_for(source: shorthand_pool_free_source, wanted_class: "InternalError", wanted_subject: "function:zq_apply") == 0
 }
 
-test fn explicit_match_binder_colliding_name_is_callable() -> Bool {
+test fn explicit_match_binder_colliding_name_is_callable() -> Bool  {
   blocking_subject_count_for(source: explicit_colliding_source, wanted_class: "InternalError", wanted_subject: "function:step") == 0
 }
 
-test fn nested_let_in_match_arm_is_callable() -> Bool {
+test fn nested_let_in_match_arm_is_callable() -> Bool  {
   blocking_subject_count_for(source: nested_let_in_match_arm_source, wanted_class: "InternalError", wanted_subject: "function:rebound") == 0
 }
 
-test fn function_parameter_is_callable() -> Bool {
+test fn function_parameter_is_callable() -> Bool  {
   blocking_subject_count_for(source: function_parameter_source, wanted_class: "InternalError", wanted_subject: "function:f") == 0
 }
 
@@ -127,11 +127,11 @@ data inline_typed_parameter_source: String = "module test.claim.tmp_callable_pro
 // varies ONLY whether the type went through the alias.
 data inline_typed_field_match_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype InlineCallback = InlinePresent { g: fn(Int) -> Int } | InlineAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_inline_callback() -> InlineCallback { InlinePresent { g: application_increment } }\nfn probe() -> Bool { match declared_inline_callback() { InlinePresent { g } => g(41) == 42  InlineAbsent => false } }\n"
 
-test fn inline_typed_parameter_is_callable() -> Bool {
+test fn inline_typed_parameter_is_callable() -> Bool  {
   blocking_subject_count_for(source: inline_typed_parameter_source, wanted_class: "InternalError", wanted_subject: "function:f") == 0
 }
 
-test fn inline_typed_field_match_binder_is_callable() -> Bool {
+test fn inline_typed_field_match_binder_is_callable() -> Bool  {
   blocking_subject_count_for(source: inline_typed_field_match_source, wanted_class: "InternalError", wanted_subject: "function:g") == 0
 }
 
@@ -144,6 +144,6 @@ test fn inline_typed_field_match_binder_is_callable() -> Bool {
 // machinery this branch already repairs for application evidence.
 data non_generic_alias_field_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype IntFn = fn(Int) -> Int\ntype NonGenCallback = NgPresent { h: IntFn } | NgAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_non_generic_callback() -> NonGenCallback { NgPresent { h: application_increment } }\nfn probe() -> Bool { match declared_non_generic_callback() { NgPresent { h } => h(41) == 42  NgAbsent => false } }\n"
 
-test fn non_generic_alias_field_match_binder_is_callable() -> Bool {
+test fn non_generic_alias_field_match_binder_is_callable() -> Bool  {
   blocking_subject_count_for(source: non_generic_alias_field_source, wanted_class: "InternalError", wanted_subject: "function:h") == 0
 }

@@ -12,7 +12,7 @@ import gunbc.auth.approval_request_client { PollApproved }
 // digests only its intent, so a decision recorded for one cannot match the other's revision. Both
 // claims below read the intents (no interpreted SHA-256); the digest-and-gate real path is the one
 // inhabitance claim at the end of this module.
-test fn material_approval_cannot_authorize_accessor_policy() -> Bool {
+test fn material_approval_cannot_authorize_accessor_policy() -> Bool  {
   match secret_grants_intent(grants: [fleet_accessor_grant(row: fabric_state_key_accessor_row)], member: "serviceAccount:fixture@example.invalid", attempt: "fixture-run-1") {
     Absent => false
     Present { value: policy } =>
@@ -21,7 +21,7 @@ test fn material_approval_cannot_authorize_accessor_policy() -> Bool {
   }
 }
 
-test fn material_approval_is_bound_to_its_run_attempt() -> Bool {
+test fn material_approval_is_bound_to_its_run_attempt() -> Bool  {
   fabric_state_provision_intent(attempt: "fixture-run-1") != fabric_state_provision_intent(attempt: "fixture-run-2")
 }
 
@@ -29,7 +29,7 @@ test fn material_approval_is_bound_to_its_run_attempt() -> Bool {
 // digests the real intent once, the gate admits exactly that revision, and a decision recorded
 // against any other revision refuses. Typed admission row: v2.workflow.floor_cost_debt_admission
 // approval_intent_digest_typed_admissions.
-test fn the_real_material_request_admits_only_its_own_revision() -> Bool {
+test fn the_real_material_request_admits_only_its_own_revision() -> Bool  {
   match fabric_state_provision_request(attempt: "fixture-run-1") {
     FabricStateProvisionUnrequestable { reason: _ } => false
     FabricStateProvisionRequested { request: material } => {

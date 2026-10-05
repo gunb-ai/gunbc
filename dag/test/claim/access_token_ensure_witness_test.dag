@@ -9,7 +9,7 @@ import gunbc.auth.access_token_source {
 }
 import std.types { Secret }
 
-test fn auth_deficit_failure_classifies_interactive_upsert() -> Bool {
+test fn auth_deficit_failure_classifies_interactive_upsert() -> Bool  {
   match gcloud_access_token_resolution(
     success: false,
     stderr: "ERROR: (gcloud.auth.print-access-token) Reauthentication required.",
@@ -23,7 +23,7 @@ test fn auth_deficit_failure_classifies_interactive_upsert() -> Bool {
   }
 }
 
-test fn infrastructure_failure_classifies_refuse_not_upsert() -> Bool {
+test fn infrastructure_failure_classifies_refuse_not_upsert() -> Bool  {
   match gcloud_access_token_resolution(
     success: false,
     stderr: "gcloud: command not found",
@@ -36,7 +36,7 @@ test fn infrastructure_failure_classifies_refuse_not_upsert() -> Bool {
   }
 }
 
-test fn empty_stderr_failure_classifies_refuse_not_upsert() -> Bool {
+test fn empty_stderr_failure_classifies_refuse_not_upsert() -> Bool  {
   match gcloud_access_token_resolution(
     success: false,
     stderr: "",
@@ -52,7 +52,7 @@ test fn empty_stderr_failure_classifies_refuse_not_upsert() -> Bool {
   }
 }
 
-test fn successful_print_classifies_ready() -> Bool {
+test fn successful_print_classifies_ready() -> Bool  {
   match gcloud_access_token_resolution(
     success: true,
     stderr: "",

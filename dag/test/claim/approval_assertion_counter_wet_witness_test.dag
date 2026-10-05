@@ -43,7 +43,7 @@ fn replayed(a: AssertionCounterAdmission) -> Bool {
 
 // A REPLAY AT AN ALREADY-ADMITTED COUNTER IS REFUSED, and so is an older one; the positive control
 // at a higher counter is admitted after both refusals, so the refusals did not wedge the slot.
-test fn a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted() -> Bool {
+test fn a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted() -> Bool  {
   let root = fresh_counter_root()
   let first = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 5)
   let same = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 5)
@@ -55,7 +55,7 @@ test fn a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted() -> B
 }
 
 // THE STANDING IS PER ENROLMENT: one enrolment's admitted counter does not refuse another's.
-test fn the_counter_standing_is_per_enrolment() -> Bool {
+test fn the_counter_standing_is_per_enrolment() -> Bool  {
   let root = fresh_counter_root()
   let a = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-aaaa", observed: 9)
   let b = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-bbbb", observed: 1)
@@ -67,7 +67,7 @@ test fn the_counter_standing_is_per_enrolment() -> Bool {
 // commit against the same generation; the second commit arrives after the first has advanced the
 // slot, so its expectation names a superseded generation and the store's exclusive create decides
 // against it. The positive control is the first commit itself.
-test fn a_lost_counter_race_is_refused_not_admitted() -> Bool {
+test fn a_lost_counter_race_is_refused_not_admitted() -> Bool  {
   let root = fresh_counter_root()
   let first = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-race", observed: 5)
   let winner = assertion_counter_commit(root: root as NonEmptyStr, enrollment_id: "enr-race", expected: ExpectSlotGeneration { generation: 1 }, observed: 6)
@@ -108,7 +108,7 @@ fn seed_contiguous_generations(root: NonEmptyStr, key: NonEmptyStr, next: Int, l
   }
 }
 
-test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() -> Bool {
+test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() -> Bool  {
   let root = fresh_counter_root()
   let seeded = seed_contiguous_generations(root: root as NonEmptyStr, key: "enr-long-lived", next: 1, last: 4200)
   let again = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4200)
@@ -129,7 +129,7 @@ test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() 
 // head. A writer acting on that stale head then attempts the real exclusive create of generation 6: the
 // OS reports occupancy, the create never overwrites (generation 6 still holds counter 6), and the store
 // classifies it as a lost race.
-test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create() -> Bool {
+test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create() -> Bool  {
   let root = fresh_counter_root()
   let key: NonEmptyStr = "enr-interleave"
   let seeded = admit_sequentially(root: root as NonEmptyStr, enrollment_id: key, next: 1, last: 5)

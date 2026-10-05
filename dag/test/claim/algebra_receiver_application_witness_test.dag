@@ -16,7 +16,7 @@ fn declared_application_rows() -> ApplicationRows {
   RowsPresent { rows: [ApplicationRow { label: "kept" }] }
 }
 
-test fn matched_collection_retains_receiver_type_argument() -> Bool {
+test fn matched_collection_retains_receiver_type_argument() -> Bool  {
   let subject = declared_application_rows()
   match subject {
     RowsPresent { rows } => rows |> any(row => row.label == "kept")

@@ -41,14 +41,14 @@ import std.measure { byte_size_count, rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn object_mapper_zero_cardinality_is_preserved() -> Bool {
+test fn object_mapper_zero_cardinality_is_preserved() -> Bool  {
   match openbmc_collection_from_values(values: []) {
     OpenBmcCollectionZero => true
     _ => false
   }
 }
 
-test fn object_mapper_one_cardinality_is_preserved() -> Bool {
+test fn object_mapper_one_cardinality_is_preserved() -> Bool  {
   match openbmc_collection_from_values(
     values: ["xyz.openbmc_project.Hwmon-1"],
   ) {
@@ -58,7 +58,7 @@ test fn object_mapper_one_cardinality_is_preserved() -> Bool {
   }
 }
 
-test fn duplicate_object_mapper_matches_remain_many() -> Bool {
+test fn duplicate_object_mapper_matches_remain_many() -> Bool  {
   match openbmc_collection_from_values(
     values: [
       "xyz.openbmc_project.Hwmon-1",
@@ -70,7 +70,7 @@ test fn duplicate_object_mapper_matches_remain_many() -> Bool {
   }
 }
 
-test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
+test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool  {
   match openbmc_sensor_threshold_result(
     remote: PasswordSshExecResult {
       exit_code: 255,
@@ -90,7 +90,7 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
 // a refusal must not decay into absence, and an empty successful projection must not decay into a
 // refusal. Only the carrier changed, so they are re-enrolled rather than retired (DESIGN section 3
 // -- evidence for a surviving claim survives the representation that used to hold it).
-test fn failed_sensor_projection_cannot_become_absent() -> Bool {
+test fn failed_sensor_projection_cannot_become_absent() -> Bool  {
   match openbmc_sensor_integer_projection_result(
     outcome: JqExecutionRefused { exit_code: 2, stderr: "malformed OpenBMC JSON" },
   ) {
@@ -99,7 +99,7 @@ test fn failed_sensor_projection_cannot_become_absent() -> Bool {
   }
 }
 
-test fn successful_empty_sensor_projection_is_absent() -> Bool {
+test fn successful_empty_sensor_projection_is_absent() -> Bool  {
   match openbmc_sensor_integer_projection_result(
     outcome: JqOutputAbsent,
   ) {
@@ -110,7 +110,7 @@ test fn successful_empty_sensor_projection_is_absent() -> Bool {
 
 // The third state, which the old triple could not express at all: a PRESENT projection carrying a
 // number is an observation. Added with the migration because the outcome type made it stateable.
-test fn present_numeric_sensor_projection_is_observed() -> Bool {
+test fn present_numeric_sensor_projection_is_observed() -> Bool  {
   match openbmc_sensor_integer_projection_result(
     outcome: JqOutputPresent { text: "42" },
   ) {
@@ -119,7 +119,7 @@ test fn present_numeric_sensor_projection_is_observed() -> Bool {
   }
 }
 
-test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
+test fn tach_below_controller_threshold_is_not_healthy() -> Bool  {
   match openbmc_tach_health_from_floor(
     sensor: "FAN4",
     reading: rpm(899),
@@ -138,7 +138,7 @@ test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
   }
 }
 
-test fn tach_at_controller_threshold_is_healthy() -> Bool {
+test fn tach_at_controller_threshold_is_healthy() -> Bool  {
   match openbmc_tach_health_from_floor(
     sensor: "FAN4",
     reading: rpm(900),
@@ -157,7 +157,7 @@ test fn tach_at_controller_threshold_is_healthy() -> Bool {
   }
 }
 
-test fn tach_health_sensor_accessor_covers_every_arm() -> Bool {
+test fn tach_health_sensor_accessor_covers_every_arm() -> Bool  {
   openbmc_tach_health_sensor(
     health: OpenBmcTachThresholdUnstated {
       sensor: "FAN1",
@@ -182,7 +182,7 @@ test fn tach_health_sensor_accessor_covers_every_arm() -> Bool {
     ) == "FAN3"
 }
 
-test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
+test fn path_transport_whitespace_becomes_one_typed_path() -> Bool  {
   match openbmc_path_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -197,7 +197,7 @@ test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
   }
 }
 
-test fn multiple_nonempty_paths_are_refused() -> Bool {
+test fn multiple_nonempty_paths_are_refused() -> Bool  {
   match openbmc_path_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -211,7 +211,7 @@ test fn multiple_nonempty_paths_are_refused() -> Bool {
   }
 }
 
-test fn empty_path_transport_is_refused() -> Bool {
+test fn empty_path_transport_is_refused() -> Bool  {
   match openbmc_path_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -225,7 +225,7 @@ test fn empty_path_transport_is_refused() -> Bool {
   }
 }
 
-test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
+test fn zone_failsafe_transport_becomes_typed_bool() -> Bool  {
   match openbmc_zone_failsafe_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -239,7 +239,7 @@ test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
   }
 }
 
-test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
+test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool  {
   match openbmc_zone_failsafe_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -253,7 +253,7 @@ test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
   }
 }
 
-test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
+test fn disk_usage_transport_becomes_typed_byte_size() -> Bool  {
   match openbmc_disk_usage_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -267,7 +267,7 @@ test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
   }
 }
 
-test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
+test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool  {
   match openbmc_epoch_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -281,7 +281,7 @@ test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
   }
 }
 
-test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
+test fn false_path_probe_is_observed_not_transport_refused() -> Bool  {
   match openbmc_path_probe_result(
     remote: PasswordSshExecResult {
       exit_code: 1,
@@ -295,7 +295,7 @@ test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
   }
 }
 
-test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
+test fn exit_one_path_probe_with_stderr_is_refused() -> Bool  {
   match openbmc_path_probe_result(
     remote: PasswordSshExecResult {
       exit_code: 1,
@@ -310,7 +310,7 @@ test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
   }
 }
 
-test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
+test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool  {
   match openbmc_path_probe_result(
     remote: PasswordSshExecResult {
       exit_code: 255,
@@ -325,7 +325,7 @@ test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
   }
 }
 
-test fn inconsistent_success_projection_is_refused() -> Bool {
+test fn inconsistent_success_projection_is_refused() -> Bool  {
   match openbmc_path_probe_result(
     remote: PasswordSshExecResult {
       exit_code: 0,
@@ -339,7 +339,7 @@ test fn inconsistent_success_projection_is_refused() -> Bool {
   }
 }
 
-test fn inactive_service_is_observed_not_transport_refused() -> Bool {
+test fn inactive_service_is_observed_not_transport_refused() -> Bool  {
   match openbmc_service_active_result(
     remote: PasswordSshExecResult {
       exit_code: 3,
@@ -353,7 +353,7 @@ test fn inactive_service_is_observed_not_transport_refused() -> Bool {
   }
 }
 
-test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
+test fn exit_three_service_probe_with_stderr_is_refused() -> Bool  {
   match openbmc_service_active_result(
     remote: PasswordSshExecResult {
       exit_code: 3,
@@ -368,7 +368,7 @@ test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
   }
 }
 
-test fn failed_service_state_is_preserved_in_refusal() -> Bool {
+test fn failed_service_state_is_preserved_in_refusal() -> Bool  {
   match openbmc_service_active_result(
     remote: PasswordSshExecResult {
       exit_code: 3,
@@ -383,7 +383,7 @@ test fn failed_service_state_is_preserved_in_refusal() -> Bool {
   }
 }
 
-test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> Bool {
+test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> Bool  {
   match openbmc_path_result(
     remote: PasswordSshExecResult {
       exit_code: 255,
@@ -398,7 +398,7 @@ test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> 
   }
 }
 
-test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> Bool {
+test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> Bool  {
   match openbmc_zone_failsafe_result(
     remote: PasswordSshExecResult {
       exit_code: 255,
@@ -413,7 +413,7 @@ test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> 
   }
 }
 
-test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> Bool {
+test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> Bool  {
   match openbmc_disk_usage_result(
     remote: PasswordSshExecResult {
       exit_code: 255,
@@ -428,7 +428,7 @@ test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> 
   }
 }
 
-test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> Bool {
+test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> Bool  {
   match openbmc_epoch_result(
     remote: PasswordSshExecResult {
       exit_code: 255,
@@ -443,7 +443,7 @@ test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> 
   }
 }
 
-test fn exit_zero_service_probe_requires_exact_active_token() -> Bool {
+test fn exit_zero_service_probe_requires_exact_active_token() -> Bool  {
   match openbmc_service_active_result(
     remote: PasswordSshExecResult {
       exit_code: 0,

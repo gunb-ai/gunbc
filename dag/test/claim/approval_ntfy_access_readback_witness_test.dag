@@ -690,7 +690,7 @@ fn pinned(read: NtfyRuntimeRead, want: String) -> Bool {
 // The exact reading with a helper observation bound to its server is the one reading that ADMITS:
 // every modeled read held, the listing is the exact ACL, and the process joins hold. Every RED in
 // this file is this reading with one thing changed.
-test fn the_exact_reading_bound_to_its_process_establishes_the_channel() -> Bool {
+test fn the_exact_reading_bound_to_its_process_establishes_the_channel() -> Bool  {
   match verdict_of(fx: fx_exact) {
     AclEstablished => true
     _ => false
@@ -700,21 +700,21 @@ test fn the_exact_reading_bound_to_its_process_establishes_the_channel() -> Bool
 // ── THE PROCESS JOINS: one RED per join, each one field of the bound observation ─────────────
 // UNBOUND: the helper's observation is absent -- the grant is not installed, so sudo -n refuses and
 // the read exits nonzero. It is the process read that is named, never a pass.
-test fn an_unbound_process_read_refuses_naming_it() -> Bool {
+test fn an_unbound_process_read_refuses_naming_it() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "process_observation", exit_code: 1, stdout: "", stderr: "sudo: a password is required")) {
     Present { value: RuntimeReadFailed { read: ReadProcessObservation, failure: ReadExitedNonzero { exit_code: 1, stderr: _ } } } => true
     _ => false
   }
 }
 
-test fn an_undecodable_observation_refuses() -> Bool {
+test fn an_undecodable_observation_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "process_observation", exit_code: 0, stdout: "{\"outcome\":\"observed\"}", stderr: "")) {
     Present { value: RuntimeReadFailed { read: ReadProcessObservation, failure: ReadUnparseable { detail: _ } } } => true
     _ => false
   }
 }
 
-test fn the_helpers_own_refusal_is_carried_with_its_read() -> Bool {
+test fn the_helpers_own_refusal_is_carried_with_its_read() -> Bool  {
   match gap_of(fx: concat([FxRead { read: "process_observation", exit_code: 0, stdout: ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserveRefused { read: "environ", cause: "exit 1: Permission denied" }), stderr: "" }], fx_exact)) {
     Present { value: RuntimeProcessObservationRefused { read: r, cause: _ } } => r == "environ"
     _ => false
@@ -723,7 +723,7 @@ test fn the_helpers_own_refusal_is_carried_with_its_read() -> Bool {
 
 // ANOTHER INCARNATION: the helper observed a different starttime (the server restarted between the
 // bracket and the helper's reads), so its fds describe another process.
-test fn an_observation_of_another_incarnation_refuses() -> Bool {
+test fn an_observation_of_another_incarnation_refuses() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after + 1, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode, open_fds: o.open_fds })) {
     Present { value: RuntimeProcessIncarnationMismatch { observed: _, expected: _ } } => true
@@ -734,7 +734,7 @@ test fn an_observation_of_another_incarnation_refuses() -> Bool {
 // JOIN 1 -- ENVIRONMENT: a launch wrapper (`env NTFY_AUTH_DEFAULT_ACCESS=read-write /usr/local/bin/ntfy ...`)
 // leaves the unit's declarations and the manager's environment clean, so every modeled read held;
 // only the process's actual environment shows it.
-test fn an_ntfy_variable_in_the_actual_environment_refuses() -> Bool {
+test fn an_ntfy_variable_in_the_actual_environment_refuses() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: concat(o.environment_names, ["NTFY_AUTH_DEFAULT_ACCESS"]), exe_target: o.exe_target, exe_inode: o.exe_inode, open_fds: o.open_fds })) {
     Present { value: RuntimeProcessEnvironmentOverrides { names: n } } => n == ["NTFY_AUTH_DEFAULT_ACCESS"]
@@ -744,7 +744,7 @@ test fn an_ntfy_variable_in_the_actual_environment_refuses() -> Bool {
 
 // JOIN 2 -- EXECUTABLE, REPLACED: the binary was replaced under the running server; readlink keeps
 // the ` (deleted)` suffix verbatim, and that is its own refusal, never a match on the stripped path.
-test fn a_replaced_binary_refuses_as_replaced() -> Bool {
+test fn a_replaced_binary_refuses_as_replaced() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: "/usr/local/bin/ntfy (deleted)", exe_inode: o.exe_inode, open_fds: o.open_fds })) {
     Present { value: RuntimeProcessExecutableReplaced { target: t } } => t == "/usr/local/bin/ntfy (deleted)"
@@ -753,7 +753,7 @@ test fn a_replaced_binary_refuses_as_replaced() -> Bool {
 }
 
 // JOIN 2 -- EXECUTABLE, ANOTHER PATH: argv[0] says /usr/local/bin/ntfy, the process executes another file.
-test fn another_executable_behind_the_declared_argv_refuses() -> Bool {
+test fn another_executable_behind_the_declared_argv_refuses() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: "/tmp/ntfy", exe_inode: o.exe_inode, open_fds: o.open_fds })) {
     Present { value: RuntimeProcessExecutableNotDeclared { target: t } } => t == "/tmp/ntfy"
@@ -762,7 +762,7 @@ test fn another_executable_behind_the_declared_argv_refuses() -> Bool {
 }
 
 // JOIN 2 -- EXECUTABLE, SAME PATH, ANOTHER FILE: the path matches, the inode does not.
-test fn an_executable_of_another_inode_refuses() -> Bool {
+test fn an_executable_of_another_inode_refuses() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode + 1, open_fds: o.open_fds })) {
     Present { value: RuntimeProcessExecutableInodeNotDeclared { process: p, declared: d } } => p == fx_binary_inode + 1 && d == fx_binary_inode
@@ -772,7 +772,7 @@ test fn an_executable_of_another_inode_refuses() -> Bool {
 
 // JOIN 3 -- AUTH FILE, NOT HELD: a pre-existing database renamed over the path after start passes
 // every modeled read that stats the path; the server holds another inode.
-test fn an_auth_file_the_process_does_not_hold_refuses() -> Bool {
+test fn an_auth_file_the_process_does_not_hold_refuses() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
     open_fds: map(o.open_fds, fd => if fd.target == "/var/lib/gunbc-ntfy/auth.db" { NtfyOpenFd { target: fd.target, target_inode: fd.target_inode + 7 } } else { fd }) })) {
@@ -782,7 +782,7 @@ test fn an_auth_file_the_process_does_not_hold_refuses() -> Bool {
 }
 
 // JOIN 3 -- AUTH FILE, HELD DELETED: the database the server really uses was unlinked from the path.
-test fn an_auth_file_held_deleted_refuses_as_such() -> Bool {
+test fn an_auth_file_held_deleted_refuses_as_such() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
     open_fds: concat(o.open_fds, [NtfyOpenFd { target: "/var/lib/gunbc-ntfy/auth.db (deleted)", target_inode: 11184300 }]) })) {
@@ -793,7 +793,7 @@ test fn an_auth_file_held_deleted_refuses_as_such() -> Bool {
 
 // ANON_INODE FDS ARE NEVER JOINED ON: an anon_inode fd that happens to carry the auth file's inode
 // number does not bind the auth file. Without the skip this reading would ADMIT.
-test fn an_anon_inode_fd_does_not_bind_the_auth_file() -> Bool {
+test fn an_anon_inode_fd_does_not_bind_the_auth_file() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
     open_fds: map(o.open_fds, fd => if fd.target == "/var/lib/gunbc-ntfy/auth.db" { NtfyOpenFd { target: "anon_inode:[/var/lib/gunbc-ntfy/auth.db]", target_inode: fd.target_inode } } else { fd }) })) {
@@ -803,7 +803,7 @@ test fn an_anon_inode_fd_does_not_bind_the_auth_file() -> Bool {
 }
 
 // JOIN 4 -- LISTENER: a same-uid decoy holds 127.0.0.1:2586; the running server holds no such socket.
-test fn a_listener_the_process_does_not_hold_refuses() -> Bool {
+test fn a_listener_the_process_does_not_hold_refuses() -> Bool  {
   let o = bound_observation(fx: fx_exact)
   match gap_of(fx: with_observation(fx: fx_exact, o: NtfyRuntimeProcessObservation { main_pid: o.main_pid, start_ticks_before: o.start_ticks_before, start_ticks_after: o.start_ticks_after, environment_names: o.environment_names, exe_target: o.exe_target, exe_inode: o.exe_inode,
     open_fds: filter(o.open_fds, fd => !starts_with(s: fd.target, prefix: "socket:[")) })) {
@@ -836,7 +836,7 @@ test fn pin_binary_inode() -> Bool { pinned(read: ReadBinaryInode, want: "timeou
 // THE HELPER READ IS THE GRANTED ARGV, under its own wider timeout: the words after the timeout are
 // exactly gunbc.live_deploy.release_locus approval_ntfy_runtime_observe_helper_argv, which the sudoers line
 // is rendered from, so the verb runs nothing the grant does not name.
-test fn pin_process_observation_is_the_granted_argv() -> Bool {
+test fn pin_process_observation_is_the_granted_argv() -> Bool  {
   pinned(read: ReadProcessObservation, want: "timeout --kill-after 2s 300s " + join(approval_ntfy_runtime_observe_helper_argv(revision: pin_revision), " "))
 }
 test fn pin_front_door() -> Bool { pinned(read: ReadFrontDoor, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n tailscale serve status --json") }
@@ -844,7 +844,7 @@ test fn pin_front_door() -> Bool { pinned(read: ReadFrontDoor, want: "timeout --
 // ── FAIL-CLOSED PER READ ───────────────────────────────────────────────────────────────────
 // REAL: the config was made unreadable under the running server. Its mtime read (before it) and
 // every read after it succeeded; the one middle read that failed is the refusal, named.
-test fn a_failed_middle_read_refuses_naming_it() -> Bool {
+test fn a_failed_middle_read_refuses_naming_it() -> Bool  {
   match gap_of(fx: fx_config_unreadable) {
     Present { value: RuntimeReadFailed { read: ReadConfig, failure: ReadExitedNonzero { exit_code: 1, stderr: e } } } => string_contains(s: e, pattern: "Permission denied")
     _ => false
@@ -852,7 +852,7 @@ test fn a_failed_middle_read_refuses_naming_it() -> Bool {
 }
 
 // SYNTHETIC: a read whose program could not be spawned (no sudo on the host).
-test fn a_read_that_could_not_spawn_refuses() -> Bool {
+test fn a_read_that_could_not_spawn_refuses() -> Bool  {
   (match approval_ntfy_channel_verdict(reading: RuntimeReadsTaken { pid: "1", reads: NtfyRuntimeReads {
       unit_before: run_of(fx: fx_exact, name: "unit_before"), pid_stat_before: run_of(fx: fx_exact, name: "pid_stat_before"),
       boot_time: run_of(fx: fx_exact, name: "boot_time"), clock_ticks: run_of(fx: fx_exact, name: "clock_ticks"),
@@ -875,7 +875,7 @@ test fn a_read_that_could_not_spawn_refuses() -> Bool {
 }
 
 // SYNTHETIC: a read that timed out (coreutils timeout exits 124).
-test fn a_read_that_timed_out_refuses() -> Bool {
+test fn a_read_that_timed_out_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "access_list", exit_code: 124, stdout: "", stderr: "")) {
     Present { value: RuntimeReadFailed { read: ReadAccessList, failure: ReadExitedNonzero { exit_code: 124, stderr: _ } } } => true
     _ => false
@@ -884,7 +884,7 @@ test fn a_read_that_timed_out_refuses() -> Bool {
 
 // ── THE UNIT AND THE BRACKET ───────────────────────────────────────────────────────────────
 // SYNTHETIC unit stub: the unit is not running a main process (a server started by hand).
-test fn a_server_outside_the_unit_refuses() -> Bool {
+test fn a_server_outside_the_unit_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "unit_before", exit_code: 0, stdout: "ActiveState=inactive\nMainPID=0\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "")) {
     Present { value: RuntimeUnitNotActive { active_state: s, main_pid: p } } => s == "inactive" && p == "0"
     _ => false
@@ -892,7 +892,7 @@ test fn a_server_outside_the_unit_refuses() -> Bool {
 }
 
 // REAL: the server was stopped and started again between the first and the last reads.
-test fn a_restart_between_the_reads_refuses() -> Bool {
+test fn a_restart_between_the_reads_refuses() -> Bool  {
   match gap_of(fx: fx_restarted) {
     Present { value: RuntimeRestartedDuringRead { before: _, after: _ } } => true
     _ => false
@@ -900,28 +900,28 @@ test fn a_restart_between_the_reads_refuses() -> Bool {
 }
 
 // ── THE PROCESS ─────────────────────────────────────────────────────────────────────────────
-test fn a_command_line_override_refuses() -> Bool {
+test fn a_command_line_override_refuses() -> Bool  {
   match gap_of(fx: fx_cmdoverride) {
     Present { value: RuntimeCommandLineNotDeclared { observed: a } } => any(a, w => w == "--auth-default-access")
     _ => false
   }
 }
 
-test fn a_command_line_listener_override_refuses() -> Bool {
+test fn a_command_line_listener_override_refuses() -> Bool  {
   match gap_of(fx: fx_wildcard_cmd) {
     Present { value: RuntimeCommandLineNotDeclared { observed: a } } => any(a, w => w == "--listen-http")
     _ => false
   }
 }
 
-test fn another_executable_refuses() -> Bool {
+test fn another_executable_refuses() -> Bool  {
   match gap_of(fx: fx_otherexe) {
     Present { value: RuntimeCommandLineNotDeclared { observed: a } } => (match first(a) { Present { value: w } => w == "/opt/ntfy-other/ntfy"  Absent => false })
     _ => false
   }
 }
 
-test fn a_binary_changed_since_start_refuses() -> Bool {
+test fn a_binary_changed_since_start_refuses() -> Bool  {
   match gap_of(fx: fx_binary_touched) {
     Present { value: RuntimeBinaryChangedSinceStart { changed: c, start: s } } => is_status_change(t: c) && !file_time_predates_start(t: c, start: s)
     _ => false
@@ -929,7 +929,7 @@ test fn a_binary_changed_since_start_refuses() -> Bool {
 }
 
 // SYNTHETIC: the version line edited -- no second ntfy release was run.
-test fn an_unmodeled_version_refuses() -> Bool {
+test fn an_unmodeled_version_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "version", exit_code: 0, stdout: "ntfy version 2.29.0\n", stderr: "")) {
     Present { value: RuntimeVersionNotModeled { observed: v } } => v == "ntfy version 2.29.0"
     _ => false
@@ -938,7 +938,7 @@ test fn an_unmodeled_version_refuses() -> Bool {
 
 // ── THE LAUNCH ENVIRONMENT ─────────────────────────────────────────────────────────────────
 // REAL server launched with the variable; the unit read reports it as the unit's Environment=.
-test fn an_ntfy_variable_in_the_unit_refuses() -> Bool {
+test fn an_ntfy_variable_in_the_unit_refuses() -> Bool  {
   match gap_of(fx: fx_envoverride) {
     Present { value: RuntimeEnvironmentOverrides { names: n } } => join(n, ",") == "NTFY_AUTH_DEFAULT_ACCESS"
     _ => false
@@ -946,7 +946,7 @@ test fn an_ntfy_variable_in_the_unit_refuses() -> Bool {
 }
 
 // SYNTHETIC unit stub: an EnvironmentFile, whose contents this read does not see.
-test fn an_environment_file_refuses() -> Bool {
+test fn an_environment_file_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "unit_before", exit_code: 0, stdout: replace(s: stdout_of(fx: fx_exact, name: "unit_before"), from: "EnvironmentFiles=\n", to: "EnvironmentFiles=/etc/default/gunbc-ntfy (ignore_errors=no)\n"), stderr: "")) {
     Present { value: RuntimeEnvironmentFilesPresent { files: f } } => string_contains(s: f, pattern: "/etc/default/gunbc-ntfy")
     _ => false
@@ -954,7 +954,7 @@ test fn an_environment_file_refuses() -> Bool {
 }
 
 // SYNTHETIC manager environment: an NTFY_* variable every unit inherits.
-test fn an_ntfy_variable_in_the_manager_refuses() -> Bool {
+test fn an_ntfy_variable_in_the_manager_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nNTFY_AUTH_FILE=/tmp/other.db\n", stderr: "")) {
     Present { value: RuntimeEnvironmentOverrides { names: n } } => join(n, ",") == "NTFY_AUTH_FILE"
     _ => false
@@ -965,35 +965,35 @@ test fn an_ntfy_variable_in_the_manager_refuses() -> Bool {
 // Every reading here carries a process observation BOUND to its server (with_bound_process), so
 // this is config-changed-since-start with the process joins satisfiable: they are last and never
 // mask an earlier refusal.
-test fn a_config_written_after_start_refuses() -> Bool {
+test fn a_config_written_after_start_refuses() -> Bool  {
   match gap_of(fx: fx_config_touched) {
     Present { value: RuntimeConfigChangedSinceStart { changed: m, start: t0 } } => is_status_change(t: m) && !file_time_predates_start(t: m, start: t0)
     _ => false
   }
 }
 
-test fn the_access_cache_refuses() -> Bool {
+test fn the_access_cache_refuses() -> Bool  {
   match gap_of(fx: fx_cache) {
     Present { value: RuntimeConfigAccessCacheEnabled { observed: v } } => v == "true"
     _ => false
   }
 }
 
-test fn a_config_default_access_not_deny_refuses() -> Bool {
+test fn a_config_default_access_not_deny_refuses() -> Bool  {
   match gap_of(fx: fx_cfg_default_rw) {
     Present { value: RuntimeConfigDefaultAccessNotDeny { observed: v } } => v == "read-write"
     _ => false
   }
 }
 
-test fn a_wildcard_config_listener_refuses() -> Bool {
+test fn a_wildcard_config_listener_refuses() -> Bool  {
   match gap_of(fx: fx_wildcard_cfg) {
     Present { value: RuntimeConfigListenNotDeclared { observed: v } } => v == ":2586"
     _ => false
   }
 }
 
-test fn another_auth_file_refuses() -> Bool {
+test fn another_auth_file_refuses() -> Bool  {
   match gap_of(fx: fx_authfile_other) {
     Present { value: RuntimeConfigAuthFileNotDeclared { observed: v } } => v == "/var/lib/gunbc-ntfy/other.db"
     _ => false
@@ -1001,7 +1001,7 @@ test fn another_auth_file_refuses() -> Bool {
 }
 
 // REAL: the auth database renamed under the running server and a copy put in its place.
-test fn an_auth_file_replaced_since_start_refuses() -> Bool {
+test fn an_auth_file_replaced_since_start_refuses() -> Bool  {
   match gap_of(fx: fx_authfile_replaced) {
     Present { value: RuntimeAuthFileReplacedSinceStart { born: b, start: s } } => !is_status_change(t: b) && !file_time_predates_start(t: b, start: s)
     _ => false
@@ -1009,7 +1009,7 @@ test fn an_auth_file_replaced_since_start_refuses() -> Bool {
 }
 
 // REAL: the config was replaced (renamed over) between its first identity read and its text.
-test fn a_config_swapped_during_its_read_refuses() -> Bool {
+test fn a_config_swapped_during_its_read_refuses() -> Bool  {
   match gap_of(fx: fx_config_swapped) {
     Present { value: RuntimeConfigChangedDuringRead { before: b, after: a } } => b != a
     _ => false
@@ -1017,7 +1017,7 @@ test fn a_config_swapped_during_its_read_refuses() -> Bool {
 }
 
 // REAL: the auth database was replaced (renamed over) between its first identity read and the listing.
-test fn an_auth_file_swapped_during_the_listing_refuses() -> Bool {
+test fn an_auth_file_swapped_during_the_listing_refuses() -> Bool  {
   match gap_of(fx: fx_auth_swapped) {
     Present { value: RuntimeAuthFileChangedDuringRead { before: b, after: a } } => b != a
     _ => false
@@ -1026,7 +1026,7 @@ test fn an_auth_file_swapped_during_the_listing_refuses() -> Bool {
 
 // REAL: the server's own database grants anonymous read, and an ambient NTFY_AUTH_FILE names a
 // clean copy. Under the pinned  the listing is the server's, and refuses...
-test fn an_ambient_auth_file_cannot_redirect_the_listing() -> Bool {
+test fn an_ambient_auth_file_cannot_redirect_the_listing() -> Bool  {
   match refused_with(v: verdict_of(fx: fx_ambient_auth_file)) {
     Present { value: AclAnonymousHasAccess { access: TopicGrants { grants: g } } } => count(g) == 1
     _ => false
@@ -1035,7 +1035,7 @@ test fn an_ambient_auth_file_cannot_redirect_the_listing() -> Bool {
 
 // ...while the same listing WITHOUT env -i, captured under the same ambient variable, is the clean
 // copy's -- which the ACL fold would ADMIT. This is the redirect env -i removes.
-test fn without_env_i_the_ambient_auth_file_would_have_passed() -> Bool {
+test fn without_env_i_the_ambient_auth_file_would_have_passed() -> Bool  {
   match ntfy_access_read(stdout: fx_access_without_env_i_under_ambient_auth_file) {
     NtfyAccessListed { listing: l } => match approval_ntfy_acl_of_listing(listing: l) {
       AclEstablished => true
@@ -1048,7 +1048,7 @@ test fn without_env_i_the_ambient_auth_file_would_have_passed() -> Bool {
 // REAL: the declared config path is a STABLE symlink whose target was rewritten between the reads.
 // The link's own identity is the same before and after -- the bracket alone would pass it -- and
 // the regular-file requirement is what refuses.
-test fn a_symlinked_config_path_refuses() -> Bool {
+test fn a_symlinked_config_path_refuses() -> Bool  {
   (match gap_of(fx: fx_config_symlink) {
     Present { value: RuntimeConfigNotRegularFile { observed: t } } => t == "symbolic link"
     _ => false
@@ -1057,7 +1057,7 @@ test fn a_symlinked_config_path_refuses() -> Bool {
 }
 
 // REAL: the same for the auth-file path, its target replaced by another database before the listing.
-test fn a_symlinked_auth_file_path_refuses() -> Bool {
+test fn a_symlinked_auth_file_path_refuses() -> Bool  {
   (match gap_of(fx: fx_auth_symlink) {
     Present { value: RuntimeAuthFileNotRegularFile { observed: t } } => t == "symbolic link"
     _ => false
@@ -1066,7 +1066,7 @@ test fn a_symlinked_auth_file_path_refuses() -> Bool {
 }
 
 // SYNTHETIC: the exact capture's auth-file identity with its birth field zeroed -- a filesystem that reports no birth time (%W prints 0).
-test fn an_unknown_auth_file_birth_refuses() -> Bool {
+test fn an_unknown_auth_file_birth_refuses() -> Bool  {
   let zeroed = "11184383 1790140901 0 regular file\n"
   match gap_of(fx: with_read(fx: with_read(fx: fx_exact, name: "auth_file_identity_before", exit_code: 0, stdout: zeroed, stderr: ""), name: "auth_file_identity_after", exit_code: 0, stdout: zeroed, stderr: "")) {
     Present { value: RuntimeAuthFileBirthUnknown } => true
@@ -1076,7 +1076,7 @@ test fn an_unknown_auth_file_birth_refuses() -> Bool {
 
 // ── LISTENERS AND THE FRONT DOOR ───────────────────────────────────────────────────────────
 // REAL: the config's listen-http is declared, but the server ALSO listens (metrics, on ::).
-test fn a_second_listener_of_the_principal_refuses() -> Bool {
+test fn a_second_listener_of_the_principal_refuses() -> Bool  {
   match gap_of(fx: fx_metrics_extra) {
     Present { value: RuntimeListenerNotDeclared { local_address: a } } => string_contains(s: a, pattern: ":2383")
     _ => false
@@ -1084,7 +1084,7 @@ test fn a_second_listener_of_the_principal_refuses() -> Bool {
 }
 
 // SYNTHETIC: the principal's uid owns no listening socket.
-test fn no_listener_refuses() -> Bool {
+test fn no_listener_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "server_uid", exit_code: 0, stdout: "4242\n", stderr: "")) {
     Present { value: RuntimeNoListener } => true
     _ => false
@@ -1092,7 +1092,7 @@ test fn no_listener_refuses() -> Bool {
 }
 
 // SYNTHETIC (documented tailscale serve status shape): a Funnel listener on the node.
-test fn a_funnel_front_door_refuses() -> Bool {
+test fn a_funnel_front_door_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}},\"AllowFunnel\":{\"srv1.example.ts.net:443\":true}}", stderr: "")) {
     Present { value: FrontDoorFunnelled { host_ports: h } } => join(h, ",") == "srv1.example.ts.net:443"
     _ => false
@@ -1100,7 +1100,7 @@ test fn a_funnel_front_door_refuses() -> Bool {
 }
 
 // SYNTHETIC: a front-door status that is not the documented JSON is unread, never "no Funnel".
-test fn an_unreadable_front_door_refuses() -> Bool {
+test fn an_unreadable_front_door_refuses() -> Bool  {
   match gap_of(fx: with_read(fx: fx_exact, name: "front_door", exit_code: 0, stdout: "Web: srv1:443", stderr: "")) {
     Present { value: RuntimeReadFailed { read: ReadFrontDoor, failure: ReadUnparseable { detail: _ } } } => true
     _ => false
@@ -1112,70 +1112,70 @@ fn with_listing(listing: String) -> List<FxRead> {
   with_read(fx: fx_exact, name: "access_list", exit_code: 0, stdout: listing, stderr: "")
 }
 
-test fn an_unplaced_listing_line_refuses() -> Bool {
+test fn an_unplaced_listing_line_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: stdout_of(fx: fx_exact, name: "access_list") + "WARN something unrelated\n"))) {
     Present { value: AclListingUnparseable { line: l, cause: _ } } => l == "WARN something unrelated"
     _ => false
   }
 }
 
-test fn default_access_not_deny_in_the_listing_refuses() -> Bool {
+test fn default_access_not_deny_in_the_listing_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_default_rw))) {
     Present { value: AclDefaultAccessNotDeny { observed: NtfyReadWrite } } => true
     _ => false
   }
 }
 
-test fn an_anonymous_read_grant_refuses() -> Bool {
+test fn an_anonymous_read_grant_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_anon_read))) {
     Present { value: AclAnonymousHasAccess { access: TopicGrants { grants: g } } } => count(g) == 1
     _ => false
   }
 }
 
-test fn a_publisher_that_can_read_refuses() -> Bool {
+test fn a_publisher_that_can_read_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_pub_rw))) {
     Present { value: AclPublisherNotWriteOnly { role: _, access: TopicGrants { grants: g } } } => count(g) == 1
     _ => false
   }
 }
 
-test fn an_admin_publisher_refuses() -> Bool {
+test fn an_admin_publisher_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_pub_admin))) {
     Present { value: AclPublisherNotWriteOnly { role: NtfyRoleAdmin, access: AdminAllTopics } } => true
     _ => false
   }
 }
 
-test fn an_operator_that_can_write_refuses() -> Bool {
+test fn an_operator_that_can_write_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_op_rw))) {
     Present { value: AclOperatorNotReadOnly { role: _, access: _ } } => true
     _ => false
   }
 }
 
-test fn an_operator_without_the_grant_refuses() -> Bool {
+test fn an_operator_without_the_grant_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_op_nogrant))) {
     Present { value: AclOperatorNotReadOnly { role: _, access: TopicGrants { grants: g } } } => count(g) == 0
     _ => false
   }
 }
 
-test fn a_missing_operator_refuses() -> Bool {
+test fn a_missing_operator_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_op_missing))) {
     Present { value: AclPrincipalMissing { user: u } } => u == "briansrls"
     _ => false
   }
 }
 
-test fn a_further_admin_refuses() -> Bool {
+test fn a_further_admin_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_admin_extra))) {
     Present { value: AclUnexpectedPrincipal { user: u, role: NtfyRoleAdmin } } => u == "root"
     _ => false
   }
 }
 
-test fn a_further_wildcard_reader_refuses() -> Bool {
+test fn a_further_wildcard_reader_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_wildcard_reader))) {
     Present { value: AclUnexpectedPrincipal { user: u, role: _ } } => u == "eve"
     _ => false
@@ -1185,21 +1185,21 @@ test fn a_further_wildcard_reader_refuses() -> Bool {
 // THE `*` ROW MUST BE AT THE ANONYMOUS ROLE. SYNTHETIC role edits of the exact listing: a `*` row
 // at role user, or at role admin, is refused even with the no-access shape; the real listing
 // (role anonymous) is the control and is admitted by the same fold.
-test fn a_star_row_at_role_user_refuses() -> Bool {
+test fn a_star_row_at_role_user_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "user * (role: anonymous, tier: none)", to: "user * (role: user, tier: none)")))) {
     Present { value: AclAnonymousRoleNotAnonymous { observed: NtfyRoleUser } } => true
     _ => false
   }
 }
 
-test fn a_star_row_at_role_admin_refuses() -> Bool {
+test fn a_star_row_at_role_admin_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "user * (role: anonymous, tier: none)\n- no topic-specific permissions", to: "user * (role: admin, tier: none)\n- no topic-specific permissions")))) {
     Present { value: AclAnonymousRoleNotAnonymous { observed: NtfyRoleAdmin } } => true
     _ => false
   }
 }
 
-test fn a_star_row_at_role_anonymous_is_the_accepted_control() -> Bool {
+test fn a_star_row_at_role_anonymous_is_the_accepted_control() -> Bool  {
   match ntfy_access_read(stdout: stdout_of(fx: fx_exact, name: "access_list")) {
     NtfyAccessListed { listing: l } => match approval_ntfy_acl_of_listing(listing: l) {
       AclEstablished => true
@@ -1211,21 +1211,21 @@ test fn a_star_row_at_role_anonymous_is_the_accepted_control() -> Bool {
 
 // SYNTHETIC ORDERINGS the upstream never prints (showUsers prints the admin line OR the topic lines):
 // each is a listing that does not parse, naming the user, never a user holding both.
-test fn an_admin_line_after_topic_grants_refuses() -> Bool {
+test fn an_admin_line_after_topic_grants_refuses() -> Bool  {
   match ntfy_access_read(stdout: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "- write-only access to topic gunbc-approvals\n", to: "- write-only access to topic gunbc-approvals\n- read-write access to all topics (admin role)\n")) {
     NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "admin line after topic grants for user 'gunbc-broker'")
     _ => false
   }
 }
 
-test fn a_topic_grant_after_the_admin_line_refuses() -> Bool {
+test fn a_topic_grant_after_the_admin_line_refuses() -> Bool  {
   match ntfy_access_read(stdout: replace(s: listing_pub_admin, from: "- read-write access to all topics (admin role)\n", to: "- read-write access to all topics (admin role)\n- write-only access to topic gunbc-approvals\n")) {
     NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "topic grant after the admin line for user 'gunbc-broker'")
     _ => false
   }
 }
 
-test fn a_duplicated_principal_refuses() -> Bool {
+test fn a_duplicated_principal_refuses() -> Bool  {
   match refused_with(v: verdict_of(fx: with_listing(listing: stdout_of(fx: fx_exact, name: "access_list") + "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n"))) {
     Present { value: AclPrincipalDuplicated { user: u } } => u == "briansrls"
     _ => false
@@ -1240,7 +1240,7 @@ data unadmitted_effect_caller_source: String = "module probe_enrolment_second_ro
 
 data sealed_effect_leaves: List<String> = ["mint_enrolment_code", "read_publisher_token", "issue_enrolment_code", "issue_and_deliver_enrolment_code_until", "deliver_enrolment_code", "publish_notification", "approval_ntfy_runtime_reading", "approval_ntfy_run"]
 
-test fn a_second_root_is_refused_at_every_effect_leaf() -> Bool {
+test fn a_second_root_is_refused_at_every_effect_leaf() -> Bool  {
   let census = compile_dag_diagnostic_census(unadmitted_effect_caller_source)
   all(sealed_effect_leaves, leaf => match census_blocking_count_for_subject(census: census, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: leaf) {
     Present { value: n } => n >= 1
@@ -1251,7 +1251,7 @@ test fn a_second_root_is_refused_at_every_effect_leaf() -> Bool {
 // GREEN CONTROL: the admitted root compiles with no admission refusal.
 data admitted_root_caller_source: String = "module probe_enrolment_admitted_root\nimport gunbc.cli_wire { CliWireResponse }\nimport std.resources { Network }\nimport gunbc.auth.approval_device_enrolment_code { issue_device_enrolment_code }\nfn through_the_root() -> CliWireResponse uses net: Network { issue_device_enrolment_code(revision: \"0123456789abcdef0123456789abcdef01234567\") }\n"
 
-test fn the_one_root_compiles_without_an_admission_refusal() -> Bool {
+test fn the_one_root_compiles_without_an_admission_refusal() -> Bool  {
   match census_blocking_count_for_class(census: compile_dag_diagnostic_census(admitted_root_caller_source), wanted: "ConstructorCallAdmissionRefused") {
     Present { value: n } => n == 0
     Absent => false
@@ -1261,7 +1261,7 @@ test fn the_one_root_compiles_without_an_admission_refusal() -> Bool {
 // Review 70602: a transport that refuses to BUILD the command spawned nothing, so the outcome is the
 // typed not-spawned arm naming the program and the refusal -- never ProcessRan with a sentinel exit
 // code. Restoring the old `exit_code: 0 - 1` mapping lands on the ProcessRan arm and turns this red.
-test fn a_transport_refusal_is_a_typed_not_spawned_outcome_never_an_exit_code() -> Bool {
+test fn a_transport_refusal_is_a_typed_not_spawned_outcome_never_an_exit_code() -> Bool  {
   match run_shell_command_observe_outcome(
     command: posix_sh_program_command(script: "true\n"),
     transport: SshExec { ssh_target: "unreachable.invalid", interpretation: Unknown },
@@ -1284,7 +1284,7 @@ fn is_status_change(t: FileTime) -> Bool {
 // 1000, 250 ticks at 100 per second -> started 1002 (2.5 s truncated): 1001 predates it, 1002 and
 // 1003 do not. Comparing against the untruncated 1002.5, or treating the equal second as before,
 // reds this.
-test fn a_file_time_in_the_start_second_does_not_predate_the_start() -> Bool {
+test fn a_file_time_in_the_start_second_does_not_predate_the_start() -> Bool  {
   match process_start_instant(boot_time: 1000, start_ticks: 250, ticks_per_second: hertz(count: 100)) {
     Absent => false
     Present { value: start } =>

@@ -17,7 +17,7 @@ fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   }
 }
 
-test fn accelerator_demo_execution_lane_witnesses() -> Bool {
+test fn accelerator_demo_execution_lane_witnesses() -> Bool  {
   gunbc.accelerator_demo_realize.witness_single_source_program_fixture_authority()
     && gunbc.accelerator_demo_realize.witness_integer_differential_bit_exact_on_fixture()
     && gunbc.accelerator_demo_realize.witness_oracle_matches_expected_fixture()

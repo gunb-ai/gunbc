@@ -32,19 +32,19 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_bach_cited_buildup_progression_holds() -> Bool {
+test fn w_bach_cited_buildup_progression_holds() -> Bool  {
   bach_cited_buildup_progression_holds()
 }
 
-test fn w_bach_cited_distribution_observations_match_canonical_sequence() -> Bool {
+test fn w_bach_cited_distribution_observations_match_canonical_sequence() -> Bool  {
   bach_cited_distribution_observations_match_canonical_sequence()
 }
 
-test fn w_bach_double_slit_interference_evidence_holds() -> Bool {
+test fn w_bach_double_slit_interference_evidence_holds() -> Bool  {
   bach_double_slit_interference_evidence_holds()
 }
 
-test fn w_bach_buildup_rejects_non_increasing_counts() -> Bool {
+test fn w_bach_buildup_rejects_non_increasing_counts() -> Bool  {
   let reversed = [
     bach_buildup_6235_electrons,
     bach_buildup_1004_electrons,
@@ -55,7 +55,7 @@ test fn w_bach_buildup_rejects_non_increasing_counts() -> Bool {
   bach_buildup_progression_rejects_non_increasing_counts(rows: reversed)
 }
 
-test fn w_bach_buildup_rejects_status_regression() -> Bool {
+test fn w_bach_buildup_rejects_status_regression() -> Bool  {
   let regressed = [
     bach_buildup_1004_electrons,
     BachBuildupObservationRow {
@@ -69,7 +69,7 @@ test fn w_bach_buildup_rejects_status_regression() -> Bool {
   bach_buildup_progression_rejects_status_regression(rows: regressed)
 }
 
-test fn w_bach_buildup_rejects_missing_discernible_before_clearly_visible() -> Bool {
+test fn w_bach_buildup_rejects_missing_discernible_before_clearly_visible() -> Bool  {
   let skipped_discernible = [
     bach_buildup_2_electrons,
     bach_buildup_6235_electrons,
@@ -79,7 +79,7 @@ test fn w_bach_buildup_rejects_missing_discernible_before_clearly_visible() -> B
   )
 }
 
-test fn w_bach_buildup_rejects_missing_discernible_row() -> Bool {
+test fn w_bach_buildup_rejects_missing_discernible_row() -> Bool  {
   let missing_discernible = [
     bach_buildup_2_electrons,
     bach_buildup_7_electrons,
@@ -91,7 +91,7 @@ test fn w_bach_buildup_rejects_missing_discernible_row() -> Bool {
   )
 }
 
-test fn w_bach_buildup_rejects_final_not_clearly_visible() -> Bool {
+test fn w_bach_buildup_rejects_final_not_clearly_visible() -> Bool  {
   let bad_final = [
     bach_buildup_2_electrons,
     bach_buildup_7_electrons,
@@ -107,7 +107,7 @@ test fn w_bach_buildup_rejects_final_not_clearly_visible() -> Bool {
   bach_buildup_progression_rejects_final_not_clearly_visible(rows: bad_final)
 }
 
-test fn w_bach_buildup_rejects_wrong_panel_order() -> Bool {
+test fn w_bach_buildup_rejects_wrong_panel_order() -> Bool  {
   let wrong_panel_order = [
     bach_buildup_6235_electrons,
     bach_buildup_1004_electrons,
@@ -118,7 +118,7 @@ test fn w_bach_buildup_rejects_wrong_panel_order() -> Bool {
   bach_buildup_progression_rejects_wrong_panel_order(rows: wrong_panel_order)
 }
 
-test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() -> Bool {
+test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() -> Bool  {
   let without_both_open = [
     SlitOneSingleSlitDiffractionObserved,
     SlitTwoSingleSlitDiffractionObserved,
@@ -128,7 +128,7 @@ test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() 
   )
 }
 
-test fn w_bach_interference_rejects_noncanonical_distribution_order() -> Bool {
+test fn w_bach_interference_rejects_noncanonical_distribution_order() -> Bool  {
   let both_open_first = [
     BothSlitsDoubleSlitDiffractionObserved,
     SlitOneSingleSlitDiffractionObserved,

@@ -33,7 +33,7 @@ fn v_single_declarer_keeps_the_use_line() -> Bool {
   )
 }
 
-test fn a_singly_declared_fixture_alias_emits_its_use_line() -> Bool {
+test fn a_singly_declared_fixture_alias_emits_its_use_line() -> Bool  {
   v_single_declarer_keeps_the_use_line()
 }
 
@@ -49,7 +49,7 @@ fn v_second_alias_declarer_keeps_the_use_line() -> Bool {
   )
 }
 
-test fn a_second_alias_declarer_keeps_the_use_line() -> Bool {
+test fn a_second_alias_declarer_keeps_the_use_line() -> Bool  {
   v_second_alias_declarer_keeps_the_use_line()
 }
 
@@ -66,6 +66,6 @@ fn v_same_spelled_variant_keeps_the_use_line() -> Bool {
   )
 }
 
-test fn a_same_spelled_variant_in_the_closure_keeps_the_use_line() -> Bool {
+test fn a_same_spelled_variant_in_the_closure_keeps_the_use_line() -> Bool  {
   v_same_spelled_variant_keeps_the_use_line()
 }

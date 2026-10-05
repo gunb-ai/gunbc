@@ -19,7 +19,7 @@ fn next_tag(p: BmcOnboardingPhase) -> Int {
   }
 }
 
-test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
+test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool  {
   next_tag(p: FactoryDefault) == 1
     && next_tag(p: CredentialsRotated) == 2
     && next_tag(p: OsInstalled) == 3
@@ -42,7 +42,7 @@ fn posture_is_keyless(p: BmcCredentialPosture) -> Bool {
   }
 }
 
-test fn bmc_credential_posture_hardens_to_keyless_steady_state() -> Bool {
+test fn bmc_credential_posture_hardens_to_keyless_steady_state() -> Bool  {
   posture_tag(p: bmc_phase_credential_posture(phase: FactoryDefault)) == 0
     && posture_tag(p: bmc_phase_credential_posture(phase: CredentialsRotated)) == 1
     && posture_tag(p: bmc_phase_credential_posture(phase: OsInstalled)) == 1
@@ -52,12 +52,12 @@ test fn bmc_credential_posture_hardens_to_keyless_steady_state() -> Bool {
     && posture_is_keyless(p: bmc_phase_credential_posture(phase: FabricJoined))
 }
 
-test fn bmc_lifecycle_fold_is_complete_and_monotone() -> Bool {
+test fn bmc_lifecycle_fold_is_complete_and_monotone() -> Bool  {
   bmc_lifecycle_length() == 4
     && bmc_lifecycle_is_monotone_hardening()
 }
 
-test fn bmc_plan_steady_state_is_keyless_wif() -> Bool {
+test fn bmc_plan_steady_state_is_keyless_wif() -> Bool  {
   let steady = bmc_plan_steady_state_phase(plan: srv3_onboarding_plan)
   (steady == FabricJoined)
     && posture_is_keyless(p: bmc_plan_steady_state_posture(plan: srv3_onboarding_plan))
@@ -87,7 +87,7 @@ fn next_prev_is_identity(p: BmcOnboardingPhase) -> Bool {
   }
 }
 
-test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool {
+test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool  {
   prev_next_is_identity(p: FactoryDefault)
     && prev_next_is_identity(p: CredentialsRotated)
     && prev_next_is_identity(p: OsInstalled)
@@ -98,7 +98,7 @@ test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool {
     && next_prev_is_identity(p: FabricJoined)
 }
 
-test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool {
+test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool  {
   let decom_after_install = bmc_decom_to_factory(phase: bmc_onboard_to_steady(phase: FactoryDefault))
   let install_after_decom = bmc_onboard_to_steady(phase: bmc_decom_to_factory(phase: FabricJoined))
   (decom_after_install == FactoryDefault) && (install_after_decom == FabricJoined)
@@ -113,7 +113,7 @@ fn factory_at(p: BmcOnboardingPhase) -> BmcLifecycleState {
   }
 }
 
-test fn bmc_decom_roundtrips_canonical_on_named_quotient() -> Bool {
+test fn bmc_decom_roundtrips_canonical_on_named_quotient() -> Bool  {
   bmc_transition_roundtrips_on_quotient(s: factory_at(p: FactoryDefault))
     && bmc_transition_roundtrips_on_quotient(s: factory_at(p: CredentialsRotated))
     && bmc_transition_roundtrips_on_quotient(s: factory_at(p: OsInstalled))
@@ -137,11 +137,11 @@ fn transition_does_not_roundtrip_on_quotient(s: BmcLifecycleState) -> Bool {
   !(recovered == original)
 }
 
-test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
+test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool  {
   transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
 }
 
-test fn srv3_plan_starts_factory_default_at_192() -> Bool {
+test fn srv3_plan_starts_factory_default_at_192() -> Bool  {
   srv3_onboarding_plan.bmc.host == "192.168.1.192"
     && phase_tag(p: srv3_onboarding_plan.start_phase) == 0
     && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
@@ -150,7 +150,7 @@ test fn srv3_plan_starts_factory_default_at_192() -> Bool {
     && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
 }
 
-test fn srv4_plan_targets_195_with_srv4_secret() -> Bool {
+test fn srv4_plan_targets_195_with_srv4_secret() -> Bool  {
   srv4_onboarding_plan.bmc.host == "192.168.1.195"
     && !(srv4_onboarding_plan.bmc.host == srv3_onboarding_plan.bmc.host)
     && phase_tag(p: srv4_onboarding_plan.start_phase) == 0
@@ -160,7 +160,7 @@ test fn srv4_plan_targets_195_with_srv4_secret() -> Bool {
 
 // srv1 and srv2 read their BMC endpoints from the fleet intent, so the literals here are the
 // expectation and the plan is the subject: a plan that retyped a wrong address would fail this.
-test fn srv1_and_srv2_plans_take_their_bmc_from_the_fleet_intent() -> Bool {
+test fn srv1_and_srv2_plans_take_their_bmc_from_the_fleet_intent() -> Bool  {
   srv1_onboarding_plan.bmc.host == "192.168.1.183"
     && srv2_onboarding_plan.bmc.host == "192.168.1.184"
     && srv1_onboarding_plan.secret_name == "bmc-srv1-admin"
@@ -169,7 +169,7 @@ test fn srv1_and_srv2_plans_take_their_bmc_from_the_fleet_intent() -> Bool {
     && redfish_account_role_wire(role: srv2_onboarding_plan.rotated_account_role) == "Administrator"
 }
 
-test fn credential_probe_maps_to_correct_phase() -> Bool {
+test fn credential_probe_maps_to_correct_phase() -> Bool  {
   match bmc_credential_probe_to_phase(probe: FactoryCredentialActive) {
     Present { value: FactoryDefault } => true
     Present { value: _ } => false
@@ -213,7 +213,7 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
 // stopped being true when srv3's BMC was upgraded. The per-host machinery is
 // unchanged and still reads each host's own evidence; the two hosts simply agree
 // now, and the witness says which state that is rather than which it used to be.
-test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
+test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool  {
   match srv3_install_boot_target_standing {
     InstallBootTargetRefused { cause: c3 } =>
       match c3 {

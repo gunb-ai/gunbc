@@ -33,7 +33,7 @@ fn mtcollins1_federation() -> ManagedHostBootFederation? {
 // admitted through its ManagedHost row and carries the LIVE names unchanged -- pool, provider,
 // account, environment and the provider resource the workflow's WIF step names. A renamed id is a
 // different GCP or GitHub object, so each is compared to the live spelling, not to the module.
-test fn w_mtcollins1_is_the_one_provisioned_pair_under_its_live_names() -> Bool {
+test fn w_mtcollins1_is_the_one_provisioned_pair_under_its_live_names() -> Bool  {
   (provisioned_boot_federations() |> count) == 1
     && match mtcollins1_federation() {
       Absent => false
@@ -61,7 +61,7 @@ fn without_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr) -> List<OidcCla
 // THE CONTROL: the boot job's own token is admitted. THE REDS: another workflow file, another ref,
 // a pull_request event, another environment, and a job with no environment (every other job in
 // fleet-converge.yml) are each refused -- one claim changed at a time, so each red is attributable.
-test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> Bool {
+test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> Bool  {
   match mtcollins1_federation() {
     Absent => false
     Present { value: f } => {
@@ -79,7 +79,7 @@ test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> B
 
 // THE PROVISIONED CONDITION IS THE ADMISSION'S OWN PINS: every pin appears in the CEL string GCP
 // stores, so the refusal above is the provider's, not a second description of it.
-test fn the_provider_condition_carries_every_pin() -> Bool {
+test fn the_provider_condition_carries_every_pin() -> Bool  {
   match mtcollins1_federation() {
     Absent => false
     Present { value: f } => {
@@ -109,7 +109,7 @@ fn grant_titled(g: SecretAccessGrant, title: String) -> Bool {
   }
 }
 
-test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_pool() -> Bool {
+test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_pool() -> Bool  {
   match mtcollins1_federation() {
     Absent => false
     Present { value: f } => {
@@ -128,7 +128,7 @@ test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_po
 // RED, SAME PATH: A MANAGED HOST WITH NO BOOT POLICY. The real row's standings are kept under a host
 // name the binding table has no names for; it binds, so admission reaches the policy lookup and
 // refuses it there as unprovisioned. A consumer reading this standing gets no federation to use.
-test fn w_a_bound_host_with_no_boot_policy_is_unprovisioned() -> Bool {
+test fn w_a_bound_host_with_no_boot_policy_is_unprovisioned() -> Bool  {
   managed_hosts() |> all(h => {
     let renamed = managed_host_fixture(host: "fixture-unprovisioned-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     match admit_boot_federation(host: renamed) {
@@ -144,7 +144,7 @@ test fn w_a_bound_host_with_no_boot_policy_is_unprovisioned() -> Bool {
 
 // RED: A HOST THAT IS NOT A MANAGED HOST. srv1 is an executor fleet host with no controller row, so
 // it is unprovisioned by that cause, never booted with defaults.
-test fn w_a_host_that_is_not_managed_is_unprovisioned() -> Bool {
+test fn w_a_host_that_is_not_managed_is_unprovisioned() -> Bool  {
   match boot_federation_for(host: operator_host_srv1) {
     BootFederationUnprovisioned { host: x, cause: c } => (x as String) == (operator_host_srv1 as String) && match c {
       BootFederationHostNotManaged => true

@@ -166,20 +166,20 @@ fn on_bmc_first_and_last(cmds: List<BmcNetbootOpCommand>) -> OnBmcWalk {
   })
 }
 
-test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
+test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool  {
   let cfg = bmc_netboot_grub_cfg_text(plan: srv4_bmc_netboot_serve_plan)
   string_contains(s: cfg, pattern: "linux /vmlinuz ip=dhcp url=https://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso autoinstall \"ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/\" ---")
     && string_contains(s: cfg, pattern: "initrd /initrd")
     && string_contains(s: cfg, pattern: "set timeout=1")
 }
 
-test fn srv4_http_boot_entry_targets_bmc() -> Bool {
+test fn srv4_http_boot_entry_targets_bmc() -> Bool  {
   let entry = bmc_netboot_http_boot_entry(plan: srv4_bmc_netboot_serve_plan)
   string_contains(s: uefi_http_boot_uri_wire(entry: entry), pattern: "http://192.168.1.195:8080/grubaa64.efi")
     && entry.interface_name == "eth2"
 }
 
-test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
+test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool  {
   match bmc_netboot_user_seed_verdict(plan: srv4_bmc_netboot_serve_plan) {
     AutoinstallUserDataRendered { content: ud } =>
       string_contains(s: ud, pattern: "hostname: srv4")
@@ -192,7 +192,7 @@ test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
 // THE PROVISION REALIZES AS TWO ON-BMC COMMANDS, FOUR TRANSFERS, AND THREE STAGED TEXT PUTS --
 // nine acts, the staged list in the same order, and the on-BMC pair at the two ends: the mkdir
 // opens the provision, the serve launch closes it.
-test fn staged_provision_realizes_two_on_bmc_four_transfers_three_staged_puts() -> Bool {
+test fn staged_provision_realizes_two_on_bmc_four_transfers_three_staged_puts() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let realized = realized_all(ops: staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan)))
   let walk = on_bmc_first_and_last(cmds: realized)
@@ -207,7 +207,7 @@ test fn staged_provision_realizes_two_on_bmc_four_transfers_three_staged_puts() 
 // THE MKDIR ACTS ON THE BMC WITH THE DERIVED DIRECTORY, AT ARGV GRAIN: the path-resolved applet
 // spelling the module declares, the -p ensure form, and the directory staging derives from the
 // plan's own serve root.
-test fn the_bmc_mkdir_acts_with_the_derived_directory() -> Bool {
+test fn the_bmc_mkdir_acts_with_the_derived_directory() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let realized = realized_all(ops: staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan)))
   let mkdirs = filter(realized, cmd => is_on_bmc(cmd: cmd) && argv_program(cmd: cmd) == "mkdir")
@@ -225,7 +225,7 @@ test fn the_bmc_mkdir_acts_with_the_derived_directory() -> Bool {
 // inner program folded INTO the final word, never as a separate `mkdir` word. (The fold is
 // extdeps.exec.command command_over_transport's SshExec arm, cited to IEEE 1003.1-2017 section
 // 2.2.2; the interpretation is the deployment's own determined fact, openbmc_dropbear_interpretation.)
-test fn the_bmc_transport_composes_one_rfc4254_string_for_the_mkdir() -> Bool {
+test fn the_bmc_transport_composes_one_rfc4254_string_for_the_mkdir() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let inner = mkdir_parents_command_at(
     mkdir_binary: bmc_path_resolved_mkdir_applet,
@@ -247,7 +247,7 @@ test fn the_bmc_transport_composes_one_rfc4254_string_for_the_mkdir() -> Bool {
   }
 }
 
-test fn the_scp_transfer_carries_the_shared_ssh_posture() -> Bool {
+test fn the_scp_transfer_carries_the_shared_ssh_posture() -> Bool  {
   let cmd = scp_command(
     local_path: "/tmp/netboot/grub.cfg" as NonEmptyStr,
     remote_target: "root@192.168.1.195:/tmp/netboot/grub.cfg" as NonEmptyStr,
@@ -267,7 +267,7 @@ test fn the_scp_transfer_carries_the_shared_ssh_posture() -> Bool {
 // THE ARM FIELDS ARE THE EXECUTOR'S INPUTS, PAIRED BY DERIVATION: an artifact put transfers THE
 // artifact to THE staged path; a text put stages at the local name derived from its own remote
 // path, carrying the text it will write.
-test fn the_artifact_put_transfers_the_artifact_to_its_staged_path() -> Bool {
+test fn the_artifact_put_transfers_the_artifact_to_its_staged_path() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let staged = staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan))
   let artifact_puts = filter(staged, op => match op.disposition {
@@ -287,7 +287,7 @@ test fn the_artifact_put_transfers_the_artifact_to_its_staged_path() -> Bool {
         && transfer_local(cmd: cmd) == (bmc_netboot_artifact(name: "busybox") as String))
 }
 
-test fn the_staged_text_put_pairs_its_local_file_with_its_remote_path() -> Bool {
+test fn the_staged_text_put_pairs_its_local_file_with_its_remote_path() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let staged = staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan))
   let text_puts = filter(staged, op => match op.disposition {
@@ -311,7 +311,7 @@ test fn the_staged_text_put_pairs_its_local_file_with_its_remote_path() -> Bool 
 // THE STAGED PUTS CARRY THE RENDERED PAYLOADS, READ FROM THE PREPARED OPS (validated, still
 // semantic) -- so a value the staging would refuse never reaches these assertions. This is the
 // old manifest witness, re-pointed at the staged value it now drives.
-test fn staged_puts_carry_the_rendered_grub_and_seed() -> Bool {
+test fn staged_puts_carry_the_rendered_grub_and_seed() -> Bool  {
   let plan = srv4_bmc_netboot_serve_plan
   let puts = filter(staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan)), op =>
     match op.disposition {

@@ -22,7 +22,7 @@ data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
 data sig: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "SIG" }
 
-test fn witness_apns_unlisted_status_is_not_misclassified() -> Bool {
+test fn witness_apns_unlisted_status_is_not_misclassified() -> Bool  {
   match apns_refusal_class(status: 418) {
     ApnsStatusUnlisted { status } => status == 418
     _ => false
@@ -33,32 +33,32 @@ test fn witness_apns_unlisted_status_is_not_misclassified() -> Bool {
 // THE NON-INJECTIVITY A SEPARATOR JOIN HAD: ["a,b", "c"] and ["a", "b,c"] (and any pair that moves
 // a separator across a boundary) must render differently. With framing they do, whatever the
 // fields contain.
-test fn witness_framing_is_injective_across_a_moved_boundary() -> Bool {
+test fn witness_framing_is_injective_across_a_moved_boundary() -> Bool  {
   framed(fields: ["a:1,b", "c"]) != framed(fields: ["a", "1,b:c"])
     && framed(fields: ["ab", ""]) != framed(fields: ["a", "b"])
 }
 
-test fn witness_framing_counts_code_points() -> Bool {
+test fn witness_framing_counts_code_points() -> Bool  {
   framed(fields: ["été"]) as String == "3:été,"
 }
 
 // ── Signature seam ───────────────────────────────────────────────────────────────────────────
 // The size refusals are the suite facts alone, asked before any verdict exists (signature_carrier_refusal).
-test fn witness_malformed_signature_refuses_despite_a_true_verdict() -> Bool {
+test fn witness_malformed_signature_refuses_despite_a_true_verdict() -> Bool  {
   match signature_carrier_refusal(key: key_a, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 71)) {
     Present { value: SignatureMalformed { declared: _, expected: _ } } => true
     _ => false
   }
 }
 
-test fn witness_malformed_key_refuses_despite_a_true_verdict() -> Bool {
+test fn witness_malformed_key_refuses_despite_a_true_verdict() -> Bool  {
   match signature_carrier_refusal(key: key_a, key_size: byte_size(count: 33), signature: sig, signature_size: byte_size(count: 64)) {
     Present { value: VerifyingKeyMalformed { declared: _, expected: _ } } => true
     _ => false
   }
 }
 
-test fn witness_false_verdict_is_invalid() -> Bool {
+test fn witness_false_verdict_is_invalid() -> Bool  {
   match signature_verification_from_implementation(key: key_a, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 64), message: "m", implementation_verified: false) {
     SignatureInvalid { suite: _ } => true
     _ => false
@@ -83,34 +83,34 @@ fn redemption_input(approve: Bool, enrollment: NonEmptyStr, nonce: NonEmptyStr, 
 
 data base_input: NonEmptyStr = redemption_input(approve: true, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T")
 
-test fn witness_signing_input_binds_the_verb() -> Bool {
+test fn witness_signing_input_binds_the_verb() -> Bool  {
   base_input != redemption_input(approve: false, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T")
 }
 
-test fn witness_signing_input_binds_the_enrollment() -> Bool {
+test fn witness_signing_input_binds_the_enrollment() -> Bool  {
   base_input != redemption_input(approve: true, enrollment: "e2", nonce: "n1", request_text: "req", tag: "T")
 }
 
-test fn witness_signing_input_binds_the_server_challenge() -> Bool {
+test fn witness_signing_input_binds_the_server_challenge() -> Bool  {
   base_input != redemption_input(approve: true, enrollment: "e1", nonce: "n2", request_text: "req", tag: "T")
 }
 
-test fn witness_signing_input_binds_the_displayed_request() -> Bool {
+test fn witness_signing_input_binds_the_displayed_request() -> Bool  {
   base_input != redemption_input(approve: true, enrollment: "e1", nonce: "n1", request_text: "req-revised", tag: "T")
 }
 
-test fn witness_signing_input_binds_the_capability_tag() -> Bool {
+test fn witness_signing_input_binds_the_capability_tag() -> Bool  {
   base_input != redemption_input(approve: true, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T2")
 }
 
-test fn witness_enrolment_transcript_binds_key_and_platform() -> Bool {
+test fn witness_enrolment_transcript_binds_key_and_platform() -> Bool  {
   enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_b, platform: MobileIos)
     && enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileAndroid)
 }
 
 // The read transcript binds the path and the enrolment: an assertion for one GET or one device
 // cannot authenticate another.
-test fn witness_read_transcript_binds_path_enrollment_and_time() -> Bool {
+test fn witness_read_transcript_binds_path_enrollment_and_time() -> Bool  {
   let base = device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
   base != device_read_client_data(path: "/approve/device/requests/esc-1", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
     && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-2", requested_at: "2026-09-18T12:00:30Z")
@@ -142,21 +142,21 @@ fn fx_redemption() -> SignedRedemption {
 }
 
 // ROUND TRIPS: decoding an encoded body and encoding it again yields the same bytes.
-test fn witness_enrolment_request_round_trips() -> Bool {
+test fn witness_enrolment_request_round_trips() -> Bool  {
   match decode_enrolment_request(text: enrolment_request_json(r: fx_enrolment())) {
     WireDecoded { value: r } => enrolment_request_json(r: r) == enrolment_request_json(r: fx_enrolment())
     WireRefused { at: _, cause: _ } => false
   }
 }
 
-test fn witness_signed_redemption_round_trips() -> Bool {
+test fn witness_signed_redemption_round_trips() -> Bool  {
   match decode_signed_redemption(text: signed_redemption_json(r: fx_redemption())) {
     WireDecoded { value: r } => signed_redemption_json(r: r) == signed_redemption_json(r: fx_redemption())
     WireRefused { at: _, cause: _ } => false
   }
 }
 
-test fn witness_push_update_round_trips() -> Bool {
+test fn witness_push_update_round_trips() -> Bool  {
   match decode_push_update(text: push_update_json(p: fx_push)) {
     WireDecoded { value: p } => push_update_json(p: p) == push_update_json(p: fx_push)
     WireRefused { at: _, cause: _ } => false
@@ -167,14 +167,14 @@ data fx_read_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr
 
 // THE READ AUTHENTICATION BODY (every device operation is a POST; the assertion rides here, never
 // in a header) round-trips, and the push-update envelope { auth, push } round-trips with it.
-test fn witness_read_authentication_round_trips() -> Bool {
+test fn witness_read_authentication_round_trips() -> Bool  {
   match decode_read_request(text: read_authentication_json(a: fx_read_auth)) {
     WireDecoded { value: a } => a.enrollment_id == fx_read_auth.enrollment_id && a.requested_at == fx_read_auth.requested_at && a.assertion_b64 == fx_read_auth.assertion_b64
     WireRefused { at: _, cause: _ } => false
   }
 }
 
-test fn witness_push_update_request_round_trips() -> Bool {
+test fn witness_push_update_request_round_trips() -> Bool  {
   let r = PushUpdateRequest { auth: fx_read_auth, push: fx_push }
   match decode_push_update_request(text: push_update_request_json(r: r)) {
     WireDecoded { value: d } => push_update_request_json(r: d) == push_update_request_json(r: r)
@@ -184,7 +184,7 @@ test fn witness_push_update_request_round_trips() -> Bool {
 
 // A read body with an unknown member refuses at "auth"; an empty assertion refuses at its key; a
 // push-update envelope missing "push" refuses at "push".
-test fn witness_read_authentication_refuses_strictly() -> Bool {
+test fn witness_read_authentication_refuses_strictly() -> Bool  {
   match decode_read_request(text: "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\",\"extra\":1}") {
     WireRefused { at: a, cause: _ } =>
       (a as String) == "auth"
@@ -201,21 +201,21 @@ test fn witness_read_authentication_refuses_strictly() -> Bool {
 }
 
 // STRICTNESS: each refusal names where it failed.
-test fn witness_decoder_refuses_an_unknown_member() -> Bool {
+test fn witness_decoder_refuses_an_unknown_member() -> Bool  {
   match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\",\"extra\":\"y\"}") {
     WireRefused { at: a, cause: _ } => a as String == "push"
     WireDecoded { value: _ } => false
   }
 }
 
-test fn witness_decoder_refuses_a_duplicated_member() -> Bool {
+test fn witness_decoder_refuses_a_duplicated_member() -> Bool  {
   match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\",\"token\":\"y\"}") {
     WireRefused { at: _, cause: _ } => true
     WireDecoded { value: _ } => false
   }
 }
 
-test fn witness_decoder_refuses_another_suite() -> Bool {
+test fn witness_decoder_refuses_another_suite() -> Bool  {
   let body = "{\"code\":\"1\",\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P384-SHA384\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\"},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}}"
   match decode_enrolment_request(text: body) {
     WireRefused { at: a, cause: _ } => a as String == "decision_key.suite"
@@ -223,7 +223,7 @@ test fn witness_decoder_refuses_another_suite() -> Bool {
   }
 }
 
-test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
+test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool  {
   match decode_push_update(text: "{\"kind\":\"fcm\",\"project\":\"p\",\"token\":\"x\"}") {
     WireRefused { at: a, cause: _ } => a as String == "push.kind"
     WireDecoded { value: _ } => false
@@ -233,7 +233,7 @@ test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
 // PATHS: every identity has a route, "id-" + base64url(UTF-8). The expected strings were computed
 // independently; the output never contains "%" and never begins with ".", and distinct identities
 // (including "a/b" and the literal text "a%2Fb") get distinct paths.
-test fn witness_path_segment_encodes_every_identity_injectively() -> Bool {
+test fn witness_path_segment_encodes_every_identity_injectively() -> Bool  {
   true
     && path_segment(s: "esc-mtc1_boot~1") as String == "id-ZXNjLW10YzFfYm9vdH4x"
     && path_segment(s: "482?913") as String == "id-NDgyPzkxMw=="
@@ -247,20 +247,20 @@ test fn witness_path_segment_encodes_every_identity_injectively() -> Bool {
 }
 
 // The push-update assertion covers the token: a different token is different client data.
-test fn witness_push_update_client_data_binds_the_token() -> Bool {
+test fn witness_push_update_client_data_binds_the_token() -> Bool  {
   device_push_update_client_data(enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z", push: fx_push)
     != device_push_update_client_data(enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z", push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "zzz" })
 }
 
 // PER-ARM STRICTNESS: a member that belongs to ANOTHER arm of the same sum is refused, not dropped.
-test fn witness_decoder_refuses_another_arms_member() -> Bool {
+test fn witness_decoder_refuses_another_arms_member() -> Bool  {
   match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\",\"project\":\"p\"}") {
     WireRefused { at: a, cause: _ } => a as String == "push"
     WireDecoded { value: _ } => false
   }
 }
 
-test fn witness_evidence_decoder_refuses_another_arms_member() -> Bool {
+test fn witness_evidence_decoder_refuses_another_arms_member() -> Bool  {
   let body = "{\"code\":\"1\",\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P256-SHA256\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"certificates_der_b64\":[]},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}}"
   match decode_enrolment_request(text: body) {
     WireRefused { at: a, cause: _ } => a as String == "evidence"
@@ -269,7 +269,7 @@ test fn witness_evidence_decoder_refuses_another_arms_member() -> Bool {
 }
 
 // THE SERVER'S INVERSE ROUND-TRIPS EVERY SPECIMEN AND ADMITS ONLY THE CANONICAL SPELLING.
-test fn witness_decode_path_segment_is_the_canonical_inverse() -> Bool {
+test fn witness_decode_path_segment_is_the_canonical_inverse() -> Bool  {
   all(["esc-mtc1_boot~1", "482?913", "a%2Fb", "a#b", "a/b", "..", "café", "🔒"], x =>
     match decode_path_segment(presented: path_segment(s: x as NonEmptyStr) as String) { PathSegmentDecoded { identity: d } => d as String == x  _ => false })
     && match decode_path_segment(presented: "abc") { PathSegmentMalformed { cause: _ } => true  _ => false }

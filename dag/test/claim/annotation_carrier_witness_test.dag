@@ -16,7 +16,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn census_closure_frontier_rows_well_formed() -> Bool {
+test fn census_closure_frontier_rows_well_formed() -> Bool  {
   frontier_rows_well_formed(rows: census_closure_frontier_rows())
 }
 
@@ -53,7 +53,7 @@ fn planted_rows() -> List<FrontierRow> {
   ]
 }
 
-test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
+test fn frontier_expiry_fired_row_still_present_reds() -> Bool  {
   let base = fold_frontier_expiry(rows: planted_rows(), present_decls: [])
   let report = fold_frontier_expiry(rows: planted_rows(), present_decls: [planted_bound_row_ref()])
   base.pending_count == 1
@@ -66,7 +66,7 @@ test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
     && !frontier_expiry_clean(report: report)
 }
 
-test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
+test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool  {
   let absent_trigger = decl_ref(module_path: "test.fixture.frontier", decl_name: "never_a_trigger_here")
   let base = fold_frontier_expiry(rows: planted_rows(), present_decls: [])
   let report = fold_frontier_expiry(rows: planted_rows(), present_decls: [absent_trigger])
@@ -76,7 +76,7 @@ test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
     && frontier_expiry_clean(report: report)
 }
 
-test fn unbound_condition_reports_unbound_not_pending() -> Bool {
+test fn unbound_condition_reports_unbound_not_pending() -> Bool  {
   let c = unbound_dissolution(description: "every caller migrates to partition_fold_outcome")
   match dissolution_status(condition: c, present_decls: []) {
     DissolutionUnbound => true
@@ -85,7 +85,7 @@ test fn unbound_condition_reports_unbound_not_pending() -> Bool {
   }
 }
 
-test fn unbound_condition_cannot_be_forced_to_fire_by_any_present_decls() -> Bool {
+test fn unbound_condition_cannot_be_forced_to_fire_by_any_present_decls() -> Bool  {
   let c = unbound_dissolution(description: "extdeps.network.mac parse_mac_address lands")
   let probes = [
     decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
@@ -105,7 +105,7 @@ test fn unbound_condition_cannot_be_forced_to_fire_by_any_present_decls() -> Boo
     }
 }
 
-test fn bound_condition_pends_until_its_declaration_appears() -> Bool {
+test fn bound_condition_pends_until_its_declaration_appears() -> Bool  {
   let target = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
   let c = bound_dissolution(ref: target)
   let pending = match dissolution_status(condition: c, present_decls: []) {
@@ -121,7 +121,7 @@ test fn bound_condition_pends_until_its_declaration_appears() -> Bool {
   pending && fired
 }
 
-test fn bound_condition_does_not_fire_on_a_near_miss_ref() -> Bool {
+test fn bound_condition_does_not_fire_on_a_near_miss_ref() -> Bool  {
   let c = bound_dissolution(
     ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
   )

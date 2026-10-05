@@ -51,14 +51,14 @@ fn contains_all(cmds: List<String>, wants: List<String>) -> Bool {
 // THE MEMBER EXISTS EXACTLY WHEN THE ROUTING ROW SAYS THE MOUNTS DO, in both directions. THE RED:
 // emit the member unconditionally (the mounts would route to a broker the authority refuses, a 503
 // in place of the 404), or drop it (the 404 this repairs).
-test fn the_front_door_member_follows_the_routing_row() -> Bool {
+test fn the_front_door_member_follows_the_routing_row() -> Bool  {
   let n = count(front_door_members(spec: deployment_spec_srv1()))
   if approval_front_door_mounts_installed() { n == 1 } else { n == 0 }
 }
 
 // THE MEMBER REALIZES THE CUTOVER'S OWN ENDPOINTS, not a second spelling of them: its endpoints are
 // the plan's, on the default https listener, backed by the broker's one port.
-test fn the_member_endpoints_are_the_cutover_endpoints() -> Bool {
+test fn the_member_endpoints_are_the_cutover_endpoints() -> Bool  {
   let mine = map(deployment_approval_broker_front_door_endpoints(), e => join(tailscale_serve_enable_argv(endpoint: e), " "))
   let plan = map(approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port), e => join(tailscale_serve_enable_argv(endpoint: e), " "))
   count(mine) == 2 && mine == plan
@@ -67,7 +67,7 @@ test fn the_member_endpoints_are_the_cutover_endpoints() -> Bool {
 // THE DEVICE ROUTES RIDE THE /approve MOUNT. The phone's enrolment path is under a mount prefix
 // the member installs, so no third mount is owed for them. THE RED: a device path moved outside
 // /approve would leave enrolment unrouted again with this member green.
-test fn the_device_enrolment_path_is_under_an_installed_mount() -> Bool {
+test fn the_device_enrolment_path_is_under_an_installed_mount() -> Bool  {
   starts_with(s: approval_device_enrol_path as String, prefix: "/approve/")
     && contains_all(
       cmds: map(deployment_approval_broker_front_door_endpoints(), e => join(tailscale_serve_enable_argv(endpoint: e), " ")),
@@ -80,7 +80,7 @@ test fn the_device_enrolment_path_is_under_an_installed_mount() -> Bool {
 // would leave a mount behind. The expected commands are rendered by the privileged-command renderer
 // from the cutover plan's endpoints (the same derivation test.claim.live_deploy.emit_test uses for
 // the dashboard's own mapping), so the claim compares bytes rather than guessing at quoting.
-test fn apply_and_teardown_realize_both_mappings() -> Bool {
+test fn apply_and_teardown_realize_both_mappings() -> Bool  {
   let spec = deployment_spec_srv1()
   let art = DeploymentArtifactStep { kind: ApprovalBrokerFrontDoor, path: "/approve" as NonEmptyStr }
   let up = step_commands(steps: emit_artifact_upsert(art: art, spec: spec, revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha }))
