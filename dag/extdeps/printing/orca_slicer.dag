@@ -93,8 +93,11 @@ data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 3
 // required to establish that the effective runtime loads, not just that dpkg knows it.
 // Package mapping: https://packages.ubuntu.com/noble/libwebkit2gtk-4.1-0
 // and https://packages.ubuntu.com/noble/libopengl0 (read 2026-10-05).
+// The 2026-10-05 srv1 ELF inspection additionally found libSM.so.6 and
+// libICE.so.6 unresolved; their Ubuntu providers are libsm6 and libice6.
 data orca_ubuntu2404_runtime_packages: List<NonEmptyStr> = [
  "libopengl0", "libglu1-mesa", "libegl1", "libwebkit2gtk-4.1-0", "libjavascriptcoregtk-4.1-0",
+ "libsm6", "libice6",
 ]
 
 // A capability may be spent only inside with_verified_orca's private-copy lifetime.

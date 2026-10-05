@@ -3,6 +3,9 @@ import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnre
 import std.process {ExitFailure}
 import product.printing.runtime_dependencies {check}
 import product.printing.runtime_converge {converge}
+import gunbc.fleet.printer_federation {printer_lan_host_identity}
+import extdeps.tools.hostname
+import std.algebra {trim}
 
 import std.types {String,NonEmptyStr,List,FilePath}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -72,3 +75,20 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
 // Explicit dependency-provisioning phase. The print phase only observes; callers
 // request convergence through this same workflow root when the host needs setup.
 fn converge_runtime(receipt:String) -> ProcessExit {converge(receipt:receipt)}
+
+// Explicitly requested provisioning followed by ordinary preparation and printing.
+// This composes the existing phases in one invocation; the default run remains
+// observe-only with respect to host packages. A convergence refusal stops here.
+fn provision_and_run(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,mode:String) -> ProcessExit {
+ let runtime_host=os.Hostname.ReadShort()
+ if !runtime_host.success || trim(s:runtime_host.value)!=(printer_lan_host_identity() as String) {return exit_failure(reason:"Provision-and-print must run on the modeled printer LAN host")}
+ if mode!="prepare" && mode!="print" {return exit_failure(reason:"Workflow mode must be prepare or print")}
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Provisioning receipt needs an absolute writable output directory")}
+ let plan_read=Filesystem.Read(path:plan_file)
+ if !plan_read.success {return exit_failure(reason:"Cannot read print plan before provisioning")}
+ match parse_plan(text:plan_read.content) {Absent=>return exit_failure(reason:"Invalid print plan before provisioning") Present {value:_}=>{}}
+ match converge_runtime(receipt:concat(output,"/runtime-convergence.txt")) {
+  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:mode)
+  provisioning_refusal=>provisioning_refusal
+ }
+}
