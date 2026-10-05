@@ -56,7 +56,9 @@ data native_serve_head_limit: ByteSize = byte_size(count: 16384)
 data native_serve_body_limit: ByteSize = byte_size(count: 1048576)
 data native_serve_read_timeout: Millisecond = millisecond(count: 10000)
 
-// THE PER-REQUEST BUDGET (retires gunbc.rung_drop.native_serve_request_budget_unrealized). A compiled
+// THE PER-REQUEST BUDGET: the capability gunbc.rung_drop.native_serve_request_budget_unrealized names as
+// its restoration trigger. That row retires when the native-serve instrument itself observes it
+// (see the row for what still blocks that run), not when this code exists. A compiled
 // handler has no evaluator to interrupt, so the rendered main runs each handler call on a worker and
 // stops waiting at this deadline; the request is then answered with native_serve_deadline_refused
 // and the loop serves on. The default is the seed's 30 s serve wall; a launch may narrow it with
