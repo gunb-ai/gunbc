@@ -269,6 +269,22 @@ pub(crate) fn floor_route_gap_expectation_mismatch(
     }
 }
 
+/// THE ROUTE-GAP ADMISSION PARTITION's one testable decision: which suppressed enrollments the
+/// tree does not declare. The disposition index covers every declared witness identity over the
+/// discovery roots (gunbc#9684), so absence there is absence from the tree. A suppressed
+/// enrollment that misses it is a row suppression hides from the reverse join — the stale arm
+/// can never fire for it — so the route-gap call site refuses instead of counting it dormant.
+pub(crate) fn route_gap_suppressed_undeclared(
+    suppressed: &[(String, SuppressionGround)],
+    disposition_index: &HashMap<String, RequiredFloorDisposition>,
+) -> Vec<(String, SuppressionGround)> {
+    suppressed
+        .iter()
+        .filter(|(identity, _)| !disposition_index.contains_key(identity))
+        .cloned()
+        .collect()
+}
+
 /// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
 /// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
 /// external or blocking interaction picks wall instead — but the choice is made here, by
@@ -8417,7 +8433,10 @@ pub fn run_required_floor(
                 "[floor-required-gate] {name}: {outside_gate} enrolled identity(ies) suppressed \
                  because their module is outside the required gate and was never loaded; their \
                  enrollment is dormant, not deleted, and becomes observable again when the gate \
-                 roster admits the module or in the whole-corpus receipts run"
+                 roster admits the module. There is no other observation point: no whole-corpus \
+                 receipts run exists or is scheduled, and the rung-drop authority rules a \
+                 receipt-only run outside the required path out as a retirement path — so the \
+                 consuming rosters record these identities per identity, never as a bare count"
             );
         }
         removed
@@ -9216,11 +9235,73 @@ pub fn run_required_floor(
         out
     };
     let mut route_gap_roster = route_gap_roster;
-    let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
-    let _ = suppress_declined_no_ci_wet_lane(&mut route_gap_roster, "floor_route_gap");
+    // THE ADMISSION PARTITION IS THE RECEIPT. `suppress_withheld` returns exactly which
+    // identities it removed and why; this was the one call site that dropped the list
+    // (`let _ =`), so the reverse join below decided only over the identities a gate-bounded
+    // run can observe while every other enrollment sat in no ledger the run publishes.
+    // Measured on required run 37236808750: 546 decoded enrollments = 536 outside-gate +
+    // 5 cost-debt withheld + 5 carried, and the carried 5 were the join's entire universe.
+    let mut route_gap_suppressed = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    route_gap_suppressed.extend(suppress_declined_no_ci_wet_lane(
+        &mut route_gap_roster,
+        "floor_route_gap",
+    ));
+    // THE WALL: an enrollment the tree does not declare refuses. The disposition index covers
+    // EVERY declared witness identity over the discovery roots (gunbc#9684), so absence there
+    // is absence from the tree. This is the one class suppression cannot carry as dormant: a
+    // renamed, deleted, or fabricated enrollment is removed BEFORE the reverse join, so the
+    // stale arm can never fire for it, and the cheapest way to fake a green run — enrolling an
+    // identity that does not exist — would otherwise cost a count, not a refusal.
+    let route_gap_undeclared =
+        route_gap_suppressed_undeclared(&route_gap_suppressed, &cost_debt_disposition_index);
+    if !route_gap_undeclared.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=RouteGapEnrollmentUndeclared — the route-gap roster \
+             enrolls identity(ies) the tree does not declare. Suppression removes them before \
+             the reverse join, so no other guard can ever see them and a row that cannot be \
+             observed can never ask to be removed. Delete the enrollment or restore the \
+             identity: [{}]",
+            route_gap_undeclared
+                .iter()
+                .map(|(identity, _)| identity.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    // MEASUREMENT, NOT CLOSURE: every suppressed enrollment is named at identity grain with
+    // the ground that removed it, on the roster's own channel. For identities whose module the
+    // 2026-08-29 gate cut withdrew, this line records a declared dormancy — the gate decision
+    // owns it, and this record closes nothing for them.
+    if !route_gap_suppressed.is_empty() {
+        route_gap_suppressed.sort();
+        for ground in [
+            SuppressionGround::WithheldCostDebt,
+            SuppressionGround::OutsideRequiredGate,
+            SuppressionGround::DeclinedNoCiWetLane,
+        ] {
+            let named: Vec<&str> = route_gap_suppressed
+                .iter()
+                .filter(|(_, g)| *g == ground)
+                .map(|(identity, _)| identity.as_str())
+                .collect();
+            if named.is_empty() {
+                continue;
+            }
+            eprintln!(
+                "[floor-route-gap] {} enrolled identity(ies) suppressed, kept as record and NOT \
+                 held as agreement (dormant, not deleted; MEASUREMENT — the {} arm is owned by \
+                 the gate cut of 2026-08-29 and the cost-debt roster, not by this check): {}",
+                named.len(),
+                suppression_ground_label(ground.clone()),
+                named.join(", ")
+            );
+        }
+    }
     eprintln!(
-        "[floor-route-gap] roster carries {} enrolled identity(ies)",
-        route_gap_roster.len()
+        "[floor-route-gap] roster carries {} enrolled identity(ies) after admission; {} \
+         suppressed with ground and named above",
+        route_gap_roster.len(),
+        route_gap_suppressed.len()
     );
 
     // New enrollments carry the operation and the closed remedy-ground observed at the
@@ -16211,6 +16292,95 @@ mod expected_red_roster_join_suppression_tests {
         );
         assert_eq!(expected_red_roster_join_not_evaluated(report.clone()), 1);
         assert_eq!(expected_red_roster_join_suppressed(report), 1);
+    }
+}
+
+#[cfg(test)]
+mod route_gap_admission_partition_tests {
+    use super::*;
+
+    /// THE FRESH-RECURRENCE CONTROL, at the wall: a NEWLY MISNAMED enrollment suppresses with
+    /// the rest, and suppression removes it BEFORE the reverse join, so the stale arm can
+    /// never fire for it. The classifier must return it — the call site turns that into
+    /// `cause=RouteGapEnrollmentUndeclared` and reds the run — because an enrollment nothing
+    /// can observe can never ask to be removed. Before this partition, this row cost a count
+    /// on one stderr line and nothing else.
+    #[test]
+    fn a_misnamed_enrollment_is_returned_as_undeclared() {
+        let suppressed = vec![
+            (
+                "test.claim.renamed_away_test.old_witness_name".to_string(),
+                SuppressionGround::OutsideRequiredGate,
+            ),
+            (
+                "test.claim.fabricated_module_test.never_authored".to_string(),
+                SuppressionGround::WithheldCostDebt,
+            ),
+        ];
+        let disposition_index = HashMap::new();
+        let undeclared = route_gap_suppressed_undeclared(&suppressed, &disposition_index);
+        assert_eq!(
+            undeclared.len(),
+            2,
+            "both rows miss every declared identity"
+        );
+        assert_eq!(
+            undeclared[0].0,
+            "test.claim.renamed_away_test.old_witness_name"
+        );
+    }
+
+    /// DECLARED DORMANCY IS NOT REFUSED: the 2026-08-29 gate cut owns the outside-gate arm and
+    /// the cost-debt roster owns the withheld arm, so an enrollment the tree declares comes
+    /// back from the classifier clean and is carried to the per-identity measurement record
+    /// instead. Refusing declared rows here would red every run on 536 pre-existing rows.
+    #[test]
+    fn a_declared_suppressed_enrollment_is_not_refused() {
+        let suppressed = vec![
+            (
+                "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds"
+                    .to_string(),
+                SuppressionGround::OutsideRequiredGate,
+            ),
+            (
+                "test.claim.parse_test.parse_witness_floor_holds".to_string(),
+                SuppressionGround::WithheldCostDebt,
+            ),
+        ];
+        let disposition_index: HashMap<String, RequiredFloorDisposition> = [
+            (
+                "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds"
+                    .to_string(),
+                RequiredFloorDisposition::DeclinedOutsideGateClosure,
+            ),
+            (
+                "test.claim.parse_test.parse_witness_floor_holds".to_string(),
+                RequiredFloorDisposition::DeclinedCostDebt,
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let undeclared = route_gap_suppressed_undeclared(&suppressed, &disposition_index);
+        assert!(
+            undeclared.is_empty(),
+            "declared dormancy is a record, not a refusal"
+        );
+    }
+
+    /// THE GROUND TRAVELS WITH THE ROW, so the printed record names the arm that owns the
+    /// dormancy rather than one lumped cause for two different owners.
+    #[test]
+    fn the_ground_of_each_row_is_carried_through() {
+        let suppressed = vec![(
+            "test.claim.missing_test.gone".to_string(),
+            SuppressionGround::OutsideRequiredGate,
+        )];
+        let undeclared = route_gap_suppressed_undeclared(&suppressed, &HashMap::new());
+        assert_eq!(undeclared.len(), 1);
+        assert!(matches!(
+            undeclared[0].1,
+            SuppressionGround::OutsideRequiredGate
+        ));
     }
 }
 

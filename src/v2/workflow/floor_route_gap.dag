@@ -63,6 +63,27 @@ type FloorRouteGapExpectation = {
 // - Enrolled, and the identity did not execute at all: reds the build. The reverse join is
 //   what keeps a renamed or deleted identity from sitting here forever, unobserved.
 //
+// THE GATE-BOUNDED AMENDMENT (2026-10, declared when the required floor's admission partition
+// started recording it per identity; the gate cut itself is 2026-08-29). A gate-bounded fold
+// loads only the gate closure, so two further arms exist and the four above decide only over
+// the gate-inside remainder:
+//
+// - Enrolled, and the identity's module is outside the required gate (or the identity is
+//   withheld by the cost-debt roster, or declined as no-CI-wet-lane): the run cannot observe
+//   it, and the required floor names it per identity with that ground and holds it as NEITHER
+//   agreement NOR stale — dormancy is the gate cut's declared decision, and this roster does
+//   not own it. Observability returns exactly when the gate roster admits the module; there
+//   is no other observation point (no whole-corpus receipts run exists, and a receipt-only
+//   run outside the required path does not retire rows).
+// - Enrolled, and the tree declares no such identity: REFUSES the required run. Suppression
+//   removes the row before the reverse join, so the stale arm above can never fire for it;
+//   an enrollment nothing can observe must refuse rather than count as dormant.
+//
+// WHAT ADMISSION DOES NOT OWN: an out-of-gate enrollment still demands the route it names.
+// The register is the demand list for hermetic route arms, and unobserved demand is what a
+// rung drop must name — a module the gate readmits brings its enrollments straight back under
+// the four arms above.
+//
 // THE ORACLE THIS ROSTER IS ALLOWED TO BE (DESIGN §5, the 2026-08-01 ruling on numeric
 // literals). It is a monotone debt contract, and it is legitimate only because all four of that
 // ruling's conditions hold: the subject universe is INDEPENDENTLY DISCOVERED (the floor's own
@@ -455,6 +476,16 @@ fn floor_route_gap_chunk_03() -> List<String> {
 
 fn floor_route_gap_expectation_chunk_00() -> List<FloorRouteGapExpectation> {
   Cons {
+    // THE ADMISSION CONTROL (route-gap dormancy receipt, docs/plans/
+    // route-gap-dormant-observation.md): this row is a FIXTURE, not a measured gap. Its
+    // module sits outside the required gate, so the gate-bounded fold never loads it; the
+    // required floor must surface it per identity with ground=outside_required_gate as a
+    // typed, located disposition (MEASUREMENT) instead of a bare count, and refuse the run
+    // outright if the identity ever stops resolving. It rides the roster only while the
+    // dormancy follow-up named in the finding is open; if the gate ever admits the module
+    // first, this row reds as stale, which is the register working as designed.
+    head: FloorRouteGapExpectation { identity: "test.claim.route_gap_dormancy_receipt_test.route_gap_dormancy_receipt_holds", operation: "Write", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.artifact_store_fs_witness.artifact_fs_roundtrip_holds", operation: "Write", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.artifact_store_fs_witness.artifact_fs_delete_then_misses_holds", operation: "Write", ground: NoMockResponse {} },

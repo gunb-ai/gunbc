@@ -98,3 +98,39 @@ grain — the cost-debt partition precedent (gunbc#9684) and the expected-red jo
 Acceptance path: author a fresh claim in an out-of-gate module, enroll it in `floor_route_gap`, and the
 required run records it per identity with ground `OutsideRequiredGate` — or, if misnamed, refuses. Heavy
 runs remote/CI only.
+
+## Repair as approved and built (coordinator ack, four conditions)
+
+Built in the coordinator's order; the Rust delta mirrors `partition_cost_debt_roster`, which also lives in
+seed Rust (`cli_run.rs`) — stated here and in the PR body because the route-gap .dag **cannot** express the
+refuse-if-undeclared decision: the roster decodes in a hermetic frame that never loads out-of-gate modules,
+so declaredness is knowledge only the discovery walk has. The .dag authority owns what the arms MEAN (its
+header contract is amended below); Rust executes them.
+
+1. **The wall (closure)**: `route_gap_suppressed_undeclared` + the refusal at the route-gap suppression
+   site — an enrollment the tree does not declare (module or tail absent from the discovery roots; the
+   disposition index covers every declared witness identity, gunbc#9684) refuses the run with
+   `cause=RouteGapEnrollmentUndeclared`, naming the identities. Fresh-recurrence control: a newly misnamed
+   enrollment refuses (`route_gap_admission_partition_tests`, three tests, including the declared-dormancy
+   negative control).
+2. **Single authority**: the route-gap .dag header contract now carries the gate-bounded amendment (the
+   two further arms: suppressed-dormant with ground, undeclared-refuses) beside the original four; the
+   `suppress_withheld` stderr line no longer promises a whole-corpus receipts run — it states the true
+   standing: no other observation point exists, and consuming rosters record suppressed identities per
+   identity, never as a bare count.
+3. **Measurement (labeled)**: the route-gap suppression site prints every suppressed identity with its
+   ground (`suppression_ground_label`), one line per ground, headed MEASUREMENT — for the (a) families this
+   records declared dormancy and closes nothing.
+4. **NOT closed here — class (b)**: an out-of-gate enrollment still demands the route it names, and a
+   per-identity suppressed row for the `artifact_store_fs` / `effect_plan_bash` / `emit_on_demand` families
+   remains a green absence of something meant to be observed. What would actually observe them, with its
+   trigger: **(i)** gate admission of those modules — the bankruptcy's own restoration trigger, "a required
+   lane resolves every module"; each readmitted module brings its enrollments straight back under the
+   four-arm join; or **(ii)** a dispatch instrument row that schedules a receipts run over the named
+   families with the same join armed — which would need a required lane to hang it on, because the rung
+   drop rules receipt-only runs out as a retirement path. Neither is built in this PR.
+
+The acceptance fixture: `dag/test/claim/route_gap_dormancy_receipt_test.dag` (module outside the gate) +
+one typed enrollment at the head of `floor_route_gap_expectation_chunk_00`, labeled FIXTURE in both files;
+on the PR's required run the floor names that identity with ground `outside_required_gate` — and if the
+identity ever stops resolving, the run refuses instead.
