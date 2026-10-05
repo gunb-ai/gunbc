@@ -4328,7 +4328,7 @@ mod cross_claim_memo_tests {
         let other = fresh_ctx();
         assert!(key_of(&other, &built()) == warm_whole);
         assert!(
-            other.eval_recompute_hash_memo.borrow().len() > 0,
+            !other.eval_recompute_hash_memo.borrow().is_empty(),
             "an equal value that is not the served instance is walked in its own context"
         );
         super::clear_cross_claim_pure_memos();
