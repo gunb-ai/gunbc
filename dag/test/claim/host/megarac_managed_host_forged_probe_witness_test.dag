@@ -7,7 +7,6 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
 }
 
-// BASELINE CONTROL for the fixture-closure union (neat-pike-256, #13420): this file is changed and nothing else.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE MEGARAC CARRIERS AND THE MEDIA SEALS, ENROLLED AS EXECUTED REDS. The probe source below authors an
@@ -94,7 +93,7 @@ test fn the_kvm_launchers_refuse_a_caller_holding_raw_host_and_account_values() 
 // real binding and the committed evidence, an outside call to megarac_grounded_admission is refused at
 // admission, so the family, grounding and current-build steps cannot be stepped around.
 test fn the_carrier_mint_helper_refuses_an_outside_caller() -> Bool {
-  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "megarac_grounded_admission") >= 1
+  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "megarac_grounded_admission") > 0
 }
 
 // RED: GENUINE EVIDENCE WITH THE 2026-10-02 REFLASH DROPPED CANNOT BE BUILT. Every reading and receipt in
