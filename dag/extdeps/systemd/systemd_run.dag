@@ -294,7 +294,7 @@ fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, comman
 // observable (the service op is the same RunTransient either way -- retained vs collected is a
 // decision the typed option model renders into the words, not a service-side contract).
 fn systemd_run_transient_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
-  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [Collect, EndOfOptions])), command_argv: command_argv)
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 // The retained shape: no --collect, so the transient unit survives its process and its terminal

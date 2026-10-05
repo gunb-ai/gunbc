@@ -81,8 +81,10 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
 // retired glued builders emitted, in the order they emitted them. A control per builder is the
 // point: the wait fixture alone proved one shape and the other builders drifted silently.
 
-// The collecting transient: --unit, --collect, the properties, then -- (the old order).
-test fn the_collecting_transient_builder_emits_unit_properties_collect() -> Bool {
+// The collecting transient: --unit, --collect, the properties, then -- (the base order the
+// retired glued builder and its transport both emitted; the side-chat review corrected this
+// control -- main's property-projection witness never pinned the full order).
+test fn the_collecting_transient_builder_emits_unit_collect_properties() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "fci1-order.service",
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
@@ -93,7 +95,7 @@ test fn the_collecting_transient_builder_emits_unit_properties_collect() -> Bool
       argv_exact_token_equal(
         left: argv_words(command: command),
         right: [
-          "systemd-run", "--unit=fci1-order.service", "--property=MemoryMax=17179869184", "--collect", "--", "/bin/true",
+          "systemd-run", "--unit=fci1-order.service", "--collect", "--property=MemoryMax=17179869184", "--", "/bin/true",
         ],
       )
   }

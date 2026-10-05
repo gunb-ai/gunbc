@@ -668,11 +668,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "typed_builder_wet_test.dag",
-    classification: LocalRepoWetLane,
-    reason: "DECLARED GAP (pre-existing, declared at the typed-argv cutover): the manager-side behaviour of the systemd-run builders -- a retained unit that failed is still known to the manager, a collected one is gone, a waited invocation reports the child's exact exit -- has NO executing claim anywhere in CI or in this tree, so no claim file is shipped for it (a claim no lane can execute is dangling). No CI lane can run systemd units (the hermetic runner is unprivileged with no user manager; the build runner has no systemd at all), and the retired string builders never had CI execution either, so declaring this gap removes nothing. The population is the typed builders' manager-side contract; what CI does exercise is the projected word shape (per-builder byte identity, typed refusal causes, cardinality). Trigger: a lane host with a usable user manager exists and is scheduled in a required workflow -- at that point the claims are authored and enrolled on that lane.",
-    dissolution: unbound_dissolution(description: "when a lane host with a usable user manager (for the runner account, or via the controlled sudo --user target) is scheduled in a required workflow, author the manager-side claims, enroll them on that lane's schedule, and delete this row")},
-  WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust with the seed's committed stage0 mirror src/v1/stage0/src/std_logic.rs as the oracle module (no v1-compiler path dependency, so the seed crate is not built) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",

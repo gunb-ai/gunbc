@@ -284,7 +284,7 @@ test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>
       join(argv_words(command: command), " ")
-        == "systemd-run --unit=nbd-proxy-witness.service --property=MemoryMax=17179869184 --collect -- /bin/true"
+        == "systemd-run --unit=nbd-proxy-witness.service --collect --property=MemoryMax=17179869184 -- /bin/true"
   }
 }
 
