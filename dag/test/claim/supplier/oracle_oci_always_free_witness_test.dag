@@ -4,9 +4,8 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.measure { gigabyte, money_amount_micro_count }
-import product.fabric.provider_route { ProviderRegionObservation, ProviderRegionRead }
 import product.fabric.supply { offer_quote_amount, UnobservedSupply, ObservedSupply, QuotedSupply }
-import product.supplier.ubicloud { ReadinessObservation, ReadinessMeasured, OfferBound, OfferBindingRefused }
+import product.supplier.ubicloud { ReadinessObservation, ReadinessMeasured, OfferBinding, OfferBound, OfferBindingRefused }
 import extdeps.cloud.oracle_oci {
   OnDemandCapacity, PreemptibleCapacity, AlwaysFreeTenancy, PayAsYouGoTenancy,
 }
@@ -19,7 +18,7 @@ import product.supplier.oracle_oci {
   CapacityTypeFreeEligibilityUnread,
   ExcessRefusedByVendor, ExcessBilledAtUnreadRate,
   oci_always_free_fit, oci_breach_consequence, bind_oci_always_free_offer,
-  oci_home_region, oci_readiness,
+  oci_readiness, oci_tenancy_allocation, OciTenancyAllocation, TenancyAllocationObserved, OciOtherUsage,
 }
 
 // The subject is the allowance fit and the offer seam, at the vendor figures in
@@ -125,67 +124,71 @@ test fn a_breach_is_refused_on_free_and_billed_at_an_unread_rate_on_paid() -> Bo
 }
 
 // ── THE OFFER SEAM ────────────────────────────────────────────────────────────────────────────
-data oci_witness_home_region: NonEmptyStr = "oci-witness-home-region"
-
-fn read_region() -> ProviderRegionObservation {
-  ProviderRegionRead {
-    region: decl_ref(module_path: "test.claim.supplier.oracle_oci_always_free_witness", decl_name: "oci_witness_home_region"),
-  }
-}
+//
+// The binding decides the fit itself and derives the instance and route from the admitted member.
+// These rows supply the plan, the member name and an observed tenancy allocation, and require the
+// exact refusal each substitution earns.
 
 fn measured() -> ReadinessObservation {
   ReadinessMeasured { ready_at: "2026-10-05T00:00:00Z", receipt: "gunbc.observation.oci-witness-readiness" }
 }
 
-fn refused_with(instance: OciPlannedInstance, fit: OciAllowanceFit, region: ProviderRegionObservation, readiness: ReadinessObservation, expected: NonEmptyStr) -> Bool {
-  match bind_oci_always_free_offer(
-    principal: "gunbc", executor: "gunbc", instance: instance, plan_fit: fit,
-    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci",
-    readiness: readiness, region: region,
-  ) {
+fn observed_other(block_gb: Nat) -> OciTenancyAllocation {
+  TenancyAllocationObserved {
+    other: OciOtherUsage { a1_ocpus: 0, a1_memory_gb: 0, micros: 0, block_gb: block_gb },
+    receipt: "gunbc.observation.oci-witness-allocation",
+  }
+}
+
+fn bind(plan: List<OciPlannedInstance>, member: NonEmptyStr, allocation: OciTenancyAllocation, readiness: ReadinessObservation) -> OfferBinding<String> {
+  bind_oci_always_free_offer(
+    principal: "gunbc", executor: "gunbc", plan: plan, member: member, allocation: allocation,
+    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci", readiness: readiness,
+  )
+}
+
+fn refused_with(b: OfferBinding<String>, expected: NonEmptyStr) -> Bool {
+  match b {
     OfferBound { bound } => false
     OfferBindingRefused { runs_on_label, cause } =>
       declaration_ref_eq(a: cause, b: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: expected))
   }
 }
 
-// RED: the state production is in. The home region is read (Ashburn) and readiness is not, so the
-// offer refuses on the readiness obligation, even with a plan that fits.
-test fn production_state_refuses_on_unmeasured_readiness() -> Bool {
-  let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
-  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: oci_home_region(), readiness: oci_readiness, expected: "oci_readiness_unread_obligation")
+fn small_plan() -> List<OciPlannedInstance> {
+  [a1(name: "a", ocpus: 2, gb: 12, boot: 47)]
 }
 
-// The production home region yields a route: with readiness measured, the same call binds.
-test fn the_production_home_region_binds_once_readiness_is_measured() -> Bool {
-  let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
-  match bind_oci_always_free_offer(
-    principal: "gunbc", executor: "gunbc", instance: i, plan_fit: oci_always_free_fit(plan: [i]),
-    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci",
-    readiness: measured(), region: oci_home_region(),
-  ) {
-    OfferBound { bound } => declaration_ref_eq(a: bound.offer.route.region, b: decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_region_us_ashburn_1"))
-    OfferBindingRefused { runs_on_label, cause } => false
-  }
+// RED: the state production is in. The tenancy's other usage is unread, so no zero quote is bound,
+// even for a plan that fits with readiness measured.
+test fn production_state_refuses_on_the_unread_tenancy_allocation() -> Bool {
+  refused_with(b: bind(plan: small_plan(), member: "a", allocation: oci_tenancy_allocation, readiness: measured()), expected: "oci_tenancy_allocation_unread_obligation")
 }
 
-// A plan over the allowance cannot carry a zero quote, even when region and readiness are both read.
-test fn an_over_allowance_plan_refuses_before_any_route() -> Bool {
-  let i = a1(name: "a", ocpus: 4, gb: 24, boot: 47)
-  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: read_region(), readiness: measured(), expected: "oci_always_free_fit_refusal")
+test fn production_readiness_refuses_once_the_allocation_is_observed() -> Bool {
+  refused_with(b: bind(plan: small_plan(), member: "a", allocation: observed_other(block_gb: 0), readiness: oci_readiness), expected: "oci_readiness_unread_obligation")
 }
 
-// POSITIVE CONTROL: with everything read, the same call binds a zero-quoted offer. Its evidence is
-// still the unobserved arm, because nothing has been launched yet.
-test fn a_fitting_plan_with_region_and_readiness_binds_at_zero_unobserved() -> Bool {
-  let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
-  match bind_oci_always_free_offer(
-    principal: "gunbc", executor: "gunbc", instance: i, plan_fit: oci_always_free_fit(plan: [i]),
-    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci",
-    readiness: measured(), region: read_region(),
-  ) {
+// SUBSTITUTION: an oversized instance cannot be bound under a small plan's fit. Named but absent
+// from the plan, it refuses as not a member. Put into the plan, the plan no longer fits.
+test fn an_oversized_instance_cannot_ride_a_small_plans_fit() -> Bool {
+  refused_with(b: bind(plan: small_plan(), member: "big", allocation: observed_other(block_gb: 0), readiness: measured()), expected: "oci_member_not_in_plan_refusal")
+    && refused_with(b: bind(plan: concat(small_plan(), [a1(name: "big", ocpus: 4, gb: 24, boot: 47)]), member: "big", allocation: observed_other(block_gb: 0), readiness: measured()), expected: "oci_always_free_fit_refusal")
+}
+
+// TENANCY-WIDE: a plan that fits alone does not fit beside 200 GB the tenancy already holds.
+test fn other_tenancy_usage_counts_against_the_allowance() -> Bool {
+  refused_with(b: bind(plan: small_plan(), member: "a", allocation: observed_other(block_gb: 200), readiness: measured()), expected: "oci_always_free_fit_refusal")
+}
+
+// POSITIVE CONTROL: the same member of the same plan, with allocation and readiness observed, binds a
+// zero-quoted offer on the Ashburn route. Its evidence is still the unobserved arm, because nothing has
+// been launched.
+test fn a_member_of_a_fitting_plan_binds_at_zero_on_the_home_region_route() -> Bool {
+  match bind(plan: small_plan(), member: "a", allocation: observed_other(block_gb: 0), readiness: measured()) {
     OfferBound { bound } =>
       money_amount_micro_count(m: offer_quote_amount(q: bound.offer.quote)) == 0
+        && declaration_ref_eq(a: bound.offer.route.region, b: decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_region_us_ashburn_1"))
         && match bound.offer.evidence {
           UnobservedSupply { obligation } => true
           ObservedSupply { observed_at, receipt } => false

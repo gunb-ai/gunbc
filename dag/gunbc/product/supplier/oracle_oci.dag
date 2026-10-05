@@ -1,6 +1,7 @@
 module product.supplier.oracle_oci
 
 import std.types { Bool, List, NonEmptyStr }
+import v2.std.optional { Absent, Present }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure {
@@ -9,6 +10,7 @@ import std.measure {
 }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity }
+import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
 import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -158,11 +160,26 @@ fn oci_over(planned: Nat, allowed: Nat) -> Bool {
   planned > allowed
 }
 
-fn oci_aggregate_breaches(plan: List<OciPlannedInstance>) -> List<OciAllowanceBreach> {
-  let ocpus = fold(plan, init: 0, f: (acc, i) => acc + oci_a1_ocpus(i: i))
-  let memory = fold(plan, init: 0, f: (acc, i) => acc + oci_a1_memory_gb(i: i))
-  let micros = fold(plan, init: 0, f: (acc, i) => acc + oci_micro_count(i: i))
-  let block = fold(plan, init: 0, f: (acc, i) => acc + gigabyte_count(g: i.boot_volume))
+// USAGE OUTSIDE THE PLAN. The allowance is TENANCY-wide: block storage counts boot and block volumes
+// combined, across every instance and unattached volume, and A1 and the micros are shared by everything
+// in the tenancy. A plan evaluated alone is only a NOMINAL fit, so the fit adds whatever else the
+// tenancy already holds. oci_no_other_usage is the nominal case: the instance converge uses it to
+// decide whether the operator's own plan is even possible, which is a statement about the plan rather
+// than about the tenancy.
+type OciOtherUsage {
+  a1_ocpus: Nat
+  a1_memory_gb: Nat
+  micros: Nat
+  block_gb: Nat
+}
+
+data oci_no_other_usage: OciOtherUsage = OciOtherUsage { a1_ocpus: 0, a1_memory_gb: 0, micros: 0, block_gb: 0 }
+
+fn oci_aggregate_breaches(plan: List<OciPlannedInstance>, other: OciOtherUsage) -> List<OciAllowanceBreach> {
+  let ocpus = fold(plan, init: other.a1_ocpus, f: (acc, i) => acc + oci_a1_ocpus(i: i))
+  let memory = fold(plan, init: other.a1_memory_gb, f: (acc, i) => acc + oci_a1_memory_gb(i: i))
+  let micros = fold(plan, init: other.micros, f: (acc, i) => acc + oci_micro_count(i: i))
+  let block = fold(plan, init: other.block_gb, f: (acc, i) => acc + gigabyte_count(g: i.boot_volume))
   let ocpu_cap = oci_a1_flex_allowance.always_free_ocpus
   let memory_cap = gigabyte_count(g: oci_a1_flex_allowance.always_free_memory)
   let micro_cap = oci_e2_micro_allowance.max_instances
@@ -178,9 +195,9 @@ fn oci_instance_breaches(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
   concat(concat(oci_capacity_breach(i: i), oci_region_breach(i: i)), oci_micro_domain_breach(i: i))
 }
 
-fn oci_always_free_fit(plan: List<OciPlannedInstance>) -> OciAllowanceFit {
+fn oci_always_free_fit_beside(plan: List<OciPlannedInstance>, other: OciOtherUsage) -> OciAllowanceFit {
   let per_instance = fold(plan, init: [], f: (acc, i) => concat(acc, oci_instance_breaches(i: i)))
-  let breaches = concat(oci_aggregate_breaches(plan: plan), per_instance)
+  let breaches = concat(oci_aggregate_breaches(plan: plan, other: other), per_instance)
   if breaches.length() == 0 { FitsAlwaysFree } else { ExceedsAlwaysFree { breaches: breaches } }
 }
 
@@ -192,6 +209,11 @@ type OciBreachConsequence
   | ExcessBilledAtUnreadRate { obligation: DeclarationRef }
 
 data oci_overage_rate_obligation: NonEmptyStr = "The Pay As You Go price of OCI compute and block storage above the Always Free allowance is UNREAD; extdeps.cloud.oracle_oci carries no price row. RESOLVED BY citing Oracle's price list for VM.Standard.A1.Flex OCPU and memory hours and for block volume storage into an extdeps.pricing module."
+
+// The NOMINAL fit: the plan alone, as if the tenancy held nothing else.
+fn oci_always_free_fit(plan: List<OciPlannedInstance>) -> OciAllowanceFit {
+  oci_always_free_fit_beside(plan: plan, other: oci_no_other_usage)
+}
 
 fn oci_breach_consequence(tier: OciTenancyTier) -> OciBreachConsequence {
   match tier {
@@ -277,53 +299,96 @@ fn oci_shape(size: OciInstanceSize) -> Shape {
   }
 }
 
-data oci_always_free_fit_refusal: NonEmptyStr = "This instance belongs to a plan that does not fit the Always Free allowance (see oci_always_free_fit), so a zero quote for it would be false. Bind it only after the plan fits, or bind it through a priced supplier once the overage rate is read."
+// THE TENANCY'S OTHER USAGE MUST BE OBSERVED BEFORE A ZERO QUOTE IS TRUE. Nothing reads it today:
+// no converge lists the tenancy's volumes and instances outside the plan, and A1 consumption is a
+// monthly meter that no observation here carries. So the production standing is the unread arm, and
+// the binding refuses on it.
+type OciTenancyAllocation
+  = TenancyAllocationUnread { obligation: DeclarationRef }
+  | TenancyAllocationObserved { other: OciOtherUsage, receipt: ObservationReceiptRef }
 
+data oci_tenancy_allocation_unread_obligation: NonEmptyStr = "What the operator's OCI tenancy already holds outside an offered plan (block and boot volumes in every compartment, A1 OCPUs and memory, E2 micro instances) has not been observed. The Always Free allowance is tenancy-wide, so without it a plan's fit is nominal and a zero quote would not be established. RESOLVED BY a receipt from a converge that lists the tenancy's instances, boot volumes and block volumes across compartments, sufficient to fill OciOtherUsage. A1 monthly consumption above steady-state allocation is not carried by OciOtherUsage, and is a further obligation of that receipt."
+
+data oci_tenancy_allocation: OciTenancyAllocation = TenancyAllocationUnread {
+  obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_tenancy_allocation_unread_obligation"),
+}
+
+data oci_always_free_fit_refusal: NonEmptyStr = "The plan does not fit the Always Free allowance beside the tenancy's observed other usage (oci_always_free_fit_beside), so a zero quote for any of its members would be false."
+
+data oci_member_not_in_plan_refusal: NonEmptyStr = "The requested member is not an instance of the admitted plan. A zero quote is established only for a member of the plan whose fit was decided, so nothing else can be bound under it."
+
+data oci_member_outside_home_region_refusal: NonEmptyStr = "The member is not placed in the tenancy's home region, so it is not Always Free compute and has no zero-quoted route."
+
+fn oci_plan_member(plan: List<OciPlannedInstance>, member: NonEmptyStr) -> OciPlannedInstance? {
+  match filter(plan, i => (i.name as String) == (member as String)).first() {
+    Present { value } => Present { value: value }
+    Absent => none
+  }
+}
+
+fn oci_refused_binding<P>(member: NonEmptyStr, cause_decl: String) -> OfferBinding<P> {
+  OfferBindingRefused { runs_on_label: member, cause: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: cause_decl) }
+}
+
+// THE FIT IS DECIDED HERE, NOT HANDED IN (review on gunbc#13335). The binding takes the plan and the
+// NAME of the member to offer, decides the fit of that plan beside the tenancy's observed other usage,
+// and derives both the offered instance and its route from the admitted member. A success computed for
+// one plan cannot be carried onto another instance, because no success value crosses this boundary,
+// and the route cannot disagree with the member's placement, because nothing supplies it separately.
 fn bind_oci_always_free_offer<P>(
   principal: P,
   executor: P,
-  instance: OciPlannedInstance,
-  plan_fit: OciAllowanceFit,
+  plan: List<OciPlannedInstance>,
+  member: NonEmptyStr,
+  allocation: OciTenancyAllocation,
   capabilities: CapabilityManifestRef,
   trust_domain: TrustDomainRef,
   readiness: ReadinessObservation,
-  region: ProviderRegionObservation,
 ) -> OfferBinding<P> {
-  match plan_fit {
-    ExceedsAlwaysFree { breaches } => OfferBindingRefused {
-      runs_on_label: instance.name,
-      cause: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_always_free_fit_refusal"),
-    },
-    FitsAlwaysFree =>
-    match provider_route_from_region(provider: oci_provider_ref(), service: oci_service_ref(), region: region) {
-      ProviderRouteRegionUnobserved { obligation } =>
-        OfferBindingRefused { runs_on_label: instance.name, cause: obligation },
-      ProviderRouteObserved { route: bound_route } =>
-      match readiness {
-        ReadinessUnmeasured { obligation } =>
-          OfferBindingRefused { runs_on_label: instance.name, cause: obligation },
-        ReadinessMeasured { ready_at, receipt } =>
-          OfferBound {
-            bound: SupplierOfferProjection {
-              offer: SupplierOffer {
-                id: FabricIdentity { principal: principal, key: instance.name },
-                executor: executor,
-                route: bound_route,
-                shape: oci_shape(size: instance.size),
-                capabilities: capabilities,
-                trust_domain: trust_domain,
-                isolation: IsolationProfile { guarantees: [] },
-                quantity_bound: 1,
-                ready_at: ready_at,
-                quote: oci_zero_quote(),
-                billing_quantum: oci_billing_quantum,
-                evidence: UnobservedSupply {
-                  obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_instance_unlaunched_obligation"),
+  match allocation {
+    TenancyAllocationUnread { obligation } => OfferBindingRefused { runs_on_label: member, cause: obligation },
+    TenancyAllocationObserved { other, receipt } =>
+    match oci_always_free_fit_beside(plan: plan, other: other) {
+      ExceedsAlwaysFree { breaches } => oci_refused_binding(member: member, cause_decl: "oci_always_free_fit_refusal"),
+      FitsAlwaysFree =>
+      match oci_plan_member(plan: plan, member: member) {
+        Absent => oci_refused_binding(member: member, cause_decl: "oci_member_not_in_plan_refusal"),
+        Present { value: instance } =>
+        match instance.region {
+          OutsideHomeRegion => oci_refused_binding(member: member, cause_decl: "oci_member_outside_home_region_refusal"),
+          InHomeRegion =>
+          match provider_route_from_region(provider: oci_provider_ref(), service: oci_service_ref(), region: oci_home_region()) {
+            ProviderRouteRegionUnobserved { obligation } =>
+              OfferBindingRefused { runs_on_label: member, cause: obligation },
+            ProviderRouteObserved { route: bound_route } =>
+            match readiness {
+              ReadinessUnmeasured { obligation } =>
+                OfferBindingRefused { runs_on_label: member, cause: obligation },
+              ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+                OfferBound {
+                  bound: SupplierOfferProjection {
+                    offer: SupplierOffer {
+                      id: FabricIdentity { principal: principal, key: instance.name },
+                      executor: executor,
+                      route: bound_route,
+                      shape: oci_shape(size: instance.size),
+                      capabilities: capabilities,
+                      trust_domain: trust_domain,
+                      isolation: IsolationProfile { guarantees: [] },
+                      quantity_bound: 1,
+                      ready_at: ready_at,
+                      quote: oci_zero_quote(),
+                      billing_quantum: oci_billing_quantum,
+                      evidence: UnobservedSupply {
+                        obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_instance_unlaunched_obligation"),
+                      },
+                    },
+                    unexpressed: [IsolationNotObserved],
+                  },
                 },
-              },
-              unexpressed: [IsolationNotObserved],
             },
           },
+        },
       },
     },
   }

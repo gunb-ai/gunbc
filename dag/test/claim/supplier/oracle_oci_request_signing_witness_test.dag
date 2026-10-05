@@ -2,7 +2,7 @@ module test.claim.supplier.oracle_oci_request_signing_witness
 
 import std.types { Bool, Int, String }
 import extdeps.cloud.oracle_oci_request_signing {
-  OciRequest, OciGet, OciPost, OciNoBody, OciJsonBody,
+  OciRequest, OciGetRequest, OciPostJson,
   OciSigningPlan, OciSigningReady, OciSigningRefused,
   OciApiKeyId,
   oci_signing_plan, oci_http_date, oci_authorization_header,
@@ -42,11 +42,10 @@ test fn the_http_date_handles_a_leap_day() -> Bool {
 
 test fn the_get_signing_string_is_oracles_vector() -> Bool {
   let req = OciRequest {
-    method: OciGet,
+    shape: OciGetRequest,
     host: "iaas.us-phoenix-1.oraclecloud.com",
     path_and_query: oracle_vector_path,
     date: "Thu, 05 Jan 2014 21:31:40 GMT",
-    body: OciNoBody,
   }
   signing_string_of(p: plan_of(req: req)) == join([
     "date: Thu, 05 Jan 2014 21:31:40 GMT",
@@ -57,11 +56,10 @@ test fn the_get_signing_string_is_oracles_vector() -> Bool {
 
 fn post_plan(body: String) -> OciSigningPlan {
   plan_of(req: OciRequest {
-    method: OciPost,
+    shape: OciPostJson { text: body },
     host: "iaas.us-phoenix-1.oraclecloud.com",
     path_and_query: "/20160918/volumeAttachments",
     date: "Thu, 05 Jan 2014 21:31:40 GMT",
-    body: OciJsonBody { text: body },
   })
 }
 
