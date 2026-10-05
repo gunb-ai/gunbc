@@ -2,6 +2,7 @@ module gunbc.auth.approval_request_client
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
+import std.decl_ref { decl_ref }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
   MacKey, MacSigned, MacKeyMaterialNotHex, HmacSha256, MacKeyId,
@@ -83,22 +84,25 @@ fn approval_loopback_origin_refusal_detail(cause: ProdRoleRealizationRefusal) ->
 }
 
 // ── THE EXECUTOR MUST BE THE ORIGIN'S HOST, BEFORE ANY LOCAL HTTP ─────────────────────────────
-// The only way to obtain a URL is from a DialableApprovalOrigin, and its one mint is the admission
-// below, which admits an origin only when the executor's own short hostname (gunbc.hostname_read, the
-// established local-host read) IS the origin's host. So an executor that is not the prod-role
-// holder's host -- or cannot read its own hostname -- refuses before any request is built.
+// CLASSIFIER VERSUS CAPABILITY, the split gunbc.live_deploy.role_singleton_convergence uses for its
+// admission. classify_approval_origin is pure and fixture-callable and returns a STANDING, never a
+// token. The token -- DialableApprovalOrigin, the only thing a URL can be built from -- is minted by
+// one sealed function, reachable only from approval_origin_admission_here, which reads this
+// executor's own short hostname itself (gunbc.hostname_read, the established local-host read) and
+// is in turn sealed to the two effectful approval_gate compositions. So no caller can hand in a
+// hostname, and no URL exists for an executor that is not the prod-role holder's host.
 type DialableApprovalOrigin sole_constructor {
   host: NonEmptyStr
   origin: NonEmptyStr
 }
 
-type ApprovalOriginAdmission
-  = ApprovalOriginDialable { dial: DialableApprovalOrigin }
+type ApprovalOriginStanding
+  = ApprovalOriginWouldDial { host: NonEmptyStr, origin: NonEmptyStr }
   | ApprovalOriginUnresolved { cause: ProdRoleRealizationRefusal }
   | ApprovalExecutorNotTheOriginHost { origin_host: NonEmptyStr, executor_host: String }
   | ApprovalExecutorHostUnobserved { reason: String }
 
-fn approval_origin_admission(origin: ApprovalLoopbackOrigin, executor: HostnameShortCapture) -> ApprovalOriginAdmission {
+fn classify_approval_origin(origin: ApprovalLoopbackOrigin, executor: HostnameShortCapture) -> ApprovalOriginStanding {
   match origin {
     ApprovalLoopbackOriginRefused { cause } => ApprovalOriginUnresolved { cause: cause }
     ApprovalLoopbackOriginResolved { host, origin: o } =>
@@ -106,7 +110,7 @@ fn approval_origin_admission(origin: ApprovalLoopbackOrigin, executor: HostnameS
         HostnameShortCaptureRefused { reason } => ApprovalExecutorHostUnobserved { reason: reason }
         HostnameShortCaptured { value } =>
           if value == (host as String) {
-            ApprovalOriginDialable { dial: DialableApprovalOrigin { host: host, origin: o } }
+            ApprovalOriginWouldDial { host: host, origin: o }
           } else {
             ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: value }
           }
@@ -114,14 +118,33 @@ fn approval_origin_admission(origin: ApprovalLoopbackOrigin, executor: HostnameS
   }
 }
 
-// The live admission: the actuated origin against this process's own host.
-fn approval_origin_admission_here() -> ApprovalOriginAdmission {
-  approval_origin_admission(origin: approval_loopback_origin(), executor: hostname_short_read(transport: LocalShell))
+type ApprovalOriginAdmission
+  = ApprovalOriginDialable { dial: DialableApprovalOrigin }
+  | ApprovalOriginNotAdmitted { standing: ApprovalOriginStanding }
+
+fn mint_dialable_approval_origin(host: NonEmptyStr, origin: NonEmptyStr) -> DialableApprovalOrigin admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_request_client", decl_name: "approval_origin_admission_here"),
+] {
+  DialableApprovalOrigin { host: host, origin: origin }
 }
 
-fn approval_origin_admission_refusal_detail(a: ApprovalOriginAdmission) -> NonEmptyStr {
-  match a {
-    ApprovalOriginDialable { dial: _ } => "approval origin admitted" as NonEmptyStr
+// The live admission: the actuated origin against this process's own host, read here and nowhere else.
+fn approval_origin_admission_here() -> ApprovalOriginAdmission admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read"),
+  decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_file_stored_request"),
+] {
+  let standing = classify_approval_origin(origin: approval_loopback_origin(), executor: hostname_short_read(transport: LocalShell))
+  match standing {
+    ApprovalOriginWouldDial { host, origin } => ApprovalOriginDialable { dial: mint_dialable_approval_origin(host: host, origin: origin) }
+    ApprovalOriginUnresolved { cause: _ } => ApprovalOriginNotAdmitted { standing: standing }
+    ApprovalExecutorNotTheOriginHost { origin_host: _, executor_host: _ } => ApprovalOriginNotAdmitted { standing: standing }
+    ApprovalExecutorHostUnobserved { reason: _ } => ApprovalOriginNotAdmitted { standing: standing }
+  }
+}
+
+fn approval_origin_standing_detail(standing: ApprovalOriginStanding) -> NonEmptyStr {
+  match standing {
+    ApprovalOriginWouldDial { host: _, origin: _ } => "approval origin admitted" as NonEmptyStr
     ApprovalOriginUnresolved { cause } => approval_loopback_origin_refusal_detail(cause: cause)
     ApprovalExecutorNotTheOriginHost { origin_host, executor_host } =>
       join(["approval writer is loopback on ", origin_host as String, " (the prod-role holder's host) but this executor is ", executor_host, "; refusing before any request"], "") as NonEmptyStr

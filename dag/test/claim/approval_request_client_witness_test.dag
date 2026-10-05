@@ -1,11 +1,13 @@
 module test.claim.approval_request_client_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, String, List }
+import std.types { Bool, NonEmptyStr, String, List, Int }
+import v2.std.collection { Present, Absent }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import gunbc.auth.approval_request_client {
-  approval_submit_url, approval_status_url, approval_loopback_origin, approval_loopback_origin_for, approval_loopback_origin_of, approval_request_submit_path,
+  approval_loopback_origin, approval_loopback_origin_for, approval_loopback_origin_of, approval_request_submit_path,
   ApprovalLoopbackOrigin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused,
-  approval_origin_admission, ApprovalOriginAdmission, ApprovalOriginDialable, ApprovalOriginUnresolved, ApprovalExecutorNotTheOriginHost, ApprovalExecutorHostUnobserved,
+  classify_approval_origin, ApprovalOriginStanding, ApprovalOriginWouldDial, ApprovalOriginUnresolved, ApprovalExecutorNotTheOriginHost, ApprovalExecutorHostUnobserved,
   approval_poll_standing, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
@@ -58,40 +60,35 @@ fn resolved_host_and_origin(o: ApprovalLoopbackOrigin) -> List<String> {
   }
 }
 
-fn dialable_url(a: ApprovalOriginAdmission) -> String {
-  match a {
-    ApprovalOriginDialable { dial } => approval_submit_url(dial: dial) as String
-    ApprovalOriginUnresolved { cause: _ } => ""
-    ApprovalExecutorNotTheOriginHost { origin_host: _, executor_host: _ } => ""
-    ApprovalExecutorHostUnobserved { reason: _ } => ""
+fn would_dial(st: ApprovalOriginStanding) -> List<String> {
+  match st {
+    ApprovalOriginWouldDial { host, origin } => [host as String, origin as String]
+    ApprovalOriginUnresolved { cause: _ } => []
+    ApprovalExecutorNotTheOriginHost { origin_host: _, executor_host: _ } => []
+    ApprovalExecutorHostUnobserved { reason: _ } => []
   }
 }
 
-// (5) POSITIVE CONTROL: today's selection, the broker as writer, an executor on srv1 -- dialable, at
-// the broker's loopback, and the URLs are that origin's.
+// The behavioural REDs run the pure classifier, which returns a STANDING and no dial token; the token
+// is minted only on the sealed live route (the compile REDs below).
+
+// (5) POSITIVE CONTROL: today's selection, the broker as writer, an executor on srv1 -- would dial the
+// broker's loopback on srv1.
 test fn todays_broker_writer_on_the_srv1_holder_is_dialable_from_srv1() -> Bool {
-  let broker_origin = approval_broker_loopback_base_url(port: approval_broker_listen_port) as String
-  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: prod_role_actuated_realization()), executor: on_host(h: "srv1")) {
-    ApprovalOriginDialable { dial } =>
-      (dial.host as String) == "srv1"
-        && approval_submit_url(dial: dial) as String == concat(broker_origin, approval_request_submit_path as String)
-        && approval_status_url(dial: dial, escalation_id: "esc-1") as String == concat(concat(broker_origin, concat(approval_request_submit_path as String, "/")), "esc-1")
-    _ => false
-  }
+  would_dial(st: classify_approval_origin(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: prod_role_actuated_realization()), executor: on_host(h: "srv1")))
+    == ["srv1", approval_broker_loopback_base_url(port: approval_broker_listen_port) as String]
 }
 
-// (1) The role on srv2-deploy, the broker as writer, an executor on srv2: resolves and may dial.
+// (1) The role on srv2-deploy, the broker as writer, an executor on srv2: would dial.
 test fn a_broker_writer_on_a_srv2_holder_is_dialable_from_srv2() -> Bool {
-  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: srv2_holds()), executor: on_host(h: "srv2")) {
-    ApprovalOriginDialable { dial } => (dial.host as String) == "srv2"
-    _ => false
-  }
+  would_dial(st: classify_approval_origin(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: srv2_holds()), executor: on_host(h: "srv2")))
+    == ["srv2", approval_broker_loopback_base_url(port: approval_broker_listen_port) as String]
 }
 
 // (2) The role on srv2-deploy, the broker as writer, an executor on srv1: refuses before any request,
 // naming both hosts -- it does not dial srv1's loopback, where a stale broker may still answer.
 test fn a_broker_writer_on_a_srv2_holder_refuses_a_srv1_executor_before_any_request() -> Bool {
-  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: srv2_holds()), executor: on_host(h: "srv1")) {
+  match classify_approval_origin(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: srv2_holds()), executor: on_host(h: "srv1")) {
     ApprovalExecutorNotTheOriginHost { origin_host, executor_host } => (origin_host as String) == "srv2" && executor_host == "srv1"
     _ => false
   }
@@ -100,17 +97,15 @@ test fn a_broker_writer_on_a_srv2_holder_refuses_a_srv1_executor_before_any_requ
 // (3) Switching the writer to the roadmap changes the endpoint and keeps the holder's host.
 test fn the_roadmap_writer_changes_the_endpoint_and_keeps_the_holders_host() -> Bool {
   let r = srv2_holds()
-  let broker = resolved_host_and_origin(o: approval_loopback_origin_for(writer: BrokerProcess, realization: r))
-  let roadmap = resolved_host_and_origin(o: approval_loopback_origin_for(writer: RoadmapProcess, realization: r))
-  count(broker) == 2 && count(roadmap) == 2
-    && broker == ["srv2", approval_broker_loopback_base_url(port: approval_broker_listen_port) as String]
-    && roadmap == ["srv2", approval_loopback_origin_of(instance: srv2_deploy_dashboard_instance()) as String]
-    && dialable_url(a: approval_origin_admission(origin: approval_loopback_origin_for(writer: RoadmapProcess, realization: r), executor: on_host(h: "srv2"))) != dialable_url(a: approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: r), executor: on_host(h: "srv2")))
+  would_dial(st: classify_approval_origin(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: r), executor: on_host(h: "srv2")))
+    == ["srv2", approval_broker_loopback_base_url(port: approval_broker_listen_port) as String]
+    && would_dial(st: classify_approval_origin(origin: approval_loopback_origin_for(writer: RoadmapProcess, realization: r), executor: on_host(h: "srv2")))
+    == ["srv2", approval_loopback_origin_of(instance: srv2_deploy_dashboard_instance()) as String]
 }
 
 // (4) NoProdRole refuses on both writer arms, whatever the executor is.
 fn unresolved_under_no_prod_role(w: ApprovalServingProcess) -> Bool {
-  match approval_origin_admission(origin: approval_loopback_origin_for(writer: w, realization: no_prod_role()), executor: on_host(h: "srv1")) {
+  match classify_approval_origin(origin: approval_loopback_origin_for(writer: w, realization: no_prod_role()), executor: on_host(h: "srv1")) {
     ApprovalOriginUnresolved { cause: ProdRoleUnheld } => true
     _ => false
   }
@@ -122,10 +117,55 @@ test fn no_prod_role_refuses_on_both_writer_arms() -> Bool {
 
 // An executor that cannot read its own hostname does not dial either.
 test fn an_executor_whose_host_is_unobserved_refuses() -> Bool {
-  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: prod_role_actuated_realization()), executor: HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" }) {
+  match classify_approval_origin(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: prod_role_actuated_realization()), executor: HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" }) {
     ApprovalExecutorHostUnobserved { reason: _ } => true
     _ => false
   }
+}
+
+// ── THE DIAL TOKEN CANNOT BE FORGED, AND THE FILING STEP CANNOT BE REACHED AROUND IT ───────────
+// One compile per claim (each compile probe costs the census, gunbc.recurring_failure_mode
+// entry_scoped_typecheck_rss_tracks_the_name_census).
+data forged_dial_mint_source: String = "module probe_forged_dial_mint\nimport gunbc.auth.approval_request_client { mint_dialable_approval_origin, DialableApprovalOrigin }\nfn forge() -> DialableApprovalOrigin { mint_dialable_approval_origin(host: \"srv1\", origin: \"http://127.0.0.1:8085\") }\n"
+
+data forged_dial_literal_source: String = "module probe_forged_dial_literal\nimport gunbc.auth.approval_request_client { DialableApprovalOrigin }\nfn forge() -> DialableApprovalOrigin { DialableApprovalOrigin { host: \"srv1\", origin: \"http://127.0.0.1:8085\" } }\n"
+
+data outside_admission_here_source: String = "module probe_outside_admission_here\nimport gunbc.auth.approval_request_client { approval_origin_admission_here, ApprovalOriginAdmission }\nfn obtain() -> ApprovalOriginAdmission { approval_origin_admission_here() }\n"
+
+data outside_filing_step_source: String = "module probe_outside_filing_step\nimport gunbc.auth.approval_gate { approval_file_stored_request_at, ApprovalFiling }\nimport gunbc.auth.approval_request_client { DialableApprovalOrigin }\nimport gunbc.auth.approval_decision_store { StoredApprovalRequest }\nimport std.measure { Second }\nfn bypass(d: DialableApprovalOrigin, s: StoredApprovalRequest, t: Second) -> ApprovalFiling { approval_file_stored_request_at(dial: d, stored: s, body_file_name: \"x\", submit_timeout: t) }\n"
+
+data canonical_approval_routes_source: String = "module probe_canonical_approval_routes\nimport gunbc.auth.approval_gate { approval_file_stored_request, approval_standing_read, ApprovalFiling, ApprovalStandingRead }\nimport gunbc.auth.approval_decision_store { StoredApprovalRequest }\nimport std.measure { Second }\nimport std.types { Timestamp, NonEmptyStr }\nfn file(s: StoredApprovalRequest, t: Second) -> ApprovalFiling { approval_file_stored_request(stored: s, body_file_name: \"x\", submit_timeout: t) }\nfn read(e: NonEmptyStr, x: Timestamp) -> ApprovalStandingRead { approval_standing_read(escalation_id: e, expires_at: x) }\n"
+
+fn class_refusals_in(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// (1) An outside module cannot mint the token: not through the mint, not as a literal, and not by
+// calling the live admission (which is where the hostname is read).
+test fn no_outside_module_can_mint_a_dial_token_through_the_mint() -> Bool {
+  class_refusals_in(source: forged_dial_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn no_outside_module_can_write_a_dial_token_literal() -> Bool {
+  class_refusals_in(source: forged_dial_literal_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+test fn no_outside_module_can_call_the_live_origin_admission() -> Bool {
+  class_refusals_in(source: outside_admission_here_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// (2) The filing step that reads the key, writes the envelope and POSTs is reachable only from the
+// filing composition that admitted the origin.
+test fn no_outside_module_can_call_the_filing_step() -> Bool {
+  class_refusals_in(source: outside_filing_step_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// (3) THE CONTROL: the canonical filing and standing-read routes compile with no admission refusal.
+test fn the_canonical_filing_and_standing_read_routes_compile() -> Bool {
+  class_refusals_in(source: canonical_approval_routes_source, wanted: "ConstructorCallAdmissionRefused") == 0
 }
 
 // THE REGRESSION run 37265259209 hit: the live origin is the declared writer's, the broker's loopback
