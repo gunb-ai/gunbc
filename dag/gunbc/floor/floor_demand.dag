@@ -292,6 +292,7 @@ type FloorSeam
   | SeamDiscoveryAuthority
   | SeamClaimScopeProjection
   | SeamClaimEvaluationFold
+  | SeamCrossClaimShareDerivation
   | SeamNotYetEntered
   | SeamUnrecorded
   | SeamUnreadable
@@ -340,6 +341,7 @@ data floor_seam_tokens: List<FloorSeamToken> = [
   FloorSeamToken { token: "discovery-authority", seam: SeamDiscoveryAuthority },
   FloorSeamToken { token: "claim-scope-projection", seam: SeamClaimScopeProjection },
   FloorSeamToken { token: "claim-evaluation-fold", seam: SeamClaimEvaluationFold },
+  FloorSeamToken { token: "cross-claim-share-derivation", seam: SeamCrossClaimShareDerivation },
 ]
 
 fn floor_seam_of_token(token: String) -> FloorSeam? {
@@ -646,6 +648,7 @@ fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
         SeamDiscoveryAuthority => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamClaimScopeProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamClaimEvaluationFold => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamCrossClaimShareDerivation => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
       }
   }
 }
