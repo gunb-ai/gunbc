@@ -10,7 +10,7 @@ import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
   Passed, Failed, KnownRedHeld, PassedOverBudget, BudgetRefusedBeforeVerdict, PanickedBeforeVerdict,
 }
-import v2.std.algebra { contains }
+import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
@@ -39,7 +39,7 @@ fn head_roster() -> List<String> {
 
 fn admitted(identity: String) -> Bool {
   match cost_debt_admitted_identities(base_source: base_roster_source(), head_roster: head_roster()) {
-    CostDebtAdmittedIdentities { identities: ids } => contains(xs: ids, item: identity, eq: fn(a, b) { a == b })
+    CostDebtAdmittedIdentities { identities: ids } => any(xs: ids, predicate: fn(id) { id == identity })
     CostDebtRosterUnreadableAtBase { stderr: _ } => false
     CostDebtRosterUntokenizableAtBase => false
   }

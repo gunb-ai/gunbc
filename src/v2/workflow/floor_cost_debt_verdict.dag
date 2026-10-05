@@ -3,7 +3,7 @@ module v2.workflow.floor_cost_debt_verdict
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { Token, token_stream_all }
-import v2.std.algebra { contains, list_reverse }
+import v2.std.algebra { any, list_reverse }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.types { GitRef, FilePath, List }
 import extdeps.git
@@ -128,7 +128,7 @@ fn cost_debt_admitted_identities(base_source: String, head_roster: List<String>)
       })
       CostDebtAdmittedIdentities {
         identities: list_reverse(xs: fold(head_roster, init: [], f: fn(acc, identity) {
-          if contains(xs: literals, item: identity, eq: fn(lexeme, id) { cost_debt_string_literal_spells(lexeme: lexeme, identity: id) }) {
+          if any(xs: literals, predicate: fn(lexeme) { cost_debt_string_literal_spells(lexeme: lexeme, identity: identity) }) {
             acc
           } else {
             concat([identity], acc)
