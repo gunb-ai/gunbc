@@ -1826,6 +1826,36 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
   )
 }
 
+// A same-leaf declaration in one module does not change what another module emits.
+fn ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test() -> String {
+  concat(
+    "    // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel\n",
+    "    // optional's Absent; hom.edge declares an unrelated enum that also has an Absent variant. With the\n",
+    "    // leaf-keyed type summaries, adding hom.coll (a coproduct it declares as Optional) replaced the\n",
+    "    // kernel Optional's summary, so Absent stopped being an Optional variant and hom.user emitted\n",
+    "    // Rc::new(Lookup::Absent) where it had emitted None. Keyed by declaration, both summaries stand:\n",
+    "    // hom.user's file is byte-identical with and without hom.coll, and its Absent is the host None.\n",
+    "    #[test]\n",
+    "    fn same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let src = |path: &str, content: &str| std::rc::Rc::new(SourceFile { path: path.to_string(), content: content.to_string() });\n",
+    "        let optional = || src(\"fixtures/same_leaf_optional/optional.dag\", \"module v2.std.optional\\n\\ntype Optional<T>\\n  = Present { value: T }\\n  | Absent\\n\");\n",
+    "        let edge = || src(\"fixtures/same_leaf_optional/edge.dag\", \"module hom.edge\\n\\nimport std.types { Int }\\n\\ntype Lookup\\n  = Found { at: Int }\\n  | Absent\\n\");\n",
+    "        let user = || src(\"fixtures/same_leaf_optional/user.dag\", \"module hom.user\\n\\nimport std.types { Int }\\nimport v2.std.optional { Optional, Present, Absent }\\n\\nfn first_positive(x: Int) -> Optional<Int> {\\n  if x > 0 { Present { value: x } } else { Absent }\\n}\\n\");\n",
+    "        let coll = || src(\"fixtures/same_leaf_optional/coll.dag\", \"module hom.coll\\n\\nimport std.types { Int }\\n\\ntype Optional\\n  = CollisionWrapped { value: Int }\\n  | CollisionEmpty\\n\");\n",
+    "        let emitted_user = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {\n",
+    "            let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources.into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "            result.files.iter().find(|f| f.path.contains(\"hom_user\")).map(|f| f.content.clone()).unwrap_or_default()\n",
+    "        };\n",
+    "        let without = emitted_user(vec![optional(), edge(), user()]);\n",
+    "        let with = emitted_user(vec![optional(), edge(), user(), coll()]);\n",
+    "        assert!(without.contains(\"None\") && !without.contains(\"Lookup::Absent\"), \"the control: hom.user's Absent is the host None:\\n\{without}\");\n",
+    "        assert_eq!(with, without, \"adding a same-leaf Optional elsewhere changed hom.user's emission\");\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 // The referencing-module arm admits only a bare spelling: a qualified reference to another module's
 // declaration, arriving unstamped, is not decided by the referencing module's own same-leaf one.
 fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String {
@@ -2009,6 +2039,7 @@ fn ct_coercion_tests() -> String {
     ct_same_leaf_type_declarations_emit_by_identity_test(),
     ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
     ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
+    ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
