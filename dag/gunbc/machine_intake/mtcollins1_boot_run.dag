@@ -2548,7 +2548,7 @@ fn mtcollins1_boot_baseline(username: NonEmptyStr, password_file: NonEmptyStr) -
 
 fn mtcollins1_boot_actuate_held(
   proof: UnitHoldProof,
-  subject: MtCollins1BootSubject,
+  subject: AdmittedBootSubject,
   password_file: String,
   run_id: NonEmptyStr,
   sol_pid_path: String,
