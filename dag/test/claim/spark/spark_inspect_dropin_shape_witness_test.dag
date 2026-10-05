@@ -4,12 +4,12 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import v2.std.algebra { filter, length }
 import gunbc.spark.managed_grant_reconcile {
   SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
-  spark_inspect_dropin_shape_of_listing, spark_inspect_dropin_shape_of_names, spark_inspect_dropin_shape_wire,
+  spark_inspect_dropin_shape_of_listing,
   spark_sudoers_dropin_listing_argv,
 }
 import gunbc.fleet_multi_principal_probe {
-  SparkGrantCoverage, GrantCoverageProbedEachRun, GrantCoverageHandRead, GrantCoverageUnobserved,
-  spark_grant_coverage, spark_grant_coverage_wire, spark_group_b_sudoers_readings,
+  SparkGrantCoverage, GrantCoverageProbedEachRun, GrantCoverageUnobserved,
+  spark_grant_coverage, spark_grant_coverage_wire,
 }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
@@ -66,7 +66,6 @@ fn count_unobserved(cs: List<SparkGrantCoverage>) -> Int {
   length(filter(cs, c => match c {
     GrantCoverageUnobserved { host: _ } => true
     GrantCoverageProbedEachRun { host: _ } => false
-    GrantCoverageHandRead { reading: _ } => false
   }))
 }
 
@@ -83,12 +82,17 @@ test fn w_hosts_with_no_reading_are_named_unobserved() -> Bool {
     && contains(coverage_text(), "grant-coverage host=srv8 UNOBSERVED")
 }
 
-// Group B's current on-host state is represented, not assumed: each of the four reads in the shared
-// shape with no per-container file, and its grant listing is stated unobserved.
-test fn w_group_b_reads_shared_shape_with_listing_unobserved() -> Bool {
-  length(spark_group_b_sudoers_readings) == 4
-    && length(filter(spark_group_b_sudoers_readings, r => is_shared_alone(s: spark_inspect_dropin_shape_of_names(names: r.dropin_names)))) == 4
-    && contains(coverage_text(), "grant-coverage host=srv12 (spark-2196) HAND-READ at=2026-10-04T22:53Z")
-    && contains(coverage_text(), "grant_listing=UNOBSERVED")
-    && contains(coverage_text(), "inspect-dropins host=srv12 SHARED-SHAPE")
+// Group B's grant state comes from convergence, not a hand read: srv9..srv12 are probed by every run
+// (operator approval 2026-10-05). Dropping any of them from the probe roster reds this.
+test fn w_group_b_is_probed_each_run() -> Bool {
+  contains(coverage_text(), "grant-coverage host=srv9 probed-each-run")
+    && contains(coverage_text(), "grant-coverage host=srv10 probed-each-run")
+    && contains(coverage_text(), "grant-coverage host=srv11 probed-each-run")
+    && contains(coverage_text(), "grant-coverage host=srv12 probed-each-run")
+}
+
+// Group B's 2026-10-04 listing shape (shared file alone, no per-container file) reads as the
+// shared shape the probe will report until an operator-approved converge replaces it.
+test fn w_group_b_listing_shape_reads_shared_alone() -> Bool {
+  is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-ethtool-module-info\ngunbc-reboot\nREADME\n", stderr: ""))
 }

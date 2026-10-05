@@ -36,7 +36,7 @@ import gunbc.fleet_ssh_credential_verify {
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, filter, any }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }
@@ -60,7 +60,7 @@ import gunbc.spark.managed_access_bootstrap {
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_report,
   SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
-  spark_sudoers_dropin_listing_argv, spark_inspect_dropin_shape_of_listing, spark_inspect_dropin_shape_of_names,
+  spark_sudoers_dropin_listing_argv, spark_inspect_dropin_shape_of_listing,
   spark_inspect_dropin_shape_wire,
 }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
@@ -513,55 +513,24 @@ fn spark_grant_row_text(row: SparkGrantRow) -> String {
 
 // ── Coverage: which procured Spark's grant state this probe actually reads ───────────────────────
 //
-// THE PROBE READS spark_standing_hosts AND NOTHING ELSE, and that set is srv5 and srv6. Every other
-// procured Spark's sudo state was therefore ASSUMED by any run that reached it, which is how Group B
-// kept the pre-#13040 shared inspect drop-in with nobody's receipt saying so. Coverage is an identity
-// join against the procured roster (gunbc.spark.dgx_procurement dgx_spark_procurement_intent
-// reserved_identities), and a host is in one of three standings: probed by every run of this mode,
-// read once by hand under a cited reading, or unobserved -- named, never omitted.
-type SparkSudoersHandReading {
-  host: HostIdentity
-  hostname: NonEmptyStr
-  read_at: NonEmptyStr
-  reader: NonEmptyStr
-  dropin_names: List<String>
-  managed_account_present: Bool
-}
-
-// Group B, read 2026-10-04 22:53Z by valiant-crab-775 as the administrator account, unprivileged and
-// read-only: `stat` of /etc/sudoers.d (755 root:root on all four), `ls -1 /etc/sudoers.d`, and the
-// gunbc-automation passwd entry (uid 1001 on all four). `sudo -n -l` AS gunbc-automation was NOT run
-// -- becoming another user there is a privileged act nobody authorized -- so the grant LISTING stays
-// unobserved; only the drop-in names are read. The srvN-to-hostname join is
-// gunbc.spark.dgx_procurement's (srv9 spark-0c75, srv10 spark-3336, srv11 spark-b66c, srv12
-// spark-2196, ascending address order).
-data spark_group_b_sudoers_read_at: NonEmptyStr = "2026-10-04T22:53Z" as NonEmptyStr
-data spark_group_b_sudoers_reader: NonEmptyStr = "valiant-crab-775 as the administrator account, unprivileged" as NonEmptyStr
-
-data spark_group_b_sudoers_readings: List<SparkSudoersHandReading> = [
-  SparkSudoersHandReading { host: operator_host_srv9, hostname: "spark-0c75" as NonEmptyStr, read_at: spark_group_b_sudoers_read_at, reader: spark_group_b_sudoers_reader,
-    dropin_names: ["gunbc-docker-inspect", "gunbc-enable-linger", "gunbc-ethtool-module-info", "gunbc-reboot", "README"], managed_account_present: true },
-  SparkSudoersHandReading { host: operator_host_srv10, hostname: "spark-3336" as NonEmptyStr, read_at: spark_group_b_sudoers_read_at, reader: spark_group_b_sudoers_reader,
-    dropin_names: ["gunbc-docker-inspect", "gunbc-enable-linger", "gunbc-reboot", "README"], managed_account_present: true },
-  SparkSudoersHandReading { host: operator_host_srv11, hostname: "spark-b66c" as NonEmptyStr, read_at: spark_group_b_sudoers_read_at, reader: spark_group_b_sudoers_reader,
-    dropin_names: ["gunbc-docker-inspect", "gunbc-enable-linger", "gunbc-ethtool-module-info", "gunbc-reboot", "README"], managed_account_present: true },
-  SparkSudoersHandReading { host: operator_host_srv12, hostname: "spark-2196" as NonEmptyStr, read_at: spark_group_b_sudoers_read_at, reader: spark_group_b_sudoers_reader,
-    dropin_names: ["gunbc-docker-inspect", "gunbc-enable-linger", "gunbc-reboot", "README"], managed_account_present: true },
-]
-
+// THE PROBE READS spark_standing_hosts AND NOTHING ELSE. Until 2026-10-05 that set was srv5 and srv6,
+// so every other procured Spark's sudo state was ASSUMED by any run that reached it -- which is how
+// Group B kept the pre-#13040 shared inspect drop-in with no receipt saying so. Group B (srv9..srv12)
+// is now probed by every run (operator approval 2026-10-05, relayed by valiant-crab-775: the grant
+// listing is read by convergence, not by a one-off hand read). Coverage is an identity join against
+// the procured roster (gunbc.spark.dgx_procurement dgx_spark_procurement_intent reserved_identities):
+// a procured Spark is probed each run or named UNOBSERVED, never omitted. A probed host whose managed
+// account cannot be reached is not skipped: its row reports the failure, its grant standings read
+// GrantStandingUnobserved with the ssh cause, and the managed-access standing types it.
 type SparkGrantCoverage
   = GrantCoverageProbedEachRun { host: HostIdentity }
-  | GrantCoverageHandRead { reading: SparkSudoersHandReading }
   | GrantCoverageUnobserved { host: HostIdentity }
 
 fn spark_grant_coverage_of(host: HostIdentity) -> SparkGrantCoverage {
-  if any(spark_standing_hosts, h => h == host as String) {
+  if any(spark_standing_hosts, h => h == (host as String)) {
     GrantCoverageProbedEachRun { host: host }
   } else {
-    match first(filter(spark_group_b_sudoers_readings, r => (r.host as String) == (host as String))) {
-      Present { value: r } => GrantCoverageHandRead { reading: r }
-      Absent => GrantCoverageUnobserved { host: host }
-    }
+    GrantCoverageUnobserved { host: host }
   }
 }
 
@@ -572,14 +541,7 @@ fn spark_grant_coverage() -> List<SparkGrantCoverage> {
 fn spark_grant_coverage_wire(c: SparkGrantCoverage) -> String {
   match c {
     GrantCoverageProbedEachRun { host: h } => join(["grant-coverage host=", h as String, " probed-each-run\n"], "")
-    GrantCoverageHandRead { reading: r } =>
-      join([
-        "grant-coverage host=", r.host as String, " (", r.hostname as String, ") HAND-READ at=", r.read_at as String,
-        " by=", r.reader as String, " managed_account=", if r.managed_account_present { "present" } else { "absent" },
-        " grant_listing=UNOBSERVED (sudo -n -l as the managed account not run)\n  ",
-        spark_inspect_dropin_shape_wire(host: r.host as String, shape: spark_inspect_dropin_shape_of_names(names: r.dropin_names)),
-      ], "")
-    GrantCoverageUnobserved { host: h } => join(["grant-coverage host=", h as String, " UNOBSERVED (not probed by this mode, no cited reading)\n"], "")
+    GrantCoverageUnobserved { host: h } => join(["grant-coverage host=", h as String, " UNOBSERVED (not probed by this mode)\n"], "")
   }
 }
 
@@ -706,7 +668,7 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 
 // The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
-data spark_standing_hosts: List<String> = ["srv5", "srv6"]
+data spark_standing_hosts: List<String> = ["srv5", "srv6", "srv9", "srv10", "srv11", "srv12"]
 
 fn spark_managed_access_standing_wet() -> ProcessExit
 {

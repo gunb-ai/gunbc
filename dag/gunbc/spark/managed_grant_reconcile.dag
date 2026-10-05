@@ -395,8 +395,8 @@ fn spark_sudoers_dropin_listing_argv() -> List<String> {
 //   SharedInspectDropinShape    -- the retired shared file is present. If no per-container file sits
 //                                  beside it, it is the host's ONLY inspect grant: one container is
 //                                  granted, the others are not, and which one is whichever install ran
-//                                  last. Group B read in exactly this shape on 2026-10-04 (see
-//                                  gunbc.fleet_multi_principal_probe spark_group_b_sudoers_readings).
+//                                  last. Group B (srv9..srv12) read in exactly this shape
+//                                  on 2026-10-04 22:53Z, before it joined the probe roster.
 //   PerContainerInspectDropinShape -- no shared file; the per-container files are the grants.
 // The per-container names found are carried either way, so "shared file beside new files" (residue)
 // and "shared file alone" (the old shape) stay distinguishable.
