@@ -872,16 +872,25 @@ fn parse_table_record_miss(table: ParseTable) -> ParseTable {
 fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
   match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
     true =>
-      parse_table_note_retained(
-        table: parse_table_carry_analysis(
-          table: table,
-          entries: map_insert(m: table.entries, key: key, value: value),
-          hits: table.memo_hits,
-          misses: table.memo_misses,
-          lookups: table.memo_lookup_calls
-        ),
-        value: value
-      )
+      ParseTableRealization {
+        artifact_kind: table.artifact_kind,
+        provider_id: table.provider_id,
+        materialization: table.materialization,
+        grammar_digest: table.grammar_digest,
+        token_stream_digest: table.token_stream_digest,
+        entries: map_insert(m: table.entries, key: key, value: value),
+        memo_hits: table.memo_hits,
+        memo_misses: table.memo_misses,
+        memo_lookup_calls: table.memo_lookup_calls,
+        furthest: table.furthest,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        productions_by_name: table.productions_by_name,
+        prepared_exprs: table.prepared_exprs,
+        layout: table.layout,
+        refusal: table.refusal,
+        minted_through: parse_memo_entry_retains_through(value: value, through: table.minted_through)
+      }
     false => table
   }
 }
@@ -1118,50 +1127,25 @@ fn parse_prov_merge(
 // (span_index_adopt), so the served node's locus is the other node's: the authored atom of a match's
 // second arm, memoized by the arm-body guard !(pattern =>), lost its extent this way (gunbc#13056).
 // The table is the state every result threads, accepted or rejected, so it records the allocator
-// each STORED memo entry consumed through, and a parse resumes past it.
-fn parse_table_note_minted(table: ParseTable, alloc: OccurrenceIdAllocator) -> ParseTable {
-  ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    provider_id: table.provider_id,
-    materialization: table.materialization,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
-    entries: table.entries,
-    memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses,
-    memo_lookup_calls: table.memo_lookup_calls,
-    furthest: table.furthest,
-    nullable_set: table.nullable_set,
-    first_rows: table.first_rows,
-    productions_by_name: table.productions_by_name,
-    prepared_exprs: table.prepared_exprs,
-    layout: table.layout,
-    refusal: table.refusal,
-    minted_through: occurrence_id_allocator_advance_to(
-      alloc: table.minted_through,
-      min_next: authored_token_ordinal_space_from_allocator(alloc: alloc)
-    )
-  }
-}
-
+// each STORED memo entry consumed through, and a parse resumes past it AT THE SITES THAT RESUME AFTER A
+// REJECTION -- the next ordered alternative, an absorbed optional, a stopped repetition, a not-predicate
+// whose element failed -- and nowhere on the accepted path, which never rewinds.
 // Only a STORED accepted entry retains nodes past a rejection, so only it raises the high-water: a
 // parse whose memo stores nothing, or none of whose attempts is rejected, mints exactly as before.
-fn parse_table_note_retained(table: ParseTable, value: ParseMemoEntry) -> ParseTable {
+// The stored subparse ran forward from every earlier entry, so its allocator is the new mark.
+fn parse_memo_entry_retains_through(value: ParseMemoEntry, through: OccurrenceIdAllocator) -> OccurrenceIdAllocator {
   match value {
     ParseMemoAccepted { remaining: _, captured: _, diagnostics: _, prov: prov, furthest: _, refusal: _ } =>
-      parse_table_note_minted(table: table, alloc: prov.alloc)
-    ParseMemoRejected { diagnostics: _, furthest: _, refusal: _ } => table
+      if prov.alloc.next_id > through.next_id { prov.alloc } else { through }
+    ParseMemoRejected { diagnostics: _, furthest: _, refusal: _ } => through
   }
 }
 
 fn parse_prov_past_memo(prov: ParseProvenanceState, table: ParseTable) -> ParseProvenanceState {
-  ParseProvenanceState {
-    alloc: occurrence_id_allocator_advance_to(
-      alloc: prov.alloc,
-      min_next: authored_token_ordinal_space_from_allocator(alloc: table.minted_through)
-    ),
-    index: prov.index,
-    frame: prov.frame
+  if table.minted_through.next_id > prov.alloc.next_id {
+    ParseProvenanceState { alloc: table.minted_through, index: prov.index, frame: prov.frame }
+  } else {
+    prov
   }
 }
 
@@ -4464,7 +4448,7 @@ fn parse_choice_ordered_backtrack(
                 all_tokens: all_tokens,
                 root: root,
                 table: table1,
-                prov: prov
+                prov: parse_prov_past_memo(prov: prov, table: table1)
               )
           }
       }
@@ -4664,7 +4648,7 @@ fn parse_expr_optional(
         remaining: tokens,
         captured: grammar_empty_node(),
         diagnostics: [],
-        prov: prov,
+        prov: parse_prov_past_memo(prov: prov, table: table1),
         table: table1
       }
   }
@@ -4700,7 +4684,7 @@ fn parse_expr_repeat_step(
           acc_nodes: acc.acc_nodes,
           acc_diags: acc.acc_diags,
           done: true,
-          prov: acc.prov,
+          prov: parse_prov_past_memo(prov: acc.prov, table: table1),
           table: table1
         }
       ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
@@ -4750,7 +4734,7 @@ fn parse_expr_repeat(
     table: table
   }
   let result = parse_expr_repeat_step(element: element, all_tokens: all_tokens, root: root, acc: init)
-  let stamped = parse_stamp_derived_repeat(acc_nodes: list_reverse(xs: result.acc_nodes), prov: parse_prov_past_memo(prov: result.prov, table: result.table))
+  let stamped = parse_stamp_derived_repeat(acc_nodes: list_reverse(xs: result.acc_nodes), prov: result.prov)
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
@@ -4861,7 +4845,7 @@ fn parse_expr_not_predicate_attempt(
         remaining: tokens,
         captured: grammar_empty_node(),
         diagnostics: [],
-        prov: prov,
+        prov: parse_prov_past_memo(prov: prov, table: table1),
         table: parse_table_with_furthest(table: table1, furthest: table.furthest)
       }
   }
@@ -4947,9 +4931,9 @@ fn parse_expr_with_first(
   match table.refusal {
     Present { value: _ } => ParseExprRejected { diagnostics: [], table: table }
     Absent =>
-      match parse_expr_dispatch(expr: expr, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_past_memo(prov: prov, table: table)) {
+      match parse_expr_dispatch(expr: expr, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
         ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
-          ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: parse_prov_past_memo(prov: prov1, table: table1), table: table1 }
+          ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
         ParseExprRejected { diagnostics: diags, table: table1 } =>
           ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table1, furthest: parse_furthest_at(tokens: tokens)) }
       }
