@@ -3,6 +3,7 @@ module test.claim.claude_code_dispatch_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.claim_evidence { RecordedFactId }
+import std.measure { basis_point_count }
 import v2.std.optional { Present, Absent }
 import gunbc.roadmap_model { RoadmapNodeId }
 import extdeps.llm.claude_code_stream_json {
@@ -159,8 +160,8 @@ test fn the_captured_rate_limit_line_decodes_both_windows_in_basis_points() -> B
     ClaudeCodeRateLimitEventLine { info } =>
       info.status as String == "allowed"
         && list_length(items: info.windows) == 2
-        && any(info.windows, w => w.name as String == "five_hour" && w.utilization_basis_points == 100)
-        && any(info.windows, w => w.name as String == "seven_day" && w.utilization_basis_points == 4500)
+        && any(info.windows, w => w.name as String == "five_hour" && basis_point_count(bp: w.utilization) == 100)
+        && any(info.windows, w => w.name as String == "seven_day" && basis_point_count(bp: w.utilization) == 4500)
     ClaudeCodeResultLine { result: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
     ClaudeCodeLineUnreadable { gap: _ } => false
