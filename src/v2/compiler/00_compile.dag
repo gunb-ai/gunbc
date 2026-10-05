@@ -169,7 +169,8 @@ import v2.compiler.resolve {
   ResolveWalkRefused,
   resolve,
   resolved_tree_of,
-  ResolvedTree
+  ResolvedTree,
+  ClosureProviderRefusal
 }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome, CacheProbe, Miss }
@@ -4527,9 +4528,26 @@ fn native_census_infer_cascade(
   resolved: ResolvedTree,
   chain: NonEmptyDiagnostics
 ) -> NativeCensusCascade {
+  native_census_infer_cascade_of(
+    module_paths: module_paths,
+    providers: resolved.unavailable_providers,
+    chain: chain,
+    attribution: fn(provider) { native_import_target_attribution(context: context, module: provider) }
+  )
+}
+
+// THE ATTRIBUTION DECISION ITSELF, over the values it reads: the census roster's paths, the tree's refused
+// providers, the module's chain, and the import attribution of a provider. The wrapper above binds the
+// last to the context's own authority; a claim supplies all four at this interface (DESIGN section 3).
+fn native_census_infer_cascade_of(
+  module_paths: Map<String, Symbol>,
+  providers: List<ClosureProviderRefusal>,
+  chain: NonEmptyDiagnostics,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
+) -> NativeCensusCascade {
   if diagnostics_fatal_reason(d: chain) == ^infer_reason_projection_receiver_declaration_unavailable {
     let reversed = list_reverse(xs: native_census_chain_reasons(chain: chain))
-    let leading = filter(xs: resolved.unavailable_providers, predicate: fn(p) {
+    let leading = filter(xs: providers, predicate: fn(p) {
       list_starts_with(
         xs: reversed,
         prefix: Cons { head: ^infer_reason_projection_receiver_declaration_unavailable, tail: list_reverse(xs: native_census_chain_reasons(chain: p.refusal)) },
@@ -4545,7 +4563,7 @@ fn native_census_infer_cascade(
           match map_lookup(module_paths, qualified_name_to_dotted_string(qn: provider.module)) {
             Absent => NativeCensusCascadeUnattributed { reason: ^native_census_infer_cascade_provider_not_censused }
             Present { value: provider_path } =>
-              match native_import_target_attribution(context: context, module: provider.module) {
+              match attribution(provider.module) {
                 NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: t.fatal_reason }
                 NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
                 NativeImportTargetsAdmitted => NativeCensusCascadeMemberOf { root: provider_path, root_reason: diagnostics_fatal_reason(d: provider.refusal) }

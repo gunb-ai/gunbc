@@ -581,6 +581,12 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // change re-lands, its claims are re-probed, not un-retired by hand.
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
+// One more was added from gunbc#13308's own floor run 37270043819 (head dc9a7079), which measured it
+// COMPLETED-OVER-COST-REQUIREMENT as a single-claim demander: v2.test.claim.native_census.infer_cascade
+// census_infer_provider_cascade_is_one_root_with_fan_out_one_holds, the one real-route inhabitance
+// claim; assemble + resolve + infer of the cascade fixture. Its module's other controls supply values
+// at the folds they judge (DESIGN section 3 witness rule) and are not members. Trigger: assemble + infer
+// of a one-module fixture under the per-claim budget.
 // Re-derive with that probe; do not extend by hand.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
@@ -644,6 +650,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_map_undeclared_field_refuses_at_the_field", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_piped_map_head_binds_its_row", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.native_census.infer_cascade",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "census_infer_provider_cascade_is_one_root_with_fan_out_one_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
