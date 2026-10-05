@@ -8,25 +8,29 @@ import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctets
 import extdeps.clock { Clock }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.tools.curl { curl_http_signature_get, curl_http_signature_post_json, CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code }
+import extdeps.tools.curl {
+  curl_http_signature_get, curl_http_signature_post_json, curl_dumped_header_value,
+  CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code,
+}
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
 import extdeps.cloud.oracle_oci_request_signing {
-  OciApiKeyId, OciRequest, OciHttpMethod, OciGet, OciPost, OciRequestBody, OciNoBody, OciJsonBody,
+  OciApiKeyId, OciRequest, OciRequestShape, OciGetRequest, OciPostJson,
   OciSigningReady, OciSigningRefused, oci_signing_plan, oci_http_date, oci_authorization_header,
 }
 import gunbc.jws_signer_realize { jws_rs256_sign }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 
-// THE OPERATOR'S OCI TENANCY: CREDENTIAL, IDENTITY AND THE COMPARTMENT THE FREE INSTANCES LIVE IN.
+// THE OPERATOR'S OCI TENANCY AS AN API: credential, identity, one signed exchange, and the two reads
+// every converge over it is built from, a complete list and an admitted row.
 //
 // The key is a host file, never a value in the evaluator. gunbc.host_credential_custody_converge
 // delivers the Secret Manager secret below to that path on srv1, root-owned and owner-read, and the
 // openssl handler in gunbc.jws_signer_realize signs from the file. Until custody has delivered it,
 // openssl cannot open the path and every exchange refuses at the signer. Nothing falls back.
 //
-// The OCIDs and the fingerprint are identifiers, given by the operator on 2026-10-05. They are
-// public in the sense that matters here: possessing them grants nothing without the private key.
+// The OCIDs and the fingerprint are identifiers, given by the operator on 2026-10-05. Possessing them
+// grants nothing without the private key.
 
 data oci_api_signing_key_secret_ref: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
@@ -47,14 +51,21 @@ data oci_api_key_id: OciApiKeyId = OciApiKeyId {
   fingerprint: "00:46:05:c5:42:80:08:ec:48:3a:e1:7c:34:bc:e1:03",
 }
 
-// Identity calls must go to the home region (us-ashburn-1, product.supplier.oracle_oci). The host
-// template is Oracle's own, from its SDK's identity client: identity.{region}.oci.{secondLevelDomain}.
+// Hosts in the home region (us-ashburn-1, product.supplier.oracle_oci), from the endpoint templates
+// in Oracle's SDK clients: identity.{region}.oci.{secondLevelDomain} and iaas.{region}.{secondLevelDomain}.
+// Identity calls must go to the home region.
 data oci_identity_host: NonEmptyStr = "identity.us-ashburn-1.oci.oraclecloud.com"
 
+data oci_iaas_host: NonEmptyStr = "iaas.us-ashburn-1.oraclecloud.com"
+
 // ── ONE SIGNED EXCHANGE ───────────────────────────────────────────────────────────────────────
+//
+// The request shape decides both what is signed and what is sent: OciGetRequest goes out through
+// the signed GET, and OciPostJson through the signed POST with that exact text on stdin. There is no
+// separate method to disagree with it. next_page is the opc-next-page response header, or empty.
 
 type OciExchange
-  = OciAnswered { status: Int, body: String }
+  = OciAnswered { status: Int, body: String, next_page: String }
   | OciExchangeRefused { cause: NonEmptyStr }
 
 fn oci_refused(cause: String) -> OciExchange {
@@ -68,17 +79,21 @@ fn oci_signature_base64(signature: List<Int>) -> String {
   }
 }
 
-fn oci_send(method: OciHttpMethod, url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String, body: OciRequestBody) -> OciExchange uses net: Network {
-  let run = match body {
-    OciNoBody => curl_http_signature_get(url: url, date: date, authorization: authorization)
-    OciJsonBody { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, body: text)
+fn oci_send(shape: OciRequestShape, url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String) -> OciExchange uses net: Network {
+  let run = match shape {
+    OciGetRequest => curl_http_signature_get(url: url, date: date, authorization: authorization)
+    OciPostJson { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, body: text)
   }
   if run.exit_code != 0 {
     oci_refused(cause: join(["curl exit ", to_string(run.exit_code), ": ", trim(s: run.stderr)], ""))
   } else {
     match classify_curl_http_code_after_newline(stdout: run.stdout) {
       CurlWroteNoHttpStatus { cause } => oci_refused(cause: cause as String)
-      CurlWroteHttpStatus { status } => OciAnswered { status: status as Int, body: curl_body_before_http_code(stdout: run.stdout) }
+      CurlWroteHttpStatus { status } => OciAnswered {
+        status: status as Int,
+        body: curl_body_before_http_code(stdout: run.stdout),
+        next_page: curl_dumped_header_value(dump: run.stderr, name: "opc-next-page"),
+      }
     }
   }
 }
@@ -86,24 +101,23 @@ fn oci_send(method: OciHttpMethod, url: NonEmptyStr, date: NonEmptyStr, authoriz
 // Read the clock, build the signing plan, sign it with the custodied key, send it. Every step that
 // cannot complete refuses with its own cause. The date is read immediately before signing, because
 // Oracle rejects a date more than 5 minutes from its own clock.
-fn oci_signed_exchange(method: OciHttpMethod, host: NonEmptyStr, path_and_query: NonEmptyStr, body: OciRequestBody) -> OciExchange uses net: Network {
+fn oci_signed_exchange(shape: OciRequestShape, host: NonEmptyStr, path_and_query: NonEmptyStr) -> OciExchange uses net: Network {
   match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
     Absent => oci_refused(cause: "the host clock did not print epoch seconds")
     Present { value: now } => {
       let date = oci_http_date(epoch_seconds: now)
-      match oci_signing_plan(req: OciRequest { method: method, host: host, path_and_query: path_and_query, date: date, body: body }) {
+      match oci_signing_plan(req: OciRequest { shape: shape, host: host, path_and_query: path_and_query, date: date }) {
         OciSigningRefused { cause } => OciExchangeRefused { cause: cause }
         OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
           match jws_rs256_sign(signing_input: signing_string as NonEmptyStr, key: oci_api_signing_key) {
             JwsSignRefused { detail } => oci_refused(cause: concat("THE REQUEST WAS NOT SIGNED, NOTHING SENT: ", detail))
             JwsSigned { signature } =>
               oci_send(
-                method: method,
+                shape: shape,
                 url: join(["https://", host as String, path_and_query as String], "") as NonEmptyStr,
                 date: date as NonEmptyStr,
                 authorization: oci_authorization_header(key: oci_api_key_id, headers_list: headers_list, signature_base64: oci_signature_base64(signature: map(signature, o => o as Int))) as NonEmptyStr,
                 content_sha256: content_sha256,
-                body: body,
               )
           }
       }
@@ -111,47 +125,20 @@ fn oci_signed_exchange(method: OciHttpMethod, host: NonEmptyStr, path_and_query:
   }
 }
 
-
-fn oci_string_member(obj: JsonValue, key: String) -> String {
-  match json_member_presence(obj: obj, key: key) {
-    JsonMemberValue { value } => match value {
-      JsonString { value: s } => s
-      JsonNull => ""
-      JsonBool { value: b } => ""
-      JsonNumber { lexeme } => ""
-      JsonArray { elements } => ""
-      JsonObject { members } => ""
-    }
-    JsonMemberMissing => ""
-    JsonMemberNull => ""
-    JsonMemberUnreadable { cause } => ""
-  }
-}
-
-
-// The compute and networking API host for the home region, from Oracle's SDK compute client
-// template iaas.{region}.{secondLevelDomain}.
-data oci_iaas_host: NonEmptyStr = "iaas.us-ashburn-1.oraclecloud.com"
-
-// ── ONE LIST READ ─────────────────────────────────────────────────────────────────────────────
+// ── A COMPLETE LIST ───────────────────────────────────────────────────────────────────────────
 //
-// Every OCI List call answers a bare JSON array (Oracle's SDK: list[...]) and pages through the
-// opc-next-page header, which the curl transport does not return. So each list is requested with
-// limit=oci_list_page_limit, and an answer that fills the page REFUSES. It cannot be told apart from
-// a truncated list, and a converge that decided "absent" from a truncated list would create a
-// duplicate. A 401 or 404 is the API refusing this identity, and Oracle's error body is kept
-// because it names the reason.
-data oci_list_page_limit: Int = 100
+// ABSENCE NEEDS A COMPLETE OBSERVATION (review on gunbc#13335). Every OCI List call answers a bare
+// JSON array and continues through the opc-next-page header. Oracle documents that a page may be
+// EMPTY while more results remain, so neither an empty answer nor a short one says the listing is
+// done. Only the absence of the continuation header does. A list answered with a continuation
+// REFUSES, because this module does not traverse pages, and a converge that read "absent" from a
+// first page would create a duplicate of something on the second. A 401 or 404 is the API refusing
+// this identity, and Oracle's error body is kept because it names the reason.
 
 type OciListRead
   = OciListed { items: List<JsonValue> }
   | OciListInaccessible { status: Int, body: String }
   | OciListRefused { cause: NonEmptyStr }
-
-// PURE: whether a list of this many items can be read as complete.
-fn oci_list_page_complete(count: Int) -> Bool {
-  count < oci_list_page_limit
-}
 
 fn oci_list_refused(operation: String, what: String) -> OciListRead {
   OciListRefused { cause: join([operation, " ", what], "") as NonEmptyStr }
@@ -160,21 +147,18 @@ fn oci_list_refused(operation: String, what: String) -> OciListRead {
 fn classify_oci_list(operation: String, exchange: OciExchange) -> OciListRead {
   match exchange {
     OciExchangeRefused { cause } => OciListRefused { cause: cause }
-    OciAnswered { status, body } =>
+    OciAnswered { status, body, next_page } =>
       if status == 401 || status == 404 {
         OciListInaccessible { status: status, body: body }
       } else if status != 200 {
         oci_list_refused(operation: operation, what: join(["answered ", to_string(status), ": ", body], ""))
+      } else if next_page != "" {
+        oci_list_refused(operation: operation, what: "answered with a continuation (opc-next-page); pages are not traversed, so this answer cannot be read as the complete list")
       } else {
         match parse_json_document(s: body) {
           JsonDocumentUnreadable { gap } => oci_list_refused(operation: operation, what: concat("body is not JSON: ", json_document_gap_text(gap: gap)))
           JsonDocumentParsed { value } => match value {
-            JsonArray { elements } =>
-              if !oci_list_page_complete(count: elements.length()) {
-                oci_list_refused(operation: operation, what: join(["filled a page of ", to_string(oci_list_page_limit), "; the next page is not followed, so the list cannot be read as complete"], ""))
-              } else {
-                OciListed { items: elements }
-              }
+            JsonArray { elements } => OciListed { items: elements }
             JsonObject { members } => oci_list_refused(operation: operation, what: "answered 200 with an object, not an array")
             JsonNull => oci_list_refused(operation: operation, what: "answered 200 with null, not an array")
             JsonBool { value: b } => oci_list_refused(operation: operation, what: "answered 200 with a boolean, not an array")
@@ -186,22 +170,87 @@ fn classify_oci_list(operation: String, exchange: OciExchange) -> OciListRead {
   }
 }
 
-fn oci_list(operation: String, host: NonEmptyStr, path_and_query: String) -> OciListRead uses net: Network {
-  classify_oci_list(operation: operation, exchange: oci_signed_exchange(method: OciGet, host: host, path_and_query: join([path_and_query, "&limit=", to_string(oci_list_page_limit)], "") as NonEmptyStr, body: OciNoBody))
+fn oci_list(operation: String, host: NonEmptyStr, path_and_query: NonEmptyStr) -> OciListRead uses net: Network {
+  classify_oci_list(operation: operation, exchange: oci_signed_exchange(shape: OciGetRequest, host: host, path_and_query: path_and_query))
 }
 
-// A created resource's id, read from a Create answer's body. The converges never trust a Create
-// answer as the outcome; they read back through the list. They do need the new id to address the
-// next resource in the same run.
-fn oci_created_id(exchange: OciExchange) -> String {
-  match exchange {
-    OciExchangeRefused { cause } => ""
-    OciAnswered { status, body } =>
-      if status != 200 { "" } else {
-        match parse_json_document(s: body) {
-          JsonDocumentUnreadable { gap } => ""
-          JsonDocumentParsed { value } => oci_string_member(obj: value, key: "id")
+// ── AN ADMITTED ROW ───────────────────────────────────────────────────────────────────────────
+//
+// AN OBSERVATION THAT CANNOT BE UNDERSTOOD IS NOT AN ABSENCE (review on gunbc#13335). A row whose
+// required field is missing, null, the wrong type or empty does not get read as a row with an empty
+// name, which a name filter would then drop and a converge would then read as "nothing here, create
+// it". It refuses the WHOLE list, naming the row and the field. Each consumer states the fields it
+// requires, and reads them only from an admitted row.
+
+type OciField
+  = OciFieldText { value: NonEmptyStr }
+  | OciFieldRefused { cause: String }
+
+fn oci_required_text(row: JsonValue, key: String) -> OciField {
+  match row {
+    JsonObject { members } =>
+      match json_member_presence(obj: row, key: key) {
+        JsonMemberValue { value } => match value {
+          JsonString { value: s } => if s == "" { OciFieldRefused { cause: concat(key, " is empty") } } else { OciFieldText { value: s as NonEmptyStr } }
+          JsonNull => OciFieldRefused { cause: concat(key, " is null") }
+          JsonBool { value: b } => OciFieldRefused { cause: concat(key, " is a boolean, not a string") }
+          JsonNumber { lexeme } => OciFieldRefused { cause: concat(key, " is a number, not a string") }
+          JsonArray { elements } => OciFieldRefused { cause: concat(key, " is an array, not a string") }
+          JsonObject { members: m } => OciFieldRefused { cause: concat(key, " is an object, not a string") }
         }
+        JsonMemberMissing => OciFieldRefused { cause: concat(key, " is missing") }
+        JsonMemberNull => OciFieldRefused { cause: concat(key, " is null") }
+        JsonMemberUnreadable { cause } => OciFieldRefused { cause: join([key, " is unreadable: ", cause], "") }
       }
+    JsonNull => OciFieldRefused { cause: "the row is null, not an object" }
+    JsonBool { value: b } => OciFieldRefused { cause: "the row is a boolean, not an object" }
+    JsonNumber { lexeme } => OciFieldRefused { cause: "the row is a number, not an object" }
+    JsonString { value: s } => OciFieldRefused { cause: "the row is a string, not an object" }
+    JsonArray { elements } => OciFieldRefused { cause: "the row is an array, not an object" }
   }
+}
+
+fn oci_field_cause(f: OciField) -> String {
+  match f {
+    OciFieldText { value } => ""
+    OciFieldRefused { cause } => cause
+  }
+}
+
+fn oci_field_text(f: OciField) -> String {
+  match f {
+    OciFieldText { value } => value as String
+    OciFieldRefused { cause } => ""
+  }
+}
+
+type OciRowsAdmission
+  = OciRowsAdmitted { rows: List<JsonValue> }
+  | OciRowRefused { cause: NonEmptyStr }
+
+fn oci_row_defect(row: JsonValue, keys: List<String>) -> String {
+  fold(keys, init: "", f: (acc, k) => if acc != "" { acc } else { oci_field_cause(f: oci_required_text(row: row, key: k)) })
+}
+
+fn oci_admit_rows_from(operation: String, rows: List<JsonValue>, keys: List<String>, index: Int, admitted: List<JsonValue>) -> OciRowsAdmission {
+  match rows.first() {
+    Absent => OciRowsAdmitted { rows: admitted }
+    Present { value: row } => {
+      let defect = oci_row_defect(row: row, keys: keys)
+      if defect != "" {
+        OciRowRefused { cause: join([operation, " row ", to_string(index), " is not admitted (", defect, "), so the list cannot be read"], "") as NonEmptyStr }
+      } else {
+        oci_admit_rows_from(operation: operation, rows: rows.skip(n: 1), keys: keys, index: index + 1, admitted: concat(admitted, [row]))
+      }
+    }
+  }
+}
+
+fn oci_admit_rows(operation: String, rows: List<JsonValue>, keys: List<String>) -> OciRowsAdmission {
+  oci_admit_rows_from(operation: operation, rows: rows, keys: keys, index: 0, admitted: [])
+}
+
+// A field of an ADMITTED row: only call it with a key the row was admitted on.
+fn oci_admitted_text(row: JsonValue, key: String) -> String {
+  oci_field_text(f: oci_required_text(row: row, key: key))
 }

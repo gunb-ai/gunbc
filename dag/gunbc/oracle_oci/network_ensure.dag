@@ -5,11 +5,12 @@ import std.resources { Network }
 import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString, json_object, json_kv, json_string, json_bool, json_array, serialize_json }
 import extdeps.languages.json.parse { json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
-import extdeps.cloud.oracle_oci_request_signing { OciPost, OciJsonBody }
+import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
 import gunbc.oracle_oci.api {
   OciExchange, OciAnswered, OciExchangeRefused,
   OciListRead, OciListed, OciListInaccessible, OciListRefused,
-  oci_list, oci_signed_exchange, oci_string_member, oci_iaas_host,
+  OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text, oci_required_text, oci_field_text, oci_field_cause,
+  oci_list, oci_signed_exchange, oci_iaas_host,
 }
 
 // THE NETWORK AN ALWAYS FREE INSTANCE NEEDS, INSIDE THE gunbc-always-free COMPARTMENT: one VCN, an
@@ -65,11 +66,14 @@ type OciNamedResource {
   raw: JsonValue
 }
 
+data oci_named_resource_required_fields: List<String> = ["id", "displayName", "lifecycleState"]
+
+// Only for a row ADMITTED on oci_named_resource_required_fields.
 fn oci_named_resource_of(v: JsonValue) -> OciNamedResource {
   OciNamedResource {
-    id: oci_string_member(obj: v, key: "id"),
-    display_name: oci_string_member(obj: v, key: "displayName"),
-    state: oci_network_state(raw: oci_string_member(obj: v, key: "lifecycleState")),
+    id: oci_admitted_text(row: v, key: "id"),
+    display_name: oci_admitted_text(row: v, key: "displayName"),
+    state: oci_network_state(raw: oci_admitted_text(row: v, key: "lifecycleState")),
     raw: v,
   }
 }
@@ -91,24 +95,29 @@ fn oci_named_decision(kind: String, display_name: String, read: OciListRead) -> 
   match read {
     OciListRefused { cause } => NamedStop { line: join(["oci ", kind, " ", display_name, " read refused, NOTHING CREATED: ", cause as String], "") }
     OciListInaccessible { status, body } => NamedStop { line: join(["oci ", kind, " ", display_name, " read refused by OCI (", to_string(status), "), NOTHING CREATED: ", body], "") }
-    OciListed { items } => {
-      let live = filter(map(items, i => oci_named_resource_of(v: i)), r => r.display_name == display_name && oci_network_state_live(s: r.state))
-      if live.length() == 0 {
-        NamedCreate
-      } else if live.length() > 1 {
-        NamedStop { line: join(["oci ", kind, " ", display_name, ": more than one live resource has this name; this converge does not choose between them"], "") }
-      } else {
-        match live.first() {
-          Absent => NamedStop { line: join(["oci ", kind, " ", display_name, ": a nonempty list had no first element"], "") }
-          Present { value: r } => match r.state {
-            NetworkAvailable => NamedReady { resource: r }
-            NetworkProvisioning => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is PROVISIONING; run again"], "") }
-            NetworkUpdating => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is UPDATING; run again"], "") }
-            NetworkTerminating => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is TERMINATING; wait, then run again"], "") }
-            NetworkTerminated => NamedStop { line: join(["oci ", kind, " ", display_name, ": a terminated resource passed the live filter"], "") }
-            NetworkStateUnknown { raw } => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " reports lifecycle state ", raw, ", which is not in Oracle's published set"], "") }
-          }
-        }
+    OciListed { items } => match oci_admit_rows(operation: join(["List ", kind], ""), rows: items, keys: oci_named_resource_required_fields) {
+      OciRowRefused { cause } => NamedStop { line: join(["oci ", kind, " ", display_name, " read refused, NOTHING CREATED: ", cause as String], "") }
+      OciRowsAdmitted { rows } => oci_named_decision_over(kind: kind, display_name: display_name, resources: map(rows, r => oci_named_resource_of(v: r)))
+    }
+  }
+}
+
+fn oci_named_decision_over(kind: String, display_name: String, resources: List<OciNamedResource>) -> OciNamedDecision {
+  let live = filter(resources, r => r.display_name == display_name && oci_network_state_live(s: r.state))
+  if live.length() == 0 {
+    NamedCreate
+  } else if live.length() > 1 {
+    NamedStop { line: join(["oci ", kind, " ", display_name, ": more than one live resource has this name; this converge does not choose between them"], "") }
+  } else {
+    match live.first() {
+      Absent => NamedStop { line: join(["oci ", kind, " ", display_name, ": a nonempty list had no first element"], "") }
+      Present { value: r } => match r.state {
+        NetworkAvailable => NamedReady { resource: r }
+        NetworkProvisioning => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is PROVISIONING; run again"], "") }
+        NetworkUpdating => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is UPDATING; run again"], "") }
+        NetworkTerminating => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " is TERMINATING; wait, then run again"], "") }
+        NetworkTerminated => NamedStop { line: join(["oci ", kind, " ", display_name, ": a terminated resource passed the live filter"], "") }
+        NetworkStateUnknown { raw } => NamedStop { line: join(["oci ", kind, " ", display_name, " ", r.id, " reports lifecycle state ", raw, ", which is not in Oracle's published set"], "") }
       }
     }
   }
@@ -124,7 +133,7 @@ fn oci_ensure_named(
   create_body: String,
   wired: fn(OciNamedResource) -> String,
 ) -> OciStep uses net: Network {
-  match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path)) {
+  match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path as NonEmptyStr)) {
     NamedStop { line } => OciStepStopped { line: line }
     NamedReady { resource } => {
       let disagreement = wired(resource)
@@ -135,13 +144,13 @@ fn oci_ensure_named(
       }
     }
     NamedCreate =>
-      match oci_signed_exchange(method: OciPost, host: oci_iaas_host, path_and_query: create_path, body: OciJsonBody { text: create_body }) {
+      match oci_signed_exchange(shape: OciPostJson { text: create_body }, host: oci_iaas_host, path_and_query: create_path) {
         OciExchangeRefused { cause } => OciStepStopped { line: join(["oci ", kind, " ", display_name, " create refused before an answer: ", cause as String], "") }
-        OciAnswered { status, body } =>
+        OciAnswered { status, body, next_page } =>
           if status != 200 {
             OciStepStopped { line: join(["oci ", kind, " ", display_name, " create answered ", to_string(status), ": ", body], "") }
           } else {
-            match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path)) {
+            match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path as NonEmptyStr)) {
               NamedReady { resource } => OciStepReady { id: resource.id as NonEmptyStr, line: join(["oci ", kind, " ", display_name, " ", resource.id, " created and AVAILABLE on read-back"], "") }
               NamedCreate => OciStepStopped { line: join(["oci ", kind, " ", display_name, " create answered 200 and the read-back does not list it yet; run again"], "") }
               NamedStop { line } => OciStepStopped { line: concat("(read-back after create) ", line) }
@@ -228,7 +237,7 @@ fn oci_route_table_wiring(r: OciNamedResource, igw: NonEmptyStr) -> String {
 
 fn oci_route_rules_reach(rules: JsonValue, igw: NonEmptyStr) -> Bool {
   match rules {
-    JsonArray { elements } => any(elements, e => oci_string_member(obj: e, key: "destination") == "0.0.0.0/0" && oci_string_member(obj: e, key: "networkEntityId") == (igw as String))
+    JsonArray { elements } => any(elements, e => oci_field_text(f: oci_required_text(row: e, key: "destination")) == "0.0.0.0/0" && oci_field_text(f: oci_required_text(row: e, key: "networkEntityId")) == (igw as String))
     JsonObject { members } => false
     JsonNull => false
     JsonBool { value: b } => false
@@ -238,8 +247,15 @@ fn oci_route_rules_reach(rules: JsonValue, igw: NonEmptyStr) -> Bool {
 }
 
 fn oci_subnet_wiring(r: OciNamedResource, route_table: NonEmptyStr) -> String {
-  let got = oci_string_member(obj: r.raw, key: "routeTableId")
-  if got == (route_table as String) { "" } else { join(["subnet uses route table ", got, ", not ", route_table as String], "") }
+  let field = oci_required_text(row: r.raw, key: "routeTableId")
+  let defect = oci_field_cause(f: field)
+  if defect != "" {
+    concat("subnet answer's ", defect)
+  } else if oci_field_text(f: field) == (route_table as String) {
+    ""
+  } else {
+    join(["subnet uses route table ", oci_field_text(f: field), ", not ", route_table as String], "")
+  }
 }
 
 // THE NETWORK CHAIN. Each resource needs the one before it, so a stop at any layer ends the run there

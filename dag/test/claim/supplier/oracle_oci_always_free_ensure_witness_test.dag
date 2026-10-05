@@ -3,7 +3,7 @@ module test.claim.supplier.oracle_oci_always_free_ensure_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
-import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list, oci_list_page_limit, oci_list_page_complete }
+import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list }
 import gunbc.oracle_oci.network_ensure {
   OciNamedDecision, NamedReady, NamedCreate, NamedStop,
   oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
@@ -59,17 +59,26 @@ test fn the_operators_plan_fits_the_always_free_allowance() -> Bool {
 
 // ── LISTS ─────────────────────────────────────────────────────────────────────────────────────
 
-// A list that fills its page cannot be told apart from a truncated one, so it refuses rather than
-// letting a converge read "absent" from it and create a duplicate. The rule is checked over counts;
-// the route from a parsed answer to the rule is the classify_oci_list call the short list below takes.
-test fn a_full_page_refuses_rather_than_reading_as_complete() -> Bool {
-  !oci_list_page_complete(count: oci_list_page_limit)
-    && oci_list_page_complete(count: oci_list_page_limit - 1)
-    && match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: "[{\"id\":\"x\"}]" }) {
-      OciListed { items } => items.length() == 1
-      OciListRefused { cause } => false
-      OciListInaccessible { status, body } => false
-    }
+// Absence needs a complete list: an answer carrying opc-next-page refuses, even when its page is empty.
+test fn a_continued_list_refuses_and_a_finished_one_lists() -> Bool {
+  let continued = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: "[]", next_page: "t" }) {
+    OciListRefused { cause } => true
+    OciListed { items } => false
+    OciListInaccessible { status, body } => false
+  }
+  let finished = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: "[{\"id\":\"x\"}]", next_page: "" }) {
+    OciListed { items } => items.length() == 1
+    OciListRefused { cause } => false
+    OciListInaccessible { status, body } => false
+  }
+  continued && finished
+}
+
+// A network row missing a required field refuses the read. It does not read as "none live", which
+// would create a duplicate.
+test fn a_malformed_network_row_stops_rather_than_creating() -> Bool {
+  named(display: "gunbc-always-free", text: "[{\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"}]") == "stop"
+    && named(display: "gunbc-always-free", text: "[{}]") == "stop"
 }
 
 // ── NETWORK ───────────────────────────────────────────────────────────────────────────────────

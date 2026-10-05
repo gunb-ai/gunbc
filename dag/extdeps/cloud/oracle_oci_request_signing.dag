@@ -39,12 +39,20 @@ fn oci_key_id_wire(key: OciApiKeyId) -> String {
   join([key.tenancy as String, "/", key.user as String, "/", key.fingerprint as String], "")
 }
 
+// THE METHOD AND THE BODY ARE ONE FACT. A request is a GET with no body or a POST with a JSON body.
+// Those are the two operations this repository sends, and the signer and the transport both derive
+// from this one value, so a request cannot be signed as one method and sent as another (review on
+// gunbc#13335). A DELETE, a PUT, a bodied GET or a bodiless POST have no constructor here, rather than
+// being admitted and then sent as something else. Each is added as its own arm when a consumer needs
+// it, with the transport operation that sends it.
+//
 // A body is signed by its exact bytes. This module only admits an ASCII body, so its length in bytes
 // is its length in characters and its octets are its code points. A body with any non-ASCII
-// character refuses rather than being hashed under a byte encoding this module does not carry.
-type OciRequestBody
-  = OciNoBody
-  | OciJsonBody { text: String }
+// character refuses rather than being hashed under a byte encoding this module does not carry. An
+// empty POST body is still a body: Oracle requires its digest and content-length, and it gets them.
+type OciRequestShape
+  = OciGetRequest
+  | OciPostJson { text: String }
 
 type OciBodyOctets
   = OciBodyOctetsReady { octets: List<Int> }
@@ -139,16 +147,10 @@ fn oci_http_date(epoch_seconds: Int) -> String {
 
 // ── THE SIGNING STRING ────────────────────────────────────────────────────────────────────────
 
-type OciHttpMethod
-  = OciGet
-  | OciPost
-  | OciDelete
-
-fn oci_method_lower(method: OciHttpMethod) -> String {
-  match method {
-    OciGet => "get"
-    OciPost => "post"
-    OciDelete => "delete"
+fn oci_method_lower(shape: OciRequestShape) -> String {
+  match shape {
+    OciGetRequest => "get"
+    OciPostJson { text } => "post"
   }
 }
 
@@ -156,11 +158,10 @@ fn oci_method_lower(method: OciHttpMethod) -> String {
 // it will appear on the wire. The page requires the signed target and the sent target to be the same
 // bytes.
 type OciRequest {
-  method: OciHttpMethod
+  shape: OciRequestShape
   host: NonEmptyStr
   path_and_query: NonEmptyStr
   date: String
-  body: OciRequestBody
 }
 
 // What a signer must sign, and the headers that must accompany the request. headers_list is the
@@ -176,7 +177,7 @@ type OciSigningPlan
   | OciSigningRefused { cause: NonEmptyStr }
 
 fn oci_request_target_line(req: OciRequest) -> String {
-  join(["(request-target): ", oci_method_lower(method: req.method), " ", req.path_and_query as String], "")
+  join(["(request-target): ", oci_method_lower(shape: req.shape), " ", req.path_and_query as String], "")
 }
 
 fn oci_bodiless_signing_string(req: OciRequest) -> String {
@@ -188,14 +189,14 @@ fn oci_bodiless_signing_string(req: OciRequest) -> String {
 }
 
 fn oci_signing_plan(req: OciRequest) -> OciSigningPlan {
-  match req.body {
-    OciNoBody => OciSigningReady {
+  match req.shape {
+    OciGetRequest => OciSigningReady {
       signing_string: oci_bodiless_signing_string(req: req),
       headers_list: "date (request-target) host",
       content_sha256: "",
       content_length: 0,
     }
-    OciJsonBody { text } =>
+    OciPostJson { text } =>
       match oci_ascii_octets(text: text) {
         OciBodyNotAscii { index } => OciSigningRefused {
           cause: join(["OCI request body has a non-ASCII character at index ", to_string(index), "; only an ASCII body is signed, so its byte length is its character length"], "") as NonEmptyStr,

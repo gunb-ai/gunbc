@@ -5,7 +5,7 @@ import std.resources { Network }
 import std.measure { gigabyte, gigabyte_count }
 import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
-import extdeps.cloud.oracle_oci_request_signing { OciPost, OciJsonBody }
+import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
 import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, OnDemandCapacity, oci_shape_wire_name }
 import extdeps.ssh { ssh_public_key_line }
 import product.supplier.oracle_oci {
@@ -18,7 +18,8 @@ import gunbc.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_k
 import gunbc.oracle_oci.api {
   OciExchange, OciAnswered, OciExchangeRefused,
   OciListRead, OciListed, OciListInaccessible, OciListRefused,
-  oci_list, oci_signed_exchange, oci_string_member, oci_iaas_host, oci_identity_host, oci_tenancy_ocid,
+  OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text,
+  oci_list, oci_signed_exchange, oci_iaas_host, oci_identity_host, oci_tenancy_ocid,
 }
 
 // THE OPERATOR'S ALWAYS FREE INSTANCES, LAUNCHED INTO THE gunbc-always-free COMPARTMENT AND SUBNET.
@@ -142,12 +143,15 @@ type OciObservedInstance {
   shape: String
 }
 
+data oci_instance_required_fields: List<String> = ["id", "displayName", "lifecycleState", "shape"]
+
+// Only for a row ADMITTED on oci_instance_required_fields.
 fn oci_observed_instance_of(v: JsonValue) -> OciObservedInstance {
   OciObservedInstance {
-    id: oci_string_member(obj: v, key: "id"),
-    display_name: oci_string_member(obj: v, key: "displayName"),
-    state: oci_instance_state(raw: oci_string_member(obj: v, key: "lifecycleState")),
-    shape: oci_string_member(obj: v, key: "shape"),
+    id: oci_admitted_text(row: v, key: "id"),
+    display_name: oci_admitted_text(row: v, key: "displayName"),
+    state: oci_instance_state(raw: oci_admitted_text(row: v, key: "lifecycleState")),
+    shape: oci_admitted_text(row: v, key: "shape"),
   }
 }
 
@@ -197,7 +201,10 @@ type OciNamesRead
 
 fn oci_names_of(read: OciListRead, operation: String, key: String) -> OciNamesRead {
   match read {
-    OciListed { items } => OciNamesListed { names: map(items, i => oci_string_member(obj: i, key: key)) }
+    OciListed { items } => match oci_admit_rows(operation: operation, rows: items, keys: [key]) {
+      OciRowRefused { cause } => OciNamesRefused { line: cause as String }
+      OciRowsAdmitted { rows } => OciNamesListed { names: map(rows, r => oci_admitted_text(row: r, key: key)) }
+    }
     OciListInaccessible { status, body } => OciNamesRefused { line: join([operation, " refused by OCI (", to_string(status), "): ", body], "") }
     OciListRefused { cause } => OciNamesRefused { line: join([operation, " refused: ", cause as String], "") }
   }
@@ -205,7 +212,7 @@ fn oci_names_of(read: OciListRead, operation: String, key: String) -> OciNamesRe
 
 fn oci_availability_domains() -> OciNamesRead uses net: Network {
   oci_names_of(
-    read: oci_list(operation: "ListAvailabilityDomains", host: oci_identity_host, path_and_query: join(["/20160918/availabilityDomains?compartmentId=", oci_tenancy_ocid as String], "")),
+    read: oci_list(operation: "ListAvailabilityDomains", host: oci_identity_host, path_and_query: join(["/20160918/availabilityDomains?compartmentId=", oci_tenancy_ocid as String], "") as NonEmptyStr),
     operation: "ListAvailabilityDomains",
     key: "name",
   )
@@ -213,7 +220,7 @@ fn oci_availability_domains() -> OciNamesRead uses net: Network {
 
 fn oci_domain_offers(compartment: NonEmptyStr, domain: String, shape: String) -> Bool uses net: Network {
   match oci_names_of(
-    read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", oci_percent_encode(s: domain)], "")),
+    read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", oci_percent_encode(s: domain)], "") as NonEmptyStr),
     operation: "ListShapes",
     key: "shape",
   ) {
@@ -230,7 +237,7 @@ type OciImageRead
 
 fn oci_newest_image(compartment: NonEmptyStr, shape: String) -> OciImageRead uses net: Network {
   let path = join(["/20160918/images?compartmentId=", compartment as String, "&operatingSystem=", oci_percent_encode(s: "Oracle Linux"), "&operatingSystemVersion=9&shape=", oci_percent_encode(s: shape), "&sortBy=TIMECREATED&sortOrder=DESC"], "")
-  match oci_names_of(read: oci_list(operation: "ListImages", host: oci_iaas_host, path_and_query: path), operation: "ListImages", key: "id") {
+  match oci_names_of(read: oci_list(operation: "ListImages", host: oci_iaas_host, path_and_query: path as NonEmptyStr), operation: "ListImages", key: "id") {
     OciNamesRefused { line } => OciImageRefused { line: line }
     OciNamesListed { names } => match names.first() {
       Absent => OciImageRefused { line: join(["ListImages lists no Oracle Linux 9 image for ", shape], "") }
@@ -286,9 +293,9 @@ fn oci_launch_in(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: 
   match domains.first() {
     Absent => OciLaunchStopped { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: every availability domain tried refused for lack of host capacity (", join(refused_for_capacity, ", "), "); run again later"], "") }
     Present { value: domain } =>
-      match oci_signed_exchange(method: OciPost, host: oci_iaas_host, path_and_query: "/20160918/instances", body: OciJsonBody { text: oci_launch_body(planned: planned, compartment: compartment, subnet: subnet, domain: domain, image: image) }) {
+      match oci_signed_exchange(shape: OciPostJson { text: oci_launch_body(planned: planned, compartment: compartment, subnet: subnet, domain: domain, image: image) }, host: oci_iaas_host, path_and_query: "/20160918/instances") {
         OciExchangeRefused { cause } => OciLaunchStopped { line: join(["oci instance ", planned.name as String, " launch refused before an answer: ", cause as String], "") }
-        OciAnswered { status, body } =>
+        OciAnswered { status, body, next_page } =>
           if status == 200 {
             OciLaunched { line: join(["oci instance ", planned.name as String, " launched in ", domain, "; run again to read it back RUNNING"], "") }
           } else if oci_out_of_host_capacity(status: status, body: body) {
@@ -349,16 +356,20 @@ fn oci_free_instances(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<Oci
   match oci_always_free_fit(plan: oci_free_plan) {
     ExceedsAlwaysFree { breaches } => [OciInstanceOutcome { line: join(["oci instances NOT LAUNCHED: the plan does not fit the Always Free allowance: ", join(map(breaches, b => oci_breach_text(b: b)), "; ")], ""), held: false }]
     FitsAlwaysFree =>
-      match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "")) {
+      match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "") as NonEmptyStr) {
         OciListRefused { cause } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ListInstances refused: ", cause as String), held: false }]
         OciListInaccessible { status, body } => [OciInstanceOutcome { line: join(["oci instances NOT LAUNCHED: ListInstances refused by OCI (", to_string(status), "): ", body], ""), held: false }]
         OciListed { items } =>
+          match oci_admit_rows(operation: "ListInstances", rows: items, keys: oci_instance_required_fields) {
+            OciRowRefused { cause } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", cause as String), held: false }]
+            OciRowsAdmitted { rows } =>
           match oci_availability_domains() {
             OciNamesRefused { line } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", line), held: false }]
             OciNamesListed { names: domains } => {
-              let observed = map(items, i => oci_observed_instance_of(v: i))
+              let observed = map(rows, i => oci_observed_instance_of(v: i))
               map(oci_free_plan, p => oci_ensure_instance(planned: p, compartment: compartment, subnet: subnet, observed: observed, domains: domains))
             }
+          }
           }
       }
   }

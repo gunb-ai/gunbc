@@ -5,8 +5,7 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.oracle_oci.compartment_ensure {
-  ensure_oci_free_compartment, oci_free_compartment_standing,
-  OciCompartmentStanding, CompartmentReady, CompartmentNotReady,
+  ensure_oci_free_compartment, OciCompartmentStanding, CompartmentReady, CompartmentNotReady,
 }
 import gunbc.oracle_oci.network_ensure { oci_free_network, OciNetworkStanding, NetworkReady, NetworkNotReady }
 import gunbc.oracle_oci.instance_ensure { oci_free_instances }
@@ -29,11 +28,9 @@ type OciAlwaysFreeOutcome {
 
 fn oci_always_free_converge() -> OciAlwaysFreeOutcome uses net: Network {
   let compartment = ensure_oci_free_compartment()
-  if !compartment.held {
-    OciAlwaysFreeOutcome { lines: [compartment.line], held: false }
-  } else {
-    match oci_free_compartment_standing() {
-      CompartmentNotReady { cause } => OciAlwaysFreeOutcome { lines: [compartment.line, cause as String], held: false }
+  {
+    match compartment.standing {
+      CompartmentNotReady { cause } => OciAlwaysFreeOutcome { lines: [compartment.line], held: false }
       CompartmentReady { id } =>
         match oci_free_network(compartment: id) {
           NetworkNotReady { lines } => OciAlwaysFreeOutcome { lines: concat([compartment.line], lines), held: false }
