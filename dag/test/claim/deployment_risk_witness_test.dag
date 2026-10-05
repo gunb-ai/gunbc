@@ -658,7 +658,7 @@ data canonical_apply_source: String = "module probe_canonical_apply\nimport gunb
 
 data altered_spec_to_assessor_source: String = "module probe_altered_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit_rostered, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn alter() -> RoleSingletonAdmissionResult { let s = deployment_spec_srv1()\n assess_and_admit_rostered(spec: s, own: LocalShell) }\n"
 
-data spec_to_production_apply_source: String = "module probe_spec_to_production_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(spec: deployment_spec_srv1(), access: a, candidate: c)\n true }\n"
+data spec_to_assessor_source: String = "module probe_spec_to_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn hand() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), own: LocalShell) }\n"
 
 data replayed_admission_source: String = "module probe_replayed_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { RoleSingletonAdmission, admitted_spec }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nfn replay(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\n"
 
@@ -680,10 +680,15 @@ fn class_refusals_in(source: String, wanted: String) -> Int {
 // the spec is built from its bound roster row inside assess_and_admit; (a) handing a spec to the
 // production entry does not type (it has no spec parameter), and (b) handing one to the
 // spec-taking assessor step is refused at its seal, while (c) the canonical row-taking call compiles.
+// AT ONE INTERFACE: each probe imports only gunbc.live_deploy.role_singleton_convergence, the module
+// that declares the assessor and its sealed spec-taking step, never the apply tree, and compiles once
+// per claim. The canonical apply route's control is the one in the effect-boundary claims below.
 test fn no_caller_supplied_spec_reaches_the_role_singleton_assessment() -> Bool {
-  class_refusals_in(source: spec_to_production_apply_source, wanted: "CallArgumentNameUnknown") >= 1
-    && admission_refusals_in(source: altered_spec_to_assessor_source) >= 1
-    && admission_refusals_in(source: canonical_apply_source) == 0
+  class_refusals_in(source: spec_to_assessor_source, wanted: "CallArgumentNameUnknown") >= 1
+}
+
+test fn an_altered_spec_is_refused_at_the_assessor_seal() -> Bool {
+  admission_refusals_in(source: altered_spec_to_assessor_source) >= 1
 }
 
 test fn no_outside_module_can_mint_obtain_or_replay_an_admission() -> Bool {
@@ -704,9 +709,20 @@ fn sole_constructor_refusals_in(source: String) -> Int {
 // time; (c) the canonical assess-and-act entry still compiles with no admission refusal.
 test fn the_realizer_receives_an_apply_only_through_the_assessed_composition() -> Bool {
   admission_refusals_in(source: outside_member_plan_source) >= 1
-    && admission_refusals_in(source: outside_warrant_mint_source) >= 1
-    && sole_constructor_refusals_in(source: outside_warrant_literal_source) >= 1
-    && admission_refusals_in(source: canonical_apply_source) == 0
+}
+
+test fn no_outside_module_can_mint_a_warrant() -> Bool {
+  admission_refusals_in(source: outside_warrant_mint_source) >= 1
+}
+
+test fn no_outside_module_can_write_a_warrant_literal() -> Bool {
+  sole_constructor_refusals_in(source: outside_warrant_literal_source) >= 1
+}
+
+// THE ONE CANONICAL-PATH CONTROL: the row-taking production apply compiles with no admission refusal,
+// so the REDs above are not a compiler that refuses every call into the apply module.
+test fn the_canonical_row_taking_apply_compiles_without_admission_refusal() -> Bool {
+  admission_refusals_in(source: canonical_apply_source) == 0
 }
 
 // ── The marker has one authority, and only an exact readback is the marker ─────────────────────
