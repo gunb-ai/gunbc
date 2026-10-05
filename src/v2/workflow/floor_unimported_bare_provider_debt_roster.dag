@@ -901,7 +901,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/std/decision.dag", name: "any", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/decision.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/effects.dag", name: "filter", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/std/evaluation_budget.dag", name: "Optional", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/std/evaluation_budget.dag", name: "Optional", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/fabric_storage.dag", name: "length", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/std/fermi.dag", name: "filter", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/std/filesystem.dag", name: "Other", standing: ActiveDebt },

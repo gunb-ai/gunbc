@@ -1,6 +1,7 @@
 module std.evaluation_budget
 
 import std.types { NonEmptyStr, Bool, Int, String }
+import std.optional { Absent, Optional, Present }
 import std.contract_identity { ContractIdentity, ContractName }
 import std.measure {
   Nanosecond,
