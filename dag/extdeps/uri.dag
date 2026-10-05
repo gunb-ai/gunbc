@@ -2,7 +2,8 @@ module extdeps.uri
 
 import std.algebra { trim }
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Char }
+import std.coercion { unicode_scalar_fold }
 import std.unicode.types {
   unicode_scalar_max_code_point,
   unicode_surrogate_first_code_point,
@@ -567,12 +568,16 @@ type UriDecodeUtf8
   = UriUtf8Idle
   | UriUtf8Need { cp: Int, remaining: Int, least: Int }
 
+// Every member of `out` is a Unicode scalar: a literal character of the input, an escaped octet
+// below 128, or a completed sequence that passed uri_decode_scalar_admitted. So it is declared
+// List<Char> and spelled through the total std.coercion unicode_scalar_fold. The admission is the
+// guarantee; the seed does not enforce Char's refinement at a field.
 // Decoded scalars are accumulated in REVERSE (one cons each, one reverse at the end), so decoding is
 // linear in the input rather than copying the accumulator per scalar.
 type UriPercentDecodeFold
-  = UriDecodeText { out: List<Int>, utf8: UriDecodeUtf8 }
-  | UriDecodeAfterPercent { out: List<Int>, utf8: UriDecodeUtf8 }
-  | UriDecodeAfterHighNibble { out: List<Int>, utf8: UriDecodeUtf8, high: Int }
+  = UriDecodeText { out: List<Char>, utf8: UriDecodeUtf8 }
+  | UriDecodeAfterPercent { out: List<Char>, utf8: UriDecodeUtf8 }
+  | UriDecodeAfterHighNibble { out: List<Char>, utf8: UriDecodeUtf8, high: Int }
   | UriDecodeRefused { cause: UriPercentDecodeRefusalCause }
 
 fn uri_hex_digit_value(cp: Int) -> Int? {
@@ -587,7 +592,7 @@ fn uri_decode_scalar_admitted(cp: Int, least: Int) -> Bool {
     && (cp < unicode_surrogate_first_code_point || cp > unicode_surrogate_last_code_point)
 }
 
-fn uri_decode_octet(out: List<Int>, utf8: UriDecodeUtf8, b: Int) -> UriPercentDecodeFold {
+fn uri_decode_octet(out: List<Char>, utf8: UriDecodeUtf8, b: Int) -> UriPercentDecodeFold {
   match utf8 {
     UriUtf8Idle =>
       if b < 128 { UriDecodeText { out: Cons { head: b, tail: out }, utf8: UriUtf8Idle } }
@@ -636,7 +641,7 @@ fn uri_percent_decode_component(value: String) -> UriPercentDecodeComponent {
     UriDecodeText { out: out, utf8: u } =>
       match u {
         UriUtf8Need { cp: _, remaining: _, least: _ } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 }
-        UriUtf8Idle => UriPercentComponentDecoded { value: join(reverse(out) |> map(c => from_code_point(cp: c)), "") }
+        UriUtf8Idle => UriPercentComponentDecoded { value: unicode_scalar_fold(xs: reverse(out)) }
       }
   }
 }
