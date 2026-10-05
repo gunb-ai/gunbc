@@ -3,7 +3,7 @@ module test.claim.spark.group_arm_launch_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.content_hash { ContentHash, content_hash_equal }
 import v2.std.optional { Present, Absent }
-import std.measure { token_count, kibibyte, mebibyte, basis_point }
+import std.measure { token_count, kibibyte, mebibyte, basis_point, second_count }
 import extdeps.systemd { Active }
 import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmissionOmitted, KvWatermarkExplicit, KvWatermarkOmitted, VllmSchedulerAdmissionRequest }
 import gunbc.compute.host_occupancy { HostOccupant, HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
@@ -27,7 +27,7 @@ import gunbc.spark.glm53_arm_staircase {
   glm53_staircase_cold_intent, glm53_staircase_scheduler_admission, glm53_staircase_units,
   glm53_previous_step_incumbent,
 }
-import gunbc.spark.arm_group_launch_dispatch { arm_launch_step_timeout_minutes, arm_launch_step_needed_minutes,
+import gunbc.spark.arm_group_launch_dispatch { arm_launch_step_timeout_minutes, arm_launch_step_needed,
   arm_group_of_word, ArmGroupNamed, ArmGroupWordRefused,
   arm_group_launch_select, ArmGroupLaunchSelection, ArmGroupLaunchSelected, ArmGroupLaunchSelectionRefused, ArmV41GroupA, ArmGlm53GroupAStep,
 }
@@ -374,8 +374,8 @@ test fn w_a_marker_on_a_running_restored_arm_admits_to_resolution_only() -> Bool
 // workflow renders against the derivation from each arm's own VLLM_ENGINE_READY_TIMEOUT_S (the front door's
 // reader). RED: a step timeout of 60 with a 3600 s readiness deadline (nvfp4-8, fleet-converge 37190290418).
 test fn w_the_launch_step_timeout_covers_every_arms_readiness() -> Bool {
-  (arm_launch_step_timeout_minutes as Int) >= arm_launch_step_needed_minutes()
-    && arm_launch_step_needed_minutes() > 60
+  (arm_launch_step_timeout_minutes as Int) * 60 >= second_count(s: arm_launch_step_needed())
+    && second_count(s: arm_launch_step_needed()) > 3600
 }
 
 // ── THE AUTOTUNE POLICY IS PART OF LAUNCH AND PERFORMANCE IDENTITY (side-chat ruling on #13319, finding 3)
