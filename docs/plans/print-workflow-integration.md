@@ -104,7 +104,7 @@ IDs to get past a refusal. Partial acceptance and replacement demands remain CAS
 
 ## Validation
 
-`test.claim.printer_batch_workflow_witness_test.validate_preparation` executes the archive/G-code positive and negative controls and calls
+`test.claim.printer_batch_workflow_validation.validate_preparation` executes the archive/G-code positive and negative controls and calls
 the production entrypoint with `mode=prepare`. It cannot start a printer. The controls
 include extra plates, wrong membership, scaled objects, bad checksums, out-of-bed XY/Z,
 forbidden support, leading-dot motion words and full-circle arcs.

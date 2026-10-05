@@ -1,4 +1,4 @@
-module test.claim.print_preparation_kernel_witness_test
+module test.claim.print_preparation_kernel_validation
 import std.types {String}
 import std.process {ProcessExit}
 import product.printed_chassis.print_preparation {run_kernel,required_settings,deposited_path_edge_allowance_um}

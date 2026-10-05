@@ -1,7 +1,7 @@
-module test.claim.printer_batch_workflow_witness_test
+module test.claim.printer_batch_workflow_validation
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess}
-import test.claim.print_preparation_kernel_witness_test {exercise_kernel}
+import test.claim.print_preparation_kernel_validation {exercise_kernel}
 import product.printed_chassis.print_workflow {run}
 
 // Boundary tests are entered individually by the witness runner, never called here.
