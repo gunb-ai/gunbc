@@ -577,8 +577,10 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // only it demands.
 // Nine more were added from the probe pair 37210396855 against 37210398646 (main 44ed81c294), for the
 // nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind).
-// Those nine are RETIRED as ClaimDeleted: gunbc#13293 reverted #13038 and the module with it. If the
-// change re-lands, its claims are re-probed, not un-retired by hand.
+// Those nine were RETIRED as ClaimDeleted when gunbc#13293 reverted #13038, and are ACTIVE again on
+// the re-land (gunbc#13309), re-probed by its floor run 37268087131 at 27e140c4f3: with no warm row,
+// each refused enrolment as the one claim demanding its own assembly specimen (410642-422505 eval
+// steps each against the 72300 new-witness budget). That run names exactly these nine.
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
@@ -586,11 +588,23 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
 // their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
 // has no other demander, so derived sharing cannot cover it.
+// gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
+// witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
+// Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
+// pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
+// Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
+// (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.declared_return_result",
     claims: [
       SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.collection_concat_realization",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "cca_route_runs_on_the_real_path", standing: ActiveFillDebt },
     ]
   },
   SingleClaimFillDebtModule {
@@ -613,15 +627,15 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.type_application_kind",
     claims: [
-      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: RetiredFillDebt { disposition: ClaimDeleted } }
+      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -855,12 +869,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.callexec.declaration_reference_eval",
     claims: [
-      SingleClaimFillDebtClaim { claim: "cref_a_named_call_with_an_argument_executes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "cref_a_zero_argument_named_call_executes_to_its_callee_value_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "cref_an_unresolved_callee_does_not_execute_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "cref_argument_dependent_execution_reaches_the_callee_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "cref_the_bool_pair_separates_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "cref_the_identity_callee_never_answers_the_other_argument_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "cref_a_named_call_with_an_argument_executes_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "cref_a_zero_argument_named_call_executes_to_its_callee_value_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "cref_an_unresolved_callee_does_not_execute_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "cref_argument_dependent_execution_reaches_the_callee_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "cref_the_bool_pair_separates_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "cref_the_identity_callee_never_answers_the_other_argument_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
     ]
   },
   SingleClaimFillDebtModule {
@@ -952,16 +966,16 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.field_projection.field_projection_stages",
     claims: [
       SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_projects_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_a_cross_module_record_projection_infers_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_a_qualified_declaration_path_resolves_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_is_not_yet_projectable_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_a_same_module_record_projection_infers_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_a_scalar_receiver_still_declares_no_fields_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_an_absent_field_does_not_infer_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_the_int_field_grounds_as_an_int_parameter_does_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "fps_a_cross_module_record_projection_infers_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_a_qualified_declaration_path_resolves_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_is_not_yet_projectable_holds", standing: RetiredFillDebt { disposition: ClaimDeleted } },
+      SingleClaimFillDebtClaim { claim: "fps_a_same_module_record_projection_infers_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_a_scalar_receiver_still_declares_no_fields_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_an_absent_field_does_not_infer_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_the_int_field_grounds_as_an_int_parameter_does_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
     ]
   },
   SingleClaimFillDebtModule {
@@ -996,8 +1010,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.match_binder.match_binder_typing",
     claims: [
       SingleClaimFillDebtClaim { claim: "mbt_a_binder_hiding_a_same_named_parameter_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "mbt_an_underived_arm_body_is_a_counted_frontier_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "mbt_an_underived_arm_body_is_a_counted_frontier_holds", standing: RetiredFillDebt { disposition: BecameSharedByDemand } },
+      SingleClaimFillDebtClaim { claim: "mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds", standing: RetiredFillDebt { disposition: BecameSharedByDemand } }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1191,11 +1205,11 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.reference_evidence.declaration_reference_evidence",
     claims: [
-      SingleClaimFillDebtClaim { claim: "dre_a_named_call_to_a_bool_fn_is_grounded_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dre_a_named_call_to_a_bool_fn_is_grounded_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "dre_an_imported_reference_grounds_through_the_closure_index_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "dre_an_invalid_argument_call_does_not_ground_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "dre_an_unresolved_signature_does_not_ground_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "dre_an_invalid_argument_call_does_not_ground_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "dre_an_unresolved_signature_does_not_ground_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
     ]
   },
   SingleClaimFillDebtModule {

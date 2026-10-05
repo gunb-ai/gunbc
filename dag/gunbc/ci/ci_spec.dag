@@ -74,6 +74,8 @@ import v2.extdeps.languages.bash_build {
 import gunbc.machine_intake_mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
+import gunbc.fabric.workspace_source { workspace_source_receipt_path }
+import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
@@ -821,6 +823,21 @@ data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcR
   function: "run_workspace_object_write",
 }
 
+data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_source.dag",
+  function: "workspace_source_pack_wet",
+}
+
+data gunbc_ci_workspace_checkpoint_measure_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
+  function: "workspace_checkpoint_measure_wet",
+}
+
+data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
+  function: "workspace_checkpoint_restore_wet",
+}
+
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
 // this repository's ordering law is what keeps them apart: an observation reports a host's standing
 // and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
@@ -1084,6 +1101,14 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
 // group -- and it is the only step in this job that can occupy a host for hours.
 // THE WIRELESS LINK CONVERGE. Root on a Spark is the administrator password leg, so it shares the
 // probe's prelude; it changes the radio's power-save policy and the connection profile only.
+// THE GRANT OBSERVE (gunbc.fleet_multi_principal_probe spark_exact_grant_probe_ci_wet). Read-only:
+// it rides the job's fleet-key agent as gunbc-automation and the bootstrap principal on every procured
+// Spark, needs no administrator credential, and installs nothing.
+data gunbc_ci_spark_grants_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
+  function: "spark_exact_grant_probe_ci_wet",
+}
+
 data gunbc_ci_spark_wireless_link_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_wireless_link_converge.dag",
   function: "spark_wireless_link_converge_ci_wet",
@@ -1343,6 +1368,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_r2_workspace_object_read_mint_target,
     gunbc_ci_r2_workspace_object_write_mint_target,
+    gunbc_ci_workspace_source_pack_target,
+    gunbc_ci_workspace_checkpoint_measure_target,
+    gunbc_ci_workspace_checkpoint_restore_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
@@ -1356,6 +1384,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_spark_grants_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_microvm_slot_reserve_target,
@@ -2647,6 +2676,36 @@ fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
   )
 }
 
+fn gunbc_ci_workspace_source_pack_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_source_pack_target.entry,
+    function: gunbc_ci_workspace_source_pack_target.function,
+    claim_run: false,
+    receipt_rel: workspace_source_receipt_path
+  )
+}
+
+fn gunbc_ci_workspace_checkpoint_measure_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_checkpoint_measure_target.entry,
+    function: gunbc_ci_workspace_checkpoint_measure_target.function,
+    claim_run: false,
+    receipt_rel: workspace_measure_receipt_path
+  )
+}
+
+fn gunbc_ci_workspace_checkpoint_restore_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_checkpoint_restore_target.entry,
+    function: gunbc_ci_workspace_checkpoint_restore_target.function,
+    claim_run: false,
+    receipt_rel: workspace_restore_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2899,6 +2958,16 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
     function: gunbc_ci_spark_runtime_image_probe_target.function,
     claim_run: false,
     receipt_rel: "target/v41-published-image-probe-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_grants_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_grants_observe_target.entry,
+    function: gunbc_ci_spark_grants_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
   )
 }
 
