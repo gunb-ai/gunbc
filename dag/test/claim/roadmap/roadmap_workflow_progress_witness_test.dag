@@ -197,6 +197,19 @@ fn fixture_evidence_with_standing(
   }
 }
 
+fn segment_detail(
+  segments: List<WorkflowSegment>,
+  key: String,
+) -> String {
+  fold(segments, init: "", f: fn(acc, segment) {
+    if acc == "" && workflow_segment_kind_key(kind: segment.kind) == key {
+      segment.detail
+    } else {
+      acc
+    }
+  })
+}
+
 fn segment_state(
   segments: List<WorkflowSegment>,
   key: String,
@@ -318,6 +331,28 @@ test fn an_unreadable_pointer_refuses_with_unknown_standing_and_never_legacy_sta
         }
     _ => false
   }
+}
+
+// Composed control THROUGH the progress fold (side chat review 5409834403): an unreadable pointer
+// refuses verification, review AND goal audit -- never pending, never absence-shaped -- while
+// established absence still renders the legacy arm (pending).
+test fn an_unreadable_pointer_refuses_verification_review_and_audit_through_workflow_attempt_progress() -> Bool {
+  let unreadable = workflow_attempt_progress(evidence: fixture_evidence_with_standing(
+    standing: WorkflowModeledStateUnreadable { cause: "Permission denied (os error 13)" },
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  let absent = workflow_attempt_progress(evidence: fixture_evidence_with_standing(
+    standing: WorkflowModeledStateAbsent,
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  segment_state(unreadable.segments, "verify") == "refused"
+    && segment_state(unreadable.segments, "review") == "refused"
+    && segment_state(unreadable.segments, "audit") == "refused"
+    && string_contains(s: segment_detail(unreadable.segments, "verify"), pattern: "standing is unknown")
+    && segment_state(absent.segments, "verify") == "pending"
+    && segment_state(absent.segments, "review") == "pending"
 }
 
 // review 44032 REDs. The Agent obligation's design contract requires a compatible process exit, so

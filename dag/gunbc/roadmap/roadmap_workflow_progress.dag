@@ -1086,6 +1086,26 @@ fn workflow_segment_from_evidence(
   provider: ProviderExecutionState,
   admitted: Bool,
 ) -> WorkflowSegment {
+  match evidence.modeled_state {
+    WorkflowModeledStateUnreadable { cause } =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentRefused,
+        detail: join(["this attempt's standing is unknown because its current-attempt-key pointer could not be read: ", cause], ""),
+      }
+    WorkflowModeledStateObserved =>
+      workflow_segment_from_standing_evidence(kind: kind, evidence: evidence, provider: provider, admitted: admitted)
+    WorkflowModeledStateAbsent =>
+      workflow_segment_from_standing_evidence(kind: kind, evidence: evidence, provider: provider, admitted: admitted)
+  }
+}
+
+fn workflow_segment_from_standing_evidence(
+  kind: WorkflowSegmentKind,
+  evidence: WorkflowAttemptEvidence,
+  provider: ProviderExecutionState,
+  admitted: Bool,
+) -> WorkflowSegment {
   match kind {
     EnvironmentWorkflowSegment =>
       WorkflowSegment {

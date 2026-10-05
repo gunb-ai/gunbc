@@ -51,6 +51,9 @@ import gunbc.roadmap_belt_actuate {
   belt_candidate_subject_reading, CandidateSubjectSettled, CandidateSubjectBound,
   VerificationPassedConfirmed, VerificationNotPassed, VerificationUnreadable,
   belt_publish_pass_outcome_from,
+  WorkflowModeledStatePointerState, WorkflowModeledStatePointerAbsent, WorkflowModeledStatePointerUnreadable,
+  selection_standing_for_pointer, verification_source_standing_for_pointer,
+  publication_source_standing_for_pointer, review_report_standing_for_pointer,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionReadiness, SubmissionReady, SubmissionNeedsContext,
@@ -198,6 +201,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment, WorkflowSegmentFailed,
+  WorkflowSegmentRefused,
 }
 import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
 import gunbc.worker_lifecycle { WorkerProcessUnobserved }
@@ -3318,4 +3322,37 @@ test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -
       SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
       SpawnNotAdmitted { node_id: _, refusal: _ } => false
     }
+}
+
+// The pointer standing decides the subordinate facts' standing (side chat review 5409834403, fix
+// (a)): an UNREADABLE pointer carries the non-absence variants -- the wrong state is unwritable --
+// while established ABSENCE keeps the absence-shaped facts the legacy arm means.
+test fn an_unreadable_pointer_carries_non_absence_subordinate_facts() -> Bool {
+  let denied = WorkflowModeledStatePointerUnreadable { cause: "Permission denied (os error 13)" }
+  let absent = WorkflowModeledStatePointerAbsent
+  let sel_bad = selection_standing_for_pointer(pointer_state: denied)
+  let src_bad = verification_source_standing_for_pointer(pointer_state: denied)
+  let pub_bad = publication_source_standing_for_pointer(pointer_state: denied)
+  let rev_bad = review_report_standing_for_pointer(pointer_state: denied)
+  match sel_bad {
+    SelectionUnaddressable { cause } =>
+      string_contains(s: cause, pattern: "pointer could not be read")
+        && match verification_source_standing_for_pointer(pointer_state: denied) {
+          VerificationReceiptUnreadable { detail } =>
+            string_contains(s: detail, pattern: "pointer could not be read")
+              && match publication_source_standing_for_pointer(pointer_state: denied) {
+                ReceiptSourceUnreadable { detail: pd } =>
+                  string_contains(s: pd, pattern: "pointer could not be read")
+                    && rev_bad.reconciliation.state == WorkflowSegmentRefused
+                    && string_contains(s: rev_bad.reconciliation.detail, pattern: "pointer could not be read")
+                    && match selection_standing_for_pointer(pointer_state: absent) {
+                      SelectionAbsent => true
+                      _ => false
+                    }
+                _ => false
+              }
+          _ => false
+        }
+    _ => false
+  }
 }

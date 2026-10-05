@@ -5536,6 +5536,48 @@ type WorkflowModeledStatePointerState
   = WorkflowModeledStatePointerAbsent
   | WorkflowModeledStatePointerUnreadable { cause: NonEmptyStr }
 
+// The pointer standing decides the subordinate facts' standing: established ABSENCE (no pointer)
+// carries absence-shaped facts -- the legacy arm's own meaning -- while an UNREADABLE pointer
+// carries non-absence variants: the wrong state is unwritable, and nothing downstream may read an
+// unreadable pointer as "not yet".
+fn selection_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> CurrentVerificationSelectionObservation {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => SelectionAbsent
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      SelectionUnaddressable {
+        cause: join(["this attempt's current-attempt-key pointer could not be read, so whether a verification window was selected is unknown: ", cause], ""),
+      }
+  }
+}
+
+fn verification_source_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> VerificationReceiptFileSource {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => VerificationReceiptAbsent
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      VerificationReceiptUnreadable {
+        detail: join(["this attempt's current-attempt-key pointer could not be read, so its verification receipt could not be located: ", cause], ""),
+      }
+  }
+}
+
+fn publication_source_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> PublicationReceiptSource {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => ReceiptSourceAbsent
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      ReceiptSourceUnreadable {
+        detail: join(["this attempt's current-attempt-key pointer could not be read, so its publication receipt could not be located: ", cause], ""),
+      }
+  }
+}
+
+fn review_report_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> ReviewReport {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => review_report_absent(reason: "this attempt has no modeled state pointer, so no review report exists for it")
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      review_report_refused(reason: join(["this attempt's current-attempt-key pointer could not be read, so its review report could not be located: ", cause], ""))
+  }
+}
+
 fn belt_workflow_attempt_evidence_without_modeled_state(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -5593,19 +5635,19 @@ fn belt_workflow_attempt_evidence_without_modeled_state(
     verification_subject: VerificationSubjectUnobserved {
       reason: pointer_reason,
     },
-    verification_selection: SelectionAbsent,
-    verification_source: VerificationReceiptAbsent,
+    verification_selection: selection_standing_for_pointer(pointer_state: pointer_state),
+    verification_source: verification_source_standing_for_pointer(pointer_state: pointer_state),
     publication_subject: PublicationSubjectUnobserved {
       reason: pointer_reason,
     },
-    publication_source: ReceiptSourceAbsent,
+    publication_source: publication_source_standing_for_pointer(pointer_state: pointer_state),
     submission_capture: CaptureUnreadable {
       reason: pointer_reason,
     },
     integration: IntegrationReceiptUnreadable {
       reason: pointer_reason,
     },
-    review: review_report_absent(reason: pointer_reason),
+    review: review_report_standing_for_pointer(pointer_state: pointer_state),
     goal_audit: [],
     session_placement: SessionPlacementUnreadable { unit: "", detail: placement_detail },
   }
