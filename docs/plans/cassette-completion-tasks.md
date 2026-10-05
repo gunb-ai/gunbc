@@ -3,6 +3,12 @@
 Owner: cassette worktree / PR #13295. Target: main. User-approved sequence, 4 October 2026.
 This is the current queue; dated gauge and rack-frame plans are historical. No new gauge sequence, weighing request or printer start is scheduled here.
 
+5 October follow-up: [assembly requirements and providers](cassette-assembly-requirements.md)
+defines the shared migration for CAS-3/5/6/8 on PR #13334. Current external
+connections are Ethernet and power; storage is on-board. The existing fit prototype
+does not require a standoff retrofit. The plan's owner-bound requirements, cable
+routes and domain checks are not yet implemented.
+
 | ID | Task | Depends on | State |
 | --- | --- | --- | --- |
 | CAS-1 | Restore green required CI | — | Known declaration/catch-all failures corrected; validation pending |
