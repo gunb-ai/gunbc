@@ -6,11 +6,17 @@ use self::TypeDeclReferenceRoute::*;
 use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
 use self::TypeSummaryLookup::*;
+pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_literal_elaboration::kernel_mint_declaration_for;
+pub use crate::std_literal_elaboration::KernelMintDeclarationLookup;
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
+    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -574,6 +580,7 @@ pub enum TypeDeclReferenceRoute {
     RouteDeclaringSpan,
     RouteReferencingModuleDeclarer,
     RouteQualifiedSpelling,
+    RouteKernelMint,
     RouteLeafSpelling,
 }
 
@@ -638,11 +645,16 @@ pub fn resolve_type_decl_routed(
                     let referencing_module_identity = match (*by_spelling.clone()).clone() {
                         TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
                             if (authored.clone() == l.clone()) {
-                                type_decl_referencing_module_declarer(
+                                match type_decl_referencing_module_declarer(
                                     index.clone(),
                                     l.clone(),
                                     type_expr.clone(),
-                                )
+                                ) {
+                                    Some(identity) => Some(identity.clone()),
+                                    std::option::Option::None => {
+                                        type_decl_kernel_mint_declarer(index.clone(), l.clone())
+                                    }
+                                }
                             } else {
                                 type_decl_qualifier_declarer(index.clone(), authored.clone())
                             }
@@ -655,11 +667,12 @@ pub fn resolve_type_decl_routed(
                     };
                     match referencing_module_identity.clone() {
                         Some(identity) => Rc::new(TypeDeclRoutedResolution {
-                            route: if (authored.clone() == leaf.clone()) {
-                                TypeDeclReferenceRoute::RouteReferencingModuleDeclarer
-                            } else {
-                                TypeDeclReferenceRoute::RouteQualifiedSpelling
-                            },
+                            route: type_decl_spelling_route(
+                                index.clone(),
+                                authored.clone(),
+                                leaf.clone(),
+                                type_expr.clone(),
+                            ),
                             resolution: type_decl_resolution_at_identity(
                                 index.clone(),
                                 identity.clone(),
@@ -692,6 +705,44 @@ pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) 
     }
 }
 
+pub fn type_decl_kernel_mint_declarer(index: Rc<TypeDeclIndex>, leaf: String) -> Option<String> {
+    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+        kernel_mint_declaration_rows(),
+        leaf.clone(),
+    ))
+    .clone()
+    {
+        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+            let identity = type_decl_identity(d.module_path.clone(), d.decl_name.clone());
+            match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+                Some(_) => Some(identity.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => std::option::Option::None,
+        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn type_decl_spelling_route(
+    index: Rc<TypeDeclIndex>,
+    authored: String,
+    leaf: String,
+    reference: Rc<Node>,
+) -> TypeDeclReferenceRoute {
+    if (authored.clone() != leaf.clone()) {
+        TypeDeclReferenceRoute::RouteQualifiedSpelling
+    } else {
+        match type_decl_referencing_module_declarer(index.clone(), leaf.clone(), reference.clone())
+        {
+            Some(_) => TypeDeclReferenceRoute::RouteReferencingModuleDeclarer,
+            std::option::Option::None => TypeDeclReferenceRoute::RouteKernelMint,
+        }
+    }
+}
+
 pub fn type_decl_index_with_qualified_names(
     index: Rc<TypeDeclIndex>,
     qualified_names: Rc<SymbolIndex>,
@@ -708,7 +759,7 @@ pub fn type_decl_index_with_qualified_names(
 pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.".to_string())
+            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -775,6 +826,7 @@ pub fn type_decl_routed_resolution_label(routed: Rc<TypeDeclRoutedResolution>) -
                 "referencing_module_declarer".to_string()
             }
             TypeDeclReferenceRoute::RouteQualifiedSpelling => "qualified_spelling".to_string(),
+            TypeDeclReferenceRoute::RouteKernelMint => "kernel_mint".to_string(),
             TypeDeclReferenceRoute::RouteLeafSpelling => "leaf_spelling".to_string(),
         };
         match (*routed.resolution.clone()).clone() {
@@ -2056,5 +2108,7 @@ pub struct RouteDeclaringSpan;
 pub struct RouteReferencingModuleDeclarer;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteQualifiedSpelling;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteKernelMint;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteLeafSpelling;

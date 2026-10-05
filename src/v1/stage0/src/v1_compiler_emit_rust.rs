@@ -235,9 +235,9 @@ pub use crate::v1_compiler_infer_emit_info::{
     emit_info_with_expected_type, emit_info_with_fn_return, emit_info_with_fn_type_context,
     empty_emit_graph_info, find_variant_parent, is_enum_in_summaries, is_known_variant,
     lookup_emit_type_summary, resolve_type_decl_reference, summary_is_enum_with_variant,
-    type_decl_identity, type_summary_answer_or_false, type_summary_decided,
-    type_summary_keys_of_leaf, type_summary_lookup, type_summary_of_reference, type_summary_values,
-    variant_belongs_to_enum, variant_summary_key,
+    type_decl_identities_of_leaf, type_decl_identity, type_summary_answer_or_false,
+    type_summary_decided, type_summary_keys_of_leaf, type_summary_lookup,
+    type_summary_of_reference, type_summary_values, variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, TypeDeclIndex, TypeDeclResolution, TypeRepr, TypeSummary, TypeSummaryIndex,
@@ -956,6 +956,31 @@ pub fn declaration_is_grounded_coproduct_native_alias(
                     rust_host_option_carrier_declarations(),
                 ));
         }
+    }
+}
+
+pub fn every_declarer_is_grounded_coproduct_native_alias(
+    decls: Rc<TypeDeclIndex>,
+    name: String,
+) -> bool {
+    {
+        let identities = crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+            decls.clone(),
+            crate::v1_std_core::qualified_last_segment(name.clone()),
+        );
+        (((identities.clone().len() as i64) > 0) && {
+            let mut __all = true;
+            for identity in identities.iter().cloned() {
+                if !(declaration_is_grounded_coproduct_native_alias(
+                    "".to_string(),
+                    identity.clone(),
+                )) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        })
     }
 }
 
@@ -14644,7 +14669,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.iter().cloned() {
-                        __result.extend((*if (declaration_is_grounded_coproduct_native_alias(import_module.clone(), parent.clone()) || rust_declaration_realizes_as_native_alias(import_module.clone(), parent.clone())) {
+                        __result.extend((*if ((declaration_is_grounded_coproduct_native_alias(import_module.clone(), parent.clone()) || every_declarer_is_grounded_coproduct_native_alias(emit_info.type_decl_items.clone(), parent.clone())) || rust_declaration_realizes_as_native_alias(import_module.clone(), parent.clone())) {
                     Rc::new(vec![])
                 } else {
                     {

@@ -5555,13 +5555,16 @@ mod compiler_tests {
             src("fixtures/same_leaf_optional/optional.dag", "module v2.std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n")
         };
         let edge = || {
-            src("fixtures/same_leaf_optional/edge.dag", "module hom.edge\n\nimport std.types { Int }\n\ntype Lookup\n  = Found { at: Int }\n  | Absent\n")
+            src(
+                "fixtures/same_leaf_optional/edge.dag",
+                "module hom.edge\n\ntype Lookup\n  = Found { at: Int }\n  | Absent\n",
+            )
         };
         let user = || {
-            src("fixtures/same_leaf_optional/user.dag", "module hom.user\n\nimport std.types { Int }\nimport v2.std.optional { Optional, Present, Absent }\n\nfn first_positive(x: Int) -> Optional<Int> {\n  if x > 0 { Present { value: x } } else { Absent }\n}\n")
+            src("fixtures/same_leaf_optional/user.dag", "module hom.user\nimport v2.std.optional { Optional, Present, Absent }\n\nfn nothing_here(x: Int) -> Optional<Int> {\n  Absent\n}\n")
         };
         let coll = || {
-            src("fixtures/same_leaf_optional/coll.dag", "module hom.coll\n\nimport std.types { Int }\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n")
+            src("fixtures/same_leaf_optional/coll.dag", "module hom.coll\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n")
         };
         let emitted_user = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {
             let result = crate::v1_compiler_compile::compile_sources(
