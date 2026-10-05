@@ -1023,6 +1023,66 @@ pub fn emit_data_fields_json(
     )
 }
 
+pub fn emit_declared_optional_row_json(
+    value: Rc<Node>,
+    inner_type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_wire: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
+) -> Rc<EmitterOutcome> {
+    match (*value.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitNull) =>
+        {
+            let LiteralValue::LitNull = value.as_ref() else {
+                unreachable!()
+            };
+            Rc::new(EmitterOutcome::Emitted {
+                json: "null".to_string(),
+            })
+        }
+        ExprData::ExprRecordLit {
+            parent_enum: pe, ..
+        } => match pe.clone() {
+            Some(parent) => {
+                if (crate::v1_std_core::qualified_last_segment(parent.clone())
+                    == crate::v1_std_core::qualified_last_segment(inner_type_name.clone()))
+                {
+                    emit_data_value_json(
+                        value.clone(),
+                        source_indices.clone(),
+                        variant_wire.clone(),
+                    )
+                } else {
+                    match value.children.clone().first().cloned() {
+                        std::option::Option::None => Rc::new(EmitterOutcome::Emitted {
+                            json: "null".to_string(),
+                        }),
+                        Some(payload_field) => {
+                            if ((value.children.clone().len() as i64) == 1) {
+                                emit_data_value_json(
+                                    crate::v1_std_core::field_init_node_value(
+                                        payload_field.clone(),
+                                    ),
+                                    source_indices.clone(),
+                                    variant_wire.clone(),
+                                )
+                            } else {
+                                Rc::new(EmitterOutcome::Refused {
+    reason: v1_rt::concat(v1_rt::concat("an optional row's present literal carries ".to_string(), crate::v1_compiler_emit_core_support::to_string((value.children.clone().len() as i64))), " fields; the option's present arm carries exactly its payload".to_string()),
+})
+                            }
+                        }
+                    }
+                }
+            }
+            std::option::Option::None => {
+                emit_data_value_json(value.clone(), source_indices.clone(), variant_wire.clone())
+            }
+        },
+        _ => emit_data_value_json(value.clone(), source_indices.clone(), variant_wire.clone()),
+    }
+}
+
 pub fn emit_data_value_json(
     value: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
