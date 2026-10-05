@@ -739,6 +739,118 @@ pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
     list
 }
 
+/// std.primitives skip_contract on the persistent carrier: the suffix after `n` members,
+/// sharing the receiver's tree in O(log n) instead of copying the remainder, so a walk that
+/// slices by offset is linear rather than quadratic. A negative `n` skips every member, as
+/// the copying form's saturating `n as usize` did.
+pub fn list_skip<T: Clone>(items: &Vec<T>, n: i64) -> Vec<T> {
+    let k = if n < 0 {
+        items.len()
+    } else {
+        (n as usize).min(items.len())
+    };
+    items.skip(k)
+}
+
+/// std.primitives take_contract on the persistent carrier: the first `n` members, sharing
+/// the receiver's tree. A negative `n` keeps every member, as the copying form did.
+pub fn list_take<T: Clone>(items: &Vec<T>, n: i64) -> Vec<T> {
+    let k = if n < 0 {
+        items.len()
+    } else {
+        (n as usize).min(items.len())
+    };
+    items.take(k)
+}
+
+#[cfg(test)]
+mod list_slice_tests {
+    use super::*;
+
+    thread_local! {
+        static CLONES: Cell<u64> = const { Cell::new(0) };
+    }
+
+    /// A code point whose every copy is counted, so a slice's cost is read off the carrier's
+    /// own work rather than a clock.
+    #[derive(Debug, PartialEq)]
+    struct CountedCodePoint(u32);
+
+    impl Clone for CountedCodePoint {
+        fn clone(&self) -> Self {
+            CLONES.with(|c| c.set(c.get() + 1));
+            CountedCodePoint(self.0)
+        }
+    }
+
+    fn clones_during<R>(f: impl FnOnce() -> R) -> (R, u64) {
+        let before = CLONES.with(|c| c.get());
+        let r = f();
+        (r, CLONES.with(|c| c.get()) - before)
+    }
+
+    // Non-ASCII on purpose: emitted char_at / substring over a bare &str are O(offset) here,
+    // which is the walk the code-point slice replaces.
+    fn non_ascii_code_points(n: usize) -> Vec<CountedCodePoint> {
+        [0xe9u32, 0x4e2d, 0x1f600, 0x61]
+            .iter()
+            .cycle()
+            .take(n)
+            .map(|cp| CountedCodePoint(*cp))
+            .collect()
+    }
+
+    const N: usize = 200_000;
+    // im's RRB split copies at most one boundary chunk per tree level; this is that bound with
+    // headroom, and three orders of magnitude below N.
+    const SLICE_COPY_BUDGET: u64 = 2_048;
+
+    #[test]
+    fn a_slice_from_the_middle_copies_only_boundary_chunks() {
+        let cps = Rc::new(non_ascii_code_points(N));
+        let (slice, copied) = clones_during(|| list_take(&list_skip(&cps, (N / 2) as i64), 7));
+        assert!(
+            copied <= SLICE_COPY_BUDGET,
+            "skip+take copied {} members of {}",
+            copied,
+            N
+        );
+        let expected: std::vec::Vec<u32> = cps.iter().skip(N / 2).take(7).map(|c| c.0).collect();
+        assert_eq!(
+            slice.iter().map(|c| c.0).collect::<std::vec::Vec<_>>(),
+            expected
+        );
+    }
+
+    // THE RED CONTROL: the extdeps.languages.rust.emit skip / take templates this runtime pair
+    // replaced, spelled as they emitted, on the same input and bound. It must exceed the budget,
+    // or the budget does not discriminate the quadratic.
+    #[test]
+    fn the_copying_template_form_exceeds_the_budget() {
+        let cps = Rc::new(non_ascii_code_points(N));
+        let (_, copied) = clones_during(|| {
+            let rest = cps.iter().cloned().skip(N / 2).collect::<Vec<_>>();
+            rest.iter().cloned().take(7).collect::<Vec<_>>()
+        });
+        assert!(
+            copied > SLICE_COPY_BUDGET,
+            "copying form copied only {}",
+            copied
+        );
+    }
+
+    #[test]
+    fn negative_and_overlong_counts_keep_the_copying_forms_reading() {
+        let xs: Vec<i64> = (0..10).collect();
+        for n in [-3i64, 0, 4, 10, 11, i64::MAX] {
+            let copying_skip = xs.iter().cloned().skip(n as usize).collect::<Vec<_>>();
+            let copying_take = xs.iter().cloned().take(n as usize).collect::<Vec<_>>();
+            assert_eq!(list_skip(&xs, n), copying_skip, "skip {}", n);
+            assert_eq!(list_take(&xs, n), copying_take, "take {}", n);
+        }
+    }
+}
+
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
     v.push_back(item);

@@ -1,0 +1,91 @@
+module test.claim.code_point_slice_witness
+
+import std.algebra { Cons }
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BODY READ BY OFFSET, THROUGH THE CODE-POINT SLICE. The text is unfolded to its code points
+// once; every later read is one member (`get`), the length (`count`) or a bounded slice
+// (`skip` then `take`) folded back to host text. std.primitives get_contract, count_contract,
+// skip_contract and take_contract price each of those at log len or better on the persistent
+// carrier, so the walk is linear in the body on every input -- the property char_at / substring
+// over host text lack on non-ASCII text in the interpreter and on all text in emitted Rust.
+// The bodies here are non-ASCII on purpose: that is the input the host-text walk is quadratic on.
+//
+// The wire shape is the length-prefixed field `<decimal count>:<that many code points>`, repeated.
+type CodePointField {
+  value: String
+  next: Int
+}
+
+fn cps_find(cps: List<Int>, at: Int, stop: Int) -> Int? {
+  match get(xs: cps, index: at) {
+    Absent => none
+    Present { value: c } => if c == stop { Present { value: at } } else { cps_find(cps: cps, at: at + 1, stop: stop) }
+  }
+}
+
+fn cps_slice_text(cps: List<Int>, start: Int, end: Int) -> String {
+  unicode_scalar_fold(xs: cps |> skip(n: start) |> take(n: end - start))
+}
+
+fn cps_field(cps: List<Int>, at: Int) -> CodePointField? {
+  match cps_find(cps: cps, at: at, stop: code_point(c: ":")) {
+    Absent => none
+    Present { value: colon } =>
+      match parse_int(s: cps_slice_text(cps: cps, start: at, end: colon)) {
+        Absent => none
+        Present { value: n } =>
+          if n < 0 || colon + 1 + n > count(cps) {
+            none
+          } else {
+            Present { value: CodePointField { value: cps_slice_text(cps: cps, start: colon + 1, end: colon + 1 + n), next: colon + 1 + n } }
+          }
+      }
+  }
+}
+
+fn cps_fields(cps: List<Int>, at: Int, acc: List<String>) -> List<String>? {
+  if at == count(cps) {
+    Present { value: reverse(acc) }
+  } else {
+    match cps_field(cps: cps, at: at) {
+      Absent => none
+      Present { value: f } => cps_fields(cps: cps, at: f.next, acc: Cons { head: f.value, tail: acc })
+    }
+  }
+}
+
+fn decode_fields(body: String) -> List<String>? {
+  cps_fields(cps: unicode_scalar_unfold(s: body), at: 0, acc: [])
+}
+
+// The body doubled `times` times: linear to build, so the measured walk is the only quadratic
+// candidate in the claim.
+fn doubled(s: String, times: Int) -> String {
+  if times <= 0 { s } else { doubled(s: concat(s, s), times: times - 1) }
+}
+
+// POSITIVE CONTROL: the slice reads the right code points, including astral ones (one code point,
+// four UTF-8 bytes) and a field whose length prefix is two digits.
+test fn code_point_slice_decodes_non_ascii_fields() -> Bool {
+  decode_fields(body: "2:\u{e9}\u{4e2d}3:\u{1f600}ab0:12:\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}") == Present { value: ["\u{e9}\u{4e2d}", "\u{1f600}ab", "", "\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}"] }
+}
+
+// A length prefix that runs past the body is refused, not truncated.
+test fn code_point_slice_refuses_an_overlong_field() -> Bool {
+  decode_fields(body: "4:\u{e9}\u{4e2d}") == none
+}
+
+// THE WALK AT SCALE: 2048 non-ASCII fields, 12,288 code points. Under the copying realizations
+// every `get` / `count` flattened the whole list and every `skip` copied the remainder, so this
+// claim's host work was quadratic in the body; claim_batch with GUNBC_INTERP_STATS=1 reports it
+// as the fm_flatten line, which is the instrument for this claim's cost.
+test fn code_point_slice_walk_is_correct_at_scale() -> Bool {
+  match decode_fields(body: doubled(s: "3:\u{e9}\u{4e2d}\u{1f600}", times: 11)) {
+    Absent => false
+    Present { value: fs } => count(fs) == 2048 && fs |> all(f => f == "\u{e9}\u{4e2d}\u{1f600}")
+  }
+}

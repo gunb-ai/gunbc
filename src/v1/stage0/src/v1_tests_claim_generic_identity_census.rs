@@ -1357,15 +1357,7 @@ pub fn gi_owner_argument_arms_discriminate(
                                 xs_param.clone(),
                                 v1_rt::concat(
                                     Rc::new(vec![minted.clone()]),
-                                    Rc::new(
-                                        xs_param
-                                            .children
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(1 as usize)
-                                            .collect::<Vec<_>>(),
-                                    ),
+                                    Rc::new(v1_rt::list_skip(&xs_param.children.clone(), 1)),
                                 ),
                             );
                             (((gi_foreign_label_under_owner(

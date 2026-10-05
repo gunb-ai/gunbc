@@ -739,6 +739,11 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    KernelMintShapeMismatch {
+        declaration_name: String,
+        cause: String,
+        span: Rc<SourceSpan>,
+    },
     OptionalCastNotEliminated {
         source_type: String,
         target_type: String,
@@ -1034,6 +1039,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
+        CompilerDiagnostic::KernelMintShapeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
@@ -1114,6 +1120,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
+    CompilerDiagnostic::KernelMintShapeMismatch { declaration_name: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel mint binding: '".to_string(), d.clone()), "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ".to_string()), c.clone()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
     CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
@@ -1338,6 +1345,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::SoleConstructorViolation { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::KernelMintShapeMismatch { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -2174,7 +2185,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().iter().cloned().skip(1 as usize).next()
+        n.children.clone().get((1) as usize).cloned()
     } else {
         std::option::Option::None
     }
@@ -2251,7 +2262,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().iter().cloned().skip(1 as usize).next()
+        n.children.clone().get((1) as usize).cloned()
     } else {
         std::option::Option::None
     }
@@ -2523,10 +2534,8 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr
         .children
         .clone()
-        .iter()
+        .get((index.clone()) as usize)
         .cloned()
-        .skip(index.clone() as usize)
-        .next()
     {
         Some(v) => v.clone(),
         std::option::Option::None => make_expr_error_node(
@@ -2784,13 +2793,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(2 as usize)
-        .next()
+    texpr.children.clone().get((2) as usize).cloned()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -2798,15 +2801,7 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -2906,15 +2901,7 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn expr_method_name_at(
@@ -2944,17 +2931,9 @@ pub fn lambda_param_names_at(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(
-            texpr
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
+        for n in Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
+            .iter()
+            .cloned()
         {
             __result.push(authored_name_at(source_indices.clone(), n.clone()));
         }
@@ -2967,13 +2946,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(1 as usize)
-        .next()
+    texpr.children.clone().get((1) as usize).cloned()
 }
 
 pub fn let_binding_name_at(
@@ -5060,10 +5033,8 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             match index
                 .offsets
                 .clone()
-                .iter()
+                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
                 .cloned()
-                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
-                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => 0,
@@ -5086,10 +5057,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             match index
                 .offsets
                 .clone()
-                .iter()
+                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
                 .cloned()
-                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
-                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => src_len.clone(),
@@ -5098,10 +5067,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
         let line_end = match index
             .offsets
             .clone()
-            .iter()
+            .get((v1_rt::int_sub(line.clone(), 1)) as usize)
             .cloned()
-            .skip(v1_rt::int_sub(line.clone(), 1) as usize)
-            .next()
         {
             Some(o) => o.clone(),
             std::option::Option::None => src_len.clone(),
