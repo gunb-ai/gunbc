@@ -1,6 +1,8 @@
 module test.claim.self_host_structural_text_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -120,24 +122,22 @@ test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool {
   )
 }
 
-// RESTORATION PROBE FOR THE DECLARED RUNG DROP gunbc.rung_drop text_boundary_identity_wall --
-// THIS ROW ASSERTS THE GAP, NOT THE GUARANTEE. A NON-LITERAL kernel-String value (the result of
-// the kernel concat builtin) offered at an exact qualified v2.std.text.String return boundary is
-// PRESENTLY ACCEPTED by same-leaf-name compatibility, with no homomorphism row and no refusal.
-// That acceptance is the drop's bounded observation: deleting this row would turn the bounded gap
-// into an unobserved one. WHEN the declared-boundary conformance peeling capability lands and the
-// identity wall is re-landed under the row's two-direction A/B, this probe REDS (the fixture
-// refuses); it is then flipped to the discriminating refusal control -- asserting the typed
-// refusal via the diagnostic census -- and the literal rows above plus the grounded-identity
-// controls must stay green in the same run. Passing the flip by restoring the roadmap_page
-// false positive is not the trigger.
-test fn w_nonliteral_kernel_string_at_text_boundary_is_presently_accepted_declared_drop() -> Bool {
-  compile_dag_rust_emit_check(
-    "module test.claim.text_nonliteral_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { concat(\"x\", \"y\") }\n",
-    "src/test_claim_text_nonliteral_probe.rs",
-    ["pub fn probe"],
-    []
-  )
+// THE FLIPPED RESTORATION PROBE (gunbc.rung_drop text_boundary_identity_wall; DESIGN 4b(4)). This
+// row used to assert the GAP: a non-literal kernel-String value (the kernel concat builtin's result)
+// at an exact qualified v2.std.text.String return boundary was accepted with no homomorphism and no
+// refusal. The wall now keys on text representation rather than leaf spelling
+// (v1.compiler.infer_env text_representation_by_identity), and a declared return carries no unfold, so
+// the same fixture is a blocking refusal. It stays enrolled as the discriminating control that the
+// wall is real; its paired positive controls are the literal rows above and
+// test.claim.text_boundary_identity_wall_witness_test.
+test fn w_nonliteral_kernel_string_at_text_return_boundary_refuses() -> Bool {
+  match compile_dag_diagnostic_census("module test.claim.text_nonliteral_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.text.String { concat(\"x\", \"y\") }\n") {
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      rs |> any(r => r.blocking)
+    }
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 // OP REALIZATION OVER THE STRUCTURAL CARRIER IS THE DECLARED BODIES: the emitted v2_std_text
@@ -152,7 +152,7 @@ test fn w_nonliteral_kernel_string_at_text_boundary_is_presently_accepted_declar
 // narrowed excludes still go red if any name-keyed override returns.
 test fn w_emitted_text_module_realizes_ops_by_declared_bodies_not_host_strings() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.text_ops_probe\nimport v2.std.text { string_is_empty }\nimport v2.std.logic { Bool }\nfn probe(s: v2.std.text.String) -> Bool { string_is_empty(s: s) }\n",
+    "module test.claim.text_ops_probe\nimport v2.std.text { string_is_empty }\nimport std.types { Bool }\nfn probe(s: v2.std.text.String) -> Bool { string_is_empty(s: s) }\n",
     "src/v2_std_text.rs",
     ["pub fn string_is_empty", "crate::v2_std_algebra::is_empty"],
     ["s.chars()", "s.is_empty()"]

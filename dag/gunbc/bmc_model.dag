@@ -1,10 +1,10 @@
 module gunbc.bmc_model
 
 import std.types { Bool, Int, List }
-import std.string_type { String }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { filter }
+import v2.std.algebra { any, filter }
+import extdeps.bmc.ipmi_channel { IpmiUserId }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
@@ -73,13 +73,14 @@ type BmcWorld {
   booted_via_override: Bool
   sol_drop_after_boot: Second?
   web: BmcWebWorld
+  ipmi_users: List<BmcIpmiUser>
 }
 
 fn bmc_world(power: BmcPower) -> BmcWorld {
   BmcWorld {
     power: power, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
     sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
-    web: bmc_web_world_untouched,
+    web: bmc_web_world_untouched, ipmi_users: [],
   }
 }
 
@@ -147,7 +148,7 @@ fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
     power: power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web,
+    web: world.web, ipmi_users: world.ipmi_users,
   }
 }
 
@@ -156,7 +157,7 @@ fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: web,
+    web: web, ipmi_users: world.ipmi_users,
   }
 }
 
@@ -265,7 +266,7 @@ fn bmc_with_override(world: BmcWorld, over: BmcBootOverride) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: over, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web,
+    web: world.web, ipmi_users: world.ipmi_users,
   }
 }
 
@@ -274,7 +275,7 @@ fn bmc_with_sol_session(world: BmcWorld, open: Bool) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web,
+    web: world.web, ipmi_users: world.ipmi_users,
   }
 }
 
@@ -283,7 +284,7 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
     power: world.power, pending: pending, fired: fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web,
+    web: world.web, ipmi_users: world.ipmi_users,
   }
 }
 
@@ -299,7 +300,7 @@ fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
     power: BmcPowerOn, pending: pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: Present { value: now }, booted_via_override: via, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web,
+    web: world.web, ipmi_users: world.ipmi_users,
   }
 }
 
@@ -400,10 +401,57 @@ fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: Present { value: after },
-    web: world.web,
+    web: world.web, ipmi_users: world.ipmi_users,
   }
 }
 
 fn bmc_sol_drop_fired(world: BmcWorld) -> Bool {
   !all(world.fired, e => match e.event { BmcSolSessionDropped {} => false _ => true })
+}
+
+// ── IPMI USER PASSWORD ───────────────────────────────────────────────────────────────────────────
+//
+// THE CONTROLLER'S IPMI USER TABLE, AS FAR AS A PASSWORD WRITE TOUCHES IT. A world starts with no
+// users, so every write against an untouched world is refused by construction. The transition is the
+// Set User Password command of the public IPMI v2.0 specification (App NetFn, command 47h, operation
+// "set password"): it addresses a user by id and replaces that user's password, and it changes
+// nothing else. Whether the user is enabled or what privilege it holds is a separate command, so it is
+// not changed here. A write to an id the table does not hold changes nothing and is not completed.
+type BmcIpmiUser {
+  id: IpmiUserId
+  password: String
+}
+
+type BmcIpmiSetUserPasswordStep {
+  world: BmcWorld
+  completed: Bool
+}
+
+fn bmc_with_ipmi_users(world: BmcWorld, users: List<BmcIpmiUser>) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web, ipmi_users: users,
+  }
+}
+
+fn bmc_ipmi_set_user_password(world: BmcWorld, user: IpmiUserId, password: String) -> BmcIpmiSetUserPasswordStep {
+  if any(world.ipmi_users, u => (u.id as Int) == (user as Int)) {
+    BmcIpmiSetUserPasswordStep {
+      world: bmc_with_ipmi_users(
+        world: world,
+        users: map(world.ipmi_users, u => if (u.id as Int) == (user as Int) { BmcIpmiUser { id: u.id, password: password } } else { u }),
+      ),
+      completed: true,
+    }
+  } else {
+    BmcIpmiSetUserPasswordStep { world: world, completed: false }
+  }
+}
+
+// Whether the controller would authenticate this user with this password: the readback a write is
+// judged by, independent of the write's own completion.
+fn bmc_ipmi_user_accepts(world: BmcWorld, user: IpmiUserId, password: String) -> Bool {
+  any(world.ipmi_users, u => (u.id as Int) == (user as Int) && u.password == password)
 }

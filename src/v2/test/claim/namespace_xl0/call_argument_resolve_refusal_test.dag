@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -47,13 +46,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reader is not specific to the named form; the declared-argument module is the same call with a
 // bound argument, so an argument reaching resolve is not by itself a refusal; and the callee-only
 // module shows the callee half still resolves.
-data xl2_named_source: String = "module v2.test.xl2_named\n\nimport v2.std.logic { Bool }\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(probe: xl2_undeclared_argument) }\n"
+data xl2_named_source: String = "module v2.test.xl2_named\n\nimport std.types { Bool }\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(probe: xl2_undeclared_argument) }\n"
 
-data xl2_positional_source: String = "module v2.test.xl2_positional\n\nimport v2.std.logic { Bool }\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(xl2_undeclared_argument) }\n"
+data xl2_positional_source: String = "module v2.test.xl2_positional\n\nimport std.types { Bool }\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(xl2_undeclared_argument) }\n"
 
-data xl2_declared_source: String = "module v2.test.xl2_declared\n\nimport v2.std.logic { Bool }\n\ndata xl2_declared_argument: Bool = true\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(probe: xl2_declared_argument) }\n"
+data xl2_declared_source: String = "module v2.test.xl2_declared\n\nimport std.types { Bool }\n\ndata xl2_declared_argument: Bool = true\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(probe: xl2_declared_argument) }\n"
 
-data xl2_callee_only_source: String = "module v2.test.xl2_callee_only\n\nimport v2.std.logic { Bool }\n\nfn xl2_zero() -> Bool { true }\n\nfn xl2_caller() -> Bool { xl2_zero() }\n"
+data xl2_callee_only_source: String = "module v2.test.xl2_callee_only\n\nimport std.types { Bool }\n\nfn xl2_zero() -> Bool { true }\n\nfn xl2_caller() -> Bool { xl2_zero() }\n"
 
 fn xl2_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

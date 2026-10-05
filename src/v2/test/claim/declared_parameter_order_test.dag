@@ -1,5 +1,6 @@
 module v2.test.claim.declared_parameter_order
 
+import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -22,9 +23,7 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
@@ -211,6 +210,13 @@ fn dpo_canonical_domain(arrow: Node) -> Node {
 }
 
 // An application of `arrow` to nothing: infer_application_formals reads only the callee.
+// THE ENTRIES LIST IS EMPTY, AND THAT IS THE CORRECT SUPPLIED VALUE RATHER THAN A STUB. This lane
+// widened infer_application_formals to read a callee's arrow through the CALLEE'S FACTS as well, for
+// the case where the callee is a resolved declaration reference and not an Arrow node. Here the
+// fixture supplies the Arrow AS the callee (dpo_application puts it at positional 0), so
+// infer_operator_arrow answers from the node itself and the facts route is never consulted. An empty
+// entries list therefore states exactly the fixture's premise -- no facts are needed to read this
+// callee -- and a non-empty one would be inventing a hypothesis this claim's subject does not have.
 fn dpo_application(arrow: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -220,7 +226,7 @@ fn dpo_application(arrow: Node) -> Node {
 }
 
 fn dpo_formal_labels(arrow: Node) -> List<Symbol> {
-  match infer_application_formals(node: dpo_application(arrow: arrow)) {
+  match infer_application_formals(node: dpo_application(arrow: arrow), entries: []) {
     FormalsInDeclaredOrder { formals: fs } => fold(fs, init: [], f: fn(acc, f) { concat(acc, [f.parameter_identity]) })
     FormalsUnresolved => []
     FormalsOrderRefused { reason: _ } => []
@@ -228,7 +234,7 @@ fn dpo_formal_labels(arrow: Node) -> List<Symbol> {
 }
 
 fn dpo_refusal_reason(arrow: Node) -> List<Symbol> {
-  match infer_application_formals(node: dpo_application(arrow: arrow)) {
+  match infer_application_formals(node: dpo_application(arrow: arrow), entries: []) {
     FormalsOrderRefused { reason: r } => [r]
     FormalsInDeclaredOrder { formals: _ } => []
     FormalsUnresolved => []

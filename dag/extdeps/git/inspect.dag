@@ -1,7 +1,6 @@
 module extdeps.git.inspect
 
 import std.types { Bool, CommitSha, FilePath, GitRef, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -148,6 +147,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // consumer does not model become a TYPED refusal naming the entry rather than a read error at some
 // later stage -- and it carries the object id, so a population read out of a revision can name each
 // member by content identity instead of by path alone.
+//
+// ListTreeEntryAtPath is the same record for ONE path: a consumer that needs one file's mode and
+// object id at a revision asks for that path rather than enumerating the tree.
 //
 // BOTH OPERATIONS SURVIVE. A consumer that only needs paths pays neither the wider output nor the
 // parse, and asking for identity when you wanted names is the same collapse ResolveRefCommit and
@@ -356,6 +358,22 @@ service git.Inspect {
     }
     readonly
     transport shell { argv: ["git", "ls-tree", "-rz", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreeEntryAtPath {
+    requires opaque
+    input { ref: GitRef, path: String }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-z", "{ref}", "--", "{path}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"

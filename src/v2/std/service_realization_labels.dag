@@ -19,3 +19,4 @@ fn realization_projection_label() -> Symbol { symbol_intern_lexeme(lexeme: "<pro
 fn realization_arm_pattern_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-pattern>") }
 fn realization_arm_payload_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-payload>") }
 fn realization_status_code_label() -> Symbol { symbol_intern_lexeme(lexeme: "<status-code>") }
+fn realization_arm_doc_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-doc>") }

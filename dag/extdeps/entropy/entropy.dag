@@ -7,7 +7,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { Int, Unit }
-import std.string_type { String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

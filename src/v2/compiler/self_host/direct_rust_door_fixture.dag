@@ -1,4 +1,5 @@
 module v2.compiler.self_host.direct_rust_door_fixture
+import v2.std.optional { optional_absent }
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
@@ -106,9 +107,8 @@ fn direct_rust_door_admission() -> Admission {
 // stage whose value is closure-free and therefore portable (the InferredTree one stage up carries
 // the facts PartialFunction and is deliberately not the share point), so the resolved tree is the
 // cross-claim share point and infer stays per claim. `direct_rust_door_specimen_resolved` is
-// nullary and warm-enrolled in `v2.workflow.floor_pure_producer_share`
-// (floor_cross_claim_pure_producers_warm), which carries the measured recompute/sharing/serve
-// case; the required floor forces it during strict preparation, outside every per-claim budget.
+// nullary, so the derived cross-claim share (`v2.workflow.floor_pure_producer_share`
+// derive_cross_claim_share) admits it when several planned claims reach it; the required floor forces it during strict preparation, outside every per-claim budget.
 fn direct_rust_door_specimen_resolved() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: direct_rust_door_ingest(),
@@ -288,7 +288,8 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
           optional_present(
             value: InferredFacts {
               grounding: DerivedGrounding { grounding: grounding },
-              descent: Holds { value: proof }
+              descent: Holds { value: proof },
+              denotation: optional_absent()
             }
           )
       }

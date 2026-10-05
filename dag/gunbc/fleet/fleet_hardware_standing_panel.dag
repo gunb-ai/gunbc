@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.markup { Fragment }
 import gunbc.site.markup { txt, el_class }
 import extdeps.languages.css.values { css_ch, css_length_wire }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.installed_bom_reconcile {
   DimmReconcileVerdict, ProcessorReconcileVerdict,
   DimmPopulationConfirmed, DimmPopulationRefused,

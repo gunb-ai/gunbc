@@ -68,7 +68,9 @@ import gunbc.rung_drop.v2_native_frontier_nightly_cadence { v2_native_frontier_n
 import gunbc.rung_drop.native_lane_live_pair_expected_red { native_lane_live_pair_expected_red }
 import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
 import gunbc.rung_drop.approval_store_single_writer_by_agreement { approval_store_single_writer_by_agreement }
+import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash { mtcollins1_bmc_secure_standing_predates_reflash }
 import gunbc.rung_drop.mtcollins1_boot_accepts_socket1_absent { mtcollins1_boot_accepts_socket1_absent }
+import gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation { megarac_operations_admitted_through_a_superseded_build_observation }
 import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_follow_up_charge_removed }
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
@@ -81,6 +83,7 @@ import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_he
 import gunbc.rung_drop.runner_host_file_apply_route_hermetic { runner_host_file_apply_route_hermetic }
 import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
 import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
+import gunbc.rung_drop.unimported_bare_provider_gate_admits_kernel_method_names_untyped { unimported_bare_provider_gate_admits_kernel_method_names_untyped }
 import gunbc.rung_drop.infer_facts_key_conflict_reverted_to_first_wins { infer_facts_key_conflict_reverted_to_first_wins }
 import gunbc.rung_drop.slot_row_pinned_below_demonstrated_demand_unrefused { slot_row_pinned_below_demonstrated_demand_unrefused }
 import gunbc.rung_drop.microvm_shakedown_slot_row_above_fleet_row { microvm_shakedown_slot_row_above_fleet_row }
@@ -93,6 +96,7 @@ import gunbc.rung_drop.live_deploy_dark_install_render_new_witness_eval_step_cos
 import gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost { roadmap_live_forecast_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_page_style_new_witness_eval_step_cost { roadmap_page_style_new_witness_eval_step_cost }
 import gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost { dag_emit_round_trip_new_witness_eval_step_cost }
+import gunbc.rung_drop.dag_text_round_trip_nested_bind_new_witness_eval_step_cost { dag_text_round_trip_nested_bind_new_witness_eval_step_cost }
 import gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor { dag_emit_real_grammar_round_trips_off_floor }
 import gunbc.rung_drop.app_attest_interpreted_crypto_new_witness_eval_step_cost { app_attest_interpreted_crypto_new_witness_eval_step_cost }
 import gunbc.rung_drop.mtcollins1_boot_matrix_new_witness_eval_step_cost { mtcollins1_boot_matrix_new_witness_eval_step_cost }
@@ -101,6 +105,7 @@ import gunbc.rung_drop.app_attest_verifier_new_witness_eval_step_cost { app_atte
 import gunbc.rung_drop.app_attest_verifier_enrolment_dead_band_observed_only { app_attest_verifier_enrolment_dead_band_observed_only }
 import gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only { mtcollins1_boot_matrix_enrolment_dead_band_observed_only_drop }
 import gunbc.rung_drop.sha256_span_program_serialize_new_witness_eval_step_cost { sha256_span_program_serialize_new_witness_eval_step_cost }
+import gunbc.rung_drop.approval_intent_digest_new_witness_eval_step_cost { approval_intent_digest_new_witness_eval_step_cost }
 import gunbc.rung_drop.v41_row_store_host_realized_by_sample { v41_row_store_host_realized_by_sample }
 import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
 import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_floor { typescript_same_language_round_trip_leaves_off_required_floor }
@@ -121,6 +126,9 @@ import gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_car
 import gunbc.rung_drop.python_to_typescript_compile_inhabitance_off_the_required_gate { python_to_typescript_compile_inhabitance_off_the_required_gate }
 import gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci { edited_bin_witness_wet_rows_not_executed_by_ci }
 import gunbc.rung_drop.shared_index_residency_asserted_after_the_run { shared_index_residency_asserted_after_the_run }
+import gunbc.rung_drop.match_arm_binder_typing_lost_to_lexical_carrier { match_arm_binder_typing_lost_to_lexical_carrier }
+import gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger { fixture_closure_corpus_emit_refusals_lost_as_passenger }
+import gunbc.rung_drop.native_serve_request_budget_unrealized { native_serve_request_budget_unrealized }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -183,6 +191,7 @@ data rung_drop_roster: List<RungDrop> = [
   runner_host_file_apply_route_hermetic,
   floor_cost_cpu_regression_at_constant_eval_steps,
   accumulator_copy_positive_controls_off_every_lane,
+  unimported_bare_provider_gate_admits_kernel_method_names_untyped,
   infer_facts_key_conflict_reverted_to_first_wins,
   slot_row_pinned_below_demonstrated_demand_unrefused,
   microvm_shakedown_slot_row_above_fleet_row,
@@ -201,6 +210,7 @@ data rung_drop_roster: List<RungDrop> = [
   app_attest_verifier_enrolment_dead_band_observed_only,
   mtcollins1_boot_matrix_enrolment_dead_band_observed_only_drop,
   sha256_span_program_serialize_new_witness_eval_step_cost,
+  approval_intent_digest_new_witness_eval_step_cost,
   v41_row_store_host_realized_by_sample,
   seam_monolith_control_unmeasured_derived_root,
   typescript_same_language_round_trip_leaves_off_required_floor,
@@ -220,11 +230,17 @@ data rung_drop_roster: List<RungDrop> = [
   retention_census_counts_one_retention_per_refused_module,
   typed_statement_let_refuses_until_the_bind_annotation_carrier,
   mtcollins1_boot_accepts_socket1_absent,
+  megarac_operations_admitted_through_a_superseded_build_observation,
   python_to_typescript_compile_inhabitance_off_the_required_gate,
   edited_bin_witness_wet_rows_not_executed_by_ci,
   shared_index_residency_asserted_after_the_run,
   dag_emit_round_trip_new_witness_eval_step_cost,
   dag_emit_real_grammar_round_trips_off_floor,
+  match_arm_binder_typing_lost_to_lexical_carrier,
+  fixture_closure_corpus_emit_refusals_lost_as_passenger,
+  native_serve_request_budget_unrealized,
+  dag_text_round_trip_nested_bind_new_witness_eval_step_cost,
+  mtcollins1_bmc_secure_standing_predates_reflash,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

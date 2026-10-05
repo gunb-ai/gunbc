@@ -1,11 +1,12 @@
 module v2.std.compilers.lexing
 
+import std.coercion { unicode_scalar_unfold }
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.algebra { fold_list, length, skip }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -19,7 +20,6 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.integer { integer_int_content_digest }
@@ -209,7 +209,7 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
           xs: acc,
           item: TokenRule {
             token_class: s.token_class,
-            pattern: LiteralPattern { text: chars(s: s.fragment) }
+            pattern: LiteralPattern { text: unicode_scalar_unfold(s: s.fragment) }
           }
         )
       }
@@ -230,6 +230,10 @@ fn phrase_to_source_text(p: LexicalPhrase) -> String {
   )
 }
 
+// TOKEN STARTS STRICTLY INCREASE ALONG A STREAM. A token's start is its stream position: the parse
+// keys its memo and decides repeat progress by it (v2.compiler.parse parse_current_position), and
+// refuses a stream that breaks the order at its entry (parse_token_start_order_violation,
+// TokenStartsNotIncreasing) rather than serve one position's answer for another.
 type Token {
   class: Symbol
   lexeme: Lexeme
@@ -421,6 +425,14 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
 // classes it lexes by character classes or literals (an identifier, an int literal), which are also
 // token classes (lex_rule_set_token_class_member) and name operands. Whether a pattern IS a keyword
 // is asked through the pattern's one fold, fold_lex_pattern, not a second matcher over LexPattern.
+// Every STRUCTURAL question about a pattern goes through that fold. The one sanctioned direct walk
+// is v2.compiler.tokenize lex_match_pattern, which runs a pattern against input. Matching threads a
+// cursor through the children (a sequence's right part starts where its left part stopped, a choice
+// tries its right part only when the left refuses, a repeat re-runs its element at each new cursor),
+// and a catamorphism can produce such an input-dependent answer only as a closure per sub-pattern.
+// Matchers must stay data so a compiled rule set is portable and can be served across claims
+// (dag_prepared_lex). A new LexPattern variant cannot be missed by that walk: its match over the
+// closed coproduct refuses at compile time as non-exhaustive.
 fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
   fold_lex_pattern(
     pattern: pattern,

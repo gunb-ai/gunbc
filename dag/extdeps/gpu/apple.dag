@@ -7,12 +7,22 @@ import std.measure { hardware_thread_count, bandwidth, gibibyte, gibibyte_to_byt
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.apple.com/macbook-pro/specs/"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.apple", decl_name: "apple_m5_gpu_catalog", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {

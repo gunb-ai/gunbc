@@ -1,5 +1,22 @@
 module v2.test.name_resolve.test_code_reference_wall
 
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission, resolve_with_admission_policy }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_record_declarations }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, namespace_graft_module_body_marker_node }
+import v2.std.algebra { fold_list_node }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel, test_marker_channel_count, test_marker_channel_marks }
+import v2.std.diagnostic { Accepted, Outcome }
+import v2.std.live_tree { SubstrateInputsOnly }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, content_hash, symbol_lexeme }
+import v2.std.resolution_policy { ImportScoped }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE WALL AT ONE INTERFACE: name resolution (v2.compiler.name_resolve resolve_with_admission, the
@@ -120,7 +137,7 @@ fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
 }
 
 fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
 }
 
 // THE PEER'S NAMES ARE BOUND, BECAUSE UNDER THE CANDIDATE RULE THAT IS THE ONLY WAY TO REACH THEM.
@@ -152,6 +169,7 @@ fn wall_tree_importing_peer(root: Node, marked: List<Symbol>) -> Outcome<Normali
   admit_normalized_tree(
     import_bindings: wall_peer_import_bindings(),
     type_declaration_kinds: no_type_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
     root: root,
     test_markers: wall_channel(marked: marked),
     diagnostics: None

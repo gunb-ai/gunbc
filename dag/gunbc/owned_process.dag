@@ -1,7 +1,6 @@
 module gunbc.owned_process
 
 import std.types { Bool, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }

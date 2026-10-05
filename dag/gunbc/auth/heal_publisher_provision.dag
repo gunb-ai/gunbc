@@ -10,7 +10,7 @@ import extdeps.cloud.gcp.iam {
 }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
   AccessTokenSource, OperatorSuppliedToken, secret_access_token_path_env
@@ -36,26 +36,16 @@ import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 // that exists and matches its declaration is taken as present, and one that exists and differs halts
 // the run with nothing granted (provision_dedicated_federation).
 
-fn rest_refusal_text(o: RestOutcome) -> String {
+fn rest_refusal_text(o: RestRefusal) -> String {
   match o {
-    RestOk => "ok"
     RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
     RestTransportRefused { cause } => concat("transport: ", cause as String)
     RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
   }
 }
 
-fn rest_ok(o: RestOutcome) -> Bool {
-  match o {
-    RestOk => true
-    RestStatusRefused { status: _, body: _ } => false
-    RestTransportRefused { cause: _ } => false
-    RestBodyUndecodable { status: _, cause: _ } => false
-  }
-}
-
 // ONE DEDICATED FEDERATION, AS A RECORD. The heal publisher was the first job to get its own pool,
-// provider and service account; the Mt. Collins boot (gunbc.auth.mtcollins1_boot_federation) is the
+// provider and service account; the managed-host boot (gunbc.auth.managed_host_boot_federation) is the
 // second. The provisioning below was written against the heal publisher's names, and a second copy
 // differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
 // so the names are a record and each federation binds its own. Everything else -- the 409 handling,
@@ -149,42 +139,44 @@ fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
 
 fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
 {
-  let observed = gcp.IamAdmin.GetServiceAccountIamPolicy(
+  match gcp.IamAdmin.GetServiceAccountIamPolicy(
     access_token: token,
     project_id: fleet_secrets_project_id,
     service_account: f.service_account
-  )
-  if !rest_ok(o: observed.outcome) {
-    exit_failure(reason: join([f.label, ": the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)], ""))
-  } else {
-    let observed_policy = gcp_policy_from_wire(bindings: observed.bindings, etag: observed.etag, version: observed.version)
-    match reconcile_gcp_policy(
-      observed: observed_policy,
-      desired_owned: [impersonation_cell(f: f)],
-      owned_universe: impersonation_owned(f: f)
-    ) {
-      GcpPolicyRepresentationLossy { conditional_roles: _ } =>
-        exit_failure(reason: concat(concat(f.label, ": "), "the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing."))
-      GcpPolicyAlreadyConverged { policy: p } =>
-        if impersonation_binding_present_for(f: f, policy: p) {
-          ExitSuccess
-        } else {
-          exit_failure(reason: concat(concat(f.label, ": "), "reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported"))
-        }
-      GcpPolicyDeltaRequired { policy: desired_policy, added: _, removed: _, preserved: _ } => {
-        let written = gcp.IamAdmin.SetServiceAccountIamPolicy(
-          access_token: token,
-          project_id: fleet_secrets_project_id,
-          service_account: f.service_account,
-          policy: desired_policy
-        )
-        if !rest_ok(o: written.outcome) {
-          exit_failure(reason: join([f.label, ": the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)], ""))
-        } else if impersonation_binding_present_for(f: f, policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
-          ExitSuccess
-        } else {
-          exit_failure(reason: concat(concat(f.label, ": "), "setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell"))
-        }
+  ) {
+    RestRefused { refusal } =>
+      exit_failure(reason: join([f.label, ": the service account's policy could not be read: ", rest_refusal_text(o: refusal)], ""))
+    RestAnswered { answer: observed } => {
+      let observed_policy = gcp_policy_from_wire(bindings: observed.bindings, etag: observed.etag, version: observed.version)
+      match reconcile_gcp_policy(
+        observed: observed_policy,
+        desired_owned: [impersonation_cell(f: f)],
+        owned_universe: impersonation_owned(f: f)
+      ) {
+        GcpPolicyRepresentationLossy { conditional_roles: _ } =>
+          exit_failure(reason: concat(concat(f.label, ": "), "the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing."))
+        GcpPolicyAlreadyConverged { policy: p } =>
+          if impersonation_binding_present_for(f: f, policy: p) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat(concat(f.label, ": "), "reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported"))
+          }
+        GcpPolicyDeltaRequired { policy: desired_policy, added: _, removed: _, preserved: _ } =>
+          match gcp.IamAdmin.SetServiceAccountIamPolicy(
+            access_token: token,
+            project_id: fleet_secrets_project_id,
+            service_account: f.service_account,
+            policy: desired_policy
+          ) {
+            RestRefused { refusal } =>
+              exit_failure(reason: join([f.label, ": the service account's policy could not be written: ", rest_refusal_text(o: refusal)], ""))
+            RestAnswered { answer: written } =>
+              if impersonation_binding_present_for(f: f, policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
+                ExitSuccess
+              } else {
+                exit_failure(reason: concat(concat(f.label, ": "), "setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell"))
+              }
+          }
       }
     }
   }
@@ -195,14 +187,15 @@ fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
 // observe its CONFIGURATION, which for the provider is the attribute condition -- the single fact
 // that decides which workflows may federate at all -- so reporting it as converged would be this
 // run asserting a security property it never read. CreateRefused is everything else.
+// subject_creation classifies a REFUSED create only; an answered create is SubjectCreated at the call
+// site, where the RestAnswered arm is.
 type SubjectCreation
   = SubjectCreated
   | SubjectAlreadyPresentUnverified
   | SubjectCreateRefused { cause: String }
 
-fn subject_creation(o: RestOutcome) -> SubjectCreation {
+fn subject_creation(o: RestRefusal) -> SubjectCreation {
   match o {
-    RestOk => SubjectCreated
     RestStatusRefused { status, body } =>
       if (status as Int) == 409 {
         SubjectAlreadyPresentUnverified
@@ -244,10 +237,9 @@ type FederationClassification
   = FederationClassified { create_pool: Bool, create_provider: Bool, create_account: Bool }
   | FederationUnclassified { reasons: List<String> }
 
-fn outcome_is_not_found(o: RestOutcome) -> Bool {
+fn outcome_is_not_found(o: RestRefusal) -> Bool {
   match o {
     RestStatusRefused { status, body: _ } => (status as Int) == 404
-    RestOk => false
     RestTransportRefused { cause: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
   }
@@ -364,37 +356,43 @@ fn federation_fully_present(c: FederationClassification) -> Bool {
 
 fn read_pool(f: DedicatedFederation, token: Secret) -> PoolReading
 {
-  let r = gcp.IamAdmin.GetWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id)
-  if rest_ok(o: r.outcome) {
-    PoolObserved { pool: WifPoolWire { name: r.pool_name, display_name: r.display_name, disabled: r.disabled, state: r.state } }
-  } else if outcome_is_not_found(o: r.outcome) {
-    PoolObservedAbsent
-  } else {
-    PoolUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  match gcp.IamAdmin.GetWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id) {
+    RestAnswered { answer: r } =>
+      PoolObserved { pool: WifPoolWire { name: r.pool_name, display_name: r.display_name, disabled: r.disabled, state: r.state } }
+    RestRefused { refusal } =>
+      if outcome_is_not_found(o: refusal) {
+        PoolObservedAbsent
+      } else {
+        PoolUnreadable { cause: rest_refusal_text(o: refusal) }
+      }
   }
 }
 
 fn read_providers(f: DedicatedFederation, token: Secret) -> ProvidersReading
 {
-  let r = gcp.IamAdmin.ListWorkloadIdentityPoolProviders(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id)
-  if rest_ok(o: r.outcome) {
-    ProvidersObserved { providers: match r.providers { Present { value: ps } => ps  Absent => [] } }
-  } else if outcome_is_not_found(o: r.outcome) {
-    ProvidersObserved { providers: [] }
-  } else {
-    ProvidersUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  match gcp.IamAdmin.ListWorkloadIdentityPoolProviders(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id) {
+    RestAnswered { answer: r } =>
+      ProvidersObserved { providers: match r.providers { Present { value: ps } => ps  Absent => [] } }
+    RestRefused { refusal } =>
+      if outcome_is_not_found(o: refusal) {
+        ProvidersObserved { providers: [] }
+      } else {
+        ProvidersUnreadable { cause: rest_refusal_text(o: refusal) }
+      }
   }
 }
 
 fn read_account(f: DedicatedFederation, token: Secret) -> AccountReading
 {
-  let r = gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: f.service_account)
-  if rest_ok(o: r.outcome) {
-    AccountObserved { email: r.email as String }
-  } else if outcome_is_not_found(o: r.outcome) {
-    AccountObservedAbsent
-  } else {
-    AccountUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  match gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: f.service_account) {
+    RestAnswered { answer: r } =>
+      AccountObserved { email: r.email as String }
+    RestRefused { refusal } =>
+      if outcome_is_not_found(o: refusal) {
+        AccountObservedAbsent
+      } else {
+        AccountUnreadable { cause: rest_refusal_text(o: refusal) }
+      }
   }
 }
 
@@ -409,11 +407,11 @@ fn unclassified_exit(f: DedicatedFederation, phase: String, reasons: List<String
 
 // A CREATE IS ISSUED ONLY FOR A SUBJECT OBSERVED ABSENT, so every answer but a 200 is a halt: a 409
 // here means someone created the id between the read and the write.
-fn create_if(wanted: Bool, subject: String, outcome: RestOutcome) -> String {
+fn create_if(wanted: Bool, subject: String, creation: SubjectCreation) -> String {
   if !wanted {
     ""
   } else {
-    match subject_creation(o: outcome) {
+    match creation {
       SubjectCreated => ""
       SubjectAlreadyPresentUnverified => join([subject, " appeared between the read and the create; "], "")
       SubjectCreateRefused { cause } => join([subject, ": ", cause, "; "], "")
@@ -427,19 +425,28 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
     FederationUnclassified { reasons: _ } => "unclassified; nothing created"
     FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } => {
       let pool = if cp {
-        create_if(wanted: true, subject: "the pool", outcome: gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name).outcome)
+        create_if(wanted: true, subject: "the pool", creation: match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
+          RestAnswered { answer: _ } => SubjectCreated
+          RestRefused { refusal } => subject_creation(o: refusal)
+        })
       } else { "" }
       if pool != "" {
         return pool
       }
       let provider = if cv {
-        create_if(wanted: true, subject: "the provider", outcome: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, provider_id: f.provider_id, issuer_uri: github_wif_issuer_uri, attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition as NonEmptyStr).outcome)
+        create_if(wanted: true, subject: "the provider", creation: match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, provider_id: f.provider_id, issuer_uri: github_wif_issuer_uri, attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition as NonEmptyStr) {
+          RestAnswered { answer: _ } => SubjectCreated
+          RestRefused { refusal } => subject_creation(o: refusal)
+        })
       } else { "" }
       if provider != "" {
         return provider
       }
       if ca {
-        create_if(wanted: true, subject: "the service account", outcome: gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: f.service_account_id, display_name: f.service_account_display_name).outcome)
+        create_if(wanted: true, subject: "the service account", creation: match gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: f.service_account_id, display_name: f.service_account_display_name) {
+          RestAnswered { answer: _ } => SubjectCreated
+          RestRefused { refusal } => subject_creation(o: refusal)
+        })
       } else { "" }
     }
   }

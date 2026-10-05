@@ -2,7 +2,7 @@ module gunbc.fabric_cell_observe
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
@@ -14,7 +14,6 @@ import gunbc.fleet_runner_connectivity {
   fleet_committed_slot_identities,
   FleetHostWidthUnresolved,
 }
-import std.string_type { string_is_lexicographically_before }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,
@@ -773,8 +772,7 @@ fn fabric_cell_discovered_entries(
 // observer handing the kernel an order-dependent population defeats the kernel's own canonical
 // order no matter how correct the kernel is.
 //
-// THE ORDER IS LEXICOGRAPHIC OVER THE SUBJECT WIRE, on `std.string_type`
-// `string_is_lexicographically_before`. That is the one total order available over a population
+// THE ORDER IS LEXICOGRAPHIC OVER THE SUBJECT WIRE, by host String `<` (code-point order). That is the one total order available over a population
 // whose members are not all identities -- a foreign artifact has an observed NAME and no slot index
 // to compare -- so ordering by index, as the kernel's supplied side does, is not even expressible
 // here. The wire is also what the dedupe compares, so the two obligations share one projection
@@ -787,17 +785,11 @@ fn fabric_cell_discovery_insert(
   else {
     concat(
       fold(acc, init: [], f: (kept, e) =>
-        if string_is_lexicographically_before(
-          left: fabric_cell_discovered_subject_wire(s: e),
-          right: fabric_cell_discovered_subject_wire(s: s),
-        ) { concat(kept, [e]) } else { kept }),
+        if fabric_cell_discovered_subject_wire(s: e) < fabric_cell_discovered_subject_wire(s: s) { concat(kept, [e]) } else { kept }),
       concat(
         [s],
         fold(acc, init: [], f: (kept, e) =>
-          if string_is_lexicographically_before(
-            left: fabric_cell_discovered_subject_wire(s: e),
-            right: fabric_cell_discovered_subject_wire(s: s),
-          ) { kept } else { concat(kept, [e]) }),
+          if fabric_cell_discovered_subject_wire(s: e) < fabric_cell_discovered_subject_wire(s: s) { kept } else { concat(kept, [e]) }),
       ),
     )
   }

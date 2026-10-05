@@ -41,7 +41,6 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
   [
     retained_class_b_trim_specimen,
     retained_namespace_unique_on_chain_policy,
-    retained_materialization_provider_resolved_graph_consumer,
     retained_decl_facts_dimensionless_projection,
     retained_none_undetermined_carrier_refuse,
     retained_field_of_fractions_single_declaration,
@@ -61,12 +60,6 @@ data retained_namespace_unique_on_chain_policy: RetainedLegacyRustTestModule = R
   source_file: "namespace_unique_on_chain_policy_test.rs",
   purpose: "Toggles the host thread-local NameResolutionPolicy gate between ImportScoped and NamespaceOnlyY, then compiles homonym fixtures and asserts the strict policy refuses with AmbiguousReference where the default resolves. A substrate program has no handle to flip the seed interpreter's resolution policy, so the discriminating comparison cannot be authored in .dag at all." as NonEmptyStr,
   dissolution: UnboundDissolution { description: "The namespace-only resolution lane makes NamespaceOnlyY the sole policy, at which point the two-policy comparison has no second arm and this row is deleted." as NonEmptyStr },
-}
-
-data retained_materialization_provider_resolved_graph_consumer: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
-  source_file: "materialization_provider_resolved_graph_consumer_test.rs",
-  purpose: "Calls the seed cli_run helper serve_resolved_graph_stored_disk_probe_for_test, inspects the provider context BUILD COUNTER, and asserts the faithful-probe refusal path never boots the provider context. The counter is seed runtime state with no substrate-observable surface — a .dag witness could observe the refusal but not that the context was never built, which is the whole claim." as NonEmptyStr,
-  dissolution: UnboundDissolution { description: "The materialization provider exposes a typed build-count receipt the substrate can read, at which point the counter assertion migrates to a floor witness." as NonEmptyStr },
 }
 
 data retained_decl_facts_dimensionless_projection: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {

@@ -1375,7 +1375,7 @@ fn v1_minted_manifest_dependencies() -> List<CargoPathDependency> {
     CargoPathDependency {
       consumer_package: FixedPackageName { name: "v1_compiled" },
       dependency_package: stage0_host_shell_package_name(),
-      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.self_host_curated_seed_linked_harness", decl_name: "cssl_v1_compiled_cargo_deps_block") },
+      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.emitted_crate_harness_manifest", decl_name: "harness_seed_link_dependency_table") },
       linkage: SeedLinkedIntoEmittedCode,
     },
     CargoPathDependency {

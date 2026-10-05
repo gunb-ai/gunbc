@@ -15,6 +15,12 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target. Every error is in
 // that file (the driver is not reached, since the library it links fails); this receipt greens when that component is
 // discharged, and not by re-pointing this module's String import around it.
+// COMPONENT DISCHARGED AT SOURCE (2026-09-28, gunbc.rung_drop text_boundary_identity_wall):
+// string_lex_compare and string_is_lexicographically_before are deleted (host String `<` is that
+// order), and the shape that produced the eight E0308 -- a FreeMonoid<Char> value handed to a
+// host-text primitive -- now refuses at check. This module's std.string_type import was a nickname
+// for the kernel String and is deleted with the other 70, not re-pointed at v2.std.text. The receipt
+// is a wet run; its green after the discharge has not been observed yet.
 
 test fn self_host_discovery_enumeration_behavioral_receipt_holds() -> Bool {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/discovery_enumeration.dag")

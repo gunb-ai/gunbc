@@ -19,7 +19,6 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Conj,
@@ -44,6 +43,7 @@ import v2.std.symbol_index {
   symbol_index_mark_namespace_body,
   VariantArmPayload,
   symbol_index_bind_at,
+  symbol_index_mark_module_root,
   symbol_index_declaring_path_of,
   symbol_index_insert,
   symbol_index_lookup,
@@ -61,6 +61,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -92,21 +93,31 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
 // declarations of the alias, and a binder is never a declared identity.
 // The node a declared name binds to, and the member the index descends into when the declaration
 // declares members -- one dispatch on the view for both.
-// type_params: a GENERIC declaration binds its member, which cannot carry its binders, so they ride
-// beside it (v2.std.symbol_index symbol_index_mark_declared_type_params). Empty for every other arm:
-// an alias or bodyless declaration binds its wrapper, which still carries them.
+// binders: a GENERIC declaration binds its member, which cannot carry its binders, so they ride
+// beside it (v2.std.symbol_index symbol_index_mark_declared_type_params). An alias or bodyless
+// declaration binds its wrapper and its binders are recorded beside it too, so every declaration that
+// binds type parameters answers v2.std.symbol_index symbol_index_declared_binders_at the same way --
+// the read resolve's type-application check (v2.std.type_binder type_application_conformance) takes.
+// Absent only for a plain member, which binds none.
 type SymbolIndexDeclared {
   bound: Node
   members: Optional<Node>
-  type_params: List<Symbol>
+  binders: Optional<Node>
 }
 
 fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   match type_decl_view(target: target) {
-    GenericTypeDecl { binders: _, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), type_params: type_param_names(n: target) }
-    TypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), type_params: Empty }
-    OpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), type_params: Empty }
-    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), type_params: Empty }
+    GenericTypeDecl { binders: b, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_present(value: b) }
+    TypeAlias { binders: b, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
+    OpaqueTypeDecl { binders: b } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
+    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_absent() }
+  }
+}
+
+fn symbol_index_mark_declared_binders(index: SymbolIndex, qualified_path: QualifiedName, binders: Optional<Node>) -> SymbolIndex {
+  match binders {
+    Present { value: b } => symbol_index_mark_declared_type_params(index: index, qualified_path: qualified_path, params: b)
+    Absent => index
   }
 }
 
@@ -115,14 +126,14 @@ fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, seg
   let child_path = qualified_name_snoc(qn: path, segment: segment)
   let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
   let with_binding = symbol_index_mark_namespace_body_if(
-    index: symbol_index_mark_declared_type_params(
+    index: symbol_index_mark_declared_binders(
       index: symbol_index_insert(
         index: index,
         qualified_path: child_path,
         resolved: declared.bound
       ),
       qualified_path: child_path,
-      params: declared.type_params
+      binders: declared.binders
     ),
     qualified_path: child_path,
     target: edge.target
@@ -501,7 +512,7 @@ fn symbol_index_fill_module_declarations(
         xs: record_declarations,
         empty: symbol_index_fill_unique_variant_aliases(
           index: symbol_index_fill_containment_node(
-            index: index,
+            index: symbol_index_mark_module_root(index: index, qualified_path: module_qn),
             path: module_qn,
             node: root
           ),

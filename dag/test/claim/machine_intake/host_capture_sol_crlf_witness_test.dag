@@ -6,7 +6,7 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_bind, host_capture_section_reading, HostCaptureOpen, HostCaptureSectionReading, SectionComplete,
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
-  mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, MtCollins1BootTerminalVerdict, TerminalRefused,
+  mtcollins1_boot_terminal_verdict, MtCollins1BootTerminalVerdict, TerminalPending,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject_for, MtCollins1CensusMedium }
 
@@ -56,21 +56,19 @@ test fn sol_crlf_sections_complete_with_exit_zero() -> Bool {
   }
 }
 
-// THE VERDICT: boot-media and edac-before hold, and the only REFUSING cause is nproc's JUDGED value --
-// "80" read exactly (no CR), against the census row's 160 (gunbc.machine_intake_mtcollins1_memory_census_observation
-// mtcollins1_nproc). That mismatch is the unit's own reading, not framing: the same capture's lscpu
-// reports CPU(s) 80 on one socket. At main this refuses with the three "exited 0" causes instead.
-// The trimmed capture never opens workload or edac-after, so the open refusal names both as
-// unobserved rather than dropping them (mtcollins1_boot_run open_unresolved_causes).
-test fn sol_crlf_capture_refuses_only_on_the_nproc_reading() -> Bool {
+// THE VERDICT: no section the capture carries refuses, so the open envelope stays PENDING. nproc's
+// "80" is read exactly (no CR) and holds against the one-socket milestone's expectation
+// (gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, bound to
+// mtcollins1_one_socket_milestone under the declared drop gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent);
+// boot-media names the census volume and edac-before is clean. The terminator's CR is what this
+// discriminates: read as "80\r" nproc would refuse against 80, and read as "0\r" every section would
+// refuse as "exited 0" -- either way the verdict would be TerminalRefused, never pending. The trimmed
+// capture never opens numa, workload or edac-after, which is why it pends rather than accepts.
+test fn sol_crlf_capture_refuses_nothing_it_carries() -> Bool {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   match mtcollins1_boot_terminal_verdict(capture: sol_crlf_capture(), subject: subject, medium: medium) {
-    TerminalRefused { causes: cs } => map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
-      "nproc observed 80, qualification expects 160",
-      "workload not yet observed when the open envelope refused; unqualified",
-      "edac-after not yet observed when the open envelope refused; unqualified",
-    ]
+    TerminalPending { reason: _ } => true
     _ => false
   }
 }

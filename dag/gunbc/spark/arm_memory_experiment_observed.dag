@@ -1,6 +1,7 @@
 module gunbc.spark.arm_memory_experiment_observed
 
 import std.types { Bool, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat, nat_max, nat_min, nat_range_inclusive }
 import std.checked_arithmetic { nat_magnitude }
 import std.measure {
@@ -14,7 +15,7 @@ import extdeps.vllm.runtime_defaults { Vllm8d09804, defaults_source_revision }
 import extdeps.vllm.log_lines {
   VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency,
 }
-import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
+import extdeps.vllm.engine_args { IndexerKvDtypeOmitted, PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
   VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
@@ -22,12 +23,13 @@ import extdeps.vllm.kv_layout {
 import extdeps.vllm.sparse_prefill_transient { sparse_topk_indices_buffer_bytes }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
 import gunbc.spark.serving_arm {
+  glm53_native_launch_policy,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
   ServingLaunchProfile,
 }
 import gunbc.spark.serving_capacity_intent {
-  uniform_cold_seats, profile_for_intent,
+  uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 import gunbc.spark.arm_memory_fit {
@@ -155,18 +157,15 @@ fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
       MemoryProofSubjectRefused { cause: "the experiment's own workload (one 65536-token seat at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: experiment_intent } =>
       memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: experiment_intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
           prefix_caching: PrefixCachingExplicit { enabled: true },
-          engram: EngramConfigOmitted,
-          modality: ModalityOmitted,
         ),
         launch_generation: arm_experiment_2026_09_25_generation,
       )
@@ -521,18 +520,15 @@ fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
       MemoryProofSubjectRefused { cause: "the completing run's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: experiment_intent } =>
       memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: experiment_intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
           prefix_caching: PrefixCachingExplicit { enabled: true },
-          engram: EngramConfigOmitted,
-          modality: ModalityOmitted,
         ),
         launch_generation: arm_experiment_2026_09_26_generation,
       )
@@ -737,18 +733,15 @@ fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint 
       MemoryProofSubjectRefused { cause: "the v2-plan launch's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: experiment_intent } =>
       memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: experiment_intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
           prefix_caching: PrefixCachingExplicit { enabled: true },
-          engram: EngramConfigOmitted,
-          modality: ModalityOmitted,
         ),
         launch_generation: arm_experiment_kvplan_v2_2026_09_26_generation,
       )
@@ -1435,8 +1428,6 @@ data glm_checkpoint_projection_replicated_bytes: ByteSize = byte_size(count: 154
 // is false, so lm_head loads beside embed_tokens, consistent with the vocab-sharded class.
 data glm_checkpoint_projection_visual_bytes: ByteSize = byte_size(count: 1127254016)
 
-data glm_checkpoint_config_architectures: NonEmptyStr = "Glm5NextForConditionalGeneration" as NonEmptyStr
-
 // THE PROJECTION CENSUS, checked not trusted: the five kind sums reconstruct the index tensor
 // total exactly, and the conservation law holds with slack zero -- four times the per-rank
 // figure equals the sharded-plus-expert bytes once plus the replicated bytes four times.
@@ -1493,15 +1484,13 @@ fn arm_experiment_kvplan_v2_2026_09_26_workload() -> ServingCapacityIntent {
 }
 
 fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: arm_experiment_kvplan_v2_2026_09_26_workload(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: arm_experiment_kvplan_v2_2026_09_26_workload()),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted,
-    modality: ModalityOmitted,
   )
 }
 
@@ -1515,7 +1504,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() -> ArmMemoryExper
     topology: FourSparkTp4,
     workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
     policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
-    targets: [ArmLoaderTransform])
+    targets: [ArmLoaderTransform], deployment_env: glm_group_b_deployment_env())
 }
 
 type ArmExperimentRunbookRow {
@@ -1550,7 +1539,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() -> ArmMemoryEx
     topology: FourSparkTp4,
     workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
     policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
-    targets: [ArmFragmentationAllowance])
+    targets: [ArmFragmentationAllowance], deployment_env: glm_group_b_deployment_env())
 }
 
 data arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
@@ -1599,19 +1588,11 @@ data arm_loader_trace_min_hundredths_gib: List<Nat> = [770, 814, 819, 786]
 // observed MemAvailable floor -- the load-phase peak pressure of the unified pool, page cache
 // included, at the conservative floor spelling.
 fn arm_loader_trace_pool_hundredths(rank: Nat) -> Nat {
-  match rank {
-    3 => 11969
-    _ => 12169
-  }
+  if rank == 3 { 11969 } else { 12169 }
 }
 
 fn arm_loader_trace_host_floor_hundredths(rank: Nat) -> Nat {
-  match rank {
-    0 => 770
-    1 => 814
-    2 => 819
-    _ => 786
-  }
+  if rank == 0 { 770 } else if rank == 1 { 814 } else if rank == 2 { 819 } else { 786 }
 }
 
 fn arm_loader_trace_bound(rank: Nat) -> ByteSize {

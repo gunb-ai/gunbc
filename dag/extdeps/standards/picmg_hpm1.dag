@@ -1,0 +1,45 @@
+module extdeps.standards.picmg_hpm1
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.picmg.org/openstandards/hardware-platform-management/"
+  }
+}
+
+// THE PICMG HPM.1 FIRMWARE UPGRADE INTERFACE, AS A SHAPE. HPM.1 (IPM Controller Firmware Upgrade) is
+// the standard an .hpm file implements: a header naming the components it carries, then a sequence of
+// upgrade actions the IPM controller performs -- prepare, upload the image in blocks, finish the
+// upload, activate. That is all this module states.
+//
+// THE COMPONENT-PROPERTIES QUERY (ipmitool `hpm check`) IS NOT YET MODELED HERE, deliberately: its only
+// consumer would be the readback parser of the wet realization, which is not built. Observed on
+// mtcollins1 2026-10-02 under BMC 0.45.3 it reports `APP 0.45 03000000` -- the patch level rides in the
+// first auxiliary byte -- and that is the fact the parser will need when it lands.
+//
+// WHAT IS NOT HERE, by DESIGN section 3's "interface, realization and policy are three facts". No
+// transport: ipmitool's `hpm upgrade` argv, its `-z` block size and its `force` flag are one
+// realization's spelling of the upload, and live with the realization that binds them. No policy: which
+// image to send, in what order, under what preconditions, is a product decision and lives in gunbc.
+// No board facts: which components a Mt. Collins BMC exposes is extdeps.ampere's.
+
+// The upgrade stage a controller was in when it stopped. HPM.1 separates these because a failure in
+// preparation leaves the running image untouched while a failure during activation may not, so a
+// refusal that does not say which stage failed cannot tell a consumer whether the controller is still
+// on its previous image.
+type HpmUpgradeStage
+  = HpmPrepareComponents
+  | HpmUploadFirmwareBlocks
+  | HpmFinishFirmwareUpload
+  | HpmActivateFirmware
+
+// The outcome of one upgrade attempt as the controller reported it. A completion is the controller's
+// claim that the image was accepted and activated; it is NOT a readback of the running version, which
+// is read separately by the realization.
+type HpmUpgradeOutcome
+  = HpmUpgradeCompleted
+  | HpmUpgradeFailed { stage: HpmUpgradeStage, diagnostic: NonEmptyStr }

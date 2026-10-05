@@ -1,5 +1,6 @@
 module v2.test.v2_native_route
 
+import std.types { List }
 
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
@@ -65,16 +66,16 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_located, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
-  NativeTestFileRefusal
+  NativeTestFileRefusal,
+  FileRefusalLink,
+  FileRefusalAtWholeFile
 }
 import v2.std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import v2.std.collection { List }
-import std.algebra { Cons }
+import std.algebra { Cons, FreeSemigroup }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
 
@@ -129,8 +130,16 @@ fn refused_row(
   }
 }
 
+// A refusal whose chain heads with `head` and ends at `fatal`; one link when they are the same.
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal }
+  NativeTestFileRefusal {
+    path: path,
+    module: optional_absent(),
+    chain: FreeSemigroup {
+      head: FileRefusalLink { reason: head, at: FileRefusalAtWholeFile },
+      tail: if head == fatal { [] } else { [FileRefusalLink { reason: fatal, at: FileRefusalAtWholeFile }] }
+    }
+  }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
@@ -964,22 +973,6 @@ test fn the_infer_match_scrutinee_cause_is_owned_and_an_unowned_one_still_counts
   census.excluded_compiler_frontier == 1 && census.excluded_unattributed == 1
 }
 
-test fn an_unattributed_head_advisory_is_refused() -> Bool {
-  native_route_admission_refused_with(
-    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
-      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
-      module_source_index: [],
-      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
-      file_refusals: [file_refusal_row(
-        path: ^some_path,
-        head: ^some_unowned_advisory,
-        fatal: ^parse_g0_tokens_remain
-      )]
-    )),
-    cause_name: "unattributed_head_advisories_present"
-  )
-}
-
 // ── admission: context refusals are bound to their observation ─────────────────────────────
 
 test fn a_context_refusal_without_its_file_refusal_is_refused() -> Bool {
@@ -1405,7 +1398,7 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
 
 test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
   match native_lane_declared_module_name(
-    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
+    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport std.types { Bool }\nmodule not.the.header\n"
   ) {
     Present { value: declared } => declared == "v2.test.subject"
     Absent => false

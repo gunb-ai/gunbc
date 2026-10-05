@@ -1,6 +1,5 @@
 module v2.test.std.timeseries_signal_passives
 
-import v2.std.logic { Bool }
 import v2.std.timeseries_signal {
   BranchCurrent,
   Current,

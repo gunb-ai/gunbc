@@ -6,8 +6,8 @@ use self::AnnotationAttachment::*;
 use self::AnnotationAttachmentRefusal::*;
 use self::AnnotationPlacement::*;
 pub use crate::std_algebra::FreeSemigroup;
+pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -186,7 +186,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
 pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
     advance_line_prefix_indent_only(
         previous.clone(),
-        Rc::new(lexeme.clone().chars().map(|c| c as i64).collect::<Vec<_>>()),
+        crate::std_coercion::unicode_scalar_unfold(lexeme.clone()),
     )
 }
 

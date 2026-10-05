@@ -2,13 +2,13 @@ module extdeps.github.commits
 
 import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome }
 import std.types { String, Int, CommitSha, NonEmptyStr, Timestamp, List }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 // The GitHub REST commits API area. Modeled here rather than folded into an existing github module
 // for the reason DESIGN's external-upstream decomposition gives: these are two distinct documented
@@ -119,7 +119,6 @@ service github.Commits {
     }
     output {
       detail: CommitDetail
-      outcome: RestOutcome
     }
     readonly
     transport rest {

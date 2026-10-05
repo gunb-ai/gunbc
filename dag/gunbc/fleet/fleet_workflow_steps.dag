@@ -17,10 +17,10 @@ module gunbc.fleet_workflow_steps
 // constructors, because its build is one cargo invocation with no artifact handoff, and reusing
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
 import std.types { Duration }
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
   Step, RunStep, UsesStep, 
   max_job_timeout_minutes,
@@ -45,6 +45,8 @@ import v2.workflow.ci_materialization_emit { ci_sccache_provider_shell_injection
 import v2.std.orchestration { FailFast, Pipeline, PipelineStep }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import gunbc.fleet_release_bins_key {
+  release_bins_mode_env, release_bins_key_script_dispatch, release_bins_outcome_script_dispatch,
+  release_bins_pack_script_dispatch, release_bins_consumer_script_dispatch, release_bins_build_script_dispatch,
   release_bins_key_script, release_bins_lookup_script, release_bins_dispatch_scope_ref_env, release_bins_dispatch_scope_ref_expression, release_bins_outcome_script,
   release_bins_pack_manifest_script, release_bins_consumer_key_check_script,
   release_bins_key_expression, release_bins_consumer_key_expression,
@@ -61,7 +63,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
-import gunbc.spark.v41_runtime_image_converge { v41_image_distribution_host_effect_term }
+import gunbc.spark.group_image_produce { image_distribution_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {
@@ -320,6 +322,93 @@ data release_bins_lookup_step_name: String = "Look up release-bins by exact key 
 data release_bins_cache_step_name: String = "Restore release-bins into isolated staging (transport only; publishes on a verified build)"
 data release_bins_outcome_step_name: String = "Decide release-bins outcome; verify a stored pack completely before any restored binary runs"
 
+fn release_bins_mode_env_kv() -> YamlKeyValue {
+  kv(key: release_bins_mode_env, value: yaml_string(s: join(["$", "{{ github.event.inputs.mode }}"], "")))
+}
+
+// THE BUILD JOB'S AND THE SHARED JOB'S RELEASE-BINS STEPS, PER DISPATCHED MODE: the pair modes (the
+// workflow's roster, passed in) build, pack and verify the compiler pair, every other mode the
+// sixteen-binary pack. Same step ids, so every condition reading them is unchanged.
+fn ci_release_bins_key_step_for(pair_modes: List<String>) -> Step {
+  RunStep {
+    name: Present { value: release_bins_key_step_name },
+    id: Present { value: release_bins_key_step_id },
+    run: release_bins_key_script_dispatch(pair_modes: pair_modes),
+    shell: none,
+    env: Present { value: [release_bins_mode_env_kv()] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_release_bins_outcome_step_for(pair_modes: List<String>) -> Step {
+  RunStep {
+    name: Present { value: release_bins_outcome_step_name },
+    id: Present { value: release_bins_outcome_step_id },
+    run: release_bins_outcome_script_dispatch(pair_modes: pair_modes),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
+        kv(key: "LOOKUP_STANDING", value: yaml_string(s: release_bins_lookup_standing_expression())),
+        kv(key: "LOOKUP_ENTRY", value: yaml_string(s: release_bins_lookup_entry_expression())),
+        kv(key: "CACHE_HIT", value: yaml_string(s: release_bins_cache_hit_expression())),
+        release_bins_mode_env_kv(),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_release_build_step_for(pair_modes: List<String>) -> Step {
+  RunStep {
+    name: Present { value: "Build release bins (the dispatched mode's product)" },
+    id: Present { value: "release_build" },
+    run: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script()),
+    shell: none,
+    env: Present { value: [release_bins_mode_env_kv()] },
+    working_directory: none,
+    if_condition: Present { value: release_bins_build_condition() },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes }
+  }
+}
+
+fn ci_release_bins_pack_step_for(pair_modes: List<String>) -> Step {
+  RunStep {
+    name: Present { value: "Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)" },
+    id: none,
+    run: release_bins_pack_script_dispatch(pair_modes: pair_modes),
+    shell: none,
+    env: Present {
+      value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())), release_bins_mode_env_kv()]
+    },
+    working_directory: none,
+    if_condition: Present { value: release_bins_build_condition() },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_release_bins_unpack_verify_step_for(pair_modes: List<String>) -> Step {
+  RunStep {
+    name: Present { value: "Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)" },
+    id: Present { value: "release_bins" },
+    run: release_bins_consumer_script_dispatch(pair_modes: pair_modes),
+    shell: none,
+    env: Present { value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_consumer_key_expression())), release_bins_mode_env_kv()] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_release_bins_key_step() -> Step {
   RunStep {
     name: Present { value: release_bins_key_step_name },
@@ -482,7 +571,7 @@ fn ci_fleet_wif_auth_step() -> Step {
 }
 
 // ONE AUTH STEP SHAPE, THE IDENTITY A PARAMETER. A job federating through its own dedicated pool
-// (gunbc.auth.mtcollins1_boot_federation) binds its own provider and account; the step id stays
+// (gunbc.auth.managed_host_boot_federation) binds its own provider and account; the step id stays
 // wif_auth so every consumer's ${{ steps.wif_auth.outputs.access_token }} reads the job's identity.
 fn ci_wif_auth_step_for(name: String, provider_resource: String, service_account: String) -> Step {
   UsesStep {
@@ -588,7 +677,7 @@ fn gunbc_ci_spark_runtime_image_build_step_timeout_minutes() -> Int {
 // its host-effect claims are admitted for (gunbc.spark.v41_runtime_image_converge
 // v41_image_distribution_host_effect_term).
 fn gunbc_ci_spark_runtime_image_distribute_step_timeout_minutes() -> Int {
-  second_count(s: v41_image_distribution_host_effect_term) / 60
+  second_count(s: image_distribution_host_effect_term) / 60
 }
 
 data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
@@ -753,6 +842,16 @@ data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-g
 // domains, the srv1 control plane and Group A, and a job carries one group), so the pair-serving
 // apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
 data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
+
+// A SUBJECT NARROWER THAN ITS HOST GETS ITS OWN KEY WHEN NO OTHER MODE MUTATES IT (operator request
+// 2026-10-03). The approval device store -- gunbc.auth.approval_device_redemption
+// approval_device_store_root on srv1 -- is written by the enrolment-code issue and by nothing else a
+// fleet-converge mode runs, so keying it to srv1's host domain serialised it behind Group A work it
+// shares no file with, and GitHub's one-pending-per-group rule CANCELLED queued enrolments when a
+// Spark dispatch arrived (run 37101585671). Two issues still queue behind each other here. Belt, not
+// the wall: each enrolment record is an O_EXCL commit (gunbc.auth.approval_device_redemption
+// commit_enrolment), so a host-wide srv1 converge that does not traverse this group cannot corrupt it.
+data fleet_subject_mutation_group_approval_device_store: String = join(["gunbc-subject-mutation-approval-device-store-", operator_host_srv1 as String], "")
 
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the

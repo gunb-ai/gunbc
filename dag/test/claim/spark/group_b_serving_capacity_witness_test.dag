@@ -6,13 +6,16 @@ import gunbc.spark.group_b_serving_capacity {
   group_b_restoration_intent_admission, group_b_restoration_intent, group_b_restoration_profile,
   group_b_restoration_utilization, group_b_restoration_seats, group_b_restoration_executable, group_b_experiment_subject_seats,
   group_b_kv_inventory_tokens, group_b_restoration_window_tokens,
+  group_b_scheduler_envelope, group_b_route_offer, group_b_route_offer_ceiling, RouteOfferAdmitted, RouteOfferRefused,
 }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
   intent_max_active_sequences, intent_max_single_sequence_tokens, intent_max_total_resident_tokens,
-  profile_for_intent,
+  profile_for_envelope, envelope_at_cold_floor,
+  envelope_hard_max_num_seqs, envelope_guaranteed_cold_seats, envelope_best_effort_seats,
 }
 import gunbc.spark.serving_arm {
+  glm53_native_launch_policy,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
   serving_launch_profile_key,
 }
@@ -91,15 +94,13 @@ test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
             && basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8567
             && (vllm_kv_cache_dtype_wire(request: profile.kv_cache_dtype) as String) == "fp8"
             && (profile.served_alias as String) == "glm-5.3-flash"
-            && (serving_launch_profile_key(p: profile) == serving_launch_profile_key(p: profile_for_intent(
-              intent: intent,
+            && (serving_launch_profile_key(p: profile) == serving_launch_profile_key(p: profile_for_envelope(
+              envelope: envelope_at_cold_floor(cold: intent),
+              policy: glm53_native_launch_policy,
               decided_gpu_memory_basis_points: group_b_restoration_utilization,
-              kv_cache_dtype: profile.kv_cache_dtype,
               serve_port: profile.serve_port,
               served_alias: profile.served_alias,
-              prefix_caching: profile.prefix_caching,
-              engram: profile.engram,
-              modality: profile.modality)))
+              prefix_caching: profile.prefix_caching)))
       }
   }
 }
@@ -130,7 +131,6 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
     Absent => false
     Present { value: executable } =>
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
         profile: executable.profile,
@@ -150,3 +150,33 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
   }
 }
 
+
+// ── THE THREE COUNTS AT 8/8/8 (operator ruling 2026-10-02: behaviour-preserving at the floor) ────
+//
+// Cold guarantee, scheduler ceiling and route offer are three facts; today all three read eight, and
+// the executable renders no scheduler flag, so the launch is the one group B ran before the split.
+test fn w_group_b_holds_the_cold_floor_with_no_best_effort_seats() -> Bool {
+  match group_b_scheduler_envelope() {
+    Absent => false
+    Present { value: e } =>
+      envelope_guaranteed_cold_seats(e: e) == 8
+        && envelope_hard_max_num_seqs(e: e) == 8
+        && envelope_best_effort_seats(e: e) == 0
+        && (match group_b_restoration_profile() {
+              Absent => false
+              Present { value: p } => p.max_num_seqs == 8 && p.guaranteed_cold_seqs == 8
+            })
+        && (match group_b_route_offer() { RouteOfferAdmitted { seats: n } => n == 8  RouteOfferRefused { cause: _ } => false })
+  }
+}
+
+// THE OFFER IS BOUNDED BY THE ENGINE'S CEILING, read off the two rows rather than assumed from their
+// agreement: a later edit that raised the offer past the ceiling must turn the accessor Absent.
+test fn w_the_route_offer_never_exceeds_the_scheduler_ceiling() -> Bool {
+  match group_b_scheduler_envelope() {
+    Absent => false
+    Present { value: e } =>
+      group_b_route_offer_ceiling <= envelope_hard_max_num_seqs(e: e)
+        && (match group_b_route_offer() { RouteOfferAdmitted { seats: n } => n <= envelope_hard_max_num_seqs(e: e)  RouteOfferRefused { cause: _ } => false })
+  }
+}

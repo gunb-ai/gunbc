@@ -58,7 +58,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -85,12 +84,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -123,7 +122,7 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let sources =
         policy_entry_closure_sources(&roots, &entry, "gunbc.compile_clean_diagnostic_policy")?;
-    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+    let (graph, indices) = resolved_graph_from_sources(sources)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     match v1_interpreter::run_in_context_with_args(
@@ -942,7 +941,7 @@ fn compile_clean_diagnostic_policy_snapshot() -> Result<DiagnosticPolicySnapshot
         }
         census_identity_digest(&parts)
     };
-    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+    let (graph, indices) = resolved_graph_from_sources(sources)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let unlisted_import_use_blocks = match v1_interpreter::run_in_context_with_args(
@@ -1052,6 +1051,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         MethodExistenceUndecided { method: s(), receiver_type: s(), span: no_span() },
         MethodExistenceFrontierAdmitted { method: s(), receiver_type: s(), trigger: s(), span: no_span() },
         ReceiverTypeUnestablished { method: s(), span: no_span() },
+        TextRepresentationUnidentifiedAtBoundary { position: s(), span: no_span() },
+        TextCrossingHasNoImplicitRoute { expected: s(), got: s(), route: s(), span: no_span() },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
@@ -1078,6 +1079,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         OwnershipViolation { binding: s(), fn_name: s(), consumers: 0, span: no_span() },
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
+        KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
         OptionalCastNotEliminated { source_type: s(), target_type: s(), span: no_span() },
         BareNoneNotAdmittedByFieldType { field: s(), type_name: s(), declared_type: s(), span: no_span() },
         SourceAnnotationRefused {
@@ -1125,10 +1127,6 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             declaring_module: s(),
             target: s(),
             missing_realization_fact: s(),
-            span: no_span(),
-        },
-        EmissionConstructUnprojectable {
-            construct: crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition,
             span: no_span(),
         },
     ]
@@ -1540,6 +1538,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodNotFound { .. } => "MethodNotFound",
         CompilerDiagnostic::MethodExistenceUndecided { .. } => "MethodExistenceUndecided",
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "ReceiverTypeUnestablished",
+        CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => {
+            "TextRepresentationUnidentifiedAtBoundary"
+        }
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => {
+            "TextCrossingHasNoImplicitRoute"
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -1565,6 +1569,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
             "BareNoneNotAdmittedByFieldType"
@@ -1607,9 +1612,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
-        CompilerDiagnostic::EmissionConstructUnprojectable { .. } => {
-            "EmissionConstructUnprojectable"
-        }
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
@@ -1646,6 +1648,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodExistenceUndecided { method, .. } => method.clone(),
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
         CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
+        CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position, .. } => {
+            position.clone()
+        }
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { route, .. } => route.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::TestCodeReferenceAdmitted { referrer, .. } => referrer.clone(),
@@ -1675,6 +1681,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::KernelMintShapeMismatch {
+            declaration_name, ..
+        } => declaration_name.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
@@ -1740,9 +1749,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
-        CompilerDiagnostic::EmissionConstructUnprojectable { construct, .. } => {
-            crate::v1_std_core::unprojectable_construct_identity(*construct)
-        }
         // The NAME is the config FIELD, not the referenced spelling: the burn-down this
         // histogram feeds is the list of service-config fields still awaiting the reference
         // judgment, and keying on the referenced name would spread one unjudged field across

@@ -1,0 +1,700 @@
+module gunbc.roadmap_auth_routes
+
+import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted, auth_login_browser_cookie }
+
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing, RequestAccessPath }
+import gunbc.auth.session { SessionCookieAbsent, SessionCookieUnread, SessionCookieMalformed, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed, session_cookie_id_of_header, AuthenticatedSession, SessionMinted, SessionRefused, SessionRefusalCause, SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch, SessionClientTrackerWeb, mint_authenticated_session, session_cookie_set_cookie, session_cookie_clear, session_cookie_standing_reason }
+import gunbc.auth.session_store { session_store_layout_for_instance, session_cookie_standing_of_lookup, session_store_save, session_store_delete, session_store_purge_principal, SessionStoreSaved, SessionStoreSaveRefused, SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused, SessionStorePurged, SessionStorePurgeRefused }
+import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig, OidcDeploymentConfigLoaded, OidcDeploymentConfigUnavailable, oidc_deployment_config_read }
+import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_layout_for_instance, login_transaction_store_save, login_transaction_store_lookup, login_transaction_store_delete, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused }
+import gunbc.auth.oidc_id_token_verification { oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused }
+import extdeps.auth.oidc { OidcLoginPrompt, OidcLoginPromptSelectAccount, oidc_login_prompt_label, OidcIdTokenClaims, OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcHostedDomain, oidc_id_token_refusal_reason, OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath, admit_login_return_path, ReturnPathAdmitted, ReturnPathRefused, OidcIdTokenVerdictPolicy, login_transaction_expired, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label }
+import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
+import extdeps.uri { uri_hex_digit_value, uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentComponentDecoded, UriPercentComponentDecodeRefused }
+import extdeps.entropy { Urandom }
+import extdeps.clock { Clock }
+import extdeps.http.client
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.languages.json.emit { json_bool }
+import extdeps.languages.json.parse { parse_json_document, json_field_string, JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed }
+import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.encoding { base64_decode, base64_encode, UrlSafe, Standard }
+import gunbc.principal_projection { principal_ref_label }
+import gunbc.clock_read { clock_now_probed_at }
+import std.algebra { trim }
+import std.types { String, Int, Bool, List, NonEmptyStr, HttpStatus }
+import extdeps.uri_path { uri_query_param }
+import extdeps.http.server { MediaType, text_plain_utf8, application_json_utf8, ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+
+fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: [] }
+}
+
+fn serve_text_response_with_headers(status: HttpStatus, content_type: MediaType, body: String, headers: List<ServeResponseHeader>) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: headers }
+}
+
+
+fn roadmap_serve_authentication_evidence(
+  instance: HostDashboardInstance,
+  cookie_header: String,
+) -> RequestAuthenticationEvidence {
+  match session_cookie_id_of_header(cookie_header: cookie_header) {
+    SessionCookieIdNotPresent => AuthAbsent
+    SessionCookieIdMalformed { detail: d } =>
+      SessionStandingInvalid { standing: SessionCookieMalformed { detail: d } }
+    SessionCookieIdParsed { session_id: id } =>
+      match clock_now_probed_at() {
+        Absent =>
+          SessionStandingInvalid {
+            standing: SessionCookieUnread { detail: "the clock reading refused, so session expiry cannot be decided" },
+          }
+        Present { value: now } =>
+          request_authentication_evidence_of_standing(
+            standing: session_cookie_standing_of_lookup(
+              layout: session_store_layout_for_instance(instance: instance),
+              session_id: id,
+              observed_at: now as String,
+            ),
+          )
+      }
+  }
+}
+
+fn auth_entropy_draw() -> NonEmptyStr? {
+  match base64_decode(s: trim(Urandom.ReadBytes(count: 32).octets_b64), variant: Standard) {
+    Absent => none
+    Present { value: octets } =>
+      if count(octets) != 32 {
+        none
+      } else {
+        auth_base64url_wire(octets: octets)
+      }
+  }
+}
+
+// Unpadded base64url (RFC 4648 section 5) of exactly-qualified octets. An octet list that does
+// not qualify REFUSES: this wire is credential entropy and the PKCE challenge, so there is no
+// value it may answer with instead.
+fn auth_base64url_wire(octets: List<UInt8>) -> NonEmptyStr? {
+  match uint8_octets_of_ints(values: map(octets, o => o as Int)) {
+    QualifiedOctetsRefused { observed: _ } => none
+    QualifiedOctetsReady { value: qualified } => {
+      let wire = join(split(s: base64_encode(octets: qualified, variant: UrlSafe), delimiter: "="), "")
+      if wire == "" { none } else { Present { value: wire as NonEmptyStr } }
+    }
+  }
+}
+
+// HEX OCTETS OF A DIGEST, read through extdeps.uri uri_hex_digit_value -- the one authority for a
+// hex digit's value -- folded linearly (one cons per octet, one reverse). An odd length or a
+// non-hex character refuses.
+type AuthHexFold
+  = AuthHexEven { octets_reversed: List<UInt8> }
+  | AuthHexOdd { octets_reversed: List<UInt8>, high: Int }
+  | AuthHexRefused
+
+fn auth_hex_step(state: AuthHexFold, cp: Int) -> AuthHexFold {
+  match state {
+    AuthHexRefused => AuthHexRefused
+    AuthHexEven { octets_reversed: acc } =>
+      match uri_hex_digit_value(cp: cp) {
+        Absent => AuthHexRefused
+        Present { value: h } => AuthHexOdd { octets_reversed: acc, high: h }
+      }
+    AuthHexOdd { octets_reversed: acc, high: h } =>
+      match uri_hex_digit_value(cp: cp) {
+        Absent => AuthHexRefused
+        Present { value: l } => AuthHexEven { octets_reversed: Cons { head: h * 16 + l, tail: acc } }
+      }
+  }
+}
+
+fn auth_hex_bytes(hex: String) -> List<UInt8>? {
+  match fold(hex |> chars, init: AuthHexEven { octets_reversed: [] }, f: (state, cp) => auth_hex_step(state: state, cp: cp)) {
+    AuthHexEven { octets_reversed: acc } => Present { value: reverse(acc) }
+    AuthHexOdd { octets_reversed: _, high: _ } => none
+    AuthHexRefused => none
+  }
+}
+
+fn auth_pkce_challenge_of_verifier(verifier: NonEmptyStr) -> NonEmptyStr? {
+  match sha256sum_stdin_digest_via_shell(content: verifier as String) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+    Sha256FileDigest { digest: d } =>
+      match auth_hex_bytes(hex: d.hex as String) {
+        Absent => none
+        Present { value: octets } =>
+          if count(octets) != 32 {
+            none
+          } else {
+            auth_base64url_wire(octets: octets)
+          }
+      }
+  }
+}
+
+fn auth_client_id_wire_admitted(id: String) -> Bool {
+  auth_client_id_wire_admitted_from(id: id, i: 0, len: string_length(s: id))
+}
+
+fn auth_client_id_wire_admitted_from(id: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else {
+    let cp = code_point(c: char_at(id, i))
+    let alnum = (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+    (alnum || cp == 45 || cp == 95 || cp == 46) && auth_client_id_wire_admitted_from(id: id, i: i + 1, len: len)
+  }
+}
+
+fn auth_form_component(raw: NonEmptyStr) -> String? {
+  match uri_percent_encode_component(value: raw) {
+    UriPercentComponentEncoded(encoded_component) => Present { value: encoded_component as String }
+    UriPercentComponentRefused { cause: _ } => none
+  }
+}
+
+fn auth_login_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let return_to = uri_query_param(path: request.path, key: "return_to")
+  match admit_login_return_path(raw: if return_to == "" { "/" } else { return_to }) {
+    ReturnPathRefused { raw: _, reason: r } =>
+      serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: ", r, "\n"], ""))
+    ReturnPathAdmitted { path: return_path } =>
+      match auth_login_prompt_admit(raw: uri_query_param(path: request.path, key: "prompt")) {
+        LoginPromptRefused { raw: p } =>
+          serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the prompt parameter \"", p, "\" is not an admitted login prompt\n"], ""))
+        LoginPromptAdmitted { prompt: prompt } =>
+          match oidc_deployment_config_read() {
+            OidcDeploymentConfigUnavailable { cause: c } => auth_login_config_refusal(cause: c)
+            OidcDeploymentConfigLoaded { config: config } =>
+              auth_login_response_loaded(instance: instance, config: config, return_path: return_path, prompt: prompt)
+          }
+      }
+  }
+}
+
+// THE LOGIN PROMPT ADMISSION over extdeps.auth.oidc OidcLoginPrompt. The account menu's "Switch
+// account" sends the one admitted prompt so Google shows its chooser instead of silently re-using
+// the signed-in account. An absent parameter is an ordinary login and adds no member to the
+// authorization request; any other spelling refuses before a transaction is minted, rather than
+// being forwarded to Google or dropped.
+type LoginPromptAdmission
+  = LoginPromptAdmitted { prompt: OidcLoginPrompt? }
+  | LoginPromptRefused { raw: String }
+
+fn auth_login_prompt_admit(raw: String) -> LoginPromptAdmission {
+  if raw == "" {
+    LoginPromptAdmitted { prompt: none }
+  } else if raw == (oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String) {
+    LoginPromptAdmitted { prompt: Present { value: OidcLoginPromptSelectAccount } }
+  } else {
+    LoginPromptRefused { raw: raw }
+  }
+}
+
+fn auth_login_prompt_wire_members(prompt: OidcLoginPrompt?) -> List<String> {
+  match prompt {
+    Absent => []
+    Present { value: p } => [concat("&prompt=", oidc_login_prompt_label(prompt: p) as String)]
+  }
+}
+
+fn auth_login_config_refusal(cause: String) -> ServeHttpResponse {
+  serve_text_response(
+    status: 503,
+    content_type: text_plain_utf8,
+    body: join(["login refused: the OIDC deployment config is unavailable: ", cause, "\n"], ""),
+  )
+}
+
+fn auth_login_response_loaded(instance: HostDashboardInstance, config: OidcDeploymentConfig, return_path: RelativeReturnPath, prompt: OidcLoginPrompt?) -> ServeHttpResponse {
+  if !auth_client_id_wire_admitted(id: config.client_id as String) {
+    auth_login_config_refusal(cause: "the config file's client_id member carries a character outside the admitted OAuth client-id alphabet")
+  } else {
+    match auth_entropy_draw() {
+      Absent =>
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the login state refused\n")
+      Present { value: state } =>
+        match auth_entropy_draw() {
+          Absent =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the login nonce refused\n")
+          Present { value: nonce } =>
+            match auth_entropy_draw() {
+              Absent =>
+                serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the PKCE verifier refused\n")
+              Present { value: verifier } =>
+                auth_login_transaction_step(
+                  instance: instance,
+                  config: config,
+                  return_path: return_path,
+                  state: state,
+                  nonce: nonce,
+                  verifier: verifier,
+                  prompt: prompt,
+                )
+            }
+        }
+    }
+  }
+}
+
+fn auth_login_transaction_step(
+  instance: HostDashboardInstance,
+  config: OidcDeploymentConfig,
+  return_path: RelativeReturnPath,
+  state: NonEmptyStr,
+  nonce: NonEmptyStr,
+  verifier: NonEmptyStr,
+  prompt: OidcLoginPrompt?,
+) -> ServeHttpResponse {
+  let now_read = clock_now_probed_at()
+  match now_read {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the transaction lifetime cannot be bounded\n")
+    Present { value: now } =>
+      let expires = Clock.TimestampAdd(timestamp: now, offset: config.login_transaction_lifetime_seconds)
+      if expires.result == "" {
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the transaction lifetime refused\n")
+      } else {
+        let transaction = OidcLoginTransaction {
+          state: state,
+          nonce: nonce,
+          created_at: now as String,
+          expires_at: expires.result,
+          verifier: OidcPkceCodeVerifier { verifier: verifier },
+          return_path: return_path,
+        }
+        let layout = login_transaction_store_layout_for_instance(instance: instance)
+        match login_transaction_store_save(layout: layout, transaction: transaction) {
+          LoginTransactionSaveRefused { step: s, reason: r } =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be persisted (", s, "): ", r, "\n"], ""))
+          LoginTransactionSaved { state: _ } =>
+            auth_login_redirect_response(config: config, transaction: transaction, prompt: prompt)
+        }
+      }
+  }
+}
+
+fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, prompt: OidcLoginPrompt?) -> ServeHttpResponse {
+  match auth_pkce_challenge_of_verifier(verifier: transaction.verifier.verifier) {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the PKCE challenge could not be computed\n")
+    Present { value: challenge } =>
+      match auth_form_component(raw: config.redirect_uri) {
+        Absent => auth_login_config_refusal(cause: "the config file's redirect_uri member refused percent-encoding")
+        Present { value: redirect_encoded } =>
+          serve_text_response_with_headers(
+            status: 302,
+            content_type: text_plain_utf8,
+            body: join(["redirecting to Google: ", transaction.return_path.path as String, "\n"], ""),
+            headers: [
+              ServeResponseHeaderNoStore,
+              ServeResponseHeaderSetCookie { cookie: auth_login_browser_cookie(transaction: transaction, max_age_seconds: config.login_transaction_lifetime_seconds) },
+              ServeResponseHeaderLocation {
+                location: auth_login_redirect_location(
+                  config: config,
+                  transaction: transaction,
+                  redirect_encoded: redirect_encoded,
+                  challenge: challenge,
+                  prompt: prompt,
+                ) as NonEmptyStr,
+              },
+            ],
+          )
+      }
+  }
+}
+
+fn auth_login_redirect_location(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, redirect_encoded: String, challenge: NonEmptyStr, prompt: OidcLoginPrompt?) -> String {
+  join(
+    concat([
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=",
+      config.client_id as String,
+      "&response_type=code&scope=",
+      auth_login_scope_wire(),
+      "&redirect_uri=",
+      redirect_encoded,
+      "&state=",
+      transaction.state as String,
+      "&nonce=",
+      transaction.nonce as String,
+      "&code_challenge=",
+      challenge as String,
+      "&code_challenge_method=S256",
+    ], auth_login_prompt_wire_members(prompt: prompt)),
+    "",
+  )
+}
+
+fn auth_login_scope_wire() -> String {
+  join(
+    [
+      oidc_login_scope_label(scope: OidcScopeOpenId) as String,
+      "%20",
+      oidc_login_scope_label(scope: OidcScopeEmail) as String,
+      "%20",
+      oidc_login_scope_label(scope: OidcScopeProfile) as String,
+    ],
+    "",
+  )
+}
+
+fn auth_google_callback_response(instance: HostDashboardInstance, path: String, cookie_header: String) -> ServeHttpResponse {
+  let state = uri_query_param(path: path, key: "state")
+  if state == "" {
+    auth_callback_state_refusal()
+  } else {
+    let layout = login_transaction_store_layout_for_instance(instance: instance)
+    match login_transaction_store_lookup(layout: layout, state: state as NonEmptyStr) {
+      LoginTransactionStoreUnknown { state: _ } => auth_callback_state_refusal()
+      LoginTransactionStoreUnread { state: _, detail: d } =>
+        serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be read: ", d, "\n"], ""))
+      LoginTransactionStoreEntryMalformed { state: _, detail: d } =>
+        serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the login transaction is malformed: ", d, "\n"], ""))
+      LoginTransactionStoreFound { transaction: transaction } =>
+        if !auth_login_browser_admitted(transaction: transaction, cookie_header: cookie_header) { auth_callback_state_refusal() } else { auth_callback_transaction(instance: instance, layout: layout, transaction: transaction, path: path) }
+    }
+  }
+}
+
+fn auth_callback_state_refusal() -> ServeHttpResponse {
+  serve_text_response(
+    status: 400,
+    content_type: text_plain_utf8,
+    body: "login refused: the callback's state names no live login transaction (forged, consumed, or expired) — start the login again\n",
+  )
+}
+
+fn auth_callback_transaction(instance: HostDashboardInstance, layout: LoginTransactionStoreLayout, transaction: OidcLoginTransaction, path: String) -> ServeHttpResponse {
+  let now_read = clock_now_probed_at()
+  match now_read {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the login transaction cannot be checked\n")
+    Present { value: now } =>
+      if login_transaction_expired(t: transaction, observed_at: now) {
+        match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleteRefused { state: _, detail: _ } =>
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the login transaction is expired, and its consumption refused\n")
+          LoginTransactionDeleted { state: _ } =>
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the login transaction is expired; start the login again\n")
+          LoginTransactionNothingToDelete { state: _ } =>
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the login transaction is expired; start the login again\n")
+        }
+      } else {
+        match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleteRefused { state: _, detail: d } =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be consumed: ", d, " — refusing rather than risking a replay\n"], ""))
+          LoginTransactionDeleted { state: _ } =>
+            auth_callback_exchange(instance: instance, transaction: transaction, path: path)
+          LoginTransactionNothingToDelete { state: _ } =>
+            auth_callback_state_refusal()
+        }
+      }
+  }
+}
+
+fn auth_callback_exchange(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String) -> ServeHttpResponse {
+  match oidc_deployment_config_read() {
+    OidcDeploymentConfigUnavailable { cause: c } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the OIDC deployment config is unavailable at the callback: ", c, "\n"], ""))
+    OidcDeploymentConfigLoaded { config: config } =>
+      auth_callback_exchange_configured(instance: instance, transaction: transaction, path: path, config: config)
+  }
+}
+
+// The authorization code arrives percent-encoded in the callback query and must decode EXACTLY ONCE
+// before the token form encodes it again (the 2026-09-27 invalid_grant defect: the raw encoded code
+// was encoded a second time, so Google saw a code it never issued). A code that does not decode is
+// refused here, never forwarded half-decoded.
+fn auth_callback_exchange_configured(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
+  match uri_percent_decode_component(value: uri_query_param(path: path, key: "code")) {
+    UriPercentComponentDecodeRefused { cause: _ } =>
+      serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback code is not a well-formed percent-encoded value\n")
+    UriPercentComponentDecoded { value: code } => auth_callback_exchange_decoded(instance: instance, transaction: transaction, code: code, config: config)
+  }
+}
+
+fn auth_callback_exchange_decoded(instance: HostDashboardInstance, transaction: OidcLoginTransaction, code: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
+  if code == "" {
+    serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback carries no code\n")
+  } else {
+    match auth_token_request_form(config: config, transaction: transaction, code: code) {
+      Absent =>
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be encoded\n")
+      Present { value: form } =>
+        let layout = login_transaction_store_layout_for_instance(instance: instance)
+        let form_path = join([layout.root as String, "/", transaction.state as String, "-token.form"], "")
+        let written = Filesystem.WriteOwnerOnly(path: form_path, content: form)
+        if !written.success {
+          serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be staged\n")
+        } else {
+          let got = http.Client.PostFormFromFile(url: "https://oauth2.googleapis.com/token" as NonEmptyStr, request_body_file: form_path, max_seconds: "15" as NonEmptyStr)
+          let cleanup = Filesystem.Delete(path: form_path)
+          match auth_token_exchange_disposition(cleanup_succeeded: cleanup.success, cleanup_error: cleanup.error, exchange_succeeded: got.success, exchange_body: got.body) {
+            TokenExchangeRefused { response: r } => r
+            TokenExchangeAnswered { body: b } => auth_callback_id_token(instance: instance, transaction: transaction, config: config, exchange_body: b)
+          }
+        }
+    }
+  }
+}
+
+// THE STAGED FORM'S REMOVAL IS CONSUMED, NOT ASSUMED. The owner-only form carries the
+// authorization code, the client secret and the PKCE verifier, so a form that could not be deleted
+// refuses the login whatever the exchange answered: no session is minted while that material is on
+// disk. Both refusals are reported when both happened.
+type TokenExchangeDisposition
+  = TokenExchangeAnswered { body: String }
+  | TokenExchangeRefused { response: ServeHttpResponse }
+
+fn auth_token_exchange_disposition(cleanup_succeeded: Bool, cleanup_error: String, exchange_succeeded: Bool, exchange_body: String) -> TokenExchangeDisposition {
+  if !cleanup_succeeded {
+    TokenExchangeRefused { response: serve_text_response(status: 503, content_type: text_plain_utf8, body: join([
+      "login refused: the staged token request (code, client secret, verifier) could not be removed: ",
+      cleanup_error,
+      if exchange_succeeded { "" } else { join(["; the code exchange also refused: ", exchange_body], "") },
+      "\n",
+    ], "")) }
+  } else if !exchange_succeeded {
+    TokenExchangeRefused { response: serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["login refused: the code exchange refused: ", exchange_body, "\n"], "")) }
+  } else {
+    TokenExchangeAnswered { body: exchange_body }
+  }
+}
+
+fn auth_token_request_form(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, code: String) -> String? {
+  match auth_form_component(raw: code as NonEmptyStr) {
+    Absent => none
+    Present { value: code_encoded } =>
+      match auth_form_component(raw: config.redirect_uri) {
+        Absent => none
+        Present { value: redirect_encoded } =>
+          match auth_form_component(raw: (config.client_secret as String) as NonEmptyStr) {
+            Absent => none
+            Present { value: secret_encoded } =>
+              Present {
+                value: join(
+                  [
+                    "grant_type=authorization_code&code=",
+                    code_encoded,
+                    "&redirect_uri=",
+                    redirect_encoded,
+                    "&client_id=",
+                    config.client_id as String,
+                    "&client_secret=",
+                    secret_encoded,
+                    "&code_verifier=",
+                    transaction.verifier.verifier as String,
+                  ],
+                  "",
+                ),
+              }
+          }
+      }
+  }
+}
+
+fn auth_callback_id_token(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, exchange_body: String) -> ServeHttpResponse {
+  match parse_json_document(s: exchange_body) {
+    JsonDocumentUnreadable { gap: _ } =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the token endpoint's answer is not one JSON document\n")
+    JsonDocumentParsed { value: doc } =>
+      match json_field_string(obj: doc, key: "id_token") {
+        FieldAbsent =>
+          serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the token endpoint's answer carries no id_token\n")
+        FieldMalformed { cause: c } =>
+          serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["login refused: the token endpoint's id_token refused: ", c, "\n"], ""))
+        FieldRead { value: id_token } =>
+          if id_token == "" {
+            serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the token endpoint's id_token is empty\n")
+          } else {
+            auth_callback_verify(instance: instance, transaction: transaction, config: config, id_token: id_token as NonEmptyStr)
+          }
+      }
+  }
+}
+
+fn auth_callback_verify(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, id_token: NonEmptyStr) -> ServeHttpResponse {
+  let epoch_read = Clock.UnixSecs()
+  match parse_int(s: trim(epoch_read.unix_secs)) {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock's epoch reading refused, so the verdict cannot be decided\n")
+    Present { value: epoch } =>
+      match auth_entropy_draw() {
+        Absent =>
+          serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the verification refused\n")
+        Present { value: verify_id } =>
+          auth_callback_verdict(
+            instance: instance,
+            transaction: transaction,
+            config: config,
+            id_token: id_token,
+            epoch: epoch,
+            verify_id: verify_id,
+          )
+      }
+  }
+}
+
+fn auth_callback_verdict(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, id_token: NonEmptyStr, epoch: Int, verify_id: NonEmptyStr) -> ServeHttpResponse {
+  let signature = oidc_id_token_signature_verify(instance: instance, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
+  match auth_callback_wire_claims(id_token: id_token) {
+    Absent =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the ID token's claims could not be decoded for the verdict\n")
+    Present { value: claims } =>
+      let verdict = verify_oidc_id_token(
+        claims: claims,
+        signature: signature,
+        policy: OidcIdTokenVerdictPolicy {
+          expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+          admitted_audiences: map(config.admitted_audiences, a => JwtBareString { value: a }),
+          expected_hosted_domain: OidcHostedDomain { domain: config.expected_hosted_domain },
+          expected_nonce: Present { value: transaction.nonce },
+          observed_at: NumericDateWholeSeconds { seconds: epoch },
+        },
+      )
+      match verdict {
+        OidcIdTokenRefused { cause: c } =>
+          serve_text_response(status: 403, content_type: text_plain_utf8, body: join(["login refused: ", oidc_id_token_refusal_reason(cause: c), "\n"], ""))
+        OidcIdTokenVerified { claims: _ } =>
+          auth_callback_mint(instance: instance, transaction: transaction, config: config, verdict: verdict)
+      }
+  }
+}
+
+fn auth_callback_wire_claims(id_token: NonEmptyStr) -> OidcIdTokenClaims? {
+  match oidc_id_token_wire_decode(token: id_token) {
+    OidcIdTokenWireRefused { reason: _ } => none
+    OidcIdTokenWireDecoded { claims: c, header: _, signing_input: _ } => Present { value: c }
+  }
+}
+
+fn auth_callback_mint(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, verdict: OidcIdTokenVerdict) -> ServeHttpResponse {
+  let now_read = clock_now_probed_at()
+  match now_read {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the session lifetime cannot be bounded\n")
+    Present { value: now } =>
+      let expires = Clock.TimestampAdd(timestamp: now, offset: config.session_lifetime_seconds)
+      if expires.result == "" {
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the session lifetime refused\n")
+      } else {
+        match auth_entropy_draw() {
+          Absent =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the session refused\n")
+          Present { value: session_id } =>
+            match auth_entropy_draw() {
+              Absent =>
+                serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the CSRF token refused\n")
+              Present { value: csrf } =>
+                auth_callback_mint_session(
+                  instance: instance,
+                  transaction: transaction,
+                  config: config,
+                  verdict: verdict,
+                  now: now as String,
+                  expires: expires.result,
+                  session_id: session_id,
+                  csrf: csrf,
+                )
+            }
+        }
+      }
+  }
+}
+
+fn auth_callback_mint_session(
+  instance: HostDashboardInstance,
+  transaction: OidcLoginTransaction,
+  config: OidcDeploymentConfig,
+  verdict: OidcIdTokenVerdict,
+  now: String,
+  expires: String,
+  session_id: NonEmptyStr,
+  csrf: NonEmptyStr,
+) -> ServeHttpResponse {
+  match mint_authenticated_session(
+    verdict: verdict,
+    transaction: transaction,
+    client: SessionClientTrackerWeb,
+    session_id: session_id,
+    authenticated_at: now,
+    expires_at: expires,
+    csrf_token_value: csrf,
+    observed_at: now,
+  ) {
+    SessionRefused { cause: c } =>
+      serve_text_response(status: 403, content_type: text_plain_utf8, body: join(["login refused: the session mint refused: ", session_refusal_reason(c: c), "\n"], ""))
+    SessionMinted { session: session } =>
+      auth_callback_seat_session(instance: instance, transaction: transaction, config: config, session: session)
+  }
+}
+
+fn auth_callback_seat_session(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, session: AuthenticatedSession) -> ServeHttpResponse {
+  let layout = session_store_layout_for_instance(instance: instance)
+  match session_store_purge_principal(layout: layout, principal: session.principal, except_session_id: session.session_id) {
+    SessionStorePurgeRefused { step: s, reason: r } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the session rotation refused (", s, "): ", r, "\n"], ""))
+    SessionStorePurged { deleted: _ } =>
+      match session_store_save(layout: layout, session: session) {
+        SessionStoreSaveRefused { step: s, reason: r } =>
+          serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the session could not be persisted (", s, "): ", r, "\n"], ""))
+        SessionStoreSaved { session_id: _ } =>
+          serve_text_response_with_headers(
+            status: 302,
+            content_type: text_plain_utf8,
+            body: join(["login complete: redirecting to ", transaction.return_path.path as String, "\n"], ""),
+            headers: [
+              ServeResponseHeaderLocation { location: transaction.return_path.path },
+              ServeResponseHeaderSetCookie { cookie: session_cookie_set_cookie(session_id: session.session_id, max_age_seconds: config.session_lifetime_seconds) },
+            ],
+          )
+      }
+  }
+}
+
+fn session_refusal_reason(c: SessionRefusalCause) -> String {
+  match c {
+    SessionVerdictRefused { cause: v } => oidc_id_token_refusal_reason(cause: v)
+    SessionTransactionExpired { transaction: _, observed_at: _ } => "the login transaction is expired"
+    SessionTransactionNonceMismatch { transaction_nonce: _, token_nonce: _ } => "the ID token's nonce does not answer the login transaction"
+  }
+}
+
+// LOGOUT ANSWERS 303 SEE OTHER TO THE DASHBOARD ROOT (RFC 9110 section 15.4.4: the answer to a
+// POST is a GET elsewhere). The Sign out control is a native form post, so a 200 text receipt
+// would be the page the operator is left on; the redirect lands back on the page, whose account
+// read re-runs against the cleared cookie and shows Sign in.
+fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let deletion = match request.security.authentication {
+    GoogleOidcSession { session } =>
+      session_store_delete(layout: session_store_layout_for_instance(instance: instance), session_id: session.session_id)
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
+    SessionStandingInvalid { standing: _ } => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
+    AuthAbsent => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
+  }
+  match deletion {
+    SessionStoreDeleted { session_id: _ } =>
+      serve_text_response_with_headers(
+        status: 303,
+        content_type: text_plain_utf8,
+        body: "logged out: the session is deleted\n",
+        headers: [ServeResponseHeaderLocation { location: "/" as NonEmptyStr }, ServeResponseHeaderSetCookie { cookie: session_cookie_clear() }],
+      )
+    SessionStoreNothingToDelete { session_id: _ } =>
+      serve_text_response_with_headers(
+        status: 303,
+        content_type: text_plain_utf8,
+        body: "logged out: no live session was presented\n",
+        headers: [ServeResponseHeaderLocation { location: "/" as NonEmptyStr }, ServeResponseHeaderSetCookie { cookie: session_cookie_clear() }],
+      )
+    SessionStoreDeleteRefused { session_id: _, detail: d } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["logout refused: the session could not be deleted: ", d, "\n"], ""))
+  }
+}
+
+

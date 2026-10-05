@@ -4,6 +4,8 @@ import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import v2.std.algebra { filter, any }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bazel.label { render_label }
+import gunbc.instrument_targets { self_host_behavioral_equivalence_label }
 import tools.self_host_module_behavioral_transport_roster {
   ModuleBehavioralTransportConfig,
   compiler_module_behavioral_transport_roster,
@@ -108,6 +110,16 @@ fn series_sequence_violation(series: List<BehavioralEquivalenceReceipt>) -> List
   walk.violations
 }
 
+// A receipt speaks only for the instrument that takes this series. One carrying any other label --
+// a different instrument's output pasted in, or a hand-written row -- refuses the whole series rather
+// than letting the latest receipt answer for a measurement this instrument never made.
+fn series_instrument_violation(series: List<BehavioralEquivalenceReceipt>) -> List<String> {
+  let expected = render_label(l: self_host_behavioral_equivalence_label())
+  series
+    |> filter(r => (r.instrument as String) != expected)
+    |> map(r => concat(concat(concat("receipt ", to_string(r.sequence)), " names instrument "), r.instrument as String))
+}
+
 type BehavioralSequenceWalk {
   previous: Int
   violations: List<String>
@@ -117,7 +129,7 @@ fn behavioral_equivalence_standing(
   series: List<BehavioralEquivalenceReceipt>,
   roster: List<ModuleBehavioralTransportConfig>
 ) -> BehavioralEquivalenceStanding {
-  match series_sequence_violation(series: series) |> first {
+  match concat(series_sequence_violation(series: series), series_instrument_violation(series: series)) |> first {
     Present { value: v } => BehavioralEquivalenceSeriesInvalid { reason: v as NonEmptyStr }
     Absent => match reverse(series) |> first {
       Absent => BehavioralEquivalenceSeriesEmpty
@@ -129,8 +141,59 @@ fn behavioral_equivalence_standing(
   }
 }
 
+data behavioral_equivalence_receipt_1_978fb0a5: BehavioralEquivalenceReceipt = BehavioralEquivalenceReceipt {
+  sequence: 1,
+  main_sha: "978fb0a566d540d82013775724385d3d947f3342" as CommitSha,
+  instrument: "//gunbc/instruments:self-host-behavioral-equivalence" as NonEmptyStr,
+  observed_at: "2026-10-03T14:42:28Z" as NonEmptyStr,
+  rows: [
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/00_compile.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/01_tokenize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/02_parse.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_body_producer.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_ingest.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_normalize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_resolve.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/04_infer.dag", verdict: BehavioralRowNoVerdict { cause: "setup refused: cargo build of the emitted crate" } },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/07_target_carriers.dag", verdict: BehavioralRowNoVerdict { cause: "setup refused: cargo build of the emitted crate" } },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/discovery_enumeration.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/materialization_carriers.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_assembly.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_partition.dag", verdict: BehavioralRowNoVerdict { cause: "setup refused: cargo build of the emitted crate" } },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/source_authority.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/use_site_verdict.dag", verdict: BehavioralRowHeld },
+  ]
+}
+
+data behavioral_equivalence_receipt_2_bc7838f7: BehavioralEquivalenceReceipt = BehavioralEquivalenceReceipt {
+  sequence: 2,
+  main_sha: "bc7838f7b46f1b5a06d577dd6a825843794a6d8a" as CommitSha,
+  instrument: "//gunbc/instruments:self-host-behavioral-equivalence" as NonEmptyStr,
+  observed_at: "2026-10-04T05:16:25Z" as NonEmptyStr,
+  rows: [
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/00_compile.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/01_tokenize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/02_parse.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_body_producer.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_ingest.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_normalize.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/03_resolve.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/04_infer.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/07_target_carriers.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/discovery_enumeration.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/materialization_carriers.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_assembly.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/program_partition.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/source_authority.dag", verdict: BehavioralRowHeld },
+    BehavioralEquivalenceRow { module_path: "src/v2/compiler/use_site_verdict.dag", verdict: BehavioralRowHeld },
+  ]
+}
+
 // THE PERSISTED SERIES. Append the declaration the instrument prints; never edit a taken receipt.
-data self_host_behavioral_equivalence_receipts: List<BehavioralEquivalenceReceipt> = []
+data self_host_behavioral_equivalence_receipts: List<BehavioralEquivalenceReceipt> = [
+  behavioral_equivalence_receipt_1_978fb0a5,
+  behavioral_equivalence_receipt_2_bc7838f7
+]
 
 fn current_behavioral_equivalence_standing() -> BehavioralEquivalenceStanding {
   behavioral_equivalence_standing(

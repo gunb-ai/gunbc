@@ -42,7 +42,16 @@ import gunbc.codex_app_server_press {
   AccountStandingIncomplete,
   AccountStandingInitializeUnusable,
 }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.shell
 import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_press_receipt,
@@ -126,7 +135,7 @@ import extdeps.languages.json.parse {
 
 data codex_supervised_client_command_id_file_name: String = "/codex_supervised_client_command_id"
 
-data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
+data codex_supervised_turn_generation_file_name: String = "codex_supervised_turn_generation"
 
 // OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold.
 // codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply
@@ -280,7 +289,7 @@ fn codex_supervised_turn_client_command_id_store_path(evidence_root: FilePath) -
 }
 
 fn codex_supervised_turn_generation_store_path(evidence_root: FilePath) -> String {
-  concat(evidence_root as String, codex_supervised_turn_generation_file_name)
+  concat(evidence_root as String, concat("/", codex_supervised_turn_generation_file_name))
 }
 
 fn codex_supervised_generation_read_from_content(content: String) -> CodexSupervisedGenerationRead {
@@ -300,34 +309,40 @@ fn codex_supervised_generation_read_from_content(content: String) -> CodexSuperv
   }
 }
 
-fn codex_supervised_generation_read_from_store(
-  store_present: Bool,
-  read_success: Bool,
-  content: String,
+// ABSENCE IS ESTABLISHED BY THE LISTING, NEVER BY THE READ, AND NEVER BY SHELL TEST. This site used
+// to answer GenerationAbsent from `test -f`, whose one exit code carries "missing", "not a regular
+// file", and "could not look" -- so an unreadable-but-present generation store admitted a fresh
+// supervised turn exactly as if no prior turn had ever run, which is the duplicate-execution hazard
+// the store exists to fence. The listing and the read are now one observation through
+// filesystem_file_observation: GenerationAbsent is reachable only from a listing that succeeded and
+// did not name the store, and every could-not-look shape refuses as GenerationStoreUnreadable with
+// its cause. `codex_supervised_turn_generation_file_name` carries the bare entry name (it is
+// admitted as a directory entry, and entry admission refuses "/"); the store path re-adds the
+// separator, so persisted paths are unchanged.
+fn codex_supervised_generation_read_from_observation(
+  o: FilesystemFileObservation,
 ) -> CodexSupervisedGenerationRead {
-  if store_present == false {
-    GenerationAbsent
-  } else if read_success == false {
-    GenerationStoreUnreadable {
-      reason: "supervised turn generation store unreadable" as NonEmptyStr,
-    }
-  } else {
-    codex_supervised_generation_read_from_content(content: content)
+  match o {
+    FilesystemFileRead { path: _, content: content } =>
+      codex_supervised_generation_read_from_content(content: content)
+    FilesystemFileAbsent(_) => GenerationAbsent
+    FilesystemFileIndeterminate { cause: c } => codex_supervised_generation_unobserved(cause: c)
+    FilesystemFileObservationsDisagree { path: _, cause: c } =>
+      codex_supervised_generation_unobserved(cause: c)
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+      codex_supervised_generation_unobserved(cause: c)
+  }
+}
+
+fn codex_supervised_generation_unobserved(cause: String) -> CodexSupervisedGenerationRead {
+  GenerationStoreUnreadable {
+    reason: join(["the generation store could not be observed: ", cause], "") as NonEmptyStr,
   }
 }
 
 fn read_codex_supervised_turn_prior_generation(evidence_root: FilePath) -> CodexSupervisedGenerationRead {
   let path = codex_supervised_turn_generation_store_path(evidence_root: evidence_root)
-  if shell.Test.IsFile(path: path as FilePath).is_file == false {
-    GenerationAbsent
-  } else {
-    let read = Filesystem.Read(path: path)
-    codex_supervised_generation_read_from_store(
-      store_present: true,
-      read_success: read.success,
-      content: read.content,
-    )
-  }
+  codex_supervised_generation_read_from_observation(o: filesystem_file_observation_of_path(path: path))
 }
 
 fn codex_supervised_turn_generation_admission(

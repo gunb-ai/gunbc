@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_event_cli
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import gunbc.clock_read { clock_now_probed_at }
@@ -10,11 +10,13 @@ import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack,
   EventPrincipal, EventPrincipalAuthenticated,
-  roadmap_node_standing, roadmap_node_standing_text, roadmap_node_standing_key,
+  roadmap_node_standing, roadmap_node_standing_text, roadmap_history_unordered_reason,
 }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout_for_instance, roadmap_event_append, roadmap_events_read,
   EventAppended, EventAlreadyPresent, EventAppendRefused, EventsRead, EventsReadRefused,
+  CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
 }
 
 // THE ONE WRITER. A session, an operator or a harness worker records a fact about a node with
@@ -42,6 +44,28 @@ fn roadmap_event_kind_from_words(kind: String, text: String, author: EventPrinci
   else { none }
 }
 
+fn roadmap_event_record_unordered_refusal(why: String) -> String {
+  join(["roadmap_event_record_cli: refusing to record on a history that cannot be ordered: ", why], "")
+}
+
+// THE RECORD'S EXIT BESIDE THE SNAPSHOTS IT OWNED. A refusal already carries text, so a snapshot
+// left behind is stated after the refusal's own reason. A recorded event stays ExitSuccess: the
+// exit IS the append's result, ExitSuccess carries no text, and a nonzero exit would tell a caller
+// the event was not recorded when it was -- a retry would then append a second event. So on success
+// this entry has no surface for a leaked snapshot, each standing is matched by name to say so, and
+// that failure itself is recorded nowhere; a snapshot left registered is listed by the instance's
+// snapshot census (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance).
+fn roadmap_event_record_exit(exit: ProcessExit, closes: List<CarrierSnapshotClose>) -> ProcessExit {
+  match exit {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: join(concat([reason], carrier_snapshot_close_failures(closes: closes)), "; ") }
+    ExitSuccess => fold(closes, init: ExitSuccess, f: (acc, c) => match c {
+      SnapshotNotOpened => acc
+      SnapshotClosed => acc
+      SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => acc
+    })
+  }
+}
+
 fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text: String, author: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: w } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: no dashboard instance is rooted at ", w], "") }
@@ -55,22 +79,27 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
             Present { value: k } => {
               let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
           let node_id = node as NonEmptyStr as RoadmapNodeId
-          match roadmap_events_read(layout: layout, node: node_id) {
-            EventsReadRefused { node: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: could not read the node's history (", step, "): ", reason], "") }
+          let history = roadmap_events_read(layout: layout, node: node_id)
+          match history.result {
+            EventsReadRefused { node: _, step, reason } => roadmap_event_record_exit(
+              exit: ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: could not read the node's history (", step, "): ", reason], "") },
+              closes: [history.close])
             EventsRead { node: _, envelopes } => {
-              let standing = roadmap_node_standing(envs: envelopes)
-              let key = roadmap_node_standing_key(s: standing)
-              if key == "forked" || key == "history_incomplete" {
-                ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: refusing to record on a history that is ", key, ": ", roadmap_node_standing_text(s: standing)], "") }
-              } else {
+              match roadmap_history_unordered_reason(envs: envelopes) {
+                Present { value: why } => roadmap_event_record_exit(exit: ExitFailure { code: 1, reason: roadmap_event_record_unordered_refusal(why: why) }, closes: [history.close])
+                Absent => {
                 let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
                 let parent = match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }
                 let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                match roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at }) {
-                  EventAppended { id } => ExitSuccess
-                  EventAlreadyPresent { id } => ExitSuccess
-                  EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
-                }
+                let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at })
+                roadmap_event_record_exit(
+                  exit: match appended.result {
+                    EventAppended { id } => ExitSuccess
+                    EventAlreadyPresent { id } => ExitSuccess
+                    EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
+                  },
+                  closes: [history.close, appended.close])
+              }
               }
             }
           }
@@ -87,10 +116,14 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: w } => join(["roadmap_event_standing_report: no dashboard instance is rooted at ", w], "")
-    DashboardInstanceResolved { instance } =>
-      match roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node as NonEmptyStr as RoadmapNodeId) {
-        EventsReadRefused { node: _, step, reason } => join(["roadmap_event_standing_report: read refused at ", step, ": ", reason], "")
-        EventsRead { node: _, envelopes } => join([node, ": ", roadmap_node_standing_text(s: roadmap_node_standing(envs: envelopes)), " (", to_string(value: count(envelopes)), " events)"], "")
-      }
+    DashboardInstanceResolved { instance } => {
+      let history = roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node as NonEmptyStr as RoadmapNodeId)
+      carrier_report_with_snapshot_close(
+        text: match history.result {
+          EventsReadRefused { node: _, step, reason } => join(["roadmap_event_standing_report: read refused at ", step, ": ", reason], "")
+          EventsRead { node: _, envelopes } => join([node, ": ", roadmap_node_standing_text(s: roadmap_node_standing(envs: envelopes)), " (", to_string(value: count(envelopes)), " events)"], "")
+        },
+        close: history.close)
+    }
   }
 }

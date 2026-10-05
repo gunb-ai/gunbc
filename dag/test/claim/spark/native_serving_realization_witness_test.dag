@@ -1,6 +1,7 @@
 module test.claim.spark.native_serving_realization_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
+import std.measure { second, second_count }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
@@ -9,7 +10,7 @@ import gunbc.spark.native_serving_realization {
 }
 import gunbc.spark.serving_arm { ArmNormalServing, ArmBoundedExperiment }
 import gunbc.spark.group_b_serving_capacity { group_b_experiment_subject_seats }
-import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime }
 
 // ── INTENT DECIDES REALIZATION: A BOUNDED EXPERIMENT CANNOT RENDER AS AN INDEFINITELY RESTARTING ──
 //
@@ -77,7 +78,7 @@ test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool {
       string_contains(s: t, pattern: "Restart=no")
         && string_contains(s: t, pattern: "StartLimitIntervalSec=600")
         && string_contains(s: t, pattern: "StartLimitBurst=1")
-        && string_contains(s: t, pattern: join(["RuntimeMaxSec=", to_string(arm_memory_experiment_runtime_seconds()), "\n"], ""))
+        && string_contains(s: t, pattern: join(["RuntimeMaxSec=", to_string(second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: 8))), "\n"], ""))
         && string_contains(s: t, pattern: "TimeoutStartSec=0")
         && string_contains(s: t, pattern: "ExecStopPost=-/usr/bin/docker rm -f glm-native-tp4")
         && string_contains(s: t, pattern: "BOUNDED EXPERIMENT")

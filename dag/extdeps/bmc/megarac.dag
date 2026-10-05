@@ -2,7 +2,6 @@ module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
-import std.string_type { String }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {

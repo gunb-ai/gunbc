@@ -1,6 +1,6 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -41,6 +41,18 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // deficit (a declared payload, a module container and a declaration parse-rest node are all Conj
 // with Named edges), and gunbc#12082 replaces it with the declaration kind the symbol index records.
 // That is construction with no behavioural delta on this corpus, so it does not retire this row.
+
+// THE FIRST NATIVE RUN NAMED TWO RESIDUALS, AND THE DROP STAYS STANDING (2026-10-02, recorded as
+// gunbc.rung_drop_amendment.variant_field_native_run_residuals, which the projection renders beside
+// this declaration). The deferred native run executed and refused at prepare on BOTH halves before
+// the row's subject could be observed: the emitted infer accepts only Bool and Int match
+// scrutinees (infer_match_scrutinee_not_bool), so all four round-trip identities refuse; and the
+// native resolver does not bind a fold handler's binder (resolve_reason_unbound_symbol), so all
+// three specimen identities refuse. The retiring capabilities are named in the amendment and in
+// the two gunbc.recurring_failure_mode rows the amendment cites. The interpreted floor cannot see
+// either refusal because it never runs the native infer or the native resolver over test modules;
+// that blindness is part of the finding, and CI enrollment still waits on
+// v2_native_route_off_the_merge_path.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
   "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but not yet observed on the native route (the emitted compiler builds since gunbc#12089; the native run over the specimen is deferred until gunbc#12100 fixes the compile.emit cost); specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
 ]

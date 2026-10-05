@@ -32,7 +32,7 @@ import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { millisecond }
 import v2.std.operation_argv { InputText, InputTextList }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_megarac_kvm_still {
   KvmInstant, KvmJournalEvent, KvmJournalRendered, KvmJournalRenderRefused, kvm_journal_line,
   KvmJournalConnectionRequested, KvmJournalConnectionOpen, KvmJournalEstablished, KvmJournalStill,
   KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped,
@@ -148,7 +148,7 @@ fn proc_cmdline_path(pid: Int) -> String {
 // THE WORKER'S OWN PROCESS, as procfs shows it (proc(5), proc_pid_stat(5)): the host's boot id, and
 // one stat line per process -- pid, a parenthesized comm, then fields 3.. with starttime at field 22 --
 // under /proc/<pid>/stat and, for the reader itself, /proc/self/stat. The boot's unit-hold owner is
-// read from these (gunbc.machine_intake_mtcollins1_maintenance_hold self_process_identity) and a
+// read from these (gunbc.managed_host_unit_hold self_process_identity) and a
 // successor observes the holder through them (holder_process_liveness), so a worker that starts writes
 // both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
 // directory. Only the fields a reader uses are meaningful; the others are zeros. The worker's pid
@@ -404,7 +404,7 @@ fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
 
 // THE BMC KVM VIEWER AND THE OBSERVER HELD AGAINST IT (gunbc#12492: the boot's handoff is admitted
 // only while the observer it started is established). The observer is the process
-// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_mtcollins1_kvm_still
+// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_megarac_kvm_still
 // kvm_observer_launch_in's node command. The model starts it the way the launch does -- a live process
 // in /proc, its "<pid> <start>" record at the pid path -- and writes its journal ONLY through
 // kvm_journal_line, the writer the production parser is the inverse of, so the dry observer cannot
@@ -416,7 +416,7 @@ fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
 // session, the attempt and the generation; then, while it lives, one still per trigger file (the
 // script's 'trigger:'+name reason) and, on the stop file, stop-requested, the session release, the
 // browser close and stopped, after which the process has exited. It takes no periodic still: the
-// boot's attempt ends well inside mtcollins1_kvm_observer_cadence's first period in every scenario
+// boot's attempt ends well inside megarac_kvm_observer_cadence's first period in every scenario
 // the matrix runs, and a longer one reports the gap through kvm_still_gaps as the real journal would.
 //
 // A still's bytes are one fixed modeled frame, and its digest is supplied beside it (the precedent is

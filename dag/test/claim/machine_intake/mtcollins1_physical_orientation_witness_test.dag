@@ -29,13 +29,14 @@ import gunbc.machine_intake_mtcollins1_physical_orientation {
   Socket1TrainedNothing, Socket1TrainedIn, MaskMatchedTrainedControllers, MaskDiverged,
   socket1_standing, mask_correlation, placement_readbacks, mtcollins1_placement_readbacks,
   PlacementReadbackMatches, PlacementReadbackDiffers, PlacementReadbackUnevaluable, mtcollins1_socket1_standing, mtcollins1_mask_correlation,
-  hypothesis_text, stick_swap_verdict, StickCleared, StickNotCleared,
+  hypothesis_text, stick_swap_verdict, StickCleared, StickNotCleared, date_text, socket_damage_text,
 }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1Socket1InvestigationBoot, MtCollins1TrainedSlot, IntendedAtPhysicalConnectors,
-  MtCollins1Viewpoint, FirmwareTrainedFact, OperatorByEyeReport, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
+  MtCollins1Viewpoint, FirmwareTrainedFact, OperatorByEyeReport, VendorFigureFact, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
   mtcollins1_operator_front_report, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
   MtCollins1DiagnosisHypothesis, HypothesisRefutedByStickSwap, MtCollins1StickSwapReport, MtCollins1StickPlacement, mtcollins1_j1_j17_stick_swap,
+  MtCollins1SocketDamageReport, mtcollins1_socket1_pin_damage_report,
   MtCollins1SecondaryJoinReading, secondary_join_outcome, SecondaryJoined, SecondaryJoinTimeout, SecondaryJoinUnclassified,
   mtcollins1_secondary_join_reading_two_cpus, mtcollins1_cpu0_fingerprint_comparison, MtCollins1CpuFingerprintComparison, MtCollins1SocketFingerprint,
   HypothesisWeakenedByMatchingCpu0Characteristics,
@@ -437,7 +438,9 @@ test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): UEFI enumeration: ")
       && string_contains(s: t, pattern: "\nWeakened hypothesis (not refuted): The engineering-sample CPU0 with the production CPU1")
       && string_contains(s: t, pattern: "matching characteristics, not a unique CPU identity.")
-      && string_contains(s: t, pattern: "SecondaryJoinTimeout { secondary_last_stage: inconsistent SMpro pair (current: PMpro firmware booting; reported: DDR initialization, reported stage ahead of current), socket 0 continued alone, inter_socket_links_reported: false, secondary_host_checkpoints: none }")
+      && string_contains(s: t, pattern: concat(concat("\nSocket 1 pin damage (operator report, ", date_text(d: damage_date())), "): "))
+      && string_contains(s: t, pattern: "Gate: Socket 1 evidence after ")
+      && string_contains(s: t, pattern: "SecondaryJoinTimeout { secondary_last_stage: inconsistent SMpro pair (current: PMpro firmware booting; reported: DDR initialization, reported stage ahead of current), socket 0 continued alone, inter_socket_links_reported: false }")
       && string_contains(s: t, pattern: "SecondaryJoined { inter_socket_links_reported: true }")
       && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: a stick placed in J17 is bad. By the operator's swap report: stick B was silent in J17 (run 35810323032) and trained in J1 (run 35871654468). The J17 slot is not cleared.")
       && string_contains(s: t, pattern: "\nrun 35871654468: placed by the resolved mapping = physical J1, J17 -> trained SK0 MC0 S0; DRAM 16 GiB; mcu_enable_mask = 00000001")
@@ -473,27 +476,27 @@ test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
 test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
   let bad = mtcollins1_secondary_join_reading_two_cpus
   let inconsistent = match secondary_join_outcome(reading: bad) {
-    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l, secondary_host_checkpoints: cps } => !l && list_length(items: cps) == 0 && match st {
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l } => !l && match st {
       SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => c == 1 && r == 1023
       SmproBootProgressRead { current: _, reported: _ } => false
     }
     SecondaryJoined { inter_socket_links_reported: _ } => false
     SecondaryJoinUnclassified { reason: _ } => false
   }
-  let ordered = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_checkpoints: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Present { value: 258 } }
+  let ordered = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Present { value: 258 } }
   let red_consistent = match secondary_join_outcome(reading: ordered) {
-    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => match st {
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: _ } => match st {
       SmproBootProgressRead { current: _, reported: _ } => true
       SmproBootProgressRefused { cur_bootstage_word: _, bootstage_word: _ } => false
     }
     SecondaryJoined { inter_socket_links_reported: _ } => false
     SecondaryJoinUnclassified { reason: _ } => false
   }
-  let unread = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_checkpoints: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Absent }
+  let unread = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Absent }
   let red_unread = match secondary_join_outcome(reading: unread) {
     SecondaryJoinUnclassified { reason: _ } => true
     SecondaryJoined { inter_socket_links_reported: _ } => false
-    SecondaryJoinTimeout { secondary_last_stage: _, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => false
+    SecondaryJoinTimeout { secondary_last_stage: _, inter_socket_links_reported: _ } => false
   }
   let c = mtcollins1_cpu0_fingerprint_comparison
   let other_cpu = MtCollins1CpuFingerprintComparison { reference: c.reference, reference_fingerprint: c.reference_fingerprint, current: c.current, current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1035), avs_voltage: millivolt(count: 996), warranty: 1 } }
@@ -501,4 +504,21 @@ test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
   let rendered = hypothesis_text(h: pairing, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
   let red_pairing = string_contains(s: rendered, pattern: "unverified") && !string_contains(s: rendered, pattern: "Weakened hypothesis")
   inconsistent && red_consistent && red_unread && red_pairing
+}
+
+fn damage_date() -> SpecificationDocumentDate {
+  match mtcollins1_socket1_pin_damage_report.report {
+    OperatorByEyeReport { observed_on: d, relay: _, method: _ } => d
+    VendorFigureFact { figure: _, standing: _ } => SpecificationDocumentDate { year: 0, month: 0, day: 0 }
+    FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => SpecificationDocumentDate { year: 0, month: 0, day: 0 }
+  }
+}
+
+// The damage line renders the report's own date, and the gate follows it: a report dated otherwise
+// renders that date, not 2026-10-03 (red against a hand-typed label).
+test fn w_socket_damage_date_and_gate_are_derived_from_the_report() -> Bool {
+  let r = mtcollins1_socket1_pin_damage_report
+  let moved = MtCollins1SocketDamageReport { socket: r.socket, account: r.account, report: OperatorByEyeReport { observed_on: SpecificationDocumentDate { year: 2027, month: 1, day: 9 }, relay: "fixture", method: "fixture" } }
+  let t = socket_damage_text(damage: moved)
+  string_contains(s: t, pattern: "(operator report, 2027-01-09)") && string_contains(s: t, pattern: "evidence after 2027-01-09") && !string_contains(s: t, pattern: "2026-10-03")
 }

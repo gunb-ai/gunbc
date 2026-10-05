@@ -1,8 +1,9 @@
 module v2.test.parse.parse_binding_fidelity
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -28,7 +29,6 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
 import v2.std.collection {
-  List,
   list_at_optional
 }
 import v2.std.optional {
@@ -47,7 +47,6 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
@@ -199,7 +198,7 @@ fn pbf_unbound_atom_tree() -> Node {
 }
 
 fn pbf_resolve_unbound_symbol_rejects() -> Bool {
-  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), test_markers: test_marker_channel_empty(), root: pbf_unbound_atom_tree(), diagnostics: None) {
+  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: pbf_unbound_atom_tree(), diagnostics: None) {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted_tree, diagnostics: _ } =>
   match resolve(

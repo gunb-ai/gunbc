@@ -1,0 +1,177 @@
+module gunbc.managed_host
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import gunbc.machine_intake_bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing }
+import gunbc.machine_intake_ampere_smpro_observation { SmproSiteStanding, SmproPassSubjectStanding, smpro_pass_subject }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+
+// A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
+// procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
+// not an executor fleet host: gunbc.fleet_runner_connectivity fleet_hosts() means "commits runner
+// slots", and a managed host commits none. Every value in a row is imported from the unit's own
+// layer-1 modules, never re-spelled. ManagedHost is sole_constructor: the host identity is joined to
+// its secure standing (and so to the intake subject that standing sealed) only here, so no other
+// module can author a row pairing one host's name with another unit's secured standing. The intake
+// subject is not a field: secure.subject is the one
+// home of it, and a second copy could disagree with the standing it was derived beside.
+//
+// access and capability_row are the pair gunbc.machine_intake_oob_boot_handoff
+// oob_boot_handoff_admission consumes today. DECLARED FRONTIER: they become one
+// gunbc.machine_intake_access BoundBmcAccessContextStanding, whose context carries the capability row
+// through the profile it bound, and the trigger is the first production producer of that standing.
+// No such producer exists yet (bind_bmc_access_context has no production caller and there is no
+// profile catalog), so a bound context cannot be executed for any host and is not hand-built here.
+type ManagedHost sole_constructor {
+  host: HostIdentity
+  access: BmcAccessObservationStanding
+  capability_row: BmcFirmwareReleaseCapabilityRow
+  secure: BmcSecureStanding
+  unit_hold: ResetUnitHold
+  smpro: SmproSiteStanding
+}
+
+// WHETHER DRIVING THIS HOST MUST TAKE ITS MAINTENANCE HOLD FIRST, and on which host the hold store
+// lives. Mt. Collins unit 1 is serviced by hand, so a power cycle of it is gated by the same slot the
+// boot takes; a write may only run where that store is, or it would acquire a hold in an empty store
+// the operator never sees. This decision is the row's; gunbc.managed_host_unit_hold admits a host to
+// the hold procedure from it and is the only reader that turns it into a slot.
+type ResetUnitHold
+  = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
+  | ResetNoUnitHold
+
+// THE ONE JOIN A CONTROLLER WRITE MAY READ ITS ACCOUNT AND ENDPOINT FROM. A secure standing names the
+// controller it secured; an access observation names the controller it read. They are evidence about
+// one machine only when they name the same controller, so a write takes the observation and the
+// account from here and never pairs a secured account with some other row's access. The secured
+// subject reaches the row's host through that controller: no carrier binds a MachineIntakeSubject to
+// a HostIdentity directly, so the join is held at controller grain, which is the grain the write uses.
+type ManagedHostBinding sole_constructor {
+  host: ManagedHost
+  observation: BmcAccessObservation
+  account: NonEmptyStr
+}
+
+// ManagedHostBinding is sole_constructor, so managed_host_binding is its only mint: a binding cannot
+// be authored around the endpoint check.
+type ManagedHostBindingStanding
+  = ManagedHostBound { binding: ManagedHostBinding }
+  | ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint }
+  | ManagedHostNotSecured { cause: BmcSecureRefusalCause }
+  | ManagedHostEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
+
+fn managed_host_binding(host: ManagedHost) -> ManagedHostBindingStanding {
+  match host.secure.outcome {
+    BmcSecureRefused { cause: c } => ManagedHostNotSecured { cause: c }
+    BmcSecured { endpoint: secured, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      match host.access {
+        BmcAccessUnobserved { endpoint: e } => ManagedHostAccessUnobserved { endpoint: e }
+        BmcAccessObserved { observation: o } =>
+          if (o.endpoint.host as String) == (secured.host as String) {
+            ManagedHostBound { binding: ManagedHostBinding { host: host, observation: o, account: r.account } }
+          } else {
+            ManagedHostEndpointMismatch { observed: o.endpoint, secured: secured }
+          }
+      }
+  }
+}
+
+// A UNIT IS A ROW ONLY WHEN ITS SECURE STANDING IS DERIVED, which itself requires its intake subject
+// to bind. Absent leaves the unit out rather than in with a stand-in, so a host never enters the
+// managed set on a fabricated subject; the roster witness then refuses on the missing member.
+fn managed_hosts() -> List<ManagedHost> {
+  match mtcollins1_bmc_secure_standing() {
+    Absent => []
+    Present { value: secure } =>
+      [
+        ManagedHost {
+          host: operator_host_mtcollins1,
+          access: mtcollins1_access_standing,
+          capability_row: mtcollins1_capability_row,
+          secure: secure,
+          unit_hold: ResetUnitHoldRequired { key: operator_host_mtcollins1 as NonEmptyStr, store_host: operator_host_srv1 as NonEmptyStr },
+          smpro: mtcollins1_smpro_site(),
+        },
+      ]
+  }
+}
+
+// A MANAGED HOST BY LABEL, AS ITS WHOLE BINDING STANDING. A caller that knows only a host's name reaches
+// the row's join here, and gets the standing -- bound with its observed endpoint and account together,
+// or the refusal -- never an account on its own.
+type ManagedHostLookup
+  = ManagedHostFound { standing: ManagedHostBindingStanding }
+  | ManagedHostNotManaged { host: NonEmptyStr }
+
+fn managed_host_binding_for(host: NonEmptyStr) -> ManagedHostLookup {
+  match filter(managed_hosts(), h => (h.host as String) == (host as String)).first() {
+    Absent => ManagedHostNotManaged { host: host }
+    Present { value: h } => ManagedHostFound { standing: managed_host_binding(host: h) }
+  }
+}
+
+// THE ACCOUNT, RELEASED ONLY TOGETHER WITH THE CONTROLLER IT WAS BOUND TO. A caller that is about to
+// drive `endpoint` gets the bound account only when `endpoint` is the controller the binding observed,
+// so one host's account is never sent to another controller. Absent is every other case: the host is
+// not managed, does not bind, or is bound to a different controller than the one the caller drives.
+fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControllerEndpoint) -> NonEmptyStr? {
+  match lookup {
+    ManagedHostNotManaged { host: _ } => none
+    ManagedHostFound { standing: s } =>
+      match s {
+        ManagedHostBound { binding: b } =>
+          if (b.observation.endpoint.host as String) == (endpoint.host as String) { Present { value: b.account } } else { none }
+        ManagedHostAccessUnobserved { endpoint: _ } => none
+        ManagedHostNotSecured { cause: _ } => none
+        ManagedHostEndpointMismatch { observed: _, secured: _ } => none
+      }
+  }
+}
+
+// THE ONE OTHER WAY TO MINT A ROW, ADMITTED ONLY TO THE WITNESSES THAT NEED A CROSS-WIRED ONE. The
+// reds in test.claim.managed_host_witness (and test.claim.megarac_managed_host_witness) re-point a real row's access at another controller, or
+// rename a real row to a host with no reset selection or boot policy, to show the binding and the
+// admissions refuse them; they cannot do that without a constructor, and admit_callers keeps every other caller out.
+fn managed_host_fixture(
+  host: HostIdentity,
+  access: BmcAccessObservationStanding,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  secure: BmcSecureStanding,
+  unit_hold: ResetUnitHold,
+  smpro: SmproSiteStanding,
+) -> ManagedHost
+  admit_callers: [
+    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered"),
+    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
+    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store"),
+    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_held_host_with_no_reason_variable_is_refused_for_maintenance"),
+    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
+    decl_ref(module_path: "test.claim.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
+    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_an_account_is_released_only_with_the_controller_it_was_bound_to"),
+  ]
+{
+  ManagedHost { host: host, access: access, capability_row: capability_row, secure: secure, unit_hold: unit_hold, smpro: smpro }
+}
+
+// THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller the binding read,
+// minted by gunbc.machine_intake_ampere_smpro_observation smpro_pass_subject, which refuses a site
+// that names another controller. Every Ampere SMpro pass reads through the subject this returns, so
+// a pass cannot pair one host's controller with another board's site. DECLARED FRONTIER: smpro is a
+// SmproSiteStanding on every row because every managed host today is an Altra board; the first
+// managed host with no SMpro adds its arm with it.
+fn managed_host_smpro_subject(binding: ManagedHostBinding) -> SmproPassSubjectStanding {
+  smpro_pass_subject(host: binding.host.host, endpoint: binding.observation.endpoint, site: binding.host.smpro)
+}

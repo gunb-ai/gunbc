@@ -7,13 +7,13 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, F
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
 import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire }
-import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
-import gunbc.auth.approval_ntfy_deployment
+import gunbc.auth.approval_ntfy_publish
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix }
 import std.algebra { trim }
 import gunbc.auth.approval_status_wire {
@@ -88,7 +88,7 @@ type PublisherTokenRead
 
 fn read_publisher_token() -> PublisherTokenRead admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_device_enrolment_code"),
 ] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
@@ -202,7 +202,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 // exactly the fact nothing reads back, so the derivation moved to the authority that now owns the
 // endpoint (gunbc.auth.approval_broker_endpoint approval_broker_base_url) rather than being left
 // here with its reason rewritten. The undeclared-domain `.invalid` arm still lives with
-// srv1_tailnet_base_url_from and is not restated at either site.
+// gunbc.fleet_tailnet tailnet_base_url_from and is not restated at either site.
 
 fn approval_link(base: NonEmptyStr, request: StoredApprovalRequest, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
   join([base as String, approval_broker_confirm_path_prefix as String, capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
@@ -342,7 +342,7 @@ type NotificationPublish
 
 fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "notify_filed"),
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "deliver_enrolment_code"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "deliver_enrolment_code"),
 ] {
   match publisher {
     PublisherTokenUnavailable { path: _, detail: d } => NotificationPublisherTokenUnavailable { detail: d }
@@ -356,7 +356,10 @@ fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> 
         click: message.click,
         cache: ntfy_cache_wire(c: message.cache),
       )
-      let publish = ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id)
+      let publish = ntfy_publish_outcome_of(rest: match sent {
+        RestAnswered { answer } => RestAnswered { answer: answer.message_id }
+        RestRefused { refusal } => RestRefused { refusal: refusal }
+      })
       NotificationAttempted { publish: publish, acceptance: ntfy_publish_acceptance(o: publish) }
     }
   }

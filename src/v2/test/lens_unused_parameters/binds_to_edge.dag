@@ -13,7 +13,6 @@ import v2.std.dependency {
   ClassifiedDependencyView,
   DependencyView
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Holds, Witness }
 import v2.test.lens_common.infer_fixture {

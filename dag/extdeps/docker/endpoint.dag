@@ -6,6 +6,8 @@ import extdeps.uri { Uri, Https }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data docker_default_endpoint: String = "unix:///var/run/docker.sock"
 
@@ -34,6 +36,15 @@ data endpoint_string_type_frontier_rows: List<FrontierRow> = [
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.docker.com/engine/api/v1.47"
+    locator: "docs.docker.com/reference/cli/docker/"
   }
+}
+
+// Reading: Docker's CLI reference owns the daemon-selection surface: it documents the rootful default unix:///var/run/docker.sock for macOS/Linux. Data docker_default_endpoint is that documented default, so the datum is the surface this citation owns. The DOCKER_HOST override is a sibling datum (docker_host_env_var), not part of this one.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }

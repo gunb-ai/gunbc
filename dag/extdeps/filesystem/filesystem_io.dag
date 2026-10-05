@@ -3,7 +3,8 @@ module extdeps.filesystem.filesystem_io
 import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, List, String }
+import std.types { Bool, FilePath, Int, List, String, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -52,6 +53,7 @@ type FilesystemFailureKind
   | FilesystemAlreadyExists
   | FilesystemPermissionDenied
   | FilesystemNotDirectory
+  | FilesystemCrossDevice
   | FilesystemOtherFailure
 
 type FilesystemFailureKindAdmission
@@ -67,6 +69,8 @@ fn admit_filesystem_failure_kind(observed: String) -> FilesystemFailureKindAdmis
     FilesystemFailureKindAdmitted { kind: FilesystemPermissionDenied }
   } else if observed == "not_a_directory" {
     FilesystemFailureKindAdmitted { kind: FilesystemNotDirectory }
+  } else if observed == "cross_device" {
+    FilesystemFailureKindAdmitted { kind: FilesystemCrossDevice }
   } else if observed == "other" {
     FilesystemFailureKindAdmitted { kind: FilesystemOtherFailure }
   } else {
@@ -80,6 +84,7 @@ fn filesystem_failure_kind_name(kind: FilesystemFailureKind) -> String {
     FilesystemAlreadyExists => "already_exists"
     FilesystemPermissionDenied => "permission_denied"
     FilesystemNotDirectory => "not_a_directory"
+    FilesystemCrossDevice => "cross_device"
     FilesystemOtherFailure => "other"
   }
 }
@@ -117,6 +122,7 @@ fn filesystem_exact_read(
           FilesystemAlreadyExists => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
           FilesystemPermissionDenied => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
           FilesystemNotDirectory => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
+          FilesystemCrossDevice => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
           FilesystemOtherFailure => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
         }
     }
@@ -151,13 +157,60 @@ fn filesystem_create_new(
           FilesystemNotFound => FilesystemCreateRefused { path: path, kind: k, error: error }
           FilesystemPermissionDenied => FilesystemCreateRefused { path: path, kind: k, error: error }
           FilesystemNotDirectory => FilesystemCreateRefused { path: path, kind: k, error: error }
+          FilesystemCrossDevice => FilesystemCreateRefused { path: path, kind: k, error: error }
           FilesystemOtherFailure => FilesystemCreateRefused { path: path, kind: k, error: error }
         }
     }
   }
 }
 
-data filesystem_read_outcome_adoption_standing: String ="RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba: 92 unconverted consumption sites across 48 .dag files. REMAINDER after the first conversion: 91 unconverted consumption sites across 47 files. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
+// A CREATE-ONLY LINK OF AN EXISTING FILE UNDER A NEW NAME. The name appears with the source's bytes
+// complete or not at all, because it is one link(2) -- the same primitive WriteCreateNew publishes
+// with -- and an existing target refuses (create-only), so a second linker of one name is told it
+// lost and must read what is there. A source on a DIFFERENT filesystem refuses as cross-device: a
+// link across filesystems is not a copy, and nothing here falls back to one, so a caller staging a
+// file for a store must stage it on the store root's filesystem. The source is left in place; the
+// caller owns its staging name.
+type FilesystemLinkCreateNew
+  = FilesystemLinked { path: String }
+  | FilesystemLinkTargetOccupied { path: String }
+  | FilesystemLinkCrossDevice { source: String, path: String }
+  | FilesystemLinkRefused { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemLinkKindUnrecognized { path: String, observed: String, error: String }
+
+// THE CONSUMER IS A DECLARED FRONTIER (DESIGN section 3c), stated here beside the operation: the
+// production caller lands in the change stacked directly on this one.
+data filesystem_link_create_new_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc#13095 lands, in which extdeps.realization.materialization_store_local local_store_link_part publishes every staged byte part into the store root through Filesystem.LinkCreateNew and classifies the answer with filesystem_link_create_new (linked or occupied proceed; cross-device and every refusal refuse the commit). SUFFICIENT FOR: the operation has a production consumer on the store's commit path, not only its witnesses; until that change lands the operation is consumed by its witnesses alone, and this row is retired by that landing and nothing else." as NonEmptyStr)
+
+fn filesystem_link_create_new(
+  source: String,
+  path: String,
+  success: Bool,
+  error: String,
+  error_kind: String,
+) -> FilesystemLinkCreateNew {
+  if success {
+    FilesystemLinked { path: path }
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemLinkKindUnrecognized { path: path, observed: o, error: error }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        match k {
+          FilesystemAlreadyExists => FilesystemLinkTargetOccupied { path: path }
+          FilesystemCrossDevice => FilesystemLinkCrossDevice { source: source, path: path }
+          FilesystemNotFound => FilesystemLinkRefused { path: path, kind: k, error: error }
+          FilesystemPermissionDenied => FilesystemLinkRefused { path: path, kind: k, error: error }
+          FilesystemNotDirectory => FilesystemLinkRefused { path: path, kind: k, error: error }
+          FilesystemOtherFailure => FilesystemLinkRefused { path: path, kind: k, error: error }
+        }
+    }
+  }
+}
+
+data filesystem_read_outcome_adoption_standing: String ="RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. CLASSES EXCLUDED FROM THE TARGET POPULATION, recorded so exclusion is a decision and not a blind spot: a site whose read projections already flow through the separate exact-read authority filesystem_exact_read's own typed shape is exact_read_typed and is not a target of this lane -- that authority owns it; a site that routes a raw read through a domain-specific fold of the same shape -- gunbc.machine_intake proc_read_outcome into ProcRead | ProcReadRefused, which additionally carries error_kind -- is domain_read_fold: it is a typed outcome, not a silent default, but a second read-outcome fold beside this one is a DESIGN 3 fork, recorded to be unified later by growing the shared fold, and those sites are targets of that unification, not of this lane; a site whose two read-result branches take the same action at every remaining caller is argued_collapse -- absent and unreadable change the message, not the behaviour, and the argument is owned at the site, not by this row: gunbc.roadmap_belt_actuate belt_read_or_empty, whose argument is the annotation above its definition (review 45271) and whose exemption filesystem_absence_establishment_adoption_standing already records, and gunbc.roadmap_served_observation attempt_launch_revision_hex, whose argument is the presentation note in gunbc.roadmap_presentation that an unreadable launch record dims nothing, pinned by dag/test/claim/roadmap/roadmap_presentation_witness_test.dag -- if a caller is found where the two branches would now act differently, that falsifies the argument and the site becomes a target: report it, do not convert silently. Counted, not excluded: gunbc.roadmap_belt_actuate's admission and spawn-failure evidence reads in belt_workflow_attempt_evidence_for_key are debt -- a read refusal is carried in the attempt evidence wire's text field because that wire has no cause slot; they stay in the remainder below, unconverted and counted, until the wire gains a typed evidence outcome, and the wire and its consumers are owned by gunbc.roadmap_belt_actuate, which owes that shape change. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba with the recipe below; the run's numbers live with the run that measured them, not in this authority, and #13106 verified the recipe's parity at that anchor. REMAINDER: no committed producer currently supplies a live remainder -- the recipe below is the named procedure for producing one, at the grain the baseline used so a fresh run stays comparable, and the census PR names the executable producer; dag/test/claim fixtures are not corpus and are not targets. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
+
+data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched: the roster is EMPTY as of this row's restoration. The six identities the row carried on origin/main 6305a5174c all route through the carrier now -- gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token, v2.workflow.product_receipt_stage run_product_receipt_stage, tools.merge_admission_walk read_tested_subject and read_floor_receipt, gunbc.codex_supervised_turn codex_supervised_turn_generation_observation, and tools.opaque_realization_census declaration_body_standing -- the five converted by the change that empties this roster -- each preserving could-not-look as its own typed refusal rather than an absence, and gunbc.fleet_converge_plan_cli observe_cap_members_wet already converted on main -- so a could-not-look at any of them can no longer masquerade as an established absence. THE ROW STAYS NONE THE LESS, and an empty roster is not a deleted row: the raw operations remain callable outside this module, so the class shape can be re-spelled at a new site at any time, and what the row guards is the CLASS, not its former members. A site of this shape found anywhere is a defect to repair by adoption, not a row to add. The mistake this restoration repairs was deleting the row because its enumeration emptied rather than because the trigger below expired, which is exactly the failure the NEXT-RUNG TRIGGER paragraph exists to prevent. WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in the annotation above its definition -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
 
 // ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ. `Read` answers
 // success=false both for a path that does not exist and for one that exists and cannot be read, and
@@ -422,7 +475,8 @@ type FilesystemDirectoryListing sole_constructor {
 // joins names with newlines, so this is the split -- blank lines dropped, every other line one
 // name as the host spelled it. A consumer that split `entries` itself would be the second
 // decoder of one wire format (review 69704 of gunbc#12000 found one; extdeps.realization
-// artifact_store_fs carries an older one under filesystem_absence_establishment_adoption_standing).
+// artifact_store_fs carries an older one under
+// filesystem_absence_establishment_adoption_standing).
 fn filesystem_listing_entry_names(listing: FilesystemDirectoryListing) -> List<String> {
   listing.entries.split(delimiter: "\n").filter(n => n != "")
 }
@@ -645,7 +699,6 @@ fn filesystem_established_absence_path(absence: FilesystemEstablishedAbsence) ->
   }
 }
 
-data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false. THIS ROW IS CLASSIFIED FROM THE PRODUCER RATHER THAN FROM THE CALL SITE, on a caution from the lane that shipped this defect today: a predicate whose job is to answer the presence question would not belong here. extdeps.shell Test.IsFile is `test -f` with its own declared exit table reading `1 => Path is missing or not a regular file`, so ONE exit code carries missing, wrong-kind, and -- since `test -f` is false when the parent directory cannot be searched -- could-not-look. It answers false on an unreadable-but-present path, so it is the same defect with a different producer, and it is the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
 
 // WriteCreateNew: CREATE-ONLY IS A DIFFERENT FACT FROM OWNER-ONLY, and this annotation sits here
 // rather than above the operation because only module-item grain is modeled (DESIGN section 4c) --
@@ -719,6 +772,18 @@ service Filesystem {
       error_kind: String from "error_kind"
     }
     transport file { path: "{path}", verb: "write_create_new" }
+  }
+
+  operation LinkCreateNew {
+    requires none
+    input { source: String, path: String }
+    output {
+      success: Bool from "write_success"
+      path: String from "path"
+      error: String from "error"
+      error_kind: String from "error_kind"
+    }
+    transport file { path: "{path}", verb: "link_create_new" }
   }
 
   operation WriteCreateNewWithMode {

@@ -156,7 +156,8 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
 //
 // THE SECOND WORKED EXAMPLE, AND ITS SIGN-OFF (operator decision msg_6e36a6a2, 2026-09-23, which
 // supersedes msg_4a9045fc and the ~20 min pricing of msg_f1ade7cf-77e4-4896-a8b3-476747692c37).
-// This file's build lane -- the stage0 mirrors' generated-artifact and regen-fixed-point phases,
+// This file's build lane -- the stage0 mirrors' generated-artifact and regen-fixed-point phases (the
+// latter deleted by operator ruling 2026-10-04: one generation, no determinism re-emit),
 // which no job had run since #11742 -- returns as ONE merge_group-only STEP on the emitted floor
 // job (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
 // already checks out and builds claim_executor, and the lane measured 22.5 min on the fleet (run

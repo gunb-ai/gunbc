@@ -1,6 +1,7 @@
 module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { token_count_value }
@@ -9,12 +10,12 @@ import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceM
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOverInterface }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_arm {
-  ServingLaunchProfile, glm_native_concurrent_profile,
+  ServingLaunchProfile, ServingCheckpoint, glm_native_concurrent_profile,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
-  GunbcSparkrunVllmDs4Gb10,
+  GunbcSparkrunVllmDs4Gb10, DeepseekV41FlashDba1be0a,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, SingleSparkTp1,
   glm_native_initial_profile, serving_checkpoint_row, serving_runtime_row,
 }
@@ -224,6 +225,7 @@ fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
     profile: glm_native_initial_profile,
     deployment_env: [] as List<DockerEnvAssignment>,
     container: glm_native_arm_container,
+    promotion_receipts: no_promotion_receipts,
   )
 }
 
@@ -265,7 +267,6 @@ test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
 // about this one.
 test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
   match arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: SingleSparkTp1,
     profile: glm_native_initial_profile,
@@ -303,7 +304,6 @@ fn w_restoration_profile() -> ServingLaunchProfile {
 
 test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool {
   match arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     profile: w_restoration_profile(),
@@ -368,4 +368,25 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
   }
+}
+
+// THE CHECKPOINT AND ITS LAUNCH POLICY ARE ONE PAIRING. A profile carries the checkpoint its policy
+// row names (gunbc.spark.serving_arm ModelLaunchPolicy), so the GLM profile planned for an arm
+// assigned another checkpoint refuses at the seam rather than launching that checkpoint with GLM's KV,
+// indexer, Engram and modality choices. The control is the same call at GLM's own checkpoint, which
+// plans; with the join deleted both would plan and this row goes red.
+fn w_plan_with_checkpoint_for_glm_profile(c: ServingCheckpoint) -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: c, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, group: FabricGroupB,
+    intent: ArmBoundedExperiment, profile: glm_native_initial_profile,
+    deployment_env: [] as List<DockerEnvAssignment>, container: glm_native_arm_container,
+  )
+}
+
+test fn w_a_profile_from_another_checkpoints_policy_refuses_at_the_launch_seam() -> Bool {
+  string_contains(s: plan_refusal_cause(p: w_plan_with_checkpoint_for_glm_profile(c: DeepseekV41FlashDba1be0a)), pattern: "another checkpoint")
+    && (match w_plan_with_checkpoint_for_glm_profile(c: Glm53NativeFp8) {
+      ArmLaunchPlanned { lines: _, master: _ } => true
+      ArmLaunchRefused { cause: _ } => false
+    })
 }

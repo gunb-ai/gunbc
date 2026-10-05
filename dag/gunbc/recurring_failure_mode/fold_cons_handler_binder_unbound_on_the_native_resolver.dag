@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.fold_cons_handler_binder_unbound_on_the_native_resolver
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fold_cons_handler_binder_unbound_on_the_native_resolver: RecurringFailureMode = RecurringFailureMode {
+  identity: "fold_cons_handler_binder_unbound_on_the_native_resolver" as NonEmptyStr,
+
+  receipts: [
+    "**the native resolver does not bind a fold handler's binder -- a `cons: fn(acc, candidate)` handler over fold_list refuses its module at prepare with resolve_reason_unbound_symbol anchored at the fold spine, so a claim that observes a std fn's result by folding over it cannot run on the native route** (INVALID STATE: the same spelling binds on the interpreted floor, so the two routes disagree about an ordinary fold).",
+    "RECEIPT (2026-10-02, eager-cat-664, head 17fccbf3f62): `gunbc test '//v2/test/claim/variant_field_native_specimen:all'` (same emitted closure ae6fb52183d56945c0dedad90047279110c416c3f7ea5dcb6b5a10724ab7cff6, built clean, discriminating red and malformed control established): target/v2-native-lane/driver-rows.jsonl records all three identities of v2.test.claim.variant_field_native_specimen (vfb_specimen_binder_present_value_node_binds, vfb_specimen_variant_binder_binds, vfb_specimen_unbound_name_yields_no_candidates) as NativeTestRefused at NativeTestStagePrepare with head reason resolve_reason_unbound_symbol, anchor a fold_list_node spine over the atoms `candidate` and `path` -- the handler binder and the field read through it (candidate.path) in the claim's own cons handler. The same three claims are GREEN on the interpreted floor (gunbc run --claim-run, pool 7223 modules, exit 0).",
+    "HARM: any test claim that observes a result by folding over it -- the spelling the floor prefers for list observation -- refuses natively before its subject is reached, so native observations are pushed onto spellings the floor does not prefer, and the two routes' agreement surface shrinks by whole claim modules.",
+    "DISTINGUISHING FACTS. Not native_infer_accepts_only_bool_and_int_match_scrutinees (stage resolve, not infer; the anchor is a fold spine, not a match). Not a_wildcard_match_arm_resolves_as_an_unbound_name (that class is a wildcard in a match arm; here it is a lambda parameter of a fold handler). Not unapplied_function_value_admitted_at_a_value_position (nothing is admitted; a binder is missing). The closure's pre-existing file refusals in the same run (dag/std/occurrence_identity.dag normalized_tree_reason_wrapper_retention_not_normalized, src/v2/compiler/body_lowering_fold.dag and dag/std/machine_constraints.dag parse_g0_tokens_remain, dag/extdeps/uri_path.dag body_lowering_reason_function_value_body_unread -- 4 file_refusal rows in the terminal tally) are NOT this class: the anchor is in the claim's own handler, and the unbound name is the handler's own binder, not a name from a refused file.",
+    "RUNG FOUND AT: mitigatable -- typed and loud at prepare, anchor names the spine.",
+    "CEILING: structurally guaranteed. A fold handler's parameter is a lambda over the folded item; binding it is the same mechanism the floor already applies to the identical spelling.",
+    "NEXT-RUNG TRIGGER, naming the capability: fold-handler binder resolution in the native resolver -- a `cons: fn(acc, item)` handler's parameter binds at resolve on the native route, and the three vfb_specimen_* identities pass native prepare beside the floor green.",
+  ],
+
+  evidence: [],
+}

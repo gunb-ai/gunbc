@@ -1,0 +1,50 @@
+module test.claim.managed_host_boot_federation_forged_probe_witness
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BOOT FEDERATION SEAL, ENROLLED AS AN EXECUTED RED (managed-host cut 4c). The probe source
+// below authors a ManagedHostBootFederation outside gunbc.auth.managed_host_boot_federation -- an
+// unprovisioned host paired with some pool's names -- and hands it to the provisioner. This witness
+// hands that source to the compiler through the diagnostic-census harness and requires the refusal
+// CLASS at the SUBJECT by name. It is an identity join, so a probe refusing for any other reason
+// measures another wall, and the harness control shows the census ran.
+
+data forged_probe_source: String = "module probe_managed_host_boot_federation_forged\n\nimport std.types { List }\nimport product.host_identity { HostIdentity }\nimport gunbc.auth.managed_host_boot_federation { ManagedHostBootFederation, BootFederationNames }\nimport gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }\nimport gunbc.auth.heal_publisher_provision { DedicatedFederation }\n\nfn forged_federation(host: HostIdentity, n: BootFederationNames) -> ManagedHostBootFederation {\n  ManagedHostBootFederation { host: host, names: n, claim_pins: [], secret_grants: [] }\n}\n\nfn provision_a_forged_federation(host: HostIdentity, n: BootFederationNames) -> DedicatedFederation {\n  boot_dedicated_federation(f: forged_federation(host: host, n: n))\n}\n"
+
+data harness_control_source: String = "module probe_managed_host_boot_federation_harness_control\nimport std.types { List }\nimport gunbc.auth.managed_host_boot_federation { ManagedHostBootFederation, provisioned_boot_federations }\nfn feds() -> List<ManagedHostBootFederation> { provisioned_boot_federations() }\n"
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// THE CONTROL IS CLASS-SCOPED: a clean source reading the module through its real producer yields no
+// SoleConstructorViolation, so the red below is the probe's own forgery.
+test fn the_harness_runs_and_a_clean_source_emits_no_sole_constructor_violation() -> Bool {
+  blocking_count_for_class(c: compile_dag_diagnostic_census(harness_control_source), wanted: "SoleConstructorViolation") == 0
+}
+
+// AN ADMITTED BOOT FEDERATION CANNOT BE AUTHORED OUTSIDE admit_boot_federation.
+test fn a_forged_boot_federation_is_refused_at_its_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: compile_dag_diagnostic_census(forged_probe_source), wanted: "SoleConstructorViolation", subject: "ManagedHostBootFederation") >= 1
+}

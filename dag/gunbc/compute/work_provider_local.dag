@@ -22,6 +22,7 @@ import extdeps.systemd.systemd_run {
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
 }
 import extdeps.systemd.systemctl
+import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value }
 import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
@@ -307,33 +308,11 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
   join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
 }
 
-// THE TERMINATION POLICY IS BOUND, NOT INHERITED, and that is what makes a successful wait mean
-// anything about the cgroup. `systemd-run --wait` returns when the MAIN process exits; under
-// KillMode=process or none a forked child survives in the unit's cgroup and goes on using the
-// memory this seat is accounting for. control-group is systemd's default, but a default is not a
-// declaration -- a drop-in or a future default could change it, and this provider would keep
-// treating a completed wait as an empty cgroup (side-chat review at 773825cf). Binding it makes the
-// policy a fact of the invocation.
-//
-// IT IS BOUND *AND* THE EVIDENCE IS STILL REQUIRED, IN BOTH DIRECTIONS. A positive populated=1 is
-// never discarded in favour of a completed wait; and an UNREADABLE population is not licensed by one
-// either. A bound policy says what systemd WILL do, the cgroup says what IS true, and "I could not
-// look" is not the second (side-chat review at f5344b28). Completion confirms a release only beside
-// a positively empty cgroup -- or, short-circuiting all of this, a manager that has no record of
-// the unit at all.
-data compute_kill_mode_property: String = "KillMode"
-data compute_kill_mode_value: String = "control-group"
-
-// THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE. A termination policy that is only
-// asserted in prose is exactly the thing the release decision must not trust, and the whole point
-// of binding it is that the decision leans on it -- so the invocation's properties are produced
-// where a control can read them rather than spelled inline at the call.
+// THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
+// gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
+// unit, shared with the agent session's unit. A compute unit states no process bounds.
 fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<String> {
-  [
-    systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted)))),
-    systemd_run_property(name: compute_kill_mode_property, value: compute_kill_mode_value),
-    systemd_run_property(name: "WorkingDirectory", value: layout.checkout),
-  ]
+  compute_grant_unit_properties(granted: granted, working_directory: layout.checkout, process_bounds: none)
 }
 
 // Run the operation as a transient user unit and wait for it: the unit carries THE MEMORY THE POOL

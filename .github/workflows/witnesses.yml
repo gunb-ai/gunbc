@@ -22,14 +22,17 @@ env:
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
   emit-build:
-    runs-on: ubuntu-24.04-arm
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
     steps:
-      - name: Checkout
+      - name: Checkout the commit this lane judges
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - name: Isolate toolchain homes
         run: |-
@@ -75,6 +78,10 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+      - name: Require isolated toolchain homes
+        run: |
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+        if: "!cancelled()"
       - name: emit and build //gunbc/instruments:self-host
         id: emit_build_self_host
         run: |+
@@ -125,10 +132,11 @@ jobs:
 
       - name: Why this lane is red, and what would be a real finding
         run: |-
-          printf '%s\n' 'emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:'
-          printf '%s\n' 'the required context is `witnesses`, and this job is not an input to it.'
+          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
           printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
         if: failure()
+    env:
+      MALLOC_ARENA_MAX: "2"
   floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
@@ -162,6 +170,90 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Key the compiler pair candidate (merge group; stamps the build with the materialized tree)
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
+          '[' '-z' "$DIRTY" ']' || ('echo' '::error title=release-bins SourceTreeDirty::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key'; exit 1)
+          'env' '-0' > "$RUNNER_TEMP"'/env.nul'
+          if 'grep' '-zqE' '^(CARGO|RUST|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|TARGET_CC|HOST_CC)[A-Za-z0-9_]*(TOKEN|CREDENTIAL|SECRET|PASSWORD|PASSWD|AUTH)[A-Za-z0-9_]*=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins CredentialInBuildEnvironment::a registry or toolchain credential is present in the build environment; credentials are not build inputs and must not reach a key or a published preimage, so the build is refused'; exit 1); fi
+          if 'grep' '-zqE' '^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins BuildOverrideNotAdmitted::the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly'; exit 1); fi
+          'sed' '-z' '-nE' '/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p' "$RUNNER_TEMP"'/env.nul' > "$RUNNER_TEMP"'/env-keyed.nul'
+          'sed' '-z' '-E' '/^(CARGO_HOME|RUSTUP_HOME|CARGO_BIN|CARGO_TERM_COLOR|CARGO_BUILD_JOBS|RUSTC_WRAPPER)=/d' "$RUNNER_TEMP"'/env-keyed.nul' > "$RUNNER_TEMP"'/env-kept.nul'
+          'sort' '-z' "$RUNNER_TEMP"'/env-kept.nul' > "$RUNNER_TEMP"'/env-sorted.nul'
+          'sha256sum' "$RUNNER_TEMP"'/env-sorted.nul' > "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out'
+          AXIS_ENVIRONMENT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out')
+          ANCESTOR_0="$ROOT"
+          ANCESTOR_CONFIG=''
+          ANCESTOR_1=$('dirname' "$ANCESTOR_0")
+          ('[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_1"
+          ANCESTOR_2=$('dirname' "$ANCESTOR_1")
+          ('[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_2"
+          ANCESTOR_3=$('dirname' "$ANCESTOR_2")
+          ('[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_3"
+          ANCESTOR_4=$('dirname' "$ANCESTOR_3")
+          ('[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_4"
+          ANCESTOR_5=$('dirname' "$ANCESTOR_4")
+          ('[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_5"
+          ANCESTOR_6=$('dirname' "$ANCESTOR_5")
+          ('[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_6"
+          ANCESTOR_7=$('dirname' "$ANCESTOR_6")
+          ('[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_7"
+          ANCESTOR_8=$('dirname' "$ANCESTOR_7")
+          ('[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_8"
+          ANCESTOR_9=$('dirname' "$ANCESTOR_8")
+          ('[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_9"
+          ANCESTOR_10=$('dirname' "$ANCESTOR_9")
+          ('[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_10"
+          ANCESTOR_11=$('dirname' "$ANCESTOR_10")
+          ('[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_11"
+          ANCESTOR_12=$('dirname' "$ANCESTOR_11")
+          ('[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_12"
+          ANCESTOR_13=$('dirname' "$ANCESTOR_12")
+          ('[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_13"
+          ANCESTOR_14=$('dirname' "$ANCESTOR_13")
+          ('[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_14"
+          ANCESTOR_15=$('dirname' "$ANCESTOR_14")
+          ('[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_15"
+          ANCESTOR_16=$('dirname' "$ANCESTOR_15")
+          ('[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_16"
+          if '[' '-n' "$ANCESTOR_CONFIG" ']'; then 'echo' 'release-bins: Cargo config found above the checkout in '"$ANCESTOR_CONFIG"; ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1); fi
+          '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          AXIS_PRODUCER=$("$CARGO_BIN" '-V')
+          '[' '-n' "$AXIS_PRODUCER" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_PRODUCER read back empty, so the key would not name the build; refusing to key'; exit 1)
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-host.out'
+          AXIS_HOST=$('sed' '-n' 's/^host: //p' "$RUNNER_TEMP"'/rustc-host.out')
+          'cc' '--version' > "$RUNNER_TEMP"'/AXIS_CC.out'
+          AXIS_CC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_CC.out')
+          'ld' '--version' > "$RUNNER_TEMP"'/AXIS_LD.out'
+          AXIS_LD=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LD.out')
+          'ldd' '--version' > "$RUNNER_TEMP"'/AXIS_LIBC.out'
+          AXIS_LIBC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LIBC.out')
+          '[' '-n' "$AXIS_HOST" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_HOST read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_CC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_CC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LD" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LD read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LIBC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LIBC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
+          AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
+          '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
+          ('printf' 'kind=%s\n' 'gunbc.compiler_pair_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc' "$SOURCE_CLOSURE" 'sha256:'"$AXIS_ENVIRONMENT_DIGEST" 'claim_executor gunbc'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
+          'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
+          PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
+          KEY='release-bins-'"$PREIMAGE_DIGEST"
+          'rm' '-rf' "$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$ROOT"'/.release-bins-staging'
+          'echo' 'release-bins request key '"$KEY"' over preimage:'
+          'cat' "$EXPECTED"
+          'echo' 'key='"$KEY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'GUNBC_MATERIALIZED_TREE_IDENTITY='"$SOURCE_CLOSURE" | 'tee' '-a' "$GITHUB_ENV" > '/dev/null'
+        if: github.event_name == 'merge_group'
       - name: Build the compiler and the witness executor
         id: build_witness_fold
         run: |+
@@ -186,6 +278,35 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+      - name: Pack the compiler pair candidate with its build log
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$STAGE"
+          '[' '-s' "$ROOT"'/gunbc-floor-cmd.log' ']' || ('echo' '::error title=release-bins BuildDiagnosticsMissing::the product requires the build log gunbc-floor-cmd.log as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller'; exit 1)
+          'cp' "$ROOT"'/gunbc-floor-cmd.log' "$ROOT"'/target/release/build_diagnostics'
+          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics') > "$STAGE"'/release-bins.manifest'
+          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics'
+          'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
+          'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
+
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          'tar' '-cf' "$RUNNER_TEMP"'/pack.tar' '-C' "$STAGE" 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'
+        if: github.event_name == 'merge_group' && steps.build_witness_fold.outcome == 'success'
+      - name: Upload the compiler pair candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: compiler-pair-candidate
+          path: ${{ runner.temp }}/pack.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+        if: github.event_name == 'merge_group' && steps.build_witness_fold.outcome == 'success'
       - name: Require isolated toolchain homes
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
@@ -281,6 +402,14 @@ jobs:
         env:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
+      - name: Upload the floor's per-claim cost receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-claim-cost
+          path: required_floor_claim_cost.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
     env:
       MALLOC_ARENA_MAX: "2"
       GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
@@ -374,7 +503,7 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
         if: "!cancelled()"
-      - name: "Stage0 mirrors match what this seed emits, both generations: required CI build lane"
+      - name: "Stage0 mirrors match one emission by this seed: required CI build lane"
         id: stage0_regen
         run: |+
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
@@ -444,7 +573,7 @@ jobs:
       MALLOC_ARENA_MAX: "2"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [floor, generated]
+    needs: [emit-build, floor, generated]
     timeout-minutes: 5
     if: always()
     permissions:
@@ -452,11 +581,13 @@ jobs:
     steps:
       - name: Every required lane must have succeeded
         run: |-
-          echo "required lanes: floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
-          if [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
-          if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
-          if [ "$GENERATED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$GENERATED" = skipped ]; then echo "::notice::the generated-artifact lane is skipped for a fork pull request: no generated-artifact verdict for this head"; else echo "::error::the generated-artifact lane produced no success (generated=$GENERATED), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
+          echo "required lanes: emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
+          if [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
+          if [ "$EMIT_BUILD" != success ]; then if [ "$SAME_REPO" = false ] && [ "$EMIT_BUILD" = skipped ]; then echo "::notice::the emit-build lane is skipped for a fork pull request: no self-host or native-CLI emission verdict for this head"; else echo "::error::the emit-build lane produced no success (emit-build=$EMIT_BUILD), so this head carries no verdict from that lane"; exit 1; fi; fi
+          if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no verdict from that lane"; exit 1; fi; fi
+          if [ "$GENERATED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$GENERATED" = skipped ]; then echo "::notice::the generated-artifact lane is skipped for a fork pull request: no generated-artifact verdict for this head"; else echo "::error::the generated-artifact lane produced no success (generated=$GENERATED), so this head carries no verdict from that lane"; exit 1; fi; fi
         env:
+          EMIT_BUILD: ${{ needs['emit-build'].result }}
           FLOOR: ${{ needs.floor.result }}
           GENERATED: ${{ needs.generated.result }}
           SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

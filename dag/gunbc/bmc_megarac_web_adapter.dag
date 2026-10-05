@@ -1,7 +1,6 @@
 module gunbc.bmc_megarac_web_adapter
 
 import std.types { Bool, HttpStatus, Int, List, Map }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.algebra { Empty, Cons }

@@ -1,0 +1,475 @@
+module extdeps.ampere.smpro_internal_error
+
+import v2.std.algebra { filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.optional { Present }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.ampere.smpro_register { smpro_errmon_authority }
+
+// THE SUBJECT IS THE SMpro/PMpro INTERNAL ERROR RECORD: the word set an SMpro exposes in its TYPE,
+// INFO and DATA registers (extdeps.ampere.smpro_register, smpro-errmon), and what Ampere's own
+// OpenBMC host-error monitor says each field means. The record's normative definition is section
+// 5.10 of Ampere's Altra Family SoC BMC Interface Specification, which this corpus does not hold;
+// everything here is transcribed from two OPEN sources at pinned commits, under their own names:
+//
+//   - the Linux driver (smpro_errmon_authority), which reads TYPE, then INFO_HI/INFO_LO and, for an
+//     error with data, DATA_HI/DATA_LO, and prints them as %*phN over the u32 array
+//     {INFO_HI, INFO_LO, DATA_HI, DATA_LO} -- each word's low byte first;
+//   - ampere-misc altra-host-error-monitor (altra_host_error_monitor_authority), whose
+//     prepareInternalErrData parses that line and whose include/internalErrors.hpp names the codes.
+//
+// THE FIELDS, as that parser takes them from the driver's line, restated on the register words:
+// location is the first byte of the line, INFO_HI's low byte; the software image is the next hex
+// digit, INFO_HI bits 15:12; the direction is bit 3 of that byte, INFO_HI bit 11; the error code is
+// the second group byte-reversed (utils.hpp reverseStr = swap2Byte then reverse), which is INFO_LO
+// as the register holds it. INFO_HI bits 10:8 are not read by the parser and are carried raw.
+//
+// AN UNLISTED CODE IS ITS NUMBER. The parser prints 'Unknown location' for a code past its table;
+// here that is an explicit Undefined arm carrying the code, never the nearest name.
+
+data altra_host_error_monitor_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ampere-openbmc/ampere-misc/blob/1ecb51edb5b2c44fe1b51f151c53def4536406a4/subprojects/altra-host-error-monitor/altra-host-error-monitor.cpp"
+  }
+}
+
+data altra_internal_errors_table_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ampere-openbmc/ampere-misc/blob/1ecb51edb5b2c44fe1b51f151c53def4536406a4/subprojects/altra-host-error-monitor/include/internalErrors.hpp"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.smpro_internal_error",
+      decl_name: "SmproInternalRecord",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: smpro_errmon_authority,
+  further_citations: [altra_host_error_monitor_authority, altra_internal_errors_table_authority]
+}
+
+// ── the code tables (internalErrors.hpp imageCodes, localCodes, errorCodes), index = code ─────────
+
+type SmproCodeName {
+  code: Int
+  name: NonEmptyStr
+}
+
+type SmproErrorCodeName {
+  code: Int
+  led_default: NonEmptyStr
+  name: NonEmptyStr
+}
+
+data smpro_image_codes: List<SmproCodeName> = [
+  SmproCodeName { code: 0, name: "Executing ROM image" },
+  SmproCodeName { code: 1, name: "Executing boot strap image" },
+  SmproCodeName { code: 2, name: "Executing ROM normal (non-secure) boot path" },
+  SmproCodeName { code: 3, name: "Executing ROM secure boot path" },
+  SmproCodeName { code: 4, name: "Executing ROM asymmetric secure boot path" },
+  SmproCodeName { code: 5, name: "Executing ROM symmetric secure boot path" },
+  SmproCodeName { code: 6, name: "Executing runtime image" },
+  SmproCodeName { code: 7, name: "Executing asymmetric secure runtime image" },
+  SmproCodeName { code: 8, name: "Executing symmetric secure runtime image" },
+  SmproCodeName { code: 9, name: "All others" },
+]
+
+data smpro_location_codes: List<SmproCodeName> = [
+  SmproCodeName { code: 0, name: "Unknown" },
+  SmproCodeName { code: 1, name: "Main routine" },
+  SmproCodeName { code: 2, name: "Interrupt controller (NVIC)" },
+  SmproCodeName { code: 3, name: "AHB to AXI mapping" },
+  SmproCodeName { code: 4, name: "Efuse initialization" },
+  SmproCodeName { code: 5, name: "Efuse loading" },
+  SmproCodeName { code: 6, name: "Efuse read fields" },
+  SmproCodeName { code: 7, name: "Efuse write fields" },
+  SmproCodeName { code: 8, name: "Crypto authentication" },
+  SmproCodeName { code: 9, name: "Cryptocell initialization" },
+  SmproCodeName { code: 10, name: "Certificate reading by Crytocell library" },
+  SmproCodeName { code: 11, name: "Loading from I2C EEPROM to IRAM using IICDMA controller" },
+  SmproCodeName { code: 12, name: "ROM main" },
+  SmproCodeName { code: 13, name: "ROM dead" },
+  SmproCodeName { code: 14, name: "N/A" },
+  SmproCodeName { code: 15, name: "N/A" },
+  SmproCodeName { code: 16, name: "N/A" },
+  SmproCodeName { code: 17, name: "BL1 and PMpro Secure boot" },
+  SmproCodeName { code: 18, name: "Slimimg file operations" },
+  SmproCodeName { code: 19, name: "ROM jump to runtime firmware" },
+  SmproCodeName { code: 20, name: "AVS module" },
+  SmproCodeName { code: 21, name: "PMpro booting" },
+  SmproCodeName { code: 22, name: "OCM initialization" },
+  SmproCodeName { code: 23, name: "Media booting" },
+  SmproCodeName { code: 24, name: "SPI NOR read" },
+  SmproCodeName { code: 25, name: "Memory repair" },
+  SmproCodeName { code: 26, name: "Console" },
+  SmproCodeName { code: 27, name: "Board module" },
+  SmproCodeName { code: 28, name: "DDR ZQCS" },
+  SmproCodeName { code: 29, name: "Armv8 Initialization" },
+  SmproCodeName { code: 30, name: "PCP power down" },
+  SmproCodeName { code: 31, name: "Application processor PLL initialization" },
+  SmproCodeName { code: 32, name: "PMD PLL initialization" },
+  SmproCodeName { code: 33, name: "PCP power up" },
+  SmproCodeName { code: 34, name: "PCP CPM initialization" },
+  SmproCodeName { code: 35, name: "Mesh clock reset initialization" },
+  SmproCodeName { code: 36, name: "PMD initialization" },
+  SmproCodeName { code: 37, name: "PSCI CPU power management" },
+  SmproCodeName { code: 38, name: "PSCI PMD power management" },
+  SmproCodeName { code: 39, name: "PSCI PCP power management" },
+  SmproCodeName { code: 40, name: "L3C clock reset initialization" },
+  SmproCodeName { code: 41, name: "PCP initialization" },
+  SmproCodeName { code: 42, name: "Thermal protection circuit" },
+  SmproCodeName { code: 43, name: "Mainloop" },
+  SmproCodeName { code: 44, name: "Mainloop non-secure message processing" },
+  SmproCodeName { code: 45, name: "Mainloop secure message processing" },
+  SmproCodeName { code: 46, name: "Mainloop console proxy buffer processing" },
+  SmproCodeName { code: 47, name: "Mainloop PSCI request processing" },
+  SmproCodeName { code: 48, name: "Mainloop CLI request processing" },
+  SmproCodeName { code: 49, name: "Mainloop thermal protection request processing" },
+  SmproCodeName { code: 50, name: "Mainloop board sensor processing" },
+  SmproCodeName { code: 51, name: "Mainloop RAS request processing" },
+  SmproCodeName { code: 52, name: "SCP Yielding routine" },
+  SmproCodeName { code: 53, name: "Mainloop PMpro watchdog monitoring" },
+  SmproCodeName { code: 54, name: "Mainloop Turbo processing" },
+  SmproCodeName { code: 55, name: "Mainloop Alert module processing" },
+  SmproCodeName { code: 56, name: "Mainloop warm reset bottom half processing" },
+  SmproCodeName { code: 57, name: "I2C proxy" },
+  SmproCodeName { code: 58, name: "Mainloop DVFS request" },
+  SmproCodeName { code: 59, name: "Hard Fault handler" },
+  SmproCodeName { code: 60, name: "PCC AXI access" },
+  SmproCodeName { code: 61, name: "CPPC AXI access" },
+  SmproCodeName { code: 62, name: "I2C AXI access" },
+  SmproCodeName { code: 63, name: "VRM monitor" },
+  SmproCodeName { code: 64, name: "DDR scrubbing" },
+  SmproCodeName { code: 65, name: "SPI-NOR Write" },
+  SmproCodeName { code: 66, name: "SPI-NOR Erase" },
+  SmproCodeName { code: 67, name: "RAS BERT storage" },
+  SmproCodeName { code: 68, name: "CCIX initialization" },
+  SmproCodeName { code: 69, name: "CCIX ESM initialization" },
+  SmproCodeName { code: 70, name: "GIC initialization" },
+  SmproCodeName { code: 71, name: "Mesh initialization" },
+  SmproCodeName { code: 72, name: "POST module" },
+  SmproCodeName { code: 73, name: "DDR initialization" },
+  SmproCodeName { code: 74, name: "NVPARAM initialization" },
+  SmproCodeName { code: 75, name: "TPM initialization" },
+  SmproCodeName { code: 76, name: "TPM Extend" },
+  SmproCodeName { code: 77, name: "BMC module" },
+]
+
+data smpro_error_codes: List<SmproErrorCodeName> = [
+  SmproErrorCodeName { code: 0, led_default: "N/A", name: "No_Error" },
+  SmproErrorCodeName { code: 1, led_default: "GPIO_INVALID_LCS", name: "IPP_FAULT_TMMCFG_FAIL" },
+  SmproErrorCodeName { code: 2, led_default: "GPIO_FILE_HDR_INVALID", name: "IPP_FAULT_FILE_NOT_FOUND" },
+  SmproErrorCodeName { code: 3, led_default: "GPIO_FILE_HDR_INVALID", name: "IPP_FAULT_FILE_SIZE_ZERO" },
+  SmproErrorCodeName { code: 4, led_default: "N/A", name: "IPP_FAULT_INVALID_FILE" },
+  SmproErrorCodeName { code: 5, led_default: "N/A", name: "IPP_FAULT_INVALID_KEYCERT" },
+  SmproErrorCodeName { code: 6, led_default: "N/A", name: "IPP_FAULT_INVALID_CNTCERT" },
+  SmproErrorCodeName { code: 7, led_default: "GPIO_FILE_INTEGRITY_INVALID", name: "IPP_FAULT_SLIM_HDRCRC_FAIL" },
+  SmproErrorCodeName { code: 8, led_default: "GPIO_FILE_INTEGRITY_INVALID", name: "IPP_FAULT_SLIM_BOOTHDR_FAIL" },
+  SmproErrorCodeName { code: 9, led_default: "GPIO_FILE_INTEGRITY_INVALID", name: "IPP_FAULT_SLIM_BOOTCRC_FAIL" },
+  SmproErrorCodeName { code: 10, led_default: "GPIO_KEY_CERT_AUTH_ERR", name: "IPP_FAULT_KEY_CERT_AUTH_ERR" },
+  SmproErrorCodeName { code: 11, led_default: "GPIO_CNT_CERT_AUTH_ERR", name: "IPP_FAULT_CNT_CERT_AUTH_ERR" },
+  SmproErrorCodeName { code: 12, led_default: "N/A", name: "IPP_FAULT_SOC_HW_FAIL" },
+  SmproErrorCodeName { code: 13, led_default: "GPIO_I2C_HARDWARE_ERR", name: "IPP_FAULT_IIDMA_TO" },
+  SmproErrorCodeName { code: 14, led_default: "N/A", name: "IPP_FAULT_SOC_BOOTDEV_INIT_FAIL" },
+  SmproErrorCodeName { code: 15, led_default: "GPIO_CRYPTO_ENGINE_ERR", name: "IPP_FAULT_CRYPTO_RST_FAIL" },
+  SmproErrorCodeName { code: 16, led_default: "GPIO_CRYPTO_ENGINE_ERR", name: "IPP_FAULT_CRYPTO_INIT_FAIL" },
+  SmproErrorCodeName { code: 17, led_default: "GPIO_CRYPTO_ENGINE_ERR", name: "IPP_FAULT_CRYPTO_LCS_INIT" },
+  SmproErrorCodeName { code: 18, led_default: "GPIO_CRYPTO_ENGINE_ERR", name: "IPP_FAULT_CRYPTO_CERT_CHAIN" },
+  SmproErrorCodeName { code: 19, led_default: "N/A", name: "IPP_FAULT_CRYPTO_AUTH_FAIL" },
+  SmproErrorCodeName { code: 20, led_default: "GPIO_I2C_HARDWARE_ERR", name: "IPP_FAULT_FILE_READ_FAIL" },
+  SmproErrorCodeName { code: 21, led_default: "GPIO_ROTPK_EFUSE_INVALID", name: "IPP_FAULT_INVALID_ROTPK_EFUSE" },
+  SmproErrorCodeName { code: 22, led_default: "GPIO_SEED_EFUSE_INVALID", name: "IPP_FAULT_INVALID_SEED_FROM_EFUSE" },
+  SmproErrorCodeName { code: 23, led_default: "GPIO_LCS_FROM_EFUSE_INVALID", name: "IPP_FAULT_INVALID_LCS_FROM_EFUSE" },
+  SmproErrorCodeName { code: 24, led_default: "GPIO_PRIM_ROLLBACK_EFUSE_INVALID", name: "IPP_FAULT_INVALID_PRIM_ROLLBACK_EFUSE" },
+  SmproErrorCodeName { code: 25, led_default: "GPIO_SEC_ROLLBACK_EFUSE_INVALID", name: "IPP_FAULT_INVALID_SEC_ROLLBACK_EFUSE" },
+  SmproErrorCodeName { code: 26, led_default: "GPIO_HUK_EFUSE_INVALID", name: "IPP_FAULT_INVALID_HUK_EFUSE" },
+  SmproErrorCodeName { code: 27, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_PRIM_ROLLBACK_CERT" },
+  SmproErrorCodeName { code: 28, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_HUK_FROM_CERT" },
+  SmproErrorCodeName { code: 29, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_SEED_FROM_CERT" },
+  SmproErrorCodeName { code: 30, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_SECOND_ROLLBACK_CERT" },
+  SmproErrorCodeName { code: 31, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_CERT_TYPE" },
+  SmproErrorCodeName { code: 32, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_ERR_PMPRO_FAIL" },
+  SmproErrorCodeName { code: 33, led_default: "N/A", name: "IPP_FAULT_SW_ERROR" },
+  SmproErrorCodeName { code: 34, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_DBG_DIS_CERT" },
+  SmproErrorCodeName { code: 35, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_INVALID_ANTIROLLBACK_CERT" },
+  SmproErrorCodeName { code: 36, led_default: "N/A", name: "SLIM_OPEN_FILEHDL_MAXED_OUT" },
+  SmproErrorCodeName { code: 37, led_default: "N/A", name: "IPP_FAULT_CONSOLE_FIFO_TIMEOUT" },
+  SmproErrorCodeName { code: 38, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_EFUSE_OPS_TIMEOUT" },
+  SmproErrorCodeName { code: 39, led_default: "GPIO_CERT_DATA_INVALID", name: "IPP_FAULT_ANTIROLLBACK_VER_MISMATCH" },
+  SmproErrorCodeName { code: 40, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_NMI_EXCEP" },
+  SmproErrorCodeName { code: 41, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_HF_EXCEP" },
+  SmproErrorCodeName { code: 42, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_MEM_EXCEP" },
+  SmproErrorCodeName { code: 43, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_BUS_EXCEP" },
+  SmproErrorCodeName { code: 44, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_USE_EXCEP" },
+  SmproErrorCodeName { code: 45, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_EFUSE_COPY_FAIL" },
+  SmproErrorCodeName { code: 46, led_default: "N/A", name: "IPP_FAULT_SECJMP_FAIL" },
+  SmproErrorCodeName { code: 47, led_default: "N/A", name: "IPP_FAULT_PBAC_FAIL" },
+  SmproErrorCodeName { code: 48, led_default: "N/A", name: "IPP_FAULT_NO_LCS_EMU" },
+  SmproErrorCodeName { code: 49, led_default: "N/A", name: "IPP_FAULT_SEC_INTF_INIT_FAIL" },
+  SmproErrorCodeName { code: 50, led_default: "N/A", name: "IPP_FAULT_LOADER_INTF_INIT_FAIL" },
+  SmproErrorCodeName { code: 51, led_default: "N/A", name: "IPP_FAULT_SKIP_ERROR_CM_LCS" },
+  SmproErrorCodeName { code: 52, led_default: "N/A", name: "IPP_FAULT_CERT_SZ_OVERFLOW" },
+  SmproErrorCodeName { code: 53, led_default: "GPIO_FILE_INTEGRITY_INVALID", name: "IPP_FAULT_FILE_SZ_ZERO" },
+  SmproErrorCodeName { code: 54, led_default: "GPIO_FILE_INTEGRITY_INVALID", name: "IPP_FAULT_FILE_OFFSET_MISMATCH" },
+  SmproErrorCodeName { code: 55, led_default: "GPIO_FILE_INTEGRITY_INVALID", name: "IPP_INVALID_FILESZ_MORE_THAN_MAX" },
+  SmproErrorCodeName { code: 56, led_default: "N/A", name: "IPP_FAULT_INVALID_VAL" },
+  SmproErrorCodeName { code: 57, led_default: "GPIO_INTERNAL_HW_ERR", name: "IPP_FAULT_ASEC_AUTH_AP_BL1" },
+  SmproErrorCodeName { code: 58, led_default: "N/A", name: "IPP_FAULT_APPLLLCK_FAIL" },
+  SmproErrorCodeName { code: 59, led_default: "N/A", name: "ERR_DDR_ZQCS_MC0" },
+  SmproErrorCodeName { code: 60, led_default: "N/A", name: "ERR_DDR_ZQCS_MC1" },
+  SmproErrorCodeName { code: 61, led_default: "N/A", name: "ERR_DDR_ZQCS_MC2" },
+  SmproErrorCodeName { code: 62, led_default: "N/A", name: "ERR_DDR_ZQCS_MC3" },
+  SmproErrorCodeName { code: 63, led_default: "N/A", name: "ERR_DDR_ZQCS_MC4" },
+  SmproErrorCodeName { code: 64, led_default: "N/A", name: "ERR_DDR_ZQCS_MC5" },
+  SmproErrorCodeName { code: 65, led_default: "N/A", name: "ERR_DDR_ZQCS_MC6" },
+  SmproErrorCodeName { code: 66, led_default: "N/A", name: "ERR_DDR_ZQCS_MC7" },
+  SmproErrorCodeName { code: 67, led_default: "N/A", name: "IPP_FAULT_PMDx_TIBDFT_FAIL" },
+  SmproErrorCodeName { code: 68, led_default: "N/A", name: "IPP_FAULT_PMDxPLLLCK_FAIL" },
+  SmproErrorCodeName { code: 69, led_default: "N/A", name: "AVS_ERR_VOLTAGE" },
+  SmproErrorCodeName { code: 70, led_default: "N/A", name: "AVS_ERR_VRM" },
+  SmproErrorCodeName { code: 71, led_default: "N/A", name: "AVS_ERR_PCP_PLL" },
+  SmproErrorCodeName { code: 72, led_default: "N/A", name: "AVS_ERR_PMD_PLL" },
+  SmproErrorCodeName { code: 73, led_default: "N/A", name: "PSCI_LPI_RUN_FAIL" },
+  SmproErrorCodeName { code: 74, led_default: "N/A", name: "PSCI_LPI_STANDBY_FAIL" },
+  SmproErrorCodeName { code: 75, led_default: "N/A", name: "PSCI_LPI_RETENTION_FAIL" },
+  SmproErrorCodeName { code: 76, led_default: "N/A", name: "PSCI_LPI_POWERDOWN_FAIL" },
+  SmproErrorCodeName { code: 77, led_default: "N/A", name: "IPP_BOARD_CFG" },
+  SmproErrorCodeName { code: 78, led_default: "N/A", name: "IPP_BOARD_CFG_VER" },
+  SmproErrorCodeName { code: 79, led_default: "N/A", name: "IPP_BOARD_CFG_SIZE" },
+  SmproErrorCodeName { code: 80, led_default: "N/A", name: "IPP_BOARD_CFG_DATA" },
+  SmproErrorCodeName { code: 81, led_default: "N/A", name: "IPP_FAULT_PCPPWR_FAIL" },
+  SmproErrorCodeName { code: 82, led_default: "N/A", name: "IPP_FAULT_CSW_TIBDFT_FAIL" },
+  SmproErrorCodeName { code: 83, led_default: "N/A", name: "IPP_FAULT_L3C_DFT_FAIL" },
+  SmproErrorCodeName { code: 84, led_default: "N/A", name: "IPP_FAULT_L3C_INIT_FAIL" },
+  SmproErrorCodeName { code: 85, led_default: "N/A", name: "IPP_FAULT_PCP_INIT_FAIL" },
+  SmproErrorCodeName { code: 86, led_default: "N/A", name: "IPP_FAULT_SPI_BUSERR" },
+  SmproErrorCodeName { code: 87, led_default: "N/A", name: "IPP_FAULT_SPI_NODEV" },
+  SmproErrorCodeName { code: 88, led_default: "N/A", name: "IPP_FAULT_SPI_READ_INCOMPLETE" },
+  SmproErrorCodeName { code: 89, led_default: "N/A", name: "ERR_CSR_MEM_NOT_RDY" },
+  SmproErrorCodeName { code: 90, led_default: "N/A", name: "ERR_TPC" },
+  SmproErrorCodeName { code: 91, led_default: "N/A", name: "ERR_ALERT" },
+  SmproErrorCodeName { code: 92, led_default: "N/A", name: "ERR_WRST_FAIL" },
+  SmproErrorCodeName { code: 93, led_default: "N/A", name: "IPP_AXI_RESP_ERR" },
+  SmproErrorCodeName { code: 94, led_default: "N/A", name: "ERR_AXI_NON_FATAL" },
+  SmproErrorCodeName { code: 95, led_default: "N/A", name: "VRM_MONITOR_FAIL" },
+  SmproErrorCodeName { code: 96, led_default: "N/A", name: "ERR_DDR_SCRUB_MC0" },
+  SmproErrorCodeName { code: 97, led_default: "N/A", name: "ERR_DDR_SCRUB_MC1" },
+  SmproErrorCodeName { code: 98, led_default: "N/A", name: "ERR_DDR_SCRUB_MC2" },
+  SmproErrorCodeName { code: 99, led_default: "N/A", name: "ERR_DDR_SCRUB_MC3" },
+  SmproErrorCodeName { code: 100, led_default: "N/A", name: "ERR_DDR_SCRUB_MC4" },
+  SmproErrorCodeName { code: 101, led_default: "N/A", name: "ERR_DDR_SCRUB_MC5" },
+  SmproErrorCodeName { code: 102, led_default: "N/A", name: "ERR_DDR_SCRUB_MC6" },
+  SmproErrorCodeName { code: 103, led_default: "N/A", name: "ERR_DDR_SCRUB_MC7" },
+  SmproErrorCodeName { code: 104, led_default: "N/A", name: "BERT_STORE_FAIL" },
+  SmproErrorCodeName { code: 105, led_default: "N/A", name: "ERR_DDR_SERVICE_ZQCS" },
+  SmproErrorCodeName { code: 106, led_default: "N/A", name: "ERR_CCIX_RSB" },
+  SmproErrorCodeName { code: 107, led_default: "N/A", name: "ERR_CCIX_MEMRDY_FAIL" },
+  SmproErrorCodeName { code: 108, led_default: "N/A", name: "ERR_CCIX_TCVC_FAIL" },
+  SmproErrorCodeName { code: 109, led_default: "N/A", name: "ERR_CCIX_NOT_COMPLIANT" },
+  SmproErrorCodeName { code: 110, led_default: "N/A", name: "ERR_CCIX_GEN1_FAIL" },
+  SmproErrorCodeName { code: 111, led_default: "N/A", name: "ERR_CCIX_L1_PWR_FAIL" },
+  SmproErrorCodeName { code: 112, led_default: "N/A", name: "ERR_CCIX_L0_PWR_FAIL" },
+  SmproErrorCodeName { code: 113, led_default: "N/A", name: "ERR_CCIX_ESM_FAIL" },
+  SmproErrorCodeName { code: 114, led_default: "N/A", name: "ERR_CCIX_DR1_FAIL" },
+  SmproErrorCodeName { code: 115, led_default: "N/A", name: "ERR_CCIX_GEN4_FAIL" },
+  SmproErrorCodeName { code: 116, led_default: "N/A", name: "ERR_CCIX_RCA_LINKUP_FAIL" },
+  SmproErrorCodeName { code: 117, led_default: "N/A", name: "ERR_GIC_FAIL" },
+  SmproErrorCodeName { code: 118, led_default: "N/A", name: "ERR_MESH_CCIX_LINKUP_FAIL" },
+  SmproErrorCodeName { code: 119, led_default: "N/A", name: "IPP_ERR_IOB_SOC_WAKE" },
+  SmproErrorCodeName { code: 120, led_default: "N/A", name: "IPP_CONSOLE_OVERFLOW" },
+  SmproErrorCodeName { code: 121, led_default: "N/A", name: "IPP_FAULT_ASEC_AUTH_PMPRO" },
+  SmproErrorCodeName { code: 122, led_default: "N/A", name: "IPP_FAULT_NO_IIC_PROXY_DEV" },
+  SmproErrorCodeName { code: 123, led_default: "N/A", name: "IPP_POST_MSG" },
+  SmproErrorCodeName { code: 124, led_default: "N/A", name: "ERR_DDR_SPD_READ_FAIL" },
+  SmproErrorCodeName { code: 125, led_default: "N/A", name: "ERR_PCP_MEM_REPAIR_FAIL" },
+  SmproErrorCodeName { code: 126, led_default: "N/A", name: "ERR_INVALID_OPERATION" },
+  SmproErrorCodeName { code: 127, led_default: "N/A", name: "ERR_NO_CPM_AVAIL" },
+  SmproErrorCodeName { code: 128, led_default: "N/A", name: "ERR_NO_MCU_AVAIL" },
+  SmproErrorCodeName { code: 129, led_default: "N/A", name: "IPP_FAULT_LOAD_AP_IMAGE" },
+  SmproErrorCodeName { code: 130, led_default: "N/A", name: "IPP_FAULT_LOAD_PMPRO" },
+  SmproErrorCodeName { code: 131, led_default: "N/A", name: "IPP_FAULT_PMD0DFT_FAIL" },
+  SmproErrorCodeName { code: 132, led_default: "N/A", name: "ERR_DDR_GET_DIMM_INFO" },
+  SmproErrorCodeName { code: 133, led_default: "N/A", name: "IPP_FAULT_OB2P_SLAVE_NOT_RDY" },
+  SmproErrorCodeName { code: 134, led_default: "N/A", name: "IPP_FAULT_PCP_PMPRO_INIT_FAIL" },
+  SmproErrorCodeName { code: 135, led_default: "N/A", name: "IPP_FAULT_TPM_INIT_FAIL" },
+  SmproErrorCodeName { code: 136, led_default: "N/A", name: "ERR_HOB_UPDATE_FAIL" },
+  SmproErrorCodeName { code: 137, led_default: "N/A", name: "SKU_NOT_VALID" },
+  SmproErrorCodeName { code: 138, led_default: "N/A", name: "IPP_FAULT_TPM_EXTEND_FAIL" },
+  SmproErrorCodeName { code: 139, led_default: "N/A", name: "ERR_BMC_OVERFLOW" },
+  SmproErrorCodeName { code: 140, led_default: "N/A", name: "ERR_MESH_FAIL" },
+  SmproErrorCodeName { code: 141, led_default: "N/A", name: "ERR_DDR_INVALID_MCU_MASK" },
+  SmproErrorCodeName { code: 142, led_default: "N/A", name: "IPP_FAULT_EFUSE_WR_TIMEOUT" },
+  SmproErrorCodeName { code: 143, led_default: "N/A", name: "IPP_FUSE_WR_DATA_MISTMATCH" },
+  SmproErrorCodeName { code: 144, led_default: "N/A", name: "IPP_FUSE_UNSUPPORTED_OPERATION" },
+  SmproErrorCodeName { code: 145, led_default: "N/A", name: "ERR_DDR_TRAINING_FAILED" },
+]
+
+type SmproNamedCode
+  = SmproCodeDefined { code: Int, name: NonEmptyStr }
+  | SmproCodeUndefined { code: Int }
+
+fn smpro_code_named(table: List<SmproCodeName>, code: Int) -> SmproNamedCode {
+  match filter(table, r => r.code == code).first() {
+    Present { value: r } => SmproCodeDefined { code: code, name: r.name }
+    Absent => SmproCodeUndefined { code: code }
+  }
+}
+
+fn smpro_error_code_named(code: Int) -> SmproNamedCode {
+  match filter(smpro_error_codes, r => r.code == code).first() {
+    Present { value: r } => SmproCodeDefined { code: code, name: r.name }
+    Absent => SmproCodeUndefined { code: code }
+  }
+}
+
+// ── the record ─────────────────────────────────────────────────────────────────────────────────
+
+// directions[] = {"ENTER", "EXIT"}: one bit, so both values are defined.
+type SmproDirection
+  = SmproEnter
+  | SmproExit
+
+// Which record TYPE reports, as the driver's bit tests name it: BIT(0) a warning (read from the
+// WARN registers by smpro_internal_warn_read), BIT(1) an error, BIT(2) an error with data;
+// smpro_internal_err_read takes BIT(1) before BIT(2).
+type SmproRecordKind
+  = SmproWarning
+  | SmproErrorWithoutData
+  | SmproErrorWithData
+
+type SmproInternalRecord {
+  kind: SmproRecordKind
+  image: SmproNamedCode
+  direction: SmproDirection
+  location: SmproNamedCode
+  error: SmproNamedCode
+  info_hi_unparsed_bits: Int
+  data_hi: Int
+  data_lo: Int
+}
+
+fn smpro_error_kind_of(type_word: Int) -> SmproRecordKind? {
+  if (type_word / 2) % 2 == 1 { Present { value: SmproErrorWithoutData } }
+  else if (type_word / 4) % 2 == 1 { Present { value: SmproErrorWithData } }
+  else { none }
+}
+
+// One record from its INFO words. DATA is carried only for an error with data; otherwise it is the
+// zero the parser substitutes.
+fn smpro_internal_record_of(kind: SmproRecordKind, info_hi: Int, info_lo: Int, data_hi: Int, data_lo: Int) -> SmproInternalRecord {
+  let with_data = match kind { SmproErrorWithData => true SmproErrorWithoutData => false SmproWarning => false }
+  SmproInternalRecord {
+    kind: kind,
+    image: smpro_code_named(table: smpro_image_codes, code: (info_hi / 4096) % 16),
+    direction: if (info_hi / 2048) % 2 == 1 { SmproExit } else { SmproEnter },
+    location: smpro_code_named(table: smpro_location_codes, code: info_hi % 256),
+    error: smpro_error_code_named(code: info_lo % 65536),
+    info_hi_unparsed_bits: (info_hi / 256) % 8,
+    data_hi: if with_data { data_hi } else { 0 },
+    data_lo: if with_data { data_lo } else { 0 },
+  }
+}
+
+// The error record TYPE reports, or Absent when neither error bit is set.
+fn smpro_internal_error_of(type_word: Int, info_hi: Int, info_lo: Int, data_hi: Int, data_lo: Int) -> SmproInternalRecord? {
+  match smpro_error_kind_of(type_word: type_word) {
+    Absent => none
+    Present { value: k } => Present { value: smpro_internal_record_of(kind: k, info_hi: info_hi, info_lo: info_lo, data_hi: data_hi, data_lo: data_lo) }
+  }
+}
+
+// The warning record TYPE reports, or Absent when BIT(0) is clear.
+fn smpro_internal_warning_of(type_word: Int, warn_hi: Int, warn_lo: Int) -> SmproInternalRecord? {
+  if type_word % 2 == 1 {
+    Present { value: smpro_internal_record_of(kind: SmproWarning, info_hi: warn_hi, info_lo: warn_lo, data_hi: 0, data_lo: 0) }
+  } else { none }
+}
+
+fn smpro_named_code_text(c: SmproNamedCode) -> String {
+  match c {
+    SmproCodeDefined { code: n, name: s } => concat(s as String, " (", to_string(n), ")")
+    SmproCodeUndefined { code: n } => concat("code ", to_string(n), " (no row in internalErrors.hpp)")
+  }
+}
+
+fn smpro_internal_record_text(r: SmproInternalRecord) -> String {
+  concat(
+    match r.kind { SmproWarning => "warning" SmproErrorWithoutData => "error" SmproErrorWithData => "error with data" },
+    ": ", smpro_named_code_text(c: r.error),
+    " at ", smpro_named_code_text(c: r.location),
+    ", ", match r.direction { SmproEnter => "ENTER" SmproExit => "EXIT" },
+    ", image ", smpro_named_code_text(c: r.image),
+    match r.kind { SmproErrorWithData => concat(", data_hi ", to_string(r.data_hi), " data_lo ", to_string(r.data_lo)) SmproErrorWithoutData => "" SmproWarning => "" },
+  )
+}
+
+// ── THE PENDING GATE (smpro-errmon smpro_internal_err_read / smpro_internal_warn_read) ──────────
+
+// The driver reads GPI_RAS_ERR first and returns NO record unless that processor's pending bit is set
+// -- bit 0 for the SMpro, bit 1 for the PMpro -- and only then reads TYPE, INFO and DATA. A record is
+// therefore the driver's only when its gate was read and set. Every other combination is kept as its
+// own arm rather than folded into "a record" or "no record":
+//   NotPending                      the gate was read clear and TYPE reports nothing;
+//   GpiUnavailable                  the gate was not read in the same window: a record TYPE reports is
+//                                   carried UNGATED, never promoted to the driver's record;
+//   PendingWithClearOrMissingType   the gate says pending but TYPE reports nothing or was not read;
+//   TypePresentWithoutPending       TYPE reports a record while the gate was read clear.
+type SmproProcessor
+  = SmproProcessorSmpro
+  | SmproProcessorPmpro
+
+type SmproRecordGate
+  = PendingAndDecoded { error: SmproInternalRecord?, warning: SmproInternalRecord? }
+  | NotPending
+  | GpiUnavailable { ungated_error: SmproInternalRecord?, ungated_warning: SmproInternalRecord? }
+  | PendingWithClearOrMissingType
+  | TypePresentWithoutPending { error: SmproInternalRecord?, warning: SmproInternalRecord? }
+
+fn smpro_pending_bit(gpi: Int, p: SmproProcessor) -> Bool {
+  match p {
+    SmproProcessorSmpro => gpi % 2 == 1
+    SmproProcessorPmpro => (gpi / 2) % 2 == 1
+  }
+}
+
+fn smpro_any_record(error: SmproInternalRecord?, warning: SmproInternalRecord?) -> Bool {
+  (match error { Present { value: _ } => true Absent => false }) || (match warning { Present { value: _ } => true Absent => false })
+}
+
+// gpi: the GPI_RAS_ERR word read in the same window, if read. error/warning: what TYPE/INFO/DATA
+// decode to, Absent when TYPE reports nothing or its words were not read (type_read says which).
+fn smpro_record_gate(gpi: Int?, processor: SmproProcessor, type_read: Bool, error: SmproInternalRecord?, warning: SmproInternalRecord?) -> SmproRecordGate {
+  let any = smpro_any_record(error: error, warning: warning)
+  match gpi {
+    Absent => GpiUnavailable { ungated_error: error, ungated_warning: warning }
+    Present { value: g } => if smpro_pending_bit(gpi: g, p: processor) {
+      if type_read && any { PendingAndDecoded { error: error, warning: warning } } else { PendingWithClearOrMissingType }
+    } else {
+      if any { TypePresentWithoutPending { error: error, warning: warning } } else { NotPending }
+    }
+  }
+}
+
+fn smpro_record_gate_lines(g: SmproRecordGate) -> List<String> {
+  let empty: List<String> = []
+  match g {
+    PendingAndDecoded { error: e, warning: w } => concat(
+      match e { Present { value: r } => [smpro_internal_record_text(r: r)] Absent => empty },
+      match w { Present { value: r } => [smpro_internal_record_text(r: r)] Absent => empty })
+    NotPending => empty
+    GpiUnavailable { ungated_error: e, ungated_warning: w } => concat(
+      match e { Present { value: r } => [concat("UNGATED (GPI_RAS_ERR not read in this window) ", smpro_internal_record_text(r: r))] Absent => empty },
+      match w { Present { value: r } => [concat("UNGATED (GPI_RAS_ERR not read in this window) ", smpro_internal_record_text(r: r))] Absent => empty })
+    PendingWithClearOrMissingType => ["pending in GPI_RAS_ERR, but TYPE reports no record or was not read"]
+    TypePresentWithoutPending { error: e, warning: w } => concat(
+      match e { Present { value: r } => [concat("TYPE reports a record while GPI_RAS_ERR is clear: ", smpro_internal_record_text(r: r))] Absent => empty },
+      match w { Present { value: r } => [concat("TYPE reports a record while GPI_RAS_ERR is clear: ", smpro_internal_record_text(r: r))] Absent => empty })
+  }
+}

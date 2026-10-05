@@ -1,6 +1,6 @@
 module gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.dissolution { dissolution_description }
 import std.materialization_provider { resolved_graph_disk_format_unqualified_frontier }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
@@ -19,8 +19,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 data persisted_resolved_graph_disk_probe_unqualified_format_population: List<String> = [
   "std.materialization_provider serve_resolved_graph_stored_disk_probe",
   "std.materialization_provider serve_resolved_graph_incomplete_stored_disk_probe — shares the UnqualifiedPersistedFormat wall",
-  "v1_compiler.cli_run resolved_graph_from_sources_with_index — production consumer: a present object of this legacy format cannot serve; the graph and its carried outputs are recomputed (install_cross_process_materialization_hit has no call site; JsonRepresentationCannotServe is the armed cold-recompute diagnostic when the optional disk root is set)",
-  "v1_compiler.resolved_graph_cache FORMAT_VERSION 4 objects with v3-layout FNV stored_request_key / stored_semantic_digest / part digests — the legacy disk format lacking ObservedEvaluationPreimage and ResultContentIdentity",
+  "v1_compiler.cli_run resolved_graph_from_sources_with_index -- the production consumer. On 2026-10-03 its cross-process tier was DELETED (v1_compiler.resolved_graph_cache and the cli_run disk-hit seam) after measurement showed it wrote 0 bytes and served no hit; the graph and its carried outputs are recomputed in-process, so the availability loss this drop declares is unchanged and now has no legacy-format objects behind it",
 ]
 
 fn persisted_resolved_graph_disk_probe_restoration() -> String {

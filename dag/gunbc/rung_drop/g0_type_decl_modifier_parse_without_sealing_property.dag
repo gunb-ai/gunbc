@@ -1,6 +1,6 @@
 module gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -9,12 +9,16 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // posix_effective_principal.dag. v1 mints only sole_constructor, via
 // parsed_sole_constructor_properties. nominal_opaque is dropped and mints nothing
 // (gunbc.recurring_failure_mode absence_classifier_default_bucket). On main the
+// UPDATED 2026-10-02: v2 now carries the slot as a closed-vocabulary declaration property
+// (v2.compiler.body_lowering_fold TypeDeclModifier, on NormalizedTree type_declaration_modifiers;
+// controls v2.test.parse.type_decl_modifier_carrier). That is the MINTING half only; nothing on the
+// native route enforces sole_constructor yet, so the trigger below has not fired and this stays standing.
 // native route refused the modifier with parse_g0_tokens_remain; after the grammar
 // row a sole_constructor type parses and the construction wall is not recorded on
 // the native path.
 
 data g0_type_decl_modifier_parse_without_sealing_property_population: List<String> = [
-  "v2.extdeps.languages.dag dag_grammar_type_decl_modifiers_expr — G0 consumes sole_constructor after the type name",
+  "v2.compiler.body_lowering_fold body_lower_type_decl_declared_modifiers — the slot is CARRIED (NormalizedTree type_declaration_modifiers) but no stage checks construction against it",
   "native emit of type decls that carry sole_constructor — the construction property is not minted",
 ]
 

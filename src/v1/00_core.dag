@@ -369,24 +369,6 @@ type TextFile {
 // would see from the code they were editing. A distinct constructor is therefore not a naming
 // preference: it is what makes the standing prohibition on adding bare variants to synthesis output
 // hold BY CONSTRUCTION rather than by a byte-diff that can only report 'not on this subject today'.
-// Closed set of source constructs stage0 rust emission cannot project. A String here would
-// nickname the same membership in the mint site, the native probe, and the histogram key, so a
-// typo would silently split the census. Adding a shape is adding a variant.
-type UnprojectableConstruct
-  = FilterInBranchCondition {}
-
-fn unprojectable_construct_identity(c: UnprojectableConstruct) -> String {
-  match c {
-    FilterInBranchCondition {} => "FilterInBranchCondition"
-  }
-}
-
-fn unprojectable_construct_prose(c: UnprojectableConstruct) -> String {
-  match c {
-    FilterInBranchCondition {} => "filter in branch condition"
-  }
-}
-
 type CompilerDiagnostic
   = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
   | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
@@ -401,6 +383,8 @@ type CompilerDiagnostic
   | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
   | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
   | ReceiverTypeUnestablished { method: String, span: SourceSpan }
+  | TextRepresentationUnidentifiedAtBoundary { position: String, span: SourceSpan }
+  | TextCrossingHasNoImplicitRoute { expected: String, got: String, route: String, span: SourceSpan }
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
@@ -422,6 +406,7 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | KernelMintShapeMismatch { declaration_name: String, cause: String, span: SourceSpan }
   | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
   | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
   | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
@@ -474,7 +459,6 @@ type CompilerDiagnostic
       missing_realization_fact: String,
       span: SourceSpan
     }
-  | EmissionConstructUnprojectable { construct: UnprojectableConstruct, span: SourceSpan }
 
 
 // SEVERITY AND GATE DISPOSITION ARE TWO FACTS ABOUT A DIAGNOSTIC, NOT ONE.
@@ -630,6 +614,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     MethodExistenceUndecided { method: _, receiver_type: _, span: s } => s
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
     ReceiverTypeUnestablished { method: _, span: s } => s
+    TextRepresentationUnidentifiedAtBoundary { position: _, span: s } => s
+    TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: s } => s
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     TestCodeReferenced { referrer: _, target: _, span: s } => s
@@ -651,6 +637,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    KernelMintShapeMismatch { declaration_name: _, cause: _, span: s } => s
     OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
@@ -694,7 +681,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
-    EmissionConstructUnprojectable { construct: _, span: s } => s
   }
 }
 
@@ -713,6 +699,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
     MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
     AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, span: _ } => concat("algebra receiver application evidence unavailable for '", t, "' at argument ", to_string(value: i), ": structural members are not type arguments")
+    TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, span: _ } => concat(concat(concat(concat(concat(concat("text crossing with no implicit route: expected ", e), ", got "), g), " -- host text and a code-point sequence meet only through a declared conversion plan; call "), r), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)")
+    TextRepresentationUnidentifiedAtBoundary { position: p, span: _ } => concat(concat("text boundary unjudged at ", p), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)")
     ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, span: _ } =>
       concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), concat(concat("' no longer matches what this module contains: the row declares ", to_string(value: d)), concat(" occurrence(s) and ", to_string(value: o))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
@@ -736,6 +724,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    KernelMintShapeMismatch { declaration_name: d, cause: c, span: _ } => concat("kernel mint binding: '", d, "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ", c)
     OptionalCastNotEliminated { source_type: st, target_type: tt, span: _ } =>
       concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
     BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
@@ -809,8 +798,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
-    EmissionConstructUnprojectable { construct: c, span: _ } =>
-      concat("emission refused: unprojectable construct '", unprojectable_construct_prose(c: c), "' — every source construct contributing to a published file must receive a total projection; this construct has none, so the module must not be published")
   }
 }
 
@@ -875,6 +862,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TextRepresentationUnidentifiedAtBoundary { position: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
@@ -904,6 +893,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    KernelMintShapeMismatch { declaration_name: _, cause: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     OptionalCastNotEliminated { source_type: _, target_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SourceAnnotationRefused { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -936,7 +926,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    EmissionConstructUnprojectable { construct: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
   }
 }
 
@@ -1129,14 +1118,6 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
   match diagnostic_disposition(d: d).gate {
     GateBlocking => false
     GateAdvisoryTypecheck => true
-    GateRenderedUncounted { reason: _ } => false
-  }
-}
-
-fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match diagnostic_disposition(d: d).gate {
-    GateBlocking => true
-    GateAdvisoryTypecheck => false
     GateRenderedUncounted { reason: _ } => false
   }
 }
