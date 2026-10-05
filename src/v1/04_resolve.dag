@@ -1,6 +1,6 @@
 module v1.compiler.infer_resolve
 
-import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan, container_param_name }
@@ -295,7 +295,27 @@ fn preserve_nominal_brand_on_resolve(
   } else { preserve_outer_optional_cardinality(outer: identity, inner: structural) }
 }
 
+// A TYPE-PARAMETER REFERENCE IS NOT A NOMINAL ALIAS, AND IT IS KNOWN BY ITS MARK, NOT ITS SPELLING
+// (docs/plans/derived-node-identity-design.md, copy law L1; class gunbc.recurring_failure_mode
+// generic_identity_decided_by_spelling). binder_marked_type records (owner, TypeParameter) on every
+// reference to an item's own parameter. This function then looked the node up BY NAME and returned
+// whatever the environment bound to that spelling, so a parameter spelled like some other binding in
+// scope was replaced by that binding and its own identity was dropped: measured by
+// //gunbc/instruments:generic-identity-census as formal_declaration_bound_conformance leaves carrying
+// neither mark, where the signature they were read from carried both. There is nothing to peel
+// beneath a parameter, so a node carrying the mark is returned as it was given.
+fn node_is_type_parameter_reference(n: Node) -> Bool {
+  match n.declaration {
+    Present { value: ref } => declaration_ref_is_type_parameter(ref: ref)
+    Absent => false
+  }
+}
+
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
+  if node_is_type_parameter_reference(n: n) { n } else { peel_nominal_alias_identity_by_name(n: n, env: env, module_name: module_name) }
+}
+
+fn peel_nominal_alias_identity_by_name(n: Node, env: TypeEnv, module_name: String) -> Node {
   let source_indices = env.source_indices
   let brand = authored_name_at(source_indices: source_indices, node: n)
   match lookup_type_for(env: env, node: n) {

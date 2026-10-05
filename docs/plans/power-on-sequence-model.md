@@ -400,3 +400,17 @@ Slice B1 is `gunbc.host_boot_attempt_admission`. It holds the plan and inspectio
 Where the build differs from the plan above, with reasons:
 - **Slot key.** The key is `attempt-<len(host)>-<host>-<nonce>`, with the host and nonce admitted only over `[A-Za-z0-9_-]`. It is injective by construction and is not a hash: the corpus's `content_hash_of_value` is a 64-bit structural hash, which does not meet "collision-safe" against a chosen nonce.
 - **The plan's identity.** The inspection names its plan by `plan_subject` and `plan_attempt`. Because an attempt identity admits one boot, that pair identifies the plan.
+
+### 12b. Slice B2 as built (firmware), and B3 (controller population)
+
+Slice B2 adds one pre-power read, `mtcollins1_boot_pre_power`. It is taken after admission and before `mtcollins1_boot_actuate_held`, and `gunbc.host_boot_attempt_admission` `attempt_configuration_with_pre_power` joins it to the frozen configuration.
+- **The read.** `ipmitool hpm check` is a new `extdeps.bmc.ipmi` `HpmCheck` operation. It is parsed by `extdeps.bmc.ipmitool_hpm_check`, which landed with the CPLD route fix (#13254).
+- **The rows.** Each component's active cell is kept as rendered, because the auxiliary bytes have no public decode.
+- **Binding.** The readback is `FirmwareReadBeforeActuation { attempt, source, rows }`, where `attempt` is the attempt admission bound. An unread or refused table leaves firmware `NotRecorded` with its cause.
+- **The acceptance matrix.** The dry BMC (`gunbc.bmc_dry_realization`) answers `HpmCheck` with the retained BMC 0.32 capture, as a layout fixture.
+
+**B3: `PopulationControllerReading` (declared frontier).** B3 is the pre-power Redfish population read. It is labelled `CachePossible`, and is joined to the inspection as corroborated or conflicted per socket.
+- **Why it is not in B2:** its route dispatches `shell.Mktemp.Dir` and `shell.Remove.FileForce` (for the netrc) and `redfish.Http.GetResourceByPath`. The boot dry world does not model these, and no mtcollins1 Redfish response is retained to model them from.
+- **Trigger:** a retained mtcollins1 Redfish capture of the service root, Systems, the system, Processors and Memory. eager-gull-22's read-only probe takes it when the BMC is reachable.
+- **Caveat:** after the 2026-10-02 reflash, gunbc gets 401 on Redfish because its role is missing. If the capture is 401 bodies, the trigger also needs the login convergence to restore that role.
+- **Already written:** the join and folds are in WIP commit `16a67dfb99d` on `session/calm-lynx-884-slice-b2`.

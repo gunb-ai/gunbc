@@ -88,8 +88,19 @@ type HostConfig {
   devices: List<DockerInspectDevice>?
   ulimits: List<DockerInspectUlimit>?
   shm_size: ByteSize?
-  binds: List<String>?
+  mounts: List<DockerInspectMount>?
   restart_policy: DockerInspectRestartPolicy?
+}
+
+// ONE HostConfig.Mounts ENTRY, the structured mount a `--mount` create flag records (moby api/types/mount
+// Mount: Type, Source, Target, ReadOnly, TmpfsOptions.SizeBytes; ReadOnly and TmpfsOptions are omitted
+// when unset, so absence reads as read-write and no size).
+type DockerInspectMount {
+  kind: NonEmptyStr
+  source: String
+  target: NonEmptyStr
+  read_only: Bool
+  tmpfs_size_bytes: Int?
 }
 
 // SHM_SIZE, BINDS AND RESTARTPOLICY JOIN THE TWO INCIDENT FIELDS FOR ONE REASON, and it is the same
@@ -99,10 +110,11 @@ type HostConfig {
 // the spec gunbc.spark.serving_arm_launch renders asks for 10737418240 -- a real, live disagreement
 // that was invisible to this type in every direction until now.
 //
-// `Binds` AND NOT `Mounts`, for the bind mounts a spec renders: the daemon reports the same mount
-// twice, once as the `src:dst:mode` string the create call was given and once as a structured Mounts
-// entry with its propagation resolved. The first is what `--mount type=bind,...` is comparable
-// against without a second rendering convention, so it is the one this type carries.
+// `Mounts` AND NOT `Binds`, because of how extdeps.docker.cli renders a spec's mounts: `--mount
+// type=...` populates HostConfig.Mounts only, and HostConfig.Binds is populated by `-v` alone. An
+// earlier note here claimed the daemon reports a `--mount` bind in Binds too; it does not, so every
+// readback of a `--mount` container read Binds as absent and refused the mounts as unread (Group A
+// fp8-8 launch, run 37172948981). Mounts is read structured and rendered by its consumer.
 type DockerInspectRestartPolicy {
   name: String
   maximum_retry_count: Nat?
@@ -514,6 +526,86 @@ fn docker_inspect_ulimit_entry(v: JsonValue) -> DockerInspectUlimitRead {
   }
 }
 
+type DockerInspectMountRead
+  = MountEntryRead { mount: DockerInspectMount }
+  | MountEntryMalformed { cause: String }
+
+fn docker_inspect_mount_entry(v: JsonValue) -> DockerInspectMountRead {
+  let kind = json_field_string(obj: v, key: "Type")
+  let source = json_field_string(obj: v, key: "Source")
+  let target = json_field_string(obj: v, key: "Target")
+  let read_only = json_field_bool(obj: v, key: "ReadOnly")
+  let size = match json_field(obj: v, key: "TmpfsOptions") {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: o } => json_field_int(obj: o, key: "SizeBytes")
+  }
+  match json_field_value(r: kind) {
+    Absent => MountEntryMalformed { cause: "a HostConfig.Mounts entry names no Type" }
+    Present { value: k } =>
+      match json_field_value(r: target) {
+        Absent => MountEntryMalformed { cause: join(["a HostConfig.Mounts ", k, " entry names no Target"], "") }
+        Present { value: t } =>
+          if k == "" || t == "" {
+            MountEntryMalformed { cause: "a HostConfig.Mounts entry carries an empty Type or Target" }
+          } else {
+            match json_field_cause(r: read_only) {
+              Present { value: c } => MountEntryMalformed { cause: join(["the HostConfig.Mounts entry for ", t, ": ", c], "") }
+              Absent =>
+                match json_field_cause(r: size) {
+                  Present { value: c } => MountEntryMalformed { cause: join(["the HostConfig.Mounts entry for ", t, ": ", c], "") }
+                  Absent => MountEntryRead { mount: DockerInspectMount {
+                    kind: k as NonEmptyStr,
+                    source: match json_field_value(r: source) { Present { value: src } => src  Absent => "" },
+                    target: t as NonEmptyStr,
+                    read_only: match json_field_value(r: read_only) { Present { value: b } => b  Absent => false },
+                    tmpfs_size_bytes: json_field_value(r: size),
+                  } }
+                }
+            }
+          }
+      }
+  }
+}
+
+type MountListAcc {
+  mounts: List<DockerInspectMount>
+  cause: String?
+}
+
+fn mount_list_step(acc: MountListAcc, v: JsonValue) -> MountListAcc {
+  match acc.cause {
+    Present { value: _ } => acc
+    Absent =>
+      match docker_inspect_mount_entry(v: v) {
+        MountEntryMalformed { cause: c } => MountListAcc { mounts: acc.mounts, cause: Present { value: c } }
+        MountEntryRead { mount: m } => MountListAcc { mounts: concat(acc.mounts, [m]), cause: none }
+      }
+  }
+}
+
+fn json_field_mount_list(obj: JsonValue, key: String) -> JsonFieldRead<List<DockerInspectMount>> {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => FieldAbsent
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } => {
+          let acc = fold(es, init: MountListAcc { mounts: [], cause: none }, f: (a, e) => mount_list_step(acc: a, v: e))
+          match acc.cause {
+            Present { value: c } => FieldMalformed { cause: c }
+            Absent => FieldRead { value: acc.mounts }
+          }
+        }
+        JsonNull => FieldAbsent
+        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array of mounts was expected"], "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array of mounts was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array of mounts was expected"], "") }
+        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where an array of mounts was expected"], "") }
+      }
+  }
+}
+
 type DeviceListAcc {
   devices: List<DockerInspectDevice>
   cause: String?
@@ -673,7 +765,7 @@ fn docker_inspect_host_config(v: JsonValue) -> HostConfigRead {
   let devices = json_field_device_list(obj: v, key: "Devices")
   let ulimits = json_field_ulimit_list(obj: v, key: "Ulimits")
   let shm_size = json_field_byte_size(obj: v, key: "ShmSize")
-  let binds = json_field_string_list(obj: v, key: "Binds")
+  let mounts = json_field_mount_list(obj: v, key: "Mounts")
   let restart_policy = json_field_restart_policy(obj: v, key: "RestartPolicy")
   let causes = present_strings(xs: [
     json_field_cause(r: cpu_shares), json_field_cause(r: memory), json_field_cause(r: memory_reservation),
@@ -684,7 +776,7 @@ fn docker_inspect_host_config(v: JsonValue) -> HostConfigRead {
     json_field_cause(r: cap_drop), json_field_cause(r: exposed_ports), json_field_cause(r: port_bindings),
     json_field_cause(r: volumes), json_field_cause(r: volumes_from), json_field_cause(r: device_requests),
     json_field_cause(r: devices), json_field_cause(r: ulimits),
-    json_field_cause(r: shm_size), json_field_cause(r: binds), json_field_cause(r: restart_policy),
+    json_field_cause(r: shm_size), json_field_cause(r: mounts), json_field_cause(r: restart_policy),
   ])
   if count(causes) > 0 {
     HostConfigMalformed { causes: map(causes, c => join(["HostConfig.", c], "")) }
@@ -714,7 +806,7 @@ fn docker_inspect_host_config(v: JsonValue) -> HostConfigRead {
       devices: json_field_value(r: devices),
       ulimits: json_field_value(r: ulimits),
       shm_size: json_field_value(r: shm_size),
-      binds: json_field_value(r: binds),
+      mounts: json_field_value(r: mounts),
       restart_policy: json_field_value(r: restart_policy),
     } }
   }

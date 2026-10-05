@@ -1,4 +1,5 @@
 module test.claim.roadmap_altitude_witness
+import gunbc.site.document { site_styles }
 
 import gunbc.roadmap_altitude {
   RowAttention, RowRoutine, RowWorking, RowAnomaly,
@@ -74,7 +75,7 @@ test fn altitude_counts_wire_holds() -> Bool {
 fn doc_html(nodes: List<RoadmapNode>) -> String {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: nodes, edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: "")) {
+  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []))) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }

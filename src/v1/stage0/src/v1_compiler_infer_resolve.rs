@@ -4,7 +4,9 @@
 use self::AliasKind::*;
 use self::KindInhabitance::*;
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, decl_type_parameter_ref};
+pub use crate::std_decl_ref::{
+    decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -413,7 +415,26 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
+pub fn node_is_type_parameter_reference(n: Rc<Node>) -> bool {
+    match n.declaration.clone() {
+        Some(ref_) => crate::std_decl_ref::declaration_ref_is_type_parameter(ref_.clone()),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+    if node_is_type_parameter_reference(n.clone()) {
+        n.clone()
+    } else {
+        peel_nominal_alias_identity_by_name(n.clone(), env.clone(), module_name.clone())
+    }
+}
+
+pub fn peel_nominal_alias_identity_by_name(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
     {
         let source_indices = env.source_indices.clone();
         let brand = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
