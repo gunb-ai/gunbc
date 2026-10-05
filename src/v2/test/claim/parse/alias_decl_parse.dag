@@ -7,7 +7,17 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic {
+  Accepted,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  bind_outcome
+}
 import v2.std.node { Node }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.normalize { normalize }
@@ -136,7 +146,10 @@ fn alias_decl_fill_lexical_lookup_holds() -> Bool {
               Present { value: id } => id == ^dag_surface_alias_decl
               Absent => false
             }
-          _ => false
+          Textual { file: _, extent: _ } => false
+          SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
         })
   }
 }
