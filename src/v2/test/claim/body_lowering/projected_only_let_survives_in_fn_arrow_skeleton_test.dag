@@ -18,15 +18,19 @@ module v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skele
 // node_references_param -- so reachability queries see no new atoms; only previously dropped
 // let-RHS structure comes back.
 //
-// THE DISCRIMINATOR is the specimen's CONTINUATION residue, not just the wire call: a bare
-// `Filesystem.Read` call node could in principle appear for other reasons, so the claim also
-// requires the downstream `trim` call to be present in the same skeleton. Today BOTH are absent,
-// because the whole let (RHS and continuation) drops as dead.
+// THE DISCRIMINATOR is the specimen's CONTINUATION residue. probe5 established the collapse for
+// exactly this shape: with the let dead, marshal_stmt_sequence drops it, and the continuation that
+// consumes the binding by projection cannot marshal either -- the whole body grain collapses to the
+// parameter identity atom, losing the conditional AND the named `trim` call. So the claim requires
+// the `trim` callee atom in the specimen's own skeleton: absent today (the red), present once a
+// field projection counts as a reference to its base. (The wire read itself contributes no callee
+// atom -- it is a service operation, not a named call -- so the wire id is deliberately NOT the
+// probe on either side.)
 //
 // The positive control is the mirror shape: the same bound record passed WHOLE to a receiver. Its
-// let was always live by the old analysis too, so its wire read and its consumption residue must be
-// present both before and after the fix -- proving the fix neither manufactured the specimen's
-// residue nor suppressed the control's.
+// let was always live by the old analysis too, so its consumption residue -- the `por_sink` callee
+// atom -- must be present both before and after the fix, proving the enumeration route sees live
+// call residue and the red is not a route artifact.
 
 import std.algebra { trim }
 import v2.std.algebra { list_find_first }
@@ -34,12 +38,15 @@ import v2.std.node { Node, Symbol, symbol_lexeme }
 import v2.std.fn_index { atom_identities_in_subtree, fn_arrow_decl_facts_live }
 import v2.std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadOutcome }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+}
 
 data por_pool_roots: List<String> = []
-data por_pool_files: List<String> = [
-  "src/v2/test/claim/body_lowering/projected_only_let_survives_in_fn_arrow_skeleton_test.dag",
-]
+data por_pool_files: List<String> = ["src/v2/test/claim/body_lowering/projected_only_let_survives_in_fn_arrow_skeleton_test.dag"]
 
 // THE SPECIMEN (the red): a bound wire read whose record is used only through field projections.
 fn por_projected_only_record(p: String) -> String {
@@ -58,17 +65,14 @@ fn por_record_passed_whole(p: String) -> String {
 }
 
 fn por_sink(r: FilesystemReadOutcome) -> String {
-  if r.success {
-    r.content
-  } else {
-    ""
+  match r {
+    FilesystemReadRefused { error: _ } => ""
+    FilesystemReadSucceeded { content } => content
   }
 }
 
-data por_wire_callee_id: String = "extdeps.filesystem.filesystem_io::Filesystem.Read"
 data por_trim_callee_id: String = "std.algebra::trim"
-data por_sink_callee_id: String =
-  "v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skeleton::por_sink"
+data por_sink_callee_id: String = "v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skeleton::por_sink"
 
 fn por_symbol_seen(symbols: List<Symbol>, callee_id: String) -> Bool {
   match list_find_first(xs: symbols, predicate: fn(s) { symbol_lexeme(sym: s) == callee_id }) {
@@ -93,33 +97,19 @@ fn por_projected_only_let_survives_in_fn_arrow_skeleton() -> ProcessExit {
         Present { value: por_wd } => {
           let por_projected_ids = atom_identities_in_subtree(node: por_pd.output)
           let por_whole_ids = atom_identities_in_subtree(node: por_wd.output)
-          let por_specimen_has_wire = por_symbol_seen(symbols: por_projected_ids, callee_id: por_wire_callee_id)
           let por_specimen_has_trim = por_symbol_seen(symbols: por_projected_ids, callee_id: por_trim_callee_id)
-          let por_control_has_wire = por_symbol_seen(symbols: por_whole_ids, callee_id: por_wire_callee_id)
           let por_control_has_sink = por_symbol_seen(symbols: por_whole_ids, callee_id: por_sink_callee_id)
-          if por_control_has_wire {
-            if por_control_has_sink {
-              if por_specimen_has_wire {
-                if por_specimen_has_trim {
-                  ExitSuccess
-                } else {
-                  exit_failure(
-                    reason: "specimen skeleton carries the wire read but lost its continuation residue (trim); the projected-only let is only half-marshalled",
-                  )
-                }
-              } else {
-                exit_failure(
-                  reason: "RED: a projected-only let (bound wire record used only through field projections) was dropped from the fn-arrow skeleton as dead -- no wire read residue in its own body grain",
-                )
-              }
+          if por_control_has_sink {
+            if por_specimen_has_trim {
+              ExitSuccess
             } else {
               exit_failure(
-                reason: "control skeleton lacks the por_sink callee; the whole-record control's consumption is not visible, so the discriminator proves nothing",
+                reason: "RED: a projected-only let collapsed its whole continuation out of the fn-arrow skeleton -- the body grain carries neither the wire read nor the trim call that consumes it (probe5's shape: the skeleton is just the parameter atom)",
               )
             }
           } else {
             exit_failure(
-              reason: "control skeleton lacks the wire read; the whole-record let itself is not live, so the enumeration route is broken",
+              reason: "control skeleton lacks the por_sink callee; a whole-record live call's residue is not visible, so the enumeration route is broken",
             )
           }
         }
