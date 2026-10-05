@@ -442,3 +442,88 @@ fn spark_inspect_dropin_shape_wire(host: String, shape: SparkInspectDropinShape)
       join(["inspect-dropins host=", host, " UNOBSERVED cause=", c as String, "\n"], "")
   }
 }
+
+// ── Converging away from the shared drop-in, without a lapse ─────────────────────────────────────
+//
+// sudo's listing answers HELD for an inspect grant whether its line sits in its own per-container
+// file or in the retired shared one, so the plain reconcile never installs a per-container file for a
+// grant the shared file carries -- and removing the shared file then would revoke it. Measured: on
+// Group B the glm-native-tp4 inspect grant read held only through the shared file (fleet-converge
+// run 37263427207). So the reconcile names those grants for installation too, and the removal is a
+// separate decision taken only on a FRESH reading after the installs.
+
+fn spark_inspect_grant_dropin_present(grant: SparkManagedGrant, per_container: List<String>) -> Bool {
+  any(per_container, n => n == (spark_managed_grant_dropin_name(grant: grant) as String))
+}
+
+fn spark_grant_is_inspect(grant: SparkManagedGrant) -> Bool {
+  match grant {
+    InspectServingContainer { container: _ } => true
+    EnableLingerForOwnAccount { subject: _ } => false
+    RebootThisHost => false
+    ReadFabricModuleEeprom { device: _ } => false
+  }
+}
+
+// Inspect grants that read HELD while their own per-container file is absent: held only through the
+// shared file. Empty unless the host is in the shared shape.
+fn spark_inspect_grants_held_only_via_shared(outcome: SparkGrantOutcome, shape: SparkInspectDropinShape) -> List<SparkManagedGrant> {
+  match shape {
+    SharedInspectDropinShape { per_container: pc } =>
+      flat_map(spark_managed_grant_standings(outcome: outcome), s => match s {
+        GrantHeld { grant: g } => if spark_grant_is_inspect(grant: g) && !spark_inspect_grant_dropin_present(grant: g, per_container: pc) { [g] } else { [] }
+        GrantNotHeld { grant: _ } => []
+        GrantStandingUnobserved { grant: _, cause: _ } => []
+      })
+    PerContainerInspectDropinShape { per_container: _ } => []
+    InspectDropinShapeUnobserved { cause: _ } => []
+  }
+}
+
+// THE REMOVAL DECISION, over a reading taken AFTER the installs. Admitted only when the shared file is
+// present AND every inspect grant in the population has its own per-container file AND reads held --
+// so nothing the shared file carried can lapse. Anything else withholds the removal by name.
+type SparkRetiredDropinRemovalDecision
+  = RetiredDropinNothingToRemove
+  | RetiredDropinRemovalAdmitted
+  | RetiredDropinRemovalWithheld { cause: NonEmptyStr }
+
+fn spark_inspect_grants_not_yet_standalone(outcome: SparkGrantOutcome, per_container: List<String>) -> List<SparkManagedGrant> {
+  flat_map(spark_managed_grant_standings(outcome: outcome), s => match s {
+    GrantHeld { grant: g } => if spark_grant_is_inspect(grant: g) && !spark_inspect_grant_dropin_present(grant: g, per_container: per_container) { [g] } else { [] }
+    GrantNotHeld { grant: g } => if spark_grant_is_inspect(grant: g) { [g] } else { [] }
+    GrantStandingUnobserved { grant: g, cause: _ } => if spark_grant_is_inspect(grant: g) { [g] } else { [] }
+  })
+}
+
+fn spark_retired_dropin_removal_decision(outcome: SparkGrantOutcome, shape: SparkInspectDropinShape) -> SparkRetiredDropinRemovalDecision {
+  match shape {
+    PerContainerInspectDropinShape { per_container: _ } => RetiredDropinNothingToRemove
+    InspectDropinShapeUnobserved { cause: c } =>
+      RetiredDropinRemovalWithheld { cause: join(["the drop-in directory was not read after the installs: ", c as String], "") as NonEmptyStr }
+    SharedInspectDropinShape { per_container: pc } => {
+      let pending = spark_inspect_grants_not_yet_standalone(outcome: outcome, per_container: pc)
+      if length(pending) == 0 {
+        RetiredDropinRemovalAdmitted
+      } else {
+        RetiredDropinRemovalWithheld {
+          cause: join([
+            "removing ", spark_sudoers_dropin_directory as String, "/", spark_retired_shared_inspect_dropin_name as String,
+            " would lapse inspect grants not yet held under their own file: ",
+            join(map(pending, g => spark_managed_grant_dropin_name(grant: g) as String), ","),
+          ], "") as NonEmptyStr,
+        }
+      }
+    }
+  }
+}
+
+// THE READBACK OF A REMOVAL: the shared file is gone and every inspect grant is still held under its
+// own file. Anything else is a removal that did not converge.
+fn spark_retired_dropin_removal_confirmed(outcome: SparkGrantOutcome, shape: SparkInspectDropinShape) -> Bool {
+  match shape {
+    PerContainerInspectDropinShape { per_container: pc } => length(spark_inspect_grants_not_yet_standalone(outcome: outcome, per_container: pc)) == 0
+    SharedInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}

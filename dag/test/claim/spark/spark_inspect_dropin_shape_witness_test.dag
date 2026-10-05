@@ -4,16 +4,24 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import v2.std.algebra { filter, length, any }
 import gunbc.spark.managed_grant_reconcile {
   SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
+  spark_inspect_grants_held_only_via_shared, spark_retired_dropin_removal_decision, spark_retired_dropin_removal_confirmed,
+  RetiredDropinNothingToRemove, RetiredDropinRemovalAdmitted, RetiredDropinRemovalWithheld,
+  spark_managed_grant_dropin_name,
   spark_inspect_dropin_shape_of_listing,
   spark_sudoers_dropin_listing_argv,
 }
-import gunbc.fleet_multi_principal_probe { spark_standing_hosts }
+import gunbc.fleet_multi_principal_probe { spark_standing_hosts, spark_standing_hosts_of }
+import product.host_identity { HostIdentity }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
 import gunbc.fleet_converge_workflow {
   SparkGrantsObserve, FleetSshKeyConsumed, FleetSshKeyNotConsumed,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
   fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
 }
+import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, SparkGrantOutcome, GrantEnumerated, spark_managed_grant_sudoers_command }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
+import gunbc.spark.grant_privileged_operation { RemoveRetiredSudoersDropin, admitted_root_argv_words }
 import gunbc.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
@@ -77,12 +85,19 @@ test fn w_probe_roster_is_every_procured_spark() -> Bool {
     && !any(spark_standing_hosts, h => occurrences(xs: procured, x: h) != 1)
 }
 
-// RED CONTROL for the join, over a supplied roster: the srv5/srv6 hand list this PR replaced does not
-// cover a procured roster that has more members.
+// THE DERIVATION OVER A SUPPLIED ROSTER, with its control: the production derivation
+// (spark_standing_hosts_of) covers a roster it has never seen, and the srv5/srv6 hand list it replaced
+// does not -- so the join above is shown able to go red on the shape it guards.
+fn covers(procured: List<String>, probed: List<String>) -> Bool {
+  !any(procured, h => occurrences(xs: probed, x: h) != 1) && !any(probed, h => occurrences(xs: procured, x: h) != 1)
+}
+
+test fn w_the_derivation_covers_a_supplied_roster() -> Bool {
+  covers(procured: ["sA", "sB", "sC"], probed: spark_standing_hosts_of(roster: ["sA" as HostIdentity, "sB" as HostIdentity, "sC" as HostIdentity]))
+}
+
 test fn red_control_a_two_host_hand_list_does_not_cover_a_larger_roster() -> Bool {
-  let procured = ["srv5", "srv6", "srv7"]
-  let hand = ["srv5", "srv6"]
-  any(procured, h => occurrences(xs: hand, x: h) != 1)
+  !covers(procured: spark_standing_hosts_of(roster: ["srv5" as HostIdentity, "srv6" as HostIdentity, "srv7" as HostIdentity]), probed: ["srv5", "srv6"])
 }
 
 // Group B's 2026-10-04 listing shape (shared file alone, no per-container file) reads as the
@@ -116,4 +131,86 @@ test fn w_grants_observe_step_is_gated_on_its_mode_and_reads_over_the_fleet_key(
       FleetSshKeyConsumed => true
       FleetSshKeyNotConsumed => false
     }
+}
+
+// ── converging away from the shared drop-in without a lapse ───────────────────────────────────
+//
+// Supplied sudo listings in the shape `sudo -n -l` renders, built from the grants' own commands, and
+// supplied drop-in shapes. Group B as read by run 37263427207: the shared file alone, carrying the
+// glm-native-tp4 inspect line.
+
+fn listing_of(grants: List<SparkManagedGrant>) -> SparkGrantOutcome {
+  GrantEnumerated { listing: join(map(grants, g => join(["    (root) NOPASSWD: ", spark_managed_grant_sudoers_command(grant: g) as String], "")), "\n") }
+}
+
+fn inspect_pair() -> SparkManagedGrant { InspectServingContainer { container: spark_pair_container_name } }
+fn inspect_native() -> SparkManagedGrant { InspectServingContainer { container: glm_native_container_name } }
+fn inspect_stair() -> SparkManagedGrant { InspectServingContainer { container: glm53_staircase_container_name } }
+
+fn names_of(gs: List<SparkManagedGrant>) -> List<String> {
+  map(gs, g => spark_managed_grant_dropin_name(grant: g) as String)
+}
+
+// The trap: native reads HELD through the shared file, so it must be named for installation.
+test fn w_a_grant_held_only_through_the_shared_file_is_named_for_install() -> Bool {
+  names_of(gs: spark_inspect_grants_held_only_via_shared(
+    outcome: listing_of(grants: [inspect_native()]),
+    shape: SharedInspectDropinShape { per_container: [] },
+  )) == ["gunbc-docker-inspect-glm-native-tp4"]
+}
+
+// srv5's shape: per-container pair and native beside the shared file; staircase held only via it.
+test fn w_residue_host_names_only_the_grant_without_its_own_file() -> Bool {
+  names_of(gs: spark_inspect_grants_held_only_via_shared(
+    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
+    shape: SharedInspectDropinShape { per_container: ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-spark-pair"] },
+  )) == ["gunbc-docker-inspect-gunbc-glm53-stair-tp4"]
+}
+
+// RED: removing the shared file while native is held only through it would lapse native. Withheld.
+test fn red_removal_is_withheld_while_a_grant_rides_only_on_the_shared_file() -> Bool {
+  match spark_retired_dropin_removal_decision(
+    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
+    shape: SharedInspectDropinShape { per_container: ["gunbc-docker-inspect-gunbc-spark-pair", "gunbc-docker-inspect-gunbc-glm53-stair-tp4"] },
+  ) {
+    RetiredDropinRemovalWithheld { cause: c } => contains(c as String, "gunbc-docker-inspect-glm-native-tp4")
+    RetiredDropinRemovalAdmitted => false
+    RetiredDropinNothingToRemove => false
+  }
+}
+
+test fn w_removal_is_admitted_once_every_inspect_grant_has_its_own_file_and_is_held() -> Bool {
+  match spark_retired_dropin_removal_decision(
+    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
+    shape: SharedInspectDropinShape { per_container: ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-glm53-stair-tp4", "gunbc-docker-inspect-gunbc-spark-pair"] },
+  ) {
+    RetiredDropinRemovalAdmitted => true
+    RetiredDropinRemovalWithheld { cause: _ } => false
+    RetiredDropinNothingToRemove => false
+  }
+}
+
+// An unread directory never admits a removal.
+test fn w_removal_is_withheld_when_the_directory_is_unread() -> Bool {
+  match spark_retired_dropin_removal_decision(
+    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
+    shape: InspectDropinShapeUnobserved { cause: "exit=2" as NonEmptyStr },
+  ) {
+    RetiredDropinRemovalWithheld { cause: _ } => true
+    RetiredDropinRemovalAdmitted => false
+    RetiredDropinNothingToRemove => false
+  }
+}
+
+test fn w_removal_readback_requires_the_file_gone_and_every_inspect_grant_held() -> Bool {
+  let all_three = ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-glm53-stair-tp4", "gunbc-docker-inspect-gunbc-spark-pair"]
+  spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three })
+    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three })
+    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: SharedInspectDropinShape { per_container: all_three })
+}
+
+// The one removal argv the privileged algebra admits.
+test fn w_removal_argv_is_rm_of_exactly_the_named_dropin() -> Bool {
+  admitted_root_argv_words(command: RemoveRetiredSudoersDropin { dropin_path: "/etc/sudoers.d/gunbc-docker-inspect" as NonEmptyStr })
+    == ["sudo", "-S", "-p", "gunbc-sudo:", "--", "rm", "-f", "--", "/etc/sudoers.d/gunbc-docker-inspect"]
 }

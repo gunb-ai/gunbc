@@ -136,6 +136,39 @@ fn spark_bootstrap_credential_lease(
   }
 }
 
+// THE REMOVAL'S LEASE, scoped the same way as an install: one named drop-in position on one host,
+// with its own action, so a removal authorization cannot be read as an install one or reach any other
+// file.
+fn spark_retired_dropin_removal_lease(
+  host: HostIdentity,
+  administrator: SparkCredentialStanding,
+  dropin_name: NonEmptyStr,
+  attempt_identity: NonEmptyStr,
+) -> AuthorizationRequest<SparkBootstrapSubject> {
+  AuthorizationRequest {
+    escalation_id: "spark-retired-sudoers-dropin-removal" as NonEmptyStr,
+    scopes: [
+      AuthorizationScope {
+        verb: Write,
+        resource: NamespacePosition { tree: FilesystemPathTree, path: ["etc", "sudoers.d", dropin_name as String] },
+        action: "posix.sudoers.remove" as AuthorizedAction,
+      },
+    ],
+    subject: SparkBootstrapSubject {
+      host: host,
+      bootstrap_principal: fleet_bootstrap_principal_login(),
+      administrator: administrator,
+    },
+    attempt: attempt_identity as AttemptIdentity,
+    intent_hash: content_hash_of_value(value: dropin_name as String),
+    destructive: true,
+    purpose: join([
+      "remove the retired shared sudoers drop-in '", dropin_name as String, "' on ", host as String,
+      " after every grant it carried was installed under its own name and read back held",
+    ], "") as NonEmptyStr,
+  }
+}
+
 // WHERE THE CREDENTIAL LIVES, if anywhere. A pending standing has no resource to name, and saying so
 // is the useful answer: the remedy for "no secret is enrolled" is to enrol one, which is different
 // from the remedy for "the enrolled one was rejected".
@@ -150,9 +183,14 @@ fn lease_secret_resource(lease: AuthorizationRequest<SparkBootstrapSubject>) -> 
 // RemoteArgv into a generic { argv, stdin } carrier -- would reopen arbitrary script bodies through
 // stdin under root, which is a far larger hole than the one being closed. So only the two commands
 // this bootstrap needs have constructors, and a third cannot be passed through.
+// RemoveRetiredSudoersDropin is the only removal this algebra admits, and only the managed-grant
+// reconcile constructs it (gunbc.spark.managed_grant_install spark_retired_dropin_removal_argv, over
+// gunbc.spark.managed_grant_reconcile's retired drop-in name), after every grant the file carried is
+// installed under its own name and read back held.
 type AdmittedRootArgv
   = ValidateStagedSudoers { staged_path: NonEmptyStr }
   | InstallStagedSudoers { staged_path: NonEmptyStr, dropin_path: NonEmptyStr }
+  | RemoveRetiredSudoersDropin { dropin_path: NonEmptyStr }
 
 // THE PROMPT IS A SENTINEL, NOT EMPTY, and the empty one was a real defect rather than a style
 // choice. This carried `-p ""` to suppress the prompt entirely; measured on srv6 (2026-08-20), the
@@ -179,6 +217,7 @@ fn admitted_root_argv_words(command: AdmittedRootArgv) -> List<String> {
       ValidateStagedSudoers { staged_path: p } => ["visudo", "-c", "-f", p as String]
       InstallStagedSudoers { staged_path: p, dropin_path: d } =>
         ["install", "-m", "0440", "-o", "root", "-g", "root", p as String, d as String]
+      RemoveRetiredSudoersDropin { dropin_path: d } => ["rm", "-f", "--", d as String]
     },
   )
 }
@@ -204,6 +243,7 @@ fn admitted_root_argv_label(command: AdmittedRootArgv) -> String {
   match command {
     ValidateStagedSudoers { staged_path: _ } => "validate-staged-sudoers"
     InstallStagedSudoers { staged_path: _, dropin_path: _ } => "install-staged-sudoers"
+    RemoveRetiredSudoersDropin { dropin_path: _ } => "remove-retired-sudoers-dropin"
   }
 }
 
