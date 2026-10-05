@@ -120,7 +120,7 @@ use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
-    empty_type_env, lookup_emit_type_summary,
+    empty_type_env, lookup_emit_type_summary, type_decl_index_with_qualified_names,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
@@ -31086,9 +31086,17 @@ pub fn build_emit_graph_info(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<EmitGraphInfo> {
     {
+        let qualified_names = match modules.clone().first().cloned() {
+            Some(m) => m.type_env.clone().symbol_index.clone(),
+            std::option::Option::None => crate::v1_compiler_infer_env::empty_symbol_index(),
+        };
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-            type_decl_items: crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
+            type_decl_items:
+                crate::v1_compiler_infer_emit_info::type_decl_index_with_qualified_names(
+                    crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
+                    qualified_names.clone(),
+                ),
             fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),

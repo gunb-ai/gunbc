@@ -15,8 +15,8 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
-pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
+pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{SymbolIndex, TypeEnv};
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::{
     TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
@@ -228,6 +228,7 @@ pub struct TypeDeclIndex {
     pub identity_by_declaring_span: Rc<HashMap<String, String>>,
     pub leaf_owners: Rc<HashMap<String, Rc<LeafOwner>>>,
     pub identities_by_leaf: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub qualified_names: Rc<SymbolIndex>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -245,6 +246,7 @@ pub fn empty_type_decl_index() -> Rc<TypeDeclIndex> {
         identity_by_declaring_span: v1_rt::rc_empty_map::<String, String>(),
         leaf_owners: v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         identities_by_leaf: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        qualified_names: crate::v1_compiler_infer_env::empty_symbol_index(),
     })
 }
 
@@ -351,6 +353,7 @@ pub fn type_decl_index_insert(
                     identity.clone(),
                 ),
             ),
+            qualified_names: index.qualified_names.clone(),
         })
     }
 }
@@ -397,6 +400,7 @@ pub enum TypeDeclReferenceRoute {
     RouteCarriedBinder,
     RouteDeclaringSpan,
     RouteReferencingModuleDeclarer,
+    RouteQualifiedSpelling,
     RouteLeafSpelling,
 }
 
@@ -467,7 +471,7 @@ pub fn resolve_type_decl_routed(
                                     type_expr.clone(),
                                 )
                             } else {
-                                std::option::Option::None
+                                type_decl_qualifier_declarer(index.clone(), authored.clone())
                             }
                         }
                         TypeDeclResolution::TypeDeclResolved { .. } => std::option::Option::None,
@@ -478,7 +482,11 @@ pub fn resolve_type_decl_routed(
                     };
                     match referencing_module_identity.clone() {
                         Some(identity) => Rc::new(TypeDeclRoutedResolution {
-                            route: TypeDeclReferenceRoute::RouteReferencingModuleDeclarer,
+                            route: if (authored.clone() == leaf.clone()) {
+                                TypeDeclReferenceRoute::RouteReferencingModuleDeclarer
+                            } else {
+                                TypeDeclReferenceRoute::RouteQualifiedSpelling
+                            },
                             resolution: type_decl_resolution_at_identity(
                                 index.clone(),
                                 identity.clone(),
@@ -495,10 +503,39 @@ pub fn resolve_type_decl_routed(
     }
 }
 
+pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) -> Option<String> {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        index.qualified_names.clone(),
+        authored.clone(),
+    ) {
+        Some(decl) => match decl.ident_span.clone() {
+            Some(sp) => v1_rt::map_get(
+                &index.identity_by_declaring_span.clone(),
+                declaring_span_key(sp.clone()),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn type_decl_index_with_qualified_names(
+    index: Rc<TypeDeclIndex>,
+    qualified_names: Rc<SymbolIndex>,
+) -> Rc<TypeDeclIndex> {
+    Rc::new(TypeDeclIndex {
+        by_identity: index.by_identity.clone(),
+        identity_by_declaring_span: index.identity_by_declaring_span.clone(),
+        leaf_owners: index.leaf_owners.clone(),
+        identities_by_leaf: index.identities_by_leaf.clone(),
+        qualified_names: qualified_names.clone(),
+    })
+}
+
 pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer dissolves when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then the arm and type_decl_referencing_module_declarer are deleted and such a reference refuses unless carried.".to_string())
+            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -564,6 +601,7 @@ pub fn type_decl_routed_resolution_label(routed: Rc<TypeDeclRoutedResolution>) -
             TypeDeclReferenceRoute::RouteReferencingModuleDeclarer => {
                 "referencing_module_declarer".to_string()
             }
+            TypeDeclReferenceRoute::RouteQualifiedSpelling => "qualified_spelling".to_string(),
             TypeDeclReferenceRoute::RouteLeafSpelling => "leaf_spelling".to_string(),
         };
         match (*routed.resolution.clone()).clone() {
@@ -1727,5 +1765,7 @@ pub struct RouteCarriedBinder;
 pub struct RouteDeclaringSpan;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteReferencingModuleDeclarer;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteQualifiedSpelling;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteLeafSpelling;
