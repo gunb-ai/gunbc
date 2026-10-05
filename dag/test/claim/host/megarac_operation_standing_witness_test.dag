@@ -11,7 +11,7 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing {
-  MegaRacOperation, MegaRacOperationStanding, megarac_operation_eq, MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  MegaRacOperation, MegaRacOperationStanding, megarac_operation_eq, MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacServedUiRead,
   OperationExecutedAtBuild, OperationRecoveredFromServedArtifact,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition,
   megarac_operation_standings, megarac_operation_grounded_at, megarac_operation_executed_at, megarac_identity_eq,
@@ -80,10 +80,12 @@ test fn w_the_committed_rows_ground_0_32_by_route_and_nothing_at_0_45_3() -> Boo
   grounded_by(standings: standings, operation: MegaRacVirtualMediaAttach, executed: true)
     && grounded_by(standings: standings, operation: MegaRacSdrSocketNaming, executed: true)
     && grounded_by(standings: standings, operation: MegaRacKvmCanvasStill, executed: false)
-    && count(standings) == 3
+    && grounded_by(standings: standings, operation: MegaRacServedUiRead, executed: true)
+    && count(standings) == 4
     && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: later)
     && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: later)
     && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacSdrSocketNaming, identity: later)
+    && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacServedUiRead, identity: later)
 }
 
 // WHAT A ROUTE RECOVERED FROM A SERVED ARTIFACT DOES NOT ESTABLISH. The KVM still is grounded at
