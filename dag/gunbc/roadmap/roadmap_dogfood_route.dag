@@ -867,7 +867,13 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
           StartReceiptInvalid { reason: "established_at is missing" }
         } else {
           let ev_wire = dogfood_decode_field(v: v, key: "service_evidence_wire")
-          if ev_wire == "" || dogfood_decode_field(v: v, key: "service_evidence_digest") != wire_content_hash_to_hex(hash: content_hash_of_value(value: ev_wire as NonEmptyStr)) {
+          let pinned_claim = match attempt_request_binding_decode(text: dogfood_decode_field(v: v, key: "request_binding_wire")) {
+            RequestBindingDecoded { binding } => match binding { RequestClaimBound { claim } => claim as String  RequestAutonomous => "" }
+            RequestBindingUndecodable { reason: _ } => ""
+          }
+          if pinned_claim == "" || dogfood_decode_field(v: v, key: "result_claim") != pinned_claim {
+            StartReceiptInvalid { reason: "the returned result does not answer the pinned request's claim" }
+          } else if ev_wire == "" || dogfood_decode_field(v: v, key: "service_evidence_digest") != wire_content_hash_to_hex(hash: content_hash_of_value(value: ev_wire as NonEmptyStr)) {
             StartReceiptInvalid { reason: "service_evidence_digest is not the digest of the pinned service evidence" }
           } else {
           match service_evidence_snapshot_decode_bound(wire: ev_wire, node_id: Present { value: dogfood_decode_field(v: v, key: "node_id") }, attempt_key: Present { value: dogfood_decode_field(v: v, key: "attempt_key") }) {
