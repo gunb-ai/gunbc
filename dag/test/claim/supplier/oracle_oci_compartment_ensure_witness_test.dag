@@ -2,7 +2,7 @@ module test.claim.supplier.oracle_oci_compartment_ensure_witness
 
 import std.types { Bool, Int, String }
 import std.upsert_decision { Noop, Apply, Refuse, Converged, Absent, Conflict, Inaccessible, UnknownRefused, Drifted, observation_verdict_label }
-import gunbc.oracle_oci.api { OciExchange, OciAnswered, OciExchangeRefused }
+import gunbc.oracle_oci.api { OciExchange, OciAnswered, OciExchangeRefused, oci_retry_token }
 import gunbc.oracle_oci.compartment_ensure {
   classify_oci_compartment_list, classify_oci_compartment_ensure, oci_compartment_create_body,
 }
@@ -95,4 +95,14 @@ test fn an_exchange_that_never_answered_refuses() -> Bool {
 // does by construction.
 test fn the_create_body_carries_the_three_required_fields() -> Bool {
   oci_compartment_create_body() == "{\"compartmentId\": \"ocid1.tenancy.oc1..aaaaaaaaxarkm67vc5fiaqayhea33y2k6j3zdhnt5a4e434ddrrsxipmcf7a\", \"name\": \"gunbc-always-free\", \"description\": \"gunbc: Always Free compute, created and converged by gunbc.oracle_oci.compartment_ensure\"}"
+}
+
+// The retry token is a function of the exact request: the same create re-sent after a lost reply
+// carries the same token, so Oracle answers it once. A changed body or path is a different request.
+test fn the_retry_token_is_stable_per_request_and_distinct_across_requests() -> Bool {
+  let a = oci_retry_token(path_and_query: "/20160918/compartments", body: "{\"name\": \"x\"}") as String
+  let again = oci_retry_token(path_and_query: "/20160918/compartments", body: "{\"name\": \"x\"}") as String
+  let other_body = oci_retry_token(path_and_query: "/20160918/compartments", body: "{\"name\": \"y\"}") as String
+  let other_path = oci_retry_token(path_and_query: "/20160918/vcns", body: "{\"name\": \"x\"}") as String
+  a == again && a != other_body && a != other_path && string_length(a) == 54
 }
