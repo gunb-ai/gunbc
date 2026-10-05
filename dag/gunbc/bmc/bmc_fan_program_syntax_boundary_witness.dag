@@ -4,6 +4,7 @@ import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.languages.json.emit { serialize_json }
 import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
