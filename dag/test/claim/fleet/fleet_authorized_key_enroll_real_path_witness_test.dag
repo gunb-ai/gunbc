@@ -173,7 +173,9 @@ test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
 // shell.Env.Get and pass it in), so the receipt runs the SAME route body against a mktemp scratch
 // home -- zero writes outside the scratch directory and the checkout's target/. The first
 // invocation converges; a SECOND must be a no-op -- the marker still appears exactly once -- and
-// both modes are observed (the ssh directory 0700, the config 0600).
+// the config's owner-only mode is observed (0600). The pin route's mkdir -p leaves the ssh
+// directory at the umask mode, exactly as the deleted script did; only the authorized-key route
+// promises the directory at 0700.
 test fn fleet_host_key_enroll_config_pin_route_by_real_execution() -> Bool {
   fe_with_temp_dir(scenario: fn(dir) {
     let home = dir as String
@@ -189,7 +191,6 @@ test fn fleet_host_key_enroll_config_pin_route_by_real_execution() -> Bool {
       && !string_contains(s: second, pattern: "outcome=refused")
       && cfg_after_second.success
       && count(filter(split(s: cfg_after_second.content, delimiter: "\n"), fn(l) { trim(s: l) == "# gunbc-fleet-pin" })) == 1
-      && fe_mode_is("drwx------", concat(home, "/.ssh"))
       && fe_mode_is("-rw-------", concat(home, "/.ssh/config"))
   })
 }
