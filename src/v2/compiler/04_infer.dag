@@ -5,7 +5,7 @@ import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
-import std.algebra { Cons, Empty, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -1862,17 +1862,54 @@ fn infer_branch_operand_resolved_type_with_entries(
 // dag_binding_denotation test the facts fold applies); a free formal is NOT held -- the read falls
 // through to the facts, the answer the caller had before the read existed.
 fn infer_operand_declared_type_instantiated(declared: Node, instances: List<TypeVariableInstance>) -> Optional<Node> {
-  match node_atom_identity_optional(node: declared) {
-    Present { value: id } =>
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } =>
       match type_variable_instance_lookup(instances: instances, binder: id) {
         Present { value: instance } => optional_present(value: instance)
         Absent =>
           match dag_binding_denotation(sym: id) {
-            Present { value: _ } => optional_present(value: declared)
+            Present { value: _ } =>
+              match infer_declared_type_children_instantiated(children: declared.children, instances: instances) {
+                Present { value: children } =>
+                  if length(xs: children) == 0 {
+                    optional_present(value: declared)
+                  } else {
+                    optional_present(
+                      value: Node {
+                        kind: TypeNode { connective: Atom { identity: id } },
+                        children: children,
+                        occurrence_id: declared.occurrence_id
+                      }
+                    )
+                  }
+                Absent => optional_absent()
+              }
             Absent => optional_absent()
           }
       }
-    Absent => optional_present(value: declared)
+    _ => optional_present(value: declared)
+  }
+}
+
+// Substitution descends through the arguments: a compound declared type
+// (`Box<T>`, `FreeMonoid<T>`) is not held with a formal riding inside it -- an argument no
+// instance binds leaves the whole declared type unheld, and the read falls through to the facts
+// rather than fabricate a partially formal type.
+fn infer_declared_type_children_instantiated(
+  children: FreeMonoid<Node>,
+  instances: List<TypeVariableInstance>
+) -> Optional<FreeMonoid<Node>> {
+  match children {
+    Empty => optional_present(value: Empty)
+    Cons { head: c, tail: rest } =>
+      match infer_operand_declared_type_instantiated(declared: c, instances: instances) {
+        Present { value: c2 } =>
+          match infer_declared_type_children_instantiated(children: rest, instances: instances) {
+            Present { value: rest2 } => optional_present(value: Cons { head: c2, tail: rest2 })
+            Absent => Absent
+          }
+        Absent => Absent
+      }
   }
 }
 

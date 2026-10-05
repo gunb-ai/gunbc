@@ -226,6 +226,12 @@ data vfp_partial_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { valu
 // the arm body a bare formal, and this claim goes red on exactly that.
 data vfp_generic_src: String = "module p\n\ntype Diagnostics { head: Int }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: Diagnostics }\n\nfn pick(o: Outcome<Int>) -> Int {\n  match o {\n    Accepted { value: v } => v\n    Rejected { diagnostics: d } => d.head\n  }\n}"
 
+// THE COMPOUND CONTROL: the payload field's type is itself parameterised (`boxed: Box<T>`), so the
+// arm binder's declared type is compound. Substitution must descend: the arm body reads `b.inner`,
+// which types only if `b` is `Box<Int>` -- with a formal riding inside, the body reads as the
+// inner formal and this claim goes red.
+data vfp_generic_compound_src: String = "module p\n\ntype Box<T> = Wrapped { inner: T }\n\ntype Hold<T> = Keep { boxed: Box<T> } | Drop\n\nfn unkeep(k: Hold<Int>) -> Int {\n  match k {\n    Keep { boxed: b } => b.inner\n    Drop => 0\n  }\n}"
+
 fn vfp_reading(src: String) -> VfpReading {
   match vfp_assemble(src: src) {
     Rejected { diagnostics: r } => VfpReading {
@@ -308,6 +314,13 @@ test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Boo
 // formal T; the read must hold Int (the instance) and never the formal. Red without instantiation.
 test fn vfp_the_generic_arm_binder_types_at_the_scrutinees_argument_holds() -> Bool {
   vfp_reading(src: vfp_generic_src).arm_body_fact == ^Int
+}
+
+// THE COMPOUND CONTROL: substitution descends through a parameterised field type. `b` binds
+// `boxed: Box<T>`; the arm body `b.inner` types as Int only when `b` reads as Box<Int>. Red while
+// the read holds the compound with the formal inside.
+test fn vfp_the_compound_arm_binder_instantiates_through_the_field_holds() -> Bool {
+  vfp_reading(src: vfp_generic_compound_src).arm_body_fact == ^Int
 }
 // THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
 // want of coverage, resolve has already bound the construction's tag to its variant's declaring
