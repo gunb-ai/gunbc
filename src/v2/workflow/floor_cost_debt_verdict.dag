@@ -90,8 +90,6 @@ fn cost_debt_verdict_cause_for_reading(reading: CostDebtVerdictReading) -> Strin
   }
 }
 
-}
-
 // ── ADMISSION: WHICH HEAD ROWS THE BASE DID NOT CARRY ──────────────────────────────────────────
 //
 // MEMBERSHIP AT BOTH ENDS IS THE ROSTER'S OWN RESULT, EVALUATED. The head side is
