@@ -2356,41 +2356,24 @@ pub fn declared_type_conformance_diags_core(
                             span.clone(),
                             scope.module_name.clone(),
                         )])
-                    } else if product_at_scalar_declared_type(
-                        declared.clone(),
-                        produced.clone(),
-                        scope.clone(),
-                    ) {
-                        declared_type_obligation_diags(
-                            Rc::new(DeclaredTypeObligation {
-                                position: position.clone(),
-                                subject: subject.clone(),
-                                declared: declared.clone(),
-                                produced: produced.clone(),
-                                span: span.clone(),
-                            }),
-                            scope.clone(),
-                        )
                     } else {
-                        if nominal_coproduct_applied_argument_conflict(
+                        if product_at_scalar_declared_type(
                             declared.clone(),
                             produced.clone(),
                             scope.clone(),
                         ) {
-                            Rc::new(vec![type_mismatch_error(
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    declared.clone(),
-                                    si.clone(),
-                                ),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    produced.clone(),
-                                    si.clone(),
-                                ),
-                                span.clone(),
-                                scope.module_name.clone(),
-                            )])
+                            declared_type_obligation_diags(
+                                Rc::new(DeclaredTypeObligation {
+                                    position: position.clone(),
+                                    subject: subject.clone(),
+                                    declared: declared.clone(),
+                                    produced: produced.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.clone(),
+                            )
                         } else {
-                            if coproduct_payload_where_parent_required(
+                            if nominal_coproduct_applied_argument_conflict(
                                 declared.clone(),
                                 produced.clone(),
                                 scope.clone(),
@@ -2408,14 +2391,11 @@ pub fn declared_type_conformance_diags_core(
                                     scope.module_name.clone(),
                                 )])
                             } else {
-                                if ((type_node_is_arrow(declared.clone())
-                                    && type_node_is_arrow(produced.clone()))
-                                    && callable_signature_mismatch(
-                                        declared.clone(),
-                                        produced.clone(),
-                                        si.clone(),
-                                    ))
-                                {
+                                if coproduct_payload_where_parent_required(
+                                    declared.clone(),
+                                    produced.clone(),
+                                    scope.clone(),
+                                ) {
                                     Rc::new(vec![type_mismatch_error(
                                         crate::v1_compiler_infer_types::node_type_shape(
                                             declared.clone(),
@@ -2429,11 +2409,14 @@ pub fn declared_type_conformance_diags_core(
                                         scope.module_name.clone(),
                                     )])
                                 } else {
-                                    if callable_element_signature_mismatch(
-                                        declared.clone(),
-                                        produced.clone(),
-                                        si.clone(),
-                                    ) {
+                                    if ((type_node_is_arrow(declared.clone())
+                                        && type_node_is_arrow(produced.clone()))
+                                        && callable_signature_mismatch(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            si.clone(),
+                                        ))
+                                    {
                                         Rc::new(vec![type_mismatch_error(
                                             crate::v1_compiler_infer_types::node_type_shape(
                                                 declared.clone(),
@@ -2447,31 +2430,34 @@ pub fn declared_type_conformance_diags_core(
                                             scope.module_name.clone(),
                                         )])
                                     } else {
-                                        if !both_ground.clone() {
-                                            Rc::new(vec![])
+                                        if callable_element_signature_mismatch(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            si.clone(),
+                                        ) {
+                                            Rc::new(vec![type_mismatch_error(
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    declared.clone(),
+                                                    si.clone(),
+                                                ),
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    produced.clone(),
+                                                    si.clone(),
+                                                ),
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )])
                                         } else {
-                                            if crate::v1_compiler_infer_types::node_type_compatible(
-                                                declared.clone(),
-                                                produced.clone(),
-                                                si.clone(),
-                                                Rc::new(TextJudgment::TextJudgedIn {
-                                                    env: scope.type_env.clone(),
-                                                }),
-                                            ) {
+                                            if !both_ground.clone() {
                                                 Rc::new(vec![])
                                             } else {
-                                                Rc::new(vec![type_mismatch_error(
-                                                    crate::v1_compiler_infer_types::node_type_shape(
-                                                        declared.clone(),
-                                                        si.clone(),
-                                                    ),
-                                                    crate::v1_compiler_infer_types::node_type_shape(
-                                                        produced.clone(),
-                                                        si.clone(),
-                                                    ),
-                                                    span.clone(),
-                                                    scope.module_name.clone(),
-                                                )])
+                                                if crate::v1_compiler_infer_types::node_type_compatible(declared.clone(), produced.clone(), si.clone(), Rc::new(TextJudgment::TextJudgedIn {
+    env: scope.type_env.clone(),
+})) {
+                                                    Rc::new(vec![])
+                                                } else {
+                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                }
                                             }
                                         }
                                     }
@@ -6473,7 +6459,7 @@ pub fn declared_head_is_kernel_scalar_through_refinement(
                 scope.type_env.clone(),
                 declared.clone(),
             ) {
-                Some(r) => r,
+                Some(r) => r.clone(),
                 std::option::Option::None => declared.clone(),
             };
             (is_where_refinement_type(resolved.clone())
