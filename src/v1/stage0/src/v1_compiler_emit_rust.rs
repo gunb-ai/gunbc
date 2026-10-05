@@ -7314,7 +7314,7 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
                 __sorted.sort_by(|a: &String, b: &String| {
                     let __ka = (|path: String| path.clone())(a.clone());
                     let __kb = (|path: String| path.clone())(b.clone());
-                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                    v1_rt::canonical_key_cmp(&__ka, &__kb)
                 });
                 __sorted
             })
@@ -21024,7 +21024,7 @@ pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
 pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: String) -> String {
     match (*fb_pat.clone()).clone() {
         MatchPattern::LitPattern { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
         {
             let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                 unreachable!()
@@ -21128,7 +21128,7 @@ pub fn collect_pattern_string_guards(
                                     MatchPattern::LitPattern { ref value, .. }
                                         if matches!(
                                             value.as_ref(),
-                                            LiteralValue::LitStr { .. }
+                                            LiteralValue::LitStr { value: _, .. }
                                         ) =>
                                     {
                                         let LiteralValue::LitStr { value: s, .. } = value.as_ref()
@@ -25313,7 +25313,7 @@ pub fn emit_rust_expr_string_interp(
                 for child in expr.children.clone().iter().cloned() {
                     __result.push(match (*child.expr_data.clone()).clone() {
                         ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                         {
                             let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                                 unreachable!()
@@ -33193,8 +33193,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                             __sorted.sort_by(|a: &String, b: &String| {
                                                 let __ka = (|name: String| name.clone())(a.clone());
                                                 let __kb = (|name: String| name.clone())(b.clone());
-                                                __ka.partial_cmp(&__kb)
-                                                    .unwrap_or(std::cmp::Ordering::Equal)
+                                                v1_rt::canonical_key_cmp(&__ka, &__kb)
                                             });
                                             __sorted
                                         });
@@ -36741,7 +36740,7 @@ pub fn emit_service_new_method(
         ) {
             Some(ep) => match (*ep.expr_data.clone()).clone() {
                 ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                 {
                     let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                         unreachable!()
@@ -36768,7 +36767,10 @@ pub fn emit_service_new_method(
                         ) {
                             Some(bu) => match (*bu.expr_data.clone()).clone() {
                                 ExprData::ExprLiteral { ref value, .. }
-                                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                    if matches!(
+                                        value.as_ref(),
+                                        LiteralValue::LitStr { value: _, .. }
+                                    ) =>
                                 {
                                     let LiteralValue::LitStr { value: s, .. } = value.as_ref()
                                     else {
@@ -36862,7 +36864,7 @@ pub fn emit_auth_source_ctor(
     Some(variant) => if (variant.clone() == "EnvVar".to_string()) {
         match source_expr.children.clone().first().cloned() {
     Some(fi) => match (*crate::v1_std_core::field_init_node_value(fi.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } if matches!(value.as_ref(), LiteralValue::LitStr { .. }) => { let LiteralValue::LitStr { value: env_name, .. } = value.as_ref() else { unreachable!() }; v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        auth_token: std::env::var(\"".to_string(), env_name.clone()), "\").expect(\"missing credential: ".to_string()), env_name.clone()), "\"),\n".to_string()) },
+    ExprData::ExprLiteral { ref value, .. } if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) => { let LiteralValue::LitStr { value: env_name, .. } = value.as_ref() else { unreachable!() }; v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        auth_token: std::env::var(\"".to_string(), env_name.clone()), "\").expect(\"missing credential: ".to_string()), env_name.clone()), "\"),\n".to_string()) },
     _ => "        auth_token: compile_error!(\"EnvVar.name must be a string literal\"),\n".to_string(),
 },
     std::option::Option::None => "        auth_token: compile_error!(\"EnvVar requires a name field\"),\n".to_string(),
@@ -37546,7 +37548,7 @@ pub fn emit_rest_url_line(
     match crate::v1_std_core::transport_path_template(transport.clone(), source_indices.clone()) {
         Some(path_node) => match (*path_node.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr {
                     value: path_str, ..
@@ -37570,7 +37572,10 @@ pub fn emit_rest_url_line(
                     for child in path_node.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
@@ -37703,7 +37708,7 @@ pub fn emit_rest_auth_line(
     ExprData::ExprCall { .. } => {
                 let header_name = match auth.children.clone().first().cloned() {
     Some(arg_node) => match (*crate::v1_std_core::arg_value(arg_node.clone()).expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } if matches!(value.as_ref(), LiteralValue::LitStr { .. }) => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
+    ExprData::ExprLiteral { ref value, .. } if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
     _ => crate::v1_compiler_emit::emit_simple_expr(crate::v1_std_core::arg_value(arg_node.clone()), RenderTarget::Rust, source_indices.clone()),
 },
     std::option::Option::None => "x-api-key".to_string(),
@@ -38972,7 +38977,7 @@ pub fn emit_shell_argv_element(
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
         {
             let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                 unreachable!()
@@ -38991,7 +38996,7 @@ pub fn emit_shell_argv_element(
                 for child in arg.children.clone().iter().cloned() {
                     __result.push(match (*child.expr_data.clone()).clone() {
                         ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                         {
                             let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                                 unreachable!()
@@ -39266,7 +39271,7 @@ pub fn emit_file_path_line(
         let path_node = path_template.clone();
         match (*path_node.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr {
                     value: path_str, ..
@@ -39290,7 +39295,10 @@ pub fn emit_file_path_line(
                     for child in path_node.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
