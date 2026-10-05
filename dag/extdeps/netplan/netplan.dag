@@ -138,17 +138,30 @@ fn nm_profile_persistence(uuid: NonEmptyStr, filename: NonEmptyStr) -> NmProfile
 //
 // netplan get (netplan.readthedocs.io/en/stable/netplan-get/): "Get a setting by specifying a nested
 // key like 'ethernets.eth0.addresses', or 'all'", answered from netplan's parse of the merged
-// configuration and printed as YAML. The profile's definition is `NM-<uuid>` under `wifis` (the id
-// NetworkManager's netplan backend writes, the stem of 90-NM-<uuid>.yaml); its passthrough subtree is
-// asked for whole, so passthrough keys that themselves contain dots are never spelled into the path.
-// An empty answer means the definition is not in the merged configuration, which a consumer must
-// refuse rather than read as "every key at its default".
+// configuration and printed as YAML. Read on spark-2196 (srv12, netplan.io 1.1.2-8ubuntu1~24.04.2) as
+// root 2026-10-05 by valiant-crab-775:
+//   - the profile's definition is `NM-<uuid>` under `wifis`, and its passthrough is PER ACCESS POINT:
+//     `wifis.NM-<uuid>.access-points.<ssid>.networkmanager.passthrough` printed one key per line,
+//     quoted (`wifi.powersave: "2"`, `connection.auth-retries: "0"`, ...), while
+//     `wifis.NM-<uuid>.networkmanager.passthrough` printed `null` and `...networkmanager` only uuid/name;
+//   - the key path splits on '.', so a dotted leaf (`...passthrough.wifi.powersave`) prints `null`:
+//     the whole passthrough map is asked for and the key looked up here;
+//   - ANY missing path prints `null` with exit 0, so `null` cannot distinguish a wrong path from an
+//     absent setting. A consumer must refuse `null` as unread, never read it as defaults; and since the
+//     path is built from the definition id and the SSID, both come from the active profile, and an SSID
+//     the dotted path cannot address (one containing '.') is refused rather than mis-addressed.
 fn netplan_nm_definition_id(uuid: NonEmptyStr) -> NonEmptyStr {
   join(["NM-", uuid as String], "") as NonEmptyStr
 }
 
-fn netplan_get_wifi_passthrough_argv(definition: NonEmptyStr) -> List<String> {
-  ["netplan", "get", join(["wifis.", definition as String, ".networkmanager.passthrough"], "")]
+data netplan_get_missing_path_answer: NonEmptyStr = "null" as NonEmptyStr
+
+fn netplan_key_segment_addressable(segment: String) -> Bool {
+  segment != "" && !string_contains(s: segment, pattern: ".")
+}
+
+fn netplan_get_wifi_access_point_passthrough_argv(definition: NonEmptyStr, ssid: NonEmptyStr) -> List<String> {
+  ["netplan", "get", join(["wifis.", definition as String, ".access-points.", ssid as String, ".networkmanager.passthrough"], "")]
 }
 
 // A passthrough key in the MERGED passthrough subtree, as the word netplan prints (quotes stripped).

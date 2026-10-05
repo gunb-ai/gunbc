@@ -189,8 +189,9 @@ test fn witness_plain_disconnect_and_activated_are_not_no_secrets() -> Bool {
 
 // ── decision over supplied observations ──────────────────────────────────────
 
-// The MERGED passthrough subtree as `netplan get wifis.NM-<uuid>.networkmanager.passthrough` prints
-// it (keys at the top level of the answer; values quoted as netplan writes them).
+// The MERGED passthrough map as `netplan get wifis.NM-<uuid>.access-points.<ssid>.networkmanager.passthrough`
+// printed it on srv12 2026-10-05: one key per line, values quoted. Any other netplan path answers
+// `null` in the supplied runner, as netplan does for a missing path.
 fn merged_passthrough_with(powersave: String) -> String {
   join([powersave, "connection.auth-retries: \"0\"\nconnection.autoconnect-retries: \"0\"\n"], "")
 }
@@ -295,7 +296,9 @@ fn fake_run_merged(runtime: String, name_persisted: String, uuid_persisted: Stri
     else if line == join(["nmcli -g connection.auth-retries ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
     else if line == join(["nmcli -g connection.autoconnect-retries ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
     else if line == "nmcli -t -f UUID,FILENAME connection show" { ArgvRan { exit_code: 0, stdout: join([spark_2196_profile_uuid, ":/run/NetworkManager/system-connections/netplan-NM-", spark_2196_profile_uuid, "-Verizon_39TTYV.nmconnection\nffff-other:/etc/NetworkManager/system-connections/Wired.nmconnection"], ""), stderr: "" } }
-    else if line == join(["netplan get wifis.NM-", spark_2196_profile_uuid, ".networkmanager.passthrough"], "") { ArgvRan { exit_code: 0, stdout: merged_answer, stderr: "" } }
+    else if line == join(["nmcli -g 802-11-wireless.ssid connection show ", spark_2196_profile_uuid], "") { ArgvRan { exit_code: 0, stdout: "Verizon_39TTYV\n", stderr: "" } }
+    else if line == join(["netplan get wifis.NM-", spark_2196_profile_uuid, ".access-points.Verizon_39TTYV.networkmanager.passthrough"], "") { ArgvRan { exit_code: 0, stdout: merged_answer, stderr: "" } }
+    else if string_contains(s: line, pattern: "netplan get ") { ArgvRan { exit_code: 0, stdout: "null\n", stderr: "" } }
     else if line == "iw dev wlP9s9 link" { ArgvRan { exit_code: 0, stdout: iw_link_connected_sample, stderr: "" } }
     else if line == "journalctl -k -b --no-pager -o short-unix" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
     else if line == "nmcli -g GENERAL.STATE device show wlP9s9" { ArgvRan { exit_code: 0, stdout: "100 (connected)", stderr: "" } }
@@ -444,6 +447,26 @@ test fn witness_an_empty_merge_answer_refuses() -> Bool {
   let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: "")
   match wireless_link_converge(desired: srv7_desired(), run: run) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "observe"
+    _ => false
+  }
+}
+
+// `null` IS NOT ABSENCE: netplan prints it, exit 0, for any missing path, so a wrong path and an absent
+// map read alike. The observe refuses it as unread; reading it as "every key at its default" would
+// plan a set against a map nobody read.
+test fn witness_a_null_passthrough_answer_refuses_not_defaults() -> Bool {
+  let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: "null\n")
+  match wireless_link_converge(desired: srv7_desired(), run: run) {
+    WirelessLinkRefused { stage: s, cause: c } => s as String == "observe" && string_contains(s: c, pattern: "unread")
+    _ => false
+  }
+}
+
+// The real srv12 answer shape, verbatim keys: the decision reads it as converged.
+test fn witness_the_srv12_passthrough_answer_is_converged() -> Bool {
+  let srv12 = "connection.auth-retries: \"0\"\nconnection.autoconnect-retries: \"0\"\nconnection.timestamp: \"1791043398\"\nwifi.powersave: \"2\"\nwifi-security.auth-alg: \"open\"\nipv6.addr-gen-mode: \"default\"\nipv6.ip6-privacy: \"-1\"\nproxy._: \"\"\n"
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: srv12))) {
+    Noop => true
     _ => false
   }
 }

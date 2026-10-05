@@ -78,6 +78,10 @@ fn nm_wireless_powersave_nick(v: NmWirelessPowersave) -> String {
 // `networkmanager: passthrough:` (read as `wifi.powersave` on spark-2196, 2026-10-05).
 data nm_keyfile_wireless_powersave_key: NonEmptyStr = "wifi.powersave" as NonEmptyStr
 
+// nm-settings-nmcli(5), 802-11-wireless setting: "ssid -- SSID of the Wi-Fi network." Read from the
+// active profile by UUID with the -g getter; the profile NAME is not the SSID in general.
+data nm_wireless_ssid_property: NonEmptyStr = "802-11-wireless.ssid" as NonEmptyStr
+
 data nm_wireless_powersave_values: List<NmWirelessPowersave> = [NmPowersaveDefault, NmPowersaveIgnore, NmPowersaveDisable, NmPowersaveEnable]
 
 // An unrecognised getter answer is UNREADABLE, never a default: an empty answer (no such

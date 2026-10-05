@@ -26,12 +26,12 @@ import extdeps.networkmanager.nmcli {
   nmcli_active_connections_argv, nm_active_connection_on,
   NmDeviceStateRead, NmDeviceActivated, NmDeviceDisconnected, NmDeviceOtherState, NmDeviceStateUnreadable,
   nmcli_device_state_get_argv, nm_device_state_of_getter,
-  nm_wireless_powersave_numeric, nm_keyfile_wireless_powersave_key,
+  nm_wireless_powersave_numeric, nm_keyfile_wireless_powersave_key, nm_wireless_ssid_property,
   NmConnectionFilename, NmConnectionFilenameUnreadable, nmcli_connection_filenames_argv, nm_connection_filename_of,
 }
 import extdeps.netplan.netplan {
   NmProfilePersistence, PersistedByNetplanYaml, PersistedByKeyfile, PersistedNowhere, nm_profile_persistence,
-  netplan_get_wifi_passthrough_argv,
+  netplan_get_wifi_access_point_passthrough_argv, netplan_get_missing_path_answer, netplan_key_segment_addressable,
   NetplanPassthroughRead, PassthroughValue, PassthroughKeyAbsent, netplan_passthrough_value,
 }
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv, journalctl_unit_current_boot_argv }
@@ -283,13 +283,23 @@ fn observe_persisted_authority(profile: NmActiveConnection?, active: NmActiveCon
                 PersistedByKeyfile { path: k } => AuthorityKeyfileUnmodeled { path: k }
                 PersistedNowhere { path: r } => AuthorityRuntimeOnly { path: r }
                 PersistedByNetplanYaml { yaml: y, definition: d } => {
-                  let read = run(netplan_get_wifi_passthrough_argv(definition: d))
-                  match argv_run_failure(run: read) {
-                    Present { value: why } => AuthorityUnreadable { cause: join(["netplan get for ", d as String, " failed: ", why], "") }
+                  let ssid_run = run(nmcli_connection_property_get_argv(connection: c.uuid, property: nm_wireless_ssid_property))
+                  match argv_run_failure(run: ssid_run) {
+                    Present { value: why } => AuthorityUnreadable { cause: join(["SSID of ", c.uuid as String, " unreadable: ", why], "") }
                     Absent => {
-                      let out = trim(s: argv_run_stdout(run: read))
-                      if out == "" || out == "null" { AuthorityUnreadable { cause: join(["netplan's merged configuration has no passthrough for ", d as String, " (written by ", y as String, ")"], "") } }
-                      else { AuthorityNetplanMerged { provenance: y, definition: d, passthrough: argv_run_stdout(run: read) } }
+                      let ssid = trim(s: argv_run_stdout(run: ssid_run))
+                      if !netplan_key_segment_addressable(segment: ssid) { AuthorityUnreadable { cause: join(["SSID `", ssid, "` of ", c.uuid as String, " is not addressable as one netplan key segment"], "") } }
+                      else {
+                        let read = run(netplan_get_wifi_access_point_passthrough_argv(definition: d, ssid: ssid as NonEmptyStr))
+                        match argv_run_failure(run: read) {
+                          Present { value: why } => AuthorityUnreadable { cause: join(["netplan get for ", d as String, " failed: ", why], "") }
+                          Absent => {
+                            let out = trim(s: argv_run_stdout(run: read))
+                            if out == "" || out == (netplan_get_missing_path_answer as String) { AuthorityUnreadable { cause: join(["netplan get printed `", out, "` for the passthrough of ", d as String, " access point ", ssid, ": a wrong path and an absent map read alike, so this is unread, not defaults (profile written by ", y as String, ")"], "") } }
+                            else { AuthorityNetplanMerged { provenance: y, definition: d, passthrough: argv_run_stdout(run: read) } }
+                          }
+                        }
+                      }
                     }
                   }
                 }
