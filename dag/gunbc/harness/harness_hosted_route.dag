@@ -41,7 +41,7 @@ import extdeps.openrouter.nvidia_nemotron_3_ultra_free {
   nemotron_ultra_free_price_per_token_micro_usd, nemotron_ultra_free_terms,
 }
 import extdeps.nvidia.api_trial_terms { NvidiaApiTrialTerms, nvidia_api_trial_terms_wire }
-import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.secret_provision { openrouter_free_tier_key_secret_ref }
 import gunbc.auth.access_token_source { AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, resolve_access_token }
 import gunbc.auth.secret_ref_credential {
   SecretCredentialReady, SecretCredentialAccessUpsertRequired, SecretCredentialWireDecodeRefused,
@@ -75,14 +75,6 @@ import gunbc.harness.harness_reasoning_wire {
 // upstream's pools before it goes out and settles them after.
 
 // ── THE ROUTE, JOINED FROM ITS AUTHORITIES ────────────────────────────────────────────────────
-
-// THE SECRET THE OPERATOR CREATED FOR THIS ROUTE, in the fleet secrets project. It is a key whose own
-// credit limit is zero -- a guard the operator set so it can only spend on free variants -- and the
-// bind below reads that limit back rather than trusting it.
-data openrouter_free_tier_key_secret_ref: SecretRef = secret_ref_pin_version(
-  ref: fleet_secret_ref(secret_id: "openrouter-free-tier-api-key-harness" as NonEmptyStr),
-  version: "latest" as NonEmptyStr,
-)
 
 type HarnessHostedRoute {
   unit: HarnessServingUnit
