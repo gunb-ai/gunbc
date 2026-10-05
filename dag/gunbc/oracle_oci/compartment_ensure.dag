@@ -1,120 +1,19 @@
 module gunbc.oracle_oci.compartment_ensure
 
-import std.types { Bool, Int, List, NonEmptyStr, String, HttpStatus }
-import std.algebra { trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.encoding { base64_encode, Standard }
-import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.upsert_decision {
   ObservationVerdict, Converged, Absent, Conflict, Inaccessible, UnknownRefused, Drifted,
   Noop, Apply, Refuse, UpsertClassification, upsert_decision_label, observation_verdict_label,
 }
-import extdeps.clock { Clock }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.tools.curl { curl_http_signature_get, curl_http_signature_post_json, CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, json_object, json_kv, json_string, serialize_json }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
-import extdeps.cloud.oracle_oci_request_signing {
-  OciApiKeyId, OciRequest, OciHttpMethod, OciGet, OciPost, OciRequestBody, OciNoBody, OciJsonBody,
-  OciSigningReady, OciSigningRefused, oci_signing_plan, oci_http_date, oci_authorization_header,
-}
-import gunbc.jws_signer_realize { jws_rs256_sign }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-
-// THE OPERATOR'S OCI TENANCY: CREDENTIAL, IDENTITY AND THE COMPARTMENT THE FREE INSTANCES LIVE IN.
-//
-// The key is a host file, never a value in the evaluator. gunbc.host_credential_custody_converge
-// delivers the Secret Manager secret below to that path on srv1, root-owned and owner-read, and the
-// openssl handler in gunbc.jws_signer_realize signs from the file. Until custody has delivered it,
-// openssl cannot open the path and every exchange refuses at the signer. Nothing falls back.
-//
-// The OCIDs and the fingerprint are identifiers, given by the operator on 2026-10-05. They are
-// public in the sense that matters here: possessing them grants nothing without the private key.
-
-data oci_api_signing_key_secret_ref: SecretRef = SecretRef {
-  project: fleet_secrets_gcp_project,
-  secret: "oracle-oci-api-signing-key",
-  version: "1",
-  hash_state: HashPending,
-}
-
-data oci_api_signing_key: JwsSigningKeyRef = HostKeyFile {
-  path: "/etc/gunbc/oracle-oci/api-signing-key.pem",
-}
-
-data oci_tenancy_ocid: NonEmptyStr = "ocid1.tenancy.oc1..aaaaaaaaxarkm67vc5fiaqayhea33y2k6j3zdhnt5a4e434ddrrsxipmcf7a"
-
-data oci_api_key_id: OciApiKeyId = OciApiKeyId {
-  tenancy: oci_tenancy_ocid,
-  user: "ocid1.user.oc1..aaaaaaaasu4qfbdfzezarj6e6pylvhxwk7eqvfmvpkqvcrirazgrjw3ga5qa",
-  fingerprint: "00:46:05:c5:42:80:08:ec:48:3a:e1:7c:34:bc:e1:03",
-}
-
-// Identity calls must go to the home region (us-ashburn-1, product.supplier.oracle_oci). The host
-// template is Oracle's own, from its SDK's identity client: identity.{region}.oci.{secondLevelDomain}.
-data oci_identity_host: NonEmptyStr = "identity.us-ashburn-1.oci.oraclecloud.com"
-
-// ── ONE SIGNED EXCHANGE ───────────────────────────────────────────────────────────────────────
-
-type OciExchange
-  = OciAnswered { status: Int, body: String }
-  | OciExchangeRefused { cause: NonEmptyStr }
-
-fn oci_refused(cause: String) -> OciExchange {
-  OciExchangeRefused { cause: cause as NonEmptyStr }
-}
-
-fn oci_signature_base64(signature: List<Int>) -> String {
-  match uint8_octets_of_ints(values: signature) {
-    QualifiedOctetsReady { value } => base64_encode(octets: value, variant: Standard)
-    QualifiedOctetsRefused { observed } => ""
-  }
-}
-
-fn oci_send(method: OciHttpMethod, url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String, body: OciRequestBody) -> OciExchange uses net: Network {
-  let run = match body {
-    OciNoBody => curl_http_signature_get(url: url, date: date, authorization: authorization)
-    OciJsonBody { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, body: text)
-  }
-  if run.exit_code != 0 {
-    oci_refused(cause: join(["curl exit ", to_string(run.exit_code), ": ", trim(s: run.stderr)], ""))
-  } else {
-    match classify_curl_http_code_after_newline(stdout: run.stdout) {
-      CurlWroteNoHttpStatus { cause } => oci_refused(cause: cause as String)
-      CurlWroteHttpStatus { status } => OciAnswered { status: status as Int, body: curl_body_before_http_code(stdout: run.stdout) }
-    }
-  }
-}
-
-// Read the clock, build the signing plan, sign it with the custodied key, send it. Every step that
-// cannot complete refuses with its own cause. The date is read immediately before signing, because
-// Oracle rejects a date more than 5 minutes from its own clock.
-fn oci_signed_exchange(method: OciHttpMethod, host: NonEmptyStr, path_and_query: NonEmptyStr, body: OciRequestBody) -> OciExchange uses net: Network {
-  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
-    Absent => oci_refused(cause: "the host clock did not print epoch seconds")
-    Present { value: now } => {
-      let date = oci_http_date(epoch_seconds: now)
-      match oci_signing_plan(req: OciRequest { method: method, host: host, path_and_query: path_and_query, date: date, body: body }) {
-        OciSigningRefused { cause } => OciExchangeRefused { cause: cause }
-        OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
-          match jws_rs256_sign(signing_input: signing_string as NonEmptyStr, key: oci_api_signing_key) {
-            JwsSignRefused { detail } => oci_refused(cause: concat("THE REQUEST WAS NOT SIGNED, NOTHING SENT: ", detail))
-            JwsSigned { signature } =>
-              oci_send(
-                method: method,
-                url: join(["https://", host as String, path_and_query as String], "") as NonEmptyStr,
-                date: date as NonEmptyStr,
-                authorization: oci_authorization_header(key: oci_api_key_id, headers_list: headers_list, signature_base64: oci_signature_base64(signature: map(signature, o => o as Int))) as NonEmptyStr,
-                content_sha256: content_sha256,
-                body: body,
-              )
-          }
-      }
-    }
-  }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.cloud.oracle_oci_request_signing { OciGet, OciPost, OciNoBody, OciJsonBody }
+import gunbc.oracle_oci.api {
+  OciExchange, OciAnswered, OciExchangeRefused,
+  OciListRead, OciListed, OciListInaccessible, OciListRefused, classify_oci_list,
+  oci_signed_exchange, oci_string_member, oci_tenancy_ocid, oci_list_page_limit, oci_api_key_id, oci_identity_host,
 }
 
 // ── THE COMPARTMENT ───────────────────────────────────────────────────────────────────────────
@@ -155,22 +54,6 @@ type OciCompartmentRead
   | CompartmentReadInaccessible { status: Int, body: String }
   | CompartmentReadRefused { cause: NonEmptyStr }
 
-fn oci_string_member(obj: JsonValue, key: String) -> String {
-  match json_member_presence(obj: obj, key: key) {
-    JsonMemberValue { value } => match value {
-      JsonString { value: s } => s
-      JsonNull => ""
-      JsonBool { value: b } => ""
-      JsonNumber { lexeme } => ""
-      JsonArray { elements } => ""
-      JsonObject { members } => ""
-    }
-    JsonMemberMissing => ""
-    JsonMemberNull => ""
-    JsonMemberUnreadable { cause } => ""
-  }
-}
-
 fn oci_compartment_of_json(v: JsonValue) -> OciCompartment {
   OciCompartment {
     id: oci_string_member(obj: v, key: "id"),
@@ -179,30 +62,11 @@ fn oci_compartment_of_json(v: JsonValue) -> OciCompartment {
   }
 }
 
-// ListCompartments answers a bare JSON array of Compartment (Oracle's SDK: list[Compartment]). A 401
-// or 404 is the API refusing this identity, and its body is kept, because Oracle's error body names
-// the reason. Anything else that is not a 200 array refuses with what it was.
 fn classify_oci_compartment_list(exchange: OciExchange) -> OciCompartmentRead {
-  match exchange {
-    OciExchangeRefused { cause } => CompartmentReadRefused { cause: cause }
-    OciAnswered { status, body } =>
-      if status == 401 || status == 404 {
-        CompartmentReadInaccessible { status: status, body: body }
-      } else if status != 200 {
-        CompartmentReadRefused { cause: join(["ListCompartments answered ", to_string(status), ": ", body], "") as NonEmptyStr }
-      } else {
-        match parse_json_document(s: body) {
-          JsonDocumentUnreadable { gap } => CompartmentReadRefused { cause: concat("ListCompartments body is not JSON: ", json_document_gap_text(gap: gap)) as NonEmptyStr }
-          JsonDocumentParsed { value } => match value {
-            JsonArray { elements } => CompartmentsListed { compartments: map(elements, e => oci_compartment_of_json(v: e)) }
-            JsonObject { members } => CompartmentReadRefused { cause: "ListCompartments answered 200 with an object, not an array" }
-            JsonNull => CompartmentReadRefused { cause: "ListCompartments answered 200 with null, not an array" }
-            JsonBool { value: b } => CompartmentReadRefused { cause: "ListCompartments answered 200 with a boolean, not an array" }
-            JsonNumber { lexeme } => CompartmentReadRefused { cause: "ListCompartments answered 200 with a number, not an array" }
-            JsonString { value: t } => CompartmentReadRefused { cause: "ListCompartments answered 200 with a string, not an array" }
-          }
-        }
-      }
+  match classify_oci_list(operation: "ListCompartments", exchange: exchange) {
+    OciListRefused { cause } => CompartmentReadRefused { cause: cause }
+    OciListInaccessible { status, body } => CompartmentReadInaccessible { status: status, body: body }
+    OciListed { items } => CompartmentsListed { compartments: map(items, e => oci_compartment_of_json(v: e)) }
   }
 }
 
@@ -211,7 +75,7 @@ fn oci_compartment_list_path() -> NonEmptyStr {
 }
 
 fn read_oci_free_compartment() -> OciCompartmentRead uses net: Network {
-  classify_oci_compartment_list(exchange: oci_signed_exchange(method: OciGet, host: oci_identity_host, path_and_query: oci_compartment_list_path(), body: OciNoBody))
+  classify_oci_compartment_list(exchange: oci_signed_exchange(method: OciGet, host: oci_identity_host, path_and_query: join([oci_compartment_list_path() as String, "&limit=", to_string(oci_list_page_limit)], "") as NonEmptyStr, body: OciNoBody))
 }
 
 type OciCompartmentCreatePlan {
@@ -325,4 +189,32 @@ fn ensure() -> ProcessExit uses net: Network {
   } else {
     exit_failure(reason: outcome.line)
   }
+}
+
+// THE COMPARTMENT AS THE NEXT CONVERGE'S INPUT. Network and instances are created inside the
+// compartment, so they need its id. They get it only from a read that classifies converged. A
+// compartment still CREATING, or any refusal, stops the chain with that refusal's own words.
+type OciCompartmentStanding
+  = CompartmentReady { id: NonEmptyStr }
+  | CompartmentNotReady { cause: NonEmptyStr }
+
+fn oci_compartment_standing_of(read: OciCompartmentRead) -> OciCompartmentStanding {
+  let classified = classify_oci_compartment_ensure(read: read)
+  match classified.decision {
+    Refuse { reason } => CompartmentNotReady { cause: reason }
+    Apply { plan } => CompartmentNotReady { cause: "the compartment does not exist yet; run the compartment converge first" }
+    Noop => match read {
+      CompartmentsListed { compartments } =>
+        match filter(compartments, c => c.name == (oci_free_compartment_name as String) && oci_compartment_is_live(c: c)).first() {
+          Present { value: c } => CompartmentReady { id: c.id as NonEmptyStr }
+          Absent => CompartmentNotReady { cause: "a converged compartment read had no live compartment" }
+        }
+      CompartmentReadInaccessible { status, body } => CompartmentNotReady { cause: "a converged classification came from an inaccessible read" }
+      CompartmentReadRefused { cause } => CompartmentNotReady { cause: cause }
+    }
+  }
+}
+
+fn oci_free_compartment_standing() -> OciCompartmentStanding uses net: Network {
+  oci_compartment_standing_of(read: read_oci_free_compartment())
 }

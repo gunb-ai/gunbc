@@ -1,0 +1,160 @@
+module test.claim.supplier.oracle_oci_always_free_ensure_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciAnswered, classify_oci_list, oci_list_page_limit }
+import gunbc.oracle_oci.network_ensure {
+  OciNamedDecision, NamedReady, NamedCreate, NamedStop,
+  oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
+}
+import gunbc.oracle_oci.instance_ensure {
+  OciInstanceDecision, InstanceHeld, InstanceLaunch, InstanceStop,
+  oci_instance_decision, oci_observed_instance_of, oci_free_plan, oci_launch_body,
+  oci_percent_encode, oci_out_of_host_capacity, oci_free_authorized_keys,
+}
+import product.supplier.oracle_oci { FitsAlwaysFree, ExceedsAlwaysFree, oci_always_free_fit }
+
+// The subject is each decision point of the Always Free converge at its list boundary, over supplied
+// list answers shaped as Oracle's SDK models them. The signed exchange runs only live, on srv1. Its
+// receipt is the inhabitance evidence for these boundaries, and these rows are what it must agree with.
+
+fn json_items(text: String) -> List<JsonValue> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => []
+    JsonDocumentParsed { value } => match value {
+      JsonArray { elements } => elements
+      JsonObject { members } => []
+      JsonNull => []
+      JsonBool { value: b } => []
+      JsonNumber { lexeme } => []
+      JsonString { value: s } => []
+    }
+  }
+}
+
+fn one(text: String) -> JsonValue {
+  match json_items(text: join(["[", text, "]"], "")).first() {
+    Present { value: v } => v
+    Absent => JsonNull
+  }
+}
+
+fn named(display: String, text: String) -> String {
+  match oci_named_decision(kind: "vcn", display_name: display, read: OciListed { items: json_items(text: text) }) {
+    NamedReady { resource } => concat("ready:", resource.id)
+    NamedCreate => "create"
+    NamedStop { line } => "stop"
+  }
+}
+
+fn repeat(s: String, n: Int, acc: List<String>) -> List<String> {
+  if n <= 0 { acc } else { repeat(s: s, n: n - 1, acc: concat(acc, [s])) }
+}
+
+// ── THE OPERATOR'S PLAN ───────────────────────────────────────────────────────────────────────
+
+test fn the_operators_plan_fits_the_always_free_allowance() -> Bool {
+  match oci_always_free_fit(plan: oci_free_plan) {
+    FitsAlwaysFree => true
+    ExceedsAlwaysFree { breaches } => false
+  }
+}
+
+// ── LISTS ─────────────────────────────────────────────────────────────────────────────────────
+
+// A list that fills its page cannot be told apart from a truncated one, so it refuses rather than
+// letting a converge read "absent" from it and create a duplicate.
+test fn a_full_page_refuses_rather_than_reading_as_complete() -> Bool {
+  let row = "{\"id\":\"x\",\"displayName\":\"n\",\"lifecycleState\":\"AVAILABLE\"}"
+  let full = join(["[", join(repeat(s: row, n: oci_list_page_limit, acc: []), ","), "]"], "")
+  let short = join(["[", join(repeat(s: row, n: oci_list_page_limit - 1, acc: []), ","), "]"], "")
+  let refused = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: full }) {
+    OciListRefused { cause } => true
+    OciListed { items } => false
+    OciListInaccessible { status, body } => false
+  }
+  let listed = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: short }) {
+    OciListed { items } => items.length() == oci_list_page_limit - 1
+    OciListRefused { cause } => false
+    OciListInaccessible { status, body } => false
+  }
+  refused && listed
+}
+
+// ── NETWORK ───────────────────────────────────────────────────────────────────────────────────
+
+test fn a_network_resource_is_created_only_when_none_live_has_the_name() -> Bool {
+  named(display: "gunbc-always-free", text: "[]") == "create"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"other\",\"lifecycleState\":\"AVAILABLE\"}]") == "create"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"TERMINATED\"}]") == "create"
+}
+
+test fn an_available_namesake_is_ready_and_a_provisioning_one_stops() -> Bool {
+  named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"}]") == "ready:v1"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"PROVISIONING\"}]") == "stop"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"},{\"id\":\"v2\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"}]") == "stop"
+}
+
+test fn a_route_table_is_admitted_only_if_it_reaches_this_gateway() -> Bool {
+  let good = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeRules\":[{\"destination\":\"0.0.0.0/0\",\"destinationType\":\"CIDR_BLOCK\",\"networkEntityId\":\"igw1\"}]}"))
+  let other = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeRules\":[{\"destination\":\"0.0.0.0/0\",\"destinationType\":\"CIDR_BLOCK\",\"networkEntityId\":\"igw2\"}]}"))
+  let empty = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeRules\":[]}"))
+  oci_route_table_wiring(r: good, igw: "igw1") == ""
+    && oci_route_table_wiring(r: other, igw: "igw1") != ""
+    && oci_route_table_wiring(r: empty, igw: "igw1") != ""
+}
+
+test fn a_subnet_is_admitted_only_on_this_route_table() -> Bool {
+  let s = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeTableId\":\"rt1\"}"))
+  oci_subnet_wiring(r: s, route_table: "rt1") == "" && oci_subnet_wiring(r: s, route_table: "rt2") != ""
+}
+
+// ── INSTANCES ─────────────────────────────────────────────────────────────────────────────────
+
+fn decide_a1(text: String) -> String {
+  match oci_free_plan.skip(n: 2).first() {
+    Absent => "no-plan"
+    Present { value: p } => match oci_instance_decision(planned: p, observed: map(json_items(text: text), i => oci_observed_instance_of(v: i))) {
+      InstanceHeld { line } => "held"
+      InstanceLaunch => "launch"
+      InstanceStop { line } => "stop"
+    }
+  }
+}
+
+test fn the_a1_instance_launches_when_absent_and_holds_when_running() -> Bool {
+  decide_a1(text: "[]") == "launch"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"TERMINATED\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "launch"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "held"
+}
+
+// A stopped instance was stopped by someone, and a wrong-shaped namesake is not this instance. Neither
+// is started, reshaped or replaced.
+test fn a_stopped_or_wrong_shaped_namesake_stops_rather_than_launching() -> Bool {
+  decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"STOPPED\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "stop"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.E2.1.Micro\"}]") == "stop"
+}
+
+test fn availability_domain_names_are_percent_encoded() -> Bool {
+  oci_percent_encode(s: "Uocm:US-ASHBURN-AD-1") == "Uocm%3AUS-ASHBURN-AD-1"
+    && oci_percent_encode(s: "Oracle Linux") == "Oracle%20Linux"
+}
+
+test fn out_of_host_capacity_is_read_from_oracles_500_text_only() -> Bool {
+  oci_out_of_host_capacity(status: 500, body: "{\"code\":\"InternalError\",\"message\":\"Out of host capacity.\"}")
+    && !oci_out_of_host_capacity(status: 500, body: "{\"code\":\"InternalError\",\"message\":\"something else\"}")
+    && !oci_out_of_host_capacity(status: 400, body: "Out of host capacity.")
+}
+
+// The A1 launch carries its shapeConfig and both keys. The micro launch carries no shapeConfig,
+// because its size is fixed.
+test fn launch_bodies_carry_shape_config_only_for_the_flex_shape() -> Bool {
+  let micro = match oci_free_plan.first() { Present { value: p } => oci_launch_body(planned: p, compartment: "c", subnet: "s", domain: "AD-1", image: "img") Absent => "" }
+  let a1 = match oci_free_plan.skip(n: 2).first() { Present { value: p } => oci_launch_body(planned: p, compartment: "c", subnet: "s", domain: "AD-1", image: "img") Absent => "" }
+  !string_contains(s: micro, pattern: "shapeConfig")
+    && string_contains(s: a1, pattern: "\"shapeConfig\": {\"ocpus\": 2, \"memoryInGBs\": 12}")
+    && string_contains(s: a1, pattern: "\"bootVolumeSizeInGBs\": 50")
+    && string_contains(s: oci_free_authorized_keys(), pattern: "fleet-automation@gunbc")
+    && string_contains(s: oci_free_authorized_keys(), pattern: "macbook-m4")
+}

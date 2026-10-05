@@ -1,0 +1,63 @@
+module gunbc.oracle_oci.always_free_ensure
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.oracle_oci.compartment_ensure {
+  ensure_oci_free_compartment, oci_free_compartment_standing,
+  OciCompartmentStanding, CompartmentReady, CompartmentNotReady,
+}
+import gunbc.oracle_oci.network_ensure { oci_free_network, OciNetworkStanding, NetworkReady, NetworkNotReady }
+import gunbc.oracle_oci.instance_ensure { oci_free_instances }
+
+// THE OPERATOR'S ALWAYS FREE TENANCY, CONVERGED IN ORDER: the compartment, then the network inside it,
+// then the instances on that network. Each layer is the next one's input and is read back before it
+// is used, so a run stops at the first layer that has not reached its goal, names it, and creates
+// nothing above it. Run it until it exits 0. From an empty tenancy that takes a few runs, because
+// each newly created resource is provisioning when it is first read back.
+//
+// It runs on srv1, which holds the custodied API key (gunbc.host_credential_custody_converge
+// OracleOciApiSigningKey). The receipt is written whatever the outcome.
+
+data oci_always_free_ensure_receipt_path: String = "target/oci-always-free-ensure-receipt.txt"
+
+type OciAlwaysFreeOutcome {
+  lines: List<String>
+  held: Bool
+}
+
+fn oci_always_free_converge() -> OciAlwaysFreeOutcome uses net: Network {
+  let compartment = ensure_oci_free_compartment()
+  if !compartment.held {
+    OciAlwaysFreeOutcome { lines: [compartment.line], held: false }
+  } else {
+    match oci_free_compartment_standing() {
+      CompartmentNotReady { cause } => OciAlwaysFreeOutcome { lines: [compartment.line, cause as String], held: false }
+      CompartmentReady { id } =>
+        match oci_free_network(compartment: id) {
+          NetworkNotReady { lines } => OciAlwaysFreeOutcome { lines: concat([compartment.line], lines), held: false }
+          NetworkReady { subnet, lines } => {
+            let instances = oci_free_instances(compartment: id, subnet: subnet)
+            OciAlwaysFreeOutcome {
+              lines: concat(concat([compartment.line], lines), map(instances, o => o.line)),
+              held: filter(instances, o => !o.held).length() == 0,
+            }
+          }
+        }
+    }
+  }
+}
+
+fn ensure() -> ProcessExit uses net: Network {
+  let outcome = oci_always_free_converge()
+  let text = join(outcome.lines, "\n")
+  let written = Filesystem.Write(path: oci_always_free_ensure_receipt_path, content: text)
+  if !written.success {
+    exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
+  } else if outcome.held {
+    ExitSuccess
+  } else {
+    exit_failure(reason: text)
+  }
+}

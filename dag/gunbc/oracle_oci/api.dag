@@ -1,0 +1,202 @@
+module gunbc.oracle_oci.api
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.resources { Network }
+import std.encoding { base64_encode, Standard }
+import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
+import extdeps.clock { Clock }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.tools.curl { curl_http_signature_get, curl_http_signature_post_json, CurlWroteHttpStatus, CurlWroteNoHttpStatus, classify_curl_http_code_after_newline, curl_body_before_http_code }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
+import extdeps.cloud.oracle_oci_request_signing {
+  OciApiKeyId, OciRequest, OciHttpMethod, OciGet, OciPost, OciRequestBody, OciNoBody, OciJsonBody,
+  OciSigningReady, OciSigningRefused, oci_signing_plan, oci_http_date, oci_authorization_header,
+}
+import gunbc.jws_signer_realize { jws_rs256_sign }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+
+// THE OPERATOR'S OCI TENANCY: CREDENTIAL, IDENTITY AND THE COMPARTMENT THE FREE INSTANCES LIVE IN.
+//
+// The key is a host file, never a value in the evaluator. gunbc.host_credential_custody_converge
+// delivers the Secret Manager secret below to that path on srv1, root-owned and owner-read, and the
+// openssl handler in gunbc.jws_signer_realize signs from the file. Until custody has delivered it,
+// openssl cannot open the path and every exchange refuses at the signer. Nothing falls back.
+//
+// The OCIDs and the fingerprint are identifiers, given by the operator on 2026-10-05. They are
+// public in the sense that matters here: possessing them grants nothing without the private key.
+
+data oci_api_signing_key_secret_ref: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "oracle-oci-api-signing-key",
+  version: "1",
+  hash_state: HashPending,
+}
+
+data oci_api_signing_key: JwsSigningKeyRef = HostKeyFile {
+  path: "/etc/gunbc/oracle-oci/api-signing-key.pem",
+}
+
+data oci_tenancy_ocid: NonEmptyStr = "ocid1.tenancy.oc1..aaaaaaaaxarkm67vc5fiaqayhea33y2k6j3zdhnt5a4e434ddrrsxipmcf7a"
+
+data oci_api_key_id: OciApiKeyId = OciApiKeyId {
+  tenancy: oci_tenancy_ocid,
+  user: "ocid1.user.oc1..aaaaaaaasu4qfbdfzezarj6e6pylvhxwk7eqvfmvpkqvcrirazgrjw3ga5qa",
+  fingerprint: "00:46:05:c5:42:80:08:ec:48:3a:e1:7c:34:bc:e1:03",
+}
+
+// Identity calls must go to the home region (us-ashburn-1, product.supplier.oracle_oci). The host
+// template is Oracle's own, from its SDK's identity client: identity.{region}.oci.{secondLevelDomain}.
+data oci_identity_host: NonEmptyStr = "identity.us-ashburn-1.oci.oraclecloud.com"
+
+// ── ONE SIGNED EXCHANGE ───────────────────────────────────────────────────────────────────────
+
+type OciExchange
+  = OciAnswered { status: Int, body: String }
+  | OciExchangeRefused { cause: NonEmptyStr }
+
+fn oci_refused(cause: String) -> OciExchange {
+  OciExchangeRefused { cause: cause as NonEmptyStr }
+}
+
+fn oci_signature_base64(signature: List<Int>) -> String {
+  match uint8_octets_of_ints(values: signature) {
+    QualifiedOctetsReady { value } => base64_encode(octets: value, variant: Standard)
+    QualifiedOctetsRefused { observed } => ""
+  }
+}
+
+fn oci_send(method: OciHttpMethod, url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String, body: OciRequestBody) -> OciExchange uses net: Network {
+  let run = match body {
+    OciNoBody => curl_http_signature_get(url: url, date: date, authorization: authorization)
+    OciJsonBody { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, body: text)
+  }
+  if run.exit_code != 0 {
+    oci_refused(cause: join(["curl exit ", to_string(run.exit_code), ": ", trim(s: run.stderr)], ""))
+  } else {
+    match classify_curl_http_code_after_newline(stdout: run.stdout) {
+      CurlWroteNoHttpStatus { cause } => oci_refused(cause: cause as String)
+      CurlWroteHttpStatus { status } => OciAnswered { status: status as Int, body: curl_body_before_http_code(stdout: run.stdout) }
+    }
+  }
+}
+
+// Read the clock, build the signing plan, sign it with the custodied key, send it. Every step that
+// cannot complete refuses with its own cause. The date is read immediately before signing, because
+// Oracle rejects a date more than 5 minutes from its own clock.
+fn oci_signed_exchange(method: OciHttpMethod, host: NonEmptyStr, path_and_query: NonEmptyStr, body: OciRequestBody) -> OciExchange uses net: Network {
+  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
+    Absent => oci_refused(cause: "the host clock did not print epoch seconds")
+    Present { value: now } => {
+      let date = oci_http_date(epoch_seconds: now)
+      match oci_signing_plan(req: OciRequest { method: method, host: host, path_and_query: path_and_query, date: date, body: body }) {
+        OciSigningRefused { cause } => OciExchangeRefused { cause: cause }
+        OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
+          match jws_rs256_sign(signing_input: signing_string as NonEmptyStr, key: oci_api_signing_key) {
+            JwsSignRefused { detail } => oci_refused(cause: concat("THE REQUEST WAS NOT SIGNED, NOTHING SENT: ", detail))
+            JwsSigned { signature } =>
+              oci_send(
+                method: method,
+                url: join(["https://", host as String, path_and_query as String], "") as NonEmptyStr,
+                date: date as NonEmptyStr,
+                authorization: oci_authorization_header(key: oci_api_key_id, headers_list: headers_list, signature_base64: oci_signature_base64(signature: map(signature, o => o as Int))) as NonEmptyStr,
+                content_sha256: content_sha256,
+                body: body,
+              )
+          }
+      }
+    }
+  }
+}
+
+
+fn oci_string_member(obj: JsonValue, key: String) -> String {
+  match json_member_presence(obj: obj, key: key) {
+    JsonMemberValue { value } => match value {
+      JsonString { value: s } => s
+      JsonNull => ""
+      JsonBool { value: b } => ""
+      JsonNumber { lexeme } => ""
+      JsonArray { elements } => ""
+      JsonObject { members } => ""
+    }
+    JsonMemberMissing => ""
+    JsonMemberNull => ""
+    JsonMemberUnreadable { cause } => ""
+  }
+}
+
+
+// The compute and networking API host for the home region, from Oracle's SDK compute client
+// template iaas.{region}.{secondLevelDomain}.
+data oci_iaas_host: NonEmptyStr = "iaas.us-ashburn-1.oraclecloud.com"
+
+// ── ONE LIST READ ─────────────────────────────────────────────────────────────────────────────
+//
+// Every OCI List call answers a bare JSON array (Oracle's SDK: list[...]) and pages through the
+// opc-next-page header, which the curl transport does not return. So each list is requested with
+// limit=oci_list_page_limit, and an answer that fills the page REFUSES. It cannot be told apart from
+// a truncated list, and a converge that decided "absent" from a truncated list would create a
+// duplicate. A 401 or 404 is the API refusing this identity, and Oracle's error body is kept
+// because it names the reason.
+data oci_list_page_limit: Int = 100
+
+type OciListRead
+  = OciListed { items: List<JsonValue> }
+  | OciListInaccessible { status: Int, body: String }
+  | OciListRefused { cause: NonEmptyStr }
+
+fn oci_list_refused(operation: String, what: String) -> OciListRead {
+  OciListRefused { cause: join([operation, " ", what], "") as NonEmptyStr }
+}
+
+fn classify_oci_list(operation: String, exchange: OciExchange) -> OciListRead {
+  match exchange {
+    OciExchangeRefused { cause } => OciListRefused { cause: cause }
+    OciAnswered { status, body } =>
+      if status == 401 || status == 404 {
+        OciListInaccessible { status: status, body: body }
+      } else if status != 200 {
+        oci_list_refused(operation: operation, what: join(["answered ", to_string(status), ": ", body], ""))
+      } else {
+        match parse_json_document(s: body) {
+          JsonDocumentUnreadable { gap } => oci_list_refused(operation: operation, what: concat("body is not JSON: ", json_document_gap_text(gap: gap)))
+          JsonDocumentParsed { value } => match value {
+            JsonArray { elements } =>
+              if elements.length() >= oci_list_page_limit {
+                oci_list_refused(operation: operation, what: join(["filled a page of ", to_string(oci_list_page_limit), "; the next page is not followed, so the list cannot be read as complete"], ""))
+              } else {
+                OciListed { items: elements }
+              }
+            JsonObject { members } => oci_list_refused(operation: operation, what: "answered 200 with an object, not an array")
+            JsonNull => oci_list_refused(operation: operation, what: "answered 200 with null, not an array")
+            JsonBool { value: b } => oci_list_refused(operation: operation, what: "answered 200 with a boolean, not an array")
+            JsonNumber { lexeme } => oci_list_refused(operation: operation, what: "answered 200 with a number, not an array")
+            JsonString { value: t } => oci_list_refused(operation: operation, what: "answered 200 with a string, not an array")
+          }
+        }
+      }
+  }
+}
+
+fn oci_list(operation: String, host: NonEmptyStr, path_and_query: String) -> OciListRead uses net: Network {
+  classify_oci_list(operation: operation, exchange: oci_signed_exchange(method: OciGet, host: host, path_and_query: join([path_and_query, "&limit=", to_string(oci_list_page_limit)], "") as NonEmptyStr, body: OciNoBody))
+}
+
+// A created resource's id, read from a Create answer's body. The converges never trust a Create
+// answer as the outcome; they read back through the list. They do need the new id to address the
+// next resource in the same run.
+fn oci_created_id(exchange: OciExchange) -> String {
+  match exchange {
+    OciExchangeRefused { cause } => ""
+    OciAnswered { status, body } =>
+      if status != 200 { "" } else {
+        match parse_json_document(s: body) {
+          JsonDocumentUnreadable { gap } => ""
+          JsonDocumentParsed { value } => oci_string_member(obj: value, key: "id")
+        }
+      }
+  }
+}

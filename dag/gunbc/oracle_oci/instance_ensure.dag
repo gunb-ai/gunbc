@@ -1,0 +1,365 @@
+module gunbc.oracle_oci.instance_ensure
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.resources { Network }
+import std.measure { gigabyte, gigabyte_count }
+import v2.std.algebra { any }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
+import extdeps.cloud.oracle_oci_request_signing { OciPost, OciJsonBody }
+import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, OnDemandCapacity, oci_shape_wire_name }
+import extdeps.ssh { ssh_public_key_line }
+import product.supplier.oracle_oci {
+  OciPlannedInstance, OciInstanceSize, A1FlexSize, E2MicroSize,
+  InHomeRegion, InMicroEligibleDomain,
+  OciAllowanceFit, FitsAlwaysFree, ExceedsAlwaysFree, OciAllowanceBreach,
+  oci_always_free_fit, oci_instance_shape,
+}
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
+import gunbc.oracle_oci.api {
+  OciExchange, OciAnswered, OciExchangeRefused,
+  OciListRead, OciListed, OciListInaccessible, OciListRefused,
+  oci_list, oci_signed_exchange, oci_string_member, oci_iaas_host, oci_identity_host, oci_tenancy_ocid,
+}
+
+// THE OPERATOR'S ALWAYS FREE INSTANCES, LAUNCHED INTO THE gunbc-always-free COMPARTMENT AND SUBNET.
+//
+// The plan is the operator's choice of 2026-10-05: two AMD micros and one A1 instance with 2 OCPUs
+// and 12 GB. It is checked by product.supplier.oracle_oci oci_always_free_fit BEFORE anything is
+// launched, and a plan that does not fit launches nothing. Each boot volume is 50 GB, the smallest
+// size the launch API accepts, so the three take 150 of the shared 200 GB.
+//
+// Nothing about placement is guessed. The micro's availability domain is the one whose shape list
+// (ListShapes) offers VM.Standard.E2.1.Micro, and the image is the newest Oracle Linux 9 image Oracle
+// lists for that shape. An A1 launch that Oracle refuses for lack of host capacity, which its Always
+// Free page says to answer by trying a different availability domain, is retried in the next domain.
+// When every domain has refused for capacity, that is the outcome, and it is reported as such.
+//
+// The instances authorize two keys: the fleet automation key, so the fleet can reach them, and the
+// operator's macbook key, so the operator can. Both come from gunbc.fleet_ssh_access, not re-spelled.
+
+data oci_free_boot_volume_gb: Int = 50
+
+fn oci_free_plan_instance(name: NonEmptyStr, size: OciInstanceSize) -> OciPlannedInstance {
+  OciPlannedInstance {
+    name: name,
+    size: size,
+    boot_volume: gigabyte(count: oci_free_boot_volume_gb),
+    capacity: OnDemandCapacity,
+    region: InHomeRegion,
+    micro_domain: InMicroEligibleDomain,
+  }
+}
+
+// The micro_domain field is InMicroEligibleDomain by construction: this converge launches a micro only
+// into the domain ListShapes names as offering the micro shape, and refuses when no domain does.
+data oci_free_plan: List<OciPlannedInstance> = [
+  oci_free_plan_instance(name: "gunbc-free-micro-1", size: E2MicroSize),
+  oci_free_plan_instance(name: "gunbc-free-micro-2", size: E2MicroSize),
+  oci_free_plan_instance(name: "gunbc-free-a1", size: A1FlexSize { ocpus: 2, memory: gigabyte(count: 12) }),
+]
+
+fn oci_free_authorized_keys() -> String {
+  join([ssh_public_key_line(k: fleet_automation_ssh_key), ssh_public_key_line(k: operator_macbook_ssh_key)], "\n")
+}
+
+// ── QUERY ENCODING ────────────────────────────────────────────────────────────────────────────
+//
+// The signing page requires query values URL-encoded per RFC 3986, and the signed target and the
+// sent target to be one string. Availability domain names carry a colon, and the image query carries
+// a space. Everything outside the unreserved set is percent-encoded. The values here are ASCII, and a
+// non-ASCII value is caught later by the signer, which refuses rather than signing it.
+
+fn oci_unreserved(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45 || cp == 46 || cp == 95 || cp == 126
+}
+
+fn oci_hex_digit(n: Int) -> String {
+  if n < 10 { to_string(n) } else { from_code_point(cp: 55 + n) }
+}
+
+fn oci_percent_encode_from(s: String, i: Int, acc: String) -> String {
+  if i >= string_length(s) {
+    acc
+  } else {
+    let c = char_at(s, i)
+    let cp = code_point(c)
+    let piece = if oci_unreserved(cp: cp) { c } else { join(["%", oci_hex_digit(n: cp / 16), oci_hex_digit(n: cp % 16)], "") }
+    oci_percent_encode_from(s: s, i: i + 1, acc: concat(acc, piece))
+  }
+}
+
+fn oci_percent_encode(s: String) -> String {
+  oci_percent_encode_from(s: s, i: 0, acc: "")
+}
+
+// ── INSTANCE STATE ────────────────────────────────────────────────────────────────────────────
+
+// The lifecycle states Oracle's SDK Instance model declares.
+type OciInstanceState
+  = InstanceMoving
+  | InstanceProvisioning
+  | InstanceRunning
+  | InstanceStarting
+  | InstanceStopping
+  | InstanceStopped
+  | InstanceCreatingImage
+  | InstanceTerminating
+  | InstanceTerminated
+  | InstanceStateUnknown { raw: String }
+
+fn oci_instance_state(raw: String) -> OciInstanceState {
+  if raw == "MOVING" { InstanceMoving }
+  else if raw == "PROVISIONING" { InstanceProvisioning }
+  else if raw == "RUNNING" { InstanceRunning }
+  else if raw == "STARTING" { InstanceStarting }
+  else if raw == "STOPPING" { InstanceStopping }
+  else if raw == "STOPPED" { InstanceStopped }
+  else if raw == "CREATING_IMAGE" { InstanceCreatingImage }
+  else if raw == "TERMINATING" { InstanceTerminating }
+  else if raw == "TERMINATED" { InstanceTerminated }
+  else { InstanceStateUnknown { raw: raw } }
+}
+
+fn oci_instance_live(s: OciInstanceState) -> Bool {
+  match s {
+    InstanceTerminated => false
+    InstanceMoving => true
+    InstanceProvisioning => true
+    InstanceRunning => true
+    InstanceStarting => true
+    InstanceStopping => true
+    InstanceStopped => true
+    InstanceCreatingImage => true
+    InstanceTerminating => true
+    InstanceStateUnknown { raw } => true
+  }
+}
+
+type OciObservedInstance {
+  id: String
+  display_name: String
+  state: OciInstanceState
+  shape: String
+}
+
+fn oci_observed_instance_of(v: JsonValue) -> OciObservedInstance {
+  OciObservedInstance {
+    id: oci_string_member(obj: v, key: "id"),
+    display_name: oci_string_member(obj: v, key: "displayName"),
+    state: oci_instance_state(raw: oci_string_member(obj: v, key: "lifecycleState")),
+    shape: oci_string_member(obj: v, key: "shape"),
+  }
+}
+
+// PURE: what the instance list decides for one planned instance.
+type OciInstanceDecision
+  = InstanceHeld { line: String }
+  | InstanceLaunch
+  | InstanceStop { line: String }
+
+fn oci_instance_decision(planned: OciPlannedInstance, observed: List<OciObservedInstance>) -> OciInstanceDecision {
+  let name = planned.name as String
+  let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+  let live = filter(observed, o => o.display_name == name && oci_instance_live(s: o.state))
+  if live.length() == 0 {
+    InstanceLaunch
+  } else if live.length() > 1 {
+    InstanceStop { line: join(["oci instance ", name, ": more than one live instance has this name"], "") }
+  } else {
+    match live.first() {
+      Absent => InstanceStop { line: join(["oci instance ", name, ": a nonempty list had no first element"], "") }
+      Present { value: o } =>
+        if o.shape != shape {
+          InstanceStop { line: join(["oci instance ", name, " ", o.id, " is shape ", o.shape, ", not ", shape, "; this converge does not reshape an instance"], "") }
+        } else {
+          match o.state {
+            InstanceRunning => InstanceHeld { line: join(["oci instance ", name, " ", o.id, " RUNNING, converged"], "") }
+            InstanceProvisioning => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is PROVISIONING; run again"], "") }
+            InstanceStarting => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is STARTING; run again"], "") }
+            InstanceMoving => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is MOVING; run again"], "") }
+            InstanceCreatingImage => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is CREATING_IMAGE; run again"], "") }
+            InstanceStopping => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is STOPPING; an operator stopped it, and this converge does not start it"], "") }
+            InstanceStopped => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is STOPPED; an operator stopped it, and this converge does not start it"], "") }
+            InstanceTerminating => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is TERMINATING; wait, then run again to relaunch it"], "") }
+            InstanceTerminated => InstanceStop { line: join(["oci instance ", name, ": a terminated instance passed the live filter"], "") }
+            InstanceStateUnknown { raw } => InstanceStop { line: join(["oci instance ", name, " ", o.id, " reports lifecycle state ", raw, ", which is not in Oracle's published set"], "") }
+          }
+        }
+    }
+  }
+}
+
+// ── PLACEMENT FACTS, READ ─────────────────────────────────────────────────────────────────────
+
+type OciNamesRead
+  = OciNamesListed { names: List<String> }
+  | OciNamesRefused { line: String }
+
+fn oci_names_of(read: OciListRead, operation: String, key: String) -> OciNamesRead {
+  match read {
+    OciListed { items } => OciNamesListed { names: map(items, i => oci_string_member(obj: i, key: key)) }
+    OciListInaccessible { status, body } => OciNamesRefused { line: join([operation, " refused by OCI (", to_string(status), "): ", body], "") }
+    OciListRefused { cause } => OciNamesRefused { line: join([operation, " refused: ", cause as String], "") }
+  }
+}
+
+fn oci_availability_domains() -> OciNamesRead uses net: Network {
+  oci_names_of(
+    read: oci_list(operation: "ListAvailabilityDomains", host: oci_identity_host, path_and_query: join(["/20160918/availabilityDomains?compartmentId=", oci_tenancy_ocid as String], "")),
+    operation: "ListAvailabilityDomains",
+    key: "name",
+  )
+}
+
+fn oci_domain_offers(compartment: NonEmptyStr, domain: String, shape: String) -> Bool uses net: Network {
+  match oci_names_of(
+    read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", oci_percent_encode(s: domain)], "")),
+    operation: "ListShapes",
+    key: "shape",
+  ) {
+    OciNamesListed { names } => any(names, n => n == shape)
+    OciNamesRefused { line } => false
+  }
+}
+
+// The newest Oracle Linux 9 image for a shape. Oracle sorts by TIMECREATED descending on request, so
+// the first item is the newest.
+type OciImageRead
+  = OciImageFound { id: NonEmptyStr }
+  | OciImageRefused { line: String }
+
+fn oci_newest_image(compartment: NonEmptyStr, shape: String) -> OciImageRead uses net: Network {
+  let path = join(["/20160918/images?compartmentId=", compartment as String, "&operatingSystem=", oci_percent_encode(s: "Oracle Linux"), "&operatingSystemVersion=9&shape=", oci_percent_encode(s: shape), "&sortBy=TIMECREATED&sortOrder=DESC"], "")
+  match oci_names_of(read: oci_list(operation: "ListImages", host: oci_iaas_host, path_and_query: path), operation: "ListImages", key: "id") {
+    OciNamesRefused { line } => OciImageRefused { line: line }
+    OciNamesListed { names } => match names.first() {
+      Absent => OciImageRefused { line: join(["ListImages lists no Oracle Linux 9 image for ", shape], "") }
+      Present { value: id } => if id == "" { OciImageRefused { line: "ListImages listed an image with no id" } } else { OciImageFound { id: id as NonEmptyStr } }
+    }
+  }
+}
+
+// ── LAUNCH ────────────────────────────────────────────────────────────────────────────────────
+
+fn oci_launch_body(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: NonEmptyStr, domain: String, image: NonEmptyStr) -> String {
+  let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+  let common = [
+    json_kv(key: "availabilityDomain", value: json_string(s: domain)),
+    json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
+    json_kv(key: "displayName", value: json_string(s: planned.name as String)),
+    json_kv(key: "shape", value: json_string(s: shape)),
+    json_kv(key: "sourceDetails", value: json_object(members: [
+      json_kv(key: "sourceType", value: json_string(s: "image")),
+      json_kv(key: "imageId", value: json_string(s: image as String)),
+      json_kv(key: "bootVolumeSizeInGBs", value: json_int(n: gigabyte_count(g: planned.boot_volume))),
+    ])),
+    json_kv(key: "createVnicDetails", value: json_object(members: [
+      json_kv(key: "subnetId", value: json_string(s: subnet as String)),
+      json_kv(key: "assignPublicIp", value: json_bool(b: true)),
+    ])),
+    json_kv(key: "metadata", value: json_object(members: [
+      json_kv(key: "ssh_authorized_keys", value: json_string(s: oci_free_authorized_keys())),
+    ])),
+  ]
+  match planned.size {
+    E2MicroSize => serialize_json(v: json_object(members: common))
+    A1FlexSize { ocpus, memory } => serialize_json(v: json_object(members: concat(common, [
+      json_kv(key: "shapeConfig", value: json_object(members: [
+        json_kv(key: "ocpus", value: json_int(n: ocpus)),
+        json_kv(key: "memoryInGBs", value: json_int(n: gigabyte_count(g: memory))),
+      ])),
+    ])))
+  }
+}
+
+// Oracle's Always Free page names the error: "out of host capacity". It is read from the error body's
+// text, which is Oracle's message, because no distinct status or code separates it from other 500s.
+fn oci_out_of_host_capacity(status: Int, body: String) -> Bool {
+  status == 500 && (string_contains(s: body, pattern: "Out of host capacity") || string_contains(s: body, pattern: "out of host capacity"))
+}
+
+type OciLaunchOutcome
+  = OciLaunched { line: String }
+  | OciLaunchStopped { line: String }
+
+fn oci_launch_in(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: NonEmptyStr, image: NonEmptyStr, domains: List<String>, refused_for_capacity: List<String>) -> OciLaunchOutcome uses net: Network {
+  match domains.first() {
+    Absent => OciLaunchStopped { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: every availability domain tried refused for lack of host capacity (", join(refused_for_capacity, ", "), "); run again later"], "") }
+    Present { value: domain } =>
+      match oci_signed_exchange(method: OciPost, host: oci_iaas_host, path_and_query: "/20160918/instances", body: OciJsonBody { text: oci_launch_body(planned: planned, compartment: compartment, subnet: subnet, domain: domain, image: image) }) {
+        OciExchangeRefused { cause } => OciLaunchStopped { line: join(["oci instance ", planned.name as String, " launch refused before an answer: ", cause as String], "") }
+        OciAnswered { status, body } =>
+          if status == 200 {
+            OciLaunched { line: join(["oci instance ", planned.name as String, " launched in ", domain, "; run again to read it back RUNNING"], "") }
+          } else if oci_out_of_host_capacity(status: status, body: body) {
+            oci_launch_in(planned: planned, compartment: compartment, subnet: subnet, image: image, domains: domains.skip(n: 1), refused_for_capacity: concat(refused_for_capacity, [domain]))
+          } else {
+            OciLaunchStopped { line: join(["oci instance ", planned.name as String, " launch in ", domain, " answered ", to_string(status), ": ", body], "") }
+          }
+      }
+  }
+}
+
+// The domains a planned instance may be launched into. A micro has exactly one, read from ListShapes.
+// An A1 may use any of them, tried in Oracle's listed order.
+fn oci_candidate_domains(planned: OciPlannedInstance, compartment: NonEmptyStr, domains: List<String>) -> List<String> uses net: Network {
+  let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+  match planned.size {
+    A1FlexSize { ocpus, memory } => domains
+    E2MicroSize => filter(domains, d => oci_domain_offers(compartment: compartment, domain: d, shape: shape))
+  }
+}
+
+type OciInstanceOutcome {
+  line: String
+  held: Bool
+}
+
+fn oci_ensure_instance(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: NonEmptyStr, observed: List<OciObservedInstance>, domains: List<String>) -> OciInstanceOutcome uses net: Network {
+  match oci_instance_decision(planned: planned, observed: observed) {
+    InstanceHeld { line } => OciInstanceOutcome { line: line, held: true }
+    InstanceStop { line } => OciInstanceOutcome { line: line, held: false }
+    InstanceLaunch => {
+      let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+      let candidates = oci_candidate_domains(planned: planned, compartment: compartment, domains: domains)
+      if candidates.length() == 0 {
+        OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: no availability domain lists shape ", shape], ""), held: false }
+      } else {
+        match oci_newest_image(compartment: compartment, shape: shape) {
+          OciImageRefused { line } => OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: ", line], ""), held: false }
+          OciImageFound { id } =>
+            match oci_launch_in(planned: planned, compartment: compartment, subnet: subnet, image: id, domains: candidates, refused_for_capacity: []) {
+              OciLaunched { line } => OciInstanceOutcome { line: line, held: false }
+              OciLaunchStopped { line } => OciInstanceOutcome { line: line, held: false }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn oci_breach_text(b: OciAllowanceBreach) -> String {
+  to_string(b)
+}
+
+// THE INSTANCE STEP. The fit is decided first and a plan that does not fit launches nothing, whatever
+// is already running. Then the instance list and the availability domains are read once, and each
+// planned instance is converged against them.
+fn oci_free_instances(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<OciInstanceOutcome> uses net: Network {
+  match oci_always_free_fit(plan: oci_free_plan) {
+    ExceedsAlwaysFree { breaches } => [OciInstanceOutcome { line: join(["oci instances NOT LAUNCHED: the plan does not fit the Always Free allowance: ", join(map(breaches, b => oci_breach_text(b: b)), "; ")], ""), held: false }]
+    FitsAlwaysFree =>
+      match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "")) {
+        OciListRefused { cause } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ListInstances refused: ", cause as String), held: false }]
+        OciListInaccessible { status, body } => [OciInstanceOutcome { line: join(["oci instances NOT LAUNCHED: ListInstances refused by OCI (", to_string(status), "): ", body], ""), held: false }]
+        OciListed { items } =>
+          match oci_availability_domains() {
+            OciNamesRefused { line } => [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", line), held: false }]
+            OciNamesListed { names: domains } => {
+              let observed = map(items, i => oci_observed_instance_of(v: i))
+              map(oci_free_plan, p => oci_ensure_instance(planned: p, compartment: compartment, subnet: subnet, observed: observed, domains: domains))
+            }
+          }
+      }
+  }
+}
