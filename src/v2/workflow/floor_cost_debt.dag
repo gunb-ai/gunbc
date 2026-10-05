@@ -187,6 +187,14 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 // the lines that fall under the ceiling. That is a specific, dated, bounded action against a
 // named list, which is the difference between a declared impurity and a silent one.
 
+// HOW A ROW ENTERS, AND WHAT IT MAY NOT STAND ON. A row withholds a witness for COST and says
+// nothing about its verdict, so a row over a failing claim hides a semantic red -- which is how
+// `v2.test.claim.body_lowering.single_arm_match` regressed at gunbc#13056 under
+// `floor_cost_debt_censored_chunk_03` with every required lane green (gunbc#13327). So the change
+// that ADDS a row, and any change that touches a rostered witness, runs that claim for its verdict:
+// without the eval-step budget when the row is being added, and it must pass. Authority:
+// `v2.workflow.floor_cost_debt_verdict`. Rows already here are re-run only when touched.
+
 // HOW A ROW LEAVES, AND WHY THAT MAKES THE ROSTER SELF-CORRECTING. Delete its line. The floor
 // then runs it under the 500ms ceiling and it either passes or fails on its own marginal cost.
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
