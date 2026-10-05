@@ -1,6 +1,7 @@
 module extdeps.uri.percent_encoding
 
 import std.types { NonEmptyStr, List, Char }
+import v2.std.optional { Optional, Present, Absent }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 import std.unicode.scalar { char_text }
 import std.bytes { bytes_octets, utf8_encode_bytes }

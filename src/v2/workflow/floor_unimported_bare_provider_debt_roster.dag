@@ -352,7 +352,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/tools/sha256sum.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/unicode/display.dag", name: "any", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/unicode/display.dag", name: "contains", standing: Retired { cause: BindsWithoutDeclaration } },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/uri.dag", name: "Optional", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/uri.dag", name: "Optional", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/uri.dag", name: "contains", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/uri.dag", name: "length", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/uri.dag", name: "skip", standing: Retired { cause: NotAReference } },
