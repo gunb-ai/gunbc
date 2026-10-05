@@ -1,5 +1,6 @@
 module v2.test.parse.rust
 
+import v2.std.verification { EqualsClaim, Integration, ManualAnchorAbsent, TestClaim, TestClassification, Tier1, manual_claim_anchor }
 import test.claim.parse_test_rust_grammar { rust_parse_accepted, rust_parse_bool_atom, rust_tokenize_and_parse_source }
 
 data rust_layout_tight_source: String = "fn choose(x: i32, y: i32) -> i32 { let\nz=x+1;\nif z>0 { return z; }\nreturn 0; }"
