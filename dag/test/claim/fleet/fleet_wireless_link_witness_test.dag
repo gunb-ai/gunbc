@@ -372,7 +372,8 @@ test fn witness_passthrough_reads_either_quote_and_absence() -> Bool {
   let dq = match netplan_passthrough_value(yaml: "wifi.powersave: \"2\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughValue { word: w } => w == "2"  PassthroughKeyAbsent => false }
   let sq = match netplan_passthrough_value(yaml: "wifi.powersave: '3'\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughValue { word: w } => w == "3"  PassthroughKeyAbsent => false }
   let absent = match netplan_passthrough_value(yaml: "connection.auth-retries: \"0\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughKeyAbsent => true  PassthroughValue { word: _ } => false }
-  dq && sq && absent
+  let nested = match netplan_passthrough_value(yaml: "other:\n  wifi.powersave: \"3\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughKeyAbsent => true  PassthroughValue { word: _ } => false }
+  dq && sq && absent && nested
 }
 
 // A LATER LAYER OVERRIDES 90-NM: the profile's own file says 2 (and nmcli reads 'disable'), but a

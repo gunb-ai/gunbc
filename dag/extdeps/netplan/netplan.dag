@@ -173,7 +173,9 @@ type NetplanPassthroughRead
 
 fn netplan_passthrough_value(yaml: String, key: NonEmptyStr) -> NetplanPassthroughRead {
   let pattern = join([key as String, ":"], "")
-  let hits: List<String> = filter(split(s: yaml, delimiter: "\n"), l => starts_with(s: trim(s: l), prefix: pattern))
+  // Top-level keys only: the answer is the passthrough MAP, printed one key per line at column 0
+  // (srv12, 2026-10-05), so an indented line belongs to some nested value and never names a key here.
+  let hits: List<String> = filter(split(s: yaml, delimiter: "\n"), l => starts_with(s: l, prefix: pattern))
   match first(hits) {
     Absent => PassthroughKeyAbsent
     Present { value: l } => {
