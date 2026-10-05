@@ -17,11 +17,16 @@ export GUNBC_GCP_ACCESS_TOKEN_FILE=/path/to/private/operator-token
 export GUNBC_IAM_BOOTSTRAP_RECEIPT=operator-bootstrap-unique-attempt
 export GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID=stable-authority-operation
 export GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT=2026-09-28T23:00:00Z # illustrative; set once for the intended operation
+export GUNBC_IAM_BOOTSTRAP_PROBE_ID=stable-probe-operation
+export GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT=2026-09-28T23:00:00Z # illustrative; set once, at most one hour away
 systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
-  ./target/release/gunbc run --source-root target/iam-bootstrap-controls \
-  --entry target/iam-bootstrap-controls/gunbc.auth.gcp_iam_bootstrap.dag \
+  ./target/release/gunbc run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/auth/gcp_iam_bootstrap.dag \
   --function iam_bootstrap_apply
 ```
+
+`iam_bootstrap_plan` (same roots and entry, `--function iam_bootstrap_plan`) prints the
+operator-supplied intent variables the run reads; this block illustrates them.
 
 The token file must be private and short-lived. No token belongs in a command
 argument, source file, receipt, or GitHub variable. The ongoing workflow never
