@@ -7,6 +7,7 @@ import v2.compiler.body_lowering_fold {
 import v2.test.claim.body_lowering.normalize_outcome_helpers {
   body_lowering_normalize_outcome
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

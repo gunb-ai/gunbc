@@ -16,6 +16,7 @@ import extdeps.sec.issuer.gitlab_facts {
 }
 import extdeps.sec.issuer.gitlab { gitlab_cik }
 import extdeps.sec.edgar { cik_padded_digits }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

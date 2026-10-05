@@ -44,6 +44,7 @@ import gunbc.spark.bootstrap_provision {
 import extdeps.cloud.gcp.secret_manager {
   SmAccessVersionEffect, SmAddVersionEffect, SmDestroyVersionEffect, sm_operation_ref
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

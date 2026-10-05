@@ -210,7 +210,7 @@ data qualification_instruments: List<QualificationInstrument> = [
 data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
 
 data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "a runner-payload arm of gunbc.machine_intake_mtcollins1_boot_authorization MtCollins1BootMedium (today only MtCollins1CensusMedium and MtCollins1StockInstallerMedium) whose terminal in gunbc.machine_intake_mtcollins1_boot_run is the runner host observed ready rather than the census program's terminal" as NonEmptyStr,
+  lands_with: "a runner-payload gunbc.boot_medium BootMedium row (today's rows are the census medium and stock_installer_boot_medium) with its own BootMediumTerminal arm, whose acceptance in gunbc.machine_intake_mtcollins1_boot_run is the runner host observed ready rather than the census program's terminal" as NonEmptyStr,
   sufficient_for: "booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal that says the runner host is up" as NonEmptyStr,
 }
 

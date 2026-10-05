@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { serialize_html_source }
 import extdeps.languages.react_jsx { serialize_jsx_component }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -30,6 +30,7 @@ import extdeps.git.plumbing {
   git_ref_mutation_outcome,
   git_ref_mutation_applied,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

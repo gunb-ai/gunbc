@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.build_cache_ensure {
   build_cache_ensure_is_converged
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
