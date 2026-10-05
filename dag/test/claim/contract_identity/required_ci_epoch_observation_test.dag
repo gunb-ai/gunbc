@@ -32,7 +32,7 @@ data src_non_string: String = "name: witnesses\nenv:\n  GUNBC_REQUIRED_CI_CONTRA
 
 // THE ONLY ADMITTING CASE. Its epoch value is asserted rather than merely its variant: a fold that
 // returned the right arm carrying the wrong member would otherwise pass.
-test fn witness_epoch_observed_carries_the_exact_value() -> Bool {
+test fn witness_epoch_observed_carries_the_exact_value() -> Bool  {
   match required_ci_epoch_from_workflow_source(src: src_observed) {
     RequiredCiEpochObserved { epoch: e } => (e as String) == "2026-09-01.1"
     _ => false
@@ -41,7 +41,7 @@ test fn witness_epoch_observed_carries_the_exact_value() -> Bool {
 
 // THE FOUR REFUSALS, each discriminated on its own arm. They are separate tests rather than one
 // disjunction so a regression names which axis broke.
-test fn witness_epoch_absent_refuses_on_its_own_axis() -> Bool {
+test fn witness_epoch_absent_refuses_on_its_own_axis() -> Bool  {
   match required_ci_epoch_from_workflow_source(src: src_absent) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent } => true
     _ => false
@@ -50,7 +50,7 @@ test fn witness_epoch_absent_refuses_on_its_own_axis() -> Bool {
 
 // A duplicated epoch is a duplicated mapping key, which the YAML reader refuses at the second
 // occurrence: the refusal names that line and the key, not "no epoch".
-test fn witness_epoch_duplicated_refuses_at_the_reader_with_its_line() -> Bool {
+test fn witness_epoch_duplicated_refuses_at_the_reader_with_its_line() -> Bool  {
   match required_ci_epoch_from_workflow_source(src: src_duplicated) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: d } } =>
       starts_with(s: d, prefix: "line 4: ") && string_contains(s: d, pattern: "duplicate mapping key `GUNBC_REQUIRED_CI_CONTRACT_EPOCH`")
@@ -58,21 +58,21 @@ test fn witness_epoch_duplicated_refuses_at_the_reader_with_its_line() -> Bool {
   }
 }
 
-test fn witness_empty_epoch_is_malformed_not_observed() -> Bool {
+test fn witness_empty_epoch_is_malformed_not_observed() -> Bool  {
   match required_ci_epoch_from_workflow_source(src: src_empty_value) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
     _ => false
   }
 }
 
-test fn witness_non_string_epoch_is_malformed_not_observed() -> Bool {
+test fn witness_non_string_epoch_is_malformed_not_observed() -> Bool  {
   match required_ci_epoch_from_workflow_source(src: src_non_string) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
     _ => false
   }
 }
 
-test fn witness_a_document_that_is_not_a_mapping_is_unparsable_not_absent() -> Bool {
+test fn witness_a_document_that_is_not_a_mapping_is_unparsable_not_absent() -> Bool  {
   match required_ci_epoch_from_workflow_source(src: src_not_a_mapping) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: _ } } => true
     _ => false

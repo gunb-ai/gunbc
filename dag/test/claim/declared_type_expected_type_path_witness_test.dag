@@ -69,7 +69,7 @@ fn violation_count(source: String, wanted: String) -> Int {
 // uninformative -- so this arm is what licenses reading the others at all.
 data liveness_refused_source: String = "module probe_liveness\nimport std.types { Int }\nfn probe() -> Int { \"not an int\" }\n"
 
-test fn w_the_census_refuses_a_blatant_non_generic_mismatch() -> Bool {
+test fn w_the_census_refuses_a_blatant_non_generic_mismatch() -> Bool  {
   refusing_count(source: liveness_refused_source) > 0
 }
 
@@ -77,7 +77,7 @@ test fn w_the_census_refuses_a_blatant_non_generic_mismatch() -> Bool {
 // cannot be satisfied by a census that refuses everything.
 data liveness_admitted_source: String = "module probe_liveness_ok\nimport std.types { Int }\nfn probe() -> Int { 3 }\n"
 
-test fn w_the_census_admits_a_valid_source() -> Bool {
+test fn w_the_census_admits_a_valid_source() -> Bool  {
   refusing_count(source: liveness_admitted_source) == 0
 }
 
@@ -133,7 +133,7 @@ test fn w_the_census_admits_a_valid_source() -> Bool {
 // only in their type argument, which is what Measure's scale parameter is.
 data generic_argument_return_red_source: String = "module probe_generic_argument_return\ntype TagA = MkTagA {}\ntype TagB = MkTagB {}\ntype Box<T> = MkBox { n: Int }\nfn produces_a() -> Box<TagA> { MkBox { n: 3 } }\nfn probe() -> Box<TagB> { produces_a() }\n"
 
-test fn w_a_wrong_type_argument_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_wrong_type_argument_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: generic_argument_return_red_source) > 0
 }
 
@@ -141,7 +141,7 @@ test fn w_a_wrong_type_argument_at_a_declared_return_is_refused() -> Bool {
 // every generic return would satisfy the red above while making the corpus unwritable.
 data generic_argument_return_control_source: String = "module probe_generic_argument_return_ok\ntype TagA = MkTagA {}\ntype Box<T> = MkBox { n: Int }\nfn produces_a() -> Box<TagA> { MkBox { n: 3 } }\nfn probe() -> Box<TagA> { produces_a() }\n"
 
-test fn w_a_matching_type_argument_at_a_declared_return_is_admitted() -> Bool {
+test fn w_a_matching_type_argument_at_a_declared_return_is_admitted() -> Bool  {
   refusing_count(source: generic_argument_return_control_source) == 0
 }
 
@@ -153,13 +153,13 @@ test fn w_a_matching_type_argument_at_a_declared_return_is_admitted() -> Bool {
 // is enrolled below.
 data application_versus_primitive_source: String = "module probe_application_vs_primitive\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype Box<T> = MkBox { n: Int }\nfn probe() -> Box<TagA> { 5 }\n"
 
-test fn w_a_primitive_at_a_declared_application_return_is_refused() -> Bool {
+test fn w_a_primitive_at_a_declared_application_return_is_refused() -> Bool  {
   refusing_count(source: application_versus_primitive_source) > 0
 }
 
 data non_generic_call_result_source: String = "module probe_non_generic_call\nimport std.types { Int, String }\nfn produces_string() -> String { \"x\" }\nfn probe() -> Int { produces_string() }\n"
 
-test fn w_a_non_generic_call_result_mismatch_is_refused() -> Bool {
+test fn w_a_non_generic_call_result_mismatch_is_refused() -> Bool  {
   refusing_count(source: non_generic_call_result_source) > 0
 }
 
@@ -170,7 +170,7 @@ test fn w_a_non_generic_call_result_mismatch_is_refused() -> Bool {
 // flattened together, and it is still admitted.
 data used_parameter_return_red_source: String = "module probe_used_parameter_return\nimport std.types { Int, String }\ntype Box<T> = MkBox { v: T }\nfn produces_int() -> Box<Int> { MkBox { v: 3 } }\nfn probe() -> Box<String> { produces_int() }\n"
 
-test fn w_a_wrong_type_argument_carried_in_a_field_is_refused() -> Bool {
+test fn w_a_wrong_type_argument_carried_in_a_field_is_refused() -> Bool  {
   refusing_count(source: used_parameter_return_red_source) > 0
 }
 
@@ -179,7 +179,7 @@ test fn w_a_wrong_type_argument_carried_in_a_field_is_refused() -> Bool {
 // above while making valid used-parameter returns unwritable.
 data used_parameter_return_control_source: String = "module probe_used_parameter_return_ok\nimport std.types { Int }\ntype Box<T> = MkBox { v: T }\nfn produces_int() -> Box<Int> { MkBox { v: 3 } }\nfn probe() -> Box<Int> { produces_int() }\n"
 
-test fn w_a_matching_type_argument_carried_in_a_field_is_admitted() -> Bool {
+test fn w_a_matching_type_argument_carried_in_a_field_is_admitted() -> Bool  {
   refusing_count(source: used_parameter_return_control_source) == 0
 }
 
@@ -190,13 +190,13 @@ test fn w_a_matching_type_argument_carried_in_a_field_is_admitted() -> Bool {
 // leave the Gibibyte-to-ByteSize hole standing. This row is what makes that impossible.
 data middle_argument_return_red_source: String = "module probe_middle_argument\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype TagB = MkTagB { b: Int }\ntype Held = MkHeld { h: Int }\ntype Tri<A, B, C> = MkTri { n: Int }\nfn produces_a() -> Tri<Held, TagA, Held> { MkTri { n: 1 } }\nfn probe() -> Tri<Held, TagB, Held> { produces_a() }\n"
 
-test fn w_a_wrong_middle_type_argument_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_wrong_middle_type_argument_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: middle_argument_return_red_source) > 0
 }
 
 data middle_argument_return_control_source: String = "module probe_middle_argument_ok\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype Held = MkHeld { h: Int }\ntype Tri<A, B, C> = MkTri { n: Int }\nfn produces_a() -> Tri<Held, TagA, Held> { MkTri { n: 1 } }\nfn probe() -> Tri<Held, TagA, Held> { produces_a() }\n"
 
-test fn w_a_matching_three_argument_application_is_admitted() -> Bool {
+test fn w_a_matching_three_argument_application_is_admitted() -> Bool  {
   refusing_count(source: middle_argument_return_control_source) == 0
 }
 
@@ -213,7 +213,7 @@ test fn w_a_matching_three_argument_application_is_admitted() -> Bool {
 // to same-head, same-arity applications rather than keeping a word no specimen could discriminate.
 data different_head_return_red_source: String = "module probe_different_head\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype Box<T> = MkBox { n: Int }\ntype Crate<T> = MkCrate { n: Int }\nfn produces_box() -> Box<TagA> { MkBox { n: 1 } }\nfn probe() -> Crate<TagA> { produces_box() }\n"
 
-test fn w_a_different_application_head_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_different_application_head_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: different_head_return_red_source) > 0
 }
 
@@ -223,7 +223,7 @@ test fn w_a_different_application_head_at_a_declared_return_is_refused() -> Bool
 // The dissolution trigger says "recursively", and this row is what makes that word checkable.
 data nested_argument_return_red_source: String = "module probe_nested_argument\nimport std.types { Int, String }\ntype Left { l: Int }\ntype Right { r: Int }\ntype Carrier<T> = MkCarrier { c: Int }\ntype LocalMeasure<A, B, C> = MkLocalMeasure { n: Int }\nfn produces_int() -> LocalMeasure<Left, Carrier<Int>, Right> { MkLocalMeasure { n: 1 } }\nfn probe() -> LocalMeasure<Left, Carrier<String>, Right> { produces_int() }\n"
 
-test fn w_a_wrong_nested_type_argument_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_wrong_nested_type_argument_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: nested_argument_return_red_source) > 0
 }
 
@@ -232,7 +232,7 @@ test fn w_a_wrong_nested_type_argument_at_a_declared_return_is_refused() -> Bool
 // trigger is narrowed to exactly that rather than asserting a generality no specimen exercises.
 data last_argument_return_red_source: String = "module probe_last_argument\nimport std.types { Int }\ntype Left { l: Int }\ntype RightA { a: Int }\ntype RightB { b: Int }\ntype Mid { m: Int }\ntype LocalMeasure<A, B, C> = MkLocalMeasure { n: Int }\nfn produces_a() -> LocalMeasure<Left, Mid, RightA> { MkLocalMeasure { n: 1 } }\nfn probe() -> LocalMeasure<Left, Mid, RightB> { produces_a() }\n"
 
-test fn w_a_wrong_last_type_argument_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_wrong_last_type_argument_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: last_argument_return_red_source) > 0
 }
 
@@ -244,7 +244,7 @@ test fn w_a_wrong_last_type_argument_at_a_declared_return_is_refused() -> Bool {
 // where a PRIMITIVE is on one side.
 data plain_record_return_red_source: String = "module probe_plain_record\nimport std.types { Int, String }\ntype Alpha { n: Int }\ntype Beta { m: String }\nfn produces_alpha() -> Alpha { Alpha { n: 1 } }\nfn probe() -> Beta { produces_alpha() }\n"
 
-test fn w_a_different_plain_record_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_different_plain_record_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: plain_record_return_red_source) > 0
 }
 
@@ -253,7 +253,7 @@ test fn w_a_different_plain_record_at_a_declared_return_is_refused() -> Bool {
 // of the remaining candidates to explain it, and the matrix starts one candidate shorter.
 data coproduct_at_record_parameter_red_source: String = "module probe_coproduct_at_record\nimport std.types { Int }\ntype ScalarMeasure { count: Int }\ntype ScalarResolution = ScalarResolved { value: ScalarMeasure } | ScalarUnresolved\nfn scalar_count(value: ScalarMeasure) -> Int { value.count }\nfn bad(value: ScalarResolution) -> Int { scalar_count(value: value) }\n"
 
-test fn w_a_coproduct_at_a_record_parameter_is_refused() -> Bool {
+test fn w_a_coproduct_at_a_record_parameter_is_refused() -> Bool  {
   refusing_count(source: coproduct_at_record_parameter_red_source) > 0
 }
 
@@ -261,14 +261,14 @@ test fn w_a_coproduct_at_a_record_parameter_is_refused() -> Bool {
 // the repair the production site actually took.
 data coproduct_at_record_parameter_control_source: String = "module probe_coproduct_at_record_ok\nimport std.types { Int }\ntype ScalarMeasure { count: Int }\ntype ScalarResolution = ScalarResolved { value: ScalarMeasure } | ScalarUnresolved\nfn scalar_count(value: ScalarMeasure) -> Int { value.count }\nfn good(value: ScalarResolution) -> Int { match value { ScalarResolved { value: m } => scalar_count(value: m) ScalarUnresolved => 0 } }\n"
 
-test fn w_a_matched_record_at_a_record_parameter_is_admitted() -> Bool {
+test fn w_a_matched_record_at_a_record_parameter_is_admitted() -> Bool  {
   refusing_count(source: coproduct_at_record_parameter_control_source) == 0
 }
 
 // DIAGNOSTIC QUALITY, KEPT SEPARATE FROM ADMISSION. The refusal above is the safety fact; that it
 // is CLASSIFIED usefully is a different and weaker claim, and it is asserted here so a regression
 // in diagnostic naming is visible without ever standing in for the refusal itself.
-test fn w_the_coproduct_refusal_is_classified_declared_type_not_inhabited() -> Bool {
+test fn w_the_coproduct_refusal_is_classified_declared_type_not_inhabited() -> Bool  {
   violation_count(source: coproduct_at_record_parameter_red_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -276,7 +276,7 @@ test fn w_the_coproduct_refusal_is_classified_declared_type_not_inhabited() -> B
 // so a source-specific CensusNotRunnable reds THIS row rather than silently satisfying the
 // expected-red it accompanies. Without them the roster cannot tell agreement from unmeasurability,
 // and an unmeasured subject would be held as evidence indefinitely.
-test fn w_every_enrolled_expected_type_source_is_actually_censused() -> Bool {
+test fn w_every_enrolled_expected_type_source_is_actually_censused() -> Bool  {
   census_ran(source: generic_argument_return_red_source)
     && census_ran(source: used_parameter_return_red_source)
     && census_ran(source: middle_argument_return_red_source)
@@ -289,7 +289,7 @@ test fn w_every_enrolled_expected_type_source_is_actually_censused() -> Bool {
 // AND FOR THE CONTROLS, for the mirror reason: a control asserting == 0 is SATISFIED by a census
 // that could not run, since refusing_count returns -1 and -1 is not zero -- but it would be
 // satisfied for the wrong reason if the arm were ever written as "not greater than zero".
-test fn w_every_expected_type_control_source_is_actually_censused() -> Bool {
+test fn w_every_expected_type_control_source_is_actually_censused() -> Bool  {
   census_ran(source: generic_argument_return_control_source)
     && census_ran(source: used_parameter_return_control_source)
     && census_ran(source: middle_argument_return_control_source)
@@ -311,12 +311,12 @@ data two_arm_coproduct_argument_reverse_red_source: String = "module probe_two_a
 
 data two_arm_coproduct_argument_control_source: String = "module probe_two_arm_coproduct_argument_ok\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_alpha() -> Result<Alpha> { Good { value: Alpha { a: 1 } } }\nfn wrap<T>(v: T) -> Result<T> { Good { value: v } }\nfn probe() -> Result<Alpha> { make_alpha() }\n"
 
-test fn w_a_wrong_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_wrong_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: two_arm_coproduct_argument_red_source) > 0
     && refusing_count(source: two_arm_coproduct_argument_reverse_red_source) > 0
 }
 
-test fn w_a_matching_or_type_variable_argument_of_a_two_arm_coproduct_is_admitted() -> Bool {
+test fn w_a_matching_or_type_variable_argument_of_a_two_arm_coproduct_is_admitted() -> Bool  {
   refusing_count(source: two_arm_coproduct_argument_control_source) == 0
 }
 
@@ -326,7 +326,7 @@ test fn w_a_matching_or_type_variable_argument_of_a_two_arm_coproduct_is_admitte
 // refused on the first cut of the repair. This keeps that shape admitted.
 data two_arm_coproduct_unsolved_argument_control_source: String = "module probe_two_arm_coproduct_unsolved\nimport std.types { Int, String }\ntype Fidelity = Lossless | Lossy\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn good<T>(v: T) -> Result<T> { Good { value: v } }\nfn probe() -> Result<Fidelity> { good(Lossless) }\n"
 
-test fn w_an_unsolved_argument_of_a_two_arm_coproduct_call_is_admitted() -> Bool {
+test fn w_an_unsolved_argument_of_a_two_arm_coproduct_call_is_admitted() -> Bool  {
   refusing_count(source: two_arm_coproduct_unsolved_argument_control_source) == 0
 }
 
@@ -338,6 +338,6 @@ test fn w_an_unsolved_argument_of_a_two_arm_coproduct_call_is_admitted() -> Bool
 // (gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return).
 data two_arm_coproduct_genuine_unit_red_source: String = "module probe_two_arm_coproduct_genuine_unit\nimport std.types { Int, String, Unit }\ntype Alpha { a: Int }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn from_unit(u: Unit) -> Result<Unit> { Good { value: u } }\nfn probe(u: Unit) -> Result<Alpha> { from_unit(u: u) }\n"
 
-test fn w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool {
+test fn w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool  {
   refusing_count(source: two_arm_coproduct_genuine_unit_red_source) > 0
 }

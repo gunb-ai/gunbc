@@ -26,12 +26,12 @@ data chcp_beta_digest: String = "7627619b954620a7"
 data chcp_alpha_then_beta_digest: String = "dc6fa237b2a5f854"
 data chcp_beta_then_alpha_digest: String = "0cc8ce5de61aba7e"
 
-test fn chcp_atom_matches_the_published_algorithm() -> Bool {
+test fn chcp_atom_matches_the_published_algorithm() -> Bool  {
   content_hash_atom(value: "alpha").digest as String == chcp_alpha_digest
     && content_hash_atom(value: "beta").digest as String == chcp_beta_digest
 }
 
-test fn chcp_combine_is_byte_identical_to_the_retired_primitive() -> Bool {
+test fn chcp_combine_is_byte_identical_to_the_retired_primitive() -> Bool  {
   content_hash_combine_structural(
     left: content_hash_atom(value: "alpha"),
     right: content_hash_atom(value: "beta")
@@ -40,7 +40,7 @@ test fn chcp_combine_is_byte_identical_to_the_retired_primitive() -> Bool {
 
 // Operand order is part of the preimage: the relation is not commutative, and a preimage that
 // sorted or concatenated without the separator's position would collapse these two.
-test fn chcp_combine_distinguishes_operand_order() -> Bool {
+test fn chcp_combine_distinguishes_operand_order() -> Bool  {
   content_hash_combine_structural(
     left: content_hash_atom(value: "beta"),
     right: content_hash_atom(value: "alpha")
@@ -48,7 +48,7 @@ test fn chcp_combine_distinguishes_operand_order() -> Bool {
 }
 
 // The preimage is the digest bytes around exactly one code point 0, 33 characters.
-test fn chcp_preimage_carries_one_separator_between_fixed_width_digests() -> Bool {
+test fn chcp_preimage_carries_one_separator_between_fixed_width_digests() -> Bool  {
   let preimage = content_hash_combine_preimage(
     left: content_hash_atom(value: "alpha"),
     right: content_hash_atom(value: "beta")
@@ -80,14 +80,14 @@ fn chcp_all_calls_read(decls: List<FnArrowDecl>) -> Bool {
   !any(xs: decls, predicate: fn(d) { length(xs: callee_texts_in_decl(decl: d).refusals) > 0 })
 }
 
-test fn chcp_no_content_hash_declaration_calls_the_ambient_combine() -> Bool {
+test fn chcp_no_content_hash_declaration_calls_the_ambient_combine() -> Bool  {
   let decls = fn_arrow_decl_facts_live(pool_roots: chcp_no_roots, pool_files: chcp_module_file)
   any(xs: decls, predicate: fn(d) { d.qualified_name == chcp_combine_decl })
     && chcp_all_calls_read(decls: decls)
     && !any(xs: decls, predicate: fn(d) { chcp_calls(decl: d, callee: "hash_combine") })
 }
 
-test fn chcp_combine_routes_through_the_family_kernel() -> Bool {
+test fn chcp_combine_routes_through_the_family_kernel() -> Bool  {
   let decls = fn_arrow_decl_facts_live(pool_roots: chcp_no_roots, pool_files: chcp_module_file)
   any(
     xs: decls,

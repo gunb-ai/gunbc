@@ -25,26 +25,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // by one in the carrier. Nothing in this repository can change it, and
 // re-measuring main cannot supply it -- which is exactly the property the
 // ruling asks a literal to have.
-test fn classification_covers_the_thirteen_routed_identities() -> Bool {
+test fn classification_covers_the_thirteen_routed_identities() -> Bool  {
   classified_row_count() == 13
 }
 
-test fn classified_identities_are_distinct() -> Bool {
+test fn classified_identities_are_distinct() -> Bool  {
   classified_identities_are_unique()
 }
 
-test fn every_classified_row_carries_measured_evidence() -> Bool {
+test fn every_classified_row_carries_measured_evidence() -> Bool  {
   every_row_carries_measured_evidence()
 }
 
-test fn no_routed_identity_failed_to_reproduce() -> Bool {
+test fn no_routed_identity_failed_to_reproduce() -> Bool  {
   all_thirteen_reproduced_on_main()
 }
 
-test fn verdict_partition_is_exact_over_the_population() -> Bool {
+test fn verdict_partition_is_exact_over_the_population() -> Bool  {
   (real_defect_count() + wrong_witness_count()) == classified_row_count()
 }
 
-test fn exactly_one_pair_is_a_wrong_witness() -> Bool {
+test fn exactly_one_pair_is_a_wrong_witness() -> Bool  {
   wrong_witness_count() == 2
 }

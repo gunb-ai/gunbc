@@ -36,7 +36,7 @@ fn deleted_lane_job_ids_are_absent(job_ids: List<String>) -> Bool {
     })
 }
 
-test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
+test fn w_RED_the_deleted_lanes_do_not_return() -> Bool  {
   deleted_lane_job_ids_are_absent(job_ids: witness_floor_lane_job_ids())
     && !deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
     && !deleted_lane_job_ids_are_absent(job_ids: ["required-v2-native"])

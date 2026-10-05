@@ -69,7 +69,7 @@ fn admitted() -> AdmittedBoardPowerInterfaceArticle? {
   }
 }
 
-test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
+test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool  {
   match admitted() {
     Absent => false
     Present { value: adm } =>
@@ -80,7 +80,7 @@ test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
   }
 }
 
-test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
+test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool  {
   match admitted() {
     Absent => false
     Present { value: adm } =>
@@ -95,7 +95,7 @@ test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
 // netlist from the one the receipt carries would prove something about a circuit nobody emits;
 // the shared spice_netlist construction is what makes that unwritable, and this is the executing
 // check that it stayed shared.
-test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
+test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool  {
   match admitted() {
     Absent => false
     Present { value: adm } =>
@@ -112,14 +112,14 @@ test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
 
 // Both recorded runs were accepted by their tool. A receipt whose outcome arm was never checked
 // would let a refusal sit in the corpus looking like evidence of success.
-test fn w_every_recorded_run_was_accepted() -> Bool {
+test fn w_every_recorded_run_was_accepted() -> Bool  {
   fold(executed_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
 }
 
 // The observations are not empty, and they are DIFFERENT from one another. An empty observation
 // would make every claim above vacuous, and one shared observation string would mean a copy
 // rather than two runs.
-test fn w_the_observations_are_distinct_and_present() -> Bool {
+test fn w_the_observations_are_distinct_and_present() -> Bool  {
   let v = run_of(outcome: interlock_verilog_run)
   let s = run_of(outcome: conditioning_network_run)
   v.observation != "" && s.observation != "" && v.observation != s.observation
@@ -128,7 +128,7 @@ test fn w_the_observations_are_distinct_and_present() -> Bool {
 // THE OPERATING POINT NAMES THE SCALE. Twelve volts across ten kilohms is 1.2 mA; a deck that had
 // emitted a bare "10" would have solved cleanly and reported 1.2 A. This asserts the observation
 // recorded the milliamp figure, which is the only part of the run that discriminates the suffix.
-test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
+test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool  {
   let s = run_of(outcome: conditioning_network_run)
   let divider_ratio_is_reported = list_length(items: split(s: s.observation, delimiter: "pg_cond 3.000000e+00")) > 1
   let series_current_pins_the_k_suffix = list_length(items: split(s: s.observation, delimiter: "-3.00000e-04")) > 1
@@ -185,7 +185,7 @@ data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
 // The fixture's premise, executed: exactly one terminal member fewer than production. Without
 // this the tests below are only about the projection if someone remembers to check that something
 // actually floats.
-test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
+test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool  {
   let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
   let floated = terminal_member_count(nets: floating_analog.nets)
   produced > 0 && floated == (produced - 1)
@@ -210,14 +210,14 @@ fn floating_article() -> AdmittedBoardPowerInterfaceArticle? {
   }
 }
 
-test fn w_the_floating_fixture_is_admitted_so_the_test_is_about_the_projection() -> Bool {
+test fn w_the_floating_fixture_is_admitted_so_the_test_is_about_the_projection() -> Bool  {
   match floating_article() {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
+test fn w_both_spice_paths_refuse_the_same_article() -> Bool  {
   match floating_article() {
     Absent => false
     Present { value: adm } =>
@@ -235,7 +235,7 @@ test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
 // THE IMPLEMENTATION RECEIPTS JOIN THE SAME WAY THE SIMULATION ONES DO. Place-and-route was given
 // a constraint file; this asserts the product still emits exactly those bytes, so the recorded run
 // cannot drift into describing a pin assignment nobody generates.
-test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
+test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool  {
   match admitted() {
     Absent => false
     Present { value: adm } =>
@@ -254,14 +254,14 @@ test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
 // Synthesis consumed the SAME Verilog the simulator did, not a separate copy prepared for it.
 // Two artifacts would let the simulated design and the implemented design diverge silently, which
 // is the failure mode that makes a green testbench meaningless.
-test fn w_synthesis_and_simulation_consumed_one_verilog_artifact() -> Bool {
+test fn w_synthesis_and_simulation_consumed_one_verilog_artifact() -> Bool  {
   let synth = run_of(outcome: interlock_synthesis_run)
   let sim = run_of(outcome: interlock_verilog_run)
   run_consumes_retained(r: synth, blob: interlock_verilog_artifact)
     && run_consumes_retained(r: sim, blob: interlock_verilog_artifact)
 }
 
-test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
+test fn w_every_recorded_implementation_run_was_accepted() -> Bool  {
   fold(executed_implementation_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
 }
 
@@ -273,7 +273,7 @@ test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
 // which was true only because one fused blob was attached to every run, and which enshrined that
 // fusion as the contract. A receipt that quotes a tool it did not run keeps vouching for that
 // tool's output after the output has drifted.
-test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
+test fn w_each_implementation_run_reports_its_own_tool() -> Bool  {
   let synth = run_of(outcome: interlock_synthesis_run)
   let pnr = run_of(outcome: interlock_place_and_route_run)
   let pack = run_of(outcome: interlock_bitstream_run)
@@ -297,7 +297,7 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
 // not express — and is why the .pcf ended up standing in for the netlist.
 // icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
 // carries no retained blob at all — previously it carried the .pcf, which it never read.
-test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
+test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool  {
   let pnr = run_of(outcome: interlock_place_and_route_run)
   let pack = run_of(outcome: interlock_bitstream_run)
   let pnr_names_both = fold(pnr.inputs, init: false, f: fn(acc, i) { acc || run_input_is_upstream(i: i) })

@@ -584,22 +584,22 @@ fn accent_study_html_derived_digest() -> String {
   emission_content_digest(s: accent_study_html())
 }
 
-test fn witness_moodboard_css_digest_pinned() -> Bool {
+test fn witness_moodboard_css_digest_pinned() -> Bool  {
   moodboard_css_derived_digest() == moodboard_css_lift_parity_digest
 }
 
-test fn witness_moodboard_html_digest_pinned() -> Bool {
+test fn witness_moodboard_html_digest_pinned() -> Bool  {
   moodboard_html_derived_digest() == moodboard_html_lift_parity_digest
 }
 
-test fn witness_accent_study_html_digest_pinned() -> Bool {
+test fn witness_accent_study_html_digest_pinned() -> Bool  {
   accent_study_html_derived_digest() == accent_study_html_lift_parity_digest
 }
 
-test fn witness_roadmap_css_digest_pinned() -> Bool {
+test fn witness_roadmap_css_digest_pinned() -> Bool  {
   roadmap_css_derived_digest() == roadmap_css_lift_parity_digest
 }
 
-test fn witness_moodboard_thesis_themes_digest_pinned() -> Bool {
+test fn witness_moodboard_thesis_themes_digest_pinned() -> Bool  {
   moodboard_digest() == moodboard_thesis_themes_lift_parity_digest
 }

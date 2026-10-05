@@ -85,7 +85,7 @@ fn cpp_soundness_positive_fixture_source() -> String {
 // THE DISCRIMINATING RED, now the regression control. `CppInner` is the payload inside `CppWrapped`,
 // not a member of `CppOuter`, so this assignment must refuse at typing. Before the wall it did not:
 // the program compiled and the failure was deferred to whatever later match read the field.
-test fn cpp_payload_where_coproduct_required_must_refuse() -> Bool {
+test fn cpp_payload_where_coproduct_required_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     cpp_soundness_negative_fixture_source(),
     "src/cpp_probe.rs",
@@ -96,7 +96,7 @@ test fn cpp_payload_where_coproduct_required_must_refuse() -> Bool {
 
 // THE POSITIVE CONTROL. The correct spelling must still compile, or the red above is satisfied by a
 // compiler that refuses everything and measures nothing.
-test fn cpp_payload_inside_its_own_arm_still_compiles() -> Bool {
+test fn cpp_payload_inside_its_own_arm_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     cpp_soundness_positive_fixture_source(),
     "src/cpp_control.rs",
@@ -126,7 +126,7 @@ fn cpp_alias_mediated_negative_fixture_source() -> String {
 // (`expected 'Coproduct(COuter)', got 'Primitive(CAlias)'` on the equivalent probe). Deleting the
 // alias arm from the wall leaves both witnesses above green and only this one red, which is exactly why
 // it is enrolled separately.
-test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
+test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     cpp_alias_mediated_negative_fixture_source(),
     "src/cpp_alias.rs",
@@ -227,7 +227,7 @@ fn dcp_unresolved_name_fixture_source() -> String {
 
 // THE NEW DISCRIMINATING RED. `DcpBeta` is not `DcpAlpha`, is not one of its arms, and is not one of
 // its arms' payloads, so nothing above this arm judged it. It compiled clean before.
-test fn dcp_foreign_coproduct_where_parent_required_must_refuse() -> Bool {
+test fn dcp_foreign_coproduct_where_parent_required_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     dcp_wrong_coproduct_fixture_source(),
     "src/dcp_probe.rs",
@@ -238,7 +238,7 @@ test fn dcp_foreign_coproduct_where_parent_required_must_refuse() -> Bool {
 
 // THE POSITIVE CONTROL for that red. The correct coproduct in the same field must still compile, or
 // the red above is satisfied by a compiler that refuses every record literal.
-test fn dcp_right_coproduct_still_compiles() -> Bool {
+test fn dcp_right_coproduct_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     dcp_right_coproduct_fixture_source(),
     "src/dcp_control.rs",
@@ -251,7 +251,7 @@ test fn dcp_right_coproduct_still_compiles() -> Bool {
 // coproduct field is `kernel_value_declared_type_mismatch`'s judgment at this seam, and the new arm
 // excludes kernel names on both sides precisely so that stays one authority rather than two. If the
 // new arm ever starts answering here, this row is what says so.
-test fn dcp_primitive_in_coproduct_field_still_refuses() -> Bool {
+test fn dcp_primitive_in_coproduct_field_still_refuses() -> Bool  {
   !compile_dag_rust_emit_check(
     dcp_primitive_fixture_source(),
     "src/dcp_primitive.rs",
@@ -263,7 +263,7 @@ test fn dcp_primitive_in_coproduct_field_still_refuses() -> Bool {
 // ALREADY-REFUSING ARM 2, carried forward as the harness control. A name that resolves to nothing
 // must still refuse; without this the passing red above is indistinguishable from a harness that
 // cannot produce a refusal at all.
-test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
+test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool  {
   !compile_dag_rust_emit_check(
     dcp_unresolved_name_fixture_source(),
     "src/dcp_unresolved.rs",
@@ -353,7 +353,7 @@ fn bcp_primitive_into_bool_fixture_source() -> String {
 // THE DISCRIMINATING RED FOR THE NARROWING. `BcpBeta` is not `Bool`, is not one of its arms, and is
 // not one of its arms' payloads. Before the narrowing this compiled clean, because the formal-side
 // kernel exclusion returned false ahead of every judgment.
-test fn bcp_foreign_coproduct_where_bool_required_must_refuse() -> Bool {
+test fn bcp_foreign_coproduct_where_bool_required_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     bcp_foreign_into_bool_fixture_source(),
     "src/bcp_probe.rs",
@@ -364,7 +364,7 @@ test fn bcp_foreign_coproduct_where_bool_required_must_refuse() -> Bool {
 
 // THE POSITIVE CONTROL. A `Bool` field holding a `Bool` must still compile, or the red above is
 // satisfied by an arm that refuses every kernel-declared field.
-test fn bcp_bool_where_bool_required_still_compiles() -> Bool {
+test fn bcp_bool_where_bool_required_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     bcp_bool_into_bool_fixture_source(),
     "src/bcp_control.rs",
@@ -376,7 +376,7 @@ test fn bcp_bool_where_bool_required_still_compiles() -> Bool {
 // THE DISJOINTNESS CONTROL FOR THE HALF THAT IS KEPT. A kernel scalar into a kernel-declared field is
 // `kernel_value_declared_type_mismatch`'s judgment and must stay so: the ACTUAL-side exclusion is
 // untouched by this change, and this row is what says so if it ever moves.
-test fn bcp_primitive_where_bool_required_still_refuses() -> Bool {
+test fn bcp_primitive_where_bool_required_still_refuses() -> Bool  {
   !compile_dag_rust_emit_check(
     bcp_primitive_into_bool_fixture_source(),
     "src/bcp_primitive.rs",

@@ -100,7 +100,7 @@ fn cfba_reference(occurrence: OccurrenceId, containment: OccurrenceContainmentPa
 
 // --- DeclarationExposureGrounding: all three variants pairwise-discriminated ---
 
-test fn module_local_member_exposure_at_module_root_holds() -> Bool {
+test fn module_local_member_exposure_at_module_root_holds() -> Bool  {
   let decl = OccurrenceId { value: 10 }
   let path = cfba_containment(ancestors: [], terminal: decl)
   match declaration_exposure_from_containment(
@@ -113,7 +113,7 @@ test fn module_local_member_exposure_at_module_root_holds() -> Bool {
   }
 }
 
-test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_holds() -> Bool {
+test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_holds() -> Bool  {
   let decl = OccurrenceId { value: 11 }
   let path = cfba_containment(ancestors: [], terminal: decl)
   match declaration_exposure_from_containment(
@@ -126,7 +126,7 @@ test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_ho
   }
 }
 
-test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds() -> Bool {
+test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds() -> Bool  {
   let outer = OccurrenceId { value: 1 }
   let decl = OccurrenceId { value: 20 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
@@ -140,7 +140,7 @@ test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds
   }
 }
 
-test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_holds() -> Bool {
+test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_holds() -> Bool  {
   let outer = OccurrenceId { value: 1 }
   let decl = OccurrenceId { value: 21 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
@@ -154,7 +154,7 @@ test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_h
   }
 }
 
-test fn namespace_structural_root_exposure_at_direct_child_stays_module_exposure_holds() -> Bool {
+test fn namespace_structural_root_exposure_at_direct_child_stays_module_exposure_holds() -> Bool  {
   let outer = OccurrenceId { value: 1 }
   let decl = OccurrenceId { value: 22 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
@@ -292,7 +292,7 @@ fn cfba_provider_with_reference_closure_row(
 // own independent allocator -- the declaration's raw id (0) collides with the consumer's
 // raw declaration id (also 0), so this exercises reference rekeying alongside declaration
 // rekeying, not references: [] as before.
-test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_holds() -> Bool {
+test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_holds() -> Bool  {
   let consumer_module = cfba_path(dotted: "extdeps.consumer")
   let provider_module = cfba_path(dotted: "extdeps.provider")
   let consumer = cfba_single_occurrence_closure_row(
@@ -344,7 +344,7 @@ test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_hol
   }
 }
 
-test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_holds() -> Bool {
+test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_holds() -> Bool  {
   let outer = OccurrenceId { value: 5 }
   let binder = OccurrenceId { value: 6 }
   let outer_path = cfba_containment(ancestors: [], terminal: outer)
@@ -398,7 +398,7 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
 
 // --- ModulePathFileRow refusal: duplicate-same vs conflict, distinct typed variants ---
 
-test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool {
+test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool  {
   match module_path_file_index_from_rows(rows: [
     ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
     ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
@@ -409,7 +409,7 @@ test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool {
   }
 }
 
-test fn module_path_file_conflicting_rows_refuse_distinctly_holds() -> Bool {
+test fn module_path_file_conflicting_rows_refuse_distinctly_holds() -> Bool  {
   match module_path_file_index_from_rows(rows: [
     ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as FilePath },
     ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a_moved.dag" as FilePath },
@@ -422,7 +422,7 @@ test fn module_path_file_conflicting_rows_refuse_distinctly_holds() -> Bool {
   }
 }
 
-test fn assembly_refuses_when_provider_conflicts_consumer_module_path_holds() -> Bool {
+test fn assembly_refuses_when_provider_conflicts_consumer_module_path_holds() -> Bool  {
   let consumer = cfba_single_occurrence_closure_row(
     module_path: cfba_path(dotted: "extdeps.shared"),
     file_path: "extdeps/shared.dag",
@@ -451,7 +451,7 @@ fn cfba_source_text(path: String) -> String {
   filesystem_read(path: path).content
 }
 
-test fn single_authority_lives_only_in_std_occurrence_binding_candidates_holds() -> Bool {
+test fn single_authority_lives_only_in_std_occurrence_binding_candidates_holds() -> Bool  {
   let std_text = cfba_source_text(path: "dag/std/occurrence_binding_candidates.dag")
   let type_ref_ctx_text = cfba_source_text(path: "dag/gunbc/type_reference_binding_context.dag")
   let parser_walk_text = cfba_source_text(path: "src/v1/gunbc/occurrence_binding_parser_walk.dag")

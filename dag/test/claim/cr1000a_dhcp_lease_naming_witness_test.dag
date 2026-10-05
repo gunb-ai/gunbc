@@ -27,12 +27,12 @@ data sample_static_srv3_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
   },
 }
 
-test fn cr1000a_catalog_grounds_verizon_cr1000a() -> Bool {
+test fn cr1000a_catalog_grounds_verizon_cr1000a() -> Bool  {
   cr1000a_catalog.model_number == "CR1000A"
     && cr1000a_catalog.manufacturer == verizon
 }
 
-test fn dhcp_lease_observation_discriminates_option_12_vs_reservation_label() -> Bool {
+test fn dhcp_lease_observation_discriminates_option_12_vs_reservation_label() -> Bool  {
   match sample_dynamic_srv1_lease.lease {
     DynamicDhcpLease { client_hostname: Present { value: h }, lease_time_remaining: remaining, status: Active } =>
       h == srv1_option12_host_name
@@ -53,7 +53,7 @@ test fn dhcp_lease_observation_discriminates_option_12_vs_reservation_label() ->
     }
 }
 
-test fn dhcp_lease_observation_construction_excludes_misbound_name_kind() -> Bool {
+test fn dhcp_lease_observation_construction_excludes_misbound_name_kind() -> Bool  {
   match sample_dynamic_srv1_lease.lease {
     DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => true
     StaticDhcpReservation { reservation_label: _, status: _ } => false

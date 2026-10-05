@@ -33,7 +33,7 @@ data witness_secret_ref: SecretRef = SecretRef {
 
 data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
 
-test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
+test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool  {
   match cursor_sdk_local_credential_from_dispatch(
     credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
@@ -42,7 +42,7 @@ test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
   }
 }
 
-test fn dispatch_local_login_ref_refuses() -> Bool {
+test fn dispatch_local_login_ref_refuses() -> Bool  {
   match cursor_sdk_local_credential_from_dispatch(credential: CursorLocalLoginRef) {
     CursorSdkLocalCredentialRefused { reason } =>
       string_contains(s: reason as String, pattern: "SecretRef")
@@ -50,7 +50,7 @@ test fn dispatch_local_login_ref_refuses() -> Bool {
   }
 }
 
-test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool {
+test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool  {
   match cursor_sdk_local_credential_from_dispatch(
     credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
@@ -60,14 +60,14 @@ test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool {
   }
 }
 
-test fn environment_materialization_consumes_cli_env_var() -> Bool {
+test fn environment_materialization_consumes_cli_env_var() -> Bool  {
   match cursor_sdk_environment_api_key_materialization() {
     CursorSdkApiKeyFromEnvironment { env_var } => env_var == cursor_api_key_env_var
     _ => false
   }
 }
 
-test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
+test fn dispatch_binding_refuses_latest_secret_version() -> Bool  {
   match cursor_sdk_local_credential_from_dispatch(
     credential: CursorApiKeySecretRef {
       secret_ref: SecretRef {
@@ -84,7 +84,7 @@ test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
   }
 }
 
-test fn dispatch_binding_projection_keeps_argv_clean() -> Bool {
+test fn dispatch_binding_projection_keeps_argv_clean() -> Bool  {
   match cursor_sdk_local_credential_from_dispatch(
     credential: CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {

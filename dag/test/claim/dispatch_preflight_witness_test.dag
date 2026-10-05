@@ -111,7 +111,7 @@ fn unobserved_revision() -> LocalTreeRevision {
   LocalTreeRevisionUnobserved { cause: "HEAD does not decode" }
 }
 
-test fn preflight_capability_axis_follows_the_shared_receipt() -> Bool {
+test fn preflight_capability_axis_follows_the_shared_receipt() -> Bool  {
   let good = capability_axis_verdict(receipt: grounded_receipt())
   let bad = capability_axis_verdict(receipt: ungrounded_receipt())
   return !axis_verdict_is_refused(verdict: good)
@@ -132,7 +132,7 @@ test fn preflight_capability_axis_follows_the_shared_receipt() -> Bool {
 
 // The revision axis names the code the host would dispatch from and refuses only when it cannot be
 // read; a drifted-but-readable tree is NOT an axis refusal (operator ruling 2026-09-05).
-test fn preflight_revision_axis_names_the_deployed_revision_and_refuses_only_unreadable() -> Bool {
+test fn preflight_revision_axis_names_the_deployed_revision_and_refuses_only_unreadable() -> Bool  {
   let observed = revision_axis_verdict(standing: observed_revision())
   let unobserved = revision_axis_verdict(standing: unobserved_revision())
   return !axis_verdict_is_refused(verdict: observed)
@@ -147,7 +147,7 @@ test fn preflight_revision_axis_names_the_deployed_revision_and_refuses_only_unr
        }
 }
 
-test fn preflight_counts_every_refusal_not_the_first() -> Bool {
+test fn preflight_counts_every_refusal_not_the_first() -> Bool  {
   let two_bad = preflight_verdict_for_report(report: report_of(
     receipts: [ungrounded_receipt(), grounded_receipt()],
     revision: unobserved_revision(),
@@ -166,7 +166,7 @@ test fn preflight_counts_every_refusal_not_the_first() -> Bool {
        }
 }
 
-test fn preflight_wire_reports_the_refusal_it_reached() -> Bool {
+test fn preflight_wire_reports_the_refusal_it_reached() -> Bool  {
   let refused = serialize_json(v: dispatch_preflight_json_value(
     preflight: preflight_verdict_for_report(report: report_of(
       receipts: [],
@@ -186,7 +186,7 @@ test fn preflight_wire_reports_the_refusal_it_reached() -> Bool {
     && string_contains(s: admitted, pattern: "\"refused_axis_count\": 0")
 }
 
-test fn preflight_refuses_a_workdir_that_is_not_a_known_instance() -> Bool {
+test fn preflight_refuses_a_workdir_that_is_not_a_known_instance() -> Bool  {
   return match dashboard_instance_for_repo_root(repo_root: "/opt/gunbc/gunbc") {
     DashboardInstanceResolved { instance } =>
       (instance.repo_root as String) == "/opt/gunbc/gunbc"
@@ -202,7 +202,7 @@ test fn preflight_refuses_a_workdir_that_is_not_a_known_instance() -> Bool {
 // the axis list is a FUNCTION of the two observations, so its length and its refusal count
 // move only when the receipts or the revision move. Before review 57110 this could not be
 // asserted at all, because axes were a stored field a caller supplied independently.
-test fn preflight_axes_are_derived_from_the_observations() -> Bool {
+test fn preflight_axes_are_derived_from_the_observations() -> Bool  {
   let mixed = preflight_axes(report: report_of(
     receipts: [grounded_receipt(), ungrounded_receipt()],
     revision: observed_revision(),

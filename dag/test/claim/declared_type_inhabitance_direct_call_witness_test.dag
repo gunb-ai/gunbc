@@ -56,7 +56,7 @@ fn violation_count(source: String, wanted: String) -> Int {
 // to a permanent regression control, it does not retire.
 data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn takes_peano(n: StructuralNat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
 
-test fn w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism() -> Bool {
+test fn w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism() -> Bool  {
   violation_count(source: peano_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -66,7 +66,7 @@ test fn w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism()
 // count and nothing here asserts one.
 data native_nat_arg_source: String = "module probe_inhabit_native\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: 40) }\n"
 
-test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool {
+test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool  {
   violation_count(source: native_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -82,7 +82,7 @@ test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool {
 // carries the five-probe table and names it as this class's next-rung trigger.
 data string_at_native_nat_source: String = "module probe_inhabit_native_str\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: \"forty\") }\n"
 
-test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> Bool {
+test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> Bool  {
   violation_count(source: string_at_native_nat_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -93,7 +93,7 @@ test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> 
 // InternalError { message } -- measured, not assumed.
 data undefined_name_arg_source: String = "module probe_inhabit_dc_reach\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: nosuchname_zzz_dc) }\n"
 
-test fn w_undefined_name_at_the_direct_call_position_still_refuses() -> Bool {
+test fn w_undefined_name_at_the_direct_call_position_still_refuses() -> Bool  {
   violation_count(source: undefined_name_arg_source, wanted: "InternalError") > 0
 }
 
@@ -107,26 +107,26 @@ test fn w_undefined_name_at_the_direct_call_position_still_refuses() -> Bool {
 // target-specific realization rule.
 data list_value_at_non_empty_str_source: String = "module probe_inhabit_list_at_text\nimport std.types { Int, String, NonEmptyStr, List }\nfn takes_text(text: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int {\n  let words: List<String> = [\"forty\"]\n  takes_text(text: words)\n}\n"
 
-test fn w_list_typed_value_at_non_empty_str_argument_is_refused() -> Bool {
+test fn w_list_typed_value_at_non_empty_str_argument_is_refused() -> Bool  {
   violation_count(source: list_value_at_non_empty_str_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
 data collection_disjointness_positive_source: String = "module probe_inhabit_list_text_ok\nimport std.types { Int, String, NonEmptyStr, List }\nfn takes_text(text: NonEmptyStr) -> Int { 1 }\nfn takes_words(words: List<String>) -> Int { 1 }\nfn probe() -> Int {\n  let words: List<String> = [\"forty\"]\n  takes_text(text: \"forty\" as NonEmptyStr) + takes_words(words: words)\n}\n"
 
-test fn w_collection_disjointness_keeps_conforming_arguments_admitted() -> Bool {
+test fn w_collection_disjointness_keeps_conforming_arguments_admitted() -> Bool  {
   violation_count(source: collection_disjointness_positive_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
 data record_value_at_scalar_source: String = "module probe_inhabit_record_at_scalar\nimport std.types { Int, String }\ntype Box { value: String }\nfn make_box() -> Box { Box { value: \"forty\" } }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: make_box()) }\n"
 
-test fn w_record_typed_value_at_scalar_argument_is_counted_until_identity_is_grounded() -> Bool {
+test fn w_record_typed_value_at_scalar_argument_is_counted_until_identity_is_grounded() -> Bool  {
   violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
     && violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
 data coproduct_value_at_record_source: String = "module probe_inhabit_coproduct_at_record\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_choice() -> Choice { ChoiceA { value: \"forty\" } }\nfn takes_box(box: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(box: make_choice()) }\n"
 
-test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
+test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool  {
   violation_count(source: coproduct_value_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -136,7 +136,7 @@ test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
 // so neither seam can accidentally stand in as evidence for the other.
 data optional_value_cast_to_required_source: String = "module probe_inhabit_optional_cast_required\nimport std.types { String }\nfn maybe_text() -> String? { none }\nfn probe() -> String { maybe_text() as String }\n"
 
-test fn w_optional_value_cast_to_required_is_independently_refused() -> Bool {
+test fn w_optional_value_cast_to_required_is_independently_refused() -> Bool  {
   violation_count(source: optional_value_cast_to_required_source, wanted: "OptionalCastNotEliminated") > 0
 }
 
@@ -145,7 +145,7 @@ test fn w_optional_value_cast_to_required_is_independently_refused() -> Bool {
 // DeclaredTypeInhabitanceUndecided obligation to consumers on every execution of this fixture.
 data generic_formal_counted_boundary_source: String = "module probe_inhabit_generic_boundary\nimport std.types { String }\nfn identity<T>(value: T) -> T { value }\nfn probe() -> String { identity(value: \"forty\") }\n"
 
-test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool {
+test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool  {
   violation_count(source: generic_formal_counted_boundary_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
 }
 
@@ -184,7 +184,7 @@ test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool
 // the only difference between the two arms.
 data record_element_in_list_arg_source: String = "module probe_inhabit_dc_list_elem\nimport std.types { Int, String, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\nfn takes_list(xs: List<Cop>) -> Int { 1 }\nfn probe() -> Int { takes_list(xs: [\"forty\"]) }\n"
 
-test fn w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused() -> Bool {
+test fn w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused() -> Bool  {
   violation_count(source: record_element_in_list_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -196,7 +196,7 @@ test fn w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused() ->
 // happened to this pair's first version, so this arm is not a formality.
 data record_directly_at_coproduct_arg_source: String = "module probe_inhabit_dc_bare_elem\nimport std.types { Int, String, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\nfn takes_one(x: Cop) -> Int { 1 }\nfn probe() -> Int { takes_one(x: \"forty\") }\n"
 
-test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
+test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool  {
   violation_count(source: record_directly_at_coproduct_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -219,7 +219,7 @@ test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
 // the two constructors are unrelated by alias, brand or cast.
 data applied_distinct_constructor_source: String = "module probe_inhabit_applied_ctor\nimport std.types { String }\ntype Alpha<P> { a: P }\ntype Beta<P> { b: P }\nfn mk_alpha() -> Alpha<String> { Alpha { a: \"z\" } }\nfn takes_beta(x: Beta<String>) -> String { x.b }\nfn probe() -> String { takes_beta(x: mk_alpha()) }\n"
 
-test fn w_distinct_applied_constructors_at_a_direct_call_argument_are_refused() -> Bool {
+test fn w_distinct_applied_constructors_at_a_direct_call_argument_are_refused() -> Bool  {
   violation_count(source: applied_distinct_constructor_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -231,7 +231,7 @@ test fn w_distinct_applied_constructors_at_a_direct_call_argument_are_refused() 
 // see the lost K and would CONFIRM a match the types deny.
 data applied_distinct_type_argument_source: String = "module probe_inhabit_applied_arg\nimport std.types { String }\ntype KindA { ka: String }\ntype KindB { kb: String }\ntype Wrapper<K> { v: String }\nfn mk_b() -> Wrapper<KindB> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_b()) }\n"
 
-test fn w_distinct_applied_type_arguments_at_a_direct_call_argument_are_refused() -> Bool {
+test fn w_distinct_applied_type_arguments_at_a_direct_call_argument_are_refused() -> Bool  {
   violation_count(source: applied_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -241,7 +241,7 @@ test fn w_distinct_applied_type_arguments_at_a_direct_call_argument_are_refused(
 // only one that ever did.
 data unapplied_distinct_constructor_source: String = "module probe_inhabit_unapplied_ctor\nimport std.types { String }\ntype Alpha { a: String }\ntype Beta { b: String }\nfn mk_alpha() -> Alpha { Alpha { a: \"z\" } }\nfn takes_beta(x: Beta) -> String { x.b }\nfn probe() -> String { takes_beta(x: mk_alpha()) }\n"
 
-test fn w_distinct_unapplied_product_constructors_through_a_call_are_refused() -> Bool {
+test fn w_distinct_unapplied_product_constructors_through_a_call_are_refused() -> Bool  {
   violation_count(source: unapplied_distinct_constructor_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -250,7 +250,7 @@ test fn w_distinct_unapplied_product_constructors_through_a_call_are_refused() -
 // constructor, identical type argument, same call spelling as the reds.
 data applied_matching_source: String = "module probe_inhabit_applied_match\nimport std.types { String }\ntype KindA { ka: String }\ntype Wrapper<K> { v: String }\nfn mk_a() -> Wrapper<KindA> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_a()) }\n"
 
-test fn w_matching_applied_product_at_a_direct_call_argument_is_admitted() -> Bool {
+test fn w_matching_applied_product_at_a_direct_call_argument_is_admitted() -> Bool  {
   violation_count(source: applied_matching_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -261,7 +261,7 @@ test fn w_matching_applied_product_at_a_direct_call_argument_is_admitted() -> Bo
 // only way a false-positive class of that shape becomes visible here rather than in the corpus.
 data applied_type_variable_argument_source: String = "module probe_inhabit_applied_tyvar\nimport std.types { String }\ntype Wrapper<K> { v: String }\nfn takes_w<T>(x: Wrapper<T>) -> String { x.v }\nfn mk_s() -> Wrapper<String> { Wrapper { v: \"z\" } }\nfn probe() -> String { takes_w(x: mk_s()) }\n"
 
-test fn w_a_type_variable_type_argument_is_not_read_as_a_disagreement() -> Bool {
+test fn w_a_type_variable_type_argument_is_not_read_as_a_disagreement() -> Bool  {
   violation_count(source: applied_type_variable_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -309,7 +309,7 @@ data phantom_distinct_type_argument_source: String = "module probe_inhabit_phant
 // _call_are_refused above plus w_matching_applied_product_at_a_direct_call_argument_is_admitted,
 // both of which EXECUTE on every floor run. So the evidence did not move to a weaker home; it
 // moved from a home where it could never fire to one where it fires every run.
-test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
+test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool  {
   violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -347,7 +347,7 @@ data probe_exact_brand_source: String = "module probe_exact_brand\nimport std.ty
 
 data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.host_identity { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
 
-test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
+test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool  {
   violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited")
     == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeNotInhabited")
     && violation_count(source: refinement_widening_source, wanted: "DeclaredTypeInhabitanceUndecided")
@@ -379,7 +379,7 @@ test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
 // got 'Product(HostIdentity)'`. So this relation's abstention is a delegation and not a hole.
 data brand_horizontal_at_argument_source: String = "module probe_brand_horizontal_at_argument\nimport std.types { Int }\nimport product.placement_supply { PhysicalAssetIdentity }\nimport product.host_identity { HostIdentity }\ndata probe_host2: HostIdentity = \"srv1\" as HostIdentity\nfn takes_asset(x: PhysicalAssetIdentity) -> Int { 1 }\nfn probe() -> Int { takes_asset(x: probe_host2) }\n"
 
-test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
+test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool  {
   violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited")
     == violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeNotInhabited")
     && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided")
@@ -406,7 +406,7 @@ data nominal_opaque_partner_source: String = "module probe_nominal_opaque_partne
 
 data nominal_opaque_not_grounded_source: String = "module probe_nominal_opaque_not_grounded\nimport std.types { NonEmptyStr, Secret, Int }\ndata probe_secret: Secret = \"shh\" as Secret\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_secret) }\n"
 
-test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool {
+test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool  {
   violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: nominal_opaque_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
@@ -432,7 +432,7 @@ test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() 
 // one UndecidableGenericFormal.
 data concrete_via_global_bare_source: String = "module probe_concrete_via_global_bare\nimport std.content_hash { Sha256Digest }\nimport std.types { NonEmptyStr, Int }\nfn probe(d: Sha256Digest) -> NonEmptyStr { sha256_digest_wire_form(digest: d) }\n"
 
-test fn w_a_concrete_declared_leaf_is_not_classified_generic_through_the_census() -> Bool {
+test fn w_a_concrete_declared_leaf_is_not_classified_generic_through_the_census() -> Bool  {
   violation_count(source: concrete_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided")
     == violation_count(source: refinement_baseline_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
@@ -452,7 +452,7 @@ data bare_literal_at_refinement_source: String = "module probe_bare_literal_at_r
 
 data cast_literal_at_refinement_source: String = "module probe_cast_literal_at_refinement\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: \"x\" as NonEmptyStr) }\n"
 
-test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not() -> Bool {
+test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not() -> Bool  {
   violation_count(source: bare_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
     > violation_count(source: cast_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
 }
@@ -475,7 +475,7 @@ data disjoint_refinement_at_product_source: String = "module probe_disjoint_refi
 
 data disjoint_partner_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.host_identity { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
 
-test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
+test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool  {
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: disjoint_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
@@ -493,7 +493,7 @@ data disjoint_product_refinement_at_product_source: String = "module probe_disjo
 
 data disjoint_product_refinement_partner_source: String = "module probe_disjoint_product_refinement\nimport std.types { Int, String }\ntype Other { w: Int }\ntype Tagged = Other where brand(\"Tagged\")\ntype Box { v: String }\ndata probe_tagged_d: Tagged = Other { w: 1 } as Tagged\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
 
-test fn w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
+test fn w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool  {
   violation_count(source: disjoint_product_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: disjoint_product_refinement_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
@@ -518,7 +518,7 @@ test fn w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refu
 // corpus.
 data list_value_at_record_formal_source: String = "module probe_inhabit_list_at_record\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_rec(r: a_list()) }\n"
 
-test fn w_a_collection_at_a_nominal_product_formal_is_refused() -> Bool {
+test fn w_a_collection_at_a_nominal_product_formal_is_refused() -> Bool  {
   violation_count(source: list_value_at_record_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -528,7 +528,7 @@ test fn w_a_collection_at_a_nominal_product_formal_is_refused() -> Bool {
 // one admitted.
 data record_value_at_list_formal_source: String = "module probe_inhabit_record_at_list\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_list(xs: List<Int>) -> Int { 1 }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Int { takes_list(xs: a_rec()) }\n"
 
-test fn w_a_nominal_product_at_a_collection_formal_is_refused() -> Bool {
+test fn w_a_nominal_product_at_a_collection_formal_is_refused() -> Bool  {
   violation_count(source: record_value_at_list_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -537,7 +537,7 @@ test fn w_a_nominal_product_at_a_collection_formal_is_refused() -> Bool {
 // sites, so a positive control here is load-bearing rather than a formality.
 data matching_collection_and_record_source: String = "module probe_inhabit_coll_match\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Int { 1 }\nfn takes_list(xs: List<String>) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Int { takes_rec(r: a_rec()) + takes_list(xs: a_list()) }\n"
 
-test fn w_a_collection_and_a_product_each_at_their_own_formal_are_admitted() -> Bool {
+test fn w_a_collection_and_a_product_each_at_their_own_formal_are_admitted() -> Bool  {
   violation_count(source: matching_collection_and_record_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -549,7 +549,7 @@ test fn w_a_collection_and_a_product_each_at_their_own_formal_are_admitted() -> 
 // green, which is exactly the false-refusal shape the census exists to catch.
 data alias_collection_formal_source: String = "module probe_inhabit_alias_coll\nimport std.types { Int, String, List }\ntype Words = List<String>\nfn takes_words(w: Words) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_words(w: a_list()) }\n"
 
-test fn w_a_collection_at_an_alias_of_that_collection_is_admitted() -> Bool {
+test fn w_a_collection_at_an_alias_of_that_collection_is_admitted() -> Bool  {
   violation_count(source: alias_collection_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -562,7 +562,7 @@ test fn w_a_collection_at_an_alias_of_that_collection_is_admitted() -> Bool {
 // able to fire on.
 data smuggled_argv_at_builder_record_source: String = "module probe_inhabit_smuggled_argv\nimport std.types { Int, String, List }\ntype QuietInvocation { argv: List<String> }\nfn run_quiet(inv: QuietInvocation) -> Int { 1 }\nfn smuggled_argv() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { run_quiet(inv: smuggled_argv()) }\n"
 
-test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool {
+test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool  {
   violation_count(source: smuggled_argv_at_builder_record_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -589,7 +589,7 @@ test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool {
 // shape that could drift away from it.
 data raw_octets_at_qualified_octets_source: String = "module probe_inhabit_raw_octets\nimport std.types { Int, String, List }\nimport std.integer { UInt8 }\nimport std.encoding { base64_encode, UrlSafe }\nfn some_octets() -> List<UInt8> { [] }\nfn probe() -> Int {\n  let encoded: String = base64_encode(octets: some_octets(), variant: UrlSafe)\n  1\n}\n"
 
-test fn w_a_raw_octet_list_at_the_qualified_octets_carrier_is_refused() -> Bool {
+test fn w_a_raw_octet_list_at_the_qualified_octets_carrier_is_refused() -> Bool  {
   violation_count(source: raw_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -599,7 +599,7 @@ test fn w_a_raw_octet_list_at_the_qualified_octets_carrier_is_refused() -> Bool 
 // mint through the uint8_octets_of_ints fold and pass the sealed value.
 data qualified_octets_at_qualified_octets_source: String = "module probe_inhabit_sealed_octets\nimport std.types { Int, String, List }\nimport std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }\nimport std.encoding { base64_encode, UrlSafe }\nfn probe() -> Int {\n  match uint8_octets_of_ints(values: [1, 2, 3]) {\n    QualifiedOctetsRefused { observed: _ } => 0\n    QualifiedOctetsReady { value: sealed } => {\n      let encoded: String = base64_encode(octets: sealed, variant: UrlSafe)\n      1\n    }\n  }\n}\n"
 
-test fn w_the_sealed_carrier_at_its_own_formal_is_admitted() -> Bool {
+test fn w_the_sealed_carrier_at_its_own_formal_is_admitted() -> Bool  {
   violation_count(source: qualified_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -615,7 +615,7 @@ test fn w_the_sealed_carrier_at_its_own_formal_is_admitted() -> Bool {
 // the receiver-keyed arm is removed or narrowed back to the registry's answer.
 data record_update_at_its_own_formal_source: String = "module probe_with_record_update\nimport std.types { Int, String }\ntype Holder { a: String  b: Int }\nfn takes_holder(h: Holder) -> Int { 1 }\nfn probe() -> Int {\n  let base: Holder = Holder { a: \"x\", b: 1 }\n  takes_holder(h: with(base, { b: 2 }))\n}\n"
 
-test fn w_a_record_update_inhabits_its_bases_declared_type() -> Bool {
+test fn w_a_record_update_inhabits_its_bases_declared_type() -> Bool  {
   violation_count(source: record_update_at_its_own_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
@@ -627,7 +627,7 @@ test fn w_a_record_update_inhabits_its_bases_declared_type() -> Bool {
 // the wall's discriminating power and the relation is no longer doing its job.
 data genuine_map_at_product_source: String = "module probe_with_genuine_map\nimport std.types { Int, String, Map }\ntype Holder { a: String  b: Int }\nfn takes_holder(h: Holder) -> Int { 1 }\nfn a_map() -> Map<String, Int> { { \"b\": 2 } }\nfn probe() -> Int { takes_holder(h: a_map()) }\n"
 
-test fn w_a_genuine_map_at_a_product_formal_still_refuses() -> Bool {
+test fn w_a_genuine_map_at_a_product_formal_still_refuses() -> Bool  {
   violation_count(source: genuine_map_at_product_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
@@ -659,14 +659,14 @@ fn list_element_refusal_is_the_only_refusal(source: String) -> Bool {
   }
 }
 
-test fn w_a_collection_at_a_list_element_of_record_type_is_refused() -> Bool {
+test fn w_a_collection_at_a_list_element_of_record_type_is_refused() -> Bool  {
   list_element_refusal_is_the_only_refusal(source: collection_at_record_list_element_source)
 }
 
 // THE ROUTE FILTER DISCRIMINATES: the same collection-at-record pair refused at the DIRECT-CALL
 // argument does not satisfy the list-element predicate, so the claim above cannot green through
 // PositionDirectCallArgument.
-test fn w_a_direct_call_refusal_does_not_satisfy_the_list_element_route() -> Bool {
+test fn w_a_direct_call_refusal_does_not_satisfy_the_list_element_route() -> Bool  {
   violation_count(source: list_value_at_record_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
     && list_element_refusal_is_the_only_refusal(source: list_value_at_record_formal_source) == false
 }

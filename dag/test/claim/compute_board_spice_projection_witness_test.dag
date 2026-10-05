@@ -147,7 +147,7 @@ fn project(
 // was passed where the module folds a Cons/Empty free monoid" — a real bug, fixed, not the
 // cause. (3) "the seam is cross-module." Also wrong. The actual cause was two lines:
 // spice_text_concat was defined as list_append, the FREE MONOID append, applied to String.
-test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
+test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool  {
   match project(
     components: [rail_supply, sense_resistor, decoupling_capacitor],
     bindings: [ideal_binding(c: rail_supply), ideal_binding(c: sense_resistor), ideal_binding(c: decoupling_capacitor)]
@@ -169,7 +169,7 @@ data perturbed_resistor: ElectricalComponentInstance = ResistorInstance {
   resistance: Measure { count: 47 },
 }
 
-test fn w_one_perturbed_value_changes_the_deck() -> Bool {
+test fn w_one_perturbed_value_changes_the_deck() -> Bool  {
   match project(components: [perturbed_resistor], bindings: [ideal_binding(c: perturbed_resistor)]) {
     SpiceSliceProjected { receipt: r } =>
       r.source == "standby rail slice\nRsense rail 0 47k"
@@ -181,7 +181,7 @@ test fn w_one_perturbed_value_changes_the_deck() -> Bool {
 // THE WALL. One element loses its model and the whole projection refuses, naming the part. The
 // forbidden behaviour is not a missing error message — it is a deck that still emits, with an
 // ideal part quietly standing in for the one we could not model.
-test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
+test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool  {
   match project(
     components: [sense_resistor, decoupling_capacitor],
     bindings: [ideal_binding(c: sense_resistor), absent_binding(c: decoupling_capacitor)]
@@ -203,7 +203,7 @@ test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
 
 // The discriminating pair: the SAME circuit differing only in model standing lands on opposite
 // arms. Without this, the refusal above is satisfied by a projection that refuses everything.
-test fn w_model_standing_alone_decides_the_arm() -> Bool {
+test fn w_model_standing_alone_decides_the_arm() -> Bool  {
   match project(components: [decoupling_capacitor], bindings: [ideal_binding(c: decoupling_capacitor)]) {
     SpiceSliceProjected { receipt: _ } =>
       match project(components: [decoupling_capacitor], bindings: [absent_binding(c: decoupling_capacitor)]) {
@@ -219,7 +219,7 @@ test fn w_model_standing_alone_decides_the_arm() -> Bool {
 // model stands behind it. That silent downgrade is the same substitution the absent-model wall
 // forbids, and an earlier revision performed it: admission checked only that a model card was
 // PRESENT, and every admitted element emitted as an ideal lumped part regardless.
-test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool {
+test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool  {
   match project(components: [decoupling_capacitor], bindings: [subcircuit_binding(c: decoupling_capacitor)]) {
     SpiceSliceRefused { cause: c } =>
       match c {
@@ -240,7 +240,7 @@ test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool
 // NO BINDING AT ALL is its own arm, distinct from a binding that says the model is absent. The
 // first means nobody asked; the second means someone looked and there is none. Collapsing them
 // would make an omitted row read as a recorded negative result.
-test fn w_missing_binding_is_not_an_absent_model() -> Bool {
+test fn w_missing_binding_is_not_an_absent_model() -> Bool  {
   match project(components: [decoupling_capacitor], bindings: []) {
     SpiceSliceRefused { cause: c } =>
       match c {
@@ -272,7 +272,7 @@ data floating_circuit: AnalogCircuitIntent = AnalogCircuitIntent {
   ],
 }
 
-test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bool {
+test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bool  {
   match project_analog_to_spice(
     article_identity: fixture_identity,
     intent: floating_circuit,
@@ -299,7 +299,7 @@ test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bo
 // part emitted or refused depending on which was authored first. Both orders are asserted,
 // because a check that only tried one would pass on a lookup that still silently prefers a
 // position — the wall has to hold regardless of which row an editor happened to type first.
-test fn w_duplicate_model_binding_refuses_in_either_order() -> Bool {
+test fn w_duplicate_model_binding_refuses_in_either_order() -> Bool  {
   match project(
     components: [sense_resistor],
     bindings: [ideal_binding(c: sense_resistor), subcircuit_binding(c: sense_resistor)]
@@ -341,7 +341,7 @@ fn shorted_circuit() -> AnalogCircuitIntent {
   }
 }
 
-test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool {
+test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool  {
   match project_analog_to_spice(
     article_identity: fixture_identity,
     intent: shorted_circuit(),
@@ -360,7 +360,7 @@ test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool {
 // THE POSITIVE CONTROL the short refusal needs. Same component, same binding, same reference —
 // only the extra net removed. Without this, a refusal arm that fired on every one-resistor
 // circuit would satisfy the test above and prove nothing about shorts.
-test fn w_same_circuit_without_the_extra_net_emits() -> Bool {
+test fn w_same_circuit_without_the_extra_net_emits() -> Bool  {
   match project(components: [sense_resistor], bindings: [ideal_binding(c: sense_resistor)]) {
     SpiceSliceProjected { receipt: r } => r.source == "standby rail slice\nRsense rail 0 10k"
     SpiceSliceRefused { cause: _ } => false

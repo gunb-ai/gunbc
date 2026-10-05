@@ -65,7 +65,7 @@ fn emitted_source(intent: DigitalControlIntent) -> String {
 // string, so every byte below was derived by the projection.
 data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 
-test fn w_interlock_emits_exact_verilog_bytes() -> Bool {
+test fn w_interlock_emits_exact_verilog_bytes() -> Bool  {
   emitted_source(intent: board_power_interlock_intent) == expected_interlock_verilog
 }
 
@@ -86,7 +86,7 @@ data active_low_fault_intent: DigitalControlIntent = DigitalControlIntent {
   ]
 }
 
-test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
+test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool  {
   let flipped = emitted_source(intent: active_low_fault_intent)
   flipped != ""
     && flipped != expected_interlock_verilog
@@ -106,7 +106,7 @@ test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
 // the digital control changes the Verilog and must not touch the analog side. Asserted here as
 // the half this module owns — the emitted Verilog differs while both intents describe the same
 // board — with the SPICE half asserted in its own witness against its own article.
-test fn w_digital_change_is_confined_to_the_digital_projection() -> Bool {
+test fn w_digital_change_is_confined_to_the_digital_projection() -> Bool  {
   emitted_source(intent: active_low_fault_intent) != ""
     && emitted_source(intent: active_low_fault_intent) != emitted_source(intent: board_power_interlock_intent)
 }
@@ -144,17 +144,17 @@ fn refused_with_spelling(intent: DigitalControlIntent, bindings: List<VerilogBin
   }
 }
 
-test fn w_reserved_word_spelling_refuses() -> Bool {
+test fn w_reserved_word_spelling_refuses() -> Bool  {
   refused_with_spelling(intent: board_power_interlock_intent, bindings: reserved_word_bindings, expected: "reg")
 }
 
-test fn w_spelling_with_a_forbidden_character_refuses() -> Bool {
+test fn w_spelling_with_a_forbidden_character_refuses() -> Bool  {
   refused_with_spelling(intent: board_power_interlock_intent, bindings: spaced_spelling_bindings, expected: "conditioned good")
 }
 
 // The POSITIVE control for the same mechanism: the production bindings are admissible, so the
 // refusals above are discriminating rather than a checker that rejects everything.
-test fn w_production_bindings_are_admitted() -> Bool {
+test fn w_production_bindings_are_admitted() -> Bool  {
   match project(intent: board_power_interlock_intent, bindings: power_interlock_verilog_bindings) {
     VerilogModuleEmitted { receipt: r } => r.source == expected_interlock_verilog
     VerilogProjectionRefused { cause: _ } => false
@@ -196,7 +196,7 @@ fn refuses_as_duplicate(bindings: List<VerilogBinding>) -> Bool {
   }
 }
 
-test fn w_duplicate_signal_binding_refuses_in_either_order() -> Bool {
+test fn w_duplicate_signal_binding_refuses_in_either_order() -> Bool  {
   refuses_as_duplicate(bindings: doubly_spelled_bindings)
     && refuses_as_duplicate(bindings: doubly_spelled_bindings_reversed)
 }

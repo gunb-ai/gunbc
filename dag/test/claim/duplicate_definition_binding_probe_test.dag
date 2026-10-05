@@ -100,7 +100,7 @@ fn blocking_count(source: String) -> Int {
 // binds is observable rather than benign.
 data duplicate_definition_source: String = "module probe_duplicate_definition\nimport std.types { Bool }\nfn which_one() -> Bool { false }\nfn which_one() -> Bool { true }\n"
 
-test fn duplicate_definition_in_one_module_is_refused() -> Bool {
+test fn duplicate_definition_in_one_module_is_refused() -> Bool  {
   blocking_count(source: duplicate_definition_source) >= 1
 }
 
@@ -108,6 +108,6 @@ test fn duplicate_definition_in_one_module_is_refused() -> Bool {
 // diagnostics, so the row above cannot pass by the probe source being broken in some other way.
 data single_definition_source: String = "module probe_single_definition\nimport std.types { Bool }\nfn which_one() -> Bool { true }\n"
 
-test fn single_definition_module_is_clean() -> Bool {
+test fn single_definition_module_is_clean() -> Bool  {
   blocking_count(source: single_definition_source) == 0
 }

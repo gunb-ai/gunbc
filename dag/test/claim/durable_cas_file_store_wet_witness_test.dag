@@ -75,7 +75,7 @@ fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_cas.XXXXXX").path
 }
 
-test fn commit_then_independent_read_back_agrees_by_real_execution() -> Bool {
+test fn commit_then_independent_read_back_agrees_by_real_execution() -> Bool  {
   let root_path = fresh_root()
   let root = root_path as NonEmptyStr
   let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
@@ -101,7 +101,7 @@ test fn commit_then_independent_read_back_agrees_by_real_execution() -> Bool {
     && removed.success
 }
 
-test fn a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution() -> Bool {
+test fn a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution() -> Bool  {
   let root_path = fresh_root()
   let root = root_path as NonEmptyStr
   let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
@@ -116,7 +116,7 @@ test fn a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution(
     && removed.success
 }
 
-test fn an_advance_after_commit_lands_generation_two_by_real_execution() -> Bool {
+test fn an_advance_after_commit_lands_generation_two_by_real_execution() -> Bool  {
   let root_path = fresh_root()
   let root = root_path as NonEmptyStr
   let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
@@ -136,7 +136,7 @@ test fn an_advance_after_commit_lands_generation_two_by_real_execution() -> Bool
     && removed.success
 }
 
-test fn a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution() -> Bool {
+test fn a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution() -> Bool  {
   let root_path = fresh_root()
   let blocker = concat(root_path, "/not-a-directory")
   let planted = Filesystem.Write(path: blocker, content: "not a store root")
@@ -152,7 +152,7 @@ test fn a_non_contention_store_refusal_is_not_precondition_failed_by_real_execut
 // generation max/2 + 1 present cannot double, so it probes the Int maximum itself. With only that
 // generation on disk it bisects the whole upper half and reports it as the head; with the maximum
 // also on disk it reports the maximum. Both searches run against a real directory.
-test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_execution() -> Bool {
+test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_execution() -> Bool  {
   let root = fresh_root()
   let max = int_inclusive_max()
   let upper = max / 2 + 1
@@ -174,7 +174,7 @@ test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_executi
 // NotFound for generation 1 exactly as it would for an empty slot; the observation must refuse
 // rather than read "absent", and a writer expecting absence must be refused before it publishes.
 // Before gunbc.durable_cas_file_store cas_first_generation_absent this read CasReadableAbsent.
-test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution() -> Bool {
+test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution() -> Bool  {
   let root_path = fresh_root()
   let missing = concat(root_path, "/never-created")
   let observed = observe_cas_slot_state(root: missing as NonEmptyStr, key: "cell")
@@ -188,7 +188,7 @@ test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution
 }
 
 // THE POSITIVE CONTROL: an established, empty root still reads as an absent slot.
-test fn an_established_empty_root_reads_the_slot_absent_by_real_execution() -> Bool {
+test fn an_established_empty_root_reads_the_slot_absent_by_real_execution() -> Bool  {
   let root_path = fresh_root()
   let observed = observe_cas_slot_state(root: root_path as NonEmptyStr, key: "cell")
   let absent = match observed {

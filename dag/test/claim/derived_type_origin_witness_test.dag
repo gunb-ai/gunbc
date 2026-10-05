@@ -46,7 +46,7 @@ fn fold_non_empty_t() -> DeclarationRef {
 }
 
 // L3: the kernel element child is never a generic parameter, whatever it is spelled.
-test fn a_kernel_element_position_is_not_a_generic_parameter() -> Bool {
+test fn a_kernel_element_position_is_not_a_generic_parameter() -> Bool  {
   match generic_identity_of(origin: KernelElementPosition { container: free_monoid_carrier(), position: 0 }) {
     NotAGenericParameter => true
     _ => false
@@ -54,7 +54,7 @@ test fn a_kernel_element_position_is_not_a_generic_parameter() -> Bool {
 }
 
 // Control for L3: a carried TypeParameter declaration IS a generic parameter.
-test fn a_carried_type_parameter_declaration_is_a_generic_parameter() -> Bool {
+test fn a_carried_type_parameter_declaration_is_a_generic_parameter() -> Bool  {
   match generic_identity_of(origin: CarriedDeclaration { declaration: fold_list_t() }) {
     IsGenericParameter { parameter: _ } => true
     _ => false
@@ -62,7 +62,7 @@ test fn a_carried_type_parameter_declaration_is_a_generic_parameter() -> Bool {
 }
 
 // A carried declaration of something else (a field, a whole declaration) is not a parameter.
-test fn a_carried_field_or_whole_declaration_is_not_a_generic_parameter() -> Bool {
+test fn a_carried_field_or_whole_declaration_is_not_a_generic_parameter() -> Bool  {
   let field = match generic_identity_of(origin: CarriedDeclaration { declaration: decl_field_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef", field_name: "module_path") }) {
     NotAGenericParameter => true
     _ => false
@@ -75,7 +75,7 @@ test fn a_carried_field_or_whole_declaration_is_not_a_generic_parameter() -> Boo
 }
 
 // L4: a refusal is neither answer.
-test fn a_refused_derivation_is_neither_a_parameter_nor_concrete() -> Bool {
+test fn a_refused_derivation_is_neither_a_parameter_nor_concrete() -> Bool  {
   match generic_identity_of(origin: DerivationRefused { constructor: call_plan_constructor(), cause: SignatureReadBeforeBinderMarking }) {
     GenericIdentityRefused { constructor: _, cause: _ } => true
     _ => false
@@ -83,7 +83,7 @@ test fn a_refused_derivation_is_neither_a_parameter_nor_concrete() -> Bool {
 }
 
 // L1: a copy keeps its input's origin, so a copied parameter is still that parameter.
-test fn a_copy_keeps_its_generic_identity() -> Bool {
+test fn a_copy_keeps_its_generic_identity() -> Bool  {
   match generic_identity_of(origin: derived_origin_copy(input: CarriedDeclaration { declaration: fold_non_empty_t() })) {
     IsGenericParameter { parameter: _ } => true
     _ => false
@@ -91,7 +91,7 @@ test fn a_copy_keeps_its_generic_identity() -> Bool {
 }
 
 // THE srv3 GUARD, by identity: T bound to a List's element child (spelled T) is NOT a self-binding.
-test fn binding_t_to_a_kernel_element_spelled_t_is_not_a_self_binding() -> Bool {
+test fn binding_t_to_a_kernel_element_spelled_t_is_not_a_self_binding() -> Bool  {
   match self_binding_of(parameter: fold_list_t(), binding: KernelElementPosition { container: free_monoid_carrier(), position: 0 }) {
     NotSelfBinding => true
     _ => false
@@ -99,7 +99,7 @@ test fn binding_t_to_a_kernel_element_spelled_t_is_not_a_self_binding() -> Bool 
 }
 
 // Control: T bound to itself IS a self-binding.
-test fn binding_t_to_itself_is_a_self_binding() -> Bool {
+test fn binding_t_to_itself_is_a_self_binding() -> Bool  {
   match self_binding_of(parameter: fold_list_t(), binding: CarriedDeclaration { declaration: fold_list_t() }) {
     SelfBinding => true
     _ => false
@@ -107,7 +107,7 @@ test fn binding_t_to_itself_is_a_self_binding() -> Bool {
 }
 
 // Cross-owner: two owners' parameters spelled T are different parameters.
-test fn two_owners_parameters_spelled_alike_are_different() -> Bool {
+test fn two_owners_parameters_spelled_alike_are_different() -> Bool  {
   match self_binding_of(parameter: fold_list_t(), binding: CarriedDeclaration { declaration: fold_non_empty_t() }) {
     NotSelfBinding => true
     _ => false
@@ -115,7 +115,7 @@ test fn two_owners_parameters_spelled_alike_are_different() -> Bool {
 }
 
 // A substituted node stands in for its parameter; it is not that parameter.
-test fn a_parameter_binding_is_not_the_parameter_itself() -> Bool {
+test fn a_parameter_binding_is_not_the_parameter_itself() -> Bool  {
   match self_binding_of(parameter: fold_list_t(), binding: ParameterBinding { parameter: fold_list_t() }) {
     NotSelfBinding => true
     _ => false
@@ -124,7 +124,7 @@ test fn a_parameter_binding_is_not_the_parameter_itself() -> Bool {
 
 // L4 at the self-binding consumer: a binding whose origin was refused reaches the caller as a refusal,
 // never as "not a self-binding" (review 73742 on gunbc#12914).
-test fn a_refused_binding_origin_refuses_the_self_binding_question() -> Bool {
+test fn a_refused_binding_origin_refuses_the_self_binding_question() -> Bool  {
   match self_binding_of(parameter: fold_list_t(), binding: DerivationRefused { constructor: call_plan_constructor(), cause: SignatureReadBeforeBinderMarking }) {
     SelfBindingRefused { constructor: _, cause: _ } => true
     _ => false

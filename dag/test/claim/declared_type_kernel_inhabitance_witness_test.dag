@@ -132,7 +132,7 @@ fn kernel_inhabitance_positive_control_source() -> String {
 
 // THE DECLARED RETURN. `5` is not a `KOuter` and there is no representation in between: the produced
 // side is a ground kernel scalar, so a name difference here is a difference.
-test fn kernel_where_coproduct_declared_return_must_refuse() -> Bool {
+test fn kernel_where_coproduct_declared_return_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     kernel_inhabitance_fn_return_fixture_source(),
     "src/kin_ret.rs",
@@ -142,7 +142,7 @@ test fn kernel_where_coproduct_declared_return_must_refuse() -> Bool {
 }
 
 // THE MODULE-SCOPE `data` ANNOTATION -- the seam the gap analysis filed as seam (3), unwalled.
-test fn kernel_where_coproduct_declared_data_annotation_must_refuse() -> Bool {
+test fn kernel_where_coproduct_declared_data_annotation_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     kernel_inhabitance_data_annotation_fixture_source(),
     "src/kin_data.rs",
@@ -153,7 +153,7 @@ test fn kernel_where_coproduct_declared_data_annotation_must_refuse() -> Bool {
 
 // THE ANNOTATED `let`. This position had NO conformance judgment at all before this change -- not a
 // judgment that missed a shape, an absent one.
-test fn kernel_where_coproduct_declared_annotated_let_must_refuse() -> Bool {
+test fn kernel_where_coproduct_declared_annotated_let_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     kernel_inhabitance_annotated_let_fixture_source(),
     "src/kin_let.rs",
@@ -166,7 +166,7 @@ test fn kernel_where_coproduct_declared_annotated_let_must_refuse() -> Bool {
 // wrong element does not merely admit a bad value, it disables the comparison that would have caught
 // it. The declared type is reached as a type ARGUMENT rather than as a declaration of its own, which
 // is why nobody had named the position before the grammar census.
-test fn kernel_where_coproduct_declared_list_element_must_refuse() -> Bool {
+test fn kernel_where_coproduct_declared_list_element_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     kernel_inhabitance_list_element_fixture_source(),
     "src/kin_list.rs",
@@ -183,7 +183,7 @@ test fn kernel_where_coproduct_declared_list_element_must_refuse() -> Bool {
 // one probe most likely to be cited as this seam's coverage. `KOuter` here is written as a direct
 // name. Its aliased twin is `kernel_at_aliased_named_field_must_refuse` below, and until that probe
 // existed the aliased spelling of this exact position admitted.
-test fn kernel_in_named_field_still_refuses() -> Bool {
+test fn kernel_in_named_field_still_refuses() -> Bool  {
   !compile_dag_rust_emit_check(
     kernel_inhabitance_named_field_fixture_source(),
     "src/kin_field.rs",
@@ -193,7 +193,7 @@ test fn kernel_in_named_field_still_refuses() -> Bool {
 }
 
 // THE POSITIVE CONTROL, carrying the conforming spelling at all four closed positions at once.
-test fn correct_value_at_every_closed_position_still_compiles() -> Bool {
+test fn correct_value_at_every_closed_position_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     kernel_inhabitance_positive_control_source(),
     "src/kin_control.rs",
@@ -236,7 +236,7 @@ fn alias_over_kernel_positive_control_source() -> String {
 
 // THE DECLARED RETURN, through one alias. `5` is not a `KOuter`, and spelling `KOuter` as `KAlias`
 // does not change what the value is.
-test fn kernel_at_aliased_declared_return_must_refuse() -> Bool {
+test fn kernel_at_aliased_declared_return_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     alias_inhabitance_fn_return_fixture_source(),
     "src/ka_ret.rs",
@@ -246,7 +246,7 @@ test fn kernel_at_aliased_declared_return_must_refuse() -> Bool {
 }
 
 // THE MODULE-SCOPE `data` ANNOTATION, through one alias.
-test fn kernel_at_aliased_data_annotation_must_refuse() -> Bool {
+test fn kernel_at_aliased_data_annotation_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     alias_inhabitance_data_annotation_fixture_source(),
     "src/ka_data.rs",
@@ -259,7 +259,7 @@ test fn kernel_at_aliased_data_annotation_must_refuse() -> Bool {
 // un-aliased spelling -- `KHold \{ subject: 5 \}` at a bare `KOuter` refuses today -- so its aliased
 // twin is the sharpest available statement of the defect: two spellings of one declared type, one
 // refused and one admitted, at the identical position.
-test fn kernel_at_aliased_named_field_must_refuse() -> Bool {
+test fn kernel_at_aliased_named_field_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     alias_inhabitance_named_field_fixture_source(),
     "src/ka_field.rs",
@@ -270,7 +270,7 @@ test fn kernel_at_aliased_named_field_must_refuse() -> Bool {
 
 // THE DIRECT-CALL ARGUMENT, through one alias -- the second position that passes the authored formal
 // straight through without peeling, and so the second one the defect reached.
-test fn kernel_at_aliased_direct_call_argument_must_refuse() -> Bool {
+test fn kernel_at_aliased_direct_call_argument_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     alias_inhabitance_direct_call_argument_fixture_source(),
     "src/ka_call.rs",
@@ -283,7 +283,7 @@ test fn kernel_at_aliased_direct_call_argument_must_refuse() -> Bool {
 // relation rather than peeling a fixed number of levels, so a three-link alias chain is decided by
 // the same code as a one-link one. A repair that peeled once would pass the four probes above and
 // red here.
-test fn kernel_at_chained_alias_declared_return_must_refuse() -> Bool {
+test fn kernel_at_chained_alias_declared_return_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     alias_inhabitance_chained_alias_fixture_source(),
     "src/ka_chain.rs",
@@ -294,7 +294,7 @@ test fn kernel_at_chained_alias_declared_return_must_refuse() -> Bool {
 
 // THE POSITIVE CONTROL. Without it a relation that refused every aliased declaration would satisfy
 // all five reds above, and the reds would measure the mechanism rather than the distinction.
-test fn conforming_value_through_an_alias_still_compiles() -> Bool {
+test fn conforming_value_through_an_alias_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     alias_inhabitance_positive_control_source(),
     "src/ka_control.rs",
@@ -308,7 +308,7 @@ test fn conforming_value_through_an_alias_still_compiles() -> Bool {
 // a repair that followed the alias and then judged on the DECLARATION SHAPE alone would newly refuse
 // an alias over a kernel type, where the value is perfectly good. Every position the reds above
 // cover is carried here with a conforming value at `type KIntAlias = Int`.
-test fn kernel_value_at_an_alias_over_that_kernel_still_compiles() -> Bool {
+test fn kernel_value_at_an_alias_over_that_kernel_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     alias_over_kernel_positive_control_source(),
     "src/ka_kernel.rs",
@@ -322,7 +322,7 @@ test fn kernel_value_at_an_alias_over_that_kernel_still_compiles() -> Bool {
 // because its binding has a different shape: it arrives carrying a CHILD (the argument) where a
 // bare-name alias arrives with none, so a repair that keyed on childlessness would pass every probe
 // above and red here. Measured: admits before the repair, refuses after.
-test fn kernel_at_applied_alias_named_field_must_refuse() -> Bool {
+test fn kernel_at_applied_alias_named_field_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     applied_alias_inhabitance_named_field_fixture_source(),
     "src/ka_applied.rs",

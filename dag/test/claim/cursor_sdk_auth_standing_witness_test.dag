@@ -22,7 +22,7 @@ import extdeps.llm.cursor_sdk_errors {
   CursorSdkRateLimitError,
 }
 
-test fn auth_probe_authenticated_on_finished_result() -> Bool {
+test fn auth_probe_authenticated_on_finished_result() -> Bool  {
   match cursor_sdk_auth_probe_from_run_result(
     raw: "{\"status\":\"finished\",\"result\":\"ok\"}",
   ) {
@@ -31,7 +31,7 @@ test fn auth_probe_authenticated_on_finished_result() -> Bool {
   }
 }
 
-test fn auth_probe_rejects_authentication_error() -> Bool {
+test fn auth_probe_rejects_authentication_error() -> Bool  {
   match cursor_sdk_auth_probe_from_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad key\",\"code\":\"authentication_error\"}}",
   ) {
@@ -40,7 +40,7 @@ test fn auth_probe_rejects_authentication_error() -> Bool {
   }
 }
 
-test fn auth_probe_rate_limit_is_auth_neutral_not_credential_rejection() -> Bool {
+test fn auth_probe_rate_limit_is_auth_neutral_not_credential_rejection() -> Bool  {
   match cursor_sdk_auth_probe_from_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"slow down\",\"code\":\"rate_limit_error\"}}",
   ) {
@@ -50,7 +50,7 @@ test fn auth_probe_rate_limit_is_auth_neutral_not_credential_rejection() -> Bool
   }
 }
 
-test fn provider_standing_rate_limit_keeps_authentication_not_absent() -> Bool {
+test fn provider_standing_rate_limit_keeps_authentication_not_absent() -> Bool  {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"error\",\"error\":{\"message\":\"slow down\",\"code\":\"rate_limit_error\"}}",
@@ -60,7 +60,7 @@ test fn provider_standing_rate_limit_keeps_authentication_not_absent() -> Bool {
     && standing.authentication != AuthenticationCredentialsAbsent
 }
 
-test fn provider_standing_unrecognised_error_code_stays_unobserved() -> Bool {
+test fn provider_standing_unrecognised_error_code_stays_unobserved() -> Bool  {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad\",\"code\":\"token_revoked\"}}",
@@ -75,7 +75,7 @@ test fn provider_standing_unrecognised_error_code_stays_unobserved() -> Bool {
   }
 }
 
-test fn provider_standing_derives_authentication_from_probe() -> Bool {
+test fn provider_standing_derives_authentication_from_probe() -> Bool  {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"finished\",\"result\":\"ok\"}",
@@ -84,7 +84,7 @@ test fn provider_standing_derives_authentication_from_probe() -> Bool {
   standing.authentication == AuthenticationAuthenticated
 }
 
-test fn provider_standing_rejects_credentials_on_auth_error() -> Bool {
+test fn provider_standing_rejects_credentials_on_auth_error() -> Bool  {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad key\",\"code\":\"authentication_error\"}}",
@@ -93,7 +93,7 @@ test fn provider_standing_rejects_credentials_on_auth_error() -> Bool {
   standing.authentication == AuthenticationCredentialsAbsent
 }
 
-test fn provider_standing_usage_is_capability_gap() -> Bool {
+test fn provider_standing_usage_is_capability_gap() -> Bool  {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: CursorSdkAuthProbeUnclassified {
       reason: "fixture" as NonEmptyStr,

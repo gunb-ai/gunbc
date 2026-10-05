@@ -78,13 +78,13 @@ fn string_contains_marker(haystack: String, marker: String) -> Bool {
 // EVERY OBSTACLE IS REACHABLE FROM THE PATH. An identity join over step ids, not a count: an
 // obstacle filed against a step that does not exist is invisible exactly when it fires, and a
 // count of obstacles cannot see it.
-test fn every_obstacle_names_a_declared_step() -> Bool {
+test fn every_obstacle_names_a_declared_step() -> Bool  {
   count(obstacles_with_undeclared_step()) == 0 && count(onboarding_obstacles) > 0
 }
 
 // THE DISCRIMINATING RED FOR THE JOIN. A step id that is not declared must not answer true, or
 // the arm above is satisfied by a predicate that accepts everything.
-test fn an_undeclared_step_id_is_not_accepted() -> Bool {
+test fn an_undeclared_step_id_is_not_accepted() -> Bool  {
   !step_id_is_declared(id: "no-such-step") && step_id_is_declared(id: "build")
 }
 
@@ -96,7 +96,7 @@ test fn an_undeclared_step_id_is_not_accepted() -> Bool {
 // asserts is that the census is populated and that every blocked step carries the KIND of help it
 // needs -- a blocked step whose blocker said only "blocked" would answer one number to a question
 // that needs three.
-test fn the_bus_factor_census_is_populated_and_typed() -> Bool {
+test fn the_bus_factor_census_is_populated_and_typed() -> Bool  {
   let blocked = steps_blocked_on_others()
   let gated = operator_gated_obstacles()
   count(blocked) > 0
@@ -109,7 +109,7 @@ test fn the_bus_factor_census_is_populated_and_typed() -> Bool {
 // obstacle whose error text explains itself costs minutes; one whose text points elsewhere costs
 // a day and a message to the operator. If this population were empty the roster would be
 // recording only the cheap half.
-test fn the_roster_carries_obstacles_the_error_text_does_not_explain() -> Bool {
+test fn the_roster_carries_obstacles_the_error_text_does_not_explain() -> Bool  {
   count(obstacles_undiscoverable_from_symptom()) > 0
     && count(obstacles_undiscoverable_from_symptom()) <= count(onboarding_obstacles)
 }
@@ -120,7 +120,7 @@ test fn the_roster_carries_obstacles_the_error_text_does_not_explain() -> Bool {
 // what a newcomer actually reads, and asserts the argv the build authority produces appears in it.
 // A projection that dropped the build step, or rendered a step with an empty command, goes red
 // here while every arm above stays green.
-test fn the_rendered_page_carries_the_authority_build_argv() -> Bool {
+test fn the_rendered_page_carries_the_authority_build_argv() -> Bool  {
   let md = expected_contributor_onboarding_md()
   let argv = repo_self_build_command(bins: witness_floor_required_bins)
   string_contains_marker(haystack: md, marker: argv)
@@ -128,7 +128,7 @@ test fn the_rendered_page_carries_the_authority_build_argv() -> Bool {
 
 // AND THE PAGE NAMES EVERY STEP IT DECLARES. A projection that renders nine of ten steps leaves a
 // reader stopping at the gap with no way to know a step was missing.
-test fn the_rendered_page_names_every_declared_step() -> Bool {
+test fn the_rendered_page_names_every_declared_step() -> Bool  {
   let md = expected_contributor_onboarding_md()
   fold(onboarding_steps, init: true, f: fn(acc, s) {
     acc && string_contains_marker(haystack: md, marker: (s.id as String))
@@ -161,12 +161,12 @@ data fixture_readings_with_a_first_day: List<DesignReading> = [
   },
 ]
 
-test fn the_reading_order_has_a_first_day() -> Bool {
+test fn the_reading_order_has_a_first_day() -> Bool  {
   readings_have_a_first_day(readings: onboarding_design_reading)
     && count(first_day_readings()) > 0
 }
 
-test fn a_reading_order_with_no_first_day_is_refused() -> Bool {
+test fn a_reading_order_with_no_first_day_is_refused() -> Bool  {
   readings_have_a_first_day(readings: fixture_readings_with_a_first_day)
     && !readings_have_a_first_day(readings: fixture_readings_without_a_first_day)
     && count(fixture_readings_without_a_first_day) > 0
@@ -174,7 +174,7 @@ test fn a_reading_order_with_no_first_day_is_refused() -> Bool {
 
 // AND THE PRIORITY DISCRIMINATOR ITSELF IS NOT TRUE-FOR-EVERYTHING, which is what would make
 // both arms above satisfiable by a predicate that answers first-day to any row.
-test fn only_the_first_day_priority_answers_first_day() -> Bool {
+test fn only_the_first_day_priority_answers_first_day() -> Bool  {
   reading_priority_is_first_day(pr: FirstDay)
     && !reading_priority_is_first_day(pr: BeforeFirstCommit)
     && !reading_priority_is_first_day(pr: WhenItBites)
@@ -200,14 +200,14 @@ test fn only_the_first_day_priority_answers_first_day() -> Bool {
 // is the thing that refused this arm's predecessor. One row pairs with the red, which is all the
 // positive control owes; the claim that EVERY docs-located artifact is covered belongs to
 // production, which derives that population and refuses on the real acceptance path.
-test fn an_authored_docs_population_is_fully_covered() -> Bool {
+test fn an_authored_docs_population_is_fully_covered() -> Bool  {
   match docs_projection_producer_coverage_over(artifacts: [ContributorOnboardingArtifact]) {
     ExitSuccess => true
     ExitFailure { code: _, reason: _ } => false
   }
 }
 
-test fn an_artifact_with_no_producer_is_refused() -> Bool {
+test fn an_artifact_with_no_producer_is_refused() -> Bool  {
   match docs_projection_producer_coverage_over(artifacts: [GitignoreArtifact]) {
     ExitFailure { code: _, reason: _ } => true
     ExitSuccess => false
@@ -224,7 +224,7 @@ test fn an_artifact_with_no_producer_is_refused() -> Bool {
 // forbidden combination and no population of variants could make this red. These arms author the
 // combination as `DocsArtifactPlacement` rows, which is the whole reason the verdict does not
 // take artifacts.
-test fn a_producer_for_an_artifact_outside_docs_is_refused() -> Bool {
+test fn a_producer_for_an_artifact_outside_docs_is_refused() -> Bool  {
   match docs_placement_verdict_over(placements: [
     DocsArtifactPlacement { path: "src/v1/stage0/src/generated.rs", directory: "src", has_producer: true }
   ]) {
@@ -236,7 +236,7 @@ test fn a_producer_for_an_artifact_outside_docs_is_refused() -> Bool {
 // CONTROL ONE, DIFFERING IN EXACTLY ONE FIELD: same directory, no producer. That is the ordinary
 // state of most of the registry and must stay green, or the arm above would refuse every artifact
 // that simply lives somewhere else.
-test fn an_artifact_outside_docs_with_no_producer_is_fine() -> Bool {
+test fn an_artifact_outside_docs_with_no_producer_is_fine() -> Bool  {
   match docs_placement_verdict_over(placements: [
     DocsArtifactPlacement { path: "src/v1/stage0/src/generated.rs", directory: "src", has_producer: false }
   ]) {
@@ -247,7 +247,7 @@ test fn an_artifact_outside_docs_with_no_producer_is_fine() -> Bool {
 
 // CONTROL TWO: a producer for an artifact that IS under docs -- the state every real docs
 // projection is in. Green, or the arm would refuse the population it exists to protect.
-test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool {
+test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool  {
   match docs_placement_verdict_over(placements: [
     DocsArtifactPlacement { path: "docs/onboarding.md", directory: "docs", has_producer: true }
   ]) {
@@ -271,7 +271,7 @@ test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool {
 // full render of the projection. This arm is the equivalence: a docs-located placement WITH a
 // producer -- the state every real docs projection is in, and the whole population the filter
 // removes -- is green, so removing it from the input removes no refusal.
-test fn the_population_the_cost_filter_removes_would_have_been_green_anyway() -> Bool {
+test fn the_population_the_cost_filter_removes_would_have_been_green_anyway() -> Bool  {
   match docs_placement_verdict_over(placements: [
     DocsArtifactPlacement { path: "docs/design-failure-modes.md", directory: "docs", has_producer: true },
     DocsArtifactPlacement { path: "docs/design-rung-drops.md", directory: "docs", has_producer: true },
@@ -286,7 +286,7 @@ test fn the_population_the_cost_filter_removes_would_have_been_green_anyway() ->
 // docs population, and must have no docs producer. Without this arm the predicate above is
 // satisfied by one that answers true for everything -- which would put .gitignore in the docs
 // comparison and report coverage it does not have.
-test fn a_non_docs_artifact_is_not_in_the_docs_population() -> Bool {
+test fn a_non_docs_artifact_is_not_in_the_docs_population() -> Bool  {
   !artifact_is_docs_located(a: GitignoreArtifact)
     && !artifact_has_docs_producer(a: GitignoreArtifact)
     && artifact_is_docs_located(a: DesignRungDropsArtifact)
@@ -296,7 +296,7 @@ test fn a_non_docs_artifact_is_not_in_the_docs_population() -> Bool {
 // docs-located, committed, has a producer, and therefore appears in the population main compares.
 // This is the arm that would have gone red on the state the failure-mode row predicted: an
 // artifact that compiles, ships, and is compared by nothing.
-test fn the_onboarding_projection_is_in_the_compared_population() -> Bool {
+test fn the_onboarding_projection_is_in_the_compared_population() -> Bool  {
   let a = ContributorOnboardingArtifact
   let committed = committed_docs_located_artifacts()
   artifact_is_docs_located(a: a)
@@ -310,6 +310,6 @@ test fn the_onboarding_projection_is_in_the_compared_population() -> Bool {
 // agreeing a NotCommitted projection would be permanently green. If these two ever became equal
 // by accident the failure-mode ledger would either be compared against absent bytes or dropped
 // from regeneration.
-test fn regen_writes_more_than_main_agrees() -> Bool {
+test fn regen_writes_more_than_main_agrees() -> Bool  {
   count(docs_located_artifacts()) > count(committed_docs_located_artifacts())
 }

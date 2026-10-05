@@ -49,7 +49,7 @@ data tree_b: String = "2222222222222222222222222222222222222222"
 // DISCRIMINATING (compute-deduplication-and-admission's red control): identical requests share one
 // identity; a difference anywhere -- tree, operation, entry, functions, hermeticity, profile,
 // toolchain -- does not collapse, each proven separately.
-test fn identical_requests_share_an_identity_and_every_difference_separates_them() -> Bool {
+test fn identical_requests_share_an_identity_and_every_difference_separates_them() -> Bool  {
   let base = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
   let same = work_identity_hex(id: work_identity(subject: tree(hex: tree_a), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
   let other_tree = work_identity_hex(id: work_identity(subject: tree(hex: tree_b), op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0")))
@@ -70,7 +70,7 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
 // the TARGET root (the shared per-host CARGO_TARGET_DIR, not the checkout -- the first wet run
 // declared the checkout and mismatched a build that had succeeded); checking operations declare
 // none, so an absent binary is a mismatch and an absent nothing is not.
-test fn declared_outputs_follow_the_operation() -> Bool {
+test fn declared_outputs_follow_the_operation() -> Bool  {
   let build = work_declared_outputs(op: work_default_build())
   let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] })
   map(build, d => d.path) == ["release/gunbc", "release/claim_batch"]
@@ -82,7 +82,7 @@ test fn declared_outputs_follow_the_operation() -> Bool {
 
 // The stored outcome round-trips its ending and identity; a document missing either is unreadable,
 // never "no outcome" (RED against an attach that treats a broken store file as absent).
-test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool {
+test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool  {
   let subject = tree(hex: tree_a)
   let ok = work_outcome_wire(o: WorkSucceeded { identity: "abc", outputs: [WorkOutput { declared: "target/release/gunbc", blob: "deadbeef", store_path: "/s/gunbc" }], log_path: "/l" }, subject: subject, op: work_default_build())
   let failed = work_outcome_wire(o: WorkFailed { identity: "abc", exit_code: 101, log_path: "/l" }, subject: subject, op: work_default_build())
@@ -133,7 +133,7 @@ fn decided(done: Bool, load: UnitPropertyReading, cg: UnitPropertyReading, ev: U
   unit_termination_decide(o: UnitObservations { attempt_completed: done, load_state: load, control_group: cg, events: ev })
 }
 
-test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
+test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool  {
   let no_events = reading(queried: false, value: "")
   let unread = reading(queried: false, value: "")
   let completed_empty = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
@@ -167,7 +167,7 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
 // The work's ENDING and the attempt's COMPLETION are different questions: a WorkFailed says the
 // unit exited nonzero OR that the launcher never got an answer, and only the second is a lost
 // launcher. The ending is what the caller is told; completion is what the seat is decided on.
-test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
+test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool  {
   compute_attempt_completed(outcome: WorkSucceeded { identity: "a", outputs: [], log_path: "/l" })
     && compute_attempt_completed(outcome: WorkOutputMismatch { identity: "a", detail: "d" })
     && !compute_attempt_completed(outcome: WorkFailed { identity: "a", exit_code: 1, log_path: "/l" })
@@ -187,7 +187,7 @@ test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
 // fact and NOTHING about the work, so re-requesting the identity yields the same ending the first
 // caller was told; what the first caller additionally gets is the recording failure, which is the
 // only consumer that could act on it.
-test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
+test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool  {
   let succeeded = WorkSucceeded { identity: "abc", outputs: [], log_path: "/l" }
   let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
   let settled = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
@@ -214,7 +214,7 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
 // our own argv can see. That is precisely why the release predicate does not lean on the binding --
 // completion must still be confirmed by a positively empty cgroup, and this row only ensures we are
 // not ALSO shipping an invocation that opts into the dangerous mode.
-test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
+test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool  {
   let props = compute_unit_properties(
     layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
     granted: kibibyte(count: 1048576))
@@ -231,7 +231,7 @@ test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -
 // The join is what carries it, and it accumulates rather than letting the later arm win -- both
 // details are kept because they name different identities and an operator needs each. The work
 // contract is untouched by all of this: the ending and the document are exactly what was stored.
-test fn a_lost_record_on_a_dependency_survives_a_successful_dependent() -> Bool {
+test fn a_lost_record_on_a_dependency_survives_a_successful_dependent() -> Bool  {
   let succeeded = WorkSucceeded { identity: "child", outputs: [], log_path: "/l" }
   let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
   let clean_child = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
@@ -279,7 +279,7 @@ fn lifecycle_of(load: UnitPropertyReading, active: UnitPropertyReading, result: 
 // THE UNKNOWN ARMS ASSERT THEIR REASON RATHER THAN THEIR ARM. A negative control satisfied by any
 // unknown would be satisfied by a fold that answered unknown to everything, so each one names the
 // fact it could not establish (a refusal witness must assert the reason).
-test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool {
+test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool  {
   let empty = PopulationEmpty { detail: "cg reports populated 0" }
   let occupied = PopulationOccupied { detail: "processes remain in /user.slice/x" }
   let unknown_pop = PopulationUnknown { detail: "the cgroup events could not be read" }
@@ -345,7 +345,7 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
 // capability nobody built decays into advice; this one names compute_recover_cli, and the
 // assertion is here so that deleting the door makes this cell red rather than leaving the text
 // pointing at nothing.
-test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> Bool {
+test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> Bool  {
   let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
   let succeeded = WorkSucceeded { identity: "abc", outputs: [], log_path: "/l" }
   let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
@@ -390,7 +390,7 @@ test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> 
 // The fold's contract is that the OUTCOME decides: a spawn that produced no process is not a
 // reading whatever the transport's other fields say, so the separating input is a refusal
 // carrying a successful-looking flag and a value.
-test fn a_refused_spawn_is_a_property_not_queried_and_never_a_reading() -> Bool {
+test fn a_refused_spawn_is_a_property_not_queried_and_never_a_reading() -> Bool  {
   let refused = unit_property_from_shell(
     outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "No such file or directory" as NonEmptyStr },
     success: false, value: "")

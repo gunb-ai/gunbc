@@ -47,15 +47,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // refuse at per-PR admission instead of stalling main with duplicate slugs no per-branch uniqueness
 // check can see.
 
-test fn doc_graph_has_no_orphan_docs() -> Bool {
+test fn doc_graph_has_no_orphan_docs() -> Bool  {
   return doc_graph_floor_orphan_clean_holds()
 }
 
-test fn doc_graph_registered_plan_roots_nonempty() -> Bool {
+test fn doc_graph_registered_plan_roots_nonempty() -> Bool  {
   return doc_graph_roots_all().count() > 0
 }
 
-test fn doc_graph_registered_plan_roots_all_admitted() -> Bool {
+test fn doc_graph_registered_plan_roots_all_admitted() -> Bool  {
   return doc_graph_admitted_root_count(doc_graph_roots_all()) == doc_graph_roots_all().count()
 }
 
@@ -65,11 +65,11 @@ test fn doc_graph_registered_plan_roots_all_admitted() -> Bool {
 // docs/plans/<slug>.md and does not admit it (cli_run build_doc_graph_report). Specimen
 // is synthetic (same slug as plan_projects_committed_markdown's missing-file-slug)
 // so it stays absent by construction, not by a historical deletion.
-test fn doc_graph_missing_plan_slug_is_not_admitted() -> Bool {
+test fn doc_graph_missing_plan_slug_is_not_admitted() -> Bool  {
   return doc_graph_admitted_root_count(["docs/plans/missing-file-slug.md"]) == 0
 }
 
-test fn hand_authored_bind_with_missing_slug_is_not_admitted_as_root() -> Bool {
+test fn hand_authored_bind_with_missing_slug_is_not_admitted_as_root() -> Bool  {
   let b = HandAuthoredDocBind {
     home: PlanDoc,
     slug: "missing-file-slug",
@@ -81,11 +81,11 @@ test fn hand_authored_bind_with_missing_slug_is_not_admitted_as_root() -> Bool {
     && doc_graph_admitted_root_count([hand_authored_doc_path(b: b)]) == 0
 }
 
-test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
+test fn doc_graph_hand_authored_slugs_not_registered() -> Bool  {
   return hand_authored_slugs_all_unregistered()
 }
 
-test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
+test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool  {
   return hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind {
     home: PlanDoc,
     slug: "typescript-gap-census",
@@ -107,22 +107,22 @@ test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
 // formerly named; refinement enforcement sits on the general wall, not the accepted ground
 // fragment).
 
-test fn doc_graph_works_refs_carry_symbols() -> Bool {
+test fn doc_graph_works_refs_carry_symbols() -> Bool  {
   return hand_authored_works_refs_all_carry_symbols()
 }
 
-test fn doc_graph_bind_identities_unique() -> Bool {
+test fn doc_graph_bind_identities_unique() -> Bool  {
   return hand_authored_bind_identities_unique()
 }
 
-test fn doc_graph_bind_keyed_build_admits_live_incomings() -> Bool {
+test fn doc_graph_bind_keyed_build_admits_live_incomings() -> Bool  {
   match hand_authored_doc_binds_construct() {
     KeyedRosterBuilt { rows: _ } => true
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
-test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
+test fn doc_graph_duplicate_bind_key_red_control() -> Bool  {
   let dup = HandAuthoredDocBind {
     home: PlanDoc,
     slug: "synthetic-duplicate-identity-control",
@@ -169,7 +169,7 @@ fn fixture_union_branch_b_overlap_bind() -> HandAuthoredDocBind {
   }
 }
 
-test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool {
+test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool  {
   match keyed_roster_union(
     left: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
     right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_disjoint_bind()]),
@@ -180,7 +180,7 @@ test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool {
   }
 }
 
-test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool {
+test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool  {
   match keyed_roster_union(
     left: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
     right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_overlap_bind()]),
@@ -194,7 +194,7 @@ test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool {
   }
 }
 
-test fn guarantee_recovery_bind_pins_both_anchors() -> Bool {
+test fn guarantee_recovery_bind_pins_both_anchors() -> Bool  {
   let rows = hand_authored_doc_binds() |> filter(b => b.slug == "compiler-guarantee-recovery-gap-analysis")
   return (rows |> count) == 1 && match rows |> first {
     Present { value: b } =>
@@ -206,11 +206,11 @@ test fn guarantee_recovery_bind_pins_both_anchors() -> Bool {
   }
 }
 
-test fn doc_graph_has_no_dangling_links() -> Bool {
+test fn doc_graph_has_no_dangling_links() -> Bool  {
   return doc_graph_dangling_link_count() == 0
 }
 
-test fn doc_graph_universe_is_nonempty() -> Bool {
+test fn doc_graph_universe_is_nonempty() -> Bool  {
   return doc_graph_doc_count() > 0
 }
 
@@ -225,7 +225,7 @@ test fn doc_graph_universe_is_nonempty() -> Bool {
 // re-authoring a non-retiring bind here reds, and there is no filter it can hide
 // behind. PlanHasNoRetirement itself is untouched -- gunbc.plan still represents
 // a plan carrying no retirement metadata, and keeps its own control for that arm.
-test fn hand_authored_doc_binds_all_carry_a_retirement() -> Bool {
+test fn hand_authored_doc_binds_all_carry_a_retirement() -> Bool  {
   match hand_authored_doc_binds_population() {
     HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
     HandAuthoredDocBindsBuilt { binds: binds } =>

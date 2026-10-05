@@ -56,7 +56,7 @@ fn holds_exactly(address: GitRepositoryAddress, oid: String, text: String) -> Bo
     && oid != empty_blob_oid
 }
 
-test fn a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution() -> Bool {
+test fn a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution() -> Bool  {
   with_temp_dir(scenario: dir => {
     let store = join([dir as String, "/store.git"], "")
     let ready = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: store as FilePath).exit_code == 0
@@ -66,7 +66,7 @@ test fn a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_e
   })
 }
 
-test fn a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution() -> Bool {
+test fn a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution() -> Bool  {
   with_temp_dir(scenario: dir => {
     let ready = git.Core.InitInRepo(repo: dir).success
     ready && (match stage_text_blob(repo_root: dir as String, text: "subject\nwith two lines\n") {
@@ -82,7 +82,7 @@ test fn a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository
 // so the id is exactly git's empty blob and not the text. It asserts the defect, so it holds for as
 // long as the planted link really corrupts a path-routed writer; the stdin claims above could
 // otherwise pass on a setup that clobbers nothing.
-test fn a_path_routed_hash_under_a_clobbered_path_publishes_the_empty_blob_red_control_by_real_execution() -> Bool {
+test fn a_path_routed_hash_under_a_clobbered_path_publishes_the_empty_blob_red_control_by_real_execution() -> Bool  {
   with_temp_dir(scenario: dir => {
     let store = join([dir as String, "/store.git"], "") as FilePath
     let scratch = join([dir as String, "/scratch-object"], "") as FilePath

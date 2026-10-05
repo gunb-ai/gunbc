@@ -35,14 +35,14 @@ fn shaped_facts() -> List<DeclFact> {
   ]
 }
 
-test fn forked_names_and_rows_are_counted_at_declaration_grain() -> Bool {
+test fn forked_names_and_rows_are_counted_at_declaration_grain() -> Bool  {
   let c = declaration_fork_census_over(facts: shaped_facts())
   c.facts == 6 && c.names == 3 && c.forked_names == 2 && c.forked_rows == 5
 }
 
 // THE CONTROL: no name declared twice, nothing forked -- and the counts still name the population
 // read, so an empty answer is distinguishable from an unread one.
-test fn a_population_with_no_repeated_name_forks_nothing() -> Bool {
+test fn a_population_with_no_repeated_name_forks_nothing() -> Bool  {
   let c = declaration_fork_census_over(facts: [
     fact("a.x", "x", "dag/a.dag"),
     fact("b.y", "y", "dag/b.dag"),

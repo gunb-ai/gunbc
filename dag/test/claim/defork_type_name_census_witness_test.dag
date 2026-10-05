@@ -46,12 +46,12 @@ fn census_findings(rows: List<SharedTypeNameRow>, resolved: List<ResolvedSharedT
   defork_census_findings(shared: census_fixture_shared(), rows: rows, resolved: resolved)
 }
 
-test fn population_is_the_shared_type_names_and_only_them() -> Bool {
+test fn population_is_the_shared_type_names_and_only_them() -> Bool  {
   let names = map(census_fixture_shared(), s => s.name)
   length(xs: names) == 2 && names.contains("CensusShared") && names.contains("CensusAliased")
 }
 
-test fn a_complete_disposition_set_has_no_finding_and_derives_the_section() -> Bool {
+test fn a_complete_disposition_set_has_no_finding_and_derives_the_section() -> Bool  {
   let rows = [census_row(names: ["CensusShared", "CensusAliased"])]
   let resolved = [census_resolved(names: ["CensusGone"])]
   length(xs: census_findings(rows: rows, resolved: resolved)) == 0
@@ -61,7 +61,7 @@ test fn a_complete_disposition_set_has_no_finding_and_derives_the_section() -> B
     }
 }
 
-test fn a_derived_name_no_row_disposes_of_refuses_by_name() -> Bool {
+test fn a_derived_name_no_row_disposes_of_refuses_by_name() -> Bool  {
   let rows = [census_row(names: ["CensusShared"])]
   any(census_sole(findings: census_findings(rows: rows, resolved: [])), f => match f {
     UndisposedSharedTypeName { name } => name == "CensusAliased"
@@ -73,21 +73,21 @@ test fn a_derived_name_no_row_disposes_of_refuses_by_name() -> Bool {
     }
 }
 
-test fn a_row_naming_a_pair_that_no_longer_exists_refuses_by_name() -> Bool {
+test fn a_row_naming_a_pair_that_no_longer_exists_refuses_by_name() -> Bool  {
   any(census_sole(findings: census_findings(rows: [census_row(names: ["CensusShared", "CensusAliased", "CensusDagOnly"])], resolved: [])), f => match f {
     StaleDisposition { name } => name == "CensusDagOnly"
     _ => false
   })
 }
 
-test fn a_name_disposed_twice_refuses_by_name() -> Bool {
+test fn a_name_disposed_twice_refuses_by_name() -> Bool  {
   any(census_sole(findings: census_findings(rows: [census_row(names: ["CensusShared", "CensusAliased"]), census_row(names: ["CensusShared"])], resolved: [])), f => match f {
     DuplicateDisposition { name } => name == "CensusShared"
     _ => false
   })
 }
 
-test fn a_resolved_name_declared_under_both_roots_again_refuses_by_name() -> Bool {
+test fn a_resolved_name_declared_under_both_roots_again_refuses_by_name() -> Bool  {
   any(census_sole(findings: census_findings(rows: [census_row(names: ["CensusShared", "CensusAliased"])], resolved: [census_resolved(names: ["CensusAliased"])])), f => match f {
     ResolvedNameReforked { name, change } => name == "CensusAliased" && change == 1
     _ => false

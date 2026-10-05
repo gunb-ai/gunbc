@@ -159,7 +159,7 @@ fn wh_commit(p: FileHoldReleasePlan?) -> FileHoldReleaseOutcome? {
 // SHARED SPELLING: the held tag followed by exactly the owner. Read back through
 // the filesystem rather than through the store, so the row establishes what was
 // WRITTEN and not what the codec says it would write.
-test fn an_absent_slot_acquires_at_generation_one_by_real_execution() -> Bool {
+test fn an_absent_slot_acquires_at_generation_one_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
@@ -172,7 +172,7 @@ test fn an_absent_slot_acquires_at_generation_one_by_real_execution() -> Bool {
 // spelling. The generation-2 file must not exist after either attempt: an
 // occupied answer that had nonetheless advanced the slot would be the
 // overwrite the protocol exists to forbid, wearing a refusal's name.
-test fn a_held_slot_refuses_another_owner_without_writing_by_real_execution() -> Bool {
+test fn a_held_slot_refuses_another_owner_without_writing_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
@@ -187,7 +187,7 @@ test fn a_held_slot_refuses_another_owner_without_writing_by_real_execution() ->
     && removed.success
 }
 
-test fn a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution() -> Bool {
+test fn a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
@@ -204,7 +204,7 @@ test fn a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_exec
 // disk, reacquired at 3. The reacquire is the row that proves a released slot is
 // not a dead slot, and that the acquire derives generation 2 from its own read
 // rather than from anything the caller said.
-test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution() -> Bool {
+test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
@@ -227,7 +227,7 @@ test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_re
 // AFTER the read -- not Occupied, which would say it was never eligible, and not
 // a store fault. This is the case the protocol exists for, and it is staged
 // without any caller-supplied observation: the plan is the only thing shared.
-test fn one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution() -> Bool {
+test fn one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
@@ -251,7 +251,7 @@ test fn one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_
 // cannot observe or publish; that must surface as unavailable and never as a
 // lost race or an occupied slot, or a caller would wait forever for a holder
 // that does not exist (recurring_failure_mode store_refusal_reported_as_contention).
-test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool {
+test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let blocker = concat(root_path, "/not-a-directory")
   let planted = Filesystem.Write(path: blocker, content: "not a store root")
@@ -269,7 +269,7 @@ test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_ex
 // in its place. The commit's own publication is refused by the store, and that
 // must surface as unavailable, not as a race lost after the read. The plan is
 // bound to the root it was read from; nothing is rebound.
-test fn a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool {
+test fn a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let plan = wh_acquire_plan(root: root, owner: "demand-7|offer-1")
@@ -288,7 +288,7 @@ test fn a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race
 // THE SHARED SPELLING. The generation on the plan is the store's, and the payload
 // the commit will write is the free tag followed by exactly the release
 // reference -- the bytes the fabric's release wrote before the extraction.
-test fn a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution() -> Bool {
+test fn a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
@@ -309,7 +309,7 @@ test fn a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_b
 // against the disk as well as the outcome: the next generation must not exist
 // afterwards. Absent, already free, another owner's hold, and the right owner at
 // the wrong generation.
-test fn refused_releases_do_not_free_the_slot_by_real_execution() -> Bool {
+test fn refused_releases_do_not_free_the_slot_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let absent = wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "stale")
@@ -338,7 +338,7 @@ test fn refused_releases_do_not_free_the_slot_by_real_execution() -> Bool {
 // the same plan is committed once, which frees it). The second commit of that
 // plan must lose rather than write free over free -- a caller that had settled
 // against the plan learns its settlement and the slot have come apart.
-test fn a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution() -> Bool {
+test fn a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution() -> Bool  {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))

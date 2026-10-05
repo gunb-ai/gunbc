@@ -43,7 +43,7 @@ fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: 
 // dgx_spark_procurement_intent (which is intentionally not imported). Six and two
 // are independent acquisitions. Omitting either lot must change the result; an
 // implementation returning eight without folding cannot pass.
-test fn w_independent_acquisitions_reconcile_eight() -> Bool {
+test fn w_independent_acquisitions_reconcile_eight() -> Bool  {
   dgx_spark_procurement_ledgers.length() == 2
     && population_is(evidence: dgx_spark_procurement_ledgers, acquired: 8, received: 8, owned: 8)
     && population_is(evidence: [
@@ -60,7 +60,7 @@ test fn w_independent_acquisitions_reconcile_eight() -> Bool {
 // Same lot rows, different events: neither a sum of quantity_acquired fields nor
 // a count of asset labels can pass this. The empty ledger is a synthetic control,
 // NOT a representation of the real cancelled order (the model lacks that state).
-test fn w_counts_follow_events_not_just_lot_rows() -> Bool {
+test fn w_counts_follow_events_not_just_lot_rows() -> Bool  {
   population_is(evidence: [
     InventoryLotEvidence {
       lot: dgx_spark_micro_center_lot,
@@ -77,7 +77,7 @@ test fn w_counts_follow_events_not_just_lot_rows() -> Bool {
 
 // Valid evidence surrounds an invalid ledger. Admission must publish neither a
 // valid prefix nor a later valid ledger in place of the located refusal.
-test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
+test fn w_invalid_ledger_refuses_the_whole_population() -> Bool  {
   match admit_ledger_evidence(evidence: [
     InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
     InventoryLotEvidence {
@@ -95,7 +95,7 @@ test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
 }
 
 // Aggregate identity coverage is not an observed host or source-lot binding.
-test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
+test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool  {
   match admit_ledger_evidence(evidence: dgx_spark_procurement_ledgers) {
     AllLedgersAdmitted { ledgers: ledgers } => {
       match sum_inventory_balances(ledgers: ledgers) {
@@ -110,7 +110,7 @@ test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
 }
 
 // Read every actual lot. The sum must not require money or a guessed storage SKU.
-test fn w_lots_preserve_private_costs_and_catalog_evidence() -> Bool {
+test fn w_lots_preserve_private_costs_and_catalog_evidence() -> Bool  {
   fold(dgx_spark_procurement_ledgers, init: true, f: fn(acc, ledger) {
     let private_receipt = match ledger.lot.receipt {
       ReceiptHeldPrivately => true
@@ -137,7 +137,7 @@ test fn w_lots_preserve_private_costs_and_catalog_evidence() -> Bool {
 // carrying receipt-time identification. Do not fabricate QuantityInstalled to
 // force that query to resolve. This gap closes when receipt serialization is
 // modeled and consumed by the existing admitted-ledger provenance scan.
-test fn w_receipt_serials_do_not_fabricate_installation_provenance() -> Bool {
+test fn w_receipt_serials_do_not_fabricate_installation_provenance() -> Bool  {
   let serials = flat_map(dgx_spark_serialized_assets, asset =>
     match asset.physical_serial {
       Absent => []
@@ -168,7 +168,7 @@ test fn w_receipt_serials_do_not_fabricate_installation_provenance() -> Bool {
 
 // Individually lawful evidence may still repeat an acquisition. Interleave another
 // lot to locate the duplicate; no prefix balance may escape the refused population.
-test fn w_repeated_acquisition_identity_refuses_population_total() -> Bool {
+test fn w_repeated_acquisition_identity_refuses_population_total() -> Bool  {
   population_is(evidence: dgx_spark_procurement_ledgers, acquired: 8, received: 8, owned: 8)
     && fold([dgx_spark_micro_center_lot_ledger, []], init: true, f: fn(acc, repeated_events) {
       acc && match admit_ledger_evidence(evidence: [

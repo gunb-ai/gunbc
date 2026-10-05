@@ -163,41 +163,41 @@ data red_drop_on_live_cadence: DeletedCadenceReference = DeletedCadenceReference
   },
 }
 
-test fn rung_drop_over_a_live_cadence_refuses() -> Bool {
+test fn rung_drop_over_a_live_cadence_refuses() -> Bool  {
   deleted_cadence_reference_row_holds(row: green_drop_on_dark_cadence)
     && !deleted_cadence_reference_row_holds(row: red_drop_on_live_cadence)
 }
 
-test fn rebound_to_a_cadence_with_no_scheduled_route_refuses() -> Bool {
+test fn rebound_to_a_cadence_with_no_scheduled_route_refuses() -> Bool  {
   !deleted_cadence_reference_row_holds(row: red_rebound_to_dark_cadence)
     && deleted_cadence_reference_row_holds(row: green_rebound_to_live_cadence)
 }
 
-test fn rebound_naming_an_absent_entry_point_refuses() -> Bool {
+test fn rebound_naming_an_absent_entry_point_refuses() -> Bool  {
   !deleted_cadence_reference_row_holds(row: red_rebound_missing_entry_point)
 }
 
-test fn rebound_that_never_reached_a_terminal_verdict_refuses() -> Bool {
+test fn rebound_that_never_reached_a_terminal_verdict_refuses() -> Bool  {
   !deleted_cadence_reference_row_holds(row: red_rebound_never_terminal)
 }
 
-test fn no_coverage_claim_over_a_live_cadence_refuses() -> Bool {
+test fn no_coverage_claim_over_a_live_cadence_refuses() -> Bool  {
   !deleted_cadence_reference_row_holds(row: red_premise_invalidated_on_live_cadence)
     && deleted_cadence_reference_row_holds(row: green_premise_invalidated_on_dark_cadence)
 }
 
-test fn historical_receipt_is_not_gated_on_a_current_route() -> Bool {
+test fn historical_receipt_is_not_gated_on_a_current_route() -> Bool  {
   deleted_cadence_reference_row_holds(row: green_historical_receipt_on_dark_cadence)
 }
 
-test fn live_census_holds_and_claims_no_executing_consumer() -> Bool {
+test fn live_census_holds_and_claims_no_executing_consumer() -> Bool  {
   deleted_cadence_reference_census_live_holds()
     && !deleted_cadence_reference_any_rebound()
 }
 
 // The legacy split is asserted at BOTH grains: the standing predicate discriminates, and the
 // live row answers the question the deletion receipt no longer answers.
-test fn legacy_replacement_coverage_is_unconsumed_and_discriminates() -> Bool {
+test fn legacy_replacement_coverage_is_unconsumed_and_discriminates() -> Bool  {
   dag_comment_wall_replacement_coverage_holds()
     && !replacement_witness_coverage_standing_holds(
       standing: ReplacementWitnessesUnconsumed {

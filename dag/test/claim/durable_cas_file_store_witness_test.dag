@@ -73,7 +73,7 @@ fn outcome_is_committed(o: CasOutcome<NonEmptyStr>, payload: NonEmptyStr) -> Boo
 // exactly the forgery the interface says it cannot catch in a generic fold and
 // delegates to the realizing store. If the mint ever admits this, the wall is
 // gone and this row goes red.
-test fn a_payload_paired_with_another_values_digest_is_refused_at_the_mint() -> Bool {
+test fn a_payload_paired_with_another_values_digest_is_refused_at_the_mint() -> Bool  {
   let forged = cas_probe_attempt(
     key: "srv3-06-head",
     payload: "state-A",
@@ -90,7 +90,7 @@ test fn a_payload_paired_with_another_values_digest_is_refused_at_the_mint() -> 
 
 // The positive control. Without it the row above is satisfied by a mint that
 // refuses everything, which would be a wall that admits no correct work.
-test fn a_digest_that_matches_its_payload_admits() -> Bool {
+test fn a_digest_that_matches_its_payload_admits() -> Bool  {
   let honest = cas_probe_attempt(
     key: "srv3-06-head",
     payload: "state-A",
@@ -109,7 +109,7 @@ test fn a_digest_that_matches_its_payload_admits() -> Bool {
 // pair must not collapse into the mismatch arm: mismatch is a verdict about the
 // caller's pairing, incomparable is the absence of a verdict, and they have
 // different repairs.
-test fn a_cross_family_digest_pair_is_incomparable_rather_than_reported_as_a_mismatch() -> Bool {
+test fn a_cross_family_digest_pair_is_incomparable_rather_than_reported_as_a_mismatch() -> Bool  {
   match sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") {
     none => false
     Present { value: sha } => {
@@ -134,7 +134,7 @@ test fn a_cross_family_digest_pair_is_incomparable_rather_than_reported_as_a_mis
 // serve as the conditional write. If the path ever stopped naming the
 // generation, every generation would target one path and O_EXCL would refuse
 // every update after the first -- this row goes red before that ships.
-test fn two_generations_of_one_slot_are_two_distinct_paths() -> Bool {
+test fn two_generations_of_one_slot_are_two_distinct_paths() -> Bool  {
   let first = cas_file_slot_path(root: "/var/lib/gunbc/cas", key: "srv3-06-head", generation: 1)
   let second = cas_file_slot_path(root: "/var/lib/gunbc/cas", key: "srv3-06-head", generation: 2)
   first != second
@@ -147,7 +147,7 @@ test fn two_generations_of_one_slot_are_two_distinct_paths() -> Bool {
 // ever admits it the store writes wherever the caller points. Note the digest
 // here is HONEST -- the key must be refused on its own account, not incidentally
 // because some other check happened to fire first.
-test fn a_key_that_would_escape_the_store_root_is_refused_at_the_mint() -> Bool {
+test fn a_key_that_would_escape_the_store_root_is_refused_at_the_mint() -> Bool  {
   let escaping = cas_probe_attempt(
     key: "../../etc/passwd",
     payload: "state-A",
@@ -167,7 +167,7 @@ test fn a_key_that_would_escape_the_store_root_is_refused_at_the_mint() -> Bool 
 // detail, so a request-supplied identity cannot turn a read into a probe of a path outside the root
 // and the answer discriminates nothing about the host. This runs hermetically precisely because no
 // read happens; routing the key to the probe would fail here on the missing filesystem arm.
-test fn a_key_that_would_escape_the_store_root_is_refused_at_the_read() -> Bool {
+test fn a_key_that_would_escape_the_store_root_is_refused_at_the_read() -> Bool  {
   match observe_cas_slot_state(root: "/var/lib/gunbc/cas", key: "../../etc/passwd") {
     CasObservedUnreadable { cause: c } =>
       match c {
@@ -182,7 +182,7 @@ test fn a_key_that_would_escape_the_store_root_is_refused_at_the_read() -> Bool 
 // is not only traversal: the store does not create directories, so such a key
 // would refuse at the write with an operational error instead of being rejected
 // as the malformed identifier it is. Same remedy, named at the right layer.
-test fn a_key_carrying_a_path_separator_is_refused_even_when_it_escapes_nothing() -> Bool {
+test fn a_key_carrying_a_path_separator_is_refused_even_when_it_escapes_nothing() -> Bool  {
   let nested = cas_probe_attempt(
     key: "srv3-06/head",
     payload: "state-A",
@@ -213,7 +213,7 @@ fn empty_observation() -> CasSlotObservation<NonEmptyStr> {
   CasObservedReadable { readable: CasReadableAbsent }
 }
 
-test fn a_successful_create_commits_the_proposed_generation() -> Bool {
+test fn a_successful_create_commits_the_proposed_generation() -> Bool  {
   let attempt = honest_absent(payload: "state-A")
   outcome_is_committed(
     o: cas_outcome_from_create(
@@ -226,7 +226,7 @@ test fn a_successful_create_commits_the_proposed_generation() -> Bool {
   )
 }
 
-test fn occupied_create_with_a_readable_winner_is_precondition_failed() -> Bool {
+test fn occupied_create_with_a_readable_winner_is_precondition_failed() -> Bool  {
   let attempt = honest_absent(payload: "state-A")
   outcome_is_precondition_failed_with_present(
     o: cas_outcome_from_create(
@@ -239,7 +239,7 @@ test fn occupied_create_with_a_readable_winner_is_precondition_failed() -> Bool 
   )
 }
 
-test fn occupied_create_with_no_readable_winner_is_store_refused_not_contention() -> Bool {
+test fn occupied_create_with_no_readable_winner_is_store_refused_not_contention() -> Bool  {
   let attempt = honest_absent(payload: "state-A")
   outcome_is_store_refused(
     o: cas_outcome_from_create(
@@ -251,7 +251,7 @@ test fn occupied_create_with_no_readable_winner_is_store_refused_not_contention(
   )
 }
 
-test fn a_permission_refused_create_is_store_refused_not_contention() -> Bool {
+test fn a_permission_refused_create_is_store_refused_not_contention() -> Bool  {
   let attempt = honest_absent(payload: "state-A")
   outcome_is_store_refused(
     o: cas_outcome_from_create(
@@ -263,7 +263,7 @@ test fn a_permission_refused_create_is_store_refused_not_contention() -> Bool {
   )
 }
 
-test fn an_unrecognized_create_kind_is_store_refused_not_contention() -> Bool {
+test fn an_unrecognized_create_kind_is_store_refused_not_contention() -> Bool  {
   let attempt = honest_absent(payload: "state-A")
   outcome_is_store_refused(
     o: cas_outcome_from_create(
@@ -275,7 +275,7 @@ test fn an_unrecognized_create_kind_is_store_refused_not_contention() -> Bool {
   )
 }
 
-test fn an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other() -> Bool {
+test fn an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other() -> Bool  {
   let probe = match cas_classify_generation_read(
     generation: cas_generation_first(),
     exact: FilesystemExactPathKindUnrecognized { path: "/cas/slot-a.1", observed: "weird", error: "ignored text" },

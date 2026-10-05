@@ -76,7 +76,7 @@ fn synthetic_blocks(subject: String, entries: Int, rate: Int) -> Bool {
 // THE COUNT IS THE PARSE'S. A rostered identity over the synthetic subject derives exactly the
 // fixture's entry count through extdeps.languages.yaml.ingest, and the allowance is the policy's
 // line at that count.
-test fn census_allowance_derives_the_entry_count_from_the_census_parse() -> Bool {
+test fn census_allowance_derives_the_entry_count_from_the_census_parse() -> Bool  {
   match synthetic_allowance(subject: synthetic_census_subject) {
     CensusAllowanceDerived { identity: _, subject_path: p, entry_count: n, budget_steps: b } =>
       n == 5
@@ -89,7 +89,7 @@ test fn census_allowance_derives_the_entry_count_from_the_census_parse() -> Bool
 
 // POSITIVE CONTROL: a census whose per-entry cost is exactly the policy's per_entry sits ON the line
 // and is admitted, at both subject sizes -- growth raises the budget with the subject.
-test fn census_at_the_policy_rate_is_within_its_allowance_as_the_subject_grows() -> Bool {
+test fn census_at_the_policy_rate_is_within_its_allowance_as_the_subject_grows() -> Bool  {
   !synthetic_blocks(subject: synthetic_census_subject, entries: 5, rate: policy_per_entry())
     && !synthetic_blocks(subject: synthetic_census_subject_grown, entries: 9, rate: policy_per_entry())
 }
@@ -97,7 +97,7 @@ test fn census_at_the_policy_rate_is_within_its_allowance_as_the_subject_grows()
 // DISCRIMINATING RED, THE SLOPE GATE: the same synthetic census with its per-entry cost inflated by
 // ONE step per entry is refused as a per-entry rate excess -- on the small subject AND on the grown
 // one, so a larger subject does not buy an inflated rate its way under the line.
-test fn census_with_an_inflated_per_entry_cost_is_refused_at_every_subject_size() -> Bool {
+test fn census_with_an_inflated_per_entry_cost_is_refused_at_every_subject_size() -> Bool  {
   let inflated = int_add(a: policy_per_entry(), b: 1)
   synthetic_blocks(subject: synthetic_census_subject, entries: 5, rate: inflated)
     && synthetic_blocks(subject: synthetic_census_subject_grown, entries: 9, rate: inflated)
@@ -106,7 +106,7 @@ test fn census_with_an_inflated_per_entry_cost_is_refused_at_every_subject_size(
 // NO FALLBACK TO A FLAT BUDGET: every arm that cannot derive a count refuses, and the standing over a
 // refused allowance BLOCKS even when the observed work is trivially small. The unparsable subject is
 // not YAML at all: a block sequence entry after a block mapping at the same indentation.
-test fn census_allowance_refuses_rather_than_falling_back_when_it_cannot_derive_a_count() -> Bool {
+test fn census_allowance_refuses_rather_than_falling_back_when_it_cannot_derive_a_count() -> Bool  {
   let unrostered = corpus_census_eval_step_allowance_in(
     roster: synthetic_roster(),
     policy: corpus_census_allowance_policy,
@@ -128,6 +128,6 @@ fn refused(a: CorpusCensusAllowance) -> Bool {
 
 // THE PRODUCTION ENTRY POINT READS THE DECLARED ROSTER: an identity no row names is refused through
 // it, which is the route the floor's runner takes.
-test fn census_allowance_entry_point_refuses_an_identity_the_roster_does_not_name() -> Bool {
+test fn census_allowance_entry_point_refuses_an_identity_the_roster_does_not_name() -> Bool  {
   refused(a: corpus_census_eval_step_allowance(identity: synthetic_census_identity, subject_content: synthetic_census_subject))
 }

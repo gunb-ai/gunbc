@@ -41,7 +41,7 @@ fn cose_well_formed() -> CborValue {
 }
 
 // The admitted shape renders 0x04 || x || y, 65 octets, x first.
-test fn a_well_formed_ec2_p256_key_renders_the_sec1_point() -> Bool {
+test fn a_well_formed_ec2_p256_key_renders_the_sec1_point() -> Bool  {
   match cose_ec2_p256_key(key: cose_well_formed()) {
     CoseEc2P256KeyRefused { cause: _ } => false
     CoseEc2P256KeyRead { sec1_uncompressed: pt } =>
@@ -63,7 +63,7 @@ test fn a_well_formed_ec2_p256_key_renders_the_sec1_point() -> Bool {
 
 // kty 1 (OKP) is not EC2; crv 2 (P-384) is not P-256; alg -35 (ES384) is not ES256. Each refusal
 // names the value it saw, and the checks fire in that order.
-test fn a_wrong_type_curve_or_algorithm_refuses_by_name() -> Bool {
+test fn a_wrong_type_curve_or_algorithm_refuses_by_name() -> Bool  {
   let x = coordinate(n: 32, fill: 1, acc: [])
   let y = coordinate(n: 32, fill: 2, acc: [])
   match cose_ec2_p256_key(key: ec2_key(kty: 1, alg: 0 - 7, crv: 1, x: x, y: y)) {
@@ -82,7 +82,7 @@ test fn a_wrong_type_curve_or_algorithm_refuses_by_name() -> Bool {
 
 // A 31-octet x refuses naming label -2, 31 declared against the 32 the signature suite owns; a y
 // that is not a byte string refuses as exactly that -- not as a coordinate of length zero.
-test fn a_malformed_coordinate_refuses_with_its_label() -> Bool {
+test fn a_malformed_coordinate_refuses_with_its_label() -> Bool  {
   match cose_ec2_p256_key(key: ec2_key(kty: 2, alg: 0 - 7, crv: 1, x: coordinate(n: 31, fill: 1, acc: []), y: coordinate(n: 32, fill: 2, acc: []))) {
     CoseEc2P256KeyRefused { cause: CoseKeyCoordinateMalformed { label: lx, declared: dx, expected: ex } } =>
       lx == 0 - 2 && byte_size_count(b: dx) == 31 && byte_size_count(b: ex) == 32 && match cose_ec2_p256_key(key: CborMap { entries: [
@@ -98,7 +98,7 @@ test fn a_malformed_coordinate_refuses_with_its_label() -> Bool {
 }
 
 // A missing kty, a kty given twice, a kty that is a byte string, and a key that is an array.
-test fn label_lookup_refusals_are_carried() -> Bool {
+test fn label_lookup_refusals_are_carried() -> Bool  {
   let x = CborByteString { octets: coordinate(n: 32, fill: 1, acc: []) }
   let missing = CborMap { entries: [cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)), cose_entry(k: 0 - 2, v: x), cose_entry(k: 0 - 3, v: x)] }
   let twice = CborMap { entries: [cose_entry(k: 1, v: label(n: 2)), cose_entry(k: 1, v: label(n: 2)), cose_entry(k: 3, v: label(n: 0 - 7)), cose_entry(k: 0 - 1, v: label(n: 1)), cose_entry(k: 0 - 2, v: x), cose_entry(k: 0 - 3, v: x)] }

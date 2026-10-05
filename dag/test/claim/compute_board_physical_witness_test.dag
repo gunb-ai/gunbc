@@ -134,7 +134,7 @@ fn refuses_naming(placements: List<ComponentPlacement>, wanted: String) -> Bool 
 // THE POSITIVE CONTROL, and it comes first because every refusal below is satisfied by an
 // admission that refuses everything. Two TQ144 parts, 20 mm square each, placed well apart on a
 // 100 by 80 mm board: both inside, not touching, distinct identities.
-test fn w_a_coherent_placement_is_admitted() -> Bool {
+test fn w_a_coherent_placement_is_admitted() -> Bool  {
   admits(placements: [
     placement(id: "u1", x: 5000, y: 5000),
     placement(id: "u2", x: 50000, y: 5000),
@@ -144,7 +144,7 @@ test fn w_a_coherent_placement_is_admitted() -> Bool {
 // A PART HANGING OFF THE EDGE. The origin is inside the outline, which is what makes this the
 // interesting case: a check that tested only the origin would pass it, and the part would be
 // half in air. The extent is what has to be contained.
-test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
+test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool  {
   refuses_naming(
     placements: [placement(id: "u1", x: 90000, y: 5000)],
     wanted: "PlacementNotWithinOutline"
@@ -153,7 +153,7 @@ test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
 
 // TWO PARTS IN THE SAME PLACE. Twenty-millimetre bodies five millimetres apart share interior
 // area, which is a collision no fabricator can build.
-test fn w_two_parts_sharing_area_refuse() -> Bool {
+test fn w_two_parts_sharing_area_refuse() -> Bool  {
   refuses_naming(
     placements: [
       placement(id: "u1", x: 5000, y: 5000),
@@ -170,14 +170,14 @@ test fn w_two_parts_sharing_area_refuse() -> Bool {
 // The assertion is kept because the boundary convention is real and worth pinning; the claim
 // attached to it is deleted. What this admits is a body-envelope verdict, and the name of the arm
 // it checks now says so.
-test fn w_touching_bodies_do_not_register_as_overlapping() -> Bool {
+test fn w_touching_bodies_do_not_register_as_overlapping() -> Bool  {
   admits(placements: [
     placement(id: "u1", x: 5000, y: 5000),
     placement(id: "u2", x: 25000, y: 5000),
   ])
 }
 
-test fn w_a_repeated_placement_identity_refuses() -> Bool {
+test fn w_a_repeated_placement_identity_refuses() -> Bool  {
   refuses_naming(
     placements: [
       placement(id: "u1", x: 5000, y: 5000),
@@ -191,7 +191,7 @@ test fn w_a_repeated_placement_identity_refuses() -> Bool {
 // row. Counting is what makes that visible; naming the cause passes either way.
 // One repeated identity plus one overlap between the two coincident bodies: two distinct
 // defects, each counted once, rather than four rows for two facts.
-test fn w_one_defect_is_reported_once() -> Bool {
+test fn w_one_defect_is_reported_once() -> Bool  {
   match article_with(placements: [
     placement(id: "u1", x: 5000, y: 5000),
     placement(id: "u1", x: 5000, y: 5000),
@@ -205,7 +205,7 @@ test fn w_one_defect_is_reported_once() -> Bool {
   }
 }
 
-test fn w_a_placement_in_another_frame_refuses() -> Bool {
+test fn w_a_placement_in_another_frame_refuses() -> Bool  {
   refuses_naming(
     placements: [
       ComponentPlacement {
@@ -222,7 +222,7 @@ test fn w_a_placement_in_another_frame_refuses() -> Bool {
 // package pitch cannot be drawn in whole millimetres, so a millimetre-registered board frame is
 // refused here instead of being accepted and silently rounded. This is the article's
 // RequiresExactSubMillimeterCoordinateQuantum cause discharged by a check.
-test fn w_a_millimetre_board_frame_refuses() -> Bool {
+test fn w_a_millimetre_board_frame_refuses() -> Bool  {
   match outline_in(frame: mm_frame()) {
     Absent => false
     Present { value: o } =>
@@ -242,7 +242,7 @@ test fn w_a_millimetre_board_frame_refuses() -> Bool {
 // An unregistered frame has no unit at all, which is a different state from having the wrong one
 // and has a different remedy: one is a board drawn at the wrong grain, the other is a board whose
 // grain nobody declared.
-test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
+test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool  {
   match outline_in(frame: board()) {
     Absent => false
     Present { value: o } =>
@@ -264,7 +264,7 @@ test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
 // stated the category error as though it were the finding: a footprint is a land pattern, and a
 // body is not one. TQ144 is a 20 mm body, which is 20000 um, and that is what the placement
 // reserves — 2 mm short of the 22 mm its leads actually occupy.
-test fn w_the_envelope_is_the_cited_package_body() -> Bool {
+test fn w_the_envelope_is_the_cited_package_body() -> Bool  {
   micrometer_count(m: tq144_body_envelope().body_width) == 20000
     && micrometer_count(m: tq144_body_envelope().body_height) == 20000
     && (tq144_body_envelope().package_designator as String) == "TQ144"

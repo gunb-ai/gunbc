@@ -43,12 +43,12 @@ fn committed_generation_of(outcome: CasOutcome<NonEmptyStr>) -> Int {
   }
 }
 
-test fn a_create_against_an_absent_slot_commits_at_the_first_generation() -> Bool {
+test fn a_create_against_an_absent_slot_commits_at_the_first_generation() -> Bool  {
   let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
   committed_generation_of(outcome: outcome) == 1
 }
 
-test fn a_create_against_an_occupied_slot_refuses() -> Bool {
+test fn a_create_against_an_occupied_slot_refuses() -> Bool  {
   let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: occupied_at_seven)
   match outcome {
     CasPreconditionFailed { expected: _, observed: _ } => true
@@ -57,7 +57,7 @@ test fn a_create_against_an_occupied_slot_refuses() -> Bool {
   }
 }
 
-test fn an_update_from_the_current_generation_commits_at_the_next() -> Bool {
+test fn an_update_from_the_current_generation_commits_at_the_next() -> Bool  {
   let outcome = cas_decide(
     attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
     observed: occupied_at_seven,
@@ -69,7 +69,7 @@ test fn an_update_from_the_current_generation_commits_at_the_next() -> Bool {
 // generation must lose. If cas_expectation_admits ever compared anything other
 // than the two generations — or returned a constant — this is the assertion
 // that goes red.
-test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_head() -> Bool {
+test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_head() -> Bool  {
   let outcome = cas_decide(
     attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
     observed: occupied_at_nine,
@@ -95,7 +95,7 @@ test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_h
 //   3. the loser re-reads, retries against 8, and MUST land 9
 //
 // The bindings below are named winner / loser / retry in that order.
-test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool {
+test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool  {
   let winner = cas_decide(
     attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
     observed: occupied_at_seven,
@@ -140,7 +140,7 @@ fn occupied_at_seven_after_winner() -> CasSlotObservation<NonEmptyStr> {
 // about, and the gap is invisible: it keeps passing while the arm it does not
 // name is exactly the one a new realization reaches first. The bound-exhaustion
 // cause is that arm.
-test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
+test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool  {
   let malformed = cas_decide(
     attempt: proposal(expected: ExpectSlotAbsent),
     observed: CasObservedUnreadable { cause: CasUnreadableMalformed { detail: "head is not parseable" as NonEmptyStr } },
@@ -174,7 +174,7 @@ fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {
 // Positive control on the negative arm: ExpectSlotAbsent against a genuinely
 // absent slot commits, so the refusal above is attributable to unreadability
 // and not to the expectation being unsatisfiable in general.
-test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absent() -> Bool {
+test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absent() -> Bool  {
   committed_generation_of(
     outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
   ) == 1
@@ -216,7 +216,7 @@ fn attempt_for(key: NonEmptyStr) -> CasAttempt<NonEmptyStr> {
   )
 }
 
-test fn known_gap_attempt_key_unconsumed_red_here_means_the_gap_was_closed() -> Bool {
+test fn known_gap_attempt_key_unconsumed_red_here_means_the_gap_was_closed() -> Bool  {
   let for_slot_a = cas_decide(
     attempt: attempt_for(key: "slot-a" as NonEmptyStr),
     observed: occupied_at_seven,
@@ -238,7 +238,7 @@ fn occupied_at(g: CasGeneration) -> CasSlotObservation<NonEmptyStr> {
 // THE LAST GENERATION HAS NO SUCCESSOR, AND AN ADMITTED ATTEMPT AGAINST IT REFUSES AS EXHAUSTED rather
 // than committing a successor that only an overflowing addition could name. The positive control is
 // the generation one below: it still commits, to the maximum itself.
-test fn an_attempt_against_the_last_generation_refuses_as_exhausted_and_one_below_commits_to_it() -> Bool {
+test fn an_attempt_against_the_last_generation_refuses_as_exhausted_and_one_below_commits_to_it() -> Bool  {
   let max = int_inclusive_max()
   let exhausted = match cas_decide(attempt: proposal(expected: ExpectSlotGeneration { generation: max }), observed: occupied_at(g: max)) {
     CasStoreRefused { cause: c } => match c {

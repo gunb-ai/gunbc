@@ -83,7 +83,7 @@ fn source_has_zero_blocking_diagnostics(source: String) -> Bool {
 // The former discriminating red for the v2.* direct-call argument-type exemption, retained after
 // the climb as a permanent regression control. Declaration-bound formal carriage makes it pass in
 // every module without reconstructing the callee's formal in the caller environment.
-test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> Bool {
+test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> Bool  {
   let census = direct_call_arg_type_census_of(source: direct_call_arg_type_v2_red_source)
   match active_probe_row(probe: direct_call_arg_type_v2_module_red_probe) {
     Present { value: row } =>
@@ -101,7 +101,7 @@ test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> B
 // on the v2 row alone cannot distinguish "the judgment is switched off for v2 callers" from "the
 // harness reds on anything". When the exemption goes, both are green and both are ordinary
 // regression controls.
-test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch() -> Bool {
+test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch() -> Bool  {
   let census = direct_call_arg_type_census_of(source: direct_call_arg_type_ordinary_red_source)
   match active_probe_row(probe: direct_call_arg_type_ordinary_module_red_probe) {
     Present { value: row } =>
@@ -115,7 +115,7 @@ test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch(
 }
 
 // Without this, a seam refusing EVERY argument in a v2.* module would satisfy both reds.
-test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool {
+test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool  {
   match active_probe_row(probe: direct_call_arg_type_v2_green_control_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: direct_call_arg_type_census_of(source: direct_call_arg_type_v2_green_source), row: row)
@@ -123,22 +123,22 @@ test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn applied_formal_refuses_string_literal() -> Bool {
+test fn applied_formal_refuses_string_literal() -> Bool  {
   source_has_blocking_type_mismatch(source: applied_formal_string_red_source)
 }
 
-test fn applied_formal_accepts_list_introduction() -> Bool {
+test fn applied_formal_accepts_list_introduction() -> Bool  {
   source_has_zero_blocking_diagnostics(source: applied_formal_list_green_source)
 }
 
-test fn applied_formal_accepts_conforming_concat_call() -> Bool {
+test fn applied_formal_accepts_conforming_concat_call() -> Bool  {
   source_has_zero_blocking_diagnostics(source: applied_formal_concat_green_source)
 }
 
-test fn list_introduction_recursively_refuses_wrong_element() -> Bool {
+test fn list_introduction_recursively_refuses_wrong_element() -> Bool  {
   source_has_blocking_type_mismatch(source: applied_formal_wrong_element_red_source)
 }
 
-test fn nat_declared_identity_refuses_string_literal() -> Bool {
+test fn nat_declared_identity_refuses_string_literal() -> Bool  {
   source_has_blocking_type_mismatch(source: nat_string_red_source)
 }

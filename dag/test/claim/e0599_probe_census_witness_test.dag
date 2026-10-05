@@ -23,14 +23,14 @@ import tools.e0599_probe_census {
 // (missing/duplicate/extra). Export boundary refuses unknown failure-shape labels (fail-closed).
 // RED: misclassified GlobalBare or type-parameter clone tuple; drifted shape_str.
 
-test fn e0599_message_pattern_rows_blob_first_row_is_missing_method() -> Bool {
+test fn e0599_message_pattern_rows_blob_first_row_is_missing_method() -> Bool  {
   match e0599_message_pattern_rows_blob() |> split(delimiter: "\n") |> first {
     Present { value: line } => string_contains(s: line, pattern: "missing_method\t")
     Absent => false
   }
 }
 
-test fn e0599_root_family_clone_type_param_is_r1() -> Bool {
+test fn e0599_root_family_clone_type_param_is_r1() -> Bool  {
   e0599_root_family_for(
     shape: MissingMethod,
     method: "clone",
@@ -38,7 +38,7 @@ test fn e0599_root_family_clone_type_param_is_r1() -> Bool {
   ) == R1CloneBoundOnTypeParam
 }
 
-test fn e0599_root_family_vector_is_empty_is_r2() -> Bool {
+test fn e0599_root_family_vector_is_empty_is_r2() -> Bool  {
   e0599_root_family_for(
     shape: BoundsUnsatisfied,
     method: "is_empty",
@@ -46,7 +46,7 @@ test fn e0599_root_family_vector_is_empty_is_r2() -> Bool {
   ) == R2VectorMethodBounds
 }
 
-test fn e0599_root_family_outcome_clone_is_r3() -> Bool {
+test fn e0599_root_family_outcome_clone_is_r3() -> Bool  {
   e0599_root_family_for(
     shape: BoundsUnsatisfied,
     method: "clone",
@@ -54,7 +54,7 @@ test fn e0599_root_family_outcome_clone_is_r3() -> Bool {
   ) == R3ContainerCloneBounds
 }
 
-test fn e0599_root_family_global_bare_is_r4() -> Bool {
+test fn e0599_root_family_global_bare_is_r4() -> Bool  {
   e0599_root_family_for(
     shape: NoVariant,
     method: "GlobalBareUnique",
@@ -62,7 +62,7 @@ test fn e0599_root_family_global_bare_is_r4() -> Bool {
   ) == R4OptionalCoproductGrounding
 }
 
-test fn e0599_root_family_as_deref_unit_is_r5() -> Bool {
+test fn e0599_root_family_as_deref_unit_is_r5() -> Bool  {
   e0599_root_family_for(
     shape: MissingMethod,
     method: "as_deref",
@@ -70,7 +70,7 @@ test fn e0599_root_family_as_deref_unit_is_r5() -> Bool {
   ) == R5AsDerefUnit
 }
 
-test fn e0599_root_family_red_control_generic_diff_not_r1() -> Bool {
+test fn e0599_root_family_red_control_generic_diff_not_r1() -> Bool  {
   e0599_root_family_for(
     shape: MissingMethod,
     method: "clone",
@@ -78,7 +78,7 @@ test fn e0599_root_family_red_control_generic_diff_not_r1() -> Bool {
   ) != R1CloneBoundOnTypeParam
 }
 
-test fn e0599_root_family_label_for_row_log_shape_bridge() -> Bool {
+test fn e0599_root_family_label_for_row_log_shape_bridge() -> Bool  {
   match e0599_root_family_label_for_row(
     shape_str: "bounds_unsatisfied",
     method: "is_empty",
@@ -89,28 +89,28 @@ test fn e0599_root_family_label_for_row_log_shape_bridge() -> Bool {
   }
 }
 
-test fn e0599_failure_shape_unknown_label_refused() -> Bool {
+test fn e0599_failure_shape_unknown_label_refused() -> Bool  {
   match e0599_failure_shape_from_log_shape(shape_str: "bogus_shape") {
     Err { value: _ } => true
     Ok { value: _ } => false
   }
 }
 
-test fn e0599_root_family_labels_from_blob_unknown_shape_refused() -> Bool {
+test fn e0599_root_family_labels_from_blob_unknown_shape_refused() -> Bool  {
   match e0599_root_family_labels_from_blob(blob: "bogus_shape\tclone\ttype parameter `T`") {
     Err { value: _ } => true
     Ok { value: _ } => false
   }
 }
 
-test fn e0599_root_family_labels_from_blob_malformed_tuple_two_fields_refused() -> Bool {
+test fn e0599_root_family_labels_from_blob_malformed_tuple_two_fields_refused() -> Bool  {
   match e0599_root_family_labels_from_blob(blob: "missing_method\tclone") {
     Err { value: _ } => true
     Ok { value: _ } => false
   }
 }
 
-test fn e0599_root_family_labels_from_blob_malformed_tuple_four_fields_refused() -> Bool {
+test fn e0599_root_family_labels_from_blob_malformed_tuple_four_fields_refused() -> Bool  {
   match e0599_root_family_labels_from_blob(
     blob: "missing_method\tclone\ttype parameter `T`\textra"
   ) {
@@ -119,7 +119,7 @@ test fn e0599_root_family_labels_from_blob_malformed_tuple_four_fields_refused()
   }
 }
 
-test fn e0599_root_family_labels_from_blob_batch() -> Bool {
+test fn e0599_root_family_labels_from_blob_batch() -> Bool  {
   match e0599_root_family_labels_from_blob(
     blob: "missing_method\tclone\ttype parameter `T`\nbounds_unsatisfied\tis_empty\tstruct `Rc<im::Vector<T>>`"
   ) {

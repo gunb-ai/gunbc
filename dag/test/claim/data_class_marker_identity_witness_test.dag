@@ -23,6 +23,6 @@ fn w_classified_markers_render_distinctly() -> Bool {
   )
 }
 
-test fn classified_over_two_markers_is_two_identities_in_the_projection() -> Bool {
+test fn classified_over_two_markers_is_two_identities_in_the_projection() -> Bool  {
   w_classified_markers_render_distinctly()
 }

@@ -282,7 +282,7 @@ fn admission_is_refused_with(case: FixtureCase, expected: Bool) -> Bool {
   }
 }
 
-test fn w_fleet_declares_a_container_execution_target() -> Bool {
+test fn w_fleet_declares_a_container_execution_target() -> Bool  {
   match fleet_container_execution_target() {
     Absent => false
     Present { value: target } =>
@@ -295,11 +295,11 @@ test fn w_fleet_declares_a_container_execution_target() -> Bool {
   }
 }
 
-test fn w_well_formed_digest_pinned_arm64_image_is_admitted() -> Bool {
+test fn w_well_formed_digest_pinned_arm64_image_is_admitted() -> Bool  {
   admission_is_refused_with(case: WellFormedArm64Image, expected: true)
 }
 
-test fn w_tag_reference_is_refused_unpinned() -> Bool {
+test fn w_tag_reference_is_refused_unpinned() -> Bool  {
   match fixture_admission(case: TagReferencedImage) {
     Absent => false
     Present { value: admission } =>
@@ -314,7 +314,7 @@ test fn w_tag_reference_is_refused_unpinned() -> Bool {
   }
 }
 
-test fn w_foreign_architecture_image_is_refused_naming_both_sides() -> Bool {
+test fn w_foreign_architecture_image_is_refused_naming_both_sides() -> Bool  {
   match fixture_admission(case: ForeignArchitectureImage) {
     Absent => false
     Present { value: admission } =>
@@ -334,7 +334,7 @@ test fn w_foreign_architecture_image_is_refused_naming_both_sides() -> Bool {
 //
 // Both halves accept in isolation: two layers is a valid manifest and one diff_id is a valid
 // rootfs. Only the join sees that they describe different images.
-test fn w_layer_count_disagreement_is_refused_with_both_counts() -> Bool {
+test fn w_layer_count_disagreement_is_refused_with_both_counts() -> Bool  {
   match fixture_admission(case: LayerCountDisagreementImage) {
     Absent => false
     Present { value: admission } =>
@@ -350,7 +350,7 @@ test fn w_layer_count_disagreement_is_refused_with_both_counts() -> Bool {
   }
 }
 
-test fn w_empty_layers_manifest_is_refused_by_the_manifest_authority() -> Bool {
+test fn w_empty_layers_manifest_is_refused_by_the_manifest_authority() -> Bool  {
   match fixture_admission(case: EmptyLayersImage) {
     Absent => false
     Present { value: admission } =>
@@ -365,7 +365,7 @@ test fn w_empty_layers_manifest_is_refused_by_the_manifest_authority() -> Bool {
   }
 }
 
-test fn w_empty_diff_ids_is_refused_by_the_image_config_authority() -> Bool {
+test fn w_empty_diff_ids_is_refused_by_the_image_config_authority() -> Bool  {
   match fixture_admission(case: EmptyDiffIdsImage) {
     Absent => false
     Present { value: admission } =>
@@ -380,7 +380,7 @@ test fn w_empty_diff_ids_is_refused_by_the_image_config_authority() -> Bool {
   }
 }
 
-test fn w_image_with_no_entrypoint_and_no_cmd_is_refused() -> Bool {
+test fn w_image_with_no_entrypoint_and_no_cmd_is_refused() -> Bool  {
   match fixture_admission(case: NoStartCommandImage) {
     Absent => false
     Present { value: admission } =>
@@ -400,7 +400,7 @@ test fn w_image_with_no_entrypoint_and_no_cmd_is_refused() -> Bool {
 // This is the fail-closed arm of the dissolution: the old surface could carry `Docker` and be
 // believed; a deployment that cannot be constructed produces no engine at all, and the admission
 // refuses instead of proceeding against a runtime nobody established exists.
-test fn w_target_without_an_engine_refuses_every_image() -> Bool {
+test fn w_target_without_an_engine_refuses_every_image() -> Bool  {
   match fixture_image(case: WellFormedArm64Image) {
     Absent => false
     Present { value: image } =>
@@ -421,7 +421,7 @@ test fn w_target_without_an_engine_refuses_every_image() -> Bool {
 // THE ENGINE HUB REFUSES A MODE THE PRODUCT DOES NOT DECLARE, WHICH IS WHAT MAKES THE SURFACE'S
 // `none` MEAN SOMETHING. Docker Engine declares both modes, so both deploy; the refusing arm is
 // exercised against an engine row that declares only one.
-test fn w_engine_deployment_refuses_an_undeclared_privilege_mode() -> Bool {
+test fn w_engine_deployment_refuses_an_undeclared_privilege_mode() -> Bool  {
   match container_engine_deployment(engine: docker_engine, privilege_mode: RootlessDaemon) {
     ContainerEngineDeploymentRefused { refusal: _ } => false
     ContainerEngineDeployed { deployment: deployment } =>
@@ -436,7 +436,7 @@ test fn w_engine_deployment_refuses_an_undeclared_privilege_mode() -> Bool {
   }
 }
 
-test fn w_reference_wire_renders_digest_form() -> Bool {
+test fn w_reference_wire_renders_digest_form() -> Bool  {
   match fixture_image(case: WellFormedArm64Image) {
     Absent => false
     Present { value: image } =>
@@ -451,7 +451,7 @@ test fn w_reference_wire_renders_digest_form() -> Bool {
 // The separator alternatives are the discriminating part: "a__b" and "a-b" and "a.b" are names and
 // "a..b", "a___b" and a leading or trailing separator are not, so a predicate that merely allowed
 // the character class would go red on the second half of this witness.
-test fn w_repository_path_component_grammar_discriminates() -> Bool {
+test fn w_repository_path_component_grammar_discriminates() -> Bool  {
   fixture_repository_accepts(raw: "acme/build-image")
     && fixture_repository_accepts(raw: "a__b")
     && fixture_repository_accepts(raw: "a.b")
@@ -478,7 +478,7 @@ fn fixture_tag_accepts(raw: String) -> Bool {
   }
 }
 
-test fn w_tag_grammar_discriminates_leading_character_and_length() -> Bool {
+test fn w_tag_grammar_discriminates_leading_character_and_length() -> Bool  {
   fixture_tag_accepts(raw: "latest")
     && fixture_tag_accepts(raw: "v1.2.3-rc1")
     && fixture_tag_accepts(raw: "_underscore")

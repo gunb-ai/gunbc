@@ -10,7 +10,7 @@ import tools.dag_compile_clean_shard_transport { run_shard_a_exemplar_compile_wi
 // naming that bin and WitnessBinNotEnrolled. Before the receipt was typed, this state and an
 // unclean module answered the same false. The refusal fires before any cargo build, so this runs
 // per-PR at the cost of one git toplevel and one enrollment lookup.
-test fn shard_receipt_unready_compiler_surfaces_its_refusal() -> Bool {
+test fn shard_receipt_unready_compiler_surfaces_its_refusal() -> Bool  {
   match run_shard_a_exemplar_compile_with_unenrolled_compiler() {
     EvidenceInstrumentRefused { cause: refusal } =>
       refusal.bin_name == "no_such_witness_bin_zzz" && refusal.reason == WitnessBinNotEnrolled

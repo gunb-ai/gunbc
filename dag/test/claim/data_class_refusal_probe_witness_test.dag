@@ -96,14 +96,14 @@ fn census_ran(c: CompileDiagnosticCensus) -> Bool {
 // that could not run.
 data harness_control_source: String = "module probe_data_class_harness_control\nimport product.data_class { public_fabric_map }\nfn rows() -> Int { count(public_fabric_map().rows) }\n"
 
-test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
+test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool  {
   blocking_total(c: census_of(source: harness_control_source)) == 0
 }
 
 // The missing-field refusal is reported under InternalError with the field and the type in its
 // subject; that class is what the checker emits for a projection off a type that has no such
 // field, so it is the class asserted, not a nicer-sounding one.
-test fn a_bare_string_cannot_be_walked_out_of_the_boundary_and_a_value_cannot_be_self_classified() -> Bool {
+test fn a_bare_string_cannot_be_walked_out_of_the_boundary_and_a_value_cannot_be_self_classified() -> Bool  {
   let c = census_of(source: probe_source(name: "bare_string_from_boundary_probe"))
   blocking_count_for_class_and_subject(c: c, wanted: "InternalError", subject: "no field 'email' on type 'Classified'") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "Classified") >= 1
@@ -119,30 +119,30 @@ test fn a_bare_string_cannot_be_walked_out_of_the_boundary_and_a_value_cannot_be
 // closes.
 data durable_write_literal_control_source: String = "module probe_durable_write_literal\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.auth.access_token_source { AccessTokenSource }\nimport gunbc.fabric_m0_origin_commit { OriginObjectWrite, commit_object_to_origin }\nfn write_the_literal(token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {\n  commit_object_to_origin(permit: \"dag/test/fixture/fabric_m0_origin_readback/other_object.txt\", key: \"probe/never\" as NonEmptyStr, token_source: token_source)\n}\n"
 
-test fn the_durable_write_refuses_a_bare_string_literal_where_the_permit_is_declared() -> Bool {
+test fn the_durable_write_refuses_a_bare_string_literal_where_the_permit_is_declared() -> Bool  {
   blocking_count_for_class_and_subject(c: census_of(source: durable_write_literal_control_source), wanted: "DeclaredTypeNotInhabited", subject: "direct call argument for parameter 'permit'") >= 1
 }
 
-test fn the_durable_write_still_admits_a_file_path_where_the_permit_is_declared() -> Bool {
+test fn the_durable_write_still_admits_a_file_path_where_the_permit_is_declared() -> Bool  {
   let c = census_of(source: probe_source(name: "durable_write_takes_the_value_probe"))
   census_ran(c: c) && blocking_count_for_subject(c: c, subject: "direct call argument for parameter 'permit'") == 0
 }
 
-test fn a_permit_cannot_be_authored_outside_the_fold() -> Bool {
+test fn a_permit_cannot_be_authored_outside_the_fold() -> Bool  {
   let c = census_of(source: probe_source(name: "data_effect_permit_forged_probe"))
   blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "DataEffectPermit") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "Sink") >= 1
     && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") >= 1
 }
 
-test fn an_unwrap_helper_cannot_be_written_outside_the_module() -> Bool {
+test fn an_unwrap_helper_cannot_be_written_outside_the_module() -> Bool  {
   blocking_count_for_class_and_subject(c: census_of(source: probe_source(name: "classified_unwrap_helper_probe")), wanted: "SoleConstructorViolation", subject: "DataRevealKey") >= 1
 }
 
 // THE SELF-AUTHORED MAP (review 65282). The literal refuses on the sealed record; the mint call
 // and the fixture-builder call refuse on their admit_callers lists -- two ConstructorCall
 // refusals, one per unadmitted call.
-test fn a_policy_map_cannot_be_authored_or_minted_outside_its_authorities() -> Bool {
+test fn a_policy_map_cannot_be_authored_or_minted_outside_its_authorities() -> Bool  {
   let c = census_of(source: probe_source(name: "self_authored_map_probe"))
   blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "DataHandlingMap") >= 1
     && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") >= 2
@@ -151,7 +151,7 @@ test fn a_policy_map_cannot_be_authored_or_minted_outside_its_authorities() -> B
 // EXPECTING-RED HOLE, see the module note. Zero blocking rows at the two probed arguments is the
 // measured state of the interpretation path today; this assertion is the tripwire that flips when
 // the marker wall lands.
-test fn personal_identity_to_a_log_channel_still_compiles_on_the_interpretation_path() -> Bool {
+test fn personal_identity_to_a_log_channel_still_compiles_on_the_interpretation_path() -> Bool  {
   let c = census_of(source: probe_source(name: "personal_identity_to_log_channel_probe"))
   census_ran(c: c)
     && blocking_count_for_subject(c: c, subject: "direct call argument for parameter 'classified'") == 0

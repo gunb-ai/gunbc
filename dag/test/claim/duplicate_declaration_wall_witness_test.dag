@@ -57,7 +57,7 @@ fn distinct_data_and_fn_source() -> String {
 
 // THE DISCRIMINATING REDS.
 
-test fn two_function_declarations_of_one_name_are_refused() -> Bool {
+test fn two_function_declarations_of_one_name_are_refused() -> Bool  {
   compile_dag_rust_emit_check(
     duplicate_fn_source(),
     "src/test_claim_duplicate_declaration_wall_duplicate_fn.rs",
@@ -66,7 +66,7 @@ test fn two_function_declarations_of_one_name_are_refused() -> Bool {
   ) == false
 }
 
-test fn a_data_and_a_function_sharing_one_name_are_refused() -> Bool {
+test fn a_data_and_a_function_sharing_one_name_are_refused() -> Bool  {
   compile_dag_rust_emit_check(
     duplicate_data_and_fn_source(),
     "src/test_claim_duplicate_declaration_wall_duplicate_kind.rs",
@@ -80,7 +80,7 @@ test fn a_data_and_a_function_sharing_one_name_are_refused() -> Bool {
 // they stay enrolled after the wall lands: they are the executing evidence that the rung is real,
 // and deleting them would recreate specification-without-execution one rung up.
 
-test fn one_function_declaration_compiles_clean() -> Bool {
+test fn one_function_declaration_compiles_clean() -> Bool  {
   compile_dag_rust_emit_check(
     single_fn_source(),
     "src/test_claim_duplicate_declaration_wall_single_fn.rs",
@@ -89,7 +89,7 @@ test fn one_function_declaration_compiles_clean() -> Bool {
   )
 }
 
-test fn a_data_and_a_function_with_distinct_names_compile_clean() -> Bool {
+test fn a_data_and_a_function_with_distinct_names_compile_clean() -> Bool  {
   compile_dag_rust_emit_check(
     distinct_data_and_fn_source(),
     "src/test_claim_duplicate_declaration_wall_distinct_kind.rs",

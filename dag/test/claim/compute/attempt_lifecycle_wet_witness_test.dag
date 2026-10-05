@@ -94,7 +94,7 @@ fn lost_race(t: AttemptTransition) -> Bool {
 // has been paused somewhere between reserving and spawning -- goes to launch. With a gate, the
 // producer's compare-and-set is refused against a generation that has moved, and it learns this
 // BEFORE it spawns rather than after. The refusal is the store's, not a check this witness wrote.
-test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Bool {
+test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Bool  {
   let root = fresh_root() as NonEmptyStr
   let record = record_for(reference: "attempt-terminate-first")
   let opened = attempt_open(root: root, record: record)
@@ -120,7 +120,7 @@ test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Boo
 // declare it terminal behind its back -- that is how a live unit's memory gets handed away. Same
 // mechanism, opposite winner, and the loser is again refused by precondition rather than by
 // noticing.
-test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
+test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool  {
   let root = fresh_root() as NonEmptyStr
   let record = record_for(reference: "attempt-launch-first")
   let opened = attempt_open(root: root, record: record)
@@ -141,7 +141,7 @@ test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
 // out of the record the attempt wrote, and it survives the round trip through the store bytes. A
 // recovery deriving the name from the identity would be a second authority for the binding, and a
 // wrong derivation stops somebody else's unit.
-test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Bool {
+test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Bool  {
   let root = fresh_root() as NonEmptyStr
   let record = record_for(reference: "attempt-binding")
   let opened = attempt_open(root: root, record: record)
@@ -159,7 +159,7 @@ test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Boo
 // store is generation-suffixed and append-only, so settling does not erase what it settled -- a
 // reader can still see the attempt was reserved and launched before it ended. Recovery that
 // overwrote its own evidence would be indistinguishable from an attempt that had never run.
-test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
+test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool  {
   let root = fresh_root() as NonEmptyStr
   let record = record_for(reference: "attempt-history")
   let opened = attempt_open(root: root, record: record)
@@ -181,7 +181,7 @@ test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
 // CRITERION 1: FOUR STATES, AND THE TWO THAT MUST NEVER FREE CAPACITY ARE SEPARATE ARMS CARRYING
 // WHY. Still-running and unknown are not one "not ended" bucket: one waits, the other is
 // investigated, and a reader told only "could not establish" has nothing to act on.
-test fn the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before() -> Bool {
+test fn the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before() -> Bool  {
   unit_lifecycle_ended(u: UnitTerminatedSuccess { detail: "exit 0" })
     && unit_lifecycle_ended(u: UnitTerminatedFailure { detail: "exit 101" })
     && unit_lifecycle_ended(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" })
@@ -198,7 +198,7 @@ test fn the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before
 // the race at all inside the window the producer declared; the gate decides who wins a race, and
 // this decides who may start one. Without it an impatient recovery kills a live attempt and the CAS
 // makes that outcome look correct.
-test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool {
+test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool  {
   let record = record_for(reference: "attempt-trigger")
   let unobservable = UnitLifecycleUnknown { detail: "no unit exists yet, which is what pre-launch looks like" }
   let early = recovery_trigger(record: record, lifecycle: unobservable, now: 1999)
@@ -215,7 +215,7 @@ test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool {
 // arms may terminate a launched attempt; still-running and unknown keep the charge, and unknown is
 // the one that matters because it is what a lost launcher, an unreadable manager and a missing
 // cgroup all look like.
-test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
+test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool  {
   let launched = AttemptRecord {
     identity: "abcdef0123456789", reference: "attempt-launched",
     unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted: kibibyte(count: 27262976),
@@ -238,7 +238,7 @@ test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
 // CRITERION 4: A SLOT THAT CANNOT BE READ IS NOT AN EMPTY SLOT. The distinction has opposite
 // remedies and opposite hazards -- an unreadable slot read as absent lets a producer open a second
 // attempt over a live one, and lets recovery believe there is nothing to terminate.
-test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
+test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool  {
   let root = fresh_root() as NonEmptyStr
   let reference = "attempt-corrupt"
   let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
@@ -280,7 +280,7 @@ fn verdict_round_trips(v: AttemptVerdict) -> Bool {
 // real record wire and reads it back; the RED half hands the real decode a misspelling and the word
 // this file itself used to write, "released", which no producer ever wrote -- both must come back
 // unreadable rather than as a terminal state some later reader trusts.
-test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool {
+test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool  {
   verdict_round_trips(v: AttemptRecovered)
     && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedSucceeded })
     && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedFailed })
@@ -303,7 +303,7 @@ test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool {
 // reclaiming its seat mid-checkout, is a safety limit's clothes on a silent narrowing of somebody
 // else's window. It refuses, and the refusal names both numbers so the author learns the ceiling
 // instead of meeting it as a mysterious reclaim.
-test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped() -> Bool {
+test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped() -> Bool  {
   let root = fresh_root() as NonEmptyStr
   let base = record_for(reference: "attempt-greedy")
   let greedy = AttemptRecord {
@@ -354,7 +354,7 @@ fn layout_at(root: String) -> ComputeLayout {
   }
 }
 
-test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> Bool {
+test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> Bool  {
   let root = fresh_root()
   let layout = layout_at(root: root)
   let rec = record_for(reference: "attempt-race")
@@ -387,7 +387,7 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
 // the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
 // the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
 // unit's outcome, never as this refusal.
-test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {
+test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool  {
   let root = fresh_root()
   let layout = layout_at(root: root)
   let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)

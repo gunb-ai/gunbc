@@ -31,7 +31,7 @@ fn host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
 }
 
-test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
+test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool  {
   let d = deploy_access_check(
     access: ci_deploy_srv1_access,
     actor: deploy_access_unprivileged_fixture_actor()
@@ -46,7 +46,7 @@ test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
   }
 }
 
-test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
+test fn witness_unprivileged_mutation_refused_before_shell() -> Bool  {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -70,7 +70,7 @@ test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
   }
 }
 
-test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
+test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool  {
   let r = host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -93,7 +93,7 @@ test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
   }
 }
 
-test fn witness_privileged_fixture_receipt_applies() -> Bool {
+test fn witness_privileged_fixture_receipt_applies() -> Bool  {
   reconciliation_converged(r: host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
@@ -106,7 +106,7 @@ test fn witness_privileged_fixture_receipt_applies() -> Bool {
   ))
 }
 
-test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
+test fn witness_privileged_fixture_surfaces_stdout() -> Bool  {
   match host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),

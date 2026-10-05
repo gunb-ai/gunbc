@@ -57,14 +57,14 @@ fn projected_source(intent: DigitalControlIntent) -> String {
 // row is computed through that signal's own equation rather than read from the row.
 data expected_interlock_table: String = "| conditioned_good | fault | power_permit | reset_release |\n| --: | --: | --: | --: |\n| 0 | 0 | 0 | 0 |\n| 1 | 0 | 1 | 1 |\n| 0 | 1 | 0 | 0 |\n| 1 | 1 | 0 | 0 |"
 
-test fn w_the_production_board_emits_its_exhaustive_truth_table() -> Bool {
+test fn w_the_production_board_emits_its_exhaustive_truth_table() -> Bool  {
   projected_source(intent: board_power_interlock_intent) == expected_interlock_table
 }
 
 // THE SAME ARTICLE THROUGH THE ADMITTED ENTRY, which is the route a caller takes. Without this the
 // claim above would only prove the fold works on an intent handed to it directly, and the article
 // field it reads (digital_control) would be unexercised.
-test fn w_the_admitted_article_projects_the_same_table() -> Bool {
+test fn w_the_admitted_article_projects_the_same_table() -> Bool  {
   match admit_board_article(a: power_interlock_article) {
     BoardArticleRefused { causes: _ } => false
     BoardArticleAdmitted { article: adm } =>
@@ -102,7 +102,7 @@ fn unnegated_intent() -> DigitalControlIntent {
   }
 }
 
-test fn w_dropping_the_negation_changes_the_table_answers() -> Bool {
+test fn w_dropping_the_negation_changes_the_table_answers() -> Bool  {
   let t = projected_source(intent: unnegated_intent())
   t != expected_interlock_table
     && string_contains(s: t, pattern: "| 1 | 1 | 1 | 1 |")
@@ -122,7 +122,7 @@ fn output_without_equation_intent() -> DigitalControlIntent {
   }
 }
 
-test fn w_an_output_with_no_equation_refuses() -> Bool {
+test fn w_an_output_with_no_equation_refuses() -> Bool  {
   match project_intent_to_truth_table(
     article_identity: test_identity,
     intent: output_without_equation_intent()
@@ -163,7 +163,7 @@ fn cyclic_intent() -> DigitalControlIntent {
   }
 }
 
-test fn w_two_outputs_driving_each_other_refuse_as_a_cycle() -> Bool {
+test fn w_two_outputs_driving_each_other_refuse_as_a_cycle() -> Bool  {
   match project_intent_to_truth_table(article_identity: test_identity, intent: cyclic_intent()) {
     TruthTableProjected { receipt: _ } => false
     TruthTableRefused { cause: c } =>
@@ -195,7 +195,7 @@ fn undeclared_reference_intent() -> DigitalControlIntent {
   }
 }
 
-test fn w_a_reference_to_an_undeclared_signal_refuses() -> Bool {
+test fn w_a_reference_to_an_undeclared_signal_refuses() -> Bool  {
   match project_intent_to_truth_table(
     article_identity: test_identity,
     intent: undeclared_reference_intent()
@@ -248,7 +248,7 @@ fn nine_input_intent() -> DigitalControlIntent {
   }
 }
 
-test fn w_a_nine_input_population_refuses_as_too_wide() -> Bool {
+test fn w_a_nine_input_population_refuses_as_too_wide() -> Bool  {
   match project_intent_to_truth_table(article_identity: test_identity, intent: nine_input_intent()) {
     TruthTableProjected { receipt: _ } => false
     TruthTableRefused { cause: c } =>
@@ -280,7 +280,7 @@ fn pipe_named_intent() -> DigitalControlIntent {
   }
 }
 
-test fn w_a_name_carrying_the_delimiter_refuses() -> Bool {
+test fn w_a_name_carrying_the_delimiter_refuses() -> Bool  {
   match project_intent_to_truth_table(article_identity: test_identity, intent: pipe_named_intent()) {
     TruthTableProjected { receipt: _ } => false
     TruthTableRefused { cause: c } =>
