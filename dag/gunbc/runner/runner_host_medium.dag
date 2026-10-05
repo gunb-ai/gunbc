@@ -8,6 +8,13 @@ import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.exec.command { shell_command_render }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_command, cat_command, nproc_command, ls_one_per_line_command }
+import extdeps.linux.procfs { ProcMeminfo, procfs_path_literal }
+import extdeps.systemd.udevd { udev_disk_by_label_dir }
+import extdeps.systemd { systemd_booted_runtime_dir }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.posix.test_utility { test_executable_command, test_directory_command }
+import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.uname { uname_machine_command }
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import extdeps.github.actions_runner {
@@ -92,9 +99,9 @@ fn runner_host_medium_install_command(artifact: ActionsRunnerBinaryArtifact) -> 
   join([
     "set -e",
     digest_shell_verify_line(digest: actions_runner_release_digest(artifact: artifact), file_path: tarball as NonEmptyStr),
-    concat("rm -rf '", actions_runner_base_dir, "'"),
-    concat("install -d '", actions_runner_base_dir, "'"),
-    join(["tar xzf '", tarball, "' -C '", actions_runner_base_dir, "'"], ""),
+    shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)),
+    shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)),
+    shell_command_render(command: tar_extract_command(archive: tarball, into_directory: actions_runner_base_dir, strip_components: 0)),
   ], "\n") as NonEmptyStr
 }
 
@@ -129,12 +136,12 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 // installed and executable. The slot unit's own activity is the launch leg's readback.
 fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCaptureStage> {
   [
-    HostCaptureStage { name: runner_host_section_boot_media, command: "ls -1 /dev/disk/by-label" },
+    HostCaptureStage { name: runner_host_section_boot_media, command: shell_command_render(command: ls_one_per_line_command(path: udev_disk_by_label_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_install, command: runner_host_medium_install_command(artifact: artifact) },
-    HostCaptureStage { name: runner_host_section_runner_listener, command: concat("test -x ", runner_host_listener_path()) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_systemd, command: "test -d /run/systemd/system" },
-    HostCaptureStage { name: runner_host_section_meminfo, command: "cat /proc/meminfo" },
-    HostCaptureStage { name: runner_host_section_nproc, command: "nproc" },
+    HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_machine, command: shell_command_render(command: uname_machine_command()) as NonEmptyStr },
   ]
 }
@@ -145,7 +152,7 @@ fn runner_host_medium_program_on_medium() -> NonEmptyStr {
 
 data runner_host_medium_live_commands: UbuntuAutoinstallLiveCommands = UbuntuAutoinstallLiveCommands {
   autoinstall_version: 1,
-  early_commands: [concat("sh ", runner_host_medium_program_on_medium() as String) as NonEmptyStr],
+  early_commands: [shell_command_render(command: posix_sh_script_command(path: runner_host_medium_program_on_medium())) as NonEmptyStr],
 }
 
 // THE DERIVATION REFUSES RATHER THAN DEFAULTS: no published arm64 runner tarball for the release, or

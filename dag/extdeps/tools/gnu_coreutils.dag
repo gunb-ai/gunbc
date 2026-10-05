@@ -38,6 +38,7 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 fn cat_program() -> ProgramIdentity = uncataloged_program(invocation: "cat")
+fn nproc_program() -> ProgramIdentity = uncataloged_program(invocation: "nproc")
 fn mktemp_program() -> ProgramIdentity = uncataloged_program(invocation: "mktemp")
 fn cp_program() -> ProgramIdentity = uncataloged_program(invocation: "cp")
 fn printf_program() -> ProgramIdentity = uncataloged_program(invocation: "printf")
@@ -98,6 +99,12 @@ fn ls_long_directory_numeric_command(path: String) -> ArgvCommand {
 
 fn cat_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program(), arguments: [path])
+}
+
+// nproc WITH NO OPERANDS PRINTS THE PROCESSING UNITS AVAILABLE TO THE CURRENT PROCESS (GNU coreutils
+// nproc), so a reading taken inside a cgroup or affinity mask is that bound, not the machine's count.
+fn nproc_command() -> ArgvCommand {
+  argv_command(program: nproc_program(), arguments: [])
 }
 
 // od(1) OVER ONE BYTE SPAN, AS HEX: -j skips `offset` bytes and -N reads at most `length`, both byte

@@ -508,3 +508,7 @@ fn systemd_slice_cgroup_path(mount_point: NonEmptyStr, slice: NonEmptyStr) -> Sy
     }
   }
 }
+
+// THE DIRECTORY sd_booted(3) TESTS: it exists exactly when systemd is the running service manager
+// (PID 1), which is what systemd-run needs to start a transient unit.
+data systemd_booted_runtime_dir: String = "/run/systemd/system"
