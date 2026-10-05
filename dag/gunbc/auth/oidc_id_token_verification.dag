@@ -25,6 +25,7 @@ module gunbc.auth.oidc_id_token_verification
 
 import std.types { String, NonEmptyStr, Int, List, FilePath, Email }
 import std.encoding { base64_decode, base64_encode, base64_octets, UrlSafe, Standard, utf8_decode_octets }
+import std.coercion { unicode_scalar_fold }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.bytes { pure_dag_seam_unreachable_string }
 import std.algebra { trim }
@@ -147,7 +148,7 @@ fn jwt_segment_json(segment: String) -> JwtSegmentJson {
       match utf8_decode_octets(octets: octets) {
         Absent => JwtSegmentJsonRefused { reason: "a segment does not decode as UTF-8" }
         Present { value: cps } =>
-          match parse_json_document(s: join(map(cps, cp => from_code_point(cp: cp)), "")) {
+          match parse_json_document(s: unicode_scalar_fold(xs: cps)) {
             JsonDocumentUnreadable { gap: g } =>
               JwtSegmentJsonRefused { reason: concat("a segment is not one JSON document: ", json_document_gap_text(gap: g)) }
             JsonDocumentParsed { value: v } => JwtSegmentJsonDecoded { value: v }

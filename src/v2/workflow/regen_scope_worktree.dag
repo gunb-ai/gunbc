@@ -1,6 +1,7 @@
 module v2.workflow.regen_scope_worktree
 
 import std.types { Bool, String, List }
+import std.unicode.scalar { char_text }
 import extdeps.git
 import extdeps.git.inspect
 
@@ -50,7 +51,7 @@ fn regen_scope_status_field_path(field: String) -> String {
 }
 
 fn regen_scope_uncommitted_dag_paths(entries_nul: String) -> List<String> {
-  split(s: entries_nul, delimiter: from_code_point(0))
+  split(s: entries_nul, delimiter: char_text(c: 0))
     |> filter(f => f != "" && ends_with(s: f, suffix: ".dag"))
     |> map(f => regen_scope_status_field_path(field: f))
 }
