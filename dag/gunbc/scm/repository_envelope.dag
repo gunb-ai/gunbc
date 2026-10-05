@@ -105,7 +105,7 @@ import gunbc.scm.manifest_merge {
   ManifestPathConflict,
   merge_manifests,
 }
-import gunbc.scm.object_shard_json { shard_roster_of }
+import gunbc.scm.object_shard_json { shard_roster_of, shard_partition, partition_rostered_rows, shard_identity_of, shard_members_of }
 import gunbc.scm.object_store {
   NodeRecordAbsent,
   NodeRecordFound,
@@ -128,7 +128,18 @@ import gunbc.scm.object_store {
   CorpusEntrySourceRefusal, CorpusSourcesComplete, CorpusSourceIncomplete,
   observe_corpus_source_completeness,
   store_admission_store,
+  ScmObject,
+  ScmObjectKind, SemanticNodeKind, AuthoredSourceKind, CorpusManifestKind,
+  RosteredObject,
+  SemanticNodeObject, AuthoredSourceObject, CorpusManifestObject,
+  CorpusManifestRefLookup, CorpusManifestRefFound, CorpusManifestRefAbsent,
+  CorpusManifestRefIsSemanticNode, CorpusManifestRefIsAuthoredSource,
+  find_corpus_manifest_ref,
+  WholeResidence, PartialResidence, store_unrostered_objects, store_shadowing_objects, store_rostered_rows, store_rostered_shards,
+  store_rostered_lookup, store_object_index, find_object_via,
+  authored_source_target_locator, scm_object_kind,
 }
+import std.content_hash { fnv1a64_structural_hex_digest }
 import gunbc.scm.commit_closure {
   ClosureCensus,
   store_census,
@@ -242,6 +253,18 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v6"
 // rewrites another object's bytes. v4-v6 keep their frozen readers; the one v6 envelope in
 // production reads through its reader and is rewritten as v7 on its next save.
 data repository_envelope_format_tag_v7: String = "gunbc-scm-repository-v7"
+
+// v8: THE INDEXED ENVELOPE (2026-10-03, the affected-set capture ruling: "it should only read the
+// things it actually needs"). v7's index named its shards but not which object each held, so the one
+// way to find any object -- a commit's root manifest, a source a candidate re-binds -- was to decode
+// every shard. v8 adds `objects`, the object roster: one [identity, kind, shard] row per persisted
+// object. A load can then answer every identity- and kind-grain question (commit roots, the staged
+// reference, manifest-entry completeness) from the index alone, and read exactly the shards whose
+// CONTENT an operation demands (gunbc.scm.repository_load load_repository_indexed,
+// materialize_objects). Manifests sit alone in their shards (gunbc.scm.object_shard_json
+// shard_partition), so a commit root's content is one manifest-sized read. A v7 envelope is migrated
+// by gunbc.scm.repository_convert, which loads it whole once and re-saves it as v8.
+data repository_envelope_format_tag_v8: String = "gunbc-scm-repository-v8"
 
 data repository_envelope_format_tag_v5: String = "gunbc-scm-repository-v5"
 
@@ -502,6 +525,9 @@ type RepositoryEncodeRefusal
   | RepositoryCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
   | RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
+  | RepositoryEncodeStoreIsPartial { rostered_shards: Int }
+  | RepositoryEncodeAppendCarriesSemanticNode { target: ObjectId }
+  | RepositoryEncodeAppendShadowsRosteredIdentity { identity: ObjectId }
 
 // THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
 // member-read arm below exists because dropping the envelope's own identity_rule member used to
@@ -524,6 +550,8 @@ type RepositoryDecodeRefusal
   | RepositoryFormatRetired { found: String }
   | RepositoryShardedIndexIsNotWhole { found: String }
   | RepositoryShardNotDecodable { detail: String }
+  | RepositoryIndexHasNoObjectRoster { found: String }
+  | RepositoryObjectRosterMalformed { detail: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCommitRootNotInObjectTable { root: ObjectId }
@@ -1566,10 +1594,234 @@ fn encode_repository_v7(repo: RepositoryEnvelope) -> JsonValue {
 // THE SHARDED WRITER'S ADMISSION IS THE MONOLITH'S, UNCHANGED: the same checked encoder adjudicates
 // (its document is built and discarded -- the admission is the census, not the bytes), and only
 // then does the v7 index encode. A store that cannot be written whole cannot be written sharded.
+// The sharded writer now writes v8: the same index plus the object roster derived from the very
+// partition the shards are written from.
 fn encode_repository_sharded_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   match encode_repository_checked(repo: repo) {
     RepositoryEncodeRefused { cause } => RepositoryEncodeRefused { cause: cause }
-    RepositoryEncoded { value: _ } => RepositoryEncoded { value: encode_repository_v7(repo: repo) }
+    RepositoryEncoded { value: _ } => RepositoryEncoded { value: encode_repository_v8(repo: repo) }
+  }
+}
+
+fn scm_object_kind_tag(kind: ScmObjectKind) -> String {
+  match kind {
+    SemanticNodeKind => "node"
+    AuthoredSourceKind => "source"
+    CorpusManifestKind => "manifest"
+  }
+}
+
+fn scm_object_kind_of_tag(tag: String) -> ScmObjectKind? {
+  if tag == "node" {
+    Present { value: SemanticNodeKind }
+  } else if tag == "source" {
+    Present { value: AuthoredSourceKind }
+  } else if tag == "manifest" {
+    Present { value: CorpusManifestKind }
+  } else {
+    none
+  }
+}
+
+fn encode_rostered_row(row: RosteredObject) -> JsonValue {
+  json_array(elements: [
+    json_string(s: row.identity.digest as String),
+    json_string(s: scm_object_kind_tag(kind: row.kind)),
+    json_string(s: row.shard),
+  ])
+}
+
+fn encode_repository_v8_over(repo: RepositoryEnvelope, shards: List<String>, rows: List<RosteredObject>) -> JsonValue {
+  let empty_positions = EncodeAcc {
+    positions: EncodePositions {
+      nodes_by_identity: empty_map(),
+      sources_by_identity: empty_map(),
+      manifests_by_identity: empty_map(),
+      next: 0,
+    },
+    objects: [],
+  }
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v8)),
+      json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
+      json_kv(key: "object_shards", value: json_array(elements: map(shards, d => json_string(s: d)))),
+      json_kv(key: "objects", value: json_array(elements: map(rows, r => encode_rostered_row(row: r)))),
+      json_kv(key: "next_commit_ordinal", value: json_int(n: repo.commit_allocator.next_ordinal)),
+      json_kv(
+        key: "commits",
+        value: json_array(elements: encode_commit_records(acc: empty_positions, commits: repo.commits))
+      ),
+      json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
+      json_kv(
+        key: "staged",
+        value: encode_optional_manifest_reference(acc: empty_positions, staged: repo.staged),
+      ),
+    ]
+  )
+}
+
+fn encode_repository_v8(repo: RepositoryEnvelope) -> JsonValue {
+  let partition = shard_partition(objects: repo.store.objects)
+  encode_repository_v8_over(
+    repo: repo,
+    shards: map(partition, shard => shard_identity_of(member_digests: shard_members_of(objects: shard))),
+    rows: sort_by(partition_rostered_rows(partition: partition), fn(r) { r.identity.digest as String }),
+  )
+}
+
+// THE APPEND-ONLY ADMISSION: what the whole-store census asks, asked of exactly what this save adds.
+// A partial store's rostered objects were admitted when they were written, and re-deciding them
+// would re-read the repository this format exists not to read. So the census runs over the
+// UNROSTERED resident objects (store_unrostered_objects) and over the envelope's own identity-grain
+// members, which the roster answers at map cost: every new manifest's entry sources must not be a
+// node or a manifest (absence is admitted exactly as the whole census admits it), every commit root
+// and the staged reference must be a persisted or resident manifest, the checkout must name a commit,
+// and the commit order must admit. A semantic node is refused outright: no append producer creates
+// one, and its containment census needs the closure this save does not hold.
+type AppendedShardsAndRows {
+  shards: List<String>
+  rows: List<RosteredObject>
+}
+
+fn appended_shards_and_rows(store: ObjectStore) -> AppendedShardsAndRows {
+  let partition = shard_partition(objects: store_unrostered_objects(store: store))
+  let held = fold(store_rostered_shards(store: store), init: empty_map(), f: fn(m, d) { map_insert(m, d, true) })
+  let fresh = filter(
+    map(partition, shard => shard_identity_of(member_digests: shard_members_of(objects: shard))),
+    d => match map_lookup(m: held, key: d) { Present { value: _ } => false Absent => true },
+  )
+  AppendedShardsAndRows {
+    shards: concat(store_rostered_shards(store: store), fresh),
+    rows: sort_by(
+      concat(store_rostered_rows(store: store), partition_rostered_rows(partition: partition)),
+      fn(r) { r.identity.digest as String },
+    ),
+  }
+}
+
+fn appended_entry_kind(index: Map<String, ScmObject>, store: ObjectStore, source: ObjectId) -> ScmObjectKind? {
+  match find_object_via(index: index, identity: source) {
+    Present { value: object } => Present { value: scm_object_kind(object: object) }
+    Absent =>
+      match store_rostered_lookup(store: store, identity: source) {
+        Present { value: held } => Present { value: held.kind }
+        Absent => none
+      }
+  }
+}
+
+fn appended_manifest_refusal(
+  index: Map<String, ScmObject>,
+  store: ObjectStore,
+  entries: List<CorpusManifestEntry>,
+) -> RepositoryEncodeRefusal? {
+  fold(entries, init: none, f: fn(found, entry) {
+    match found {
+      Present { value: _ } => found
+      Absent => {
+        let source = authored_source_target_locator(target: entry.source)
+        match appended_entry_kind(index: index, store: store, source: source) {
+          Absent => none
+          Present { value: kind } =>
+            match kind {
+              AuthoredSourceKind => none
+              SemanticNodeKind => Present { value: RepositoryEncodeManifestSourceIsSemanticNode { source: source } }
+              CorpusManifestKind => Present { value: RepositoryEncodeManifestSourceIsCorpusManifest { source: source } }
+            }
+        }
+      }
+    }
+  })
+}
+
+fn appended_object_refusal(store: ObjectStore) -> RepositoryEncodeRefusal? {
+  match (store_shadowing_objects(store: store)).first() {
+    Present { value: shadow } =>
+      Present { value: RepositoryEncodeAppendShadowsRosteredIdentity { identity: scm_object_identity(object: shadow) } }
+    Absent => appended_new_object_refusal(store: store)
+  }
+}
+
+fn appended_new_object_refusal(store: ObjectStore) -> RepositoryEncodeRefusal? {
+  let index = store_object_index(store: store)
+  fold(store_unrostered_objects(store: store), init: none, f: fn(found, object) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match object {
+          SemanticNodeObject(record) => Present { value: RepositoryEncodeAppendCarriesSemanticNode { target: record.identity.locator } }
+          AuthoredSourceObject(_) => none
+          CorpusManifestObject(record) => appended_manifest_refusal(index: index, store: store, entries: record.entries)
+        }
+    }
+  })
+}
+
+fn manifest_ref_standing(store: ObjectStore, root: ObjectId) -> ManifestLocatorStanding {
+  match find_corpus_manifest_ref(store: store, identity: root) {
+    CorpusManifestRefFound(_) => ManifestLocatorResolved
+    CorpusManifestRefAbsent { identity: r } => ManifestLocatorAbsent { root: r }
+    CorpusManifestRefIsAuthoredSource { identity: r } => ManifestLocatorIsAuthoredSource { root: r }
+    CorpusManifestRefIsSemanticNode { identity: r } => ManifestLocatorIsSemanticNode { root: r }
+  }
+}
+
+fn appended_commit_root_standing(store: ObjectStore, commits: List<RepositoryCommit>) -> ManifestLocatorStanding {
+  fold(commits, init: ManifestLocatorResolved, f: fn(found, c) {
+    match found {
+      ManifestLocatorResolved => manifest_ref_standing(store: store, root: c.root.locator)
+      ManifestLocatorAbsent { root: _ } => found
+      ManifestLocatorIsAuthoredSource { root: _ } => found
+      ManifestLocatorIsSemanticNode { root: _ } => found
+    }
+  })
+}
+
+fn appended_staged_standing(store: ObjectStore, staged: CorpusManifestObjectRef?) -> ManifestLocatorStanding {
+  match staged {
+    Absent => ManifestLocatorResolved
+    Present { value: reference } => manifest_ref_standing(store: store, root: reference.locator)
+  }
+}
+
+fn encode_repository_appended_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
+  match appended_object_refusal(store: repo.store) {
+    Present { value: cause } => RepositoryEncodeRefused { cause: cause }
+    Absent =>
+      match appended_commit_root_standing(store: repo.store, commits: repo.commits) {
+        ManifestLocatorAbsent { root } => RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
+        ManifestLocatorIsAuthoredSource { root } => RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsAuthoredSource { root: root } }
+        ManifestLocatorIsSemanticNode { root } => RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsSemanticNode { root: root } }
+        ManifestLocatorResolved =>
+          match appended_staged_standing(store: repo.store, staged: repo.staged) {
+            ManifestLocatorAbsent { root } => RepositoryEncodeRefused { cause: RepositoryEncodeStagedNotInStore { staged: root } }
+            ManifestLocatorIsAuthoredSource { root } => RepositoryEncodeRefused { cause: RepositoryEncodeStagedIsAuthoredSource { staged: root } }
+            ManifestLocatorIsSemanticNode { root } => RepositoryEncodeRefused { cause: RepositoryEncodeStagedIsSemanticNode { staged: root } }
+            ManifestLocatorResolved =>
+              match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
+                Present { value: reference } =>
+                  RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: reference } }
+                Absent =>
+                  match admit_commit_order(commits: repo.commits, next_ordinal: repo.commit_allocator.next_ordinal).refusal {
+                    Present { value: CommitReferenceDuplicated { reference } } =>
+                      RepositoryEncodeRefused { cause: RepositoryCommitReferenceDuplicated { reference: reference } }
+                    Present { value: CommitParentNotPreviouslyAdmitted { parent } } =>
+                      RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
+                    Present { value: CommitIntegrationSourceNotPreviouslyAdmitted { source } } =>
+                      RepositoryEncodeRefused { cause: RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: source } }
+                    Present { value: CommitReferenceOutsideAllocator { reference, next_ordinal: _ } } =>
+                      RepositoryEncodeRefused {
+                        cause: RepositoryCommitReferenceOutsideAllocator { reference: reference, next_ordinal: repo.commit_allocator.next_ordinal },
+                      }
+                    Absent => {
+                      let appended = appended_shards_and_rows(store: repo.store)
+                      RepositoryEncoded { value: encode_repository_v8_over(repo: repo, shards: appended.shards, rows: appended.rows) }
+                    }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -1682,7 +1934,19 @@ fn an_uncontained_target(census: ClosureCensus) -> ObjectId? {
 // different propositions about different kinds, and merging them would be the kind-blind
 // observation this branch has spent its length removing. What is shared is the derivation, not the
 // question.
+// A PARTIAL STORE IS ITS OWN DECLARED ARM, and this whole-store encoder answers it by refusal: the
+// envelope type is shared by every SCM verb, so the encoder can be handed one, and writing it whole
+// would roster away every object it does not hold. The append-only writer
+// (encode_repository_appended_checked) is the only route that writes a partial store.
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
+  match repo.store.residence {
+    WholeResidence => encode_repository_checked_whole(repo: repo)
+    PartialResidence { rostered: _, shards, materialized: _ } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeStoreIsPartial { rostered_shards: count(shards) } }
+  }
+}
+
+fn encode_repository_checked_whole(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   let acc = encode_object_table(store: repo.store)
   let semantic = store_census(store: repo.store)
   let sources = manifest_source_census(store: repo.store)
@@ -2048,31 +2312,31 @@ fn resolve_pending_step(
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match find_corpus_manifest_record(store: store, identity: c.root) {
-        CorpusManifestAbsent { identity: r } =>
+      match find_corpus_manifest_ref(store: store, identity: c.root) {
+        CorpusManifestRefAbsent { identity: r } =>
           ResolvedCommitAcc {
             commits: acc.commits,
             seen: acc.seen,
             refusal: Present { value: RepositoryCommitRootNotInObjectTable { root: r } },
           }
-        CorpusManifestIsAuthoredSource { identity: r } =>
+        CorpusManifestRefIsAuthoredSource { identity: r } =>
           ResolvedCommitAcc {
             commits: acc.commits,
             seen: acc.seen,
             refusal: Present { value: RepositoryCommitRootIsAuthoredSource { root: r } },
           }
-        CorpusManifestIsSemanticNode { identity: r } =>
+        CorpusManifestRefIsSemanticNode { identity: r } =>
           ResolvedCommitAcc {
             commits: acc.commits,
             seen: acc.seen,
             refusal: Present { value: RepositoryCommitRootIsSemanticNode { root: r } },
           }
-        CorpusManifestFound(record) =>
+        CorpusManifestRefFound(root) =>
           resolve_pending_step_admitted(
             next_ordinal: next_ordinal,
             acc: acc,
             c: c,
-            root: record.identity,
+            root: root,
           )
       }
   }
@@ -2450,7 +2714,8 @@ fn decode_commit_members_after_reference(
 // single tolerant reader admitting both would accept each of those, and each is a document nobody
 // could have written.
 type RepositoryFormat
-  = RepositoryFormatV7
+  = RepositoryFormatV8
+  | RepositoryFormatV7
   | RepositoryFormatV6
   | RepositoryFormatV5
   | RepositoryFormatV4
@@ -2462,6 +2727,8 @@ fn repository_format_of(tag: String) -> RepositoryFormat {
     RepositoryFormatV6
   } else if tag == repository_envelope_format_tag_v7 {
     RepositoryFormatV7
+  } else if tag == repository_envelope_format_tag_v8 {
+    RepositoryFormatV8
   } else if tag == repository_envelope_format_tag_v5 {
     RepositoryFormatV5
   } else {
@@ -2488,6 +2755,8 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
           RepositoryDecodeRefused {
             cause: RepositoryFormatRetired { found: repository_envelope_format_tag_v3 }
           }
+        RepositoryFormatV8 =>
+          RepositoryDecodeRefused { cause: RepositoryShardedIndexIsNotWhole { found: repository_envelope_format_tag_v8 } }
         RepositoryFormatV7 =>
           RepositoryDecodeRefused { cause: RepositoryShardedIndexIsNotWhole { found: repository_envelope_format_tag_v7 } }
         RepositoryFormatV6 => decode_repository_v6(v: v)
@@ -2571,6 +2840,98 @@ fn decode_repository_v4(v: JsonValue) -> RepositoryDecodeOutcome {
 type RepositoryShardedIndex {
   document: JsonValue
   shard_digests: List<String>
+  roster: RepositoryObjectRoster
+}
+
+// WHETHER THE INDEX CARRIES AN OBJECT ROSTER IS THE FORMAT'S FACT: v7 has none (its objects are
+// findable only by decoding every shard), v8 declares one. A type, not a Bool, so an indexed reader
+// meeting a v7 index refuses by naming what is missing rather than reading an empty roster as
+// "this repository holds no objects".
+type RepositoryObjectRoster
+  = ObjectRosterAbsentByFormat
+  | ObjectRosterDeclared { rows: List<RosteredObject> }
+
+type ObjectRosterRead
+  = ObjectRosterRowsRead { rows: List<RosteredObject>, seen: Map<String, Bool> }
+  | ObjectRosterRefused { detail: String }
+
+fn object_roster_string_at(elements: List<JsonValue>, position: Int) -> String? {
+  match (elements |> skip(n: position)).first() {
+    Absent => none
+    Present { value: element } =>
+      match element {
+        JsonString { value: text } => Present { value: text }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn object_roster_step(acc: ObjectRosterRead, value: JsonValue) -> ObjectRosterRead {
+  match acc {
+    ObjectRosterRefused { detail: _ } => acc
+    ObjectRosterRowsRead { rows, seen } =>
+      match value {
+        JsonArray { elements } =>
+          if count(elements) != 3 {
+            ObjectRosterRefused { detail: "an objects row is not an [identity, kind, shard] triple" }
+          } else {
+            match object_roster_string_at(elements: elements, position: 0) {
+              Absent => ObjectRosterRefused { detail: "an objects row's identity is not a string" }
+              Present { value: hex } =>
+                match fnv1a64_structural_hex_digest(hex: hex) {
+                  Absent => ObjectRosterRefused { detail: join(["an objects row names an invalid identity digest: ", hex], "") }
+                  Present { value: identity } =>
+                    match map_lookup(m: seen, key: hex) {
+                      Present { value: _ } => ObjectRosterRefused { detail: join(["the object roster names identity ", hex, " twice"], "") }
+                      Absent =>
+                        match object_roster_string_at(elements: elements, position: 1) {
+                          Absent => ObjectRosterRefused { detail: "an objects row's kind is not a string" }
+                          Present { value: tag } =>
+                            match scm_object_kind_of_tag(tag: tag) {
+                              Absent => ObjectRosterRefused { detail: join(["an objects row names unknown kind ", tag], "") }
+                              Present { value: kind } =>
+                                match object_roster_string_at(elements: elements, position: 2) {
+                                  Absent => ObjectRosterRefused { detail: "an objects row's shard is not a string" }
+                                  Present { value: shard } =>
+                                    ObjectRosterRowsRead {
+                                      rows: concat([RosteredObject { identity: identity, kind: kind, shard: shard }], rows),
+                                      seen: map_insert(seen, hex, true),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+        JsonNull => ObjectRosterRefused { detail: "an objects row is not an array" }
+        JsonBool { value: _ } => ObjectRosterRefused { detail: "an objects row is not an array" }
+        JsonNumber { lexeme: _ } => ObjectRosterRefused { detail: "an objects row is not an array" }
+        JsonString { value: _ } => ObjectRosterRefused { detail: "an objects row is not an array" }
+        JsonObject { members: _ } => ObjectRosterRefused { detail: "an objects row is not an array" }
+      }
+  }
+}
+
+// EVERY ROW NAMES A SHARD THE INDEX ROSTERS. A row pointing outside object_shards names a document
+// the loader would never be told exists, so it refuses here rather than at the first demand for it.
+fn decode_object_roster(values: List<JsonValue>, shard_digests: List<String>) -> ObjectRosterRead {
+  let shards = fold(shard_digests, init: empty_map(), f: fn(m, d) { map_insert(m, d, true) })
+  match fold(values, init: ObjectRosterRowsRead { rows: [], seen: empty_map() }, f: fn(acc, v) { object_roster_step(acc: acc, value: v) }) {
+    ObjectRosterRefused { detail } => ObjectRosterRefused { detail: detail }
+    ObjectRosterRowsRead { rows, seen } =>
+      match (rows |> filter(r => match map_lookup(m: shards, key: r.shard) { Present { value: _ } => false Absent => true })).first() {
+        Present { value: stray } =>
+          ObjectRosterRefused {
+            detail: join(["the object roster places ", stray.identity.digest as String, " in shard ", stray.shard, ", which object_shards does not roster"], ""),
+          }
+        Absent => ObjectRosterRowsRead { rows: reverse(rows), seen: seen }
+      }
+  }
 }
 
 type RepositoryShardedIndexDecode
@@ -2603,6 +2964,45 @@ fn shard_digest_step(acc: ShardDigestRead, value: JsonValue) -> ShardDigestRead 
 }
 
 fn decode_repository_v7_index(v: JsonValue) -> RepositoryShardedIndexDecode {
+  decode_repository_sharded_index(
+    v: v,
+    allowed: ["format", "identity_rule", "object_shards", "commits", "next_commit_ordinal", "checked_out", "staged"],
+    roster_declared: false,
+  )
+}
+
+fn decode_repository_v8_index(v: JsonValue) -> RepositoryShardedIndexDecode {
+  decode_repository_sharded_index(
+    v: v,
+    allowed: ["format", "identity_rule", "object_shards", "objects", "commits", "next_commit_ordinal", "checked_out", "staged"],
+    roster_declared: true,
+  )
+}
+
+fn decode_sharded_index_roster(v: JsonValue, digests: List<String>, roster_declared: Bool) -> RepositoryShardedIndexDecode {
+  if !roster_declared {
+    ShardedIndexDecoded { index: RepositoryShardedIndex { document: v, shard_digests: digests, roster: ObjectRosterAbsentByFormat } }
+  } else {
+    match read_member(v: v, key: "objects") {
+      MemberArray { elements } =>
+        match decode_object_roster(values: elements, shard_digests: digests) {
+          ObjectRosterRefused { detail } =>
+            ShardedIndexRefused { cause: RepositoryObjectRosterMalformed { detail: detail } }
+          ObjectRosterRowsRead { rows, seen: _ } =>
+            ShardedIndexDecoded {
+              index: RepositoryShardedIndex { document: v, shard_digests: digests, roster: ObjectRosterDeclared { rows: rows } },
+            }
+        }
+      MemberFailed { cause: c } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: c } }
+      MemberString { value: _ } =>
+        ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+      MemberObject { value: _ } =>
+        ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    }
+  }
+}
+
+fn decode_repository_sharded_index(v: JsonValue, allowed: List<String>, roster_declared: Bool) -> RepositoryShardedIndexDecode {
   match read_string_member(v: v, key: "identity_rule") {
     MemberFailed { cause: c } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: rule } =>
@@ -2611,7 +3011,7 @@ fn decode_repository_v7_index(v: JsonValue) -> RepositoryShardedIndexDecode {
       } else {
         match repository_member_set_refusal(
           v: v,
-          allowed: ["format", "identity_rule", "object_shards", "commits", "next_commit_ordinal", "checked_out", "staged"],
+          allowed: allowed,
           context: RepositoryEnvelopeMembers
         ) {
           Present { value: c } => ShardedIndexRefused { cause: c }
@@ -2630,9 +3030,7 @@ fn decode_repository_v7_index(v: JsonValue) -> RepositoryShardedIndexDecode {
                       cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "object_shards" } },
                     }
                   ShardDigestsRead { digests } =>
-                    ShardedIndexDecoded {
-                      index: RepositoryShardedIndex { document: v, shard_digests: digests },
-                    }
+                    decode_sharded_index_roster(v: v, digests: digests, roster_declared: roster_declared)
                 }
               MemberString { value: _ } =>
                 ShardedIndexRefused {
@@ -2888,14 +3286,14 @@ fn decode_declared_stage(
 }
 
 fn resolve_stage_locator(store: ObjectStore, staged: ObjectId) -> StagedDecode {
-  match find_corpus_manifest_record(store: store, identity: staged) {
-    CorpusManifestAbsent { identity: r } =>
+  match find_corpus_manifest_ref(store: store, identity: staged) {
+    CorpusManifestRefAbsent { identity: r } =>
       StagedRefused { cause: RepositoryStagedNotInObjectTable { staged: r } }
-    CorpusManifestIsAuthoredSource { identity: r } =>
+    CorpusManifestRefIsAuthoredSource { identity: r } =>
       StagedRefused { cause: RepositoryStagedIsAuthoredSource { staged: r } }
-    CorpusManifestIsSemanticNode { identity: r } =>
+    CorpusManifestRefIsSemanticNode { identity: r } =>
       StagedRefused { cause: RepositoryStagedIsSemanticNode { staged: r } }
-    CorpusManifestFound(record) => StagedDecoded { staged: Present { value: record.identity } }
+    CorpusManifestRefFound(root) => StagedDecoded { staged: Present { value: root } }
   }
 }
 
@@ -3091,6 +3489,7 @@ type RepositoryDocumentProtocol
   = RepositoryProtocolRetiredFormat { found: String }
   | RepositoryProtocolUnrecognizedFormat { found: String }
   | RepositoryProtocolUnrecognizedIdentityRule { found: String }
+  | RepositoryProtocolIndexHasNoObjectRoster { found: String }
   | RepositoryProtocolNotAProtocolRefusal
 
 fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDocumentProtocol {
@@ -3102,6 +3501,8 @@ fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDoc
     RepositoryDecodeObjectTableRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryShardedIndexIsNotWhole { found: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryShardNotDecodable { detail: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryIndexHasNoObjectRoster { found: f } => RepositoryProtocolIndexHasNoObjectRoster { found: f }
+    RepositoryObjectRosterMalformed { detail: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryMemberReadRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryCommitRootReferenceUnresolved { reference: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryCommitRootNotInObjectTable { root: _ } => RepositoryProtocolNotAProtocolRefusal
@@ -3131,6 +3532,8 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
     RepositoryFormatRetired { found: _ } => LoadUnsupportedProtocol
     RepositoryShardedIndexIsNotWhole { found: _ } => LoadUnsupportedProtocol
     RepositoryShardNotDecodable { detail: _ } => LoadDocumentMalformed
+    RepositoryIndexHasNoObjectRoster { found: _ } => LoadUnsupportedProtocol
+    RepositoryObjectRosterMalformed { detail: _ } => LoadDocumentMalformed
     RepositoryIdentityRuleUnrecognized { found: _ } => LoadUnsupportedProtocol
     RepositoryDecodeObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     RepositoryMemberReadRefused { cause: c } =>
