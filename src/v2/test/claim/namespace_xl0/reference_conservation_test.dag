@@ -1,7 +1,6 @@
 module v2.test.claim.namespace_xl0.reference_conservation
 
-import v2.compiler.tokenize { prepare_lex_rules }
-import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.reference_conservation {
   ReferenceConservationReport,
   ReferenceConservationSubject,
@@ -19,7 +18,7 @@ import std.algebra { Cons, Empty }
 import v2.std.optional { Absent, Present }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused, NameRoleNotYetRead, dag_name_production_rows, name_production_table_admission, name_row }
-import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
+import v2.extdeps.languages.dag { dag_grammar_root }
 import v2.std.algebra { fold_list, length, list_map }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
@@ -69,7 +68,7 @@ fn conservation_subject(id_tail: String, source: String) -> ReferenceConservatio
     Accepted { value: prepared, diagnostics: residue } =>
       reference_conservation_subject_of_read(
         read: conservation_fixture_read(id_tail: id_tail, source: source),
-        lex: prepare_lex_rules(rules: dag_language_model().lex),
+        lex: dag_prepared_lex(),
         prepared: prepared,
         residue: residue
       )
