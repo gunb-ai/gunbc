@@ -15,10 +15,10 @@ import gunbc.spark.native_serving_apply {
   spark_native_leg_with_retry, spark_native_leg_attempt_count,
   spark_native_unreached_leg_attempt_budget,
   spark_native_host_apply_script, spark_native_transport_announcement_script, spark_native_front_door_script,
-  spark_native_stop_script, spark_native_commit_record_script,
+  spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
-import gunbc.spark.arm_convergence { arm_rank_observe_script }
+import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_observe_begin_word, arm_observe_complete_word, ArmRankRead, ArmRankUnread, FactRead, FactAbsent, FactUnread }
 
 // THE INCIDENT THESE ARE THE REDS FOR: fleet-converge run 36918167575 (2026-10-01). One ssh leg to srv7
 // timed out over Wi-Fi, the four-host arm aborted, the rollback leg to srv7 timed out too, and the next
@@ -234,4 +234,35 @@ test fn w_the_announcement_and_front_door_share_one_deadline_and_incarnation_sto
   all([t, d], s => string_contains(s: s, pattern: "deadline=$(( start + 1234 ))")
     && string_contains(s: s, pattern: "READBACK-REFUSED-incarnation-changed-before-")
     && !string_contains(s: s, pattern: "1800"))
+}
+
+// ── THE OBSERVATION THROUGH THE REAL LEG READING (the route run 37270222679 broke) ────────────
+//
+// The applied leg's detail is "<wire> <stdout>" (gunbc.spark.pair_serving_apply spark_pair_leg_outcome_of),
+// so a fact on the FIRST stdout line arrives behind the wire and its key is not at the line start: run
+// 37270222679 read the planned-unit hash unread on every rank and refused. The observe leg now prints a
+// begin line first. This claim runs the wrapped stdout through the real leg reading and the real parse;
+// the RED is the same stdout with the begin line removed, which reads the first fact unread.
+fn w_observe_stdout(begin: Bool) -> String {
+  join([
+    remote_leg_began_word, "\n",
+    if begin { join([arm_observe_begin_word, "\n"], "") } else { "" },
+    "desired_unit_sha=aaaa\nunit_sha=aaaa\nactive_state=active\ncontainer=0123456789ab true 0\ncommitted=absent\n",
+    arm_observe_complete_word, "\n",
+    spark_pair_leg_exit_prefix, "0\n",
+  ], "")
+}
+
+fn w_planned_hash_read(begin: Bool) -> Bool {
+  match spark_native_observation_of_leg(o: spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
+    exit_code: 0, success: true, stdout: w_observe_stdout(begin: begin), stderr: "" })) {
+    ArmRankUnread { host: _, cause: _ } => false
+    ArmRankRead { observed: r } => match r.desired_unit_sha { FactRead { value: v } => v == "aaaa"  FactAbsent => false  FactUnread { cause: _ } => false }
+  }
+}
+
+test fn w_the_observation_reads_every_fact_through_the_real_leg_reading() -> Bool {
+  w_planned_hash_read(begin: true) && !w_planned_hash_read(begin: false)
+    && string_contains(s: arm_rank_observe_script(unit_name: "u.service" as NonEmptyStr, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n"),
+         pattern: join(["echo ", arm_observe_begin_word, "\n"], ""))
 }
