@@ -492,7 +492,7 @@ fn oob_boot_handoff(
   selection: IpmiBootSelection,
 ) -> OobBootHandoffOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
+    decl_ref(module_path: "gunbc.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
     decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
   ]
 {

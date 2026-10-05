@@ -27959,6 +27959,71 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         );
     }
 
+    // DESIGN §4c: an annotation is not program data, so a `//` edit charges no witness. Lines:
+    // 3 `// note a`, 4-7 `a`, 9 `// note c`, 10-13 `c` (whose body carries a `//` line).
+    const NOTE_HEAD: &str = "module m.note\n\n// note a\ntest fn a() -> Bool {\n  true\n}\n\n// note c new\ntest fn c() -> Bool {\n  // body note new\n  true\n}\n";
+    const NOTE_PATH: &str = "src/v2/test/claim/note_fixture_test.dag";
+
+    fn note_diff(hunks: &str) -> String {
+        let path = NOTE_PATH;
+        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{hunks}")
+    }
+
+    #[test]
+    fn a_leading_annotation_edit_charges_no_witness() {
+        let diff = note_diff("@@ -8 +8 @@\n-// note c old\n+// note c new\n@@ -10 +10 @@\n-  // body note old\n+  // body note new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "editing only `//` lines changes no declaration's annotation-erased text"
+        );
+    }
+
+    #[test]
+    fn a_body_edit_beside_an_annotation_still_charges_it() {
+        let diff = note_diff("@@ -11 +11 @@\n-  false\n+  true\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::from(["c".to_string()]),
+            "a non-annotation line edited inside `c` edits `c`"
+        );
+    }
+
+    #[test]
+    fn a_slash_slash_line_inside_a_multi_line_string_still_charges_it() {
+        // Lines: 3-6 `d`, whose string literal spans lines 4-5; line 4 opens with `//`.
+        let path = "src/v2/test/claim/note_string_fixture_test.dag";
+        let head = "module m.note_string\n\ntest fn d() -> Bool {\n  \"a\n// in a string, new\n  b\" == \"\"\n}\n";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +5 @@\n-// in a string, old\n+// in a string, new\n"
+        );
+        assert_eq!(
+            edited_in(&text_attribution_edits(&diff, path, head, &["d"]), path),
+            HashSet::from(["d".to_string()]),
+            "a `//` line inside a string literal is program data, not an annotation"
+        );
+    }
+
+    #[test]
+    fn a_moved_annotation_block_charges_neither_declaration() {
+        // Base: `// note c new` sat inside `a`'s body; the head moved it above `c`.
+        let diff = note_diff("@@ -5 +4,0 @@\n-// note c new\n@@ -8,0 +8 @@\n+// note c new\n");
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, NOTE_PATH, NOTE_HEAD, &["a", "c"]),
+                NOTE_PATH
+            ),
+            HashSet::new(),
+            "moving a `//` block between two declarations charges neither"
+        );
+    }
+
     #[test]
     fn a_genuinely_edited_claim_is_still_charged() {
         let path = GAP_PATH;
@@ -43120,6 +43185,80 @@ pub struct RequiredFloorOutcome {
     /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
     /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
     pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
+    /// COST-DEBT ROWS WHOSE CLAIM DID NOT PASS when this change required its verdict, each with
+    /// its cause. Authority: `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing`.
+    /// The population is the rostered identities this change ADMITS (head roster, not base) or
+    /// RESTORES (touches the witness of), so it cannot red a PR for a row it did not author or
+    /// touch. A cost row may never hide a semantic red: this blocks whatever the expected-red
+    /// roster says, because a withhold suppresses that enrolment.
+    pub cost_debt_verdict_refused: Vec<ChangedWitnessBlocker>,
+}
+
+/// Whether the floor outcome permits a green run.
+///
+/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// caller, because a mode that forgot one of them would green a run the other refused. (The
+/// count is stated because a reader checks it; it was five before main added `route_gap` and
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
+/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// were wired in here directly; that was reverted and the count returned to seven.)
+///
+/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
+/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
+/// an enrolled claim produced no verdict — and gating on them directly would red every lane
+/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
+/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
+/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
+/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
+/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
+/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
+///
+/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
+/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
+/// today and, should it stop producing a verdict again, it is already rostered and the eighth
+/// conjunct admits it. Repayment and deletion are therefore one act, which is what
+/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
+/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
+/// — it requires the fix to be complete, and the diagnostic names every row to delete.
+pub fn required_floor_outcome_is_clean(outcome: &RequiredFloorOutcome) -> bool {
+    outcome.failures.is_empty()
+        && outcome.non_verdict_unenrolled.is_empty()
+        && outcome.stale_non_verdict.is_empty()
+        && outcome.stale_quarantine.is_empty()
+        && outcome.interrupted_before_verdict.is_empty()
+        && outcome.completed_over_cost_requirement.is_empty()
+        && outcome.host_tool_unresolved.is_empty()
+        && outcome.route_gap.is_empty()
+        && outcome.stale_route_gap.is_empty()
+        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
+        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
+        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
+        // roster that has stopped describing the tree, which voids the contract's monotone
+        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
+        && outcome.stale_cost_debt.is_empty()
+        // A CHANGED witness identity that did not execute to a passing verdict — declined,
+        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
+        // required context. The classification authority is
+        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
+        // is only the identities this change's diff touched, never the standing declined
+        // corpus, so this conjunct cannot red a PR for debt it did not author.
+        && outcome.changed_witness_blocking.is_empty()
+        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
+        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
+        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
+        // the line every one of the fifteen incident rows cleared on the run that measured them
+        // and crossed on the run that did not. Three refusing states, deliberately distinct:
+        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
+        // the one that must not be folded into the others — absence of a measurement is not
+        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
+        //
+        // The population is only what this change enrols, so this conjunct cannot red a PR for
+        // debt it did not author. Authority:
+        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
+        && outcome.enrolment_margin_blocking.is_empty()
+        // A COST ROW MAY NEVER HIDE A SEMANTIC RED. A rostered identity this change admits or
+        // restores must pass; authority `v2.workflow.floor_cost_debt_verdict`.
+        && outcome.cost_debt_verdict_refused.is_empty()
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
