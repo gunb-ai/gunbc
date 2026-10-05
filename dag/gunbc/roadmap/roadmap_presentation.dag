@@ -9,7 +9,7 @@ import gunbc.roadmap_issue_status {
 import v2.std.collection { Map }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
-  readiness_is_dispatchable,
+  readiness_is_dispatchable, readiness_gap_blockers,
 }
 import gunbc.roadmap.roadmap_project { node_project_membership_in, MembershipMember, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
@@ -343,6 +343,24 @@ fn work_scheduling_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>)
       ReadyToDispatch => SchedulingReady
       NotReady { missing } => SchedulingNotReady { missing: missing }
     }
+  }
+}
+
+// WHICH PREREQUISITES ARE HOLDING THE ROW, read from the scheduling position and nowhere else. A
+// ready row has none; a not-ready row has the blockers its readiness named
+// (gunbc.roadmap.roadmap_readiness GapDependencies), which is the dispatcher's own satisfaction
+// predicate. A done or superseded row was never asked -- its position is decided before readiness
+// is computed (work_scheduling_in) -- so the answer there is that it was not assessed, never zero.
+type UnmetPrerequisites
+  = UnmetPrerequisitesAssessed { ids: List<String> }
+  | UnmetPrerequisitesNotAssessed
+
+fn row_unmet_prerequisites(view: WorkRowView) -> UnmetPrerequisites {
+  match view.scheduling {
+    SchedulingReady => UnmetPrerequisitesAssessed { ids: [] }
+    SchedulingNotReady { missing } => UnmetPrerequisitesAssessed { ids: flat_map(missing, g => readiness_gap_blockers(g: g)) }
+    SchedulingDone => UnmetPrerequisitesNotAssessed
+    SchedulingSuperseded => UnmetPrerequisitesNotAssessed
   }
 }
 
@@ -1785,13 +1803,19 @@ type ProjectChainWalk {
   chain: List<WorkRowView>
 }
 
-fn row_is_closed(row: WorkRowView) -> Bool {
-  match row.lifecycle {
+// CLOSED IS A LIFECYCLE FACT: a done or a superseded node is closed, and nothing else is. Every
+// reader that asks whether a node is closed asks here, whatever status the node is shown with.
+fn work_lifecycle_is_closed(l: WorkLifecycle) -> Bool {
+  match l {
     OpenLifecycle => false
     ReviewLifecycle => false
     DoneLifecycle => true
     SupersededLifecycle => true
   }
+}
+
+fn row_is_closed(row: WorkRowView) -> Bool {
+  work_lifecycle_is_closed(l: row.lifecycle)
 }
 
 fn row_key_is_banded(key: String) -> Bool {
@@ -2060,6 +2084,43 @@ fn issue_work_history_rounds(ledger: HarnessRoundLedger) -> List<RoundSegment> {
 // ruling here. The primary word is a projection, never stored. The four facts remain
 // separate in IssueStatusDetails and the Work ledger; pending stages retain wait targets.
 type IssueStatusDetails { planning: String, obligation: String, outcome: String, evidence: List<ActivityEvidenceRow> }
+// THE STATUS OF A CLOSED LIFECYCLE, decided once: superseded shows Superseded and done shows Done.
+// issue_display_status reads it for a plan row, and omitted_node_display_status reads it for a
+// declared node the plan omits, so the two cannot map a closed node differently. It is asked only
+// of a closed lifecycle (work_lifecycle_is_closed); an open or in-review lifecycle has no status
+// of its own without the row's scheduling and activity, and answers Unknown here rather than a
+// guess.
+fn closed_lifecycle_display_status(l: WorkLifecycle) -> IssueDisplayStatus {
+  match l {
+    SupersededLifecycle => DisplaySuperseded
+    DoneLifecycle => DisplayDone
+    OpenLifecycle => DisplayUnknown
+    ReviewLifecycle => DisplayUnknown
+  }
+}
+
+// A DECLARED NODE THE PLAN OMITS has no row, so no readiness, standing or activity is defined for
+// it. Its lifecycle still is: its own line and signoff decide it exactly as they do for a plan row
+// (work_lifecycle), and a node the acceptance authority lists as accepted
+// (gunbc.roadmap_authority frontier_sets_projection `accepted`, the reason the plan omits it) is
+// done. A superseded line stays superseded: acceptance does not reopen that question.
+fn omitted_node_lifecycle(rn: RoadmapNode, merged: List<Int>, accepted: Bool) -> WorkLifecycle {
+  match work_lifecycle(rn: rn, merged: merged) {
+    SupersededLifecycle => SupersededLifecycle
+    DoneLifecycle => DoneLifecycle
+    OpenLifecycle => if accepted { DoneLifecycle } else { OpenLifecycle }
+    ReviewLifecycle => if accepted { DoneLifecycle } else { ReviewLifecycle }
+  }
+}
+
+// What an omitted node is shown with: the closed-lifecycle status when its lifecycle is closed,
+// and nothing otherwise -- an omitted node that is not closed has no producer for a status.
+fn omitted_node_display_status(rn: RoadmapNode, merged: List<Int>, accepted: Bool) -> IssueDisplayStatus? {
+  let lifecycle = omitted_node_lifecycle(rn: rn, merged: merged, accepted: accepted)
+  let shown: IssueDisplayStatus? = Present { value: closed_lifecycle_display_status(l: lifecycle) }
+  if work_lifecycle_is_closed(l: lifecycle) { shown } else { none }
+}
+
 // The displayed status is a typed value (gunbc.roadmap_issue_status IssueDisplayStatus); the word
 // and the sort rank are read from it. The last arm reads the scheduling position directly, so
 // every row lands on a member of the vocabulary: the former catch-all word "Open" was reachable
@@ -2082,8 +2143,7 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
   let scheduling = work_scheduling_key(s: view.scheduling)
   let activity = activity_arm_key(a: view.activity)
   if standing == "unknown" || activity == "unobservable" { DisplayUnknown }
-  else if lifecycle == "superseded" { DisplaySuperseded }
-  else if lifecycle == "done" { DisplayDone }
+  else if work_lifecycle_is_closed(l: view.lifecycle) { closed_lifecycle_display_status(l: view.lifecycle) }
   else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DisplayBlocked }
   else if standing == "in_progress" || activity == "active" { DisplayActive }
   else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { DisplayReview }

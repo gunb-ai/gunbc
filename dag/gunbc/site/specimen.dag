@@ -16,7 +16,7 @@ import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, Pr
 import gunbc.roadmap_issue_location { issue_page_path }
 import gunbc.roadmap.roadmap_lineage { LineageNoParent }
 import gunbc.roadmap.roadmap_hierarchy_view {
-  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
   NodeChain, NodeChainRooted, NodeChainRefused,
   NodeRelation, RelationRow, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
   RowChildrenNotCarried, RowChildrenExpandable,
@@ -39,7 +39,7 @@ import gunbc.site.element.status_chip { status_chip }
 import gunbc.site.element.button { Button, ButtonSize, ButtonSmall, ButtonRegular, button }
 import gunbc.site.element.chip { Chip, chip }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
-import gunbc.site.element.node_row { NodeRow, NodeRowFlat, NodeRowShapeFlat, NodeRowDensityGrid, node_row, node_row_header }
+import gunbc.site.element.node_row { NodeRow, NodeRowFlat, NodeRowDensityGrid, node_row, node_row_header }
 import gunbc.site.element.relation_table { RelationTable, relation_table }
 import gunbc.site.element.node_chain { node_chain }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
@@ -241,25 +241,25 @@ fn specimen_node(slug: String, title: String, status: NodeStatus, priority: Road
 }
 
 fn specimen_root() -> NodePresentation {
-  specimen_node(slug: "gunbc-project-root", title: "gunbc: one substrate, every scale", status: NodeStatusDerived { status: DisplayActive }, priority: PriorityP1)
+  specimen_node(slug: "gunbc-project-root", title: "gunbc: one substrate, every scale", status: node_status_derived(status: DisplayActive), priority: PriorityP1)
 }
 
 fn specimen_project() -> NodePresentation {
-  specimen_node(slug: "dp-m2-shell-residue-retired", title: "Retire the shell residue behind typed invocations", status: NodeStatusDerived { status: DisplayActive }, priority: PriorityP1)
+  specimen_node(slug: "dp-m2-shell-residue-retired", title: "Retire the shell residue behind typed invocations", status: node_status_derived(status: DisplayActive), priority: PriorityP1)
 }
 
 fn specimen_parent() -> NodePresentation {
-  specimen_node(slug: "shell-typed-invocation", title: "Every shell call is a typed invocation", status: NodeStatusDerived { status: DisplayActive }, priority: PriorityP1)
+  specimen_node(slug: "shell-typed-invocation", title: "Every shell call is a typed invocation", status: node_status_derived(status: DisplayActive), priority: PriorityP1)
 }
 
 fn specimen_self() -> NodePresentation {
-  specimen_node(slug: "invocation-argv-model", title: "Model the argv of an invocation as typed parts", status: NodeStatusDerived { status: DisplayBlocked }, priority: PriorityP2)
+  specimen_node(slug: "invocation-argv-model", title: "Model the argv of an invocation as typed parts", status: node_status_derived(status: DisplayBlocked), priority: PriorityP2)
 }
 
 // One node that is both a sub-issue of the fixture issue and one of its blockers: it is the same
 // presentation under both relations.
 fn specimen_shared() -> NodePresentation {
-  specimen_node(slug: "argv-quoting-rules", title: "State the quoting rules an argv part obeys", status: NodeStatusDerived { status: DisplayBlocked }, priority: PriorityP2)
+  specimen_node(slug: "argv-quoting-rules", title: "State the quoting rules an argv part obeys", status: node_status_derived(status: DisplayBlocked), priority: PriorityP2)
 }
 
 fn specimen_chain_short() -> NodeChain {
@@ -270,10 +270,10 @@ fn specimen_chain_long() -> NodeChain {
   NodeChainRooted {
     ancestors: [
       specimen_root(),
-      specimen_node(slug: "debt-payoff", title: "Pay off the standing debt", status: NodeStatusDerived { status: DisplayActive }, priority: PriorityP1),
+      specimen_node(slug: "debt-payoff", title: "Pay off the standing debt", status: node_status_derived(status: DisplayActive), priority: PriorityP1),
       specimen_project(),
-      specimen_node(slug: "namespace-unique-on-chain", title: "A name is unique along its chain", status: NodeStatusDerived { status: DisplayReview }, priority: PriorityP2),
-      specimen_node(slug: "typed-effects", title: "Effects are declared, not discovered", status: NodeStatusDerived { status: DisplayReady }, priority: PriorityP2),
+      specimen_node(slug: "namespace-unique-on-chain", title: "A name is unique along its chain", status: node_status_derived(status: DisplayReview), priority: PriorityP2),
+      specimen_node(slug: "typed-effects", title: "Effects are declared, not discovered", status: node_status_derived(status: DisplayReady), priority: PriorityP2),
       specimen_parent(),
     ],
     self_node: specimen_self(),
@@ -293,7 +293,7 @@ fn specimen_relation_blocked_by() -> NodeRelation {
     kind: RelationBlockedBy,
     rows: [
       RelationRow { node: specimen_shared(), children: RowChildrenNotCarried },
-      RelationRow { node: specimen_node(slug: "process-spawn-effect", title: "Spawning a process is a declared effect", status: NodeStatusDerived { status: DisplayDone }, priority: PriorityP3), children: RowChildrenNotCarried },
+      RelationRow { node: specimen_node(slug: "process-spawn-effect", title: "Spawning a process is a declared effect", status: node_status_derived(status: DisplayDone), priority: PriorityP3), children: RowChildrenNotCarried },
     ],
     undeclared: ["retired-shell-probe"],
   }
@@ -303,11 +303,11 @@ fn specimen_relation_sub_issues() -> NodeRelation {
   NodeRelation {
     kind: RelationSubIssues,
     rows: [
-      RelationRow { node: specimen_node(slug: "argv-part-vocabulary", title: "Name the closed vocabulary of argv parts", status: NodeStatusDerived { status: DisplayReady }, priority: PriorityP0), children: RowChildrenExpandable { count: 0 } },
+      RelationRow { node: specimen_node(slug: "argv-part-vocabulary", title: "Name the closed vocabulary of argv parts", status: node_status_derived(status: DisplayReady), priority: PriorityP0), children: RowChildrenExpandable { count: 0 } },
       RelationRow { node: specimen_shared(), children: RowChildrenExpandable { count: 3 } },
-      RelationRow { node: specimen_node(slug: "argv-emit-posix", title: "Emit a typed argv for a POSIX shell, with a title long enough to show how a row behaves when its title runs well past the width a short one needs", status: NodeStatusDerived { status: DisplayReview }, priority: PriorityP2), children: RowChildrenExpandable { count: 12 } },
-      RelationRow { node: specimen_node(slug: "argv-literal-census", title: "Count the argv literals still written by hand", status: NodeStatusDerived { status: DisplayDone }, priority: PriorityP3), children: RowChildrenExpandable { count: 0 } },
-      RelationRow { node: specimen_node(slug: "argv-string-splitting", title: "Split an argv from a string", status: NodeStatusDerived { status: DisplaySuperseded }, priority: PriorityP3), children: RowChildrenExpandable { count: 1 } },
+      RelationRow { node: specimen_node(slug: "argv-emit-posix", title: "Emit a typed argv for a POSIX shell, with a title long enough to show how a row behaves when its title runs well past the width a short one needs", status: node_status_derived(status: DisplayReview), priority: PriorityP2), children: RowChildrenExpandable { count: 12 } },
+      RelationRow { node: specimen_node(slug: "argv-literal-census", title: "Count the argv literals still written by hand", status: node_status_derived(status: DisplayDone), priority: PriorityP3), children: RowChildrenExpandable { count: 0 } },
+      RelationRow { node: specimen_node(slug: "argv-string-splitting", title: "Split an argv from a string", status: node_status_derived(status: DisplaySuperseded), priority: PriorityP3), children: RowChildrenExpandable { count: 1 } },
       RelationRow { node: specimen_node(slug: "argv-windows-quoting", title: "Quote an argv for a Windows command line", status: NodeStatusUnavailable { reason: "the plan carries no row for this node" }, priority: PriorityP2), children: RowChildrenExpandable { count: 0 } },
     ],
     undeclared: [],
@@ -353,7 +353,7 @@ fn specimen_marks_section() -> Fragment {
 fn specimen_grid_row_section() -> Fragment {
   specimen_section(label: "Node row, grid density", body: [
     el_attrs("table", [attr(name: "class", value: specimen_rows_class)], [
-      el_attrs("thead", [], [node_row_header(shape: NodeRowShapeFlat, density: NodeRowDensityGrid)]),
+      el_attrs("thead", [], [node_row_header(density: NodeRowDensityGrid)]),
       el_attrs("tbody", [], map([specimen_parent(), specimen_shared()], n => node_row(input: NodeRow { node: n, place: NodeRowFlat, density: NodeRowDensityGrid }))),
     ]),
   ])

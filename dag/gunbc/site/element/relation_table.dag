@@ -17,8 +17,8 @@ import gunbc.site.element.text { element_text_decls, ElementBody }
 import gunbc.site.element.section_heading { SectionHeading, SectionCount, SectionCounted, SectionCountedOfTotal, section_heading }
 import gunbc.site.element.chip { Chip, chip }
 import gunbc.site.element.node_row {
-  NodeRow, NodeRowPlace, NodeRowFlat, NodeRowInTree, NodeRowShape, NodeRowShapeFlat, NodeRowShapeTree,
-  NodeRowDensityTable, node_row, node_row_header, node_row_place_shape, node_row_column_count,
+  NodeRow, NodeRowPlace, NodeRowFlat, NodeRowInTree,
+  NodeRowDensityTable, node_row, node_row_header, node_row_column_count,
 }
 import extdeps.languages.css.selectors { ClassSelector }
 import extdeps.languages.css.properties {
@@ -73,13 +73,6 @@ fn relation_table_row_place(children: RelationRowChildren, depth: Int) -> NodeRo
   }
 }
 
-fn relation_table_shape(rows: List<RelationRow>, depth: Int) -> NodeRowShape {
-  fold(rows, init: NodeRowShapeFlat, f: (acc, row) => match node_row_place_shape(place: relation_table_row_place(children: row.children, depth: depth)) {
-    NodeRowShapeFlat => acc
-    NodeRowShapeTree => NodeRowShapeTree
-  })
-}
-
 fn relation_table_undeclared_row(kind: RelationKind, id: String) -> Fragment {
   el_attrs("tr", [attr(name: "class", value: relation_table_undeclared_class)], [
     el_attrs("td", [
@@ -99,7 +92,7 @@ fn relation_table_body(input: RelationTable) -> List<Fragment> {
   } else {
     [
       el_attrs("table", [attr(name: "class", value: relation_table_rows_class)], [
-        el_attrs("thead", [], [node_row_header(shape: relation_table_shape(rows: relation.rows, depth: input.depth), density: NodeRowDensityTable)]),
+        el_attrs("thead", [], [node_row_header(density: NodeRowDensityTable)]),
         el_attrs("tbody", [], concat(
           map(relation.rows, row => node_row(input: NodeRow {
             node: row.node,

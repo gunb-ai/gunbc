@@ -1655,12 +1655,16 @@ test fn witness_view_switch_and_filter_contracts() -> Bool {
 // blocking / blocked-by / standing; the assignee is the event-log standing's holder, not the
 // domain owner. Tabs ship as decided chips + panels — the stylesheet decides which panel shows.
 fn issue_detail_fixture_view() -> gunbc.roadmap_presentation.WorkRowView {
+  issue_detail_fixture_view_scheduled(scheduling: gunbc.roadmap_presentation.SchedulingReady)
+}
+
+fn issue_detail_fixture_view_scheduled(scheduling: gunbc.roadmap_presentation.WorkScheduling) -> gunbc.roadmap_presentation.WorkRowView {
   gunbc.roadmap_presentation.WorkRowView {
     node_id: "issue-detail-specimen",
     headline: "Specimen issue",
     summary: none,
     lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
-    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    scheduling: scheduling,
     superseded_by: "",
     activity: gunbc.roadmap_presentation.ActiveWork {
       summary: "Agent working",
@@ -1708,7 +1712,7 @@ fn issue_detail_fixture_hierarchy() -> gunbc.roadmap.roadmap_hierarchy_view.Issu
     node: gunbc.roadmap_authority.nid(s: "issue-detail-specimen"),
     nodes: nodes,
     edges: edges,
-    status_of: fn(rn) { gunbc.roadmap.roadmap_hierarchy_view.NodeStatusDerived { status: gunbc.roadmap_issue_status.DisplayReady } })
+    status_of: fn(rn) { gunbc.roadmap.roadmap_hierarchy_view.node_status_derived(status: gunbc.roadmap_issue_status.DisplayReady) })
 }
 
 fn fixture_human_ref() -> gunbc.principal_projection.PrincipalRef {
@@ -2190,9 +2194,33 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
         && string_contains(s: h, pattern: "<span class=\"issue-membership-count\" aria-hidden=\"true\">0/1</span>")
         && string_contains(s: h, pattern: "aria-label=\"Parent: Parent issue\"")
         && string_contains(s: h, pattern: "aria-label=\"Sub-issues: Child issue\"")
-        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
+        && !string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span>")
+        && !string_contains(s: h, pattern: "Unmet prerequisites")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocking</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
   }
+}
+
+// THE RAIL'S PREREQUISITE ROW ANSWERS WHAT IS HOLDING THE ISSUE, from the row's own readiness. The
+// fixture issue declares one prerequisite in every case below; only the scheduling position
+// changes. Ready: the prerequisite is satisfied, so there is no row (the declared prerequisite
+// stays listed on the Dependencies tab). Not ready with a dependency gap: the row counts the
+// gap's blockers and is labelled as unmet. Not ready for another reason: no row. Done: readiness
+// was not assessed, so the rail states the declared count under the neutral label and claims
+// nothing about it. The red this pins: counting the Blocked by relation would read "1 issue" in
+// all four.
+test fn witness_issue_rail_counts_unmet_prerequisites_from_readiness() -> Bool {
+  let blocked_by = issue_detail_fixture_hierarchy().dependency.blocked_by
+  let row = fn(scheduling) {
+    extdeps.languages.html.serialize_html_source(node: gunbc.roadmap_page.issue_prerequisites_rail_row(view: issue_detail_fixture_view_scheduled(scheduling: scheduling), blocked_by: blocked_by))
+  }
+  let unmet = row(gunbc.roadmap_presentation.SchedulingNotReady { missing: [gunbc.roadmap.roadmap_readiness.GapDependencies { blockers: ["issue-detail-parent"] }] })
+  let other_gap = row(gunbc.roadmap_presentation.SchedulingNotReady { missing: [gunbc.roadmap.roadmap_readiness.GapCentering] })
+  count(blocked_by.rows) == 1
+    && row(gunbc.roadmap_presentation.SchedulingReady) == "<div class=\"issue-field\"></div>"
+    && string_contains(s: unmet, pattern: "<span class=\"issue-field-label\">Unmet prerequisites</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
+    && other_gap == "<div class=\"issue-field\"></div>"
+    && string_contains(s: row(gunbc.roadmap_presentation.SchedulingDone), pattern: "<span class=\"issue-field-label\">Prerequisites</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
+    && !string_contains(s: row(gunbc.roadmap_presentation.SchedulingDone), pattern: "Unmet")
 }
 
 // The assignment mapping after the legacy-session cleanup (owner 2026-09-26): when an attempt

@@ -691,15 +691,15 @@ data issue_tracker_measured_priority_mark: IssueTrackerMeasuredPriorityMark = Is
 
 // RELATION TABLE ANATOMY (the Dependencies and Blocking tabs): the Parents, Blockers and Child
 // issues sections are 32px apart inside one card, and each is the same table. Cells carry 4px
-// side padding over a 1px hairline. A child row opens
-// with an 18px disclosure slot, and each level of nesting indents the title by 24px. A closed row
+// side padding over a 1px hairline. Each level of nesting
+// indents a child row's title by 24px (the product also draws an 18px disclosure chevron there,
+// which no element here adopts). A closed row
 // sits on the row-hover grey with its text in the muted colour (light capture only: the dark
 // relation table was not captured).
 type IssueTrackerMeasuredRelationTable {
   section_gap_px: Int
   cell_side_padding_px: Int
   row_line_px: Int
-  disclosure_slot_px: Int
   level_indent_px: Int
   closed_row_ground: Srgb8
 }
@@ -708,7 +708,6 @@ data issue_tracker_measured_relation_table: IssueTrackerMeasuredRelationTable = 
   section_gap_px: 32,
   cell_side_padding_px: 4,
   row_line_px: 1,
-  disclosure_slot_px: 18,
   level_indent_px: 24,
   closed_row_ground: issue_tracker_visual_tokens.background_hover,
 }

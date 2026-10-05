@@ -17,10 +17,10 @@ import gunbc.roadmap_issue_location { issue_page_path }
 import gunbc.roadmap_presentation {
   WorkRowView, OpenLifecycle, SchedulingReady, NoActiveWork, ActionView, NoDisclosure, ObservationsNominal, row_graph,
 }
-import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplayBlocked }
+import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplayBlocked, DisplayUnknown }
 import gunbc.roadmap.roadmap_hierarchy_view {
   IssueHierarchyView, issue_hierarchy_view,
-  NodeStatus, NodeStatusDerived, NodeStatusUnavailable,
+  NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
   NodeChainRooted, NodeChainRefused,
   NodeRelation, RowChildrenNotCarried, RowChildrenExpandable,
   relation_summary, relation_count_text,
@@ -69,9 +69,9 @@ fn hv_edges() -> List<RoadmapEdge> {
 // hierarchy projection, and the row producer that derives a status is another interface. hv-leaf is
 // planted closed and hv-sib open so closed-over-total has both kinds to count.
 fn hv_status(rn: RoadmapNode) -> NodeStatus {
-  if (rn.node as String) == "hv-leaf" { NodeStatusDerived { status: DisplayDone } }
-  else if (rn.node as String) == "hv-ext" { NodeStatusDerived { status: DisplayBlocked } }
-  else { NodeStatusDerived { status: DisplayReady } }
+  if (rn.node as String) == "hv-leaf" { node_status_derived(status: DisplayDone) }
+  else if (rn.node as String) == "hv-ext" { node_status_derived(status: DisplayBlocked) }
+  else { node_status_derived(status: DisplayReady) }
 }
 
 fn hv_view(id: String) -> IssueHierarchyView {
@@ -226,6 +226,29 @@ test fn witness_relation_counts_equal_the_rows() -> Bool {
     && relation_count_text(relation: partial) == "2"
 }
 
+// CLOSED IS COUNTED FROM THE CLOSURE FACT, NOT THE STATUS WORD. A sub-issue the producer shows as
+// Unknown and states is closed (a done node whose standing cannot be observed) is in the closed
+// numerator; one shown as Done and stated not closed would not be. Only a row whose state is
+// unavailable leaves the numerator unstated. The red this pins: counting closed by asking the
+// status word (issue_display_status_is_closed) reads 1/2 for the first relation and 2/2 for the
+// second.
+test fn witness_closed_count_reads_the_closure_fact_not_the_status_word() -> Bool {
+  let counted = fn(status_of) {
+    issue_hierarchy_view(node: nid(s: "hv-mid"), nodes: hv_nodes(), edges: hv_edges(), status_of: status_of).membership.sub_issues
+  }
+  let unknown_but_closed = counted(fn(rn) {
+    if (rn.node as String) == "hv-sib" { NodeStatusDerived { status: DisplayUnknown, closed: true } } else { hv_status(rn: rn) }
+  })
+  let done_word_not_closed = counted(fn(rn) {
+    if (rn.node as String) == "hv-sib" { NodeStatusDerived { status: DisplayDone, closed: false } } else { hv_status(rn: rn) }
+  })
+  relation_summary(relation: unknown_but_closed).closed == 2
+    && relation_summary(relation: unknown_but_closed).status_unavailable == 0
+    && relation_count_text(relation: unknown_but_closed) == "2/2"
+    && relation_summary(relation: done_word_not_closed).closed == 1
+    && relation_count_text(relation: done_word_not_closed) == "1/2"
+}
+
 fn hv_row(id: String, title: String) -> WorkRowView {
   WorkRowView {
     node_id: id,
@@ -326,9 +349,47 @@ test fn witness_real_issue_page_chain_equals_the_lineage_walk() -> Bool {
             && (match hierarchy.chain {
               NodeChainRefused { refusal: _ } => false
               NodeChainRooted { ancestors, self_node } =>
-                (match self_node.status { NodeStatusDerived { status: _ } => true  NodeStatusUnavailable { reason: _ } => false })
-                  && all(ancestors, a => match a.status { NodeStatusUnavailable { reason: _ } => true  NodeStatusDerived { status: _ } => false })
+                (match self_node.status { NodeStatusDerived { status: _, closed: _ } => true  NodeStatusUnavailable { reason: _ } => false })
+                  && all(ancestors, a => match a.status { NodeStatusUnavailable { reason: _ } => true  NodeStatusDerived { status: _, closed: _ } => false })
             })
+        }
+      }
+    }
+  }
+}
+
+// AN ACCEPTED NODE THE PLAN OMITS IS SHOWN AS DONE, ON THE REAL PATH. The same one-row plan as the
+// claim above, with every ancestor of the real node listed as accepted, which is why a plan omits
+// them. The page's own producer (gunbc.roadmap_page observed_node_status, through
+// issue_detail_hierarchy_for) carries each one's lifecycle into the one status type: Done, and
+// closed. The claim above is this one's control: the same ancestors with no acceptance are
+// unavailable, so the status here comes from the acceptance and not from the row being absent.
+test fn witness_real_issue_page_shows_an_accepted_omitted_ancestor_as_done() -> Bool {
+  let declared = declared_roadmap_nodes()
+  let plan = filter(declared, n => (n.node as String) == hv_real_node_id())
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [RoadmapSection { title: "", elements: [section_group(label: "", nodes: plan, edges: [])] }] }
+  let obs = RowObservations {
+    graph: row_graph(nodes: plan, edges: []), merged: [], attempts: [], attempts_refused: none,
+    standings: StandingsUnobserved { reason: "witness supplies no standings" },
+    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
+    stale_nodes: [], profiles: [] }
+  match plan.first() {
+    Absent => false
+    Present { value: rn } => match lineage_walk(node_id: hv_real_node_id(), nodes: declared) {
+      LineageNoParent { walked: _, at: _ } => false
+      LineageUndeclared { walked: _, node_id: _ } => false
+      LineageCyclic { node_id: _ } => false
+      LineageRooted { ids } => {
+        let accepted = map(filter(ids, id => id != hv_real_node_id()), id => nid(s: id))
+        match issue_detail_hierarchy_for(rn: rn, plan: plan, declared: declared, edges: [], obs: obs, accepted: accepted, withheld: []).chain {
+          NodeChainRefused { refusal: _ } => false
+          NodeChainRooted { ancestors, self_node: _ } =>
+            count(ancestors) > 0
+              && count(ancestors) == count(accepted)
+              && all(ancestors, a => match a.status {
+                NodeStatusUnavailable { reason: _ } => false
+                NodeStatusDerived { status, closed } => closed && status == DisplayDone
+              })
         }
       }
     }

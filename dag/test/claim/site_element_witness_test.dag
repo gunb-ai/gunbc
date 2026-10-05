@@ -23,7 +23,7 @@ import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, Pr
 import gunbc.roadmap_issue_location { issue_page_path }
 import gunbc.roadmap.roadmap_lineage { LineageCyclic }
 import gunbc.roadmap.roadmap_hierarchy_view {
-  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
   NodeChain, NodeChainRooted, NodeChainRefused,
   NodeRelation, RelationRow, RelationKind, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
   RowChildrenNotCarried, RowChildrenExpandable,
@@ -49,7 +49,7 @@ import gunbc.site.element.button { Button, ButtonSmall, ButtonRegular, button, b
 import gunbc.site.element.chip { Chip, chip, chip_rules }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_rules }
 import gunbc.site.element.node_row {
-  NodeRow, NodeRowFlat, NodeRowInTree, NodeRowShapeFlat, NodeRowShapeTree, NodeRowDensityTable, NodeRowDensityGrid,
+  NodeRow, NodeRowFlat, NodeRowInTree, NodeRowDensityTable, NodeRowDensityGrid,
   node_row, node_row_header, node_row_rules,
 }
 import gunbc.site.element.relation_table { RelationTable, relation_table, relation_table_rules }
@@ -170,7 +170,7 @@ fn fx_node(slug: String, status: NodeStatus, priority: RoadmapPriority) -> NodeP
 }
 
 fn fx_derived(slug: String, status: IssueDisplayStatus) -> NodePresentation {
-  fx_node(slug: slug, status: NodeStatusDerived { status: status }, priority: PriorityP2)
+  fx_node(slug: slug, status: node_status_derived(status: status), priority: PriorityP2)
 }
 
 // Chip and PriorityMark.
@@ -192,7 +192,7 @@ test fn chip_and_priority_mark_rules_draw_the_measured_marks() -> Bool {
 
 // NodeRow.
 test fn node_row_renders_title_priority_slug_and_status_from_the_presentation() -> Bool {
-  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-parent", status: NodeStatusDerived { status: DisplayActive }, priority: PriorityP1), place: NodeRowFlat, density: NodeRowDensityTable }))
+  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-parent", status: node_status_derived(status: DisplayActive), priority: PriorityP1), place: NodeRowFlat, density: NodeRowDensityTable }))
   row == join([
     "<tr class=\"el-node-row\" data-node-density=\"table\" data-node-state=\"open\" data-node-depth=\"0\">",
     "<td class=\"el-node-row-cell\" data-node-column=\"title\"><div class=\"el-node-row-lead\"><a class=\"el-node-row-link\" href=\"/issue/fx-parent\">Title of fx-parent</a></div></td>",
@@ -203,16 +203,19 @@ test fn node_row_renders_title_priority_slug_and_status_from_the_presentation() 
   ], "")
 }
 
-test fn node_row_in_a_tree_shows_its_depth_and_the_count_it_refers_to() -> Bool {
+test fn node_row_in_a_tree_shows_its_depth_and_links_the_count_it_refers_to() -> Bool {
   let with_children = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-branch", status: DisplayReady), place: NodeRowInTree { depth: 2, children: RowChildrenExpandable { count: 3 } }, density: NodeRowDensityTable }))
+  let one_child = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-one", status: DisplayReady), place: NodeRowInTree { depth: 0, children: RowChildrenExpandable { count: 1 } }, density: NodeRowDensityTable }))
   let leaf = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-leaf", status: DisplayReady), place: NodeRowInTree { depth: 0, children: RowChildrenExpandable { count: 0 } }, density: NodeRowDensityTable }))
   has(s: with_children, pattern: "data-node-depth=\"2\"")
     && count(split(s: with_children, delimiter: "<span class=\"el-node-row-indent\" aria-hidden=\"true\"></span>")) == 3
-    && has(s: with_children, pattern: "<span class=\"el-node-row-slot\" data-node-children=\"3\" role=\"img\" aria-label=\"3 sub-issues\" title=\"3 sub-issues\"><svg class=\"el-node-row-slot-mark\"")
-    && has(s: with_children, pattern: "</svg>3</span><a class=\"el-node-row-link\" href=\"/issue/fx-branch\">")
-    && has(s: leaf, pattern: "<div class=\"el-node-row-lead\"><span class=\"el-node-row-slot\" aria-hidden=\"true\"></span><a class=\"el-node-row-link\"")
+    && has(s: with_children, pattern: "<a class=\"el-node-row-link\" href=\"/issue/fx-branch\">Title of fx-branch</a><a class=\"el-node-row-children\" href=\"/issue/fx-branch\" data-node-children=\"3\">3 sub-issues</a></div>")
+    && has(s: one_child, pattern: "<a class=\"el-node-row-children\" href=\"/issue/fx-one\" data-node-children=\"1\">1 sub-issue</a>")
+    && has(s: leaf, pattern: "<div class=\"el-node-row-lead\"><a class=\"el-node-row-link\" href=\"/issue/fx-leaf\">Title of fx-leaf</a></div>")
     && !has(s: leaf, pattern: "el-node-row-indent")
-    && !has(s: leaf, pattern: "data-node-children")
+    && !has(s: leaf, pattern: "el-node-row-children")
+    && !has(s: with_children, pattern: "<svg")
+    && !has(s: with_children, pattern: "<button")
 }
 
 test fn node_row_says_an_underived_status_is_unavailable() -> Bool {
@@ -222,12 +225,20 @@ test fn node_row_says_an_underived_status_is_unavailable() -> Bool {
     && has(s: row, pattern: "data-node-state=\"open\"")
 }
 
-// A row is drawn closed exactly when the status predicate says its status is closed: the claim
-// walks the whole vocabulary, so a status added to it is covered without an edit here.
+// A row is drawn closed exactly when its presentation says the node is closed. For a planted
+// status that is the vocabulary's own predicate, and the claim walks the whole vocabulary, so a
+// status added to it is covered without an edit here. The two rows after it separate the closure
+// fact from the status word: a node the producer states is closed is drawn closed while shown as
+// Unknown, and a node shown as Done that the producer states is not closed is drawn open.
+fn row_state(status: NodeStatus) -> String {
+  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-any", status: status, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  if has(s: row, pattern: "data-node-state=\"closed\"") && !has(s: row, pattern: "data-node-state=\"open\"") { "closed" }
+  else if has(s: row, pattern: "data-node-state=\"open\"") && !has(s: row, pattern: "data-node-state=\"closed\"") { "open" }
+  else { "neither" }
+}
+
 fn row_state_follows_predicate(status: IssueDisplayStatus) -> Bool {
-  let row = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-any", status: status), place: NodeRowFlat, density: NodeRowDensityTable }))
-  has(s: row, pattern: "data-node-state=\"closed\"") == issue_display_status_is_closed(status: status)
-    && has(s: row, pattern: "data-node-state=\"open\"") == !issue_display_status_is_closed(status: status)
+  row_state(status: node_status_derived(status: status)) == (if issue_display_status_is_closed(status: status) { "closed" } else { "open" })
 }
 
 test fn node_row_closed_styling_follows_the_status_predicate() -> Bool {
@@ -235,6 +246,9 @@ test fn node_row_closed_styling_follows_the_status_predicate() -> Bool {
   all(issue_display_statuses, s => row_state_follows_predicate(status: s))
     && any(issue_display_statuses, s => issue_display_status_is_closed(status: s))
     && any(issue_display_statuses, s => !issue_display_status_is_closed(status: s))
+    && row_state(status: NodeStatusDerived { status: DisplayUnknown, closed: true }) == "closed"
+    && row_state(status: NodeStatusDerived { status: DisplayDone, closed: false }) == "open"
+    && row_state(status: NodeStatusUnavailable { reason: "withheld from the plan" }) == "open"
     && has(s: css, pattern: ".el-node-row[data-node-state=\"closed\"] .el-node-row-cell { background: var(--issue-closed-row); color: var(--issue-text-dim) }")
     && has(s: css, pattern: ".el-node-row[data-node-state=\"closed\"] .el-node-row-link { color: var(--issue-text-dim) }")
     && !has(s: css, pattern: "data-node-state=\"open\"")
@@ -242,16 +256,15 @@ test fn node_row_closed_styling_follows_the_status_predicate() -> Bool {
 
 test fn node_row_header_and_rules_draw_the_table_density() -> Bool {
   let css = serialize_rules(rules: node_row_rules())
-  let flat = html(node: node_row_header(shape: NodeRowShapeFlat, density: NodeRowDensityTable))
-  let tree = html(node: node_row_header(shape: NodeRowShapeTree, density: NodeRowDensityTable))
+  let flat = html(node: node_row_header(density: NodeRowDensityTable))
   flat == "<tr class=\"el-node-row-head\" data-node-density=\"table\"><th class=\"el-node-row-heading\" data-node-column=\"title\" scope=\"col\">Title</th><th class=\"el-node-row-heading\" data-node-column=\"priority\" scope=\"col\">P</th><th class=\"el-node-row-heading\" data-node-column=\"id\" scope=\"col\">Id</th><th class=\"el-node-row-heading\" data-node-column=\"status\" scope=\"col\">Status</th></tr>"
-    && has(s: tree, pattern: "<div class=\"el-node-row-lead\"><span class=\"el-node-row-slot\" aria-hidden=\"true\"></span>Title</div>")
     && has(s: css, pattern: ".el-node-row[data-node-density=\"table\"] { --el-node-row-height: var(--h-relation-row) }")
     && has(s: css, pattern: ".el-node-row-head[data-node-density=\"table\"] { --el-node-row-height: var(--h-relation-row) }")
     && has(s: css, pattern: ".el-node-row[data-node-density=\"grid\"] { --el-node-row-height: var(--h-grid-row) }")
-    && has(s: html(node: node_row_header(shape: NodeRowShapeFlat, density: NodeRowDensityGrid)), pattern: "<tr class=\"el-node-row-head\" data-node-density=\"grid\">")
+    && has(s: html(node: node_row_header(density: NodeRowDensityGrid)), pattern: "<tr class=\"el-node-row-head\" data-node-density=\"grid\">")
     && has(s: css, pattern: ".el-node-row-cell { height: var(--el-node-row-height); padding: var(--space-0) var(--space-4); border-bottom: var(--border-1) solid var(--issue-border); vertical-align: middle; text-align: left; white-space: nowrap; font-family: var(--font-sans); font-size: var(--text-13);")
     && has(s: css, pattern: ".el-node-row-indent { flex: none; width: var(--space-24) }")
+    && has(s: css, pattern: ".el-node-row-children { font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-16); font-weight: 500; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal; flex: none; color: var(--issue-action-ink); text-decoration: none; white-space: nowrap }")
 }
 
 // RelationTable.
@@ -292,7 +305,6 @@ test fn relation_table_sub_issues_read_closed_over_total_only_when_every_status_
   let one_unavailable = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: concat(derived, [fx_node(slug: "fx-d", status: NodeStatusUnavailable { reason: "withheld from the plan" }, priority: PriorityP2)]), undeclared: []))
   has(s: all_derived, pattern: "<h3 class=\"el-section-heading\">Sub-issues (2/3)</h3>")
     && row_count(table: all_derived) == 3
-    && has(s: all_derived, pattern: "<div class=\"el-node-row-lead\"><span class=\"el-node-row-slot\" aria-hidden=\"true\"></span>Title</div>")
     && has(s: one_unavailable, pattern: "<h3 class=\"el-section-heading\">Sub-issues (4)</h3>")
     && row_count(table: one_unavailable) == 4
 }

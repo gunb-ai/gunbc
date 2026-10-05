@@ -25,7 +25,7 @@ import gunbc.roadmap_page {
   issue_chain_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
 }
 import gunbc.roadmap.roadmap_hierarchy_view {
-  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable,
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
   NodeChain, NodeChainRooted, NodeChainRefused,
   issue_hierarchy_view, hierarchy_nodes, relation_summary,
 }
@@ -51,7 +51,7 @@ import gunbc.roadmap_launch_admission {
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
 }
-import gunbc.roadmap_issue_status { DisplayReady, DisplayDone }
+import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplaySuperseded, issue_display_status_is_closed }
 import gunbc.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
@@ -92,6 +92,7 @@ import gunbc.roadmap_presentation {
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
   issue_work_history_rounds,
+  omitted_node_display_status, closed_lifecycle_display_status, work_lifecycle_is_closed,
   issue_status_label, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap.roadmap_event_log {
@@ -1636,7 +1637,7 @@ test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
 // answer, not this list's. The discriminating red is a relation that drops the closed prerequisite
 // -- it would make the row count say one where two edges are declared.
 fn fx_supplied_status(rn: RoadmapNode) -> NodeStatus {
-  if (rn.node as String) == "lnk-done" { NodeStatusDerived { status: DisplayDone } } else { NodeStatusDerived { status: DisplayReady } }
+  if (rn.node as String) == "lnk-done" { node_status_derived(status: DisplayDone) } else { node_status_derived(status: DisplayReady) }
 }
 
 test fn witness_dependency_relations_list_every_declared_edge() -> Bool {
@@ -1794,7 +1795,7 @@ fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap_nesting.Ro
 }
 
 fn fx_aln_ready(rn: RoadmapNode) -> NodeStatus {
-  NodeStatusDerived { status: DisplayReady }
+  node_status_derived(status: DisplayReady)
 }
 
 fn fx_aln_chain(task: String, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>, nodes: List<RoadmapNode>) -> NodeChain {
@@ -1877,6 +1878,29 @@ test fn witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost
         && !fx_tree_nests_in_order(html: h, outer: "Task headline", inner: "Root headline")
         && string_contains(s: h, pattern: "Mid headline</a><ol><li><span")
   }
+}
+
+// A DECLARED NODE THE PLAN OMITS: what the shared producer establishes about it. An accepted one is
+// Done, by the same mapping a done plan row takes; a superseded line is Superseded whether or not
+// it is also listed as accepted; and an open one that nothing has accepted has no status at all
+// (Absent), which is the only case a page may call unavailable. The last conjuncts tie the two
+// closure spellings together: each closed lifecycle maps to a status the vocabulary calls closed,
+// and no open lifecycle is closed.
+test fn witness_omitted_node_status_is_done_when_accepted_and_absent_when_unknown() -> Bool {
+  let open_row = gunbc.roadmap_authority.roadmap_node(identity: "rnfx_omit_open", id: "omit-open", owner: "", carriers: [], line: AuthoredLine { done: false, content: "An open row" })
+  let superseded_row = gunbc.roadmap_authority.roadmap_node(identity: "rnfx_omit_sup", id: "omit-sup", owner: "", carriers: [], line: gunbc.roadmap_status.SupersededLine { by: "omit-open", content: "A replaced row" })
+  let accepted = omitted_node_display_status(rn: open_row, merged: [], accepted: true)
+  let unknown = omitted_node_display_status(rn: open_row, merged: [], accepted: false)
+  let superseded = omitted_node_display_status(rn: superseded_row, merged: [], accepted: false)
+  let superseded_and_accepted = omitted_node_display_status(rn: superseded_row, merged: [], accepted: true)
+  (match accepted { Present { value: s } => s == DisplayDone  Absent => false })
+    && (match unknown { Present { value: _ } => false  Absent => true })
+    && (match superseded { Present { value: s } => s == DisplaySuperseded  Absent => false })
+    && (match superseded_and_accepted { Present { value: s } => s == DisplaySuperseded  Absent => false })
+    && issue_display_status_is_closed(status: closed_lifecycle_display_status(l: DoneLifecycle))
+    && issue_display_status_is_closed(status: closed_lifecycle_display_status(l: SupersededLifecycle))
+    && work_lifecycle_is_closed(l: DoneLifecycle) && work_lifecycle_is_closed(l: SupersededLifecycle)
+    && !work_lifecycle_is_closed(l: OpenLifecycle) && !work_lifecycle_is_closed(l: ReviewLifecycle)
 }
 
 // THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's chain is the lineage walk's own refusal, and

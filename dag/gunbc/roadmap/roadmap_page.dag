@@ -125,7 +125,8 @@ import gunbc.roadmap_presentation {
   IssueTableRow,
   worker_alive_from_process,
   issue_work_history_rounds,
-  issue_display_status,
+  issue_display_status, work_lifecycle_is_closed, omitted_node_display_status,
+  UnmetPrerequisitesAssessed, UnmetPrerequisitesNotAssessed, row_unmet_prerequisites,
   issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
@@ -2349,13 +2350,13 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
 // view (Parent, then the issue's Sub-issues). A node in both carries the same presentation in each.
 fn issue_node_status_text(status: NodeStatus) -> String {
   match status {
-    NodeStatusDerived { status: derived } => issue_display_status_label(status: derived)
+    NodeStatusDerived { status: derived, closed: _ } => issue_display_status_label(status: derived)
     NodeStatusUnavailable { reason: _ } => "Status unavailable"
   }
 }
 fn issue_node_status_reason(status: NodeStatus) -> String {
   match status {
-    NodeStatusDerived { status: derived } => issue_display_status_label(status: derived)
+    NodeStatusDerived { status: derived, closed: _ } => issue_display_status_label(status: derived)
     NodeStatusUnavailable { reason } => join(["Status unavailable: ", reason], "")
   }
 }
@@ -2381,7 +2382,7 @@ fn issue_membership_link(row: RelationRow, relation: NodeRelation, parent: Bool)
 fn issue_dependency_graph_status(status: NodeStatus) -> String {
   match status {
     NodeStatusUnavailable { reason: _ } => "unknown"
-    NodeStatusDerived { status: derived } => match derived {
+    NodeStatusDerived { status: derived, closed: _ } => match derived {
       DisplayDone => "done"
       DisplaySuperseded => "superseded"
       DisplayUnknown => "unknown"
@@ -2454,8 +2455,8 @@ fn issue_metadata_rail_node(view: WorkRowView, hierarchy: IssueHierarchyView, at
     issue_field_text_row(label: "reporter", value: issue_reporter_value(events: events)),
     issue_field_text_row(label: "component", value: issue_component_value(view: view)),
     issue_field_row(label: "parent", value: issue_parent_value(parent: hierarchy.membership.parent)),
-    issue_rail_optional_nodes_row(label: "blocked by", value: issue_relation_count_nodes(relation: hierarchy.dependency.blocked_by)),
-    issue_rail_optional_nodes_row(label: "blocking", value: issue_relation_count_nodes(relation: hierarchy.dependency.blocking)),
+    issue_prerequisites_rail_row(view: view, blocked_by: hierarchy.dependency.blocked_by),
+    issue_rail_optional_nodes_row(label: "blocking", value: issue_rail_count_nodes(n: relation_summary(relation: hierarchy.dependency.blocking).total)),
     issue_rail_optional_row(label: "delivery", value: issue_delivery_value(attempts: attempts)),
     issue_rail_return_to_row(view: view, assignment: assignment),
     issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
@@ -2510,15 +2511,11 @@ fn issue_rail_optional_nodes_row(label: String, value: List<Fragment>) -> Fragme
   }
 }
 
-// THE RAIL CARRIES A RELATION'S SIZE, NOT ITS POPULATION. The rail is a 34ch column: every blocker's
-// headline comma-joined into it wrapped ten titles down the page. The rail names how many, and the
-// count opens the Dependencies tab (the same data-tab-chip the tab strip uses), where each target
-// is its own link. No relation, no row. The size is the relation's own summary
-// (gunbc.roadmap.roadmap_hierarchy_view relation_summary), so it is the number of rows that tab
-// draws. It counts DECLARED dependency edges; whether any of them still holds the issue back is the
-// status row's readiness answer, not this count's.
-fn issue_relation_count_nodes(relation: NodeRelation) -> List<Fragment> {
-  let n = relation_summary(relation: relation).total
+// THE RAIL CARRIES A SIZE, NOT A POPULATION. The rail is a 34ch column: every blocker's headline
+// comma-joined into it wrapped ten titles down the page. The rail names how many, and the count
+// opens the Dependencies tab (the same data-tab-chip the tab strip uses), where each target is its
+// own link. Nothing to count, no row.
+fn issue_rail_count_nodes(n: Int) -> List<Fragment> {
   if n == 0 {
     []
   } else {
@@ -2527,6 +2524,19 @@ fn issue_relation_count_nodes(relation: NodeRelation) -> List<Fragment> {
         attr(name: "type", value: "button" ),
         attr(name: "data-tab-chip", value: "dependencies" ),
       ], [ txt(join([to_string(value: n), if n == 1 { " issue" } else { " issues" }], "")) ]) ]
+  }
+}
+
+// WHAT IS PREVENTING THIS ISSUE FROM PROCEEDING, as far as its prerequisites go. The count is the
+// row's own unmet prerequisites (gunbc.roadmap_presentation row_unmet_prerequisites, the
+// readiness predicate's blockers), never the size of the Blocked by relation: that relation lists
+// every declared prerequisite, satisfied or not, on the Dependencies tab. Where the row's
+// position was decided without assessing readiness the rail says only how many prerequisites are
+// declared, under a label that claims nothing about them.
+fn issue_prerequisites_rail_row(view: WorkRowView, blocked_by: NodeRelation) -> Fragment {
+  match row_unmet_prerequisites(view: view) {
+    UnmetPrerequisitesAssessed { ids } => issue_rail_optional_nodes_row(label: "Unmet prerequisites", value: issue_rail_count_nodes(n: count(ids)))
+    UnmetPrerequisitesNotAssessed => issue_rail_optional_nodes_row(label: "Prerequisites", value: issue_rail_count_nodes(n: relation_summary(relation: blocked_by).total))
   }
 }
 
@@ -2767,18 +2777,25 @@ fn observed_row_view(rn: RoadmapNode, obs: RowObservations) -> WorkRowView {
     profiles: obs.profiles)
 }
 
-// A RELATED NODE'S STATUS is its own row's status when the plan carries a row for it, and
-// unavailable otherwise. The row is looked up among the PLAN rows (the graph's own index), because
-// readiness -- and so the status -- is defined over that graph; a declared row the plan omits has no
-// decided row on any page. The projection says why it omits one (accepted, or withheld), and the
-// reason repeats that; it is not turned into a status word the row producer never derived.
+// A RELATED NODE'S STATUS is its own row's status when the plan carries a row for it. The row is
+// looked up among the PLAN rows (the graph's own index), because readiness -- and so the status --
+// is defined over that graph. A declared node the plan omits has no row, but its lifecycle is still
+// established (gunbc.roadmap_presentation omitted_node_lifecycle): an accepted or superseded one is
+// shown with the same status a closed plan row gets and counts as closed. Only an omitted node
+// whose lifecycle is not closed is unavailable -- nothing decides what an open node outside the
+// plan should be shown as -- and the reason says why the plan omits it.
 fn observed_node_status(rn: RoadmapNode, obs: RowObservations, accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId>) -> NodeStatus {
-  let omitted = if any(accepted, id => id == rn.node) { "accepted; the plan no longer carries a row for it" }
-    else if any(withheld, id => id == rn.node) { "withheld from the plan" }
-    else { "the plan carries no row for this node" }
   match lineage_lookup(index: obs.graph.lineage, id: rn.node as String) {
-    Present { value: planned } => NodeStatusDerived { status: issue_display_status(view: observed_row_view(rn: planned, obs: obs)) }
-    Absent => NodeStatusUnavailable { reason: omitted }
+    Present { value: planned } => {
+      let view = observed_row_view(rn: planned, obs: obs)
+      NodeStatusDerived { status: issue_display_status(view: view), closed: work_lifecycle_is_closed(l: view.lifecycle) }
+    }
+    Absent => match omitted_node_display_status(rn: rn, merged: obs.merged, accepted: any(accepted, id => id == rn.node)) {
+      Present { value: status } => NodeStatusDerived { status: status, closed: true }
+      Absent => NodeStatusUnavailable {
+        reason: if any(withheld, id => id == rn.node) { "withheld from the plan" } else { "the plan carries no row for this node" },
+      }
+    }
   }
 }
 

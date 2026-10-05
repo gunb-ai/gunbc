@@ -11,9 +11,8 @@ import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse
 import gunbc.design.scale { ScaleToken, scale_var, scale_pair, scale_border, space_0, space_2, space_8, border_2 }
 import gunbc.site.element.tokens {
   height_relation_row, height_grid_row, relation_cell_padding, relation_row_line, relation_level_indent,
-  relation_disclosure_mark, relation_disclosure_slot,
 }
-import gunbc.site.element.palette { palette_var, SlotText, SlotTextDim, SlotBorder, SlotAction, SlotClosedRow }
+import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotText, SlotTextDim, SlotBorder, SlotAction, SlotClosedRow }
 import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
 import gunbc.site.element.chip { Chip, chip }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
@@ -21,7 +20,7 @@ import gunbc.site.element.status_chip { status_chip }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, BorderBottom, Color, CustomProperty, Display, Flex, Gap, Height,
-  JustifyContent, MinWidth, Outline, Padding, TextAlign, TextDecoration, VerticalAlign,
+  MinWidth, Outline, Padding, TextAlign, TextDecoration, VerticalAlign,
   WhiteSpace, Width, RawProperty,
 }
 
@@ -59,25 +58,15 @@ fn node_row_density_height(density: NodeRowDensity) -> ScaleToken {
   }
 }
 
-// Where the row stands in a tree. A flat row has no disclosure slot. A tree row has one, is
-// indented one step per level below the table's own rows, and says what the view says about its
-// children: the hierarchy view refers to them by count and does not load them
-// (RelationRowChildren), so the slot shows the count and nothing is expanded here.
+// Where the row stands in a tree. A flat row is a row of a relation that carries no reference to
+// its rows' children. A tree row is indented one step per level below the table's own rows and
+// says what the view says about its children. The hierarchy view refers to a row's sub-issues by
+// count and does not load them (RelationRowChildren), so the row cannot open them in place: it
+// states the count as a link to the node's own page, where they are listed. A count of zero is a
+// node with no sub-issues and adds nothing to the row.
 type NodeRowPlace
   = NodeRowFlat
   | NodeRowInTree { depth: Int, children: RelationRowChildren }
-
-// Whether a table's rows carry the disclosure slot, which the header must match.
-type NodeRowShape
-  = NodeRowShapeFlat
-  | NodeRowShapeTree
-
-fn node_row_place_shape(place: NodeRowPlace) -> NodeRowShape {
-  match place {
-    NodeRowFlat => NodeRowShapeFlat
-    NodeRowInTree { depth: _, children: _ } => NodeRowShapeTree
-  }
-}
 
 type NodeRow {
   node: NodePresentation
@@ -121,8 +110,7 @@ data node_row_cell_class: String = "el-node-row-cell"
 data node_row_heading_class: String = "el-node-row-heading"
 data node_row_lead_class: String = "el-node-row-lead"
 data node_row_indent_class: String = "el-node-row-indent"
-data node_row_slot_class: String = "el-node-row-slot"
-data node_row_slot_mark_class: String = "el-node-row-slot-mark"
+data node_row_children_class: String = "el-node-row-children"
 data node_row_link_class: String = "el-node-row-link"
 data node_row_status_unavailable_class: String = "el-node-row-status-unavailable"
 data node_row_density_attribute: String = "data-node-density"
@@ -150,44 +138,34 @@ fn node_row_children_text(n: Int) -> String {
   if n == 1 { "1 sub-issue" } else { join([to_string(n), " sub-issues"], "") }
 }
 
-// The slot's mark: a chevron pointing at the row, drawn in the current ink.
-fn node_row_slot_mark() -> Fragment {
-  el_attrs("svg", [
-    attr(name: "class", value: node_row_slot_mark_class),
-    attr(name: "viewBox", value: "0 0 18 18"),
-    attr(name: "fill", value: "none"),
-    attr(name: "stroke", value: "currentColor"),
-    attr(name: "stroke-width", value: "1.5"),
-    attr(name: "stroke-linecap", value: "round"),
-    attr(name: "stroke-linejoin", value: "round"),
-    attr(name: "aria-hidden", value: "true"),
-  ], [el_attrs("path", [attr(name: "d", value: "M7 4.5 11.5 9 7 13.5")], [])])
-}
-
-// The disclosure slot. It is drawn for every tree row so titles line up; it holds the chevron
-// and the count only where the row has sub-issues to refer to.
-fn node_row_slot(children: RelationRowChildren) -> Fragment {
+// The reference to a row's sub-issues: a plain link to the node's page, labelled with the count.
+fn node_row_children_nodes(node: NodePresentation, children: RelationRowChildren) -> List<Fragment> {
   match children {
-    RowChildrenNotCarried => el_attrs("span", [attr(name: "class", value: node_row_slot_class), attr(name: "aria-hidden", value: "true")], [])
+    RowChildrenNotCarried => []
     RowChildrenExpandable { count: n } =>
       if n == 0 {
-        el_attrs("span", [attr(name: "class", value: node_row_slot_class), attr(name: "aria-hidden", value: "true")], [])
+        []
       } else {
-        el_attrs("span", [
-          attr(name: "class", value: node_row_slot_class),
+        [el_attrs("a", [
+          attr(name: "class", value: node_row_children_class),
+          attr(name: "href", value: node.route),
           attr(name: node_row_children_attribute, value: to_string(n)),
-          attr(name: "role", value: "img"),
-          attr(name: "aria-label", value: node_row_children_text(n: n)),
-          attr(name: "title", value: node_row_children_text(n: n)),
-        ], [node_row_slot_mark(), txt(to_string(n))])
+        ], [txt(node_row_children_text(n: n))])]
       }
   }
 }
 
-fn node_row_place_lead(place: NodeRowPlace) -> List<Fragment> {
+fn node_row_place_indents(place: NodeRowPlace) -> List<Fragment> {
   match place {
     NodeRowFlat => []
-    NodeRowInTree { depth, children } => concat(node_row_indents(depth: depth), [node_row_slot(children: children)])
+    NodeRowInTree { depth, children: _ } => node_row_indents(depth: depth)
+  }
+}
+
+fn node_row_place_children(node: NodePresentation, place: NodeRowPlace) -> List<Fragment> {
+  match place {
+    NodeRowFlat => []
+    NodeRowInTree { depth: _, children } => node_row_children_nodes(node: node, children: children)
   }
 }
 
@@ -200,7 +178,7 @@ fn node_row_place_depth(place: NodeRowPlace) -> Int {
 
 fn node_row_status_nodes(status: NodeStatus) -> List<Fragment> {
   match status {
-    NodeStatusDerived { status: derived } => [status_chip(status: derived)]
+    NodeStatusDerived { status: derived, closed: _ } => [status_chip(status: derived)]
     NodeStatusUnavailable { reason } => [
       el_attrs("span", [
         attr(name: "class", value: node_row_status_unavailable_class),
@@ -214,9 +192,9 @@ fn node_row_status_nodes(status: NodeStatus) -> List<Fragment> {
 fn node_row_cell_nodes(input: NodeRow, column: NodeRowColumn) -> List<Fragment> {
   match column {
     NodeRowColumnTitle => [
-      el_attrs("div", [attr(name: "class", value: node_row_lead_class)], concat(node_row_place_lead(place: input.place), [
+      el_attrs("div", [attr(name: "class", value: node_row_lead_class)], concat(node_row_place_indents(place: input.place), concat([
         el_attrs("a", [attr(name: "class", value: node_row_link_class), attr(name: "href", value: input.node.route)], [txt(input.node.title)]),
-      ])),
+      ], node_row_place_children(node: input.node, place: input.place)))),
     ]
     NodeRowColumnPriority => [priority_mark(input: PriorityMark { priority: input.node.priority.priority })]
     NodeRowColumnId => [chip(input: Chip { text: input.node.slug })]
@@ -237,28 +215,11 @@ fn node_row(input: NodeRow) -> Fragment {
   ], map(node_row_columns, c => el_attrs("td", node_row_cell_attributes(class_name: node_row_cell_class, column: c), node_row_cell_nodes(input: input, column: c))))
 }
 
-fn node_row_heading_nodes(shape: NodeRowShape, column: NodeRowColumn) -> List<Fragment> {
-  match column {
-    NodeRowColumnTitle => match shape {
-      NodeRowShapeFlat => [txt(node_row_column_heading(column: column))]
-      NodeRowShapeTree => [
-        el_attrs("div", [attr(name: "class", value: node_row_lead_class)], [
-          node_row_slot(children: RowChildrenNotCarried),
-          txt(node_row_column_heading(column: column)),
-        ]),
-      ]
-    }
-    NodeRowColumnPriority => [txt(node_row_column_heading(column: column))]
-    NodeRowColumnId => [txt(node_row_column_heading(column: column))]
-    NodeRowColumnStatus => [txt(node_row_column_heading(column: column))]
-  }
-}
-
-fn node_row_header(shape: NodeRowShape, density: NodeRowDensity) -> Fragment {
+fn node_row_header(density: NodeRowDensity) -> Fragment {
   el_attrs("tr", [
     attr(name: "class", value: node_row_head_class),
     attr(name: node_row_density_attribute, value: node_row_density_key(density: density)),
-  ], map(node_row_columns, c => el_attrs("th", concat(node_row_cell_attributes(class_name: node_row_heading_class, column: c), [attr(name: "scope", value: "col")]), node_row_heading_nodes(shape: shape, column: c))))
+  ], map(node_row_columns, c => el_attrs("th", concat(node_row_cell_attributes(class_name: node_row_heading_class, column: c), [attr(name: "scope", value: "col")]), [txt(node_row_column_heading(column: c))])))
 }
 
 fn node_row_attribute_selector(class_name: String, attribute: String, value: String) -> String {
@@ -323,18 +284,12 @@ fn node_row_rules() -> List<BuildRule> {
         decl(prop: Flex, value: "none"),
         decl(prop: Width, value: scale_var(t: relation_level_indent)),
       ] },
-      StaticRule { selector: ClassSelector { name: node_row_slot_class }, decls: concat([
-        decl(prop: Display, value: "inline-flex"),
-        decl(prop: AlignItems, value: "center"),
-        decl(prop: JustifyContent, value: "flex-start"),
+      StaticRule { selector: ClassSelector { name: node_row_children_class }, decls: concat(element_text_decls(role: ElementLabel), [
         decl(prop: Flex, value: "none"),
-        decl(prop: Width, value: scale_var(t: relation_disclosure_slot)),
-      ], element_text_decls(role: ElementLabel)) },
-      StaticRule { selector: ClassSelector { name: node_row_slot_mark_class }, decls: [
-        decl(prop: Flex, value: "none"),
-        decl(prop: Width, value: scale_var(t: relation_disclosure_mark)),
-        decl(prop: Height, value: scale_var(t: relation_disclosure_mark)),
-      ] },
+        decl(prop: Color, value: palette_action_ink_var()),
+        decl(prop: TextDecoration, value: "none"),
+        decl(prop: WhiteSpace, value: "nowrap"),
+      ]) },
       StaticRule { selector: ClassSelector { name: node_row_link_class }, decls: [
         decl(prop: Color, value: palette_var(slot: SlotText)),
         decl(prop: TextDecoration, value: "none"),
@@ -345,6 +300,13 @@ fn node_row_rules() -> List<BuildRule> {
       StaticRule { selector: ClassSelector { name: node_row_status_unavailable_class }, decls: element_text_decls(role: ElementLabel) },
       ResponseRule { subject: ClassSelector { name: node_row_link_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
         decl(prop: TextDecoration, value: "underline"),
+      ] },
+      ResponseRule { subject: ClassSelector { name: node_row_children_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: TextDecoration, value: "underline"),
+      ] },
+      ResponseRule { subject: ClassSelector { name: node_row_children_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+        decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
       ] },
       ResponseRule { subject: ClassSelector { name: node_row_link_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
         decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),

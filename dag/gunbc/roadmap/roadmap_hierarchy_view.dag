@@ -28,19 +28,29 @@ import gunbc.roadmap_issue_location { issue_page_path }
 // sub-issue and a blocker appears under both relations as the same NodePresentation -- the relation
 // carries the meaning, the presentation does not change with it.
 
-// A STATUS IS DERIVED OR IT IS UNAVAILABLE, never guessed. The derived arm carries the value the
-// node's own page computes (gunbc.roadmap_presentation issue_display_status over its decided row). A
-// node the page has no decided row for says so with the reason.
+// A STATUS IS DERIVED OR IT IS UNAVAILABLE, never guessed. The derived arm carries two facts the
+// producer establishes separately: the status the node is shown with
+// (gunbc.roadmap_presentation issue_display_status over its decided row, or
+// omitted_node_display_status for a declared node the plan omits), and whether the node is
+// CLOSED, which is its lifecycle's answer (gunbc.roadmap_presentation work_lifecycle_is_closed)
+// and not a reading of the status word. They can differ: a done node whose standing cannot be
+// observed is shown as Unknown and is still closed. Unavailable is reserved for a node whose
+// state the producer cannot establish at all, and says why.
 type NodeStatus
-  = NodeStatusDerived { status: IssueDisplayStatus }
+  = NodeStatusDerived { status: IssueDisplayStatus, closed: Bool }
   | NodeStatusUnavailable { reason: String }
 
-// CLOSED IS READ FROM THE DERIVED STATUS (gunbc.roadmap_issue_status
-// issue_display_status_is_closed). A node whose status is unavailable is not known to be closed,
-// so it is not shown as closed.
+// A derived status with no lifecycle beside it: closed is what the status vocabulary says of that
+// status (gunbc.roadmap_issue_status issue_display_status_is_closed). The specimen's planted nodes
+// are built this way; a producer that holds a lifecycle states `closed` from it instead.
+fn node_status_derived(status: IssueDisplayStatus) -> NodeStatus {
+  NodeStatusDerived { status: status, closed: issue_display_status_is_closed(status: status) }
+}
+
+// A node whose state is unavailable is not known to be closed, so it is not shown as closed.
 fn node_status_is_closed(status: NodeStatus) -> Bool {
   match status {
-    NodeStatusDerived { status: derived } => issue_display_status_is_closed(status: derived)
+    NodeStatusDerived { status: _, closed } => closed
     NodeStatusUnavailable { reason: _ } => false
   }
 }
@@ -224,17 +234,18 @@ fn issue_hierarchy_view(node: RoadmapNodeId, nodes: List<RoadmapNode>, edges: Li
 }
 
 // A RELATION'S COUNTS ARE A FUNCTION OF ITS ROWS, so a label and the table under it cannot
-// disagree. `closed` counts the rows whose derived status is closed; `status_unavailable` counts
-// the rows whose status the page could not derive, which are neither closed nor open here.
+// disagree. `closed` counts the rows the producer established as closed, whatever status word they
+// are shown with; `status_unavailable` counts the rows whose state the producer could not
+// establish, which are neither closed nor open here.
 type RelationSummary { total: Int, closed: Int, status_unavailable: Int }
 
 fn relation_summary(relation: NodeRelation) -> RelationSummary {
   fold(relation.rows, init: RelationSummary { total: 0, closed: 0, status_unavailable: 0 }, f: fn(acc, row) {
     match row.node.status {
       NodeStatusUnavailable { reason: _ } => RelationSummary { total: acc.total + 1, closed: acc.closed, status_unavailable: acc.status_unavailable + 1 }
-      NodeStatusDerived { status } => RelationSummary {
+      NodeStatusDerived { status: _, closed } => RelationSummary {
         total: acc.total + 1,
-        closed: if issue_display_status_is_closed(status: status) { acc.closed + 1 } else { acc.closed },
+        closed: if closed { acc.closed + 1 } else { acc.closed },
         status_unavailable: acc.status_unavailable,
       }
     }
@@ -242,8 +253,8 @@ fn relation_summary(relation: NodeRelation) -> RelationSummary {
 }
 
 // THE COUNT A LABEL SHOWS. Sub-issues read closed over total; every other relation reads its
-// total. Closed-over-total is stated only when every row's status was derived -- a count of closed
-// rows beside rows of unknown status would understate it. The count is a value, so a heading that
+// total. Closed-over-total is stated only when every row's state was established -- a count of closed
+// rows beside rows of unknown state would understate it. The count is a value, so a heading that
 // formats it and a label that prints it read the same decision.
 type RelationCount
   = RelationCountTotal { total: Int }
