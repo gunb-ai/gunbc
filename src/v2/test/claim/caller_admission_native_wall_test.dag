@@ -27,7 +27,7 @@ module v2.test.claim.caller_admission_native_wall
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check }
-import v2.std.diagnostic { None, Some, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.diagnostic { None, Some, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored }
 import v2.std.optional { Absent, Present }
@@ -122,7 +122,7 @@ test fn the_wall_refuses_a_call_from_a_declaration_outside_the_list_holds() -> B
     module_symbol: ^bcb
   ) {
     None => false
-    Some { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
+    Some { diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_reason_caller_admission_refused)
   }
 }
 
@@ -167,7 +167,8 @@ test fn an_entry_that_is_not_a_decl_ref_call_refuses_at_the_entry_holds() -> Boo
 
 test fn a_clause_the_carrier_cannot_read_refuses_as_entries_unreadable_holds() -> Bool {
   match infer_admit_clause_entries(roster: wall_clause_fallback) {
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_admit_callers_entries_unreadable
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_admit_callers_entries_unreadable)
     Accepted { value: _, diagnostics: _ } => false
   }
 }

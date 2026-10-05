@@ -4596,15 +4596,30 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
 // the clause's own occurrence instead of a roster. The reader demands a roster conj and REFUSES
 // (^infer_reason_admit_callers_entries_unreadable at the clause) — a malformed clause is never a
 // shorter roster (DESIGN section 5: a failure arm must refuse, never widen).
+// THE CARRIER (v2 body lowering): a fn's authored `admit_callers` clause becomes one AdmitCallersEdge
+// on the fn's Arrow, whose target is the clause's lowered image. The outer Absent (no clause
+// captured) is the only silence: a fn without the clause has nothing to judge. Once a clause IS
+// captured, every failure to read it hangs the clause-fallback marker instead -- the reader refuses
+// it as ^infer_reason_admit_callers_entries_unreadable at the clause (DESIGN §5: a failure arm must
+// refuse, never widen). A grammar or graft change that reshapes the clause shell switches the wall
+// to REFUSING, never off.
 fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => []
     Present { value: captured } =>
       match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
-        Absent => []
+        Absent =>
+          [core_edge(
+            marker: AdmitCallersEdge,
+            target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: captured)
+          )]
         Present { value: image } =>
           match sugar_named_child_optional(root: image, name: ^admit_callers_clause_body) {
-            Absent => []
+            Absent =>
+              [core_edge(
+                marker: AdmitCallersEdge,
+                target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: image)
+              )]
             Present { value: roster } => [core_edge(marker: AdmitCallersEdge, target: roster)]
           }
       }

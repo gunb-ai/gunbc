@@ -6697,7 +6697,7 @@ fn infer_admit_spine_entries(spine: Node) -> Outcome<List<Node>> {
     _ =>
       outcome_rejected(Diagnostic {
         reason: ^infer_reason_admit_callers_entries_unreadable,
-        at: node_locus(node: roster),
+        at: node_locus(node: spine),
         correction: Unavailable { reason: ExternalContractUnknown }
       })
   }
