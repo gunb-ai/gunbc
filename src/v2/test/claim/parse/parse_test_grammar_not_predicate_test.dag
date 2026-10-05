@@ -1,4 +1,4 @@
-module v2.test.parse.grammar_not_predicate
+module test.claim.parse_test_grammar_not_predicate
 
 import v2.compiler.parse { ParseArtifact, parse_module }
 import v2.std.algebra { length }
