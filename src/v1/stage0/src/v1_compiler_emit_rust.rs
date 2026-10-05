@@ -20454,6 +20454,8 @@ pub fn emit_func_def(
             inferred.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
+            emit_info.variant_to_enum.clone(),
+            scope.type_env.clone(),
         );
         let body_scope = crate::v1_compiler_infer::build_params_scope(
             Rc::new(InferScope {
@@ -20923,15 +20925,19 @@ pub fn emit_func_inferred(
     inferred: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
             " -> Result<".to_string(),
-            render_rust_type(
+            render_rust_fn_sig_type(
                 inferred.clone(),
+                Rc::new(vec![]),
                 shared_types.clone(),
                 source_indices.clone(),
-                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                variant_to_enum.clone(),
+                env.clone(),
             ),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
