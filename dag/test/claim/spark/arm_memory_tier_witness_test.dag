@@ -32,7 +32,7 @@ import gunbc.spark.arm_memory_fit {
   arm_memory_fit_verdict, ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
   ArmCheckpointTierSplit, ArmCheckpointTierSplitMint, ArmCheckpointTierSplitReady, ArmCheckpointTierSplitUnestablished, ArmCheckpointTierSplitRefused, checkpoint_tier_split,
   arm_readback_observation, ArmObservationConsistent, ArmMemoryModelFalsified, ArmKvCache,
-  gb10_host_memory, gb10_memory_tier,
+  gb10_host_class, gb10_memory_tier, ArmHostCoherentSuperchip,
 }
 
 // ── WHAT THIS WITNESSES, AND WHAT IT DOES NOT ────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ fn tw_verdict_for(offloaded_layers: Nat) -> ArmMemoryFitVerdict? {
         topology: SingleSparkTp1,
         intent: tw_intent(),
         requested_profile: tw_profile(),
-        host_memory: tw_host_memory(),
+        host: ArmHostCoherentSuperchip { row: nvidia_gh200_480gb_catalog },
         tiers: tw_tiers(),
         ranks: [tw_device_row(checkpoint: sp.device_residency), tw_host_row(checkpoint: sp.host_residency)]) {
         ArmMemorySubjectRefused { cause: _ } => none
@@ -267,7 +267,7 @@ fn tw_verdicts() -> TwVerdicts {
     a_missing_tier_is_refused_at_the_mint: match arm_memory_fit_subject_with_rank_demands(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: SingleSparkTp1,
       intent: tw_intent(), requested_profile: tw_profile(),
-      host_memory: tw_host_memory(),
+      host: ArmHostCoherentSuperchip { row: nvidia_gh200_480gb_catalog },
       tiers: filter(tw_tiers(), t => system_memory_component_same(a: t.tier, b: device)),
       ranks: [tw_device_row(checkpoint: tw_exact(n: 306, what: "whole checkpoint"))]) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not carry exactly one row for each memory")
@@ -276,7 +276,7 @@ fn tw_verdicts() -> TwVerdicts {
     a_foreign_tier_is_refused_at_the_mint: match arm_memory_fit_subject_with_rank_demands(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: SingleSparkTp1,
       intent: tw_intent(), requested_profile: tw_profile(),
-      host_memory: gb10_host_memory(),
+      host: gb10_host_class(),
       tiers: tw_tiers(),
       ranks: [tw_device_row(checkpoint: tw_exact(n: 306, what: "whole checkpoint"))]) {
       ArmMemorySubjectRefused { cause: _ } => true

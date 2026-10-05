@@ -57,7 +57,9 @@ import v2.std.algebra { any, filter, length }
 import extdeps.systems.types {
   SystemMemoryComponent, GpuMemoryAddressability,
   GpuAndCpuShareOnePool, GpuAddressesDirectly, GpuAddressesAcrossCoherentLink,
-  integrated_system_memory_components, integrated_system_unified_memory, system_memory_component_same, system_memory_component_wire,
+  IntegratedComputeSystemCatalogRow, CoherentSuperchipCatalogRow,
+  integrated_system_memory_components, coherent_superchip_memory_components,
+  integrated_system_unified_memory, system_memory_component_same, system_memory_component_wire,
 }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.vllm.weight_offload {
@@ -98,8 +100,8 @@ import extdeps.vllm.weight_offload {
 //      proof never fabricates WHICH rank.
 //
 //   4. TIERS. Supply and demand are per memory tier, and a tier is a catalog memory component
-//      (extdeps.systems.types SystemMemoryComponent). The mint joins the subject's tiers against
-//      the host's components by identity, and the rank roster against (rank, tier). A one-pool host
+//      (extdeps.systems.types SystemMemoryComponent). The mint derives the host's components from
+//      the host's catalog row (ArmHostClass) and joins the subject's tiers against them by identity, and the rank roster against (rank, tier). A one-pool host
 //      (a DGX Spark) is the one-tier case, and its verdicts are the ones this module gave before
 //      tiers existed. A superchip with GPU-local and coherent-link memory carries two complete
 //      records per rank, and a term placed in the other tier is NotPlaced, never a zero.
@@ -593,6 +595,20 @@ fn tier_supply_count(tiers: List<ArmTierSupply>, component: SystemMemoryComponen
   count(filter(tiers, t => system_memory_component_same(a: t.tier, b: component)))
 }
 
+// THE HOST IS NAMED BY ITS CATALOG ROW, never by a list of memories. The mints derive the memory list
+// from the row's own projection, so a caller cannot leave a memory out by passing a shorter list.
+// The tier join then has an independent referent.
+type ArmHostClass
+  = ArmHostIntegratedSystem { row: IntegratedComputeSystemCatalogRow }
+  | ArmHostCoherentSuperchip { row: CoherentSuperchipCatalogRow }
+
+fn arm_host_memory(host: ArmHostClass) -> List<SystemMemoryComponent> {
+  match host {
+    ArmHostIntegratedSystem { row: r } => integrated_system_memory_components(row: r)
+    ArmHostCoherentSuperchip { row: r } => coherent_superchip_memory_components(row: r)
+  }
+}
+
 fn tier_set_refusal_cause(host_memory: List<SystemMemoryComponent>, tiers: List<ArmTierSupply>) -> NonEmptyStr {
   match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
     Present { value: c } => c
@@ -702,9 +718,10 @@ fn arm_memory_fit_subject(
   topology: ServingTopology,
   intent: ServingCapacityIntent,
   requested_profile: ServingLaunchProfile,
-  host_memory: List<SystemMemoryComponent>,
+  host: ArmHostClass,
   tiers: List<ArmTierSupply>,
 ) -> ArmMemorySubjectMint {
+  let host_memory = arm_host_memory(host: host)
   let tier_ok = match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
     Present { value: _ } => false
     Absent => true
@@ -761,11 +778,12 @@ fn arm_memory_fit_subject_with_rank_demands(
   topology: ServingTopology,
   intent: ServingCapacityIntent,
   requested_profile: ServingLaunchProfile,
-  host_memory: List<SystemMemoryComponent>,
+  host: ArmHostClass,
   tiers: List<ArmTierSupply>,
   ranks: List<ArmRankDemand>,
 ) -> ArmMemorySubjectMint {
   let rank_count = serving_topology_rank_count(t: topology)
+  let host_memory = arm_host_memory(host: host)
   let tier_ok = match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
     Present { value: _ } => false
     Absent => true
@@ -837,8 +855,12 @@ fn gb10_memory_tier() -> SystemMemoryComponent {
   integrated_system_unified_memory(row: nvidia_dgx_spark_4tb_catalog)
 }
 
+fn gb10_host_class() -> ArmHostClass {
+  ArmHostIntegratedSystem { row: nvidia_dgx_spark_4tb_catalog }
+}
+
 fn gb10_host_memory() -> List<SystemMemoryComponent> {
-  integrated_system_memory_components(row: nvidia_dgx_spark_4tb_catalog)
+  arm_host_memory(host: gb10_host_class())
 }
 
 fn gb10_tier_supplies(deductions: ArmSupplyDeductions) -> List<ArmTierSupply> {
@@ -864,7 +886,7 @@ fn arm_memory_fit_subject_for_launch(
         topology: topology,
         intent: intent,
         requested_profile: profile,
-        host_memory: gb10_host_memory(),
+        host: gb10_host_class(),
         tiers: gb10_tier_supplies(deductions: ArmSupplyDeductions {
           host_os_control_reserve: ComponentBoundOpen {
             obligation: "no measured upper bound exists for the host/OS/control-plane reserve of the unified pool; the GB10's pool is shared with the OS page cache, the control plane and any co-tenant consumers, and a host-class measurement would bound it" as NonEmptyStr,
@@ -2040,11 +2062,12 @@ fn arm_memory_fit_subject_with_receipts(
   topology: ServingTopology,
   intent: ServingCapacityIntent,
   requested_profile: ServingLaunchProfile,
-  host_memory: List<SystemMemoryComponent>,
+  host: ArmHostClass,
   tiers: List<ArmTierSupply>,
   receipts: FreeMonoid<ArmComponentReceipt>,
 ) -> ArmMemorySubjectMint {
   let rank_count = serving_topology_rank_count(t: topology)
+  let host_memory = arm_host_memory(host: host)
   let open_ranks = flat_map(nat_range_inclusive(lo: 1, hi: rank_count), i => map(tiers, t => open_rank_demand(rank: i - 1, tier: t.tier)))
   let rank_out_of_range = first(filter(receipts, r => !roster_has_rank_tier(ranks: open_ranks, rank: r.rank, tier: r.tier)))
   let duplicate = first(filter(receipts, r => receipt_pair_count(receipts: receipts, rank: r.rank, tier: r.tier, component: r.component) > 1))
@@ -2086,7 +2109,7 @@ fn arm_memory_fit_subject_with_receipts(
                     topology: topology,
                     intent: intent,
                     requested_profile: requested_profile,
-                    host_memory: host_memory,
+                    host: host,
                     tiers: tiers,
                     ranks: fold(receipts, init: open_ranks, f: fn(acc, r) { apply_receipt_to_ranks(ranks: acc, r: r) }))
               }

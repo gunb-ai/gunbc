@@ -50,7 +50,7 @@ import gunbc.spark.arm_memory_fit {
   demand_for_phase,
   arm_memory_fit_subject, arm_memory_fit_subject_with_rank_demands, arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict, arm_memory_subject_open_components,
-  gb10_pool_bound, gb10_memory_tier, gb10_host_memory, ArmTierSupply,
+  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply,
   arm_memory_fit_experiment_plan, arm_memory_experiment_runtime, arm_memory_launch_gate,
   arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
@@ -371,7 +371,7 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: glm_native_concurrent_profile,
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions())) {
     ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
     ArmMemorySubjectReady { subject: _ } => false
@@ -382,7 +382,7 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: glm_native_concurrent_profile,
-      host_memory: gb10_host_memory(),
+      host: gb10_host_class(),
       tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       ranks: fx_four_even_ranks()) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
@@ -399,7 +399,7 @@ test fn w_the_derived_profile_joins_and_the_subject_mints() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions())) {
     ArmMemorySubjectReady { subject: _ } => true
     ArmMemorySubjectRefused { cause: _ } => false
@@ -414,7 +414,7 @@ test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: fx_four_even_ranks()) {
     ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
@@ -426,7 +426,7 @@ test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: fx_derived_profile(),
-      host_memory: gb10_host_memory(),
+      host: gb10_host_class(),
       tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       ranks: fx_four_even_ranks()) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
@@ -442,7 +442,7 @@ test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
@@ -459,7 +459,7 @@ test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: fx_derived_profile(),
-      host_memory: gb10_host_memory(),
+      host: gb10_host_class(),
       tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       ranks: [
         fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
@@ -482,7 +482,7 @@ test fn w_all_open_terms_with_the_right_rank_count_is_never_proved() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: ArmSupplyDeductions {
       host_os_control_reserve: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
       foreign_residency: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
@@ -511,7 +511,7 @@ test fn w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove() ->
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       fx_rank(rank: 0, checkpoint: tiny),
@@ -538,7 +538,7 @@ test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: fx_four_even_ranks()) {
     ArmMemorySubjectRefused { cause: _ } => false
@@ -571,7 +571,7 @@ test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: ranks) {
     ArmMemorySubjectRefused { cause: _ } => false
@@ -597,7 +597,7 @@ test fn w_the_worst_rank_decides_the_verdict() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       fx_rank(rank: 0, checkpoint: surcharge),
@@ -641,7 +641,7 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       terms,
@@ -695,7 +695,7 @@ test fn w_an_unmodeled_pool_is_unestablished_not_refused() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: ArmPoolUnbounded { obligation: "fx-no-pool-reading: no byte producer has modeled this pool" as NonEmptyStr }, deductions: fx_deductions()),
     ranks: fx_four_even_ranks()) {
     ArmMemorySubjectRefused { cause: _ } => false
@@ -989,7 +989,7 @@ fn join_subject(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     receipts: receipts)
 }
@@ -1044,7 +1044,7 @@ test fn w_an_observation_receipt_discharges_nothing() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()))
   length(obligations_of(mint: observed)) == length(obligations_of(mint: bare))
     && length(obligations_of(mint: observed)) > 0
@@ -1068,7 +1068,7 @@ test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenanc
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: fx_derived_profile(),
-      host_memory: gb10_host_memory(),
+      host: gb10_host_class(),
       tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
@@ -1381,7 +1381,7 @@ fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
     topology: FourSparkTp4,
     intent: fx_wet_intent(),
     requested_profile: fx_wet_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: fx_wet_pool(), deductions: fx_wet_deductions()),
     receipts: receipts)
 }
@@ -1554,7 +1554,7 @@ test fn w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_th
       topology: FourSparkTp4,
       intent: fx_wet_intent(),
       requested_profile: fx_wet_profile(),
-      host_memory: gb10_host_memory(),
+      host: gb10_host_class(),
       tiers: fx_tiers(pool: fx_wet_pool(), deductions: fx_wet_deductions()),
       receipts: fx_wet_bundle()) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
@@ -2426,7 +2426,7 @@ fn fx_launch_wall_subject_mint() -> ArmMemorySubjectMint {
     topology: FourSparkTp4,
     intent: fx_launch_wall_intent(),
     requested_profile: fx_launch_wall_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: gb10_pool_bound(), deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: fx_pool_high)),
     ranks: arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks())
 }
@@ -2616,7 +2616,7 @@ test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
     topology: FourSparkTp4,
     intent: fx_launch_wall_intent(),
     requested_profile: fx_launch_wall_profile(),
-    host_memory: gb10_host_memory(),
+    host: gb10_host_class(),
     tiers: fx_tiers(pool: toy_pool, deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: byte_size(count: 2147483647))),
     ranks: arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()) {
     ArmMemorySubjectRefused { cause: _ } => false
