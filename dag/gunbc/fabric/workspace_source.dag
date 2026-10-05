@@ -840,6 +840,7 @@ type WorkspacePackArchive
 fn workspace_pack_archive(staging: String, members: List<NonEmptyStr>, placeholders: List<WorkspaceStagedPlaceholder>, placeholder_root: String) -> WorkspacePackArchive {
   let list_path = join([staging, "/members"], "")
   let placeholder_list_path = join([staging, "/placeholder-members"], "")
+  let archive = join([staging, "/workspace-source.tar"], "")
   let root_made = shell.Mkdir.Parents(path: placeholder_root as FilePath)
   if root_made.success == false {
     WorkspacePackRefused { verdict: "refused-placeholder-root-unmade", why: concat("the placeholder staging root could not be made: ", placeholder_root) }
