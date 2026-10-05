@@ -1419,31 +1419,30 @@ fn yaml_line_ending_in_whitespace(lines: List<String>, index: Int) -> Int {
 }
 
 fn ingest_yaml_source(src: String) -> YamlIngestResult {
-  if yaml_contains_refused_character(text: src) {
-    match yaml_first_refused(text: src) {
-      Present { value: c } => YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: char_text(c: c), index: 0), reason: yaml_refused_character_reason(cp: c) }
-      Absent => YamlIngestRejected { line: 0, reason: "a refused character was detected and then not found" }
-    }
-  } else if yaml_has_leading_tab(src: src) {
-    YamlIngestRejected { line: yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0), reason: "a tab in a line's leading whitespace is outside the supported subset (YAML indents with spaces only; a literal line may not begin with a tab either)" }
-  } else if yaml_has_trailing_whitespace(src: src) {
-    YamlIngestRejected { line: yaml_line_ending_in_whitespace(lines: yaml_source_lines(src: src), index: 0), reason: "a line ends in whitespace, which is outside the supported subset (it would make an empty line indistinguishable from literal content)" }
-  } else {
-    let lines = yaml_source_lines(src: src)
-    let at = yaml_first_content_offset(lines: lines, index: 0)
-    if at < 0 {
-      YamlIngestRejected { line: 0, reason: "the document has no content node" }
-    } else {
-      let root = if at == 0 { join(lines, "\n") } else { join(lines.skip(n: at), "\n") }
-      if starts_with(s: root, prefix: " ") || starts_with(s: root, prefix: "\t") {
-        YamlIngestRejected { line: at + 1, reason: "the root block must start at column 0" }
+  match yaml_first_refused(text: src) {
+    Present { value: c } => YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: char_text(c: c), index: 0), reason: yaml_refused_character_reason(cp: c) }
+    Absent =>
+      if yaml_has_leading_tab(src: src) {
+        YamlIngestRejected { line: yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0), reason: "a tab in a line's leading whitespace is outside the supported subset (YAML indents with spaces only; a literal line may not begin with a tab either)" }
+      } else if yaml_has_trailing_whitespace(src: src) {
+        YamlIngestRejected { line: yaml_line_ending_in_whitespace(lines: yaml_source_lines(src: src), index: 0), reason: "a line ends in whitespace, which is outside the supported subset (it would make an empty line indistinguishable from literal content)" }
       } else {
-        match yaml_block(text: root, n: 0, seq: yaml_starts_seq(text: root), base: 0) {
-          YamlBlockParsed { value: v } => IngestedYaml { value: v }
-          YamlBlockRefused { line: l, reason: why } => YamlIngestRejected { line: at + l + 1, reason: why }
+        let lines = yaml_source_lines(src: src)
+        let at = yaml_first_content_offset(lines: lines, index: 0)
+        if at < 0 {
+          YamlIngestRejected { line: 0, reason: "the document has no content node" }
+        } else {
+          let root = if at == 0 { join(lines, "\n") } else { join(lines.skip(n: at), "\n") }
+          if starts_with(s: root, prefix: " ") || starts_with(s: root, prefix: "\t") {
+            YamlIngestRejected { line: at + 1, reason: "the root block must start at column 0" }
+          } else {
+            match yaml_block(text: root, n: 0, seq: yaml_starts_seq(text: root), base: 0) {
+              YamlBlockParsed { value: v } => IngestedYaml { value: v }
+              YamlBlockRefused { line: l, reason: why } => YamlIngestRejected { line: at + l + 1, reason: why }
+            }
+          }
         }
       }
-    }
   }
 }
 
