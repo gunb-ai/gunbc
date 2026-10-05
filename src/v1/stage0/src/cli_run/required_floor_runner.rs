@@ -17213,7 +17213,7 @@ mod route_gap_admission_partition_tests {
     fn the_marshal_shape_names_identity_and_ground_only() {
         crate::cli_run::on_live_pool_thread(|| {
             let root = process_workspace_root();
-            let roots: Vec<String> = ["src/v2"]
+            let roots: Vec<String> = ["dag", "src/v2"]
                 .iter()
                 .map(|r| root.join(r).to_string_lossy().to_string())
                 .collect();
@@ -17224,11 +17224,7 @@ mod route_gap_admission_partition_tests {
             let index = crate::cli_run::process_shared_index(&roots);
             let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
                 .expect("the shared fixture resolves");
-            let ctx = crate::cli_run::make_eval_context(
-                &graph,
-                indices,
-                v1_interpreter::ExecutionMode::Hermetic,
-            );
+            let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
             let value = route_gap_suppressed_rows_value(
                 &ctx,
                 &[(
