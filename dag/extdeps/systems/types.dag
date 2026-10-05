@@ -2,13 +2,13 @@ module extdeps.systems.types
 
 import v2.std.algebra { filter }
 import std.types { NonEmptyStr, List, Int, Bool, String }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt, bandwidth_count }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt }
 import std.nat { Nat }
 import extdeps.storage.types { PcieLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
-import extdeps.memory.types { MemoryFacts, MemoryKind, Dram, Hbm, UnifiedShared }
+import extdeps.memory.types { MemoryFacts }
 import extdeps.toolchain.types { Architecture }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
@@ -169,42 +169,16 @@ fn gpu_memory_addressability_wire(a: GpuMemoryAddressability) -> NonEmptyStr {
 // - the system;
 // - the memory's capacity and kind;
 // - the complete addressability, including a coherent link's rate.
+// Equality on the two coproducts is the derived structural equality (DESIGN §4: operations come
+// from inhabitance), so a new arm needs no table here.
 // Two components agree only when every fact agrees. A row edited to different memory, or to a
 // different link rate, under the same system name projects a component that is NOT the original's,
 // so a tier join can never alias them.
-fn memory_kind_same(a: MemoryKind, b: MemoryKind) -> Bool {
-  match a {
-    Dram => match b { Dram => true Hbm => false UnifiedShared => false }
-    Hbm => match b { Dram => false Hbm => true UnifiedShared => false }
-    UnifiedShared => match b { Dram => false Hbm => false UnifiedShared => true }
-  }
-}
-
-fn gpu_memory_addressability_same(a: GpuMemoryAddressability, b: GpuMemoryAddressability) -> Bool {
-  match a {
-    GpuAndCpuShareOnePool => match b {
-      GpuAndCpuShareOnePool => true
-      GpuAddressesDirectly => false
-      GpuAddressesAcrossCoherentLink { per_direction: _ } => false
-    }
-    GpuAddressesDirectly => match b {
-      GpuAndCpuShareOnePool => false
-      GpuAddressesDirectly => true
-      GpuAddressesAcrossCoherentLink { per_direction: _ } => false
-    }
-    GpuAddressesAcrossCoherentLink { per_direction: ra } => match b {
-      GpuAndCpuShareOnePool => false
-      GpuAddressesDirectly => false
-      GpuAddressesAcrossCoherentLink { per_direction: rb } => bandwidth_count(b: ra) == bandwidth_count(b: rb)
-    }
-  }
-}
-
 fn system_memory_component_same(a: SystemMemoryComponent, b: SystemMemoryComponent) -> Bool {
   (a.system as String) == (b.system as String)
     && byte_size_count(b: a.memory.capacity) == byte_size_count(b: b.memory.capacity)
-    && memory_kind_same(a: a.memory.memory_kind, b: b.memory.memory_kind)
-    && gpu_memory_addressability_same(a: a.addressability, b: b.addressability)
+    && a.memory.memory_kind == b.memory.memory_kind
+    && a.addressability == b.addressability
 }
 
 fn system_memory_component_wire(c: SystemMemoryComponent) -> NonEmptyStr {
