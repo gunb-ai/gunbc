@@ -23,7 +23,7 @@ import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded, R2HeadAdvanceKnown, R2HeadAdvancedTo, R2HeadStagingCustody }
 import gunbc.fabric.workspace_source {
-  WorkspaceSourceRoot, workspace_credential_exclusions, workspace_path_exclusion, workspace_source_tally,
+  WorkspaceSourceRoot, workspace_credential_exclusions, workspace_exclusions, workspace_path_exclusion, workspace_source_tally,
   workspace_pack_readback, WorkspacePackClean, WorkspacePackCarriesExcluded,
 }
 import gunbc.fabric.workspace_checkpoint_instrument {
@@ -88,7 +88,7 @@ test fn an_unread_filesystem_is_unobserved_never_btrfs() -> Bool {
 // ── THE CREDENTIAL EXCLUSION ───────────────────────────────────────────────────────────────────
 
 fn excluded_by(path: String) -> String {
-  match workspace_path_exclusion(exclusions: workspace_credential_exclusions, path: path) {
+  match workspace_path_exclusion(exclusions: workspace_exclusions(), path: path) {
     Present { value: x } => x.spelling as String
     Absent => ""
   }
@@ -125,6 +125,23 @@ test fn ordinary_workspace_paths_are_not_excluded() -> Bool {
     && excluded_by(path: "home/u/repo/keyboard.md") == ""
 }
 
+// TRANSCRIPT CONTENT IS NOT CARRIED, BY OPERATOR DECISION: Claude session transcripts (and subagent
+// transcripts) under projects/, Claude and Codex prompt history, and Codex session rollouts are
+// excluded as transcripts; memory and settings are carried, and a .jsonl outside projects/ is not a
+// transcript by this rule.
+test fn transcript_content_is_excluded_and_agent_state_is_carried() -> Bool {
+  excluded_by(path: "home/briansrls/.claude@gmail3/projects/-home-briansrls-gunbc/0d3a.jsonl") == "projects/**/*.jsonl"
+    && excluded_by(path: "home/briansrls/.claude@gmail3/projects/-home-briansrls-gunbc/0d3a/subagents/agent-1.jsonl") == "projects/**/*.jsonl"
+    && excluded_by(path: "home/briansrls/.claude@gmail3/history.jsonl") == "history.jsonl"
+    && excluded_by(path: "home/briansrls/.codex/history.jsonl") == "history.jsonl"
+    && excluded_by(path: "home/briansrls/.codex/sessions/2026/10/05/rollout-1.jsonl") == ".codex/sessions"
+    && excluded_by(path: "home/briansrls/.codex/auth.json") == "~/.codex/auth.json"
+    && excluded_by(path: "home/briansrls/.claude@gmail3/projects/-home-briansrls-gunbc/memory/MEMORY.md") == ""
+    && excluded_by(path: "home/briansrls/.claude@gmail3/settings.json") == ""
+    && excluded_by(path: "home/briansrls/.codex/config.toml") == ""
+    && excluded_by(path: "home/briansrls/gunbc/dag/test/fixture/sample.jsonl") == ""
+}
+
 // THE EXCLUSION IS BY EXACT NAME: source files whose names merely MENTION a credential are carried.
 // Red for the substring rule this replaced -- every one of these was dropped by "*token*" or
 // "*credentials*", which made the measured workspace smaller than the operator's.
@@ -140,28 +157,35 @@ data tally_root: WorkspaceSourceRoot = WorkspaceSourceRoot { label: "clone", pat
 
 test fn the_tally_admits_only_unexcluded_non_build_files() -> Bool {
   let listing = join([
-    "f\t644\tREADME.md\t",
-    "l\t777\tlatest\tREADME.md",
-    "f\t600\t.env\t",
-    "f\t644\ttarget/release/gunbc\t",
-    "f\t600\tkeys/id_rsa\t",
+    "f\t644\tREADME.md\t\t120",
+    "l\t777\tlatest\tREADME.md\t9",
+    "f\t600\t.env\t\t40",
+    "f\t644\ttarget/release/gunbc\t\t9000",
+    "f\t600\tkeys/id_rsa\t\t400",
+    "f\t644\tprojects/p/0d3a.jsonl\t\t5000",
+    "f\t644\tprojects/p/memory/note.md\t\t300",
+    "f\t644\thistory.jsonl\t\t700",
   ], "\n")
-  let t = workspace_source_tally(root: tally_root, exclusions: workspace_credential_exclusions, listing: listing)
+  let t = workspace_source_tally(root: tally_root, exclusions: workspace_exclusions(), listing: listing)
   let members = map(t.members, m => m as String)
-  members == ["home/u/gunbc/README.md", "home/u/gunbc/latest"] && t.files == 1 && t.symlinks == 1 && t.excluded == 2 && t.build_output == 1 && t.unparsed == []
+  members == ["home/u/gunbc/README.md", "home/u/gunbc/latest", "home/u/gunbc/projects/p/memory/note.md"] && t.files == 2 && t.symlinks == 1 && t.excluded == 4
+    && t.excluded_credentials == 2 && measure_count(m: t.excluded_credential_bytes) == 440
+    && map(t.excluded_credential_members, m => m as String) == ["home/u/gunbc/.env", "home/u/gunbc/keys/id_rsa"]
+    && t.excluded_transcripts == 2 && measure_count(m: t.excluded_transcript_bytes) == 5700
+    && t.build_output == 1 && t.unparsed == []
 }
 
 // THE PACK READBACK'S RED: an archive that carries a credential refuses the upload, whatever list
 // built it.
 test fn an_archive_carrying_a_credential_refuses_the_upload() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_credential_exclusions, archive_listing: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n") {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n") {
     WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == "session-home/.claude/.credentials.json" && (x.spelling as String) == "~/.claude/.credentials.json"
     WorkspacePackClean { members: _ } => false
   }
 }
 
 test fn a_clean_archive_reads_back_its_member_count() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_credential_exclusions, archive_listing: "home/u/gunbc/README.md\nhome/u/gunbc/src/a.rs\n") {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: "home/u/gunbc/README.md\nhome/u/gunbc/src/a.rs\n") {
     WorkspacePackClean { members: n } => n == 2
     WorkspacePackCarriesExcluded { member: _, by: _ } => false
   }

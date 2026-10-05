@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock }
+import std.measure { ByteSize, byte_size, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock }
 import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
 import std.content_hash { Sha256Digest }
 import std.fabric_blob {
@@ -55,13 +55,12 @@ type WorkspaceSourceRoot {
 // THE SRV1 HOST PATHS, pinned rather than guessed (warm-badger-442, 2026-10-05, read from a session's
 // mountinfo on node srv1). Agent state is per auth slot on the host -- /home/briansrls/.claude@<slot>,
 // mounted at /session-home/.claude inside session containers -- so the slot is part of the declared
-// input: @gmail3 is the slot whose state the 2026-10-02 figures measured. Codex keeps its sessions
-// beside its auth file, so the root is the sessions directory, and auth.json is excluded by name
-// regardless.
+// input: @gmail3 is the slot whose state the 2026-10-02 figures measured. The Codex root is its home
+// directory; its auth file is excluded as a credential and its sessions and history as transcripts.
 data workspace_source_roots: List<WorkspaceSourceRoot> = [
   WorkspaceSourceRoot { label: "gunbc-clone", path: "/home/briansrls/gunbc", build_output: ["target/"] },
   WorkspaceSourceRoot { label: "claude-agent-state-gmail3", path: "/home/briansrls/.claude@gmail3", build_output: [] },
-  WorkspaceSourceRoot { label: "codex-sessions", path: "/home/briansrls/.codex/sessions", build_output: [] },
+  WorkspaceSourceRoot { label: "codex-state", path: "/home/briansrls/.codex", build_output: [] },
 ]
 
 data workspace_source_pack_host: NonEmptyStr = "srv1"
@@ -82,6 +81,10 @@ data workspace_source_pack_host: NonEmptyStr = "srv1"
 // files, SSH and GnuPG homes, cloud CLI configs, key and certificate files by suffix, dotenv files),
 // and no tracked file of the clone bears any of them (checked at this change).
 //
+// EVERY CREDENTIAL EXCLUSION IS NAMED IN THE RECEIPT (its path, never its bytes), so a tracked source
+// file that a later change gives one of these names is visible as excluded rather than silently
+// dropped; the claim that no tracked file bears them is checked by reading the receipt, not assumed.
+//
 // WHAT A NAME RULE CANNOT DO, stated rather than implied: a secret stored under some other name, or
 // pasted into an agent transcript's CONTENT, is not caught by any path rule. The pack's guarantee is
 // that every file the receipt lists as excluded was excluded, never that the carried bytes hold no
@@ -91,36 +94,66 @@ type WorkspaceExclusionRule
   | SegmentPrefix { text: NonEmptyStr }
   | SegmentSuffix { text: NonEmptyStr }
   | SegmentPair { parent: NonEmptyStr, child: NonEmptyStr }
+  | SuffixUnder { ancestor: NonEmptyStr, suffix: NonEmptyStr }
+
+// WHY A PATH IS NOT CARRIED, as a class the receipt counts separately: a credential (never carried,
+// a secret) or transcript content (not carried by operator decision, 2026-10-05: the pack carries
+// agent configuration and state, never conversation content).
+type WorkspaceExclusionClass
+  = CredentialExclusion
+  | TranscriptExclusion
 
 type WorkspaceExclusion {
   spelling: NonEmptyStr
+  class: WorkspaceExclusionClass
   rule: WorkspaceExclusionRule
 }
 
 data workspace_credential_exclusions: List<WorkspaceExclusion> = [
-  WorkspaceExclusion { spelling: "~/.claude/.credentials.json", rule: SegmentEquals { text: ".credentials.json" } },
-  WorkspaceExclusion { spelling: "~/.codex/auth.json", rule: SegmentEquals { text: "auth.json" } },
-  WorkspaceExclusion { spelling: ".netrc", rule: SegmentEquals { text: ".netrc" } },
-  WorkspaceExclusion { spelling: ".git-credentials", rule: SegmentEquals { text: ".git-credentials" } },
-  WorkspaceExclusion { spelling: ".npmrc", rule: SegmentEquals { text: ".npmrc" } },
-  WorkspaceExclusion { spelling: ".pypirc", rule: SegmentEquals { text: ".pypirc" } },
-  WorkspaceExclusion { spelling: "*.pem", rule: SegmentSuffix { text: ".pem" } },
-  WorkspaceExclusion { spelling: "*.key", rule: SegmentSuffix { text: ".key" } },
-  WorkspaceExclusion { spelling: "id_rsa", rule: SegmentEquals { text: "id_rsa" } },
-  WorkspaceExclusion { spelling: "id_ecdsa", rule: SegmentEquals { text: "id_ecdsa" } },
-  WorkspaceExclusion { spelling: "id_ed25519", rule: SegmentEquals { text: "id_ed25519" } },
-  WorkspaceExclusion { spelling: "id_dsa", rule: SegmentEquals { text: "id_dsa" } },
-  WorkspaceExclusion { spelling: "id_ecdsa_sk", rule: SegmentEquals { text: "id_ecdsa_sk" } },
-  WorkspaceExclusion { spelling: "id_ed25519_sk", rule: SegmentEquals { text: "id_ed25519_sk" } },
-  WorkspaceExclusion { spelling: ".ssh", rule: SegmentEquals { text: ".ssh" } },
-  WorkspaceExclusion { spelling: ".gnupg", rule: SegmentEquals { text: ".gnupg" } },
-  WorkspaceExclusion { spelling: ".aws", rule: SegmentEquals { text: ".aws" } },
-  WorkspaceExclusion { spelling: ".config/gh", rule: SegmentPair { parent: ".config", child: "gh" } },
-  WorkspaceExclusion { spelling: ".config/gcloud", rule: SegmentPair { parent: ".config", child: "gcloud" } },
-  WorkspaceExclusion { spelling: ".docker/config.json", rule: SegmentPair { parent: ".docker", child: "config.json" } },
-  WorkspaceExclusion { spelling: ".env", rule: SegmentEquals { text: ".env" } },
-  WorkspaceExclusion { spelling: ".env.*", rule: SegmentPrefix { text: ".env." } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "~/.claude/.credentials.json", rule: SegmentEquals { text: ".credentials.json" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "~/.codex/auth.json", rule: SegmentEquals { text: "auth.json" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".netrc", rule: SegmentEquals { text: ".netrc" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".git-credentials", rule: SegmentEquals { text: ".git-credentials" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".npmrc", rule: SegmentEquals { text: ".npmrc" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".pypirc", rule: SegmentEquals { text: ".pypirc" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "*.pem", rule: SegmentSuffix { text: ".pem" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "*.key", rule: SegmentSuffix { text: ".key" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_rsa", rule: SegmentEquals { text: "id_rsa" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ecdsa", rule: SegmentEquals { text: "id_ecdsa" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ed25519", rule: SegmentEquals { text: "id_ed25519" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_dsa", rule: SegmentEquals { text: "id_dsa" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ecdsa_sk", rule: SegmentEquals { text: "id_ecdsa_sk" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ed25519_sk", rule: SegmentEquals { text: "id_ed25519_sk" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".ssh", rule: SegmentEquals { text: ".ssh" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".gnupg", rule: SegmentEquals { text: ".gnupg" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".aws", rule: SegmentEquals { text: ".aws" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".config/gh", rule: SegmentPair { parent: ".config", child: "gh" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".config/gcloud", rule: SegmentPair { parent: ".config", child: "gcloud" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".docker/config.json", rule: SegmentPair { parent: ".docker", child: "config.json" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".env", rule: SegmentEquals { text: ".env" } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".env.*", rule: SegmentPrefix { text: ".env." } },
 ]
+
+// ── TRANSCRIPT CONTENT: NOT CARRIED, BY OPERATOR DECISION (2026-10-05) ───────────────────────────
+//
+// The pack carries agent configuration and state (settings, CLAUDE.md and agent definitions, memory,
+// plugin configuration) and never conversation content. Claude Code writes each session's transcript
+// as a .jsonl file under projects/ (subagent transcripts too) and its prompt history as
+// history.jsonl; Codex writes its session rollouts under sessions/ and its history as
+// history.jsonl. Memory files under projects/<project>/memory/ are .md, not .jsonl, so they are
+// carried. Like the credential row, this is a NAME rule: content under another name is carried, and
+// the receipt counts what each row excluded, in files and bytes.
+data workspace_transcript_exclusions: List<WorkspaceExclusion> = [
+  WorkspaceExclusion { class: TranscriptExclusion, spelling: "projects/**/*.jsonl", rule: SuffixUnder { ancestor: "projects", suffix: ".jsonl" } },
+  WorkspaceExclusion { class: TranscriptExclusion, spelling: "history.jsonl", rule: SegmentEquals { text: "history.jsonl" } },
+  WorkspaceExclusion { class: TranscriptExclusion, spelling: ".codex/sessions", rule: SegmentPair { parent: ".codex", child: "sessions" } },
+]
+
+// EVERY EXCLUSION THE PACK APPLIES, credentials first: a credential that also looks like a transcript
+// is counted as the credential it is.
+fn workspace_exclusions() -> List<WorkspaceExclusion> {
+  concat(workspace_credential_exclusions, workspace_transcript_exclusions)
+}
 
 fn workspace_exclusion_spellings(exclusions: List<WorkspaceExclusion>) -> String {
   join(map(exclusions, x => x.spelling as String), " ")
@@ -136,6 +169,18 @@ fn workspace_rule_matches_segment(rule: WorkspaceExclusionRule, segment: String,
         Absent => false
         Present { value: up } => up == (p as String) && segment == (c as String)
       }
+    SuffixUnder { ancestor: _, suffix: _ } => false
+  }
+}
+
+// A SUFFIX-UNDER RULE TESTS THE LAST SEGMENT AGAINST ITS SUFFIX AND ANY EARLIER SEGMENT AGAINST ITS
+// ANCESTOR, so projects/<project>/<session>.jsonl and projects/<project>/<session>/subagents/x.jsonl
+// both match while a .jsonl outside projects/ does not.
+fn workspace_suffix_under_matches(ancestor: String, suffix: String, segments: List<String>, seen_ancestor: Bool) -> Bool {
+  match segments {
+    Empty => false
+    Cons { head: s, tail: Empty } => seen_ancestor && ends_with(s: s, suffix: suffix)
+    Cons { head: s, tail: rest } => workspace_suffix_under_matches(ancestor: ancestor, suffix: suffix, segments: rest, seen_ancestor: seen_ancestor || s == ancestor)
   }
 }
 
@@ -154,7 +199,17 @@ fn workspace_path_exclusion(exclusions: List<WorkspaceExclusion>, path: String) 
   match exclusions {
     Empty => none
     Cons { head: x, tail: rest } =>
-      if workspace_segments_match(rule: x.rule, segments: segments, parent: none) { Present { value: x } } else { workspace_path_exclusion(exclusions: rest, path: path) }
+      if workspace_rule_matches_path(rule: x.rule, segments: segments) { Present { value: x } } else { workspace_path_exclusion(exclusions: rest, path: path) }
+  }
+}
+
+fn workspace_rule_matches_path(rule: WorkspaceExclusionRule, segments: List<String>) -> Bool {
+  match rule {
+    SuffixUnder { ancestor: a, suffix: x } => workspace_suffix_under_matches(ancestor: a as String, suffix: x as String, segments: segments, seen_ancestor: false)
+    SegmentEquals { text: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
+    SegmentPrefix { text: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
+    SegmentSuffix { text: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
+    SegmentPair { parent: _, child: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
   }
 }
 
@@ -164,15 +219,15 @@ fn workspace_path_is_build_output(root: WorkspaceSourceRoot, relative: String) -
 
 // ── THE PLAN: WHAT THE ENUMERATION ADMITS INTO THE PACK ────────────────────────────────────────
 //
-// One enumeration line is find's `%y\t%m\t%P\t%l` (shell.Find FilesAndSymlinksWithMode): the type
-// letter, the mode, the root-relative path, the link target. A member is the root's path without its
+// One enumeration line is find's `%y\t%m\t%P\t%l\t%s` (shell.Find FilesAndSymlinksWithMode): the type
+// letter, the mode, the root-relative path, the link target, the size in bytes. A member is the root's path without its
 // leading slash joined to the relative path, so one tar created from "/" holds every root under its
 // own absolute location and two roots never collide.
 type WorkspaceSourceMemberKind = SourceFile | SourceSymlink
 
 type WorkspaceSourceLine
   = WorkspaceSourceMember { member: NonEmptyStr, kind: WorkspaceSourceMemberKind }
-  | WorkspaceSourceExcluded { member: NonEmptyStr, by: WorkspaceExclusion }
+  | WorkspaceSourceExcluded { member: NonEmptyStr, by: WorkspaceExclusion, bytes: Int }
   | WorkspaceSourceBuildOutput { member: NonEmptyStr }
   | WorkspaceSourceUnparsed { line: String }
 
@@ -184,13 +239,13 @@ fn workspace_root_member(root: WorkspaceSourceRoot, relative: String) -> String 
 
 fn workspace_source_line(root: WorkspaceSourceRoot, exclusions: List<WorkspaceExclusion>, line: String) -> WorkspaceSourceLine {
   match split(line, separator: "\t") {
-    Cons { head: kind, tail: Cons { head: _, tail: Cons { head: relative, tail: Cons { head: _, tail: Empty } } } } =>
-      if relative == "" {
+    Cons { head: kind, tail: Cons { head: _, tail: Cons { head: relative, tail: Cons { head: _, tail: Cons { head: size_text, tail: Empty } } } } } =>
+      if relative == "" || !workspace_is_int(text: size_text) {
         WorkspaceSourceUnparsed { line: line }
       } else {
         let member = workspace_root_member(root: root, relative: relative) as NonEmptyStr
         match workspace_path_exclusion(exclusions: exclusions, path: member as String) {
-          Present { value: x } => WorkspaceSourceExcluded { member: member, by: x }
+          Present { value: x } => WorkspaceSourceExcluded { member: member, by: x, bytes: match parse_int(s: size_text) { Present { value: n } => n  Absent => 0 } }
           Absent =>
             if workspace_path_is_build_output(root: root, relative: relative) {
               WorkspaceSourceBuildOutput { member: member }
@@ -213,8 +268,38 @@ type WorkspaceSourceTally {
   files: Int
   symlinks: Int
   excluded: Int
+  excluded_credentials: Int
+  excluded_credential_members: List<NonEmptyStr>
+  excluded_credential_bytes: ByteSize
+  excluded_transcripts: Int
+  excluded_transcript_bytes: ByteSize
   build_output: Int
   unparsed: List<String>
+}
+
+fn workspace_is_int(text: String) -> Bool {
+  match parse_int(s: text) { Present { value: _ } => true  Absent => false }
+}
+
+fn workspace_some(x: Int?) -> Bool {
+  match x { Present { value: _ } => true  Absent => false }
+}
+
+fn workspace_exclusion_class_eq(a: WorkspaceExclusionClass, b: WorkspaceExclusionClass) -> Bool {
+  match a {
+    CredentialExclusion => match b { CredentialExclusion => true  TranscriptExclusion => false }
+    TranscriptExclusion => match b { CredentialExclusion => false  TranscriptExclusion => true }
+  }
+}
+
+// The bytes an excluded line withheld, when its exclusion is of the given class.
+fn workspace_line_excluded_bytes(line: WorkspaceSourceLine, class: WorkspaceExclusionClass) -> Int? {
+  match line {
+    WorkspaceSourceExcluded { member: _, by: x, bytes: n } => if workspace_exclusion_class_eq(a: x.class, b: class) { Present { value: n } } else { none }
+    WorkspaceSourceMember { member: _, kind: _ } => none
+    WorkspaceSourceBuildOutput { member: _ } => none
+    WorkspaceSourceUnparsed { line: _ } => none
+  }
 }
 
 fn workspace_source_tally(root: WorkspaceSourceRoot, exclusions: List<WorkspaceExclusion>, listing: String) -> WorkspaceSourceTally {
@@ -222,18 +307,28 @@ fn workspace_source_tally(root: WorkspaceSourceRoot, exclusions: List<WorkspaceE
   WorkspaceSourceTally {
     members: flat_map(lines, l => match l {
       WorkspaceSourceMember { member: m, kind: _ } => [m]
-      WorkspaceSourceExcluded { member: _, by: _ } => []
+      WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => []
       WorkspaceSourceBuildOutput { member: _ } => []
       WorkspaceSourceUnparsed { line: _ } => []
     }),
-    files: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceFile } => true  WorkspaceSourceMember { member: _, kind: SourceSymlink } => false  WorkspaceSourceExcluded { member: _, by: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
-    symlinks: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceSymlink } => true  WorkspaceSourceMember { member: _, kind: SourceFile } => false  WorkspaceSourceExcluded { member: _, by: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
-    excluded: length(filter(lines, l => match l { WorkspaceSourceExcluded { member: _, by: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
-    build_output: length(filter(lines, l => match l { WorkspaceSourceBuildOutput { member: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceExcluded { member: _, by: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    files: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceFile } => true  WorkspaceSourceMember { member: _, kind: SourceSymlink } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    symlinks: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceSymlink } => true  WorkspaceSourceMember { member: _, kind: SourceFile } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    excluded: length(filter(lines, l => match l { WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    excluded_credentials: length(filter(lines, l => workspace_some(x: workspace_line_excluded_bytes(line: l, class: CredentialExclusion)))),
+    excluded_credential_members: flat_map(lines, l => match l {
+      WorkspaceSourceExcluded { member: m, by: x, bytes: _ } => if workspace_exclusion_class_eq(a: x.class, b: CredentialExclusion) { [m] } else { [] }
+      WorkspaceSourceMember { member: _, kind: _ } => []
+      WorkspaceSourceBuildOutput { member: _ } => []
+      WorkspaceSourceUnparsed { line: _ } => []
+    }),
+    excluded_credential_bytes: byte_size(count: fold(lines, init: 0, f: (acc, l) => acc + match workspace_line_excluded_bytes(line: l, class: CredentialExclusion) { Present { value: n } => n  Absent => 0 })),
+    excluded_transcripts: length(filter(lines, l => workspace_some(x: workspace_line_excluded_bytes(line: l, class: TranscriptExclusion)))),
+    excluded_transcript_bytes: byte_size(count: fold(lines, init: 0, f: (acc, l) => acc + match workspace_line_excluded_bytes(line: l, class: TranscriptExclusion) { Present { value: n } => n  Absent => 0 })),
+    build_output: length(filter(lines, l => match l { WorkspaceSourceBuildOutput { member: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
     unparsed: flat_map(lines, l => match l {
       WorkspaceSourceUnparsed { line: t } => [t]
       WorkspaceSourceMember { member: _, kind: _ } => []
-      WorkspaceSourceExcluded { member: _, by: _ } => []
+      WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => []
       WorkspaceSourceBuildOutput { member: _ } => []
     }),
   }
@@ -315,7 +410,7 @@ fn workspace_source_enumerate(root: WorkspaceSourceRoot) -> WorkspaceSourceEnume
       ], ""),
     }
   } else {
-    let tally = workspace_source_tally(root: root, exclusions: workspace_credential_exclusions, listing: listing.stdout)
+    let tally = workspace_source_tally(root: root, exclusions: workspace_exclusions(), listing: listing.stdout)
     match tally.unparsed {
       Empty => WorkspaceSourceEnumerated { root: root, tally: tally }
       Cons { head: first_line, tail: _ } => WorkspaceSourceUnreadable { root: root, detail: join(["the enumeration printed a line that is not a file or symlink record: ", first_line], "") }
@@ -344,7 +439,7 @@ fn workspace_source_tallies(enumerations: List<WorkspaceSourceEnumeration>) -> L
 fn workspace_tally_line(e: WorkspaceSourceEnumeration) -> String {
   match e {
     WorkspaceSourceEnumerated { root: r, tally: t } =>
-      join(["root ", r.label as String, " path=", r.path as String, " files=", to_string(t.files), " symlinks=", to_string(t.symlinks), " excluded=", to_string(t.excluded), " build_output=", to_string(t.build_output)], "")
+      join(["root ", r.label as String, " path=", r.path as String, " files=", to_string(t.files), " symlinks=", to_string(t.symlinks), " excluded=", to_string(t.excluded), " excluded_credentials=", to_string(t.excluded_credentials), " excluded_credential_bytes=", to_string(measure_count(m: t.excluded_credential_bytes)), " excluded_credential_paths=", join(map(t.excluded_credential_members, m => m as String), ","), " excluded_transcripts=", to_string(t.excluded_transcripts), " excluded_transcript_bytes=", to_string(measure_count(m: t.excluded_transcript_bytes)), " build_output=", to_string(t.build_output)], "")
     WorkspaceSourceUnreadable { root: r, detail: _ } => join(["root ", r.label as String, " path=", r.path as String, " UNREADABLE"], "")
   }
 }
@@ -373,6 +468,7 @@ fn workspace_source_receipt_head(enumerations: List<WorkspaceSourceEnumeration>)
   join([
     "workspace_source_pack host=", workspace_source_pack_host as String, "\n",
     "credential_exclusions=", workspace_exclusion_spellings(exclusions: workspace_credential_exclusions), "\n",
+    "transcript_exclusions=", workspace_exclusion_spellings(exclusions: workspace_transcript_exclusions), "\n",
     join(map(enumerations, e => workspace_tally_line(e: e)), "\n"), "\n",
   ], "")
 }
@@ -435,7 +531,7 @@ fn workspace_source_pack_readable(head: String, tallies: List<WorkspaceSourceTal
               if o.exit_code != 0 {
                 workspace_source_finish(receipt: concat(head, "verdict=refused-readback-failed\n"), outcome: exit_failure(reason: concat("workspace_source_pack: tar -tf refused: ", o.stderr)))
               } else {
-                match workspace_pack_readback(exclusions: workspace_credential_exclusions, archive_listing: o.stdout) {
+                match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: o.stdout) {
                   WorkspacePackCarriesExcluded { member: m, by: x } => {
                     let removed = shell.Remove.RecursiveForce(path: staging.path)
                     workspace_source_finish(receipt: join([head, "verdict=refused-excluded-member member=", m as String, " rule=", x.spelling as String, " archive_removed=", if removed.success { "yes" } else { "no" }, "\n"], ""), outcome: exit_failure(reason: join(["workspace_source_pack: the archive carries ", m as String, ", which the credential exclusion ", x.spelling as String, " names; nothing was uploaded"], "")))
