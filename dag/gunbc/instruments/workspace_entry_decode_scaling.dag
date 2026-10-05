@@ -1,0 +1,127 @@
+module gunbc.instruments.workspace_entry_decode_scaling
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import v2.std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { byte_size }
+import std.content_hash { sha256_hex_digest }
+import std.fabric_blob { FabricBlobAddress }
+import std.checkpointed_workspace { WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceRevision, workspace_head_entry_object, workspace_head_entry_decode }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// THE COST CONTROL FOR std.checkpointed_workspace's HEAD-ENTRY DECODER, RE-RUN BY NAME:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/workspace_entry_decode_scaling.dag --function decode_scaling
+// It decodes revisions of 250, 1,000 and 4,000 entries whose paths are non-ASCII (accented, CJK and
+// astral code points, with the body's own delimiters inside them) -- the input a host-text decoder
+// is quadratic on -- times each decode on this process's monotonic clock, and judges each 4x step.
+// A linear decode grows about 4x per step; a quadratic one about 16x. The receipt is written to
+// workspace_entry_decode_scaling_receipt_path and the run exits nonzero unless every step is within
+// the linear bound. The numbers live in the receipt, never in prose (DESIGN 6).
+//
+// It is an instrument, not a merge-path claim: a wall-clock ratio is a measurement of this process
+// on this machine, so it runs by name. Its judgement, decode_scaling_verdict, is pure and is
+// claimed hermetically (test.claim.workspace_checkpoint_instrument) with a quadratic red.
+
+data workspace_entry_decode_scaling_receipt_path: String = "target/workspace-entry-decode-scaling.txt"
+
+data decode_scaling_sizes: List<Int> = [250, 1000, 4000]
+
+// A 4x STEP IS LINEAR WHILE ITS TIME GROWS AT MOST 6x: the bound sits between linear (4x) and
+// quadratic (16x) with room for measurement noise on either side.
+data decode_scaling_step_bound_ratio: Int = 6
+
+type DecodeScalingStep {
+  entries: Int
+  nanos: Int
+}
+
+type DecodeScalingVerdict
+  = DecodeScalingLinear { steps: List<DecodeScalingStep> }
+  | DecodeScalingSuperlinear { from: DecodeScalingStep, to: DecodeScalingStep }
+  | DecodeScalingIncorrect { entries: Int }
+
+fn decode_scaling_first_breach(steps: List<DecodeScalingStep>) -> DecodeScalingVerdict? {
+  match steps {
+    Empty => none
+    Cons { head: _, tail: Empty } => none
+    Cons { head: a, tail: Cons { head: b, tail: rest } } =>
+      if b.nanos > a.nanos * decode_scaling_step_bound_ratio {
+        Present { value: DecodeScalingSuperlinear { from: a, to: b } }
+      } else {
+        decode_scaling_first_breach(steps: Cons { head: b, tail: rest })
+      }
+  }
+}
+
+fn decode_scaling_verdict(steps: List<DecodeScalingStep>) -> DecodeScalingVerdict {
+  match decode_scaling_first_breach(steps: steps) {
+    Present { value: v } => v
+    Absent => DecodeScalingLinear { steps: steps }
+  }
+}
+
+fn decode_scaling_address() -> FabricBlobAddress? {
+  match sha256_hex_digest(hex: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc") {
+    Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+    Absent => none
+  }
+}
+
+fn decode_scaling_entries(n: Int, chunk: FabricBlobAddress, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry> {
+  if n <= 0 { acc } else { decode_scaling_entries(n: n - 1, chunk: chunk, acc: Cons { head: WorkspaceEntry { path: join(["caf\u{e9}/\u{4e2d}\u{6587} ", to_string(n), ";\u{1f600}:x.txt"], "") as NonEmptyStr, chunk: chunk, size: byte_size(count: 3) }, tail: acc }) }
+}
+
+// ONE TIMED DECODE: the object is encoded before the clock starts, so only the decode is timed; a
+// decode that does not return every entry is recorded as incorrect rather than timed.
+type DecodeScalingRun
+  = DecodeScalingTimed { step: DecodeScalingStep }
+  | DecodeScalingWrong { entries: Int }
+
+fn decode_scaling_run(n: Int, chunk: FabricBlobAddress) -> DecodeScalingRun {
+  let object = workspace_head_entry_object(entry: WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: "\u{e9}quipe", epoch: 1 }, parent: none, entries: decode_scaling_entries(n: n, chunk: chunk, acc: []) })
+  let start = observed_monotonic_nanos(join(["decode-scaling-start-", to_string(n)], ""))
+  let decoded = workspace_head_entry_decode(object: object)
+  let nanos = observed_monotonic_nanos(join(["decode-scaling-end-", to_string(n)], "")) - start
+  match decoded {
+    Present { value: WorkspaceRevision { writer: _, parent: _, entries: es } } =>
+      if length(es) == n { DecodeScalingTimed { step: DecodeScalingStep { entries: n, nanos: nanos } } } else { DecodeScalingWrong { entries: n } }
+    Present { value: _ } => DecodeScalingWrong { entries: n }
+    Absent => DecodeScalingWrong { entries: n }
+  }
+}
+
+fn decode_scaling_step_words(s: DecodeScalingStep) -> String {
+  join(["entries=", to_string(s.entries), " decode_ms=", to_string(s.nanos / 1000000)], "")
+}
+
+fn decode_scaling_verdict_words(v: DecodeScalingVerdict) -> String {
+  match v {
+    DecodeScalingLinear { steps: _ } => join(["verdict=linear bound_ratio=", to_string(decode_scaling_step_bound_ratio)], "")
+    DecodeScalingSuperlinear { from: a, to: b } => join(["verdict=SUPERLINEAR from ", decode_scaling_step_words(s: a), " to ", decode_scaling_step_words(s: b), " bound_ratio=", to_string(decode_scaling_step_bound_ratio)], "")
+    DecodeScalingIncorrect { entries: n } => join(["verdict=INCORRECT the decode of ", to_string(n), " entries did not return them all"], "")
+  }
+}
+
+fn decode_scaling() -> ProcessExit {
+  match decode_scaling_address() {
+    Absent => exit_failure(reason: "decode_scaling: the fixture chunk address did not parse")
+    Present { value: chunk } => {
+      let runs = map(decode_scaling_sizes, n => decode_scaling_run(n: n, chunk: chunk))
+      let wrong = flat_map(runs, r => match r { DecodeScalingWrong { entries: n } => [n]  DecodeScalingTimed { step: _ } => [] })
+      let steps = flat_map(runs, r => match r { DecodeScalingTimed { step: s } => [s]  DecodeScalingWrong { entries: _ } => [] })
+      let verdict = match wrong { Cons { head: n, tail: _ } => DecodeScalingIncorrect { entries: n }  Empty => decode_scaling_verdict(steps: steps) }
+      let receipt = join([
+        "workspace_entry_decode_scaling paths=non-ascii\n",
+        join(map(steps, s => decode_scaling_step_words(s: s)), "\n"), "\n",
+        decode_scaling_verdict_words(v: verdict), "\n",
+      ], "")
+      let w = Filesystem.Write(path: workspace_entry_decode_scaling_receipt_path, content: receipt)
+      match verdict {
+        DecodeScalingLinear { steps: _ } => if w.success { ExitSuccess } else { exit_failure(reason: concat("decode_scaling: receipt write failed\n", receipt)) }
+        DecodeScalingSuperlinear { from: _, to: _ } => exit_failure(reason: concat("decode_scaling: the decode is not linear\n", receipt))
+        DecodeScalingIncorrect { entries: _ } => exit_failure(reason: concat("decode_scaling: the decode is wrong\n", receipt))
+      }
+    }
+  }
+}

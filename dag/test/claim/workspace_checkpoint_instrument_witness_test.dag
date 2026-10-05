@@ -18,6 +18,7 @@ import std.checkpointed_workspace {
 }
 import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault }
 import extdeps.tools.kopia { kopia_snapshot_summary_of }
+import gunbc.instruments.workspace_entry_decode_scaling { DecodeScalingStep, decode_scaling_verdict, DecodeScalingLinear, DecodeScalingSuperlinear, DecodeScalingIncorrect }
 import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded, R2HeadAdvanceKnown, R2HeadAdvancedTo, R2HeadStagingCustody }
@@ -365,4 +366,18 @@ test fn residue_survives_a_committed_advance_into_the_exit() -> Bool {
   }
   let clean = match workspace_exit_with_custody(outcome: ExitSuccess, custody: workspace_custody_clean) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
   dirty && clean
+}
+
+// THE DECODE COST CONTROL'S JUDGEMENT (gunbc.instruments.workspace_entry_decode_scaling): 4x steps
+// at about 4x time are linear; a 16x step -- the shape a quadratic decode produces -- is the red.
+test fn the_decode_scaling_verdict_refuses_a_quadratic_step() -> Bool {
+  let linear = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, nanos: 271000000 }, DecodeScalingStep { entries: 1000, nanos: 1098000000 }, DecodeScalingStep { entries: 4000, nanos: 4537000000 }]) {
+    DecodeScalingLinear { steps: _ } => true
+    other => false
+  }
+  let quadratic = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, nanos: 113000000 }, DecodeScalingStep { entries: 1000, nanos: 1379000000 }, DecodeScalingStep { entries: 4000, nanos: 20206000000 }]) {
+    DecodeScalingSuperlinear { from: a, to: _ } => a.entries == 250
+    other => false
+  }
+  linear && quadratic
 }

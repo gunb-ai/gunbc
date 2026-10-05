@@ -132,7 +132,8 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
 // char_at / substring lack (O(offset) on non-ASCII in the interpreter and on all text in emitted
 // Rust). Length prefixes count code points, matching length() in workspace_head_entry_object.
 // Entries are prepended and reversed once, and the walk is tail-recursive (DESIGN 6, bare minimum
-// cost).
+// cost). The cost control re-runs by name: gunbc.instruments.workspace_entry_decode_scaling
+// decode_scaling (non-ASCII paths at three sizes, judged per 4x step).
 type WorkspaceBodyField {
   value: String
   next: Int
