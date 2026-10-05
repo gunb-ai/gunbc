@@ -614,7 +614,9 @@ test fn field_list_absent_value_renders_the_mark_with_its_reason() -> Bool {
 // the Label and Body roles, and single-line values cut with an ellipsis.
 test fn field_list_rules_draw_one_pitch_a_fixed_label_column_and_single_line_values() -> Bool {
   let css = serialize_rules(rules: field_list_rules())
-  has(s: css, pattern: ".el-field-list-row { display: grid; grid-template-columns: clamp(var(--w-field-label-min), 23%, var(--w-field-label-max)) minmax(0, 1fr); column-gap: var(--space-10); align-items: start; min-height: var(--h-field-row);")
+  has(s: css, pattern: ".el-field-list { display: grid; grid-template-columns: minmax(var(--w-field-label-min), max-content) minmax(0, 1fr); column-gap: var(--space-10);")
+    && has(s: css, pattern: ".el-field-list-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: start; min-height: var(--h-field-row);")
+    && has(s: css, pattern: "max-width: var(--w-field-label-max); white-space: nowrap }")
     && has(s: css, pattern: ".el-field-list-text { display: block; position: relative; min-width: var(--space-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }")
     && has(s: css, pattern: "min-height: var(--h-button-small)")
     && has(s: css, pattern: ".el-field-list-face { display: inline-flex; flex: none; width: var(--h-field-avatar); height: var(--h-field-avatar); border-radius: var(--radius-999)")
