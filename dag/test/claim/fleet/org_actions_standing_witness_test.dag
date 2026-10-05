@@ -28,7 +28,7 @@ data grp_other_open: ObservedGroupAccess = ObservedGroupAccess {
   repositories: ["gunb-ai/some-other-repo"],
 }
 
-test fn witness_desired_rows_demand_fleet_reach() -> Bool {
+test fn witness_desired_rows_demand_fleet_reach() -> Bool  {
   fold(desired_repo_access, init: true, f: fn(acc, r) { acc && r.must_reach_fleet })
     && observed_admits(groups: [grp_private_closed], repository: "gunb-ai/gunbc-private")
     && !observed_admits(groups: [grp_private_closed], repository: "gunb-ai/gunbc")
@@ -63,14 +63,14 @@ data grp_both_closed: ObservedGroupAccess = ObservedGroupAccess {
   repositories: ["gunb-ai/gunbc", "gunb-ai/gunbc-private"],
 }
 
-test fn witness_assessment_satisfied_when_every_desired_repo_is_admitted_privately() -> Bool {
+test fn witness_assessment_satisfied_when_every_desired_repo_is_admitted_privately() -> Bool  {
   match assess_org_actions(goal: desired_org_actions_goal, observed: [grp_both_closed]) {
     GoalSatisfied { evidence } => evidence.repositories_checked == count(desired_repo_access)
     _ => false
   }
 }
 
-test fn witness_assessment_names_the_unadmitted_and_the_exposed_repository() -> Bool {
+test fn witness_assessment_names_the_unadmitted_and_the_exposed_repository() -> Bool  {
   let a = assess_org_actions(goal: desired_org_actions_goal, observed: [grp_private_open])
   admission_diverges_for(a: a, repository: "gunb-ai/gunbc")
     && exposure_diverges_for(a: a, repository: "gunb-ai/gunbc-private")
@@ -79,7 +79,7 @@ test fn witness_assessment_names_the_unadmitted_and_the_exposed_repository() -> 
 
 // An organization with no runner groups is an established empty list, and the assessor must
 // convict every must-reach row rather than read nothing as agreement.
-test fn witness_assessment_of_no_groups_diverges_rather_than_agrees() -> Bool {
+test fn witness_assessment_of_no_groups_diverges_rather_than_agrees() -> Bool  {
   let a = assess_org_actions(goal: desired_org_actions_goal, observed: [])
   admission_diverges_for(a: a, repository: "gunb-ai/gunbc")
     && admission_diverges_for(a: a, repository: "gunb-ai/gunbc-private")
@@ -87,7 +87,7 @@ test fn witness_assessment_of_no_groups_diverges_rather_than_agrees() -> Bool {
 
 // Public exposure is convicted only by a group that ADMITS the repository (review 57611): a
 // public-allowing group serving some other repository can neither convict nor acquit.
-test fn witness_exposure_is_convicted_only_by_the_serving_group() -> Bool {
+test fn witness_exposure_is_convicted_only_by_the_serving_group() -> Bool  {
   let a = assess_org_actions(goal: desired_org_actions_goal, observed: [grp_private_closed, grp_other_open])
   !exposure_diverges_for(a: a, repository: "gunb-ai/gunbc-private")
     && admission_diverges_for(a: a, repository: "gunb-ai/gunbc")
@@ -95,7 +95,7 @@ test fn witness_exposure_is_convicted_only_by_the_serving_group() -> Bool {
 
 // The other direction of the comparison (review 57611): a row FORBIDDING fleet reach that is
 // observed admitted anyway diverges, and is never read as holding merely because it is admitted.
-test fn witness_forbidden_row_admitted_anyway_diverges() -> Bool {
+test fn witness_forbidden_row_admitted_anyway_diverges() -> Bool  {
   let goal = OrgActionsGoal {
     access: [RepoRunnerAccess { repository: "gunb-ai/gunbc-private", must_reach_fleet: false, reason: "probe: forbidden-access row" }],
     allows_public_repositories: false,

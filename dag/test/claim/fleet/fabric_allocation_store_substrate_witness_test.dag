@@ -68,7 +68,7 @@ fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestat
   }
 }
 
-test fn witness_allocation_store_substrate_is_exact_root_only_desired_state() -> Bool {
+test fn witness_allocation_store_substrate_is_exact_root_only_desired_state() -> Bool  {
   let spec = fabric_allocation_store_substrate_spec()
   spec.path as String == "/var/lib/gunbc/fabric/allocation"
     && spec.namespace_path as String == "/var/lib/gunbc/fabric"
@@ -82,13 +82,13 @@ test fn witness_allocation_store_substrate_is_exact_root_only_desired_state() ->
     }
 }
 
-test fn witness_allocation_store_scope_is_distinct() -> Bool {
+test fn witness_allocation_store_scope_is_distinct() -> Bool  {
   fleet_converge_scope_matches(planned: FabricAllocationStoreOnly, observed: FabricAllocationStoreOnly)
 }
 
 // Rendering regression net: positive exact content is required before absence checks, so a
 // renderer vocabulary change refuses rather than making the negative checks vacuously green.
-test fn witness_allocation_store_plan_names_exact_substrate_without_cell_or_host_families() -> Bool {
+test fn witness_allocation_store_plan_names_exact_substrate_without_cell_or_host_families() -> Bool  {
   let spec = fabric_allocation_store_substrate_spec()
   match allocation_store_absent_fixture() {
     Absent => false
@@ -119,7 +119,7 @@ test fn witness_allocation_store_plan_names_exact_substrate_without_cell_or_host
   }
 }
 
-test fn witness_allocation_store_present_wrong_attributes_are_typed_and_located() -> Bool {
+test fn witness_allocation_store_present_wrong_attributes_are_typed_and_located() -> Bool  {
   let spec = fabric_allocation_store_substrate_spec()
   match allocation_store_directory_present(
     path: spec.path,
@@ -146,7 +146,7 @@ test fn witness_allocation_store_present_wrong_attributes_are_typed_and_located(
   }
 }
 
-test fn witness_allocation_store_prestate_drift_refuses_with_typed_location() -> Bool {
+test fn witness_allocation_store_prestate_drift_refuses_with_typed_location() -> Bool  {
   let spec = fabric_allocation_store_substrate_spec()
   match allocation_store_absent_fixture() {
     Absent => false
@@ -192,7 +192,7 @@ test fn witness_allocation_store_prestate_drift_refuses_with_typed_location() ->
   }
 }
 
-test fn witness_allocation_store_target_prestate_drift_remains_refusing() -> Bool {
+test fn witness_allocation_store_target_prestate_drift_remains_refusing() -> Bool  {
   let spec = fabric_allocation_store_substrate_spec()
   let namespace = allocation_store_directory_present(
     path: spec.namespace_path,

@@ -285,7 +285,7 @@ fn fx_measured_group_all_agree() -> CollectiveGroupMeasured {
   }
 }
 
-test fn a_fully_read_agreeing_node_is_qualified() -> Bool {
+test fn a_fully_read_agreeing_node_is_qualified() -> Bool  {
   match fx_admit_host(m: fx_agreeing_host_measured(host: fx_node)) {
     HostQualified { receipt: _ } => true
     HostNotQualified { receipt: _, refusals: _ } => false
@@ -384,7 +384,7 @@ fn fx_admit_group_for(
   )
 }
 
-test fn unread_evidence_is_not_qualification() -> Bool {
+test fn unread_evidence_is_not_qualification() -> Bool  {
   let unread_host = HostMeasuredDelivery {
     accelerator_count: CountUnread { because: "cudaGetDeviceCount not run" as NonEmptyStr },
     usable_memory: ByteSizeUnread { because: "memory query not run" as NonEmptyStr },
@@ -421,7 +421,7 @@ test fn unread_evidence_is_not_qualification() -> Bool {
   }
 }
 
-test fn equal_aggregate_is_not_equal_link_mode() -> Bool {
+test fn equal_aggregate_is_not_equal_link_mode() -> Bool  {
   bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr2))
     == bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr4))
     && !link_mode_eq(a: ieee_100gbase_cr2, b: ieee_100gbase_cr4)
@@ -436,7 +436,7 @@ test fn equal_aggregate_is_not_equal_link_mode() -> Bool {
     }
 }
 
-test fn realized_50g_against_advertised_100g_cr2_falls_short() -> Bool {
+test fn realized_50g_against_advertised_100g_cr2_falls_short() -> Bool  {
   match qualify_rail_link_mode(
     advertised: ieee_100gbase_cr2,
     reading: LinkModeRead { mode: ieee_50gbase_cr2, instrument: EthtoolLinkModes },
@@ -448,7 +448,7 @@ test fn realized_50g_against_advertised_100g_cr2_falls_short() -> Bool {
   }
 }
 
-test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
+test fn fewer_accelerators_than_advertised_falls_short() -> Bool  {
   match qualify_accelerator_count(advertised: 4, reading: CountRead { count: 3 }) {
     AcceleratorCountFallsShort { advertised: a, measured: m } => a == 4 && m == 3
     AcceleratorCountAgrees { count: _ } => false
@@ -456,7 +456,7 @@ test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
   }
 }
 
-test fn group_b_live_receipt_is_not_qualified() -> Bool {
+test fn group_b_live_receipt_is_not_qualified() -> Bool  {
   match group_b_host_admission() {
     HostQualified { receipt: _ } => false
     HostNotQualified { receipt: r, refusals: refusals } =>
@@ -487,7 +487,7 @@ test fn group_b_live_receipt_is_not_qualified() -> Bool {
   }
 }
 
-test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
+test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool  {
   match group_b_group_measured.collective {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
@@ -548,7 +548,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
   }
 }
 
-test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
+test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool  {
   match group_b_group_measured.collective {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
@@ -592,7 +592,7 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
   }
 }
 
-test fn a_discrete_adapter_x16_brief_is_ungrounded_not_a_node_shortfall() -> Bool {
+test fn a_discrete_adapter_x16_brief_is_ungrounded_not_a_node_shortfall() -> Bool  {
   match qualify_nic_pcie(
     advertised: AdvertisedDiscreteAdapterSku {
       sku: "ConnectX-7 x16 adapter brief" as NonEmptyStr,
@@ -609,7 +609,7 @@ test fn a_discrete_adapter_x16_brief_is_ungrounded_not_a_node_shortfall() -> Boo
   }
 }
 
-test fn spark_per_port_attachment_does_not_admit_a_caller_x16() -> Bool {
+test fn spark_per_port_attachment_does_not_admit_a_caller_x16() -> Bool  {
   match qualify_nic_pcie(
     advertised: AdvertisedSparkConnectX7PerPort,
     reading: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
@@ -624,7 +624,7 @@ test fn spark_per_port_attachment_does_not_admit_a_caller_x16() -> Bool {
   }
 }
 
-test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool {
+test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool  {
   match claimed_delivery_check(claim: group_b_delivery_claim) {
     ClaimedDeliveryUnqualified { refusals: r } => r.length() > 0
     ClaimedDeliveryHolds => false
@@ -632,7 +632,7 @@ test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool {
   }
 }
 
-test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
+test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool  {
   symmetry_because(
     s: qualify_rank_symmetry(
       expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -645,7 +645,7 @@ test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
   )
 }
 
-test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
+test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool  {
   match fx_admit_group_for(
     advertised: fx_advertised_group(),
     measured: fx_measured_group_all_agree(),
@@ -668,7 +668,7 @@ test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
   }
 }
 
-test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> Bool {
+test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> Bool  {
   match fx_admit_group_for(
     advertised: fx_advertised_group(),
     measured: fx_measured_group_all_agree(),
@@ -684,7 +684,7 @@ test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> B
   }
 }
 
-test fn failing_host_receipts_wrapped_as_host_qualified_do_not_complete_the_roster() -> Bool {
+test fn failing_host_receipts_wrapped_as_host_qualified_do_not_complete_the_roster() -> Bool  {
   match fx_admit_group_for(
     advertised: fx_advertised_group(),
     measured: fx_measured_group_all_agree(),
@@ -715,7 +715,7 @@ test fn failing_host_receipts_wrapped_as_host_qualified_do_not_complete_the_rost
   }
 }
 
-test fn a_copied_group_curve_labelled_rank_local_is_unread() -> Bool {
+test fn a_copied_group_curve_labelled_rank_local_is_unread() -> Bool  {
   symmetry_because(
     s: qualify_rank_symmetry(
       expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -729,7 +729,7 @@ test fn a_copied_group_curve_labelled_rank_local_is_unread() -> Bool {
   )
 }
 
-test fn a_copied_group_curve_is_not_rank_local() -> Bool {
+test fn a_copied_group_curve_is_not_rank_local() -> Bool  {
   symmetry_because(
     s: qualify_rank_symmetry(
       expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -747,7 +747,7 @@ test fn a_copied_group_curve_is_not_rank_local() -> Bool {
   )
 }
 
-test fn duplicate_expected_ranks_are_unread_not_symmetric() -> Bool {
+test fn duplicate_expected_ranks_are_unread_not_symmetric() -> Bool  {
   symmetry_because(
     s: qualify_rank_symmetry(
       expected: ["rank-0" as HostIdentity, "rank-0" as HostIdentity],
@@ -760,7 +760,7 @@ test fn duplicate_expected_ranks_are_unread_not_symmetric() -> Bool {
   )
 }
 
-test fn rank_curves_with_a_different_protocol_are_unread() -> Bool {
+test fn rank_curves_with_a_different_protocol_are_unread() -> Bool  {
   symmetry_because(
     s: qualify_rank_symmetry(
       expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -778,7 +778,7 @@ test fn rank_curves_with_a_different_protocol_are_unread() -> Bool {
   )
 }
 
-test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
+test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool  {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 100000),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -789,7 +789,7 @@ test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
   }
 }
 
-test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
+test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool  {
   let measured = fx_measured_group_all_agree()
   let ib_gap = CollectiveGroupMeasured {
     collective: measured.collective,
@@ -811,7 +811,7 @@ test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
   }
 }
 
-test fn unread_dtypes_do_not_compare_equal() -> Bool {
+test fn unread_dtypes_do_not_compare_equal() -> Bool  {
   let unread = CollectiveProtocol {
     instrument: NcclTestsAllReducePerf,
     size_semantics: EachRankContributesTheSizeColumn,
@@ -825,11 +825,11 @@ test fn unread_dtypes_do_not_compare_equal() -> Bool {
   } && !protocol_eq(a: unread, b: unread)
 }
 
-test fn nccl_tests_printed_busbw_inhabits_bits_per_second() -> Bool {
+test fn nccl_tests_printed_busbw_inhabits_bits_per_second() -> Bool  {
   bandwidth_count(b: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 110000000)) == 880000000
 }
 
-test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread() -> Bool {
+test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread() -> Bool  {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -845,7 +845,7 @@ test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread()
   }
 }
 
-test fn a_protocol_rank_count_that_is_not_the_roster_is_unread() -> Bool {
+test fn a_protocol_rank_count_that_is_not_the_roster_is_unread() -> Bool  {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity, "rank-2" as HostIdentity, "rank-3" as HostIdentity],
@@ -856,7 +856,7 @@ test fn a_protocol_rank_count_that_is_not_the_roster_is_unread() -> Bool {
   }
 }
 
-test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
+test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool  {
   match group_b_group_admission() {
     GroupQualified { receipt: _ } => false
     GroupNotQualified { receipt: r, refusals: _ } =>
@@ -873,7 +873,7 @@ test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
   }
 }
 
-test fn a_positive_admission_relabeled_as_another_offer_is_refused() -> Bool {
+test fn a_positive_admission_relabeled_as_another_offer_is_refused() -> Bool  {
   match claimed_delivery_check(
     claim: OfferClaimsNodeDelivery {
       offer: FabricIdentity { principal: WitnessOther, key: "same-key" },
@@ -897,13 +897,13 @@ test fn a_positive_admission_relabeled_as_another_offer_is_refused() -> Bool {
   }
 }
 
-test fn a_failing_group_receipt_wrapped_as_group_qualified_is_refused() -> Bool {
+test fn a_failing_group_receipt_wrapped_as_group_qualified_is_refused() -> Bool  {
   group_admission_refusals(
     a: GroupQualified { receipt: fx_positive_group_receipt(offer: fx_offer_a()) },
   ).length() > 0
 }
 
-test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool {
+test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool  {
   let unread = qualify_host(
     node: fx_node,
     advertised: fx_advertised_host(),
@@ -918,7 +918,7 @@ test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool {
   host_admission_refusals(a: HostQualified { receipt: unread }).length() > 0
 }
 
-test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
+test fn a_curve_from_another_four_host_roster_is_unread() -> Bool  {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -944,7 +944,7 @@ test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
   }
 }
 
-test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
+test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool  {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -971,7 +971,7 @@ test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
   }
 }
 
-test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool {
+test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool  {
   match qualify_gpu_direct(
     node: fx_node,
     platform: spark_gb10_platform,
@@ -989,7 +989,7 @@ test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool {
   }
 }
 
-test fn an_unread_gpu_direct_receipt_is_not_host_qualification() -> Bool {
+test fn an_unread_gpu_direct_receipt_is_not_host_qualification() -> Bool  {
   match fx_admit_host(
     m: HostMeasuredDelivery {
       accelerator_count: CountRead { count: 4 },
@@ -1011,7 +1011,7 @@ test fn an_unread_gpu_direct_receipt_is_not_host_qualification() -> Bool {
   }
 }
 
-test fn a_gdr_receipt_from_another_host_does_not_qualify() -> Bool {
+test fn a_gdr_receipt_from_another_host_does_not_qualify() -> Bool  {
   match admit_qualified_host(
     receipt: qualify_host(
       node: fx_node_b,
@@ -1034,7 +1034,7 @@ test fn a_gdr_receipt_from_another_host_does_not_qualify() -> Bool {
   }
 }
 
-test fn a_gdr_receipt_from_another_host_wrapped_as_host_qualified_does_not_complete_the_roster() -> Bool {
+test fn a_gdr_receipt_from_another_host_wrapped_as_host_qualified_does_not_complete_the_roster() -> Bool  {
   let mismatched = qualify_host(
     node: "rank-0" as HostIdentity,
     advertised: fx_advertised_host(),

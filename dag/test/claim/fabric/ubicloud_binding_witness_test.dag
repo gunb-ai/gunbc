@@ -80,20 +80,20 @@ fn bound_region_matches(region: ProviderRegionObservation, expected: ProviderRou
 // RED - THE STATE PRODUCTION IS ACTUALLY IN REFUSES. Readiness is measured here, so readiness
 // cannot be what refuses; the only thing left is that no cited row names a region. Before this
 // change the same call produced a fully populated offer carrying a sentinel in the region slot.
-test fn w_an_unobserved_region_refuses_to_bind() -> Bool {
+test fn w_an_unobserved_region_refuses_to_bind() -> Bool  {
   bind(region: ubicloud_region_unread()) == "refused"
 }
 
 // POSITIVE CONTROL, and it is what stops the row above from being satisfied by a binding that
 // refuses for some unrelated reason: the SAME call with an observed region binds.
-test fn w_an_observed_region_binds() -> Bool {
+test fn w_an_observed_region_binds() -> Bool  {
   bind(region: a_read_region()) == "bound"
 }
 
 // RED - THE OBSERVED REGION IS THE ONE THAT REACHES THE ROUTE. Binding is not enough: an offer
 // bound onto a route naming some other region would satisfy the control above while still placing
 // work somewhere nobody observed. provider_route_eq compares all three components.
-test fn w_the_observed_region_is_the_one_carried_on_the_route() -> Bool {
+test fn w_the_observed_region_is_the_one_carried_on_the_route() -> Bool  {
   bound_region_matches(
     region: a_read_region(),
     expected: ProviderRoute {
@@ -107,6 +107,6 @@ test fn w_the_observed_region_is_the_one_carried_on_the_route() -> Bool {
 
 // The standing obligation is a declared row rather than a sentence repeated per caller, so the
 // refusal above names one thing a reader can find.
-test fn w_the_unread_obligation_is_declared_and_nonempty() -> Bool {
+test fn w_the_unread_obligation_is_declared_and_nonempty() -> Bool  {
   (ubicloud_region_unread_obligation as NonEmptyStr).length() > 0
 }

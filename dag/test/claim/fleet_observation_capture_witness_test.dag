@@ -321,7 +321,7 @@ fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding {
 //
 // This is the discriminating RED: if any guard in source_byte_fact were dropped or reordered so an
 // empty payload short-circuited to silence, one of these four conjuncts goes false.
-test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool {
+test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool  {
   let requested = t_range(first: 0, len: 100)
   let empty_chunk = t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0)
   let commit = t_commit_for(payload: "no-host-bytes-received")
@@ -358,7 +358,7 @@ test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool {
 // reading how far it reaches was a real hole in the first draft of this fold, found by the
 // interpretation lane on inspection: an envelope whose continuity stopped at 10 licensed silence
 // over a range ending at 100. The shortfall now refuses and NAMES both figures.
-test fn w_continuity_must_reach_the_requested_end() -> Bool {
+test fn w_continuity_must_reach_the_requested_end() -> Bool  {
   let requested = t_range(first: 0, len: 100)
   let commit = t_commit_for(payload: "no-host-bytes-received")
   let short = t_envelope(
@@ -378,7 +378,7 @@ test fn w_continuity_must_reach_the_requested_end() -> Bool {
 // as these bytes being kept. The two digests are never compared to each other -- the slot digest and
 // the payload digest are different semantic facts -- so the receipt names the payload it attests and
 // that is what is checked.
-test fn w_commit_must_attest_this_chunks_payload() -> Bool {
+test fn w_commit_must_attest_this_chunks_payload() -> Bool  {
   let requested = t_range(first: 0, len: 100)
   let mismatched = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
@@ -394,7 +394,7 @@ test fn w_commit_must_attest_this_chunks_payload() -> Bool {
 // and the authenticated source-to-machine binding are independently authored, and an envelope in
 // which they disagree used to be answered as though it described one thing. Here the owner records at
 // generation 4 while the chunk was received under generation 9.
-test fn w_evidence_must_name_one_subject() -> Bool {
+test fn w_evidence_must_name_one_subject() -> Bool  {
   let requested = t_range(first: 0, len: 100)
   let crossed = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
@@ -411,7 +411,7 @@ test fn w_evidence_must_name_one_subject() -> Bool {
 // durably committed, continuity-verified EMPTY range. Presence is DERIVED from the committed byte
 // count, so there is no caller-supplied flag left in the middle of the wall -- which is what the
 // first draft got wrong.
-test fn w_full_evidence_licenses_silence_and_payload() -> Bool {
+test fn w_full_evidence_licenses_silence_and_payload() -> Bool  {
   let spoke = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "host bytes", first: 0, len: 100),
@@ -464,7 +464,7 @@ fn t_reach_of_the_empty_chunk() -> StreamContinuity {
 // The attestation is now read off CasSlotVersion.content, so this fixture commits "bytes-X" through
 // the real constructor and asks about a chunk whose payload is "bytes-Y". There is no argument left
 // to pass that would make them agree.
-test fn w_commit_over_other_bytes_cannot_bind_this_chunk() -> Bool {
+test fn w_commit_over_other_bytes_cannot_bind_this_chunk() -> Bool  {
   let commit_of_x = t_commit_for(payload: "bytes-X")
   let chunk_of_y = t_chunk(seq: 1, generation: 4, payload: "bytes-Y", first: 0, len: 10)
   let chunk_of_x = t_chunk(seq: 1, generation: 4, payload: "bytes-X", first: 0, len: 10)
@@ -495,7 +495,7 @@ fn attests_other(b: CommitBinding) -> Bool {
 // answer the no-receipt cases with the chunk's own digest in BOTH fields -- reporting "attests a
 // different payload" while naming one payload twice, and inventing an attested digest for a receipt
 // that does not exist. CommitNoReceipt carries the standing instead.
-test fn w_absent_receipt_is_named_not_fabricated() -> Bool {
+test fn w_absent_receipt_is_named_not_fabricated() -> Bool  {
   let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
   no_receipt(b: commit_attests_chunk(standing: LocalCommitNotAttempted, chunk: chunk))
   && no_receipt(b: commit_attests_chunk(standing: LocalCommitFailed { cause: ChunkCommitRefused { detail: "synthetic" } }, chunk: chunk))
@@ -543,7 +543,7 @@ fn continuity_falls_short(c: ContinuityCoverage) -> Bool {
 // THE SEVEN IDENTICAL CAPTURES, as a test. Two chunks received at different sequences carrying
 // byte-identical payloads are DISTINCT OCCURRENCES, and a fold that deduplicated on digest would
 // return SameOccurrence here and erase the evidence that exposed the defect.
-test fn w_equal_payloads_across_occurrences_are_distinct() -> Bool {
+test fn w_equal_payloads_across_occurrences_are_distinct() -> Bool  {
   let a = t_chunk(seq: 1, generation: 4, payload: "banner-only", first: 0, len: 86)
   let b = t_chunk(seq: 2, generation: 4, payload: "banner-only", first: 86, len: 86)
   !chunk_occurrence_eq(a: a.occurrence, b: b.occurrence)
@@ -553,7 +553,7 @@ test fn w_equal_payloads_across_occurrences_are_distinct() -> Bool {
 
 // A DIFFERENT OWNERSHIP GENERATION IS A DIFFERENT OCCURRENCE even at the same receive sequence,
 // which is what makes a reconnect's replayed bytes separable from the original.
-test fn w_ownership_generation_separates_occurrences() -> Bool {
+test fn w_ownership_generation_separates_occurrences() -> Bool  {
   let a = t_chunk(seq: 1, generation: 4, payload: "same", first: 0, len: 4)
   let b = t_chunk(seq: 1, generation: 5, payload: "same", first: 0, len: 4)
   !chunk_occurrence_eq(a: a.occurrence, b: b.occurrence)
@@ -572,7 +572,7 @@ fn payloads_equal(left: CaptureChunk, right: CaptureChunk) -> Bool {
 
 // THE ONLY ROUTE TO LocallyCommitted IS A CAS COMMIT, and each store refusal keeps its own remedy
 // rather than collapsing to one failure.
-test fn w_commit_standing_comes_only_from_cas() -> Bool {
+test fn w_commit_standing_comes_only_from_cas() -> Bool  {
   let good: CasOutcome<NonEmptyStr> = CasCommitted {
     committed: CasSlotVersion {
       generation: 1
@@ -593,14 +593,14 @@ test fn w_commit_standing_comes_only_from_cas() -> Bool {
 
 // ── OWNERSHIP IS OBSERVED, AND A FOREIGN SESSION IS NEVER STOLEN ────────────────────────────────
 
-test fn w_foreign_session_is_never_stolen() -> Bool {
+test fn w_foreign_session_is_never_stolen() -> Bool  {
   refuses_foreign(outcome: acquire_ownership(session: t_session, observed: LeasePortForeign, observed_generation: 3, requested_generation: 9))
   && refuses_inaccessible(outcome: acquire_ownership(session: t_session, observed: LeaseInaccessible, observed_generation: 3, requested_generation: 9))
 }
 
 // A STALE LEASE IS A TAKEOVER, AN EXPECTED ONE IS A RENEWAL, AN ABSENT ONE IS AN ACQUISITION, and a
 // backwards generation refuses in every case. Four different acts, four different answers.
-test fn w_ownership_transitions_are_distinguished() -> Bool {
+test fn w_ownership_transitions_are_distinguished() -> Bool  {
   acquired(outcome: acquire_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, requested_generation: 1))
   && renewed(outcome: acquire_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, requested_generation: 4))
   && taken_over(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, requested_generation: 5))
@@ -611,7 +611,7 @@ test fn w_ownership_transitions_are_distinguished() -> Bool {
 // indistinguishable from one that died -- the stale-process case -- so handing the endpoint back is
 // its own transition. Releasing a lease this session does not hold refuses, because it would retire a
 // generation somebody else is recording under.
-test fn w_release_is_observed_and_only_by_the_holder() -> Bool {
+test fn w_release_is_observed_and_only_by_the_holder() -> Bool  {
   released(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, held_generation: 4))
   && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, held_generation: 4))
   && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, held_generation: 4))
@@ -651,7 +651,7 @@ fn refuses_unheld_release(outcome: OwnershipOutcome) -> Bool {
 // unfenced arm as enforced would claim a guarantee the transport does not provide (DESIGN section 4b
 // rung inflation), and the four conjuncts below keep the two independent axes apart: being the
 // recorder, and the endpoint being fenced. Collapsing them is what the deleted Bool did.
-test fn w_unfenced_owner_records_without_claiming_exclusivity() -> Bool {
+test fn w_unfenced_owner_records_without_claiming_exclusivity() -> Bool  {
   is_recording_owner(id: recording_owner(ownership: t_owner(fencing: t_unfenced)))
   && !fencing_is_enforced(ownership: t_owner(fencing: t_unfenced))
   && fencing_is_enforced(ownership: t_owner(fencing: t_fenced))
@@ -678,7 +678,7 @@ fn fencing_is_enforced(ownership: EndpointOwnership) -> Bool {
 // ── LOCAL DURABILITY IS NOT DOWNSTREAM ACCEPTANCE ──────────────────────────────────────────────
 
 // THE INTERVAL THE REFUSED RETENTION PROMISE IS ABOUT: committed here, not accepted there.
-test fn w_local_commit_does_not_imply_forwarding() -> Bool {
+test fn w_local_commit_does_not_imply_forwarding() -> Bool  {
   let requested = t_range(first: 0, len: 10)
   let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
   let commit = t_commit_for(payload: "x")
@@ -705,7 +705,7 @@ test fn w_local_commit_does_not_imply_forwarding() -> Bool {
 // downstream has not accepted is EXPOSED to collector-host loss, and the refusal text it carries
 // comes from retention_promise_this_slice rather than from a literal here -- so the roster is read
 // rather than restated. Once downstream accepts, the exposure ends.
-test fn w_retention_exposure_reads_the_refused_promise() -> Bool {
+test fn w_retention_exposure_reads_the_refused_promise() -> Bool  {
   let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
   let commit = t_commit_for(payload: "x")
   let spooled = t_envelope(
@@ -768,7 +768,7 @@ fn is_not_yet_retained(exposure: RetentionExposure) -> Bool {
 // downstream and a never-offered one to the same answer, discarding the CapturePersistenceRefusal
 // that says a read-back was corrupt or a spool was full. Those have different remedies and now have
 // different arms.
-test fn w_refused_forward_keeps_its_cause() -> Bool {
+test fn w_refused_forward_keeps_its_cause() -> Bool  {
   let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
   let commit = t_commit_for(payload: "x")
   let rejected = t_envelope(
@@ -787,7 +787,7 @@ test fn w_refused_forward_keeps_its_cause() -> Bool {
 }
 
 // THE FOUR SUBJECT DISAGREEMENTS ARE DISTINGUISHED, not rendered as one sentence naming no subject.
-test fn w_subject_disagreement_names_which_identity() -> Bool {
+test fn w_subject_disagreement_names_which_identity() -> Bool  {
   let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
   let other_gen = t_chunk(seq: 1, generation: 9, payload: "x", first: 0, len: 10)
   agrees(a: subject_agreement(owner_session: t_session, owner_generation: 4, chunk: chunk, binding: t_binding(machine: "synthetic-machine-1")))
@@ -798,7 +798,7 @@ test fn w_subject_disagreement_names_which_identity() -> Bool {
 
 // CONTINUITY IS DERIVED FROM THE COMMITTED BYTES, not authored onto the envelope. A contiguous run
 // establishes how far the evidence reaches; a hole between two committed chunks is a gap naming it.
-test fn w_continuity_is_derived_from_committed_chunks() -> Bool {
+test fn w_continuity_is_derived_from_committed_chunks() -> Bool  {
   let a = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
   let b = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 40, len: 60)
   let far = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 80, len: 20)
@@ -846,7 +846,7 @@ fn gap_is_unattributed(d: ContinuityDerivation) -> Bool {
 // must be attributed to the collector rather than to the host. A chunk from a different collector
 // session is a different thing entirely -- an ill-assembled run, about which no stream statement
 // follows -- and the two must not share an answer.
-test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool {
+test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool  {
   let a = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
   let regained = t_committed_chunk(seq: 2, generation: 5, payload: "b", first: 40, len: 60)
   lost_ownership(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: regained), subject: t_stream, from: t_pos(at: 0)))
@@ -861,7 +861,7 @@ test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool {
 // continuity BREAK ATTRIBUTED TO THE COLLECTOR. It must NOT be RunCrossesSubjects, because a timeline
 // asking "was this console continuous" would get a caller error instead of an answer; and it must NOT
 // be ContinuityEstablished, because the bytes abutting is exactly what makes the break invisible.
-test fn w_a_session_change_breaks_the_stream_and_is_ours() -> Bool {
+test fn w_a_session_change_breaks_the_stream_and_is_ours() -> Bool  {
   let first = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
   let relaunched = t_committed_chunk_for_session(session: t_other_session, seq: 1, generation: 4, payload: "b", first: 40, len: 60)
   session_changed(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: t_pos(at: 0)))
@@ -990,7 +990,7 @@ fn t_committed_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat
 
 
 // AN UNCOMMITTED OR CROSS-BOUND CHUNK HAS NO ROUTE INTO A RUN.
-test fn w_committed_chunk_requires_an_attesting_receipt() -> Bool {
+test fn w_committed_chunk_requires_an_attesting_receipt() -> Bool  {
   let chunk = t_chunk(seq: 1, generation: 4, payload: "bytes-X", first: 0, len: 10)
   absent_commit(o: committed_chunk(chunk: chunk, standing: LocalCommitNotAttempted))
   && absent_commit(o: committed_chunk(chunk: chunk, standing: t_commit_for(payload: "bytes-Y")))
@@ -1169,7 +1169,7 @@ fn unknown(c: StreamContinuity) -> Bool {
 //
 // THE DISCRIMINATING RED: this refuses only because the empty branch now takes the same end check as
 // the non-empty one AND requires the reach to EQUAL the requested end. Remove either and it greens.
-test fn w_reach_borrowed_from_another_chunk_cannot_mint_silence() -> Bool {
+test fn w_reach_borrowed_from_another_chunk_cannot_mint_silence() -> Bool  {
   let borrowed = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
@@ -1190,7 +1190,7 @@ test fn w_reach_borrowed_from_another_chunk_cannot_mint_silence() -> Bool {
 // passes -- and continuity reaches BEYOND that position, meaning the stream demonstrably advanced past
 // it. Silence would be trivially true of an empty range and materially misleading beside a stream
 // known to have moved on, so the fold refuses instead.
-test fn w_silence_refuses_where_the_stream_advanced_past_the_point() -> Bool {
+test fn w_silence_refuses_where_the_stream_advanced_past_the_point() -> Bool  {
   let stream_moved_on = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
@@ -1477,7 +1477,7 @@ fn taken_over(outcome: OwnershipOutcome) -> Bool {
 
 // Continuity and chunk ranges are independent envelope inputs. Covering the
 // requested stream does not establish an order against a different chunk stream.
-test fn w_requested_stream_reach_cannot_order_foreign_chunk() -> Bool {
+test fn w_requested_stream_reach_cannot_order_foreign_chunk() -> Bool  {
   let chunk = t_chunk(seq: 1, generation: 4, payload: "payload", first: 0, len: 100)
   let positive = t_envelope(ownership: t_owner(fencing: t_fenced), chunk: chunk,
     local_commit: t_commit_for(payload: "payload"), continuity: t_reach(through: 100), downstream: DownstreamNotOffered)

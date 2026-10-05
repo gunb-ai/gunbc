@@ -10,7 +10,7 @@ import gunbc.fleet_converge_plan_cli {
   cap_members_observation,
 }
 
-test fn unreadable_cap_member_cannot_become_an_empty_observation() -> Bool {
+test fn unreadable_cap_member_cannot_become_an_empty_observation() -> Bool  {
   match cap_members_observation(reads: [
     CapMemberReadUnobservable { path: "/fixture/20-width.conf" as NonEmptyStr, cause: "permission denied" },
   ]) {
@@ -20,7 +20,7 @@ test fn unreadable_cap_member_cannot_become_an_empty_observation() -> Bool {
   }
 }
 
-test fn established_absence_is_distinct_from_unobservable_cap_population() -> Bool {
+test fn established_absence_is_distinct_from_unobservable_cap_population() -> Bool  {
   match cap_members_observation(reads: [CapMemberReadAbsent]) {
     CapMembersAbsent => true
     _ => false

@@ -61,7 +61,7 @@ fn workspace_emission_is_ok() -> Bool {
 // Without this, a serialization refusal is only ever observed indirectly, through whichever
 // assertion happens to notice the page is not what it expected. This makes it a finding in its own
 // right with its own name, so the ledger says "emission refused" rather than "the panel is absent".
-test fn the_workspace_actually_serializes() -> Bool {
+test fn the_workspace_actually_serializes() -> Bool  {
   workspace_emission_is_ok()
 }
 
@@ -71,7 +71,7 @@ test fn the_workspace_actually_serializes() -> Bool {
 // about whether it is composed into the workspace -- the specification-without-execution failure,
 // where a green test sits beside a page that never shows the thing. This serializes the actual
 // daily workspace document and looks for the panel in the HTML.
-test fn the_capacity_panel_reaches_the_rendered_workspace() -> Bool {
+test fn the_capacity_panel_reaches_the_rendered_workspace() -> Bool  {
   let h = empty_workspace_html()
   string_contains(s: h, pattern: "fleet-capacity-panel")
     && string_contains(s: h, pattern: "fleet capacity")
@@ -85,7 +85,7 @@ test fn the_capacity_panel_reaches_the_rendered_workspace() -> Bool {
 // two slots that do not exist yet -- so a reader summing the column gets 22 for a fleet running
 // 20. The qualifier is the difference between a number and a misleading number, and an annotation
 // cannot carry it because no operator reads the source.
-test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
+test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool  {
   let h = empty_workspace_html()
   workspace_emission_is_ok() &&
   string_contains(s: h, pattern: "committed allocations, not observed incarnations")
@@ -135,7 +135,7 @@ fn host_width_is_unresolved(host: HostIdentity) -> Bool {
 // summand for an unresolved host is zero on both sides -- that part is unchanged and would be the
 // same vacuous agreement as before on its own -- so the row also asserts that the host appears in
 // `unresolved_hosts`. That is the conjunct a total which silently dropped srv2 would fail.
-test fn the_slot_total_sums_the_allocation_authority() -> Bool {
+test fn the_slot_total_sums_the_allocation_authority() -> Bool  {
   let total = fleet_committed_slot_total_ignoring_withdrawals()
   total.slots
     == width_contribution_to_the_total(host: operator_host_srv1)
@@ -166,7 +166,7 @@ fn withdrawn_line_text(all_hosts: FleetCommittedSlotTotal, active: FleetCommitte
 // SUPPLIED because the complete case is not authorable against the live fleet -- srv2's width does
 // not resolve, so every live total carries an unresolved host -- and a claim that can only be made
 // about one of the three answers is not a claim about the decision.
-test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
+test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool  {
   let complete_5 = FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] }
   withdrawn_line_text(all_hosts: complete_5, active: complete_5) == ""
     && string_contains(
@@ -184,7 +184,7 @@ test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
 // withdrawn" over a host the operator withdrew and the model cannot size. RED: a projection that
 // went back to subtracting the two `.slots` produces "" for the first case here and no
 // "unestablished" for the second.
-test fn an_incomplete_total_reports_the_withdrawn_amount_as_unestablished() -> Bool {
+test fn an_incomplete_total_reports_the_withdrawn_amount_as_unestablished() -> Bool  {
   let incomplete = FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [operator_host_srv2] }
   let line = withdrawn_line_text(all_hosts: incomplete, active: incomplete)
   string_contains(s: line, pattern: "withdrawn capacity is unestablished")
@@ -199,14 +199,14 @@ test fn an_incomplete_total_reports_the_withdrawn_amount_as_unestablished() -> B
 // THE LIVE PANEL INHABITS THAT PATH, which is what keeps the supplied-value rows above from being a
 // claim about a function nothing calls: the real fleet carries an unresolved host today, so the
 // rendered line is the unestablished one.
-test fn the_live_withdrawn_line_is_the_unestablished_one_while_a_host_is_unresolved() -> Bool {
+test fn the_live_withdrawn_line_is_the_unestablished_one_while_a_host_is_unresolved() -> Bool  {
   match fleet_capacity_withdrawn_line() {
     Absent => false
     Present { value: v } => string_contains(s: v, pattern: "withdrawn capacity is unestablished")
   }
 }
 
-test fn the_summary_line_names_both_axes() -> Bool {
+test fn the_summary_line_names_both_axes() -> Bool  {
   let line = fleet_capacity_summary_line()
   string_contains(s: line, pattern: "hosts")
     && string_contains(s: line, pattern: "runtimes")
@@ -222,7 +222,7 @@ test fn the_summary_line_names_both_axes() -> Bool {
 // that disk is excluded from the BINDING set: a fold that treated an unstated width as
 // satisfying the minimum would list disk beside memory and read as two independent confirmations
 // of a width only one axis actually measured.
-test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
+test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool  {
   let binding = host_binding_width_axes(host: operator_host_srv1)
   let label = host_width_binding_label(host: operator_host_srv1)
   (binding |> count) == 1
@@ -249,7 +249,7 @@ test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
 // moved srv1 back onto memory, so the row was asserting a fleet whose binding axis had changed
 // under it -- and WHICH axis binds srv1 is not this row's subject, which is that a bound host and
 // an unbindable host render differently. "width held" named the deleted held arm.
-test fn srv1_is_axis_bound_while_srv2_width_is_unresolved() -> Bool {
+test fn srv1_is_axis_bound_while_srv2_width_is_unresolved() -> Bool  {
   let one = host_width_binding_label(host: operator_host_srv1)
   let two = host_width_binding_label(host: operator_host_srv2)
   one != two
@@ -264,7 +264,7 @@ test fn srv1_is_axis_bound_while_srv2_width_is_unresolved() -> Bool {
 // width. A label authored independently of the arithmetic could name memory while the minimum came
 // from somewhere else, and nothing downstream would catch it -- the panel would explain a number
 // using a cause that did not produce it.
-test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
+test fn the_binding_axis_sits_at_the_committed_width() -> Bool  {
   all([operator_host_srv1, operator_host_srv3], h =>
     match gunbc_runner_committed_width(host: h) {
       RunnerWidthUnresolved { cause: _ } => false
@@ -285,7 +285,7 @@ test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
 // witness exists to catch. The final negative is the dangling-prefix signature: "bound by" with
 // two trailing spaces can only be produced by joining an EMPTY binding set onto the old constant
 // prefix, so it goes red exactly on the regression this change repairs and on nothing else.
-test fn the_panel_renders_a_width_provenance_for_every_host() -> Bool {
+test fn the_panel_renders_a_width_provenance_for_every_host() -> Bool  {
   let h = empty_workspace_html()
   string_contains(s: h, pattern: "bound by ")
     && string_contains(s: h, pattern: "width unresolved, no axis binds")

@@ -167,7 +167,7 @@ fn diverged_field(a: FleetConvergeApplyPayloadAdmission) -> String {
 
 // THE PAIRED POSITIVE. Without it every red below could be red by vacancy -- an admission that
 // refused everything would satisfy all of them.
-test fn an_untouched_artifact_population_is_admitted_and_routes_on_the_receipt_scope() -> Bool {
+test fn an_untouched_artifact_population_is_admitted_and_routes_on_the_receipt_scope() -> Bool  {
   is_admitted_routing_launch(a: admission_of(payload: coherent_payload()))
 }
 
@@ -194,7 +194,7 @@ fn coordinated_full_host_substitution() -> FleetConvergeApplyPayload {
   }
 }
 
-test fn a_coordinated_other_scope_substitution_refuses_before_any_observation() -> Bool {
+test fn a_coordinated_other_scope_substitution_refuses_before_any_observation() -> Bool  {
   let a = admission_of(payload: coordinated_full_host_substitution())
   !is_admitted_routing_launch(a: a)
     && diverged_field(a: a) == fleet_converge_plan_subject_scope_path
@@ -203,7 +203,7 @@ test fn a_coordinated_other_scope_substitution_refuses_before_any_observation() 
 // AND EACH SIDECAR ALONE, so the coordinated refusal above cannot be passing for a reason that
 // would also fire on an honest population -- and so a future edit that stops checking one of them
 // is named rather than absorbed by the others.
-test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool {
+test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool  {
   let p = coherent_payload()
   diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -218,7 +218,7 @@ test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool {
   })) == fleet_converge_plan_member_set_fp_path
 }
 
-test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
+test fn a_substituted_baseline_digest_alone_refuses() -> Bool  {
   let p = coherent_payload()
   diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -233,7 +233,7 @@ test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
   })) == fleet_converge_plan_baseline_hex_path
 }
 
-test fn a_substituted_subject_host_alone_refuses() -> Bool {
+test fn a_substituted_subject_host_alone_refuses() -> Bool  {
   let p = coherent_payload()
   diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: "srv2",
@@ -249,7 +249,7 @@ test fn a_substituted_subject_host_alone_refuses() -> Bool {
 }
 
 // A REWOUND GENERATION IS A REPLAY, not drift: it is how a spent plan is presented as unspent.
-test fn a_rewound_generation_sidecar_refuses() -> Bool {
+test fn a_rewound_generation_sidecar_refuses() -> Bool  {
   let p = coherent_payload()
   diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -265,7 +265,7 @@ test fn a_rewound_generation_sidecar_refuses() -> Bool {
 }
 
 // A CORRUPT GENERATION FILE IS ITS OWN ARM, never coerced to zero.
-test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool {
+test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool  {
   let p = coherent_payload()
   match admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -288,7 +288,7 @@ test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool {
   }
 }
 
-test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool {
+test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool  {
   let p = coherent_payload()
   match admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -314,7 +314,7 @@ test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool {
 // AN UNDECODABLE SCOPE IN THE RECEIPT STOPS THE LINE BEFORE ANY OBSERVER IS SELECTED, and it is
 // the RECEIPT that must be decodable now -- not the file. This is the version-skew arm: a receipt
 // minted by a build that spelled scopes differently.
-test fn a_receipt_naming_an_undecodable_scope_selects_no_observer() -> Bool {
+test fn a_receipt_naming_an_undecodable_scope_selects_no_observer() -> Bool  {
   match fleet_converge_apply_payload_admits(
     receipt: fixture_receipt_at(scope_wire: "full_host"),
     payload: coherent_payload(),
@@ -332,7 +332,7 @@ test fn a_receipt_naming_an_undecodable_scope_selects_no_observer() -> Bool {
 // inferred from the refusals: a receipt at full-host routes full-host even when the on-disk sidecar
 // says full-host too, and there is no arm of the admission type that can yield a scope taken from
 // disk. This is the property the whole repair rests on.
-test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool {
+test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool  {
   let p = coherent_payload()
   match fleet_converge_apply_payload_admits(
     receipt: fixture_receipt_at(scope_wire: fleet_converge_scope_wire(scope: FullHost)),
@@ -369,7 +369,7 @@ test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool {
 // It is a distinct row from a_bundle_hash_that_disagrees_with_the_receipt_refuses rather than a
 // variation on it: that one doctors the CLAIM and this one doctors the BYTES, and an implementation
 // that checked only one of them would pass the other.
-test fn doctored_apply_bytes_refuse_even_when_the_hex_claim_still_matches_the_receipt() -> Bool {
+test fn doctored_apply_bytes_refuse_even_when_the_hex_claim_still_matches_the_receipt() -> Bool  {
   let p = coherent_payload()
   match admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -395,7 +395,7 @@ test fn doctored_apply_bytes_refuse_even_when_the_hex_claim_still_matches_the_re
 // AND THE PLAN BODY TOO, so the row above cannot be passing because only apply.sh is folded into
 // the digest -- which is exactly the shape of the defect that produced the bundle scheme's own
 // earlier repair.
-test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() -> Bool {
+test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() -> Bool  {
   let p = coherent_payload()
   match admission_of(payload: FleetConvergeApplyPayload {
     subject_host_text: p.subject_host_text,
@@ -472,7 +472,7 @@ fn is_classified(path: String) -> Bool {
 // The identity join below is the whole content of the row. Non-vacuity is still required, because
 // `all` over an empty roster is true for free and a roster that silently stopped being populated
 // would satisfy this row without classifying anything.
-test fn every_rostered_persisted_member_is_classified() -> Bool {
+test fn every_rostered_persisted_member_is_classified() -> Bool  {
   list_length(items: fleet_converge_persisted_member_paths) > 0
     && all(fleet_converge_persisted_member_paths, p => is_classified(path: p))
 }
@@ -508,7 +508,7 @@ fn occurs_exactly_once(path: String, roster: List<String>) -> Bool {
   count_where(xs: roster, predicate: fn(p) { p == path }) == 1
 }
 
-test fn no_persisted_member_path_is_rostered_twice() -> Bool {
+test fn no_persisted_member_path_is_rostered_twice() -> Bool  {
   list_length(items: fleet_converge_persisted_member_paths) > 0
     && all(fleet_converge_persisted_member_paths, p =>
         occurs_exactly_once(path: p, roster: fleet_converge_persisted_member_paths))
@@ -523,7 +523,7 @@ data roster_with_one_identity_repeated: List<String> = concat(
   [fleet_converge_plan_content_hash_path],
 )
 
-test fn a_repeated_existing_identity_is_refused_by_the_uniqueness_wall() -> Bool {
+test fn a_repeated_existing_identity_is_refused_by_the_uniqueness_wall() -> Bool  {
   !all(roster_with_one_identity_repeated, p =>
       occurs_exactly_once(path: p, roster: roster_with_one_identity_repeated))
 }
@@ -532,7 +532,7 @@ test fn a_repeated_existing_identity_is_refused_by_the_uniqueness_wall() -> Bool
 // UnclassifiedPersistedMember, so an eleventh sidecar added without classifying it fails loudly
 // instead of silently acquiring whatever category the last `else` happened to name. Without this
 // row the "no fourth category" property would be a reading of the source rather than a wall.
-test fn an_unrecognized_persisted_path_is_refused_rather_than_defaulted() -> Bool {
+test fn an_unrecognized_persisted_path_is_refused_rather_than_defaulted() -> Bool  {
   match fleet_converge_persisted_member_authority(
     path: "/tmp/fleet-converge-plan/an_eleventh_sidecar_nobody_classified.txt",
   ) {
@@ -545,7 +545,7 @@ test fn an_unrecognized_persisted_path_is_refused_rather_than_defaulted() -> Boo
 // THE MAP AGREES WITH THE ADMISSION, member by member, for every category-1 sidecar this file can
 // diverge independently. Each conjunct pairs the CLASSIFICATION with the EXECUTED refusal that
 // names the same path, so the two cannot drift apart without a red.
-test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool {
+test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool  {
   let p = coherent_payload()
   classifies_receipt_bound_to(path: fleet_converge_plan_subject_host_path, receipt_field: "observed_host")
     && diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
@@ -588,7 +588,7 @@ test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool 
 // is why doctoring any of their bytes surfaces as a bundle mismatch against the receipt rather than
 // as a per-file comparison -- the map says derived, and that is exactly what the executed rows
 // doctored_apply_bytes_* and doctored_plan_body_bytes_* observe.
-test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into() -> Bool {
+test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into() -> Bool  {
   classifies_derived_into(path: fleet_converge_plan_body_path, recomputed_into: "plan_artifact_hash")
     && classifies_derived_into(path: fleet_converge_plan_apply_shell_path, recomputed_into: "plan_artifact_hash")
 }
@@ -596,7 +596,7 @@ test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into()
 // CATEGORY THREE IS EMPTY, EXECUTED RATHER THAN ASSERTED IN PROSE. An empty set has two causes --
 // nothing qualified, or nothing was asked -- and this row settles which: every rostered member is
 // asked, and none answers NonAuthoritativePresentation.
-test fn no_persisted_member_is_currently_non_authoritative() -> Bool {
+test fn no_persisted_member_is_currently_non_authoritative() -> Bool  {
   all(
     fleet_converge_persisted_member_paths,
     p => match fleet_converge_persisted_member_authority(path: p) {

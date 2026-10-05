@@ -44,7 +44,7 @@ fn converged_receipt(host: String) -> ConvergeCliReceipt {
 // NOT converged — required unobserved cells prevent convergence rather than defaulting
 // green, and the unobserved count is a positive number (the arc's honest progress
 // denominator). This witness is the named current defect made executable.
-test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
+test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool  {
   match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: no_receipts()) {
     FleetNotConverged { standings: ss } => fleet_unobserved_cell_count(standings: ss) > 0
     FleetConverged { host_count: _ } => false
@@ -54,7 +54,7 @@ test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
 // RED control (the forbidden absorbing arm): even if every enrolled host carried a
 // CONVERGED knob receipt, the unobserved lifecycle cells still prevent fleet
 // convergence — knob green never outvotes an unobserved required cell.
-test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
+test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool  {
   let receipts = map(fleet_subsumption_enrollments, e => converged_receipt(host: e.host as String))
   match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: receipts) {
     FleetNotConverged { standings: _ } => true
@@ -63,7 +63,7 @@ test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
 }
 
 // An empty enrollment is an observation gap, never a vacuously converged fleet.
-test fn empty_fleet_refuses_convergence() -> Bool {
+test fn empty_fleet_refuses_convergence() -> Bool  {
   let empty: List<HostEnrollmentIntent> = []
   match fleet_convergence_verdict(enrollments: empty, receipts: no_receipts()) {
     FleetNotConverged { standings: ss } => length(ss) == 0
@@ -73,7 +73,7 @@ test fn empty_fleet_refuses_convergence() -> Bool {
 
 // Knob standing discriminates its three arms: no receipt is Unobserved (never green), a
 // non-converged receipt is NotConverged, a converged receipt is Converged.
-test fn knob_standing_three_arms_discriminate() -> Bool {
+test fn knob_standing_three_arms_discriminate() -> Bool  {
   match host_knob_standing(host: operator_host_srv1, receipts: no_receipts()) {
     KnobUnobserved { host: _ } => true
     _ => false
@@ -99,7 +99,7 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
 
 // The five cell arms stay distinct — unobserved, unreachable, drifted, and conflict are
 // different remedies and none of them is converged.
-test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
+test fn cell_standings_discriminate_and_only_converged_counts() -> Bool  {
   let h = operator_host_srv1
   cell_standing_is_converged(s: CellConverged { host: h, phase_label: "p" })
     && !cell_standing_is_converged(s: CellUnobserved { host: h, phase_label: "p" })
@@ -112,7 +112,7 @@ test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
 // possible while both Sparks share a machine-id and factory host keys — classify as a
 // named ambiguity, never first-wins. Even two CONVERGED duplicates cannot converge the
 // knob, because which machine produced which receipt is exactly what is unestablished.
-test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
+test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool  {
   let a = converged_receipt(host: "srv5")
   let b = converged_receipt(host: "srv5")
   match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a, b]) {
@@ -128,7 +128,7 @@ test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
 // Empty-case discriminator: receipts exist but NONE is this host's, so the filtered list
 // is empty while the input is not. Unobserved is the only admissible arm — a judge that
 // read another host's receipt, or a fabricated default, would answer Converged here.
-test fn knob_standing_with_only_foreign_receipts_is_unobserved() -> Bool {
+test fn knob_standing_with_only_foreign_receipts_is_unobserved() -> Bool  {
   match host_knob_standing(host: "srv5" as HostIdentity, receipts: [converged_receipt(host: "srv6")]) {
     KnobUnobserved { host: _ } => true
     _ => false

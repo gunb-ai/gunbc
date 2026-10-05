@@ -30,6 +30,6 @@ fn calibration_specimen_descend(n: Int, acc: Int) -> Int {
   }
 }
 
-test fn calibration_specimen_performs_its_declared_work() -> Bool {
+test fn calibration_specimen_performs_its_declared_work() -> Bool  {
   calibration_specimen_descend(n: calibration_specimen_depth(), acc: 0) > 0
 }

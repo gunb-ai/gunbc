@@ -85,21 +85,21 @@ fn next_link_to(url: String) -> String {
 
 data next_link: String = next_link_to(url: page_two_url)
 
-test fn a_page_with_a_next_link_continues() -> Bool {
+test fn a_page_with_a_next_link_continues() -> Bool  {
   match roster_page_read_from_included(target: first_target, stdout: included(status_line: "HTTP/2.0 200 OK", link: next_link, body: page_body(total: 2, runners: [runner_one_json])), stderr: "") {
     RosterPageDelivered { page, continuation: ContinuationNext { cursor: LinkNext { target: _ } } } => page.total_count == 2 && length(xs: page.registrations) == 1
     _ => false
   }
 }
 
-test fn a_page_without_a_link_header_closes_the_listing() -> Bool {
+test fn a_page_without_a_link_header_closes_the_listing() -> Bool  {
   match roster_page_read_from_included(target: first_target, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: page_body(total: 1, runners: [runner_one_json])), stderr: "") {
     RosterPageDelivered { page: _, continuation: ContinuationClosed } => true
     _ => false
   }
 }
 
-test fn an_optional_field_absent_upstream_stays_absent() -> Bool {
+test fn an_optional_field_absent_upstream_stays_absent() -> Bool  {
   match roster_page_read_from_included(target: first_target, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: page_body(total: 1, runners: [runner_two_json])), stderr: "") {
     RosterPageDelivered { page, continuation: _ } => match page.registrations {
       Cons { head: r, tail: _ } => match r.ephemeral { Absent => true, Present { value: _ } => false }
@@ -109,14 +109,14 @@ test fn an_optional_field_absent_upstream_stays_absent() -> Bool {
   }
 }
 
-test fn a_forbidden_page_is_a_failure_not_an_empty_page() -> Bool {
+test fn a_forbidden_page_is_a_failure_not_an_empty_page() -> Bool  {
   match roster_page_read_from_included(target: first_target, stdout: included(status_line: "HTTP/2.0 403 Forbidden", link: "", body: "\{\"message\":\"Resource not accessible by integration\"}"), stderr: "gh: Resource not accessible by integration (HTTP 403)") {
     RosterPageFailed { cause: _ } => true
     RosterPageDelivered { page: _, continuation: _ } => false
   }
 }
 
-test fn output_without_a_status_line_observed_no_response() -> Bool {
+test fn output_without_a_status_line_observed_no_response() -> Bool  {
   match parse_gh_api_included(stdout: "error connecting to api.github.com") {
     GhApiIncludedUnreadable { reason: _ } => true
     GhApiIncludedParsed { response: _ } => false
@@ -142,17 +142,17 @@ fn admitted(scope: OrganizationRunnerScope, url: String) -> Bool {
   }
 }
 
-test fn the_id_alias_of_this_organization_is_admitted() -> Bool {
+test fn the_id_alias_of_this_organization_is_admitted() -> Bool  {
   admitted(scope: scope_with_id, url: page_two_url)
     && admitted(scope: scope_with_id, url: "https://api.github.com/orgs/gunb-ai/actions/runners?per_page=100&page=2")
 }
 
-test fn an_uncorroborated_id_alias_is_refused() -> Bool {
+test fn an_uncorroborated_id_alias_is_refused() -> Bool  {
   !admitted(scope: scope_without_id, url: page_two_url)
     && !admitted(scope: OrganizationRunnerScope { login: "gunb-ai" as NonEmptyStr, id: Present { value: 2 } }, url: page_two_url)
 }
 
-test fn another_organization_or_resource_is_refused() -> Bool {
+test fn another_organization_or_resource_is_refused() -> Bool  {
   !admitted(scope: scope_with_id, url: other_org_url) && !admitted(scope: scope_with_id, url: repo_runners_url)
 }
 
@@ -194,7 +194,7 @@ fn walk_evidence(scope: OrganizationRunnerScope, pages: List<ScriptedPage>) -> O
 
 data runner_one_offline_json: String = "\{\"id\":11,\"name\":\"srv3-01\",\"os\":\"Linux\",\"status\":\"offline\",\"busy\":false,\"ephemeral\":true,\"labels\":[\{\"name\":\"self-hosted\"}]}"
 
-test fn a_two_page_listing_that_closes_is_observed() -> Bool {
+test fn a_two_page_listing_that_closes_is_observed() -> Bool  {
   match walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link, total: 2, runners: [runner_one_json])) },
     ScriptedPage { target: page_two_url, response: answered(stdout: ok(link: "", total: 2, runners: [runner_two_json])) },
@@ -206,7 +206,7 @@ test fn a_two_page_listing_that_closes_is_observed() -> Bool {
 
 // OR-1 AT THE WALK: another organization's page cannot complete this roster, although its rows would
 // make totals and distinct ids agree.
-test fn a_continuation_into_another_organization_contributes_no_members() -> Bool {
+test fn a_continuation_into_another_organization_contributes_no_members() -> Bool  {
   match walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link_to(url: other_org_url), total: 2, runners: [runner_one_json])) },
     ScriptedPage { target: other_org_url, response: answered(stdout: ok(link: "", total: 2, runners: [runner_two_json])) },
@@ -218,7 +218,7 @@ test fn a_continuation_into_another_organization_contributes_no_members() -> Boo
 
 // OR-3: one id read twice across a real two-page progression with DISAGREEING payloads. Distinct ids
 // (2) still meet the total (2); the disagreement must make the id disputed, not first-wins.
-test fn a_disagreeing_repeat_across_pages_is_disputed_not_first_wins() -> Bool {
+test fn a_disagreeing_repeat_across_pages_is_disputed_not_first_wins() -> Bool  {
   let report = walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link, total: 2, runners: [runner_one_offline_json])) },
     ScriptedPage { target: page_two_url, response: answered(stdout: ok(link: "", total: 2, runners: [runner_one_json, runner_two_json])) },
@@ -231,7 +231,7 @@ test fn a_disagreeing_repeat_across_pages_is_disputed_not_first_wins() -> Bool {
   }
 }
 
-test fn an_agreeing_repeat_across_pages_deduplicates() -> Bool {
+test fn an_agreeing_repeat_across_pages_deduplicates() -> Bool  {
   match walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link, total: 2, runners: [runner_one_json])) },
     ScriptedPage { target: page_two_url, response: answered(stdout: ok(link: "", total: 2, runners: [runner_one_json, runner_two_json])) },
@@ -242,7 +242,7 @@ test fn an_agreeing_repeat_across_pages_deduplicates() -> Bool {
 }
 
 // A REPEATED ROW IS NOT COVERAGE: two rows, one distinct id, against a total of two.
-test fn a_repeated_runner_id_does_not_count_toward_completeness() -> Bool {
+test fn a_repeated_runner_id_does_not_count_toward_completeness() -> Bool  {
   match walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: "", total: 2, runners: [runner_one_json, runner_one_json])) },
   ]).evidence {
@@ -252,7 +252,7 @@ test fn a_repeated_runner_id_does_not_count_toward_completeness() -> Bool {
 }
 
 // A LATER PAGE FAILING KEEPS THE EARLIER MEMBERS AS PARTIAL -- never a population-wide absence.
-test fn a_failed_later_page_keeps_earlier_members_as_partial() -> Bool {
+test fn a_failed_later_page_keeps_earlier_members_as_partial() -> Bool  {
   match walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link, total: 2, runners: [runner_one_json])) },
     ScriptedPage { target: page_two_url, response: answered(stdout: included(status_line: "HTTP/2.0 502 Bad Gateway", link: "", body: "\{}")) },
@@ -262,7 +262,7 @@ test fn a_failed_later_page_keeps_earlier_members_as_partial() -> Bool {
   }
 }
 
-test fn a_failed_first_page_is_unavailable() -> Bool {
+test fn a_failed_first_page_is_unavailable() -> Bool  {
   match walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: included(status_line: "HTTP/2.0 403 Forbidden", link: "", body: "\{}")) },
   ]).evidence {
@@ -278,7 +278,7 @@ data spawn_refusal_prefix: String = "gh could not be spawned: 'gh'"
 // operations declared ShellOutcome the evaluation unwound here and no receipt was written; now the
 // earlier page is kept, the roster is Partial, and the note names the spawn. The red: an
 // evaluation that aborts, or a Partial whose members or note lost the page that was read.
-test fn gh_vanishing_before_a_later_page_keeps_earlier_members_as_partial() -> Bool {
+test fn gh_vanishing_before_a_later_page_keeps_earlier_members_as_partial() -> Bool  {
   let report = walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link, total: 2, runners: [runner_one_json])) },
     ScriptedPage { target: page_two_url, response: gh_vanished },
@@ -292,7 +292,7 @@ test fn gh_vanishing_before_a_later_page_keeps_earlier_members_as_partial() -> B
 
 // gh ABSENT AT THE FIRST PAGE IS UNAVAILABLE, with the spawn as its reason -- no page, no
 // population, no fabricated empty roster.
-test fn gh_absent_at_the_first_page_is_unavailable_naming_the_spawn() -> Bool {
+test fn gh_absent_at_the_first_page_is_unavailable_naming_the_spawn() -> Bool  {
   let report = walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: gh_vanished },
   ])
@@ -305,14 +305,14 @@ test fn gh_absent_at_the_first_page_is_unavailable_naming_the_spawn() -> Bool {
 // THE ORGANIZATION READ: a gh that answered forms the scope (with the id when a 200 carried one);
 // a gh that could not be spawned forms no scope, and the roster read reports unavailable on it
 // rather than walking with a login-only scope as if the organization had been read.
-test fn an_answered_organization_read_forms_the_scope_with_its_id() -> Bool {
+test fn an_answered_organization_read_forms_the_scope_with_its_id() -> Bool  {
   match organization_runner_scope_from(org: gunb_ai, response: answered(stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: "\{\"login\":\"gunb-ai\",\"id\":244123794}"))) {
     OrganizationScopeFormed { scope } => (scope.login as String) == "gunb-ai" && match scope.id { Present { value: id } => id == 244123794, Absent => false }
     OrganizationScopeUnread { cause: _ } => false
   }
 }
 
-test fn gh_absent_for_the_organization_read_forms_no_scope() -> Bool {
+test fn gh_absent_for_the_organization_read_forms_no_scope() -> Bool  {
   match organization_runner_scope_from(org: gunb_ai, response: gh_vanished) {
     OrganizationScopeUnread { cause } => string_contains(s: cause as String, pattern: spawn_refusal_prefix)
     OrganizationScopeFormed { scope: _ } => false
@@ -324,14 +324,14 @@ test fn gh_absent_for_the_organization_read_forms_no_scope() -> Bool {
 data not_found: String = "HTTP/2.0 404 Not Found\nContent-Type: application/json\n\n\{\"message\":\"Not Found\"}"
 data gunb_ai: NonEmptyStr = "gunb-ai"
 
-test fn a_404_under_an_established_listing_is_absent() -> Bool {
+test fn a_404_under_an_established_listing_is_absent() -> Bool  {
   match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
     RunnerIdAbsent { org: o, runner_id: id } => (o as String) == "gunb-ai" && id == 11
     _ => false
   }
 }
 
-test fn a_404_without_an_established_listing_is_unobserved() -> Bool {
+test fn a_404_without_an_established_listing_is_unobserved() -> Bool  {
   match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisibilityUnestablished { org: gunb_ai, reason: "org runners page answered HTTP 403" as NonEmptyStr }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
     RunnerIdUnobserved { org: _, runner_id: id, reason: _ } => id == 11
     _ => false
@@ -339,14 +339,14 @@ test fn a_404_without_an_established_listing_is_unobserved() -> Bool {
 }
 
 // OR-2: visibility established for ANOTHER organization cannot make this one's 404 an absence.
-test fn visibility_for_another_organization_cannot_establish_absence() -> Bool {
+test fn visibility_for_another_organization_cannot_establish_absence() -> Bool  {
   match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: "other-org" as NonEmptyStr, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
     RunnerIdUnobserved { org: o, runner_id: _, reason: _ } => (o as String) == "gunb-ai"
     _ => false
   }
 }
 
-test fn a_200_for_the_requested_id_is_present_in_its_org() -> Bool {
+test fn a_200_for_the_requested_id_is_present_in_its_org() -> Bool  {
   match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
     RunnerIdPresent { org: o, registration: r } => (o as String) == "gunb-ai" && (r.name as String) == "srv3-01"
     _ => false
@@ -356,7 +356,7 @@ test fn a_200_for_the_requested_id_is_present_in_its_org() -> Bool {
 // PER-ID UNDER ESTABLISHED VISIBILITY: a gh that could not be spawned is Unobserved with the spawn
 // as its reason. The discriminating wrong answer is Absent -- visibility IS established here, so
 // only the transport arm keeps this from discharging a removal obligation on no reading at all.
-test fn gh_absent_for_a_per_id_read_is_unobserved_not_absent() -> Bool {
+test fn gh_absent_for_a_per_id_read_is_unobserved_not_absent() -> Bool  {
   match runner_id_observation_from_transport(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, response: gh_vanished) {
     RunnerIdUnobserved { org: o, runner_id: id, reason } => (o as String) == "gunb-ai" && id == 11 && string_contains(s: reason as String, pattern: spawn_refusal_prefix)
     _ => false
@@ -365,14 +365,14 @@ test fn gh_absent_for_a_per_id_read_is_unobserved_not_absent() -> Bool {
 
 // POSITIVE CONTROL for the transport seam: an answered 200 through the same seam is Present, so the
 // Unobserved above is caused by the refused arm and not by the seam.
-test fn an_answered_per_id_read_through_the_transport_seam_is_present() -> Bool {
+test fn an_answered_per_id_read_through_the_transport_seam_is_present() -> Bool  {
   match runner_id_observation_from_transport(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, response: answered(stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json))) {
     RunnerIdPresent { org: o, registration: r } => (o as String) == "gunb-ai" && (r.name as String) == "srv3-01"
     _ => false
   }
 }
 
-test fn a_200_for_a_different_id_is_unobserved() -> Bool {
+test fn a_200_for_a_different_id_is_unobserved() -> Bool  {
   match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 12, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
     RunnerIdUnobserved { org: _, runner_id: _, reason: _ } => true
     _ => false
@@ -380,14 +380,14 @@ test fn a_200_for_a_different_id_is_unobserved() -> Bool {
 }
 
 // A MALFORMED PROBE ID REFUSES; IT IS NEVER DROPPED.
-test fn a_malformed_runner_id_token_refuses_rather_than_vanishing() -> Bool {
+test fn a_malformed_runner_id_token_refuses_rather_than_vanishing() -> Bool  {
   match parse_runner_id_probes(raw: "11, 1x2") {
     RunnerIdProbesUnparsable { tokens } => tokens == ["1x2"]
     RunnerIdProbesParsed { ids: _ } => false
   }
 }
 
-test fn well_formed_runner_id_tokens_parse_in_order() -> Bool {
+test fn well_formed_runner_id_tokens_parse_in_order() -> Bool  {
   match parse_runner_id_probes(raw: " 251463,91529 ") {
     RunnerIdProbesParsed { ids } => ids == [251463, 91529]
     RunnerIdProbesUnparsable { tokens: _ } => false
@@ -395,7 +395,7 @@ test fn well_formed_runner_id_tokens_parse_in_order() -> Bool {
 }
 
 // VISIBILITY COMES FROM THE ROSTER READ: a delivered page establishes it for that org; none does not.
-test fn visibility_follows_the_roster_reads_first_page() -> Bool {
+test fn visibility_follows_the_roster_reads_first_page() -> Bool  {
   let read = walk_evidence(scope: scope_with_id, pages: [
     ScriptedPage { target: first_target, response: answered(stdout: ok(link: "", total: 1, runners: [runner_one_json])) },
   ])
@@ -414,21 +414,21 @@ test fn visibility_follows_the_roster_reads_first_page() -> Bool {
 }
 
 // OR-2: THE ROUTE REQUIRES ONE CREDENTIAL BOUND TWICE, NOT TWO PRESENT VALUES.
-test fn the_same_credential_bound_twice_admits_the_route() -> Bool {
+test fn the_same_credential_bound_twice_admits_the_route() -> Bool  {
   match org_runner_route_from_bindings(admin_token: Present { value: "token-a" }, gh_token: Present { value: "token-a" }) {
     OrgRunnerRouteAdmitted { route: _ } => true
     OrgRunnerRouteRefused { reason: _ } => false
   }
 }
 
-test fn mismatching_credential_bindings_refuse_the_route() -> Bool {
+test fn mismatching_credential_bindings_refuse_the_route() -> Bool  {
   match org_runner_route_from_bindings(admin_token: Present { value: "token-a" }, gh_token: Present { value: "token-b" }) {
     OrgRunnerRouteRefused { reason: r } => !string_contains(s: r as String, pattern: "token-a") && !string_contains(s: r as String, pattern: "token-b")
     OrgRunnerRouteAdmitted { route: _ } => false
   }
 }
 
-test fn a_missing_binding_refuses_the_route() -> Bool {
+test fn a_missing_binding_refuses_the_route() -> Bool  {
   let no_gh = match org_runner_route_from_bindings(admin_token: Present { value: "token-a" }, gh_token: none) {
     OrgRunnerRouteRefused { reason: _ } => true
     OrgRunnerRouteAdmitted { route: _ } => false
@@ -443,7 +443,7 @@ test fn a_missing_binding_refuses_the_route() -> Bool {
 // OR-2b: gh IS AN EXECUTOR PREREQUISITE. An executor without gh refuses the route before any read,
 // naming the binary, even when the credential bindings would admit it; an executor holding gh
 // passes the bindings' own verdict through unchanged (positive control).
-test fn an_executor_without_gh_refuses_the_route_naming_the_prerequisite() -> Bool {
+test fn an_executor_without_gh_refuses_the_route_naming_the_prerequisite() -> Bool  {
   let admitted = org_runner_route_from_bindings(admin_token: Present { value: "token-a" }, gh_token: Present { value: "token-a" })
   let refused = match org_runner_route_on_executor(gh_absence: Present { value: HostCliDependencyAbsence { tool: "gh", hint: "apt install gh" } }, bindings: admitted) {
     OrgRunnerRouteRefused { reason: r } => string_contains(s: r as String, pattern: "HostDependencyAbsent\{tool=gh")
@@ -458,7 +458,7 @@ test fn an_executor_without_gh_refuses_the_route_naming_the_prerequisite() -> Bo
 
 // OR-2c: LEAST ACCESS. The fleet key step's condition is derived from the per-mode demand, so the
 // two API-only modes never materialize host SSH authority while a host mode still does (control).
-test fn api_only_org_modes_do_not_materialize_the_fleet_key() -> Bool {
+test fn api_only_org_modes_do_not_materialize_the_fleet_key() -> Bool  {
   let c = fleet_converge_fleet_ssh_key_step_if
   !string_contains(s: c, pattern: "'org_runner_roster_observe'")
     && !string_contains(s: c, pattern: "'org_actions_observe'")
@@ -483,32 +483,32 @@ fn disputed_across_two_pages(first: String, second: String) -> Bool {
   }
 }
 
-test fn a_joined_label_and_split_labels_are_a_dispute() -> Bool {
+test fn a_joined_label_and_split_labels_are_a_dispute() -> Bool  {
   disputed_across_two_pages(first: runner_one_label_joined_json, second: runner_one_labels_split_json)
 }
 
-test fn an_absent_version_and_a_sentinel_spelled_version_are_a_dispute() -> Bool {
+test fn an_absent_version_and_a_sentinel_spelled_version_are_a_dispute() -> Bool  {
   disputed_across_two_pages(first: runner_one_version_absent_json, second: runner_one_version_sentinel_json)
 }
 
 // OR-4: THE COMMAND IS GREEN ONLY WHEN EVERY REQUESTED PROBE HAS A CONCRETE ANSWER.
 data complete_roster: OrganizationRunnerRosterEvidence = RosterObserved { observed_on: "2026-09-19" as NonEmptyStr, registrations: [] }
 
-test fn no_probes_requested_on_a_complete_roster_is_complete() -> Bool {
+test fn no_probes_requested_on_a_complete_roster_is_complete() -> Bool  {
   match roster_observe_terminal(evidence: complete_roster, probes: []) {
     RosterObserveComplete => true
     _ => false
   }
 }
 
-test fn present_and_absent_probes_are_both_observations() -> Bool {
+test fn present_and_absent_probes_are_both_observations() -> Bool  {
   match roster_observe_terminal(evidence: complete_roster, probes: [RunnerIdAbsent { org: gunb_ai, runner_id: 91529 }]) {
     RosterObserveComplete => true
     _ => false
   }
 }
 
-test fn an_unobserved_probe_fails_a_complete_roster() -> Bool {
+test fn an_unobserved_probe_fails_a_complete_roster() -> Bool  {
   match roster_observe_terminal(evidence: complete_roster, probes: [
     RunnerIdAbsent { org: gunb_ai, runner_id: 91529 },
     RunnerIdUnobserved { org: gunb_ai, runner_id: 91513, reason: "runner read answered HTTP 502" as NonEmptyStr },
@@ -518,14 +518,14 @@ test fn an_unobserved_probe_fails_a_complete_roster() -> Bool {
   }
 }
 
-test fn a_negative_runner_id_refuses() -> Bool {
+test fn a_negative_runner_id_refuses() -> Bool  {
   match parse_runner_id_probes(raw: "251463,-4") {
     RunnerIdProbesUnparsable { tokens } => tokens == ["-4"]
     RunnerIdProbesParsed { ids: _ } => false
   }
 }
 
-test fn no_probe_input_requests_no_probes() -> Bool {
+test fn no_probe_input_requests_no_probes() -> Bool  {
   match parse_runner_id_probes(raw: "  ") {
     RunnerIdProbesParsed { ids } => length(xs: ids) == 0
     RunnerIdProbesUnparsable { tokens: _ } => false
@@ -533,7 +533,7 @@ test fn no_probe_input_requests_no_probes() -> Bool {
 }
 
 // PAGE SIZE: a smaller supported size is admitted; one above the authority's maximum refuses.
-test fn a_smaller_page_size_is_admitted_and_an_oversized_one_refuses() -> Bool {
+test fn a_smaller_page_size_is_admitted_and_an_oversized_one_refuses() -> Bool  {
   let fifty = match roster_page_size_from(raw: Present { value: "50" }) {
     RosterPageSizeRequested { size } => size.count == 50
     RosterPageSizeRefused { reason: _ } => false

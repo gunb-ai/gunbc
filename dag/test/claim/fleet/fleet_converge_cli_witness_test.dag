@@ -16,7 +16,7 @@ fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
 // installed binary is still old, so the next tick dispatches a mixed realization never admitted as a
 // release. The typed verdict was correct throughout, which is why nothing caught it -- no consumer of
 // the VERDICT was wrong, only the sentence a human acts on, and this fn had no witness at all.
-test fn witness_converge_cli_drift_reason_does_not_prescribe_tree_only_sync() -> Bool {
+test fn witness_converge_cli_drift_reason_does_not_prescribe_tree_only_sync() -> Bool  {
   let d = converge_cli_drift_fixture_oid(hex: "1111111111111111111111111111111111111111")
   let l = converge_cli_drift_fixture_oid(hex: "2222222222222222222222222222222222222222")
   match converge_cli_revision_reason(standing: RevisionDrifted { desired: d, local: l }) {
@@ -31,7 +31,7 @@ test fn witness_converge_cli_drift_reason_does_not_prescribe_tree_only_sync() ->
 
 // The converged arm must stay SILENT -- a reason on a converged standing would put a remedy in front
 // of an operator who has nothing to remedy.
-test fn witness_converge_cli_converged_standing_offers_no_remedy() -> Bool {
+test fn witness_converge_cli_converged_standing_offers_no_remedy() -> Bool  {
   match converge_cli_revision_reason(
     standing: RevisionConverged {
       revision: converge_cli_drift_fixture_oid(hex: "3333333333333333333333333333333333333333"),
@@ -42,7 +42,7 @@ test fn witness_converge_cli_converged_standing_offers_no_remedy() -> Bool {
   }
 }
 
-test fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
+test fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool  {
   converge_cli_routes_to_slice1(host: "srv1")
     && match host_converge_slice1_fixture_receipt() {
       Present { value: receipt } => receipt.host == operator_host_srv1
@@ -50,7 +50,7 @@ test fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Boo
     }
 }
 
-test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Bool {
+test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Bool  {
   converge_cli_routes_to_slice1(host: "srv3")
     && !converge_cli_routes_to_slice1(host: "srv2")
 }
@@ -71,7 +71,7 @@ test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Boo
 // applicability note in gunbc.fleet_converge_cli), reintroduced one host over. So the assertion
 // pins the CAUSE, not just the refusal: a row asserting only "srv2 fails closed with applied == 0"
 // would have passed against exactly the defect being removed, because UnknownHost fails closed too.
-test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bool {
+test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bool  {
   let host_knobs = converge_cli_run_host_knobs(host: "srv2")
   let r = converge_cli_run(host: "srv2")
   host_knobs.host == "srv2"
@@ -117,7 +117,7 @@ test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bo
     }
 }
 
-test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
+test fn witness_converge_cli_run_unknown_host_refuses() -> Bool  {
   let r = converge_cli_run(host: "no-such-fleet-host")
   r.host == "no-such-fleet-host"
     && r.applied == 0
@@ -140,7 +140,7 @@ test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
     }
 }
 
-test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes() -> Bool {
+test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes() -> Bool  {
   let unknown = UnknownHost { host: "no-such-fleet-host" }
   let inventory_absent = ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
   match unknown {
@@ -171,7 +171,7 @@ test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_disti
     )
 }
 
-test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
+test fn witness_converge_cli_refusal_causes_discriminate() -> Bool  {
   let srv2 = converge_cli_run(host: "srv2")
   let unknown = converge_cli_run(host: "no-such-fleet-host")
   match srv2.reason {
@@ -204,7 +204,7 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
   }
 }
 
-test fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
+test fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool  {
   let converged = ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: VerdictConverged, reason: none }
   let refused = ConvergeCliReceipt {
     host: "srv1",
@@ -217,7 +217,7 @@ test fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool 
     && converge_cli_receipt_line(r: refused) == "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent"
 }
 
-test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
+test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool  {
   let out = converge_cli_output(host: "no-such-fleet-host")
   out.line == "converge-receipt host=no-such-fleet-host applied=0 drifted=0 verdict=absent"
     && !out.converged
@@ -229,7 +229,7 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 
 // Atomic publication: staging file lives beside the final receipt so rename(2) needs
 // directory write permission only — superseding a root-owned stale file without elevation.
-test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() -> Bool {
+test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() -> Bool  {
   fleet_converge_receipt_staging_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.staging"
     && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
 }
@@ -254,7 +254,7 @@ test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() ->
 // end-to-end leg feeds the joint unobserved line back through the collector's OWN parser,
 // because the narrow this claim closes lived at the seam the collector reads rather than in
 // the verdict itself.
-test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
+test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool  {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
   let knob = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
@@ -292,7 +292,7 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
 // commutative, idempotent, with VerdictConverged as the identity and VerdictAbsent absorbing. The
 // clauses run in that order: VerdictAbsent absorbing from either side, then the Drifted row the
 // wildcard used to answer, then converged reachable only when both sides are converged.
-test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
+test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool  {
   converge_verdict_label(v: converge_verdict(effective: "", expected: "x")) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: VerdictAbsent)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: Drifted)) == "absent"
@@ -318,7 +318,7 @@ fn revision_fixture_oid(hex: String) -> GitObjectId {
 // Join 3 (operator verdict): applicability is TOTAL over the fleet — srv5/srv6 are a
 // typed pre-enrollment refusal DISTINCT from UnknownHost (they are known fleet
 // identities awaiting SPARK-SERVE-0), and every enrolled host lands one arm.
-test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unknown() -> Bool {
+test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unknown() -> Bool  {
   let r = converge_cli_run(host: "srv5")
   !converge_cli_receipt_converged(r: r)
     && match r.reason {
@@ -341,21 +341,21 @@ test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unkno
     }
 }
 
-test fn witness_converge_kernel_hostname_trim_strips_whitespace() -> Bool {
+test fn witness_converge_kernel_hostname_trim_strips_whitespace() -> Bool  {
   converge_kernel_short_hostname_from_content(raw: "srv2\n") == "srv2"
 }
 
-test fn witness_converge_codex_runtime_local_locus_refuses_cross_host() -> Bool {
+test fn witness_converge_codex_runtime_local_locus_refuses_cross_host() -> Bool  {
   !converge_codex_runtime_local_locus_matches_host(host: "srv2")
     || converge_local_kernel_short_hostname() == "srv2"
 }
 
-test fn witness_codex_runtime_bundle_knob_registered_in_fleet_converge_policy() -> Bool {
+test fn witness_codex_runtime_bundle_knob_registered_in_fleet_converge_policy() -> Bool  {
   converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv1)
     && converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv4)
 }
 
-test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> Bool {
+test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> Bool  {
   converge_cli_is_fleet_compute_host(host: "srv1")
     && converge_cli_is_fleet_compute_host(host: "srv4")
     && !converge_cli_is_fleet_compute_host(host: "srv5")

@@ -31,7 +31,7 @@ data receipt_note: String = "THE MEASURED RECEIPT THIS WITNESS DERIVES FROM, and
 // The ordinary case: a shared build inside all three limits is not refused, and says so while
 // carrying its observations. A phase reporting nothing would be indistinguishable from one that did
 // not run.
-test fn w_shared_build_within_limits_does_not_block() -> Bool {
+test fn w_shared_build_within_limits_does_not_block() -> Bool  {
   match floor_preparation_outcome(
     phase: BareReferenceEdgeIndexBuild,
     observed_cpu: millisecond(count: 28441),
@@ -54,7 +54,7 @@ test fn w_shared_build_within_limits_does_not_block() -> Bool {
 // time limits while retaining gigabytes, and with swap disabled that is an immediate kill, not a
 // spill.
 
-test fn w_cpu_axis_alone_refuses() -> Bool {
+test fn w_cpu_axis_alone_refuses() -> Bool  {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: BareReferenceEdgeIndexBuild,
@@ -68,7 +68,7 @@ test fn w_cpu_axis_alone_refuses() -> Bool {
   ) == true
 }
 
-test fn w_wall_axis_alone_refuses() -> Bool {
+test fn w_wall_axis_alone_refuses() -> Bool  {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: SharedModuleIndexBuild,
@@ -82,7 +82,7 @@ test fn w_wall_axis_alone_refuses() -> Bool {
   ) == true
 }
 
-test fn w_rss_axis_alone_refuses() -> Bool {
+test fn w_rss_axis_alone_refuses() -> Bool  {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: ModulePathIndexBuild,
@@ -101,7 +101,7 @@ test fn w_rss_axis_alone_refuses() -> Bool {
 // half of a typed, located diagnostic. Asserted directly rather than inferred from the arms above,
 // which all discard the phase.
 
-test fn w_refusal_carries_its_phase() -> Bool {
+test fn w_refusal_carries_its_phase() -> Bool  {
   match floor_preparation_outcome(
     phase: BareReferenceEdgeIndexBuild,
     observed_cpu: millisecond(count: 1080001),
@@ -130,7 +130,7 @@ test fn w_refusal_carries_its_phase() -> Bool {
 // every healthy run and force the exit the quarantine row's dissolution trigger forbids: raising
 // the per-claim ceiling until it admits the defect.
 
-test fn w_preparation_limit_is_not_the_claim_limit() -> Bool {
+test fn w_preparation_limit_is_not_the_claim_limit() -> Bool  {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: BareReferenceEdgeIndexBuild,
@@ -150,7 +150,7 @@ test fn w_preparation_limit_is_not_the_claim_limit() -> Bool {
 // letting either outcome excuse the other — a precedence rule, or an arm reading only one — reds on
 // exactly one of these two, which is why they are separate rows, not one conjunction.
 
-test fn w_refused_preparation_blocks_though_every_claim_is_healthy() -> Bool {
+test fn w_refused_preparation_blocks_though_every_claim_is_healthy() -> Bool  {
   floor_run_blocks(
     preparation: FloorPreparationRefused {
       phase: BareReferenceEdgeIndexBuild,
@@ -162,7 +162,7 @@ test fn w_refused_preparation_blocks_though_every_claim_is_healthy() -> Bool {
   ) == true
 }
 
-test fn w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope() -> Bool {
+test fn w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope() -> Bool  {
   floor_run_blocks(
     preparation: PreparationWithinLimits {
       phase: BareReferenceEdgeIndexBuild,
@@ -178,7 +178,7 @@ test fn w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope() -
   ) == true
 }
 
-test fn w_both_within_their_own_limits_does_not_block() -> Bool {
+test fn w_both_within_their_own_limits_does_not_block() -> Bool  {
   floor_run_blocks(
     preparation: PreparationWithinLimits {
       phase: BareReferenceEdgeIndexBuild,
@@ -208,14 +208,14 @@ fn built_by_preparation_specimen() -> SharedBuildProvenance {
   BuiltByPreparation
 }
 
-test fn w_already_warm_arm_carries_its_trigger() -> Bool {
+test fn w_already_warm_arm_carries_its_trigger() -> Bool  {
   match already_warm_specimen() {
     BuiltByPreparation => false
     AlreadyWarmOnEntry { triggered_by: who } => (who) == "a-site-ahead-of-floor-preparation"
   }
 }
 
-test fn w_built_by_preparation_is_the_intended_state() -> Bool {
+test fn w_built_by_preparation_is_the_intended_state() -> Bool  {
   match built_by_preparation_specimen() {
     BuiltByPreparation => true
     AlreadyWarmOnEntry { triggered_by: _ } => false

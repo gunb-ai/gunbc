@@ -57,7 +57,7 @@ data without_mt_collins: List<InventoryLotEvidence> = fleet_acquisition_ledgers.
 )
 
 // Quantities are summed from the named lots, not transcribed as a census-size literal.
-test fn w_joined_lots_derive_one_population() -> Bool {
+test fn w_joined_lots_derive_one_population() -> Bool  {
   let q = sum_lot_quantities(evidence: fleet_acquisition_ledgers)
   fleet_tax_join_covers_every_ledger()
     && population_is(evidence: fleet_acquisition_ledgers, acquired: q, received: q, owned: q)
@@ -67,7 +67,7 @@ test fn w_joined_lots_derive_one_population() -> Bool {
     }
 }
 
-test fn w_omitting_the_mt_collins_lot_changes_the_derived_population() -> Bool {
+test fn w_omitting_the_mt_collins_lot_changes_the_derived_population() -> Bool  {
   let q = sum_lot_quantities(evidence: fleet_acquisition_ledgers)
   let omitted = mt_collins_twenty_lot.quantity_acquired
   population_is(evidence: fleet_acquisition_ledgers, acquired: q, received: q, owned: q)
@@ -79,7 +79,7 @@ test fn w_omitting_the_mt_collins_lot_changes_the_derived_population() -> Bool {
     )
 }
 
-test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
+test fn w_q80_and_boards_are_independent_of_spark() -> Bool  {
   !inventory_lot_identity_eq(left: q80_processor_lot.identity, right: mt_collins_twenty_lot.identity)
     && !inventory_lot_identity_eq(left: altrad8ud_board_lot.identity, right: q80_processor_lot.identity)
     && !inventory_lot_identity_eq(left: altrad8ud_board_lot.identity, right: dgx_spark_micro_center_lot.identity)
@@ -88,7 +88,7 @@ test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
     && mt_collins_twenty_lot.quantity_acquired == 20
 }
 
-test fn w_assembly_binds_boards_and_coolers_to_their_lots() -> Bool {
+test fn w_assembly_binds_boards_and_coolers_to_their_lots() -> Bool  {
   every_board_component_is_from_the_four_board_lot(rows: srv_assembly_components)
     && every_cooler_component_is_from_its_lot(rows: srv_assembly_components)
     && every_recorded_component_lot_is_admitted(rows: srv_assembly_components)

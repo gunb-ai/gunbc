@@ -39,11 +39,11 @@ fn blocking_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -
 }
 
 // The undeclared Redfish account callee, the forbidden mutation's own spelling.
-test fn the_fixture_still_refuses_on_its_undeclared_account_callee() -> Bool {
+test fn the_fixture_still_refuses_on_its_undeclared_account_callee() -> Bool  {
   blocking_count(c: fixture_census(), wanted: "InternalError", subject: "function:CreateAccount") >= 1
 }
 
 // The undeclared host-shell provider, the fixture's second forbidden leg.
-test fn the_fixture_still_refuses_on_its_undeclared_shell_provider() -> Bool {
+test fn the_fixture_still_refuses_on_its_undeclared_shell_provider() -> Bool  {
   blocking_count(c: fixture_census(), wanted: "UnresolvedType", subject: "SshShell") >= 1
 }

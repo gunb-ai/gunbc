@@ -30,7 +30,7 @@ fn other_host() -> HostIdentity { "srv4" }
 // of a fact no instrument has measured, on a page the operator reads to decide what is true about
 // their machines. The distinction between "read and agreed" and "never read" is the entire reason
 // HardwareStanding has a third value.
-test fn every_processor_row_is_unread_and_none_is_confirmed() -> Bool {
+test fn every_processor_row_is_unread_and_none_is_confirmed() -> Bool  {
   let standings = fleet_processor_standings()
   (standings |> count) == 4
     && standing_count(standings: standings, wanted: HardwareUnread) == 4
@@ -42,7 +42,7 @@ test fn every_processor_row_is_unread_and_none_is_confirmed() -> Bool {
 // Without this, the assertion above is satisfied by a panel that renders everything as unread --
 // which would be just as wrong, in the direction that makes a healthy fleet look unmeasured. The
 // two axes disagreeing is what proves the mapping discriminates rather than answering a constant.
-test fn the_memory_axis_is_confirmed_on_every_host() -> Bool {
+test fn the_memory_axis_is_confirmed_on_every_host() -> Bool  {
   let standings = fleet_dimm_standings()
   (standings |> count) == 4
     && standing_count(standings: standings, wanted: HardwareConfirmed) == 4
@@ -54,7 +54,7 @@ test fn the_memory_axis_is_confirmed_on_every_host() -> Bool {
 // The live tree currently exercises only two of the four standings, so a mapping that collapsed
 // Refused into Misfiled would pass every assertion above. These verdicts are authored here rather
 // than read from the fleet precisely so the two unoccupied arms are still discriminated.
-test fn the_four_verdict_shapes_map_to_four_distinct_standings() -> Bool {
+test fn the_four_verdict_shapes_map_to_four_distinct_standings() -> Bool  {
   let confirmed = dimm_standing(verdict: DimmPopulationConfirmed { host: a_host(), stick_count: 8 })
   let refused = dimm_standing(verdict: DimmPopulationRefused {
     host: a_host(),
@@ -79,7 +79,7 @@ test fn the_four_verdict_shapes_map_to_four_distinct_standings() -> Bool {
 // THE FOUR STANDINGS DO NOT SHARE A WIRE WORD.
 // A label function collapsing two still renders a plausible row, and the collapse would surface
 // only as an operator acting on the wrong remedy.
-test fn the_four_standings_do_not_share_a_wire_word() -> Bool {
+test fn the_four_standings_do_not_share_a_wire_word() -> Bool  {
   let all = [HardwareConfirmed, HardwareRefused, HardwareUnread, HardwareMisfiled]
   let labels = map(all, s => hardware_standing_label(standing: s))
   (labels |> count) == 4
@@ -91,7 +91,7 @@ test fn the_four_standings_do_not_share_a_wire_word() -> Bool {
 // A population can hold the right count of the wrong part or the wrong count of the right one. The
 // verdict separates them, so the detail line must not fold them into one number -- an operator told
 // only "3 discrepancies" does not know whether sticks are missing.
-test fn a_refusal_detail_carries_the_count_and_the_discrepancy_tally() -> Bool {
+test fn a_refusal_detail_carries_the_count_and_the_discrepancy_tally() -> Bool  {
   let detail = dimm_detail(verdict: DimmPopulationRefused {
     host: a_host(),
     discrepancies: [],
@@ -107,7 +107,7 @@ test fn a_refusal_detail_carries_the_count_and_the_discrepancy_tally() -> Bool {
 // Collapsed today, the summary would read "4 of 8 confirmed" -- arithmetically true and useless.
 // Memory is fully read; the processor axis has never been measured once. Those are a solved problem
 // beside an unstarted one, and averaging them hides both.
-test fn the_summary_reports_each_axis_separately_and_never_one_fraction() -> Bool {
+test fn the_summary_reports_each_axis_separately_and_never_one_fraction() -> Bool  {
   let line = fleet_hardware_summary_line()
   string_contains(s: line, pattern: "4 of 4 memory confirmed")
     && string_contains(s: line, pattern: "0 of 4 processor confirmed")
@@ -117,7 +117,7 @@ test fn the_summary_reports_each_axis_separately_and_never_one_fraction() -> Boo
 // AN AXIS SUMMARY COUNTS CONFIRMATIONS, NOT ROWS.
 // Authored rather than read from the fleet: the live rosters are all-confirmed and all-unread, so
 // a mixed population is the only input that separates counting confirmations from counting members.
-test fn an_axis_summary_counts_confirmations_not_members() -> Bool {
+test fn an_axis_summary_counts_confirmations_not_members() -> Bool  {
   let mixed = [HardwareConfirmed, HardwareUnread, HardwareRefused, HardwareConfirmed]
   let line = hardware_axis_summary(axis: "memory", standings: mixed)
   string_contains(s: line, pattern: "2 of 4 memory confirmed")
@@ -129,7 +129,7 @@ test fn an_axis_summary_counts_confirmations_not_members() -> Bool {
 // day it carries a number. Unread must NOT count toward it: nothing has been contradicted by a
 // reading nobody took, and treating an unmeasured axis as a contradiction would put the panel in a
 // permanent alarm state that the operator cannot clear by fixing anything.
-test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count() -> Bool {
+test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count() -> Bool  {
   match fleet_hardware_outstanding_line() {
     Present { value: _ } => false
     Absent => standing_count(standings: fleet_processor_standings(), wanted: HardwareUnread) == 4
@@ -148,7 +148,7 @@ test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count(
 // than merely wrong-looking. A witness asserting only "the axis width is derived from the axis
 // labels" would be measure() == measure(); this asserts the two reservations DIFFER and that the
 // subject population genuinely cannot hold the axis one, which is what makes the swap detectable.
-test fn each_column_reserves_its_own_population() -> Bool {
+test fn each_column_reserves_its_own_population() -> Bool  {
   let longest_axis = hardware_longest_len(labels: hardware_axis_labels())
   let longest_host = hardware_longest_len(labels: map(fleet_dimm_verdicts, v => dimm_verdict_host(verdict: v) as String))
   longest_axis > longest_host

@@ -17,11 +17,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_float_add_associativity_refuted_by_execution() -> Bool {
+test fn w_float_add_associativity_refuted_by_execution() -> Bool  {
   float_add_associativity_refutation_holds()
 }
 
-test fn w_float_add_associativity_associative_triple_control() -> Bool {
+test fn w_float_add_associativity_associative_triple_control() -> Bool  {
   let a = 1.0
   let b = 2.0
   let c = 3.0
@@ -30,7 +30,7 @@ test fn w_float_add_associativity_associative_triple_control() -> Bool {
   left == right
 }
 
-test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool {
+test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool  {
   let witness = float_add_associativity_refuted.witness
   let fabricated = AssociativityCounterexampleWitness {
     left_operand: witness.left_operand,
@@ -46,10 +46,10 @@ test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool 
   !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
 }
 
-test fn w_float_kernel_type_in_std_types_roster() -> Bool {
+test fn w_float_kernel_type_in_std_types_roster() -> Bool  {
   float_kernel_type_in_authority_roster()
 }
 
-test fn w_float_add_associativity_subject_is_float_add_coproduct() -> Bool {
+test fn w_float_add_associativity_subject_is_float_add_coproduct() -> Bool  {
   float_add_associativity_subject == AssociativityFloatAdd {}
 }

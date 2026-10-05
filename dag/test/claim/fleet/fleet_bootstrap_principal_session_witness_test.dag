@@ -46,7 +46,7 @@ fn session_is_password(session: FleetSshPrincipalSession) -> Bool {
 
 // RED ON THE OLD CODE: the bootstrap principal resolved to whatever shaper each call site named, and
 // two of them named the key session. There was no declaration this could even be asked of.
-test fn the_bootstrap_principal_resolves_to_the_password_session() -> Bool {
+test fn the_bootstrap_principal_resolves_to_the_password_session() -> Bool  {
   session_is_password(session: fleet_ssh_session_for_principal(principal: fleet_bootstrap_principal_login()))
 }
 
@@ -56,7 +56,7 @@ test fn the_bootstrap_principal_resolves_to_the_password_session() -> Bool {
 // drifted apart would resolve every bootstrap leg to the key session and refuse. This asserts the
 // derivation consumes the ACCOUNT MODEL rather than any string, so reintroducing a literal anywhere
 // cannot leave it green while the session fact points at a login nobody uses.
-test fn the_bootstrap_login_is_the_operator_account_from_the_account_model() -> Bool {
+test fn the_bootstrap_login_is_the_operator_account_from_the_account_model() -> Bool  {
   (fleet_bootstrap_principal_login() as String) == (fleet_posix_operator_user.name as String)
 }
 
@@ -64,7 +64,7 @@ test fn the_bootstrap_login_is_the_operator_account_from_the_account_model() -> 
 // password leg": gunbc-automation is an account this repository created and keyed, and its proof leg
 // in gunbc.spark.managed_access_apply is the one that establishes key-only authentication. If this
 // went password-only, that proof would be testing something else entirely.
-test fn the_managed_executor_resolves_to_the_key_session() -> Bool {
+test fn the_managed_executor_resolves_to_the_key_session() -> Bool  {
   !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-automation" as NonEmptyStr))
     && !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-inference" as NonEmptyStr))
     && !session_is_password(session: fleet_ssh_session_for_principal(principal: "ghrunner" as NonEmptyStr))
@@ -73,7 +73,7 @@ test fn the_managed_executor_resolves_to_the_key_session() -> Bool {
 
 // A HELD FILE IS THE PATH THAT WAS HELD, unchanged. The operator-workstation entry materializes its own
 // owner-only file, so the locus must pass it through rather than reaching for the runner's environment.
-test fn a_held_credential_file_resolves_to_that_exact_path() -> Bool {
+test fn a_held_credential_file_resolves_to_that_exact_path() -> Bool  {
   match resolve_fleet_bootstrap_credential_path(
     locus: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },
   ) {
@@ -85,7 +85,7 @@ test fn a_held_credential_file_resolves_to_that_exact_path() -> Bool {
 // NOT-HELD REFUSES, AND THE REFUSAL NAMES THE PRINCIPAL IT IS ABOUT. This is the arm that keeps a leg
 // with no credential from silently becoming a key leg -- the exact substitution that produced the
 // srv9-srv12 refusals, one layer down.
-test fn declaring_no_credential_refuses_and_names_the_bootstrap_principal() -> Bool {
+test fn declaring_no_credential_refuses_and_names_the_bootstrap_principal() -> Bool  {
   match resolve_fleet_bootstrap_credential_path(locus: BootstrapCredentialNotHeld) {
     FleetBootstrapCredentialPathAbsent { cause: why } =>
       string_contains(why as String, fleet_bootstrap_principal_login() as String)
@@ -96,7 +96,7 @@ test fn declaring_no_credential_refuses_and_names_the_bootstrap_principal() -> B
 
 // THE ENVIRONMENT VARIABLE NAMES A PATH, NOT A SECRET, and it says so in its own name. Carried over
 // from the witness that guarded it at its previous home so the rehoming did not drop the check.
-test fn the_credential_environment_variable_names_a_file_and_not_a_secret() -> Bool {
+test fn the_credential_environment_variable_names_a_file_and_not_a_secret() -> Bool  {
   string_contains(fleet_bootstrap_credential_path_env as String, "FILE")
     && !string_contains(fleet_bootstrap_credential_path_env as String, "PASSWORD")
     && !string_contains(fleet_bootstrap_credential_path_env as String, "SECRET")
@@ -134,7 +134,7 @@ fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredenti
   }
 }
 
-test fn the_bootstrap_principal_leg_reaches_the_password_transport_by_execution() -> Bool {
+test fn the_bootstrap_principal_leg_reaches_the_password_transport_by_execution() -> Bool  {
   match witness_leg_stdout(
     principal: fleet_bootstrap_principal_login(),
     credential: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },
@@ -146,7 +146,7 @@ test fn the_bootstrap_principal_leg_reaches_the_password_transport_by_execution(
   }
 }
 
-test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bool {
+test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bool  {
   match witness_leg_stdout(
     principal: "gunbc-automation" as NonEmptyStr,
     credential: BootstrapCredentialNotHeld,
@@ -187,7 +187,7 @@ test fn the_managed_principal_leg_reaches_the_key_transport_by_execution() -> Bo
 // prerequisite. Before the split the discriminator observed PATH inline and went red on any host
 // without sshpass -- passing on srv1/srv2 and failing on srv3/srv4, flaky by whichever runner
 // picked the job up, while appearing to measure transport selection.
-test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool {
+test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool  {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => false
     Present { value: context } =>
@@ -224,7 +224,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
 // THE SATISFIED SIDE, which is what makes the row above discriminating rather than a one-armed
 // assertion: with no absence the same fold reaches the credential and yields the password file, so
 // a refusal that fired unconditionally would redden here.
-test fn a_present_password_session_binary_reaches_the_credential() -> Bool {
+test fn a_present_password_session_binary_reaches_the_credential() -> Bool  {
   match fleet_password_leg_from_host_observation(
     absence: none,
     credential: BootstrapCredentialFileHeld { path: "/run/gunbc-witness-credential" as NonEmptyStr },

@@ -625,11 +625,11 @@ fn s_admitted_keys(field: CandidateField<NonEmptyStr>) -> List<NonEmptyStr> {
 //
 // Load-bearing for every red below. Without it, "the cheap offer did not win" would be satisfied by
 // a fixture in which nothing wins at all, and the file would assert nothing about admission.
-test fn w_the_one_modeled_route_survives_the_field() -> Bool {
+test fn w_the_one_modeled_route_survives_the_field() -> Bool  {
   s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
 }
 
-test fn w_an_offer_claiming_its_own_failing_group_qualified_arm_is_excluded() -> Bool {
+test fn w_an_offer_claiming_its_own_failing_group_qualified_arm_is_excluded() -> Bool  {
   let offer = FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }
   let field = s_field(
     routes: s_modeled_routes(),
@@ -647,7 +647,7 @@ test fn w_an_offer_claiming_its_own_failing_group_qualified_arm_is_excluded() ->
     && s_excluded_keys(field: field, tag: "node-not-qualified") == ["spill-hetzner-cax41"]
 }
 
-test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool {
+test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool  {
   let field = s_field(
     routes: s_modeled_routes(),
     sanctions: [s_sanction(route: s_hetzner_route())],
@@ -664,7 +664,7 @@ test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool {
     && s_excluded_keys(field: field, tag: "delivery-claim-names-another-offer") == ["spill-hetzner-cax41"]
 }
 
-test fn w_an_offer_claiming_its_own_unqualified_node_delivery_is_excluded() -> Bool {
+test fn w_an_offer_claiming_its_own_unqualified_node_delivery_is_excluded() -> Bool  {
   let field = s_field(
     routes: [
       OfferRouteRow {
@@ -690,7 +690,7 @@ test fn w_an_offer_claiming_its_own_unqualified_node_delivery_is_excluded() -> B
 // modeled route, and each is excluded by NAME with the cause that says what to go and do: read the
 // data paths. Not "unsupported", not a silent drop, and not ProviderRouteUnclassified either -
 // that cause would send the operator to sanction a route whose facts nobody has gathered.
-test fn w_the_three_unmodeled_providers_refuse_by_name() -> Bool {
+test fn w_the_three_unmodeled_providers_refuse_by_name() -> Bool  {
   s_excluded_keys(field: s_default_field(), tag: "route-not-modeled")
     == ["spill-scaleway-amp2", "spill-oci-ampere-a1", "spill-gcp-n2-on-demand"]
 }
@@ -700,7 +700,7 @@ test fn w_the_three_unmodeled_providers_refuse_by_name() -> Bool {
 // are still refused, because a sanction is a statement about a route whose facts exist; sanctioning
 // a route nobody has read does not manufacture the reading. This is why the refusal does not wait
 // on an operator decision.
-test fn w_sanctioning_every_route_does_not_admit_an_unread_one() -> Bool {
+test fn w_sanctioning_every_route_does_not_admit_an_unread_one() -> Bool  {
   s_admitted_keys(field: s_field(
     routes: s_modeled_routes(),
     sanctions: [
@@ -716,7 +716,7 @@ test fn w_sanctioning_every_route_does_not_admit_an_unread_one() -> Bool {
 // RED - THE CHEAPEST UNADMITTED ROUTE NEVER WINS. The Scaleway offer is first in roster order and
 // lowest in price, and the offer that is selected is the DEAREST of the four. Compliance did not
 // outweigh price here; it ran before price existed.
-test fn w_the_cheapest_unadmitted_route_never_wins() -> Bool {
+test fn w_the_cheapest_unadmitted_route_never_wins() -> Bool  {
   s_selected_key(s: s_select(candidates: s_default_field().admitted)) == "spill-hetzner-cax41"
 }
 
@@ -725,7 +725,7 @@ test fn w_the_cheapest_unadmitted_route_never_wins() -> Bool {
 // same prices, same roster, same order - and Scaleway then wins. So the previous red is not green
 // because of an arithmetic accident, a currency screen or a shape mismatch: it is green because of
 // the gate, and removing the gate's grounds changes the answer.
-test fn w_the_cheapest_route_does_win_once_it_is_modeled_and_sanctioned() -> Bool {
+test fn w_the_cheapest_route_does_win_once_it_is_modeled_and_sanctioned() -> Bool  {
   s_selected_key(s: s_select(candidates: s_field(
     routes: concat(s_modeled_routes(), [
       OfferRouteRow {
@@ -740,7 +740,7 @@ test fn w_the_cheapest_route_does_win_once_it_is_modeled_and_sanctioned() -> Boo
 
 // RED - AN EXCLUDED OFFER IS INDISTINGUISHABLE FROM AN ABSENT ONE. The three unmodeled offers are
 // not merely outranked: adding them to the population changes the answer not at all.
-test fn w_the_unmodeled_offers_change_nothing_at_all() -> Bool {
+test fn w_the_unmodeled_offers_change_nothing_at_all() -> Bool  {
   s_selected_key(s: s_select(candidates: s_default_field().admitted))
     == s_selected_key(s: s_select(candidates: s_field(
          routes: s_modeled_routes(),
@@ -752,7 +752,7 @@ test fn w_the_unmodeled_offers_change_nothing_at_all() -> Bool {
 // RED - A FIELD OF NOTHING BUT UNREAD ROUTES SELECTS NOTHING. With the one modeled route removed
 // from the population, the answer is a refusal to place work rather than the cheapest of three
 // unassessed clouds.
-test fn w_a_field_of_unread_routes_selects_nothing() -> Bool {
+test fn w_a_field_of_unread_routes_selects_nothing() -> Bool  {
   s_selected_key(s: s_select(candidates: s_field(
     routes: s_modeled_routes(),
     sanctions: [s_sanction(route: s_hetzner_route())],
@@ -768,7 +768,7 @@ test fn w_a_field_of_unread_routes_selects_nothing() -> Bool {
 // route is genuinely sanctioned; it simply governs the sibling region. An offer running in Helsinki
 // is not admitted by a Nuremberg reading, and the refusal names the wiring fault rather than
 // reporting the route as unread.
-test fn w_facts_for_a_sibling_region_do_not_admit_the_offer() -> Bool {
+test fn w_facts_for_a_sibling_region_do_not_admit_the_offer() -> Bool  {
   s_excluded_keys(
     field: s_field(
       routes: [
@@ -829,7 +829,7 @@ fn s_two_reading_field(first: ProviderRouteFacts, second: ProviderRouteFacts) ->
 // about the ROUTE conflicts, and the two readings differ only in whether the execution path was
 // read. One of them admits and the other refuses, so taking the first would let roster order decide
 // whether this work runs at all.
-test fn w_two_readings_of_one_route_refuse_rather_than_admitting_the_first() -> Bool {
+test fn w_two_readings_of_one_route_refuse_rather_than_admitting_the_first() -> Bool  {
   s_excluded_keys(
     field: s_two_reading_field(first: s_facts(route: s_hetzner_route()), second: s_facts_execution_unread(route: s_hetzner_route())),
     tag: "route-ambiguous",
@@ -840,7 +840,7 @@ test fn w_two_readings_of_one_route_refuse_rather_than_admitting_the_first() -> 
 // Under the previous fold these two orders gave DIFFERENT answers - admitted when the fully-read row
 // came first, refused when it came second - and both were reported as a decision. An order-dependent
 // compliance answer is the failure; one order being correct is not a defence.
-test fn w_the_two_readings_refuse_in_either_roster_order() -> Bool {
+test fn w_the_two_readings_refuse_in_either_roster_order() -> Bool  {
   s_excluded_keys(
     field: s_two_reading_field(first: s_facts_execution_unread(route: s_hetzner_route()), second: s_facts(route: s_hetzner_route())),
     tag: "route-ambiguous",
@@ -850,7 +850,7 @@ test fn w_the_two_readings_refuse_in_either_roster_order() -> Bool {
 // RED - A ROSTER THAT ANSWERS TWICE REFUSES INSTEAD OF TAKING THE FIRST ANSWER. Two rows for one
 // offer identity naming two different routes is a roster that does not know where the work runs,
 // and the row that happens to be first in a list may not decide that.
-test fn w_two_rows_for_one_offer_refuse_rather_than_taking_the_first() -> Bool {
+test fn w_two_rows_for_one_offer_refuse_rather_than_taking_the_first() -> Bool  {
   s_excluded_keys(
     field: s_field(
       routes: [
@@ -875,7 +875,7 @@ test fn w_two_rows_for_one_offer_refuse_rather_than_taking_the_first() -> Bool {
 // covers the route. The exclusion is the admission's own typed cause, not route-not-modeled: the
 // remedy here is to sanction the route, and reporting it as unread would send the operator to read
 // paths that have already been read.
-test fn w_a_read_but_unsanctioned_route_refuses_as_a_use_refusal() -> Bool {
+test fn w_a_read_but_unsanctioned_route_refuses_as_a_use_refusal() -> Bool  {
   s_excluded_keys(
     field: s_field(
       routes: s_modeled_routes(),
@@ -889,12 +889,12 @@ test fn w_a_read_but_unsanctioned_route_refuses_as_a_use_refusal() -> Bool {
 // THE PERMIT SURVIVES SELECTION. The admission ran before the candidate field existed; this reads
 // the permit off the WINNER of the ranking and finds it still naming the exact offer, route, work
 // and demand it was minted for. A selection returning a raw offer could not answer this at all.
-test fn w_the_winning_candidate_still_carries_its_admission_proof() -> Bool {
+test fn w_the_winning_candidate_still_carries_its_admission_proof() -> Bool  {
   map(s_selected_permit(s: s_select(candidates: s_default_field().admitted)), p => (p.offer.key as NonEmptyStr))
     == ["spill-hetzner-cax41"]
 }
 
-test fn w_the_surviving_permit_names_the_work_and_demand_it_was_admitted_for() -> Bool {
+test fn w_the_surviving_permit_names_the_work_and_demand_it_was_admitted_for() -> Bool  {
   fold(
     s_selected_permit(s: s_select(candidates: s_default_field().admitted)),
     init: false,
@@ -916,14 +916,14 @@ fn s_readiness_field(exercises: List<RouteExercise>, readiness: RouteReadinessRe
 
 // The discriminating red for the whole stage: the SAME modeled, sanctioned route that wins above
 // is refused by name once its exercise is removed, and the field then selects nothing.
-test fn w_a_sanctioned_route_never_exercised_is_not_capacity() -> Bool {
+test fn w_a_sanctioned_route_never_exercised_is_not_capacity() -> Bool  {
   let field = s_readiness_field(exercises: [], readiness: RequireExercisedRoute)
   s_excluded_keys(field: field, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
     && s_admitted_keys(field: field) == []
     && s_selected_key(s: s_select(candidates: field.admitted)) == "none"
 }
 
-test fn w_an_expired_exercise_refuses_by_name() -> Bool {
+test fn w_an_expired_exercise_refuses_by_name() -> Bool  {
   let field = s_readiness_field(exercises: [s_hetzner_exercise(valid_through: 999)], readiness: RequireExercisedRoute)
   s_excluded_keys(field: field, tag: "route-exercise-expired") == ["spill-hetzner-cax41"]
     && s_admitted_keys(field: field) == []
@@ -931,7 +931,7 @@ test fn w_an_expired_exercise_refuses_by_name() -> Bool {
 
 // Readiness is monotone in the exercise set: an expired and a live exercise of one route admit in
 // either order.
-test fn w_any_unexpired_exercise_admits_in_either_order() -> Bool {
+test fn w_any_unexpired_exercise_admits_in_either_order() -> Bool  {
   let live = s_hetzner_exercise(valid_through: 2000)
   let stale = s_hetzner_exercise(valid_through: 10)
   s_admitted_keys(field: s_readiness_field(exercises: [stale, live], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
@@ -940,7 +940,7 @@ test fn w_any_unexpired_exercise_admits_in_either_order() -> Bool {
 
 // The exercise arm admits its own work onto its own route, and nothing wider: naming another work
 // falls back to requiring an exercise, which this route does not have.
-test fn w_an_exercise_admits_only_its_own_work_on_its_own_route() -> Bool {
+test fn w_an_exercise_admits_only_its_own_work_on_its_own_route() -> Bool  {
   let own = s_readiness_field(exercises: [], readiness: ExerciseOfRoute { route: s_hetzner_route(), work: s_work() })
   let other_work = s_readiness_field(
     exercises: [],

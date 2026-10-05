@@ -54,7 +54,7 @@ fn admission_label(
 // MACHINE from a cut RUNTIME, and the two have opposite repairs -- restoring the provider on a
 // host that is down returns no capacity at all. If the coproduct were collapsed to a Bool this
 // witness goes red while every admitted-path assertion stays green.
-test fn a_downed_host_and_a_cut_runtime_do_not_share_one_answer() -> Bool {
+test fn a_downed_host_and_a_cut_runtime_do_not_share_one_answer() -> Bool  {
   let host_down = admission_label(
     hosts: host_rows_srv3_down(), providers: [],
     host: operator_host_srv3, provider: ClaudeCliProvider,
@@ -70,7 +70,7 @@ test fn a_downed_host_and_a_cut_runtime_do_not_share_one_answer() -> Bool {
 
 // WHEN BOTH ARE WITHDRAWN THE HOST WINS, AND THAT PRECEDENCE IS LOAD-BEARING RATHER THAN TIDY.
 // Reporting the provider for a host that is down names a cause whose repair changes nothing.
-test fn a_downed_host_dominates_a_cut_runtime() -> Bool {
+test fn a_downed_host_dominates_a_cut_runtime() -> Bool  {
   admission_label(
     hosts: host_rows_srv3_down(), providers: provider_rows_codex_down(),
     host: operator_host_srv3, provider: CodexCliProvider,
@@ -79,7 +79,7 @@ test fn a_downed_host_dominates_a_cut_runtime() -> Bool {
 
 // WITHDRAWAL IS SCOPED TO ITS SUBJECT AND DOES NOT LEAK ACROSS THE AXIS.
 // srv3 being down must not withdraw srv1, and Codex being cut must not cut Claude.
-test fn a_withdrawal_does_not_leak_to_its_siblings() -> Bool {
+test fn a_withdrawal_does_not_leak_to_its_siblings() -> Bool  {
   admission_label(
     hosts: host_rows_srv3_down(), providers: provider_rows_codex_down(),
     host: operator_host_srv1, provider: ClaudeCliProvider,
@@ -91,7 +91,7 @@ test fn a_withdrawal_does_not_leak_to_its_siblings() -> Bool {
 // The discriminating half is that these three answers are not all the same: a restorer keyed on
 // reachability would flap an intermittently-failing host back into service between its failures,
 // which is exactly why the cause is carried rather than being a bare withdrawn flag.
-test fn only_maintenance_withdrawals_admit_automatic_restore() -> Bool {
+test fn only_maintenance_withdrawals_admit_automatic_restore() -> Bool  {
   withdrawal_admits_automatic_restore(
     cause: WithdrawnForMaintenance { detail: "d" as NonEmptyStr })
     && !withdrawal_admits_automatic_restore(
@@ -106,7 +106,7 @@ test fn only_maintenance_withdrawals_admit_automatic_restore() -> Bool {
 // typed not-yet-bound carrying the axis it needs. An absent control would read as "not applicable
 // here" -- the not-applicable-versus-malformed conflation -- and would let an ambiguous request be
 // answered by whichever reading happened to get built.
-test fn the_account_axis_refuses_by_name_instead_of_being_absent() -> Bool {
+test fn the_account_axis_refuses_by_name_instead_of_being_absent() -> Bool  {
   let account = apply_capacity_control(request: CutProviderAccountBinding {
     provider: ClaudeCliProvider,
     account: "work-account" as NonEmptyStr,
@@ -132,7 +132,7 @@ test fn the_account_axis_refuses_by_name_instead_of_being_absent() -> Bool {
 // The assertion is deliberately that the host is STILL NOT withdrawn. Planning is what happened;
 // withdrawal takes authoring a roster row and committing it, so a green here means the control is
 // honest about the boundary rather than that it failed.
-test fn planning_a_cut_does_not_withdraw_anything_by_itself() -> Bool {
+test fn planning_a_cut_does_not_withdraw_anything_by_itself() -> Bool  {
   let outcome = apply_capacity_control(request: CutHost {
     host: operator_host_srv3,
     cause: WithdrawnForMaintenance { detail: "memory upgrade" as NonEmptyStr },
@@ -144,7 +144,7 @@ test fn planning_a_cut_does_not_withdraw_anything_by_itself() -> Bool {
                        pattern: "add to withdrawn_hosts")
 }
 
-test fn planning_a_runtime_cut_does_not_withdraw_it_by_itself() -> Bool {
+test fn planning_a_runtime_cut_does_not_withdraw_it_by_itself() -> Bool  {
   let outcome = apply_capacity_control(request: CutProviderRuntime {
     provider: CodexCliProvider,
     cause: WithdrawnToReduceSpend { detail: "quota" as NonEmptyStr },
@@ -154,7 +154,7 @@ test fn planning_a_runtime_cut_does_not_withdraw_it_by_itself() -> Bool {
 }
 
 // CUTTING A RUNTIME AND CUTTING A HOST ARE DIFFERENT PLANS, NOT ONE CONTROL WITH AN ARGUMENT.
-test fn the_two_cut_controls_actuate_distinctly() -> Bool {
+test fn the_two_cut_controls_actuate_distinctly() -> Bool  {
   let cut_host = capacity_control_outcome_line(outcome: apply_capacity_control(
     request: CutHost {
       host: operator_host_srv3,
@@ -176,7 +176,7 @@ test fn the_two_cut_controls_actuate_distinctly() -> Bool {
 // witness goes red the moment capacity is withdrawn in a commit, which is the point -- taking a
 // machine or a runtime out of service should require an author to face a red test and say so,
 // rather than riding in as a data row nobody reads.
-test fn the_live_rosters_withdraw_nothing() -> Bool {
+test fn the_live_rosters_withdraw_nothing() -> Bool  {
   active_host_count() == 4
     && active_provider_count() == 3
     && (withdrawn_hosts |> count) == 0

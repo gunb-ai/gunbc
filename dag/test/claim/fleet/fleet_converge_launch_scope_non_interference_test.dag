@@ -177,7 +177,7 @@ fn launch_environment_census_report() -> String {
 // Memoization is witness-local, so keep the two expensive fixture compilations in one claim. The
 // clean side is scoped to the six identities under test: the imported closure may carry unrelated
 // blocking diagnostics, and requiring global cleanliness would not measure this constructor wall.
-test fn the_eight_excess_field_constructors_are_refused_at_all_twenty_one_fields() -> Bool {
+test fn the_eight_excess_field_constructors_are_refused_at_all_twenty_one_fields() -> Bool  {
   census_ran(census: clean_census)
     && census_ran(census: foreign_axis_census)
     && identity_count(census: clean_census, wanted: observed_slots_field_not_found) == 0
@@ -277,11 +277,11 @@ fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
   }
 }
 
-test fn the_same_thirty_one_slot_population_moves_the_full_host_projection() -> Bool {
+test fn the_same_thirty_one_slot_population_moves_the_full_host_projection() -> Bool  {
   projections_differ(a: full_host_srv1(slots: []), b: full_host_srv1(slots: srv1_production_shaped_slots()))
 }
 
-test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Bool {
+test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Bool  {
   match fleet_converge_apply_terminal(request: full_host_srv1(slots: [])) {
     FullyApplied => false
     PartiallyApplied { refused_axis_count: _, detail: d } => string_contains(s: d, pattern: "activation=2")
@@ -289,7 +289,7 @@ test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Boo
   }
 }
 
-test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
+test fn the_same_cap_population_moves_the_full_host_projection() -> Bool  {
   projections_differ(
     a: full_host_srv1(slots: []),
     b: FullHostConverge {
@@ -305,7 +305,7 @@ test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
   )
 }
 
-test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
+test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool  {
   string_contains(
     s: fleet_converge_plan_artifact_of_request(
       request: FullHostConverge {

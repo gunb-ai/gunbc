@@ -474,7 +474,7 @@ fn admission_consulted(a: ProviderUseAdmission<NonEmptyStr>) -> List<Declaration
 
 // POSITIVE CONTROL. Without this every red is satisfied by a decision that refuses everything,
 // which would be a wall carrying no information.
-test fn w_admits_the_sanctioned_route() -> Bool {
+test fn w_admits_the_sanctioned_route() -> Bool  {
   admitted(a: decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
@@ -486,7 +486,7 @@ test fn w_admits_the_sanctioned_route() -> Bool {
 
 // RED - an unclassified route REFUSES rather than defaulting, on a route that is otherwise
 // perfect: every path located, downstream assessed, posture current, agreement bound.
-test fn w_unclassified_route_refuses() -> Bool {
+test fn w_unclassified_route_refuses() -> Bool  {
   denied_tagged(a: decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_two")),
     paths: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_two")),
@@ -498,7 +498,7 @@ test fn w_unclassified_route_refuses() -> Bool {
 
 // RED - the same provider in two regions produces different standings, so a permit is a fact
 // about a ROUTE and never about a company.
-test fn w_same_provider_two_regions_differ() -> Bool {
+test fn w_same_provider_two_regions_differ() -> Bool  {
   admitted(a: decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
@@ -520,7 +520,7 @@ test fn w_same_provider_two_regions_differ() -> Bool {
 // provider row. Naming the provider would keep the category right and the remedy wrong.
 // consulted ON THE REFUSAL IS EMPTY: this closure is never-looked, so the live denial must
 // tell a caller to go read something rather than to stop re-reading the same pages.
-test fn w_unread_telemetry_names_its_obligation() -> Bool {
+test fn w_unread_telemetry_names_its_obligation() -> Bool  {
   let a = decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
@@ -534,7 +534,7 @@ test fn w_unread_telemetry_names_its_obligation() -> Bool {
 
 // RED - an unread downstream population refuses and names ITS OWN obligation. A provider's
 // subprocessors are part of our data path whether or not its price list says so.
-test fn w_unread_downstream_names_its_obligation() -> Bool {
+test fn w_unread_downstream_names_its_obligation() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -550,7 +550,7 @@ test fn w_unread_downstream_names_its_obligation() -> Bool {
 
 // RED - a sanction written against posture R is STALE under active posture R+1. Route, paths,
 // scope and agreement are identical to the positive control; only the active revision moves.
-test fn w_stale_posture_refuses() -> Bool {
+test fn w_stale_posture_refuses() -> Bool  {
   denied_tagged(a: decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
@@ -565,7 +565,7 @@ test fn w_stale_posture_refuses() -> Bool {
 // The customer profile is identical to the positive control's, so a decision that blamed the
 // customer scope here would be diagnosing the wrong thing, and the previous !admitted assertion
 // could not tell the difference.
-test fn w_regulated_data_class_refuses_with_data_handling_cause() -> Bool {
+test fn w_regulated_data_class_refuses_with_data_handling_cause() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -587,7 +587,7 @@ test fn w_regulated_data_class_refuses_with_data_handling_cause() -> Bool {
 // RED - an UNSANCTIONED CUSTOMER PROFILE refuses as customer scope, which is the sibling of the
 // red above. Both are empty full-match sets; only these two together prove the decision tells
 // them apart rather than collapsing both into one cause.
-test fn w_unsanctioned_customer_refuses_with_customer_cause() -> Bool {
+test fn w_unsanctioned_customer_refuses_with_customer_cause() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -613,7 +613,7 @@ test fn w_unsanctioned_customer_refuses_with_customer_cause() -> Bool {
 // REDS - each of the three use dispositions gates, and each names its own program. These fields
 // were previously bare references that the decision never read: an unresolved sanctions case was
 // indistinguishable from a cleared one, which is the fail-open these arms exist to close.
-test fn w_unresolved_sanctions_refuses() -> Bool {
+test fn w_unresolved_sanctions_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -632,7 +632,7 @@ test fn w_unresolved_sanctions_refuses() -> Bool {
   )
 }
 
-test fn w_refused_export_refuses() -> Bool {
+test fn w_refused_export_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -651,7 +651,7 @@ test fn w_refused_export_refuses() -> Bool {
   )
 }
 
-test fn w_unresolved_prohibited_use_refuses() -> Bool {
+test fn w_unresolved_prohibited_use_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -672,7 +672,7 @@ test fn w_unresolved_prohibited_use_refuses() -> Bool {
 
 // RED - an agreement the roster does not accept refuses, and the refusal reports the agreement
 // that WOULD have bound. Every other input is identical to the positive control.
-test fn w_wrong_agreement_refuses() -> Bool {
+test fn w_wrong_agreement_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -698,7 +698,7 @@ test fn w_wrong_agreement_refuses() -> Bool {
 // Non-vacuity for the unread-standing extractor, so a green above cannot come from both
 // closures being accidentally equal. Asserted on first_unread_standing, because that is
 // what path_refusals consumes.
-test fn w_closure_extractors_discriminate() -> Bool {
+test fn w_closure_extractors_discriminate() -> Bool  {
   count(first_unread_standing(c: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 0
     && count(first_unread_standing(c: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 1
     && count(downstream_obligation(d: no_downstream())) == 0
@@ -714,7 +714,7 @@ fn w_jurisdiction_one() -> DeclarationRef {
   decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")
 }
 
-test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
+test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool  {
   let paths = closure_telemetry_unread(where_it_is: w_jurisdiction_one())
   count(first_unread_standing(c: paths)) == 1
     && match paths.telemetry {
@@ -729,7 +729,7 @@ test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
 // silence membership, so deleting a row, retargeting a URI, or dropping a typed silence reds.
 // The consulted decl_refs above still name the declarations; this is the half that reads the
 // values those names resolve to.
-test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool {
+test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool  {
   count(hetzner_published_readings()) == 2
     && count(hetzner_published_reading_locators()) == 2
     && count(filter(
@@ -755,7 +755,7 @@ test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool 
     && count(hetzner_data_protection_overview_reading.silences) == 0
 }
 
-test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {
+test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool  {
   let paths = closure_telemetry_researched_unread(where_it_is: w_jurisdiction_one())
   let a = decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -772,7 +772,7 @@ test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {
     && consulted_cites(consulted: consulted, expected: dpo_reading_ref())
 }
 
-test fn w_resolving_wrong_consulted_reading_refuses_the_join() -> Bool {
+test fn w_resolving_wrong_consulted_reading_refuses_the_join() -> Bool  {
   let a = decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_telemetry_wrong_consulted(where_it_is: w_jurisdiction_one()),
@@ -787,7 +787,7 @@ test fn w_resolving_wrong_consulted_reading_refuses_the_join() -> Bool {
     && !consulted_cites(consulted: consulted, expected: dpo_reading_ref())
 }
 
-test fn w_never_looked_and_researched_unread_are_not_the_same_citations() -> Bool {
+test fn w_never_looked_and_researched_unread_are_not_the_same_citations() -> Bool  {
   count(admission_consulted(a: decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_telemetry_unread(where_it_is: w_jurisdiction_one()),
@@ -804,7 +804,7 @@ test fn w_never_looked_and_researched_unread_are_not_the_same_citations() -> Boo
     ))) == 2
 }
 
-test fn w_later_researched_unread_does_not_fill_a_never_looked_first_path() -> Bool {
+test fn w_later_researched_unread_does_not_fill_a_never_looked_first_path() -> Bool  {
   let paths = closure_first_unread_never_looked_later_researched(where_it_is: w_jurisdiction_one())
   let a = decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -842,7 +842,7 @@ fn w_cleared_with(d: DispositionStanding, expected: DeclarationRef) -> Bool {
   }
 }
 
-test fn w_permit_records_its_clearances() -> Bool {
+test fn w_permit_records_its_clearances() -> Bool  {
   match decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
     paths: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
@@ -925,7 +925,7 @@ fn sanctioned_route() -> ProviderRoute {
 // PAIR ONE, REFUSING HALF - the route's durable storage sits in a jurisdiction the posture does not
 // permit, and the refusal NAMES THAT JURISDICTION. What the caller goes and does: place the storage
 // somewhere permitted, or get jurisdiction_two permitted by the posture authority.
-test fn w_nonpermitted_storage_jurisdiction_refuses() -> Bool {
+test fn w_nonpermitted_storage_jurisdiction_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: sanctioned_route(),
@@ -942,7 +942,7 @@ test fn w_nonpermitted_storage_jurisdiction_refuses() -> Bool {
 // PAIR ONE, ADMITTING HALF - the SAME route with the SAME paths under a posture that permits
 // jurisdiction_two admits. Without this the row above is satisfied by a decision that refuses
 // everything; together they establish that the population is what the decision actually read.
-test fn w_permitted_storage_jurisdiction_admits() -> Bool {
+test fn w_permitted_storage_jurisdiction_admits() -> Bool  {
   admitted(a: decide(
     route: sanctioned_route(),
     paths: closure_storage_elsewhere(home: j_one(), elsewhere: j_two()),
@@ -956,7 +956,7 @@ test fn w_permitted_storage_jurisdiction_admits() -> Bool {
 // from a jurisdiction the posture does not permit. The refusal names the OPERATOR as well as the
 // jurisdiction, because the remedy is a commitment from that operator restricting privileged access
 // and not a placement decision on our side. A support desk does not relocate with the workload.
-test fn w_nonpermitted_support_access_refuses() -> Bool {
+test fn w_nonpermitted_support_access_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: sanctioned_route(),
@@ -970,7 +970,7 @@ test fn w_nonpermitted_support_access_refuses() -> Bool {
   )
 }
 
-test fn w_permitted_support_access_admits() -> Bool {
+test fn w_permitted_support_access_admits() -> Bool  {
   admitted(a: decide(
     route: sanctioned_route(),
     paths: closure_support_elsewhere(home: j_one(), elsewhere: j_two()),
@@ -984,7 +984,7 @@ test fn w_permitted_support_access_admits() -> Bool {
 // offending jurisdiction, same scope - and the two closures differ only in WHICH path is elsewhere.
 // A decision that reported one cause for both would send half its callers to do the wrong thing,
 // and each pair alone cannot see it: only asserting the two tags against each other can.
-test fn w_the_two_jurisdiction_arms_are_told_apart() -> Bool {
+test fn w_the_two_jurisdiction_arms_are_told_apart() -> Bool  {
   denied_tagged(a: decide(
     route: sanctioned_route(),
     paths: closure_storage_elsewhere(home: j_one(), elsewhere: j_two()),
@@ -1007,7 +1007,7 @@ test fn w_the_two_jurisdiction_arms_are_told_apart() -> Bool {
 // population as an empty permitted list and refuses with a LOCATION cause, which is the right
 // direction and the wrong remedy - it sends the caller to move data when the thing to go and do is
 // read what the posture authority permits. So the arm is its own, and it names its own obligation.
-test fn w_unread_permitted_population_refuses() -> Bool {
+test fn w_unread_permitted_population_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: sanctioned_route(),
@@ -1074,7 +1074,7 @@ fn posture_enrolling_one_path() -> CompliancePostureRevision {
 }
 
 // The enrolled path admits - the declared exception executes rather than living in prose.
-test fn w_enrolled_path_admits_under_its_drop() -> Bool {
+test fn w_enrolled_path_admits_under_its_drop() -> Bool  {
   admitted(a: decide(
     route: sanctioned_route(),
     paths: closure_telemetry_at(where_it_is: undocumented(), evidence_ref: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "enrolled_path_evidence")),
@@ -1089,7 +1089,7 @@ test fn w_enrolled_path_admits_under_its_drop() -> Bool {
 // posture, the route, the scope and the citation are identical to the row above; only the evidence
 // declaration moves. Under the cheaper keying - enroll the citation - this row is green and the
 // drop's bounded population is a fiction.
-test fn w_unenrolled_path_citing_the_same_thing_refuses() -> Bool {
+test fn w_unenrolled_path_citing_the_same_thing_refuses() -> Bool  {
   denied_with(
     a: decide(
       route: sanctioned_route(),

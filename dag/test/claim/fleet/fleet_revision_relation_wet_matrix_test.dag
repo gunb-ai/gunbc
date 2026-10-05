@@ -138,45 +138,45 @@ fn is_unverifiable(r: DeployRevisionRelation?) -> Bool {
 // control that must pass with an EMPTY store: if it ever needs a recorded fixture, the equality
 // check has stopped happening before the probe and every no-op admission has started paying a
 // subprocess.
-test fn identical_revisions_are_converged_without_dispatching_a_probe() -> Bool {
+test fn identical_revisions_are_converged_without_dispatching_a_probe() -> Bool  {
   is_same(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_b_hex))
 }
 
 // CASE 1b -- THE SHORT-CIRCUIT DOES NOT DEPEND ON THE REPOSITORY EXISTING. Same inputs, a path that
 // is not a repository. Still converged, because git was never asked.
-test fn identical_revisions_converge_even_when_the_path_is_not_a_repository() -> Bool {
+test fn identical_revisions_converge_even_when_the_path_is_not_a_repository() -> Bool  {
   is_same(r: relation_in(repository_path: non_repository_path, current_hex: revision_b_hex, accepted_hex: revision_b_hex))
 }
 
 // CASE 2 -- THE ORDINARY FORWARD ADVANCE. A is an ancestor of B, so the merge base IS the current
 // revision.
-test fn an_ancestor_current_is_a_forward_advance() -> Bool {
+test fn an_ancestor_current_is_a_forward_advance() -> Bool  {
   is_deployed_ancestor(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_a_hex, accepted_hex: revision_b_hex))
 }
 
 // CASE 3 -- SUPERSEDED. The merge base IS the accepted revision, so the fleet already carries
 // something newer and this run must do nothing and exit zero.
-test fn an_ancestor_accepted_is_superseded() -> Bool {
+test fn an_ancestor_accepted_is_superseded() -> Bool  {
   is_candidate_ancestor(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_a_hex))
 }
 
 // CASE 4 -- DIVERGED, WITH A SHARED ANCESTOR. Exit 0 and a real merge base (A), which is NEITHER
 // endpoint. This is the case whose receipt used to claim a disjoint history.
-test fn siblings_sharing_an_ancestor_are_neither_ancestor_of_the_other() -> Bool {
+test fn siblings_sharing_an_ancestor_are_neither_ancestor_of_the_other() -> Bool  {
   is_diverged(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_c_hex))
 }
 
 // CASE 5 -- NO COMMON ANCESTOR AT ALL. Exit 1, which is an ANSWER: git looked and there is none.
 // It folds to the same refusal as case 4 today, and the two are deliberately distinguishable
 // upstream at MergeBaseOutcome.
-test fn an_orphan_root_has_no_common_ancestor() -> Bool {
+test fn an_orphan_root_has_no_common_ancestor() -> Bool  {
   is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_d_hex))
 }
 
 // CASE 6 -- A DECODABLE OBJECT ID THE REPOSITORY DOES NOT HOLD. Exit 128. The distinction from
 // case 5 is the whole point: "there is no merge base" and "I could not look" must not collapse,
 // because one refuses a real divergence and the other refuses an unreadable repository.
-test fn an_absent_object_is_unverifiable_not_unrelated() -> Bool {
+test fn an_absent_object_is_unverifiable_not_unrelated() -> Bool  {
   is_unverifiable(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_absent_hex))
 }
 
@@ -184,7 +184,7 @@ test fn an_absent_object_is_unverifiable_not_unrelated() -> Bool {
 // real fixture. Exit 128 again, by a different route. If this ever answered a relation, the
 // observation would be reading some other repository -- exactly the ambiguity that naming the
 // repository on the operation removed.
-test fn a_non_repository_path_is_unverifiable_rather_than_answering() -> Bool {
+test fn a_non_repository_path_is_unverifiable_rather_than_answering() -> Bool  {
   is_unverifiable(r: relation_in(repository_path: non_repository_path, current_hex: revision_b_hex, accepted_hex: revision_c_hex))
 }
 
@@ -192,7 +192,7 @@ test fn a_non_repository_path_is_unverifiable_rather_than_answering() -> Bool {
 // Both refuse; they must refuse DIFFERENTLY. A consumer reading the operation's `success: Bool`
 // instead of its exit code cannot tell these apart at all, which is the live residual recorded on
 // MergeBaseOutcome.
-test fn no_merge_base_and_could_not_look_stay_distinguishable() -> Bool {
+test fn no_merge_base_and_could_not_look_stay_distinguishable() -> Bool  {
   is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_d_hex))
     && is_unverifiable(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_absent_hex))
 }
