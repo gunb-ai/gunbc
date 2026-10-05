@@ -1244,6 +1244,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.body_lowering_data_literal_door.door_data_literal_normalized",
+  "v2.test.claim.body_lowering_unrecognised_lowered_shape.ulsh_route_postfix",
   "v2.test.parse.match_arm_statement_body_parse.match_arm_statement_body_parsed",
   "v2.test.parse.newline_dual_role_operator_mutation.nlm_mutant_prepared",
   "v2.test.parse.newline_dual_role_operator_mutation.nlm_refusal_arm_census",

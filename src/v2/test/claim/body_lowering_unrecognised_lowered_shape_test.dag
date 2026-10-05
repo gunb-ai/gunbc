@@ -14,11 +14,9 @@ import v2.compiler.body_lowering_fold {
   body_lower_operand_ref_read,
   body_term_of
 }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
+import v2.test.parse.expression_bodied_fn_decl_parse { g_tokenize_parse }
 import v2.extdeps.languages.dag {
   dag_int_literal_node_from_lexeme,
-  dag_language_model,
   parse_production_emitted_identity_optional
 }
 import v2.std.compilers.body_lowering { BodyTerm, Lowered, RawLeaf, RawParse }
@@ -190,15 +188,16 @@ test fn a_literal_token_carrying_a_foreign_edge_refuses() -> Bool {
 // RED if the postfix arm of body_lower_reduce_emitted stops sealing: the atom then reads as a raw leaf.
 data ulsh_route_source: String = "module ulsh_route\n\ndata ulsh_value: Int = ulsh_name\n"
 
-fn ulsh_parsed(source: String) -> Optional<Node> {
-  let lm = dag_language_model()
-  match tokenize(text: source, file: ^ulsh_route_file, rules: lm.lex) {
+// THE PARSE IS ONE NULLARY PRODUCER, enrolled WARM in v2.workflow.floor_pure_producer_share, as the
+// door claim's is (v2.test.claim.body_lowering_data_literal_door door_data_literal_normalized). The
+// route claim reads the postfix node it yields; building the language model, tokenizing and parsing
+// inside the claim cost 399ms against a 302ms enrolment margin on the merge-group floor. It parses
+// through the shared prepared grammar (g_tokenize_parse), the same route the door claim reads.
+fn ulsh_route_postfix() -> Optional<Node> {
+  match g_tokenize_parse(text: ulsh_route_source, file: ^ulsh_route_file) {
     Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
-      }
+    Accepted { value: tree, diagnostics: _ } =>
+      ulsh_first_emitted(root: tree, production: ^dag_surface_postfix_expr)
   }
 }
 
@@ -220,10 +219,7 @@ fn ulsh_first_emitted(root: Node, production: Symbol) -> Optional<Node> {
 }
 
 test fn a_passed_through_atom_leaves_the_fold_sealed() -> Bool {
-  match ulsh_parsed(source: ulsh_route_source) {
-    Absent => false
-    Present { value: tree } =>
-      match ulsh_first_emitted(root: tree, production: ^dag_surface_postfix_expr) {
+  match ulsh_route_postfix() {
         Absent => false
         Present { value: postfix } =>
           match body_lower_fold(node: postfix) {
@@ -238,7 +234,6 @@ test fn a_passed_through_atom_leaves_the_fold_sealed() -> Bool {
                 _ => false
               }
           }
-      }
   }
 }
 
