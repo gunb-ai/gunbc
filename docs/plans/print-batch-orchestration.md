@@ -6,6 +6,18 @@ workflow milestone. The explicit-plate preparation/controller foundation now has
 release contract below remain incomplete. This document grants no print start.
 The operator should request parts and quantities once, then clear beds when notified.
 
+## Assembly convergence source
+
+For cassette work, the desired multiset is derived from the selected assembly and
+its manufacturable requirements in the [assembly convergence plan](cassette-assembly-requirements.md).
+BATCH-1 must consume that source rather than independently authoring a second
+cassette list. Standalone print requests remain explicit selected goals.
+Assessment uses `std.goal_assessment`; unknown inventory or pending inspection
+creates evidence/reconciliation work, not a replacement print. The planner still
+needs durable reservations and the guarded start protocol: deriving a diff alone
+does not make physical actuation idempotent. BATCH-5 inspection receipts feed back
+into assembly assessment; FINISH never supplies physical acceptance.
+
 ## Contract
 
 Input is a desired multiset of versioned part instances, compatible available printers,

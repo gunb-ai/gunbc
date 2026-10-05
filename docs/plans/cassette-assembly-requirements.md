@@ -1,8 +1,10 @@
-# Assembly requirements and their providers
+# Converging a selected cassette design to an accepted physical assembly
 
 Status: migration plan, not an implemented admission mechanism. Active worktree:
 `session/print-workflow-integration`, PR #13334, targeting main. This plan extends
-CAS-3/5/6/8; it does not fork the cassette design or change active prints.
+CAS-3/5/6/8 and BATCH-1/5; it does not fork the cassette design or change active prints.
+The earlier requirements/provider framing is retained as the assessment subject,
+not a second convergence algebra.
 
 ## Current prototype scope
 
@@ -41,6 +43,128 @@ facts and ambiguity, but its provider-route policy is not a mechanical interface
 `std.resource_contract` describes compiler effects, not physical port capacity;
 do not reuse its enums merely because they say capability/resource.
 
+## Selection and convergence boundary
+
+The loop is:
+
+```text
+intent + vendor facts + candidate evidence
+  -> candidate production -> std.decision selection receipt
+  -> versioned desired assembly and derived demand census
+  -> goal-blind observation -> std.goal_assessment
+  -> remedy selection/planning -> guarded actuation
+  -> independent readback/inspection -> reassessment
+```
+
+Selection precedes each convergence scope. Board/fan/cooler choice, connection
+selection, routing, inlet location and print orientation are explicit selected
+realizations. Candidate producers enumerate alternatives; `std.decision` chooses
+within the evidenced field and stated policy, producing `SelectedWithin` or its
+actual unresolved/refused arms. Checks eliminate inadmissible candidates and
+supply evidence; they do not silently choose the remaining policy. A Pareto front
+is not a choice. If new evidence invalidates a choice, re-enter selection and
+version the goal; do not quietly change it inside an actuator.
+
+The desired state is derived from that selected configuration and intended use,
+not from vendor facts alone. A board having two Ethernet ports does not require
+both connected. The selected connection policy activates a port's demands; the
+board authority supplies its physical/electrical facts. Selection and derived
+requirements may constrain one another during candidate evaluation, but each
+actuation consumes one fixed, identified selected goal.
+
+`std.goal_assessment` owns remedy-free assessment now. Inhabit
+`ObservationAttempt`, `GoalInspection` and `GoalAssessment`, including:
+
+- `GoalSatisfied`: evidence establishes this scoped goal.
+- `GoalDiverged`: a nonempty set of established differences.
+- `GoalIndeterminate`: nonempty unknown facts **and any known differences**.
+- `GoalAssessmentRefused`: the question is not valid/comparable (for example
+  duplicate identities or an incompatible subject/revision).
+- `ObservationRefused`: no usable snapshot; outside the assessment, not absence.
+
+Use `assess_by_deviations_and_unknowns` where applicable. Display labels such as
+open/violated are projections, not fresh competing verdict types. A known
+violation must survive alongside unknown evidence. An open prerequisite refuses
+an action that depends on it; it need not stop unrelated, independently admitted
+work such as inspecting a different finished part.
+
+`std.goal_assessment` deliberately owns no planner, actuator or post-actuation
+cycle. DESIGN §3d and that module name the fleet admission spine as the first
+consumer of the future shared effectful cycle. Bind cassette assessment now and
+keep `gunbc.fleet.printer_batch` as the existing actuator; do not introduce a
+cassette-local generic cycle. Before the cycle implementation, inspect
+`gunbc.fleet_converge_plan` at `dag/gunbc/fleet/fleet_converge_plan.dag`. The shared
+cycle lands with that spine as its required consuming integration, then the
+cassette binds it in the same or a subsequent change. If it remains absent, mark
+this portion open rather than declaring cassette-first completion.
+`std.realization_reconcile` already classifies reported grounding, but does not
+itself establish that a read happened or supply the missing guarded cycle.
+
+## What counts as observation
+
+Keep model/realization evidence and physical evidence separately attributed:
+
+- Model consistency and independently read CAD/slicer artifacts establish claims
+  about the design or generated instructions. A checked swept volume can satisfy
+  a **modeled-clearance** goal under its stated inputs. It cannot establish the
+  installed cable's placement or that the printed part survived.
+- Physical inventory, accepted-part inspection, assembly observations and
+  installed measurements establish claims about actual instances. Receipts bind
+  subject, geometry/material/process compatibility, observation identity and time.
+  A photo without sufficient detail leaves its affected claims indeterminate.
+
+Do not force every design proposition to wait for a physical measurement; instead
+make its subject and evidence requirements explicit. Conversely, never let a
+rendered reservation or a successful command stand in for installed evidence.
+Observers receive subject and independently scoped requests, not the goal.
+Review capture and goal-derived-request paths too: an observer that only returns
+wanted items cannot establish complete inventory or discover extra/mismatched
+parts. Record snapshot coverage so an unread shelf is not reported empty.
+
+## Desired demand, work and readback
+
+Derive BATCH-1's versioned required-instance slots from the selected assembly's
+manufacturable component occurrences referenced by the demand census. Several
+demands satisfied by one component do not create several copies: occurrence
+identity and selected quantity own multiplicity. Purchased parts, wiring, assembly and evidence collection
+produce their appropriate work kinds; they are not all print jobs. Explicit
+standalone print requests remain valid selected goals, but the cassette must not
+maintain a second independently authored wanted-parts list.
+
+The planner consumes assessment, inventory and outstanding attempts. Desired minus
+accepted inventory is not sufficient: reserve instances already claimed, running,
+uncertain, or completed awaiting inspection. Their unresolved state generates
+reconciliation/inspection work, not replacement prints. A proven missing or
+rejected instance can generate a replacement after remedy selection and admission.
+A violation might instead require rerouting, purchasing, redesign or measurement.
+No generic remediation follows from an indeterminate aggregate; separately scoped
+work requires its own complete assessment and prerequisites.
+
+Keep requirement-slot identity distinct from design revision, physical inventory
+instance, plate plan and print attempt. Bind plans to the selected goal revision
+and observed baseline; reject stale plans before new actuation. Geometry/process
+changes do not erase old claims or silently reuse incompatible inventory.
+Retain the existing controller hold, durable start claims, ntfy/bed-clear boundary
+and uncertain-publication reconciliation. Derived plans alone do **not** guarantee
+idempotent physical effects. BATCH-1's atomic multi-instance reservations remain
+necessary; hashing a fresh plate or changing an output directory is not a replay
+boundary.
+
+After actuation, acquire readback of the exact subject independently of the
+actuator's return. Printer `FINISH` means completed-awaiting-inspection. Acceptance
+consumes an attributable physical inspection and satisfies only that instance's
+applicable acceptance requirements. Assembly fit and powered-operation goals can
+remain open. An uncertain acknowledgement retains its claim and is reconciled;
+it is never a reason to resend automatically.
+
+For the failed grille plate: **if** the posts/pins are accepted and M140/G140
+rejected, the diff yields only two replacement needs. Recognizable parts in a
+photo do not supply the missing acceptance receipts. In a repeated assessment
+with the same goal, observations and reservations, no additional eligible work
+appears. With new rejection evidence, only affected slots change. Progress is
+conditional on evidence and achievable goals; this is not a guarantee that every
+physical build eventually succeeds.
+
 ## One assembly report, checks for each domain
 
 Use one owner-and-evidence relation, with a closed requirement payload whose
@@ -59,9 +183,13 @@ Proposed carrier roles (names subject to the implementation's authority search):
   owner may be a component, joint, route, assembly or fabrication instance.
 - Binding: explicit named demand/provider endpoints, quantity and chosen route
   or joint. Ambiguous candidates remain ambiguous until an assignment is made.
-- Evaluation: `Satisfied` with named bindings and evidence; `Open` with missing
-  evidence and a concrete closure trigger; or `Violated` with a located cause.
-  An open item is not permission. A known collision cannot be hidden as open.
+- Desired assembly: selected revision plus derived owner-bound requirements and
+  instance quantities; one authority for both review and requested work.
+- Observed assembly: scoped model/artifact or physical snapshot with source,
+  coverage, identity and standing; absence must be observed, not defaulted.
+- Evaluation: the existing `std.goal_assessment` result with domain evidence,
+  deviations, unknown facts and comparison refusals. Render missing evidence with
+  a concrete closure trigger and deviations with located causes.
 
 Preserve unknown source coordinates and provisional readings. Purchased-part
 facts belong with their vendor authority when actually published. Coordinates
@@ -71,7 +199,8 @@ when the vendor supplies the fan's local airflow direction.
 
 The assembly evaluator indexes placed owners/ports once, checks bindings,
 accumulates shared capacity use, then evaluates local and cross-part constraints.
-Candidate route search is a separate producer; the evaluator checks its result.
+Candidate route search is a separate producer; `std.decision` selects a candidate
+with a receipt, and the evaluator checks the selected result.
 This is one report/fold boundary, not a claim that every constraint is a local
 pairwise comparison or that a greedy single pass finds a valid layout. Stable
 identities make findings independent of input ordering. Duplicate identities,
@@ -126,9 +255,10 @@ Keep rear Ethernet near its board port, escaping sideways around the fan cradle
 to a retained side route. Select a protected node DC inlet and route power along
 an edge toward the board's front-edge inputs. Route the rear fan's power/PWM lead
 to a compatible front-edge fan header, with a selected extension if needed.
-Cooler leads stay clear of both fans. The choice of left/right side and DC inlet
-location is an output of endpoint, clearance and service checks, not yet a
-verified layout. No loose cable is accepted through the fan rotor exclusion.
+Cooler leads stay clear of both fans. Left/right routing and DC inlet location
+are candidate decisions selected with explicit policy and evidence receipts after
+endpoint, clearance and service screening. No route is selected here, and no loose
+cable is accepted through the fan rotor exclusion.
 
 The existing 50 mm I/O reservation is only a proposed space budget. It cannot
 stand in for connector bodies, cable bends or insertion/removal access. Use the
@@ -137,11 +267,18 @@ locations rather than inventing exact coordinates to make a route pass.
 
 ## Migration and acceptance order
 
+0. **Selection receipts and scopes.** Name the goal subject, intended prototype or
+   operation scope, decision field, hard constraints, evidence and selection policy.
+   Bind board/fan/cooler, connections, routes and fabrication choices through
+   `std.decision`; carry unresolved choices without fabricated defaults. Give each
+   convergence assessment its fixed selected goal and revision.
 1. **Inventory and identity.** Attach every existing interface/obligation to its
    owner and use case. Inventory the selected board, P14, cooler, onboard storage,
    DC branch/adapter and Ethernet lead. Map every old obligation to an executable
    demand or an explicit open item, with no silently dropped rows.
-2. **Join and findings.** Implement named bindings and the shared report. Cut the
+2. **Join and assessment.** Bind named relationships and the report to
+   `std.goal_assessment`, preserving observation failure, unknown facts, known
+   deviations and malformed questions. Cut the
    mechanical review root over with controls for valid mates, distant coaxial
    bores, duplicate/ambiguous providers, missing owners and occupied ports.
    Preserve current geometry checks during replacement; retire the old matching
@@ -154,10 +291,17 @@ locations rather than inventing exact coordinates to make a route pass.
    exclusion/service spaces and located open/violated demands in the existing
    review. Derive cable BOM/lengths from those same routes. Show the owner and
    evidence behind each finding; remove independently authored reservations/counts.
-5. **Fabrication and release.** Join the current print-plane/support/readback
-   evidence into the report. Separate view/fit-prototype, fabrication and powered
-   operation policies. Keep board supports open for this prototype, without
-   allowing that concession to grant powered operation. Do not alter running jobs.
+5. **Derived work and guarded actuation.** Make BATCH-1 consume the canonical
+   assembly-derived instance slots, inventory and durable reservations. Remove its
+   independent cassette demand authoring at cutover. Route print work through the
+   existing batch controller, and represent assembly/inspection work explicitly.
+   Test partial failure, stale revisions and uncertain starts without replay.
+6. **Physical readback and reassessment.** Consume per-instance inspection receipts
+   from BATCH-5; do not leave completion's inspection-pending state terminal to the
+   overall assembly program. Reassess with new observations. Join current
+   print-plane/support/readback evidence at its design/process scope. Separate
+   view/fit-prototype, fabrication and powered-operation policies; board-support
+   concessions cannot grant powered operation. Do not alter running jobs.
 
 Use real assembled/sliced producers as integration controls, not only fixtures
 that echo authored values. Required negative controls include reversed fan,
@@ -171,3 +315,10 @@ a second obligation list or a standalone visualization does not complete it.
 Delete prose requirements and old enum carriers only after their complete mapping
 and consumer cutover. Keep explanatory prose as derived/help text. Do not add a
 broad required-CI prefix or new job as part of this migration.
+
+Convergence controls additionally distinguish unread inventory from known absence,
+retain known violations beside unknowns, reject a wrong-revision inspection, and
+show that FINISH or a successful start cannot mint physical acceptance. Concurrent
+planners and restarts must retain reservations; partial acceptance must preserve
+accepted siblings. The production route must consume inspection and reassess,
+otherwise the new loop remains a plan rather than an implemented convergence path.
