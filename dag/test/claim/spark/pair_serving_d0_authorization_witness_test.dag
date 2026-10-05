@@ -9,6 +9,8 @@ import std.scoped_authorization { AuthorizationRequest, AuthorizationGranted }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollNotFiled, PollStillPending, PollDenied }
 import gunbc.auth.approval_gate { StandingReadAt, StandingClockUnreadable, ApprovalDenied }
+import gunbc.auth.approval_request_client { ApprovalLoopbackOrigin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused }
+import gunbc.roadmap_dashboard_instance { ProdRoleUnheld }
 import gunbc.spark.pair_serving_d0_door { d0_absent_claim_step, D0AbsentClaimClockUnreadable, D0AbsentClaimFileFrozen, D0AbsentClaimEnterPoll, D0AbsentClaimDecided, pair_serving_d0_mode_admission, D0ModeAdmitted, D0ModeRefused }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
@@ -170,13 +172,32 @@ test fn a_frozen_filing_with_no_claim_files_polls_or_decides_live_by_the_read() 
 // revision that is not the checked-out tree's HEAD each refuse.
 test fn the_mode_admits_only_srv1_group_a_and_a_named_consent_and_revision() -> Bool {
   let rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) {
+  (match pair_serving_d0_mode_admission(writer: srv1_writer(), declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) {
     D0ModeAdmitted { group: g, transaction: tx, authorization: a, execution_revision: r } => (fabric_group_wire(g: g) as String) == "group-a" && (tx as String) == "d0-esc-1" && (a as String) == "d0-esc-1" && (r as String) == rev
     D0ModeRefused { reason: _ } => false
   })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv2", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("srv2")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("runs on srv2")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("GUNBC_D0_CONSENT")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: "", checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("expected_revision")  _ => false })
-    && (match pair_serving_d0_mode_admission(declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { D0ModeRefused { reason: r } => r.contains("not the tree this job runs from")  _ => false })
+    && (match pair_serving_d0_mode_admission(writer: srv1_writer(), declared_host: "srv2", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(writer: srv1_writer(), declared_host: "srv1", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("runs on srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(writer: srv1_writer(), declared_host: "srv1", kernel_host: "srv1", consent: "", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("GUNBC_D0_CONSENT")  _ => false })
+    && (match pair_serving_d0_mode_admission(writer: srv1_writer(), declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: "", checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("expected_revision")  _ => false })
+    && (match pair_serving_d0_mode_admission(writer: srv1_writer(), declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") { D0ModeRefused { reason: r } => r.contains("not the tree this job runs from")  _ => false })
+}
+
+// The writer origin is supplied at the admission's interface (gunbc.auth.approval_request_client
+// resolves it from the prod-role holder; test.claim.approval_request_client_witness_test runs that).
+fn srv1_writer() -> ApprovalLoopbackOrigin {
+  ApprovalLoopbackOriginResolved { host: "srv1" as NonEmptyStr, origin: "http://127.0.0.1:8085" as NonEmptyStr }
+}
+
+fn srv2_writer() -> ApprovalLoopbackOrigin {
+  ApprovalLoopbackOriginResolved { host: "srv2" as NonEmptyStr, origin: "http://127.0.0.1:8085" as NonEmptyStr }
+}
+
+// THE EXECUTOR FOLLOWS THE WRITER'S HOST: with the role on srv2 the mode admits a srv2 dispatch on a
+// srv2 kernel and refuses srv1 before any credential; with no prod role it refuses outright.
+test fn the_d0_executor_is_the_approval_writers_host_and_no_prod_role_refuses() -> Bool {
+  let rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  (match pair_serving_d0_mode_admission(writer: srv2_writer(), declared_host: "srv2", kernel_host: "srv2", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeAdmitted { group: _, transaction: _, authorization: _, execution_revision: _ } => true  D0ModeRefused { reason: _ } => false })
+    && (match pair_serving_d0_mode_admission(writer: srv2_writer(), declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: r } => r.contains("srv2")  _ => false })
+    && (match pair_serving_d0_mode_admission(writer: ApprovalLoopbackOriginRefused { cause: ProdRoleUnheld }, declared_host: "srv1", kernel_host: "srv1", consent: "d0-esc-1", execution_revision: rev, checked_out_revision: rev) { D0ModeRefused { reason: _ } => true  _ => false })
 }

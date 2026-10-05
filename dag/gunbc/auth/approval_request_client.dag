@@ -17,6 +17,8 @@ import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, sign_submission,
 }
 import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host_effect { LocalShell }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal,
   prod_role_realization, prod_role_realization_refusal_detail,
@@ -43,8 +45,11 @@ data approval_request_submit_path: NonEmptyStr = approval_broker_submit_path
 // arms resolve through gunbc.roadmap_dashboard_instance prod_role_realization. Under NoProdRole neither
 // is installed anywhere and the origin REFUSES with the realization's typed cause; it never falls back
 // to srv1.
+// THE ORIGIN CARRIES ITS HOST. A loopback origin means something only on the host it is loopback ON,
+// so the resolved arm names the holder instance's host beside the endpoint; dropping it would let an
+// executor on another host dial a stale writer there instead of refusing.
 type ApprovalLoopbackOrigin
-  = ApprovalLoopbackOriginResolved { origin: NonEmptyStr }
+  = ApprovalLoopbackOriginResolved { host: NonEmptyStr, origin: NonEmptyStr }
   | ApprovalLoopbackOriginRefused { cause: ProdRoleRealizationRefusal }
 
 fn approval_loopback_origin_of(instance: HostDashboardInstance) -> NonEmptyStr {
@@ -59,8 +64,8 @@ fn approval_loopback_origin_for(writer: ApprovalServingProcess, realization: Pro
     ProdRoleRealizationRefused { cause } => ApprovalLoopbackOriginRefused { cause: cause }
     ProdRoleRealizedBy { holder } =>
       match writer {
-        RoadmapProcess => ApprovalLoopbackOriginResolved { origin: approval_loopback_origin_of(instance: holder.instance) }
-        BrokerProcess => ApprovalLoopbackOriginResolved { origin: approval_broker_loopback_base_url(port: approval_broker_listen_port) }
+        RoadmapProcess => ApprovalLoopbackOriginResolved { host: holder.instance.host_identity, origin: approval_loopback_origin_of(instance: holder.instance) }
+        BrokerProcess => ApprovalLoopbackOriginResolved { host: holder.instance.host_identity, origin: approval_broker_loopback_base_url(port: approval_broker_listen_port) }
       }
   }
 }
@@ -77,13 +82,61 @@ fn approval_loopback_origin_refusal_detail(cause: ProdRoleRealizationRefusal) ->
   join(["approval broker origin unresolved: ", prod_role_realization_refusal_detail(cause: cause)], "") as NonEmptyStr
 }
 
-fn approval_submit_url(origin: NonEmptyStr) -> NonEmptyStr {
-  concat(origin as String, approval_request_submit_path as String) as NonEmptyStr
+// ── THE EXECUTOR MUST BE THE ORIGIN'S HOST, BEFORE ANY LOCAL HTTP ─────────────────────────────
+// The only way to obtain a URL is from a DialableApprovalOrigin, and its one mint is the admission
+// below, which admits an origin only when the executor's own short hostname (gunbc.hostname_read, the
+// established local-host read) IS the origin's host. So an executor that is not the prod-role
+// holder's host -- or cannot read its own hostname -- refuses before any request is built.
+type DialableApprovalOrigin sole_constructor {
+  host: NonEmptyStr
+  origin: NonEmptyStr
 }
 
-fn approval_status_url(origin: NonEmptyStr, escalation_id: NonEmptyStr) -> NonEmptyStr {
+type ApprovalOriginAdmission
+  = ApprovalOriginDialable { dial: DialableApprovalOrigin }
+  | ApprovalOriginUnresolved { cause: ProdRoleRealizationRefusal }
+  | ApprovalExecutorNotTheOriginHost { origin_host: NonEmptyStr, executor_host: String }
+  | ApprovalExecutorHostUnobserved { reason: String }
+
+fn approval_origin_admission(origin: ApprovalLoopbackOrigin, executor: HostnameShortCapture) -> ApprovalOriginAdmission {
+  match origin {
+    ApprovalLoopbackOriginRefused { cause } => ApprovalOriginUnresolved { cause: cause }
+    ApprovalLoopbackOriginResolved { host, origin: o } =>
+      match executor {
+        HostnameShortCaptureRefused { reason } => ApprovalExecutorHostUnobserved { reason: reason }
+        HostnameShortCaptured { value } =>
+          if value == (host as String) {
+            ApprovalOriginDialable { dial: DialableApprovalOrigin { host: host, origin: o } }
+          } else {
+            ApprovalExecutorNotTheOriginHost { origin_host: host, executor_host: value }
+          }
+      }
+  }
+}
+
+// The live admission: the actuated origin against this process's own host.
+fn approval_origin_admission_here() -> ApprovalOriginAdmission {
+  approval_origin_admission(origin: approval_loopback_origin(), executor: hostname_short_read(transport: LocalShell))
+}
+
+fn approval_origin_admission_refusal_detail(a: ApprovalOriginAdmission) -> NonEmptyStr {
+  match a {
+    ApprovalOriginDialable { dial: _ } => "approval origin admitted" as NonEmptyStr
+    ApprovalOriginUnresolved { cause } => approval_loopback_origin_refusal_detail(cause: cause)
+    ApprovalExecutorNotTheOriginHost { origin_host, executor_host } =>
+      join(["approval writer is loopback on ", origin_host as String, " (the prod-role holder's host) but this executor is ", executor_host, "; refusing before any request"], "") as NonEmptyStr
+    ApprovalExecutorHostUnobserved { reason } =>
+      join(["this executor's host could not be read (", reason, "); refusing before any request to the approval writer"], "") as NonEmptyStr
+  }
+}
+
+fn approval_submit_url(dial: DialableApprovalOrigin) -> NonEmptyStr {
+  concat(dial.origin as String, approval_request_submit_path as String) as NonEmptyStr
+}
+
+fn approval_status_url(dial: DialableApprovalOrigin, escalation_id: NonEmptyStr) -> NonEmptyStr {
   concat(
-    concat(origin as String, concat(approval_request_submit_path as String, "/")),
+    concat(dial.origin as String, concat(approval_request_submit_path as String, "/")),
     escalation_id as String,
   ) as NonEmptyStr
 }

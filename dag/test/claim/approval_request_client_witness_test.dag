@@ -1,10 +1,11 @@
 module test.claim.approval_request_client_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, List }
 import gunbc.auth.approval_request_client {
-  approval_submit_url, approval_status_url, approval_loopback_origin, approval_loopback_origin_for, approval_request_submit_path,
+  approval_submit_url, approval_status_url, approval_loopback_origin, approval_loopback_origin_for, approval_loopback_origin_of, approval_request_submit_path,
   ApprovalLoopbackOrigin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused,
+  approval_origin_admission, ApprovalOriginAdmission, ApprovalOriginDialable, ApprovalOriginUnresolved, ApprovalExecutorNotTheOriginHost, ApprovalExecutorHostUnobserved,
   approval_poll_standing, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
@@ -12,9 +13,11 @@ import gunbc.auth.approval_status_wire {
   parse_filed_approval_status, filed_approval_status_text, submission_filed_text, submission_body_admits_poll,
   StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import gunbc.auth.approval_writer_authority { approval_writer_authority, approval_writer_process, RoadmapProcess, BrokerProcess }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_deploy_dashboard_instance, ProdRoleRealization, ProdRoleUnheld }
+import gunbc.deployment_risk { ProdRoleHeldBy, NoProdRole, srv2_deploy_deployment }
+import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, prod_role_actuated_realization_in }
+import gunbc.auth.approval_writer_authority { approval_writer_authority, approval_writer_process, ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 import gunbc.auth.approval_broker_endpoint { approval_broker_loopback_base_url, approval_broker_listen_port }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_decision_store { approval_mac_key_id }
@@ -36,40 +39,100 @@ fn fixture_stored() -> StoredApprovalRequest {
   }
 }
 
-// The roadmap writer's origin is the prod-role holder's listen bind -- srv1-live under today's selection.
-test fn submit_and_status_urls_follow_the_prod_role_holders_listen_bind_while_the_roadmap_writes() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  match approval_loopback_origin_for(writer: RoadmapProcess, realization: prod_role_actuated_realization()) {
-    ApprovalLoopbackOriginRefused { cause: _ } => false
-    ApprovalLoopbackOriginResolved { origin: o } => {
-      let origin = o as String
-      origin == concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port)))
-        && approval_submit_url(origin: o) as String == concat(origin, approval_request_submit_path as String)
-        && approval_status_url(origin: o, escalation_id: "esc-1") as String == concat(concat(origin, concat(approval_request_submit_path as String, "/")), "esc-1")
+fn on_host(h: String) -> HostnameShortCapture {
+  HostnameShortCaptured { value: h }
+}
+
+fn srv2_holds() -> ProdRoleRealization {
+  prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment })
+}
+
+fn no_prod_role() -> ProdRoleRealization {
+  prod_role_actuated_realization_in(selection: NoProdRole)
+}
+
+fn resolved_host_and_origin(o: ApprovalLoopbackOrigin) -> List<String> {
+  match o {
+    ApprovalLoopbackOriginResolved { host, origin } => [host as String, origin as String]
+    ApprovalLoopbackOriginRefused { cause: _ } => []
+  }
+}
+
+fn dialable_url(a: ApprovalOriginAdmission) -> String {
+  match a {
+    ApprovalOriginDialable { dial } => approval_submit_url(dial: dial) as String
+    ApprovalOriginUnresolved { cause: _ } => ""
+    ApprovalExecutorNotTheOriginHost { origin_host: _, executor_host: _ } => ""
+    ApprovalExecutorHostUnobserved { reason: _ } => ""
+  }
+}
+
+// (5) POSITIVE CONTROL: today's selection, the broker as writer, an executor on srv1 -- dialable, at
+// the broker's loopback, and the URLs are that origin's.
+test fn todays_broker_writer_on_the_srv1_holder_is_dialable_from_srv1() -> Bool {
+  let broker_origin = approval_broker_loopback_base_url(port: approval_broker_listen_port) as String
+  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: prod_role_actuated_realization()), executor: on_host(h: "srv1")) {
+    ApprovalOriginDialable { dial } =>
+      (dial.host as String) == "srv1"
+        && approval_submit_url(dial: dial) as String == concat(broker_origin, approval_request_submit_path as String)
+        && approval_status_url(dial: dial, escalation_id: "esc-1") as String == concat(concat(broker_origin, concat(approval_request_submit_path as String, "/")), "esc-1")
+    _ => false
+  }
+}
+
+// (1) The role on srv2-deploy, the broker as writer, an executor on srv2: resolves and may dial.
+test fn a_broker_writer_on_a_srv2_holder_is_dialable_from_srv2() -> Bool {
+  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: srv2_holds()), executor: on_host(h: "srv2")) {
+    ApprovalOriginDialable { dial } => (dial.host as String) == "srv2"
+    _ => false
+  }
+}
+
+// (2) The role on srv2-deploy, the broker as writer, an executor on srv1: refuses before any request,
+// naming both hosts -- it does not dial srv1's loopback, where a stale broker may still answer.
+test fn a_broker_writer_on_a_srv2_holder_refuses_a_srv1_executor_before_any_request() -> Bool {
+  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: srv2_holds()), executor: on_host(h: "srv1")) {
+    ApprovalExecutorNotTheOriginHost { origin_host, executor_host } => (origin_host as String) == "srv2" && executor_host == "srv1"
+    _ => false
+  }
+}
+
+// (3) Switching the writer to the roadmap changes the endpoint and keeps the holder's host.
+test fn the_roadmap_writer_changes_the_endpoint_and_keeps_the_holders_host() -> Bool {
+  let r = srv2_holds()
+  let broker = resolved_host_and_origin(o: approval_loopback_origin_for(writer: BrokerProcess, realization: r))
+  let roadmap = resolved_host_and_origin(o: approval_loopback_origin_for(writer: RoadmapProcess, realization: r))
+  count(broker) == 2 && count(roadmap) == 2
+    && broker == ["srv2", approval_broker_loopback_base_url(port: approval_broker_listen_port) as String]
+    && roadmap == ["srv2", approval_loopback_origin_of(instance: srv2_deploy_dashboard_instance()) as String]
+    && dialable_url(a: approval_origin_admission(origin: approval_loopback_origin_for(writer: RoadmapProcess, realization: r), executor: on_host(h: "srv2"))) != dialable_url(a: approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: r), executor: on_host(h: "srv2")))
+}
+
+// (4) NoProdRole refuses on both writer arms, whatever the executor is.
+test fn no_prod_role_refuses_on_both_writer_arms() -> Bool {
+  let unresolved = fn(w: ApprovalServingProcess) -> Bool {
+    match approval_origin_admission(origin: approval_loopback_origin_for(writer: w, realization: no_prod_role()), executor: on_host(h: "srv1")) {
+      ApprovalOriginUnresolved { cause: ProdRoleUnheld } => true
+      _ => false
     }
   }
+  unresolved(RoadmapProcess) && unresolved(BrokerProcess)
 }
 
-fn origin_text(o: ApprovalLoopbackOrigin) -> String {
-  match o {
-    ApprovalLoopbackOriginResolved { origin } => origin as String
-    ApprovalLoopbackOriginRefused { cause: _ } => ""
+// An executor that cannot read its own hostname does not dial either.
+test fn an_executor_whose_host_is_unobserved_refuses() -> Bool {
+  match approval_origin_admission(origin: approval_loopback_origin_for(writer: BrokerProcess, realization: prod_role_actuated_realization()), executor: HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" }) {
+    ApprovalExecutorHostUnobserved { reason: _ } => true
+    _ => false
   }
 }
 
-// THE REGRESSION run 37265259209 hit: with the broker as writer the client must dial the broker's
-// listen port, never the roadmap's -- the two ports differ, so a client still on the roadmap is red.
-test fn submit_and_status_urls_dial_the_declared_writer() -> Bool {
+// THE REGRESSION run 37265259209 hit: the live origin is the declared writer's, the broker's loopback
+// when the broker writes, never the roadmap's port.
+test fn the_live_origin_is_the_declared_writers() -> Bool {
   let r = prod_role_actuated_realization()
-  let origin = origin_text(o: approval_loopback_origin())
-  let writer_origin = origin_text(o: approval_loopback_origin_for(writer: approval_writer_process(authority: approval_writer_authority), realization: r))
-  let broker_origin = approval_broker_loopback_base_url(port: approval_broker_listen_port) as String
-  origin != ""
-    && origin == writer_origin
-    && origin_text(o: approval_loopback_origin_for(writer: BrokerProcess, realization: r)) == broker_origin
-    && broker_origin != origin_text(o: approval_loopback_origin_for(writer: RoadmapProcess, realization: r))
-    && approval_submit_url(origin: origin as NonEmptyStr) as String == concat(origin, "/approvals")
-    && approval_status_url(origin: origin as NonEmptyStr, escalation_id: "esc-1") as String == concat(origin, "/approvals/esc-1")
+  resolved_host_and_origin(o: approval_loopback_origin()) == resolved_host_and_origin(o: approval_loopback_origin_for(writer: approval_writer_process(authority: approval_writer_authority), realization: r))
+    && resolved_host_and_origin(o: approval_loopback_origin_for(writer: BrokerProcess, realization: r)) != resolved_host_and_origin(o: approval_loopback_origin_for(writer: RoadmapProcess, realization: r))
 }
 
 test fn submit_body_nests_the_stored_request_as_a_json_string() -> Bool {
