@@ -101,19 +101,21 @@ test fn the_door_unit_precedes_the_mapping_and_a_port_routed_deployment_has_none
     && count(filter(twin.steps, s => step_is(step: s, door: true))) == 0
 }
 
-// THE ENTRY THE UNIT LAUNCHES EXISTS AND ANSWERS: gunbc.roadmap_serve roadmap_serve_handle_door is
-// called here with the facts the socket listener hands it, on a path no route matches, so the
-// request crosses the entry, the route table and the security seam and reads nothing from the host.
+// THE ENTRY THE UNIT LAUNCHES EXISTS AND ANSWERS: the socket's attested peer crosses
+// the real entry, security seam and route table. A GET to the POST-only dispatch route
+// answers 405 before any host read or write. Page rendering is not this claim's subject;
+// the roadmap serve witnesses retain the real unknown-route/404 coverage.
 test fn the_door_entry_answers_a_request_with_an_attested_peer() -> Bool {
-  roadmap_serve_handle_door(
+  let response = roadmap_serve_handle_door(
     method: "GET",
-    path: "/no-such-route",
+    path: "/dispatch/door-fixture",
     body: "",
     tailscale_identity: "operator@example.invalid",
     peer_user: "root",
     request_headers: [],
     release_revision: deploy_witness_release_revision,
-  ).status == 404
+  )
+  response.status == 405 && string_contains(s: response.body, pattern: "POST")
 }
 
 // ── The door is part of deploy readiness ─────────────────────────────────────────────────────────

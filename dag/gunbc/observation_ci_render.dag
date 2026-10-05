@@ -1163,6 +1163,48 @@ fn ci_shared_fill_row_text(
   )
 }
 
+// WHICH FRAME A READ WITH NO OBSERVED FILL CAME FROM. The total line's unattributed_hits is an
+// aggregate nobody can disposition; these two arms split it by where the read happened, and the
+// per-key line below names the identity, so "does preparation read this producer?" is answered
+// by identity rather than by comparing two runs' wall time.
+type SharedFillUnattributedFrame
+  = UnattributedHitOutsideFold
+  | UnattributedHitInClaimWithoutFill
+
+fn shared_fill_unattributed_frame_tag(frame: SharedFillUnattributedFrame) -> String {
+  match frame {
+    UnattributedHitOutsideFold => "outside-fold"
+    UnattributedHitInClaimWithoutFill => "in-claim-without-fill"
+  }
+}
+
+// One line per (frame, phase, cache, key). `phase` is the floor seam current when the read
+// happened (a preparation warm reads under its seam), or `claim` for an in-claim read.
+fn ci_shared_fill_unattributed_text(
+  frame: SharedFillUnattributedFrame,
+  phase: String,
+  cache: String,
+  key: String,
+  hits: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill-unattributed] frame=",
+    concat(
+      shared_fill_unattributed_frame_tag(frame: frame),
+      concat(
+        " phase=",
+        concat(
+          phase,
+          concat(
+            " cache=",
+            concat(cache, concat(" key=", concat(key, concat(" hits=", to_string(hits)))))
+          )
+        )
+      )
+    )
+  )
+}
+
 // THE TOTAL LINE CARRIES BOTH DENOMINATORS AND THE HOLE. shared_fill_ms is the part of fill_ms
 // that removing any one module cannot recover; unattributed_hits is the count of reads served by
 // a fill this ledger did not observe, which is the honest statement that the shared figure is a
