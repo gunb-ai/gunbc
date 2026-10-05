@@ -16,6 +16,7 @@ import gunbc.live_deploy.readiness {
   HealthzBodyDoesNotGround,
   ServiceProbeUnanswered,
   ServiceReadinessIdentityPending,
+  ServiceTailnetDoorPending,
   ServiceReadinessPollBound,
   ProcessRevisionMismatch,
   HealthzBodyRead,
@@ -194,6 +195,7 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
     Pending { cause: ServiceProbeUnanswered { detail } } =>
       string_contains(s: detail, pattern: "timed out")
     Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
+    Pending { cause: ServiceTailnetDoorPending { socket: _, detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
   }
@@ -212,6 +214,7 @@ test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Boo
         && o == (deploy_witness_release_revision as String)
     Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
     Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
+    Pending { cause: ServiceTailnetDoorPending { socket: _, detail: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false
   }
