@@ -31,7 +31,7 @@ fn verdict_label(supervisor: Bool, before: String, state: String) -> String {
 // would never produce: if the stop propagated, the stand-in is inactive; if PartOf did nothing, the
 // stand-in is still running with its supervisor gone -- which is the pre-repair leak, observed
 // rather than argued.
-test fn a_stand_in_still_active_after_its_supervisor_stopped_is_a_leak() -> Bool {
+test fn a_stand_in_still_active_after_its_supervisor_stopped_is_a_leak() -> Bool  {
   verdict_label(supervisor: true, before: "active", state: "inactive") == "held"
     && verdict_label(supervisor: true, before: "active", state: "active") == "leaked"
     && verdict_label(supervisor: true, before: "active", state: "activating") == "leaked"
@@ -41,7 +41,7 @@ test fn a_stand_in_still_active_after_its_supervisor_stopped_is_a_leak() -> Bool
 // would not tell us" and "systemd says it stopped" both leave no running stand-in to point at, so
 // collapsing them would make an instrument that cannot fail -- the fabricated-green class DESIGN
 // section 5 refuses.
-test fn an_unreadable_state_is_not_read_as_a_stop() -> Bool {
+test fn an_unreadable_state_is_not_read_as_a_stop() -> Bool  {
   verdict_label(supervisor: true, before: "active", state: "") == "unreadable"
     && stop_propagation_admitted(v: stop_propagation_verdict(
       supervisor_started: true, stand_in_state_before: "active", stand_in_state_after: "",
@@ -56,7 +56,7 @@ test fn an_unreadable_state_is_not_read_as_a_stop() -> Bool {
 // failures have different remedies -- a supervisor that will not start is a broken probe, while a
 // stand-in that was not running is a probe run in the wrong order -- and a single arm covering both
 // would send a reader to the wrong one.
-test fn a_supervisor_that_never_started_is_not_admitted() -> Bool {
+test fn a_supervisor_that_never_started_is_not_admitted() -> Bool  {
   verdict_label(supervisor: false, before: "active", state: "inactive") == "supervisor-never-started"
     && stop_propagation_admitted(v: stop_propagation_verdict(
       supervisor_started: false, stand_in_state_before: "active", stand_in_state_after: "inactive",
@@ -65,7 +65,7 @@ test fn a_supervisor_that_never_started_is_not_admitted() -> Bool {
 
 // ONLY ONE ARM ADMITS, checked in both directions so a later edit that widened the admitting set
 // would go red here rather than quietly release a leak.
-test fn only_the_observed_stop_admits() -> Bool {
+test fn only_the_observed_stop_admits() -> Bool  {
   stop_propagation_admitted(v: StandInStoppedWithItsSupervisor)
     && stop_propagation_admitted(v: StandInSurvivedItsSupervisor { active_state: "active" }) == false
     && stop_propagation_admitted(v: StandInNotRunningBeforeTheAction { state_before: "inactive" }) == false
@@ -75,7 +75,7 @@ test fn only_the_observed_stop_admits() -> Bool {
 
 // THE SCOPE IS A DECLARED VALUE, so "this is not the external-stop receipt" is a fact the corpus
 // carries rather than a sentence in a commit message nobody re-reads.
-test fn the_probe_declares_it_covers_propagation_only() -> Bool {
+test fn the_probe_declares_it_covers_propagation_only() -> Bool  {
   match runner_microvm_stop_propagation_probe_scope {
     PropagationAcrossPartOfOnly => true
   }
@@ -86,7 +86,7 @@ test fn the_probe_declares_it_covers_propagation_only() -> Bool {
 // B's kill -- both arms would read "stopped" and the experiment would prove nothing while looking
 // like a clean pass. Requiring an OBSERVED `active` before the action turns that case into a
 // verdict that admits nothing and names the state it actually saw.
-test fn a_stand_in_already_inactive_before_the_action_proves_nothing() -> Bool {
+test fn a_stand_in_already_inactive_before_the_action_proves_nothing() -> Bool  {
   verdict_label(supervisor: true, before: "inactive", state: "inactive") == "not-running-before"
     && verdict_label(supervisor: true, before: "failed", state: "inactive") == "not-running-before"
     && verdict_label(supervisor: true, before: "", state: "inactive") == "not-running-before"
@@ -95,7 +95,7 @@ test fn a_stand_in_already_inactive_before_the_action_proves_nothing() -> Bool {
 
 // THE ARMS ARE NAMED SO A RECEIPT CARRYING BOTH CAN BE READ, and they are distinct: a receipt that
 // labelled them identically could not say which question systemd answered.
-test fn the_two_arms_are_named_and_distinct() -> Bool {
+test fn the_two_arms_are_named_and_distinct() -> Bool  {
   stop_propagation_arm_label(a: StopJob) == "stop-job"
     && stop_propagation_arm_label(a: MainProcessKilled) == "main-process-killed"
     && stop_propagation_arm_label(a: StopJob) != stop_propagation_arm_label(a: MainProcessKilled)

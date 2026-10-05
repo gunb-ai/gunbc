@@ -139,7 +139,7 @@ fn page_missing_exactly(id: String, gap: String) -> Bool {
 }
 
 // (1) POSITIVE CONTROL: every fact present -- the admission admits and the page reads ready.
-test fn a_node_with_every_fact_is_dispatchable_at_admission_and_on_the_page() -> Bool {
+test fn a_node_with_every_fact_is_dispatchable_at_admission_and_on_the_page() -> Bool  {
   (match admit(id: "rw-ready") {
     LaunchAdmitted { identity: _ } => true
     LaunchRefused { refusal: _ } => false
@@ -153,29 +153,29 @@ test fn a_node_with_every_fact_is_dispatchable_at_admission_and_on_the_page() ->
 }
 
 // (2) Each absent fact is named, by the same value, at both surfaces.
-test fn a_missing_centering_is_named_at_admission_and_on_the_page() -> Bool {
+test fn a_missing_centering_is_named_at_admission_and_on_the_page() -> Bool  {
   admission_missing_exactly(id: "rw-no-centering", gap: "centering")
     && page_missing_exactly(id: "rw-no-centering", gap: "centering")
 }
 
-test fn a_missing_parent_is_named_at_admission_and_on_the_page() -> Bool {
+test fn a_missing_parent_is_named_at_admission_and_on_the_page() -> Bool  {
   admission_missing_exactly(id: "rw-orphan", gap: "parent")
     && page_missing_exactly(id: "rw-orphan", gap: "parent")
 }
 
-test fn a_parent_that_never_reaches_the_root_is_named_at_admission_and_on_the_page() -> Bool {
+test fn a_parent_that_never_reaches_the_root_is_named_at_admission_and_on_the_page() -> Bool  {
   admission_missing_exactly(id: "rw-unrooted", gap: "root")
     && page_missing_exactly(id: "rw-unrooted", gap: "root")
 }
 
-test fn a_missing_contract_is_named_at_admission_and_on_the_page() -> Bool {
+test fn a_missing_contract_is_named_at_admission_and_on_the_page() -> Bool  {
   admission_missing_exactly(id: "rw-only-contract", gap: "contract")
     && page_missing_exactly(id: "rw-only-contract", gap: "contract")
 }
 
 // A stubbed container supplies no centering, no contract and no size: it is never ready, and the
 // page names all three rather than calling it ready or merely blocked.
-test fn a_stubbed_project_is_not_ready_on_three_facts() -> Bool {
+test fn a_stubbed_project_is_not_ready_on_three_facts() -> Bool  {
   match page(id: "rw-project") {
     SchedulingNotReady { missing } => labels(missing: missing) == ["centering", "dispatch binding", "contract"]
     SchedulingReady => false
@@ -185,7 +185,7 @@ test fn a_stubbed_project_is_not_ready_on_three_facts() -> Bool {
 }
 
 // (3) Minting: exactly the only-contract-missing node mints, and nothing else does.
-test fn only_a_node_missing_just_its_contract_mints_a_closing_check_task() -> Bool {
+test fn only_a_node_missing_just_its_contract_mints_a_closing_check_task() -> Bool  {
   let minted = closing_contract_candidates(nodes: rw_nodes(), edges: [], accepted: [], withheld: [])
   count(minted) == 1
     && all(minted, n => (n.node as String) == "rw-only-contract")
@@ -194,7 +194,7 @@ test fn only_a_node_missing_just_its_contract_mints_a_closing_check_task() -> Bo
 
 // The minted task is rooted through its target and carries its target's plan, so it is itself
 // ready to dispatch: its lineage is [task, the target's projects..., root].
-test fn the_minted_task_resolves_through_its_target_and_carries_its_plan() -> Bool {
+test fn the_minted_task_resolves_through_its_target_and_carries_its_plan() -> Bool  {
   let task = closing_contract_task_for(n: rw_only_contract())
   let universe = concat(rw_nodes(), [task])
   (match task.parent {
@@ -212,7 +212,7 @@ test fn the_minted_task_resolves_through_its_target_and_carries_its_plan() -> Bo
 
 // Accepting the node's prerequisite gate is what the deps fact reads: an unmet declared edge keeps
 // an otherwise only-contract-missing node from minting.
-test fn an_unmet_prerequisite_keeps_the_closing_check_task_unminted() -> Bool {
+test fn an_unmet_prerequisite_keeps_the_closing_check_task_unminted() -> Bool  {
   let edges = [RoadmapEdge { child: "rw-only-contract" as NonEmptyStr as RoadmapNodeId, parent: "rw-ready" as NonEmptyStr as RoadmapNodeId }]
   count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: [], withheld: [])) == 0
     && count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: ["rw-ready" as NonEmptyStr as RoadmapNodeId], withheld: [])) == 1

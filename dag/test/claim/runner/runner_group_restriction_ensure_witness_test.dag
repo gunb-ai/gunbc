@@ -47,7 +47,7 @@ fn shakedown() -> String { microvm_shakedown_selected_workflow() as String }
 
 // An organization with only the Default group needs the create -- the unrestricted Default group
 // is never mistaken for ours.
-test fn witness_ensure_requires_the_create_when_only_default_exists() -> Bool {
+test fn witness_ensure_requires_the_create_when_only_default_exists() -> Bool  {
   match planned_over(read: listed(groups: [default_group()])) {
     GroupCreateRequired { subject: s } => (s.name as String) == "microvm-shakedown" && s.restricted_to_workflows && !s.allows_public_repositories
     _ => false
@@ -56,7 +56,7 @@ test fn witness_ensure_requires_the_create_when_only_default_exists() -> Bool {
 
 // ALREADY RESTRICTED IS A NOOP, carrying the observer's restriction -- no create is planned, so no
 // operator is asked to approve an effect that would change nothing.
-test fn witness_ensure_is_a_noop_when_the_group_is_already_restricted() -> Bool {
+test fn witness_ensure_is_a_noop_when_the_group_is_already_restricted() -> Bool  {
   match planned_over(read: listed(groups: [default_group(), ours(id: 9, restricted: true, selected: [shakedown()])])) {
     GroupAlreadyRestricted { restriction: r } => r.group.value == 9
     _ => false
@@ -64,21 +64,21 @@ test fn witness_ensure_is_a_noop_when_the_group_is_already_restricted() -> Bool 
 }
 
 // A group holding our name with any other restriction is refused, not edited.
-test fn witness_ensure_refuses_our_name_held_by_an_unrestricted_group() -> Bool {
+test fn witness_ensure_refuses_our_name_held_by_an_unrestricted_group() -> Bool  {
   match planned_over(read: listed(groups: [ours(id: 9, restricted: false, selected: [])])) {
     GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupNotEnsurable") && string_contains(s: c as String, pattern: "RunnerGroupNotRestrictedToWorkflows")
     _ => false
   }
 }
 
-test fn witness_ensure_refuses_two_groups_with_our_name() -> Bool {
+test fn witness_ensure_refuses_two_groups_with_our_name() -> Bool  {
   match planned_over(read: listed(groups: [ours(id: 9, restricted: true, selected: [shakedown()]), ours(id: 10, restricted: true, selected: [shakedown()])])) {
     GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupDuplicated")
     _ => false
   }
 }
 
-test fn witness_ensure_refuses_an_unreadable_list() -> Bool {
+test fn witness_ensure_refuses_an_unreadable_list() -> Bool  {
   match planned_over(read: runner_groups_of_rest_read(outcome: RestStatusRefused { status: 403, body: "Resource not accessible by integration" }, body: OrgRunnerGroupListWire { total_count: 0, runner_groups: [] })) {
     GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupListUnreadable")
     _ => false
@@ -86,14 +86,14 @@ test fn witness_ensure_refuses_an_unreadable_list() -> Bool {
 }
 
 // A 201 FOLLOWED BY A READ THAT LACKS THE GROUP IS A REFUSAL, not a success.
-test fn witness_readback_after_create_refuses_when_the_group_is_absent() -> Bool {
+test fn witness_readback_after_create_refuses_when_the_group_is_absent() -> Bool  {
   match readback_after_create(subject: microvm_runner_group_create_subject(), listed: listed(groups: [default_group()])) {
     CreatedGroupNotRestricted { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupAbsentAfterCreate")
     CreatedGroupRestricted { restriction: _ } => false
   }
 }
 
-test fn witness_readback_after_create_holds_the_restriction() -> Bool {
+test fn witness_readback_after_create_holds_the_restriction() -> Bool  {
   match readback_after_create(subject: microvm_runner_group_create_subject(), listed: listed(groups: [default_group(), ours(id: 11, restricted: true, selected: [shakedown()])])) {
     CreatedGroupRestricted { restriction: r } => r.group.value == 11
     CreatedGroupNotRestricted { cause: _ } => false
@@ -102,7 +102,7 @@ test fn witness_readback_after_create_holds_the_restriction() -> Bool {
 
 // The text the operator reads names every member of the body, so an approval of it is an approval
 // of the exact group.
-test fn witness_create_subject_text_names_every_member() -> Bool {
+test fn witness_create_subject_text_names_every_member() -> Bool  {
   let t = runner_group_create_subject_text(s: microvm_runner_group_create_subject())
   string_contains(s: t, pattern: "visibility=selected")
     && string_contains(s: t, pattern: "allows_public_repositories=false")
@@ -123,7 +123,7 @@ fn private_group(id: Int, selected: List<String>) -> OrgRunnerGroupWire {
 
 // THE GROUP AND THE IDENTITY NAME ONE FILE. The group's selected workflow is the federation's
 // workflow_ref, so the only workflow that may run on the group is the only one that may federate.
-test fn witness_private_publisher_group_selects_the_federations_workflow() -> Bool {
+test fn witness_private_publisher_group_selects_the_federations_workflow() -> Bool  {
   let s = private_heal_publisher_runner_group_subject()
   (s.selected_workflow as String) == private_publisher_workflow()
     && private_publisher_workflow() == "gunb-ai/gunbc-private/.github/workflows/heal-publish.yml@refs/heads/main"
@@ -134,7 +134,7 @@ test fn witness_private_publisher_group_selects_the_federations_workflow() -> Bo
 
 // ADMITTED ONLY FOR ITS OWN WORKFLOW: the same group restricted to the shakedown workflow is
 // refused for the publisher. The observer compares against the subject's workflow, not a constant.
-test fn witness_private_publisher_group_is_admitted_for_its_workflow_and_refused_for_another() -> Bool {
+test fn witness_private_publisher_group_is_admitted_for_its_workflow_and_refused_for_another() -> Bool  {
   let admitted = match plan_runner_group_ensure(subject: private_heal_publisher_runner_group_subject(), listed: listed(groups: [default_group(), private_group(id: 21, selected: [private_publisher_workflow()])])) {
     GroupAlreadyRestricted { restriction: r } => r.group.value == 21 && (r.selected_workflow as String) == private_publisher_workflow()
     _ => false

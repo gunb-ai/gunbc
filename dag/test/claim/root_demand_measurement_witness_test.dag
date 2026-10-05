@@ -69,7 +69,7 @@ fn evidence() -> DeclarationRef {
 }
 
 // POSITIVE CONTROL: an observed cgroup limit admits a root that has no row.
-test fn an_enforceable_cgroup_limit_admits_the_measurement_of_an_unmeasured_root() -> Bool {
+test fn an_enforceable_cgroup_limit_admits_the_measurement_of_an_unmeasured_root() -> Bool  {
   match root_demand_measurement_admission(limit: six_gib_memory_max(), root: private_root()) {
     RootDemandMeasurementAdmitted { root: _, limit: l, limit_source: s } =>
       byte_size_count(b: l) == 6442450944 && string_contains(s: s as String, pattern: "memory.max")
@@ -88,7 +88,7 @@ fn measurement_refusal_reason(l: RootDemandMeasurementLimitReading) -> String {
 
 // RED: memory.high alone throttles and never kills, so it refuses naming exactly that; no cgroup
 // limit at all refuses too. Neither admits.
-test fn measurement_under_memory_high_only_or_no_limit_refuses() -> Bool {
+test fn measurement_under_memory_high_only_or_no_limit_refuses() -> Bool  {
   let high_only = measurement_refusal_reason(l: MemoryHighOnly { cgroup_dir: "/sys/fs/cgroup/runner.slice" as NonEmptyStr, high: byte_size(8589934592) })
   let none_at_all = measurement_refusal_reason(l: NoCgroupMemoryLimit)
   string_contains(s: high_only, pattern: "memory.high throttles and never kills")
@@ -98,7 +98,7 @@ test fn measurement_under_memory_high_only_or_no_limit_refuses() -> Bool {
 
 // RED: a finite memory.high BELOW memory.max throttles first, so memory.max does not bound the run
 // even though it is set; the refusal names the throttle line and the repair.
-test fn measurement_under_memory_high_below_max_refuses() -> Bool {
+test fn measurement_under_memory_high_below_max_refuses() -> Bool  {
   let both = measurement_refusal_reason(l: MemoryHighThrottlesBelowMax {
     cgroup_dir: "/sys/fs/cgroup/runner.slice" as NonEmptyStr,
     high: byte_size(8589934592),
@@ -110,7 +110,7 @@ test fn measurement_under_memory_high_below_max_refuses() -> Bool {
 
 // POSITIVE CONTROL for authoring: a completed, exit-0 receipt for the root authors its row at
 // whole-gibibyte grain, rounded up.
-test fn a_completed_receipt_authors_the_row_at_grain() -> Bool {
+test fn a_completed_receipt_authors_the_row_at_grain() -> Bool  {
   match measured_for_root_from_receipt(
     root: private_root(),
     receipt: MeasurementCompleted { run: run_for(root: private_root(), census: true), exit_status: 0, peak: byte_size(4000000000) },
@@ -128,7 +128,7 @@ test fn a_completed_receipt_authors_the_row_at_grain() -> Bool {
 }
 
 // RED: a receipt for a DIFFERENT root identity does not author this root's row.
-test fn a_row_authored_from_another_roots_receipt_refuses() -> Bool {
+test fn a_row_authored_from_another_roots_receipt_refuses() -> Bool  {
   match measured_for_root_from_receipt(
     root: private_root(),
     receipt: MeasurementCompleted { run: run_for(root: whole_corpus_compile_public_root, census: true), exit_status: 0, peak: byte_size(4000000000) },
@@ -144,7 +144,7 @@ test fn a_row_authored_from_another_roots_receipt_refuses() -> Bool {
 
 // RED: a kill at the limit is an EXCEEDED receipt, a lower bound, and never authors a row; neither
 // does a nonzero exit, another signal, or a run with no census.
-test fn a_kill_a_refusal_or_a_missing_census_never_authors_a_row() -> Bool {
+test fn a_kill_a_refusal_or_a_missing_census_never_authors_a_row() -> Bool  {
   let exceeded = match measured_for_root_from_receipt(root: private_root(), receipt: MeasurementExceeded { run: run_for(root: private_root(), census: false) }, measured_on: "2026-09-13" as NonEmptyStr, evidence: evidence()) {
     MeasuredRowRefusedLowerBound { limit: l, why: _ } => byte_size_count(b: l) == 6442450944
     MeasuredRowAuthored { demand: _ } => false
@@ -178,7 +178,7 @@ test fn a_kill_a_refusal_or_a_missing_census_never_authors_a_row() -> Bool {
 // receipt the row cites - completed, exit 0, census 14 sources / 73093 bytes, peak 278921216 -
 // through the constructor and checks the authored row's identity, census and grain peak against
 // the result. Retype the peak by hand and this reds.
-test fn the_xl1_fixture_row_is_the_constructor_output_over_its_receipt() -> Bool {
+test fn the_xl1_fixture_row_is_the_constructor_output_over_its_receipt() -> Bool  {
   let run = RootDemandMeasurementRun {
     root: whole_corpus_compile_xl1_fixture_root,
     limit: byte_size(33578549248),

@@ -47,7 +47,7 @@ import gunbc.roadmap_provider_events {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // P3 retry-model carriers: the three command shapes admit or refuse by construction, legacy attempts project as supersedable rather than belt faults, and lineage/turn rows render human-readable history without parsing branch names.
-test fn start_new_attempt_superseding_missing_attempt_refuses() -> Bool {
+test fn start_new_attempt_superseding_missing_attempt_refuses() -> Bool  {
   match admit_start_new_attempt(
     supersedes: Present { value: "missingkey000000" },
     superseded_exists: false,
@@ -58,14 +58,14 @@ test fn start_new_attempt_superseding_missing_attempt_refuses() -> Bool {
   }
 }
 
-test fn start_new_attempt_without_supersedes_admits() -> Bool {
+test fn start_new_attempt_without_supersedes_admits() -> Bool  {
   match admit_start_new_attempt(supersedes: Absent, superseded_exists: false) {
     WorkflowCommandAdmitted => true
     WorkflowCommandRefused { reason: _ } => false
   }
 }
 
-test fn resume_attempt_on_missing_worktree_refuses() -> Bool {
+test fn resume_attempt_on_missing_worktree_refuses() -> Bool  {
   match admit_resume_attempt(
     attempt_key: "feedfacefeedface",
     worktree_exists: false,
@@ -76,7 +76,7 @@ test fn resume_attempt_on_missing_worktree_refuses() -> Bool {
   }
 }
 
-test fn retry_mechanism_cannot_mint_attempt() -> Bool {
+test fn retry_mechanism_cannot_mint_attempt() -> Bool  {
   match admit_retry_mechanism(mints_attempt: true) {
     WorkflowCommandRefused { reason } =>
       string_contains(s: reason, pattern: "cannot mint")
@@ -84,12 +84,12 @@ test fn retry_mechanism_cannot_mint_attempt() -> Bool {
   }
 }
 
-test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool {
+test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool  {
   legacy_attempt_cannot_satisfy_obligations(modeled_state_present: false)
     && !legacy_attempt_cannot_satisfy_obligations(modeled_state_present: true)
 }
 
-test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
+test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool  {
   let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
     node_id: "legacy-node",
     attempt_key: "",
@@ -132,7 +132,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
   }
 }
 
-test fn lineage_and_turn_labels_are_human_readable() -> Bool {
+test fn lineage_and_turn_labels_are_human_readable() -> Bool  {
   attempt_lineage_row_label(lineage: Supersedes {
     attempt_key: "feedfacefeedface",
     reason: "pre-receipt attempt",

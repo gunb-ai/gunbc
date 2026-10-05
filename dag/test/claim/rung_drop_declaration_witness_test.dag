@@ -56,7 +56,7 @@ fn contains_text(haystack: String, needle: String) -> Bool {
 // THE LIVE ROW IS OFF THE LADDER AND THE CONTROL IS NOT. Both directions asserted, because a
 // predicate stuck at true and a predicate stuck at false are different defects and one assertion
 // only sees one of them.
-test fn source_root_ingest_gate_drop_is_off_ladder() -> Bool {
+test fn source_root_ingest_gate_drop_is_off_ladder() -> Bool  {
   match rung_drop_off_ladder_judgment(d: source_root_ingest_gate_rung_drop) {
     OffLadder => true
     OnLadderAt { rung: _ } => false
@@ -73,7 +73,7 @@ test fn source_root_ingest_gate_drop_is_off_ladder() -> Bool {
 // and answering `false`, which is what a Bool-returning predicate would have had to do, reports an
 // off-ladder class as on the ladder. This is the assertion that would go red if the refusal arm
 // were ever collapsed back into the negative answer.
-test fn a_prose_declaration_refuses_the_off_ladder_question() -> Bool {
+test fn a_prose_declaration_refuses_the_off_ladder_question() -> Bool  {
   match rung_drop_off_ladder_judgment(d: floor_cut_heal) {
     OffLadder => false
     OnLadderAt { rung: _ } => false
@@ -84,7 +84,7 @@ test fn a_prose_declaration_refuses_the_off_ladder_question() -> Bool {
 // THE PROSE ARM RENDERS AS ITS OWN PARAGRAPH, NOT AS A RECONSTRUCTED FIELD LIST. The one rendering
 // serves both arms; if the prose arm ever started emitting the typed arm's "RUNG DROP," sentence,
 // it would be narrating fields the row does not have.
-test fn a_prose_declaration_renders_as_its_paragraph() -> Bool {
+test fn a_prose_declaration_renders_as_its_paragraph() -> Bool  {
   let m = rung_drop_declaration_message(d: floor_cut_heal)
   !contains_text(haystack: m, needle: ": RUNG DROP, ")
     && contains_text(haystack: m, needle: "trigger")
@@ -93,7 +93,7 @@ test fn a_prose_declaration_renders_as_its_paragraph() -> Bool {
 // THE RENDERED DECLARATION CARRIES THE ROW'S OWN FIELDS. This is what makes the gate arm a projection
 // of the declaration rather than a second authority restating it: if the row's subject or
 // restoration trigger is edited and the message stops naming them, this reds.
-test fn rung_drop_message_names_subject_and_trigger() -> Bool {
+test fn rung_drop_message_names_subject_and_trigger() -> Bool  {
   let m = rung_drop_declaration_message(d: source_root_ingest_gate_rung_drop)
   contains_text(haystack: m, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: m, needle: "outside the ladder")
@@ -103,7 +103,7 @@ test fn rung_drop_message_names_subject_and_trigger() -> Bool {
 
 // THE RENDERER READS ITS ARGUMENT. The control's text must NOT appear in the live row's message
 // and vice versa -- the assertion a constant-returning renderer fails.
-test fn rung_drop_message_discriminates_between_rows() -> Bool {
+test fn rung_drop_message_discriminates_between_rows() -> Bool  {
   let live = rung_drop_declaration_message(d: source_root_ingest_gate_rung_drop)
   let ctl = rung_drop_declaration_message(d: control_rung_drop)
   !contains_text(haystack: live, needle: "control.subject")
@@ -119,7 +119,7 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
 // "trigger.." does not carry the suffix "trigger." -- so no separate double-period clause is
 // needed. This establishes NOTHING about a trigger authored with ".." or "..."; the projector
 // deliberately does not canonicalise malformed prose, since that would conceal a row defect.
-test fn unterminated_trigger_gains_one_period_and_terminated_trigger_gains_none() -> Bool {
+test fn unterminated_trigger_gains_one_period_and_terminated_trigger_gains_none() -> Bool  {
   let unterminated = rung_drop_declaration_message(d: control_rung_drop)
   let terminated = rung_drop_declaration_message(d: control_rung_drop_with_terminated_trigger)
   ends_with(s: unterminated, suffix: "control restoration trigger.")

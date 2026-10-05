@@ -32,7 +32,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool {
+test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool  {
   firecracker_release_tarball_filename(rel: firecracker_release_aarch64) == "firecracker-v1.16.1-aarch64.tgz"
     && firecracker_release_download_url(rel: firecracker_release_aarch64) == "https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-aarch64.tgz"
     && firecracker_release_binary_path_in_tarball(rel: firecracker_release_aarch64) == "release-v1.16.1-aarch64/firecracker-v1.16.1-aarch64"
@@ -76,7 +76,7 @@ fn witness_standing_with_delegation(kvm: KvmDeviceStanding, group: KvmGroupEnrol
 }
 
 // The standing folds two facts; readiness needs both, and each refusal names what it lacks.
-test fn readiness_needs_a_reachable_kvm_device_and_the_modeled_version() -> Bool {
+test fn readiness_needs_a_reachable_kvm_device_and_the_modeled_version() -> Bool  {
   let ready = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: witness_installed)
   let no_kvm = witness_standing(kvm: KvmDeviceAbsent, group: witness_enrolled, binary: witness_installed)
   let unwritable = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_not_enrolled, binary: witness_installed)
@@ -94,7 +94,7 @@ test fn readiness_needs_a_reachable_kvm_device_and_the_modeled_version() -> Bool
 // readiness required THIS process to open the device, a converged host would refuse forever and the
 // mode would report failure for work it had just completed correctly. Enrolment carries it; and the
 // carry is not unconditional -- an ABSENT device is not made reachable by any membership.
-test fn enrolment_carries_a_host_whose_converging_process_cannot_yet_open_the_device() -> Bool {
+test fn enrolment_carries_a_host_whose_converging_process_cannot_yet_open_the_device() -> Bool  {
   let mid_converge = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
   let ungranted = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_not_enrolled, binary: witness_installed)
   let no_device = witness_standing(kvm: KvmDeviceAbsent, group: witness_enrolled, binary: witness_installed)
@@ -106,7 +106,7 @@ test fn enrolment_carries_a_host_whose_converging_process_cannot_yet_open_the_de
 
 // UNREADABLE IS NOT NOT-ENROLLED. A probe that could not answer must not carry a host to ready, and
 // must not render as a missing grant either -- the two send an operator to opposite remedies.
-test fn an_unreadable_membership_neither_carries_nor_reads_as_a_missing_grant() -> Bool {
+test fn an_unreadable_membership_neither_carries_nor_reads_as_a_missing_grant() -> Bool  {
   let unreadable = witness_standing(
     kvm: KvmDevicePresentNotWritable,
     group: KvmGroupEnrolmentUnreadable { login: "ghrunner" as NonEmptyStr, cause: "id -nG exited 1: no such user" },
@@ -124,7 +124,7 @@ test fn an_unreadable_membership_neither_carries_nor_reads_as_a_missing_grant() 
 // the login was no longer enrolled at all -- and the next incarnation, the one the split exists to
 // speak for, would fail. Both writable-but-ungranted shapes are covered, because an unreadable
 // probe and a revoked grant reach the same wrong answer by different routes.
-test fn a_writable_device_does_not_carry_a_login_the_database_no_longer_enrols() -> Bool {
+test fn a_writable_device_does_not_carry_a_login_the_database_no_longer_enrols() -> Bool  {
   let writable_not_enrolled = witness_standing(kvm: KvmDeviceWritable, group: witness_not_enrolled, binary: witness_installed)
   let writable_unreadable = witness_standing(
     kvm: KvmDeviceWritable,
@@ -144,7 +144,7 @@ test fn a_writable_device_does_not_carry_a_login_the_database_no_longer_enrols()
 // as deduced what was only inferred (DESIGN section 4d). Both contradiction shapes refuse -- a
 // device owned by another group, and a device owned by kvm with no group-write -- and so does an
 // unreadable probe.
-test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_group() -> Bool {
+test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_group() -> Bool  {
   let delegated = witness_standing_with_delegation(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, delegation: witness_delegated)
   let wrong_group = witness_standing_with_delegation(
     kvm: KvmDevicePresentNotWritable,
@@ -182,7 +182,7 @@ test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_gr
 // zero install operations -- which holds by construction instead: microvm_host_binding_wet is matched
 // first in both wet entries, outside the arm that reaches HOME, the fetch, the install and the
 // receipt write.
-test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
+test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool  {
   let mismatch = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv3" as NonEmptyStr)
   let agreed = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv1" as NonEmptyStr)
   let unrostered = microvm_host_binding_of(expected: "srv-nope" as NonEmptyStr, observed: "srv-nope" as NonEmptyStr)
@@ -210,7 +210,7 @@ test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
 // one group beside a DIFFERENT login enrolled in a DIFFERENT group reads as ready. Each of the three
 // equalities is broken on its own here, because a check that only fires when all three are wrong is
 // satisfied by any one of them being enforced.
-test fn readiness_checks_the_carried_login_and_group_rather_than_their_shape() -> Bool {
+test fn readiness_checks_the_carried_login_and_group_rather_than_their_shape() -> Bool  {
   let good = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
   let other_login = witness_standing(
     kvm: KvmDevicePresentNotWritable,
@@ -237,7 +237,7 @@ test fn readiness_checks_the_carried_login_and_group_rather_than_their_shape() -
 // its own process, so an enrolment it did not inherit does not help it; gating it on converge
 // readiness would make it attempt a boot it cannot perform and report a VMM failure as an IMAGE
 // verdict.
-test fn the_in_process_predicate_refuses_exactly_where_the_converge_predicate_carries() -> Bool {
+test fn the_in_process_predicate_refuses_exactly_where_the_converge_predicate_carries() -> Bool  {
   let mid_converge = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
   let picked_up = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: witness_installed)
   firecracker_host_ready(standing: mid_converge, expected_login: witness_login)
@@ -249,7 +249,7 @@ test fn the_in_process_predicate_refuses_exactly_where_the_converge_predicate_ca
 // THE READBACK MATCHES WHOLE NAMES. `id -nG` prints names separated by single spaces, and a
 // substring test would accept "kvm-admin" -- an unrelated group -- as evidence that the executor may
 // open /dev/kvm.
-test fn the_group_readback_matches_a_whole_name_and_not_a_prefix() -> Bool {
+test fn the_group_readback_matches_a_whole_name_and_not_a_prefix() -> Bool  {
   group_names_contain(output: "ghrunner docker kvm\n", group: "kvm" as NonEmptyStr)
     && group_names_contain(output: "kvm", group: "kvm" as NonEmptyStr)
     && !group_names_contain(output: "ghrunner kvm-admin libvirt\n", group: "kvm" as NonEmptyStr)
@@ -257,7 +257,7 @@ test fn the_group_readback_matches_a_whole_name_and_not_a_prefix() -> Bool {
 }
 
 // RED control: a binary that answers another version is a mismatch, never installed.
-test fn a_binary_answering_another_version_is_a_mismatch() -> Bool {
+test fn a_binary_answering_another_version_is_a_mismatch() -> Bool  {
   (match binary_standing_of(binary: "/x/firecracker", executable: true, version_output: "Firecracker v1.16.1\n", rel: firecracker_release_aarch64) {
     FirecrackerInstalled { binary: _, version_line: v } => v == "Firecracker v1.16.1"
     _ => false
@@ -277,7 +277,7 @@ test fn a_binary_answering_another_version_is_a_mismatch() -> Bool {
 // The install is a typed command list in two halves around the digest verdict: fetch (mkdir, mkdir,
 // curl), then only after Sha256Matches, install (tar, cp); the digest rides no argv; the install dir
 // is executor-owned.
-test fn the_install_fetches_then_verifies_then_extracts_and_never_passes_the_digest_on_argv() -> Bool {
+test fn the_install_fetches_then_verifies_then_extracts_and_never_passes_the_digest_on_argv() -> Bool  {
   let root = firecracker_install_root(executor_home: "/home/x")
   let fetch = firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
   let install = firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
@@ -292,7 +292,7 @@ test fn the_install_fetches_then_verifies_then_extracts_and_never_passes_the_dig
 // what keeps it narrow is the rendered argv: append one group to one login and nothing else, and the
 // sudoers line carries exactly that argv. The srv2 deploy is the host the readiness observation
 // measured the missing membership on.
-test fn the_kvm_grant_appends_one_group_to_the_executor_and_nothing_else() -> Bool {
+test fn the_kvm_grant_appends_one_group_to_the_executor_and_nothing_else() -> Bool  {
   let op = EnsureSupplementaryGroupMembership { login: "gunbc-ci" as NonEmptyStr, group: "kvm" as NonEmptyStr }
   map(executor_privileged_operation_argv(op: op), w => w as String) == ["/usr/sbin/usermod", "-aG", "kvm", "gunbc-ci"]
     && (executor_privileged_operation_sudoers_line(grantee: "gunbc-ci" as NonEmptyStr, op: op) as String) == "gunbc-ci ALL=(root) NOPASSWD: /usr/sbin/usermod -aG kvm gunbc-ci"
@@ -303,7 +303,7 @@ test fn the_kvm_grant_appends_one_group_to_the_executor_and_nothing_else() -> Bo
 // row: its width refuses, so no operational row is constructed for it. Repointing the sample at
 // another host would preserve the same gap; folding over the admitted population makes the assertion
 // match its name and removes the dependence on which host happens to be listed.
-test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
+test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool  {
   all(fleet_runner_host_deploys, d =>
     length(filter(runner_host_privileged_operations(deploy: d), op =>
       match op {
@@ -317,7 +317,7 @@ test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
 // can be retired, which is a different question. Wiring them into firecracker_host_ready would have
 // made every host not-ready the moment this field landed, taking the fleet down to answer a
 // measurement question.
-test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
+test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool  {
   let bare = FootprintInstrumentStanding {
     instruments: [
       InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentAbsent },
@@ -348,7 +348,7 @@ test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
 // Three inputs because the outcome is three-valued, and the middle one is what the boolean shape
 // could not express: below the threshold is a statement ABOUT THE HOST, unreadable is a statement
 // about our OBSERVATION, and they must not render alike.
-test fn the_systemd_instrument_reads_the_version_rather_than_its_presence() -> Bool {
+test fn the_systemd_instrument_reads_the_version_rather_than_its_presence() -> Bool  {
   match systemd_memory_peak_support(version_line: "systemd 255 (255.4-1ubuntu8)") {
     SystemdReportsMemoryPeak { version: v } => v == 255
     SystemdTooOldForMemoryPeak { version: _ } => false
@@ -368,7 +368,7 @@ test fn the_systemd_instrument_reads_the_version_rather_than_its_presence() -> B
 
 // THE BOUNDARY ITSELF, because 254 is the cited upstream fact and an off-by-one here reports the
 // exact version that gained MemoryPeak as unable to report it.
-test fn the_memory_peak_threshold_admits_254_and_refuses_253() -> Bool {
+test fn the_memory_peak_threshold_admits_254_and_refuses_253() -> Bool  {
   match systemd_memory_peak_support(version_line: "systemd 254 (254.1-1)") {
     SystemdReportsMemoryPeak { version: _ } => true
     SystemdTooOldForMemoryPeak { version: _ } => false
@@ -384,7 +384,7 @@ test fn the_memory_peak_threshold_admits_254_and_refuses_253() -> Bool {
 // THE RECEIPT MUST SAY WHICH INSTRUMENTS EXIST, because the whole point of the observation is that a
 // human reads it and decides what can measure the reserve. A standing that carried the field but
 // never rendered it would be an observation nobody receives.
-test fn the_standing_text_reports_the_instruments() -> Bool {
+test fn the_standing_text_reports_the_instruments() -> Bool  {
   let equipped = FirecrackerHostStanding {
     kvm: KvmDeviceWritable,
     kvm_group: witness_enrolled,

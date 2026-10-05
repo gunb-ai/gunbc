@@ -295,19 +295,19 @@ fn is_ready(r: CellReadiness?) -> Bool {
 // THE POSITIVE CONTROL: a graceful stop and a host readback confirming every resource absent returns
 // the cell. Without it every quarantine below would be satisfied by a controller that quarantines
 // everything.
-test fn a_clean_host_readback_returns_the_cell() -> Bool {
+test fn a_clean_host_readback_returns_the_cell() -> Bool  {
   is_ready(r: readiness_after(trigger: RunnerExited { exit_code: 0 }, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)))
 }
 
 // A CHILD IGNORING SIGTERM is not a dirty cell by itself: the bounded force-stop is what it is for.
 // The cell returns ONLY because the host then reads the subtree empty.
-test fn a_sigterm_ignoring_child_is_force_stopped_and_the_cell_returns_only_on_an_empty_readback() -> Bool {
+test fn a_sigterm_ignoring_child_is_force_stopped_and_the_cell_returns_only_on_an_empty_readback() -> Bool  {
   is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StoppedByForce, cgroup: CgroupSubtreeEmpty)))
     && is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StoppedByForce, cgroup: CgroupSubtreePopulated { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] })))
 }
 
 // A DOUBLE-FORK moves the survivor into a child cgroup; the recursive readback still finds it.
-test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
+test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool  {
   is_quarantined(r: readiness_after(
     trigger: VmmExited { status: ExitStatusRead { exit_code: 0 } },
     host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreePopulated { pids: [5151], cgroups: ["srv2-04.slice/escape.scope" as NonEmptyStr] }),
@@ -316,7 +316,7 @@ test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
 
 // AN UNKILLABLE TASK quarantines on the stop outcome even when the cgroup listing reads empty
 // afterwards -- the listing is a later instant, and the task that outlived SIGKILL is the fact.
-test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -> Bool {
+test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -> Bool  {
   is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
 }
 
@@ -329,7 +329,7 @@ test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -
 // the cgroup could not be read, and the receipt said "pids  survived the bounded force-stop". So
 // what is asserted here is that the unproven fact is UNOBSERVABLE rather than REFUTED, and that its
 // text carries the read failure's own reason instead of a pid sentence.
-test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids() -> Bool {
+test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids() -> Bool  {
   let unreadable: CellReadiness? = readiness_after(
     trigger: StopRequested,
     host: clean_host(
@@ -344,7 +344,7 @@ test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids
 
 // THE PAIR THAT KEEPS THE CLAIM ABOVE FROM BEING SATISFIED BY A DECODER THAT SAYS `unobservable` TO
 // EVERYTHING: a real exceeded bound still reports REFUTED and still names its pid.
-test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool {
+test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool  {
   let exceeded: CellReadiness? = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty))
   is_quarantined(r: exceeded)
     && unproven_mentions(r: exceeded, needle: "pids 777 survived the bounded force-stop")
@@ -354,7 +354,7 @@ test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool {
 // AND THE CASE THE DETAIL RENDERING WAS WRONG FOR: the subtree reports live processes and no pid can
 // be named. It is a refutation -- the kernel saw something -- but the sentence must not be the
 // pid sentence with a hole where the pid goes.
-test fn an_exceeded_bound_with_no_nameable_pid_says_so() -> Bool {
+test fn an_exceeded_bound_with_no_nameable_pid_says_so() -> Bool  {
   let unnamed: CellReadiness? = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [] }, cgroup: CgroupSubtreeEmpty))
   is_quarantined(r: unnamed)
     && unproven_mentions(r: unnamed, needle: "none could be named")
@@ -383,7 +383,7 @@ fn unproven_mentions(r: CellReadiness?, needle: String) -> Bool {
 //
 // THE PAIR IS THE POINT. A binder that answered "unobservable" to everything would pass the first
 // half alone, and one that answered "foreign" to everything would pass the second.
-test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_as_foreign() -> Bool {
+test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_as_foreign() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: id } =>
@@ -411,7 +411,7 @@ test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_
 
 // AN UNREADABLE INVOCATION SETTLES NOTHING, which is the consequence that matters: the cell keeps its
 // in-flight record, so the next admission owes recovery rather than being handed a released cell.
-test fn an_unreadable_unit_invocation_settles_nothing() -> Bool {
+test fn an_unreadable_unit_invocation_settles_nothing() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: id } =>
@@ -474,7 +474,7 @@ fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: Unit
 // attempt's invocation id still exists, so the recovery this claim establishes would arrive at a unit
 // it could not read either -- a loop whose every pass destroys what the next pass needs (side-chat
 // ruling on gunbc#11803).
-test fn an_unreadable_unit_invocation_leaves_the_cell_owing_recovery() -> Bool {
+test fn an_unreadable_unit_invocation_leaves_the_cell_owing_recovery() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: id } =>
@@ -513,7 +513,7 @@ test fn an_unreadable_unit_invocation_leaves_the_cell_owing_recovery() -> Bool {
 // either one overriding a populated subtree into a pass, or either one being treated like
 // ForceStopBoundExceeded, which refutes even over an empty listing because the listing is a later
 // instant. So each arm is asserted over BOTH cgroup readings.
-test fn the_already_quiescent_and_force_not_asked_arms_defer_to_the_cgroup() -> Bool {
+test fn the_already_quiescent_and_force_not_asked_arms_defer_to_the_cgroup() -> Bool  {
   let quiescent_clean = readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreeEmpty))
   let quiescent_dirty = readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreePopulated { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] }))
   let not_asked_clean = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty))
@@ -527,7 +527,7 @@ test fn the_already_quiescent_and_force_not_asked_arms_defer_to_the_cgroup() -> 
 // AND NEITHER IS AN EXCEEDED BOUND. The exceeded arm refutes over an EMPTY cgroup -- that is its
 // whole point, the task outlived the kill and the listing is later -- so a claim that only checked
 // the dirty cases above would pass with these three arms collapsed into one.
-test fn an_exceeded_bound_refutes_where_the_deferring_arms_do_not() -> Bool {
+test fn an_exceeded_bound_refutes_where_the_deferring_arms_do_not() -> Bool  {
   is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
     && is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty)))
     && is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreeEmpty)))
@@ -535,7 +535,7 @@ test fn an_exceeded_bound_refutes_where_the_deferring_arms_do_not() -> Bool {
 
 // A FAILED CGROUP READ QUARANTINES, and the quarantine is never released by a later Ready readback
 // at the same generation: that would be "could not read" converted into "empty" one write later.
-test fn a_failed_cgroup_read_quarantines_and_is_never_released_at_its_generation() -> Bool {
+test fn a_failed_cgroup_read_quarantines_and_is_never_released_at_its_generation() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: id } =>
@@ -566,7 +566,7 @@ test fn a_failed_cgroup_read_quarantines_and_is_never_released_at_its_generation
 }
 
 // A SUCCESSFUL JOB LEAVING A BACKGROUND PROCESS: the runner's exit 0 has no route to the verdict.
-test fn a_successful_job_that_leaves_a_background_process_quarantines() -> Bool {
+test fn a_successful_job_that_leaves_a_background_process_quarantines() -> Bool  {
   is_quarantined(r: readiness_after(
     trigger: RunnerExited { exit_code: 0 },
     host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreePopulated { pids: [9001], cgroups: ["srv2-04.slice" as NonEmptyStr] }),
@@ -574,7 +574,7 @@ test fn a_successful_job_that_leaves_a_background_process_quarantines() -> Bool 
 }
 
 // EACH FACT IS ITS OWN: a slot tap still held after the VMM is gone quarantines a cell whose cgroup is empty.
-test fn a_held_slot_tap_quarantines_a_cell_with_no_processes() -> Bool {
+test fn a_held_slot_tap_quarantines_a_cell_with_no_processes() -> Bool  {
   match network_readback(slot: witness_slot, readings: held_tap_readings(slot: witness_slot)) {
     Absent => false
     Present { value: held } =>
@@ -586,7 +586,7 @@ test fn a_held_slot_tap_quarantines_a_cell_with_no_processes() -> Bool {
 }
 
 // A STOP FOR A PREVIOUS INCARNATION IS REFUSED, and the same stop for the live one is admitted.
-test fn a_stale_incarnation_stop_is_refused() -> Bool {
+test fn a_stale_incarnation_stop_is_refused() -> Bool  {
   match identity(generation: 2, invocation: "inv-b") {
     Absent => false
     Present { value: live } =>
@@ -607,7 +607,7 @@ test fn a_stale_incarnation_stop_is_refused() -> Bool {
 
 // A STALE READBACK CANNOT CLEAR A NEWER QUARANTINE: generation 1's Ready arriving after generation
 // 2 quarantined is refused by the store, not trusted by the controller.
-test fn a_stale_readback_cannot_clear_a_newer_quarantine() -> Bool {
+test fn a_stale_readback_cannot_clear_a_newer_quarantine() -> Bool  {
   let newer = [CellSettled { cell: cell, generation: 2, readiness: CellQuarantined { cell: cell, unproven: [] } }]
   match identity(generation: 1, invocation: "inv-old") {
     Absent => false
@@ -625,7 +625,7 @@ test fn a_stale_readback_cannot_clear_a_newer_quarantine() -> Bool {
 
 // AN UNREADABLE OR NON-ROOT STORE WITHDRAWS THE HOST, not the cell -- including a cell whose record
 // would otherwise admit.
-test fn an_unreadable_or_foreign_owned_store_withdraws_the_host() -> Bool {
+test fn an_unreadable_or_foreign_owned_store_withdraws_the_host() -> Bool  {
   let ready = [CellSettled { cell: cell, generation: 0, readiness: CellReady { cell: cell } }]
   let admits = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: ready }, cell: cell, allocation_generation: 1) {
     CellIncarnationAdmitted { cell: _, generation: 1 } => true
@@ -647,7 +647,7 @@ test fn an_unreadable_or_foreign_owned_store_withdraws_the_host() -> Bool {
 }
 
 // A CELL NEVER SETTLED, AND A GENERATION THAT SKIPS, ARE CELL-GRAIN WITHDRAWALS.
-test fn a_never_settled_or_skipped_generation_withdraws_the_cell() -> Bool {
+test fn a_never_settled_or_skipped_generation_withdraws_the_cell() -> Bool  {
   let never = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [] }, cell: cell, allocation_generation: 1) {
     CellWithdrawn { cell: _, withdrawal: CellNeverSettled } => true
     _ => false
@@ -661,7 +661,7 @@ test fn a_never_settled_or_skipped_generation_withdraws_the_cell() -> Bool {
 
 // BOOT RECOVERY RESUMES CLEANUP BEFORE ADMISSION: an in-flight record yields a recovery start, its
 // settlement is accepted by the store, and only then does the next generation admit.
-test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bool {
+test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bool  {
   match identity(generation: 2, invocation: "inv-c") {
     Absent => false
     Present { value: next } =>
@@ -699,7 +699,7 @@ test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bo
 // The old arm wrote the cell's name as an attempt at generation g - 1 (review on #11670). Now the
 // controller records an unattributed quarantine at the generation that was about to run, the store
 // accepts it over the Ready record, and the next admission is withdrawn, not admitted.
-test fn unattributed_residue_quarantines_at_the_admitted_generation_without_an_invented_attempt() -> Bool {
+test fn unattributed_residue_quarantines_at_the_admitted_generation_without_an_invented_attempt() -> Bool  {
   match identity(generation: 1, invocation: "inv-first") {
     Absent => false
     Present { value: id } =>
@@ -724,7 +724,7 @@ test fn unattributed_residue_quarantines_at_the_admitted_generation_without_an_i
 }
 
 // AN ATTEMPT START IS REFUSED BY THE STORE OVER A QUARANTINE, whatever generation it names.
-test fn the_store_refuses_to_record_a_start_over_a_quarantine() -> Bool {
+test fn the_store_refuses_to_record_a_start_over_a_quarantine() -> Bool  {
   let q = [CellSettled { cell: cell, generation: 1, readiness: CellQuarantined { cell: cell, unproven: [] } }]
   match identity(generation: 2, invocation: "inv-x") {
     Absent => false
@@ -741,7 +741,7 @@ test fn the_store_refuses_to_record_a_start_over_a_quarantine() -> Bool {
 }
 
 // BRING-UP ADVANCES ONE OBSERVED STEP AT A TIME, and refuses a skipped step and a foreign incarnation.
-test fn bring_up_refuses_a_skipped_phase_and_a_foreign_incarnation() -> Bool {
+test fn bring_up_refuses_a_skipped_phase_and_a_foreign_incarnation() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: live } =>
@@ -771,7 +771,7 @@ test fn bring_up_refuses_a_skipped_phase_and_a_foreign_incarnation() -> Bool {
 
 // AN ADMISSION FOR ONE CELL CANNOT START AN IDENTITY BOUND TO ANOTHER, even at the same generation,
 // and not by either start arm: the launch and the unattributed quarantine both require the join.
-test fn an_admission_for_one_cell_does_not_start_an_identity_of_another() -> Bool {
+test fn an_admission_for_one_cell_does_not_start_an_identity_of_another() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: id } => {
@@ -795,7 +795,7 @@ test fn an_admission_for_one_cell_does_not_start_an_identity_of_another() -> Boo
 // HOST GRAIN IS A PROPERTY OF THE STORE: a duplicate record for ANOTHER cell, or a settled record whose
 // readiness names a different cell than its key, withdraws the host for this cell too -- whose own
 // record reads Ready and would otherwise admit.
-test fn a_defect_in_another_cells_records_withdraws_this_cell() -> Bool {
+test fn a_defect_in_another_cells_records_withdraws_this_cell() -> Bool  {
   let mine = CellSettled { cell: cell, generation: 0, readiness: CellReady { cell: cell } }
   let theirs = CellSettled { cell: other_cell, generation: 3, readiness: CellReady { cell: other_cell } }
   let duplicate = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [mine, theirs, theirs] }, cell: cell, allocation_generation: 1) {
@@ -820,7 +820,7 @@ test fn a_defect_in_another_cells_records_withdraws_this_cell() -> Bool {
 // A RECOVERY RECORD IS BOUND TO ITS CELL AT READ: an in-flight record keyed for this cell but carrying
 // an attempt built on another slot is an unsound store, never a recovery -- recovering it would tear
 // down and settle the other cell's attempt under this cell's key.
-test fn a_recovery_record_carrying_another_cells_attempt_never_recovers() -> Bool {
+test fn a_recovery_record_carrying_another_cells_attempt_never_recovers() -> Bool  {
   match identity_on(slot: other_slot, generation: 1, invocation: "inv-b") {
     Absent => false
     Present { value: foreign } =>
@@ -850,7 +850,7 @@ test fn a_recovery_record_carrying_another_cells_attempt_never_recovers() -> Boo
 // TEARDOWN EVIDENCE FOR ONE ATTEMPT CANNOT SETTLE ANOTHER. A clean readback of cell A's attempt
 // presented for cell B's is refused at the join, and so is a clean readback of this cell's attempt
 // taken under a different controller incarnation; only the attempt's own readback binds.
-test fn a_clean_readback_of_one_attempt_cannot_settle_another() -> Bool {
+test fn a_clean_readback_of_one_attempt_cannot_settle_another() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: a } =>
@@ -891,7 +891,7 @@ test fn a_clean_readback_of_one_attempt_cannot_settle_another() -> Bool {
 // AN IN-FLIGHT RECORD IS NOT OVERWRITTEN BY ANYTHING BUT ITS OWN SETTLEMENT (review 68576). A clean
 // readback of a later generation's attempt, and an unattributed-residue quarantine, both refuse over
 // "cleanup owed"; the lost attempt's own settlement at its generation is accepted.
-test fn an_in_flight_record_is_discharged_only_by_its_own_attempts_settlement() -> Bool {
+test fn an_in_flight_record_is_discharged_only_by_its_own_attempts_settlement() -> Bool  {
   match identity(generation: 1, invocation: "inv-lost") {
     Absent => false
     Present { value: lost } =>
@@ -929,7 +929,7 @@ test fn an_in_flight_record_is_discharged_only_by_its_own_attempts_settlement() 
 // THE SLOT NETWORK READBACK IS JOINED BY SLOT LIKE EVERY OTHER SUBJECT (side-chat ruling on #11670).
 // A quiet readback taken for another slot cannot settle this attempt, even though every other subject
 // in the bundle is this attempt's; and the attempt's own quiet readback still binds.
-test fn a_slot_network_readback_for_another_slot_cannot_settle_this_attempt() -> Bool {
+test fn a_slot_network_readback_for_another_slot_cannot_settle_this_attempt() -> Bool  {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
     Present { value: id } =>
@@ -979,7 +979,7 @@ test fn a_slot_network_readback_for_another_slot_cannot_settle_this_attempt() ->
 // THE CLAIM DISCRIMINATES PER FACT AND DELIBERATELY NOT THROUGH `slot_network_verdict`: that fold
 // returns the FIRST unobservable fact and `tap` precedes both of these, so a verdict-level assertion
 // would report the tap's reason and stay green with both host-grain facts misrouted.
-test fn the_host_grain_readings_carry_the_receipts_generation_not_a_literal() -> Bool {
+test fn the_host_grain_readings_carry_the_receipts_generation_not_a_literal() -> Bool  {
   match slot_network_sanitation_subject(slot: witness_slot, receipt: witness_receipt()) {
     SanitationSubjectAdmitted { subject: s } =>
       let r = unreadable_slot_network_readings(s: s, after: StoppedGracefully)

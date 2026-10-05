@@ -92,7 +92,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
   }
 }
 
-test fn witness_satisfied_dep_is_spawnable() -> Bool {
+test fn witness_satisfied_dep_is_spawnable() -> Bool  {
   let node_a = accepted_node(base: sized_derivable(id: "test-a", prs: [100], title: "Node A"))
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
@@ -101,7 +101,7 @@ test fn witness_satisfied_dep_is_spawnable() -> Bool {
   any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-b"))
 }
 
-test fn witness_unsatisfied_dep_not_spawnable() -> Bool {
+test fn witness_unsatisfied_dep_not_spawnable() -> Bool  {
   let node_a = sized_derivable(id: "test-a", prs: [100], title: "Node A")
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
@@ -110,42 +110,42 @@ test fn witness_unsatisfied_dep_not_spawnable() -> Bool {
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-b"))
 }
 
-test fn witness_unsized_node_excluded() -> Bool {
+test fn witness_unsized_node_excluded() -> Bool  {
   let node_a = undispatchable_derivable(id: "test-unsized", prs: [], title: "NotDispatchable Node")
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [])
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-unsized"))
 }
 
-test fn witness_accepted_node_excluded() -> Bool {
+test fn witness_accepted_node_excluded() -> Bool  {
   let node = accepted_node(base: sized_derivable(id: "test-done", prs: [999], title: "Done Node"))
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [999])
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-done"))
 }
 
-test fn witness_merged_unsigned_node_remains_spawnable() -> Bool {
+test fn witness_merged_unsigned_node_remains_spawnable() -> Bool  {
   let node = sized_derivable(id: "test-review", prs: [999], title: "Review Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [999])
   any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-review"))
 }
 
-test fn witness_rejected_signoff_remains_spawnable_for_rework() -> Bool {
+test fn witness_rejected_signoff_remains_spawnable_for_rework() -> Bool  {
   let node = rejected_node(base: sized_derivable(id: "test-rework", prs: [999], title: "Rework Node"))
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [999])
   any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-rework"))
 }
 
-test fn witness_top_level_sized_node_spawnable() -> Bool {
+test fn witness_top_level_sized_node_spawnable() -> Bool  {
   let node = sized_derivable(id: "test-top", prs: [500], title: "Top Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [])
   any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-top"))
 }
 
-test fn witness_json_schema_field_present() -> Bool {
+test fn witness_json_schema_field_present() -> Bool  {
   let node = sized_derivable(id: "test-json", prs: [77], title: "Json Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "abc123")
@@ -157,7 +157,7 @@ test fn witness_json_schema_field_present() -> Bool {
     && string_contains(s: json, pattern: "\"owner\": null")
 }
 
-test fn witness_json_satisfied_dep_in_ready() -> Bool {
+test fn witness_json_satisfied_dep_in_ready() -> Bool  {
   let node_a = accepted_node(base: sized_derivable(id: "parent-done-node", prs: [100], title: "A2"))
   let node_b = sized_derivable(id: "child-ready-node", prs: [200], title: "B2")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "child-ready-node"), parent: roadmap_spawner_nid(s: "parent-done-node") }]
@@ -167,14 +167,14 @@ test fn witness_json_satisfied_dep_in_ready() -> Bool {
     && !string_contains(s: json, pattern: "\"node_id\": \"parent-done-node\"")
 }
 
-test fn witness_json_title_escaping() -> Bool {
+test fn witness_json_title_escaping() -> Bool  {
   let node = sized_derivable(id: "escape-test", prs: [1], title: "Title \"quoted\" and \\back")
   let doc = fixture_doc(nodes: [node], edges: [])
   let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "x")
   string_contains(s: json, pattern: "Title \\\"quoted\\\" and \\\\back")
 }
 
-test fn witness_json_newline_escaping() -> Bool {
+test fn witness_json_newline_escaping() -> Bool  {
   let node = sized_derivable(id: "newline-test", prs: [1], title: "line one\nline two")
   let doc = fixture_doc(nodes: [node], edges: [])
   let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "x")
@@ -182,7 +182,7 @@ test fn witness_json_newline_escaping() -> Bool {
     && !string_contains(s: json, pattern: "line one\nline two")
 }
 
-test fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
+test fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool  {
   let node = sized_derivable(id: "frontier-ready", prs: [88], title: "Frontier Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
   let frontier = spawn_frontier(doc: doc, merged: [])
@@ -190,7 +190,7 @@ test fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
     && any(frontier.ready, n => n.node == roadmap_spawner_nid(s: "frontier-ready"))
 }
 
-test fn witness_all_parents_gate_spawnability() -> Bool {
+test fn witness_all_parents_gate_spawnability() -> Bool  {
   let node_a = accepted_node(base: sized_derivable(id: "mp-a", prs: [100], title: "Node A"))
   let node_b_open = sized_derivable(id: "mp-b", prs: [200], title: "Node B")
   let node_b_done = accepted_node(base: node_b_open)
@@ -209,7 +209,7 @@ test fn witness_all_parents_gate_spawnability() -> Bool {
     && any(both_parents_done, n => n.node == roadmap_spawner_nid(s: "mp-c"))
 }
 
-test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
+test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool  {
   let node_done = accepted_node(base: sized_derivable(id: "dj-done", prs: [100], title: "Done Node"))
   let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
   let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
@@ -241,7 +241,7 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
   }
 }
 
-test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
+test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool  {
   let node_old = superseded_node(id: "sp-old", by: "sp-successor-lane", content: "Old Lane Row")
   let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]
@@ -255,7 +255,7 @@ test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
     && !string_contains(s: json, pattern: "\"node_id\": \"sp-old\", \"title\"")
 }
 
-test fn witness_superseded_control_open_parent_still_gates() -> Bool {
+test fn witness_superseded_control_open_parent_still_gates() -> Bool  {
   let node_open = RoadmapNode {
     identity: "rnfx_DY0Y547BC2HK2V12KA6T" as RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: "sp-old"),

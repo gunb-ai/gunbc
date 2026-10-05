@@ -43,7 +43,7 @@ import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_ga
 // would need the coproduct -> Bool accessor gunbc.rung_drop deliberately does not carry. So the
 // witness names the retired row and asks where it appears: absent from the derived list, present
 // exactly once in the roster it was retired in place within.
-test fn standing_list_excludes_every_retired_drop() -> Bool {
+test fn standing_list_excludes_every_retired_drop() -> Bool  {
   length(xs: filter(map(standing_rung_drops(), d => d.identity), i => i == cited_symbol_census.identity)) == 0
     && length(xs: filter(map(rung_drop_roster, d => d.identity), i => i == cited_symbol_census.identity)) == 1
 }
@@ -60,7 +60,7 @@ test fn standing_list_excludes_every_retired_drop() -> Bool {
 // disposition. Arm-side coverage alone passes on two rows that swapped arms. The discriminating
 // RED for the first is editing one row's arm to another's; for the second, deleting a prose row
 // from the roster.
-test fn every_prose_declaration_agrees_with_its_closed_arm() -> Bool {
+test fn every_prose_declaration_agrees_with_its_closed_arm() -> Bool  {
   every_authored_prose_row_names_its_arm(ds: rung_drop_roster)
     && every_legacy_arm_is_claimed_exactly_once(ds: rung_drop_roster)
 }
@@ -70,7 +70,7 @@ test fn every_prose_declaration_agrees_with_its_closed_arm() -> Bool {
 // other and against the closed arm roster rather than against a literal. The typed side is named
 // by a row that was declared OUTSIDE any roster until this consolidation, which is the defect this
 // change exists to remove -- if it ever leaves the roster again, this reds.
-test fn the_roster_carries_both_declaration_arms() -> Bool {
+test fn the_roster_carries_both_declaration_arms() -> Bool  {
   length(xs: authored_prose_rung_drops(ds: rung_drop_roster)) == length(xs: legacy_prose_identity_roster)
     && length(xs: rung_drop_roster) > length(xs: legacy_prose_identity_roster)
     && length(xs: filter(map(rung_drop_roster, d => d.identity),
@@ -105,7 +105,7 @@ test fn the_roster_carries_both_declaration_arms() -> Bool {
 // enrolled as the executing evidence that the higher rung is still real. Deleting this as
 // scaffolding for a landed change would remove the only thing that distinguishes a guarantee that
 // holds from one that was never tested.
-test fn every_consolidated_typed_row_is_still_rostered() -> Bool {
+test fn every_consolidated_typed_row_is_still_rostered() -> Bool  {
   every_consolidated_typed_drop_is_rostered_once(ds: rung_drop_roster)
     && length(xs: consolidated_typed_drop_identities) == 4
     && !every_consolidated_typed_drop_is_rostered_once(ds: [])

@@ -73,7 +73,7 @@ fn shakedown_owner() -> NonEmptyStr {
 // RED is a hold owned by another demand on the same offer -- the FCI-1 probe's demand key -- which
 // the controller would report as ReservationPayloadWorkMismatch: if the broker keyed the reservation
 // on anything but the shakedown demand, this is the claim that goes false.
-test fn the_committed_hold_is_owned_by_the_shakedown_demand() -> Bool {
+test fn the_committed_hold_is_owned_by_the_shakedown_demand() -> Bool  {
   let demand = microvm_shakedown_demand(slot: slot())
   let offer = microvm_shakedown_offer(slot: slot())
   let written = hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)) })
@@ -93,7 +93,7 @@ test fn the_committed_hold_is_owned_by_the_shakedown_demand() -> Bool {
 // only an absent or free slot; a slot held by the shakedown's own owner is Occupied -- the same spelling
 // does not prove the earlier holder is gone -- which the broker reports as ReservationLost. The control
 // is the absent slot, which is eligible. The live counterpart is the srv1 run's second dispatch.
-test fn a_second_reserve_of_the_held_shakedown_cell_refuses() -> Bool {
+test fn a_second_reserve_of_the_held_shakedown_cell_refuses() -> Bool  {
   let held = durable_hold_acquire_assess(observed: HoldSlotHeld {
     generation: cas_generation_first(),
     owner: fabric_hold_owner(reservation: fabric_money_reservation_ref(
@@ -148,7 +148,7 @@ fn candidate_executed_by(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyS
 // offer would reach the broker as an empty roster and read as "nothing offered", a different remedy.
 // The shakedown cell's own executor binds one candidate; the same offer executed by a neighbouring
 // slot refuses, naming both. The fixture must yield a candidate in both cases or the claim is false.
-test fn the_roster_binding_refuses_an_offer_that_is_not_the_cell() -> Bool {
+test fn the_roster_binding_refuses_an_offer_that_is_not_the_cell() -> Bool  {
   let own = candidate_executed_by(executor: "srv1-13")
   let neighbour = candidate_executed_by(executor: "srv1-12")
   let bound = match bind_shakedown_roster(slot: slot(), admitted: own) {
@@ -165,7 +165,7 @@ test fn the_roster_binding_refuses_an_offer_that_is_not_the_cell() -> Bool {
 // THE RECEIPT NAMES THE HOLDER. The subject line carries the demand identity and the hold owner the
 // controller will compare against, and a committed reservation renders on the line the reserve step
 // admits on. A lost reservation renders on another line, which the step refuses.
-test fn the_broker_receipt_names_the_demand_and_the_holder() -> Bool {
+test fn the_broker_receipt_names_the_demand_and_the_holder() -> Bool  {
   let subject = shakedown_broker_subject_text(slot: slot())
   subject.contains(pattern: join(["demand=", microvm_shakedown_demand(slot: slot()).id.principal as String, "/", microvm_shakedown_demand(slot: slot()).id.key as String], ""))
     && subject.contains(pattern: join(["hold-owner=", shakedown_owner() as String], ""))
@@ -187,7 +187,7 @@ fn completed_with(text: String) -> Bool {
 // slot start, a receipt that was read but records a refusal fails the step: the next step is
 // meaningful only if the cell is held. REDS: a lost reservation, a store that could not answer, an
 // unreadable receipt, a refused start.
-test fn the_reserve_step_admits_only_a_committed_reservation() -> Bool {
+test fn the_reserve_step_admits_only_a_committed_reservation() -> Bool  {
   completed_with(text: "broker slot=srv1-13 demand=gunbc/x\nreservation=committed slot=srv1-13 generation=1 offer=o")
     && !completed_with(text: "broker slot=srv1-13 demand=gunbc/x\nreservation=lost slot=srv1-13 -- held")
     && !completed_with(text: "broker slot=srv1-13 demand=gunbc/x\nreservation=store-unavailable slot=srv1-13 cause=cas-read-refused")
@@ -200,7 +200,7 @@ test fn the_reserve_step_admits_only_a_committed_reservation() -> Bool {
 
 // THE BROKER UNIT TAKES NOTHING FROM ITS STARTER: it runs as the locus owner (root), execs the broker
 // entry, carries no instance specifier a starter could aim at another cell, and is never enabled.
-test fn the_broker_unit_is_fixed_root_and_not_installable() -> Bool {
+test fn the_broker_unit_is_fixed_root_and_not_installable() -> Bool  {
   let file = microvm_slot_reserve_unit_file(release_dir: "/opt/gunbc/microvm-controller/releases/abc")
   let text = serialize_systemd_unit_file(file: file)
   let shaped = match file {
@@ -232,7 +232,7 @@ fn deploy_on(host: NonEmptyStr) -> RunnerHostDeploy {
 
 // THE GRANT IS ONE EXACT START, ON THE SHAKEDOWN SLOT'S HOST ONLY. The rendered sudoers command is the
 // full argv for this one unit; another host (srv3) derives no such line.
-test fn the_broker_start_grant_is_exact_and_on_the_shakedown_host_only() -> Bool {
+test fn the_broker_start_grant_is_exact_and_on_the_shakedown_host_only() -> Bool  {
   let on_srv1 = microvm_slot_reserve_start_operations(deploy: deploy_on(host: srv1_microvm_shakedown_slot().host as NonEmptyStr))
   let on_srv3 = microvm_slot_reserve_start_operations(deploy: deploy_on(host: "srv3"))
   on_srv1.length() == 1
@@ -248,7 +248,7 @@ test fn the_broker_start_grant_is_exact_and_on_the_shakedown_host_only() -> Bool
 // field assembly -- executed rather than supplied, so deleting any of it makes this claim fail. It
 // asserts the route, not only the answer: exactly one admitted candidate, no exclusions, and that
 // candidate is the shakedown offer bound to srv1-13.
-test fn the_production_field_admits_exactly_the_shakedown_offer() -> Bool {
+test fn the_production_field_admits_exactly_the_shakedown_offer() -> Bool  {
   let field = microvm_shakedown_candidate_field(slot: slot())
   count(field.admitted) == 1
     && count(field.excluded) == 0
@@ -263,7 +263,7 @@ test fn the_production_field_admits_exactly_the_shakedown_offer() -> Bool {
 // that leave the host then refuse as TransferOrLocationUnresolved naming those terms. The control is the
 // posture as approved, which admits. If the route facts stopped locating those paths at GitHub, or the
 // posture stopped naming it, one side of this claim goes false.
-test fn github_egress_is_admitted_only_because_the_posture_names_it() -> Bool {
+test fn github_egress_is_admitted_only_because_the_posture_names_it() -> Bool  {
   let facts = microvm_shakedown_route_facts()
   let offer = microvm_shakedown_offer(slot: slot()).id
   let receipt = fleet_ci_posture_ref()
@@ -287,7 +287,7 @@ test fn github_egress_is_admitted_only_because_the_posture_names_it() -> Bool {
 // A LATER POSTURE REVISION MAKES THIS SANCTION STALE. The sanction is bound to the 2026-09-28 default
 // approval's revision; an operator statement that differs is a new revision, and the broker must then
 // refuse rather than carry the old sanction over to it.
-test fn a_superseding_posture_revision_leaves_the_shakedown_sanction_stale() -> Bool {
+test fn a_superseding_posture_revision_leaves_the_shakedown_sanction_stale() -> Bool  {
   let superseding = CompliancePostureRevision {
     authority: fleet_ci_posture.authority,
     revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.fleet-ci.first-party-self-use.superseding" as NonEmptyStr)),
@@ -302,7 +302,7 @@ test fn a_superseding_posture_revision_leaves_the_shakedown_sanction_stale() -> 
 
 // The real CI broker must refuse the workspace-designated cell before consulting a hold store.
 // A storage failure is not an acceptable substitute for the capacity-purpose refusal.
-test fn workspace_transfer_blocks_the_production_ci_broker_before_reservation() -> Bool {
+test fn workspace_transfer_blocks_the_production_ci_broker_before_reservation() -> Bool  {
   let selected = slot()
   let field = microvm_shakedown_candidate_field(slot: selected)
   field.admitted.count() == 1 && match microvm_shakedown_broker_decide(

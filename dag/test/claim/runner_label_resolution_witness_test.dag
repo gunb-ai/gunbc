@@ -69,7 +69,7 @@ fn arm_undetermined(label: String, observed_at: Rfc3339Timestamp) -> Bool {
 // everything would pass the first claim alone.
 // -------------------------------------------------------------------------------------
 
-test fn witness_biome_selected_label_resolves_arm_from_depots_catalog() -> Bool {
+test fn witness_biome_selected_label_resolves_arm_from_depots_catalog() -> Bool  {
   let arm = resolved_arm(label: biome_selected_label, observed_at: biome_observed_at)
   let from_depot = match provider_reading(r: resolve_runner_label(label: biome_selected_label, observed_at: biome_observed_at)) {
     ProviderFromCatalog { provider, label, snapshot } => declaration_ref_eq(a: provider, b: depot_provider_identity)
@@ -78,7 +78,7 @@ test fn witness_biome_selected_label_resolves_arm_from_depots_catalog() -> Bool 
   arm && from_depot
 }
 
-test fn witness_the_unsuffixed_depot_label_derives_x64() -> Bool {
+test fn witness_the_unsuffixed_depot_label_derives_x64() -> Bool  {
   resolved_not_arm(label: biome_x64_mutation_label, observed_at: biome_observed_at)
     && resolved_arm(label: biome_x64_mutation_label, observed_at: biome_observed_at) == false
 }
@@ -86,7 +86,7 @@ test fn witness_the_unsuffixed_depot_label_derives_x64() -> Bool {
 // EVERY OTHER PROVIDER'S ARM LABEL, IN BOTH DIRECTIONS. These are the labels a string grammar
 // answers confidently and wrongly - blacksmith and warp put their architecture segment in a
 // different position, and GitHub's standard arm label has no provider prefix at all.
-test fn witness_each_surveyed_providers_arm_and_x64_labels_resolve() -> Bool {
+test fn witness_each_surveyed_providers_arm_and_x64_labels_resolve() -> Bool  {
   let arm_labels = [
     "depot-ubuntu-24.04-arm",
     "depot-ubuntu-24.04-arm-64",
@@ -117,7 +117,7 @@ test fn witness_each_surveyed_providers_arm_and_x64_labels_resolve() -> Bool {
 // has never modelled.
 // -------------------------------------------------------------------------------------
 
-test fn witness_a_label_outside_every_catalog_yields_no_architecture() -> Bool {
+test fn witness_a_label_outside_every_catalog_yields_no_architecture() -> Bool  {
   let unknown_labels = [
     "self-hosted",
     "srv1",
@@ -131,7 +131,7 @@ test fn witness_a_label_outside_every_catalog_yields_no_architecture() -> Bool {
     && count(filter(unknown_labels, l => resolved_not_arm(label: l, observed_at: biome_observed_at))) == 0
 }
 
-test fn witness_an_unresolved_label_carries_both_readings_unresolved() -> Bool {
+test fn witness_an_unresolved_label_carries_both_readings_unresolved() -> Bool  {
   let r = resolve_runner_label(label: "namespace-profile-default-arm64", observed_at: biome_observed_at)
   let arch_unresolved = match architecture_reading(r: r) {
     ArchitectureFromCatalog { architecture, label, provider, snapshot } => false
@@ -156,7 +156,7 @@ test fn witness_an_unresolved_label_carries_both_readings_unresolved() -> Bool {
 
 data observation_before_every_snapshot: Rfc3339Timestamp = "2026-06-01T00:00:00Z"
 
-test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() -> Bool {
+test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() -> Bool  {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => count(untrusted_snapshots) > 0
@@ -179,7 +179,7 @@ test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() ->
 // two; if an architecture ever differed too, the label roster would be silently reporting one
 // visibility's answer for both, so the agreement is asserted over the whole catalog rather than
 // trusted.
-test fn witness_hosted_label_architecture_does_not_vary_with_repository_visibility() -> Bool {
+test fn witness_hosted_label_architecture_does_not_vary_with_repository_visibility() -> Bool  {
   let rows = github_hosted_ubuntu_catalog()
   let disagreements = filter(rows, r =>
     count(filter(rows, other =>
@@ -204,7 +204,7 @@ fn snapshot_postdates(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) 
   }
 }
 
-test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> Bool {
+test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> Bool  {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: observation_before_every_snapshot) {
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => false
@@ -220,7 +220,7 @@ test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> 
 // AND THE NEIGHBOURING ARM CARRIES THE COMPLEMENTARY PROPERTY, for the same reason: every
 // snapshot it reports as stale must actually pre-date the observation. Between them the two
 // claims say the split is sound without either one naming a population size.
-test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() -> Bool {
+test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() -> Bool  {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } =>
@@ -240,7 +240,7 @@ test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() 
 // coverage obligation into a finding about somebody else's repository.
 // -------------------------------------------------------------------------------------
 
-test fn witness_rfc3339_comparison_orders_utc_values_of_equal_precision() -> Bool {
+test fn witness_rfc3339_comparison_orders_utc_values_of_equal_precision() -> Bool  {
   let precedes = match rfc3339_compare(left: "2026-07-11T00:00:00Z", right: "2026-09-04T16:04:06Z") {
     Rfc3339Precedes => true
     other => false
@@ -258,7 +258,7 @@ test fn witness_rfc3339_comparison_orders_utc_values_of_equal_precision() -> Boo
 
 // The mixed-precision pair is the exact one the rfc3339 row names: a fractional component sorts
 // BELOW the Z designator, so lexical order would put the later instant first.
-test fn witness_rfc3339_comparison_refuses_mixed_precision_and_offsets() -> Bool {
+test fn witness_rfc3339_comparison_refuses_mixed_precision_and_offsets() -> Bool  {
   let mixed_precision = match rfc3339_compare(left: "2026-09-04T16:04:06.1Z", right: "2026-09-04T16:04:06Z") {
     Rfc3339OrderUndecidable { cause } => true
     other => false
@@ -277,7 +277,7 @@ test fn witness_rfc3339_comparison_refuses_mixed_precision_and_offsets() -> Bool
 // that guessed.
 // -------------------------------------------------------------------------------------
 
-test fn witness_a_resolved_label_carries_its_snapshot_provenance() -> Bool {
+test fn witness_a_resolved_label_carries_its_snapshot_provenance() -> Bool  {
   match resolve_runner_label(label: biome_selected_label, observed_at: biome_observed_at) {
     RunnerLabelResolved { row, snapshot } =>
       row.label == biome_selected_label
@@ -380,7 +380,7 @@ data github_row_standard: RunnerLabelRow = RunnerLabelRow {
   architecture: Aarch64,
 }
 
-test fn witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs() -> Bool {
+test fn witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs() -> Bool  {
   match resolve_from_matches(
     label: "contested-label-8",
     observed_at: biome_observed_at,
@@ -400,7 +400,7 @@ test fn witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs() -> 
 
 // AND ONE CATALOG LISTING A LABEL TWICE MUST READ AS THAT, so the two causes are not
 // interchangeable and the claim above is not satisfied by a refusal that always says "roster".
-test fn witness_one_catalog_listing_a_label_twice_names_that_catalog() -> Bool {
+test fn witness_one_catalog_listing_a_label_twice_names_that_catalog() -> Bool  {
   match resolve_from_matches(
     label: "contested-label-8",
     observed_at: biome_observed_at,
@@ -414,7 +414,7 @@ test fn witness_one_catalog_listing_a_label_twice_names_that_catalog() -> Bool {
   }
 }
 
-test fn witness_two_catalogs_carrying_one_label_refuse_rather_than_race() -> Bool {
+test fn witness_two_catalogs_carrying_one_label_refuse_rather_than_race() -> Bool  {
   let disagreeing_refused = resolution_is_ambiguous(matches: [
     control_match(row: competing_row_depot), control_match(row: competing_row_github)])
   let agreeing_refused = resolution_is_ambiguous(matches: [
@@ -441,7 +441,7 @@ test fn witness_two_catalogs_carrying_one_label_refuse_rather_than_race() -> Boo
 //
 // If this ever fires, two enrolled catalogs carry one label and that is a corpus defect to repair
 // rather than a claim to relax — which is why the refusal above must exist even while this holds.
-test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool {
+test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool  {
   let rows = runs_on_label_rows()
   let colliding = filter(rows, r =>
     match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
@@ -457,7 +457,7 @@ test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool {
 // collision claim needs beside it: a resolver that refused every label would satisfy "no
 // collisions" trivially. Each row's own label must come back resolved, since by construction it is
 // carried by a catalog on the surface being asked about.
-test fn witness_every_surveyed_runs_on_label_resolves() -> Bool {
+test fn witness_every_surveyed_runs_on_label_resolves() -> Bool  {
   let rows = runs_on_label_rows()
   let unresolved = filter(rows, r =>
     match resolve_runner_label(label: r.label, observed_at: biome_observed_at) {
@@ -480,7 +480,7 @@ test fn witness_every_surveyed_runs_on_label_resolves() -> Bool {
 // "arm.medium" returned ArmConfirmed — a GitHub Actions job reported as CONFIRMED ARM on the
 // authority of a catalog that has nothing to do with GitHub Actions. arm.medium is the load-bearing
 // case because it fabricates Arm evidence; small and large are the ones a fleet actually writes.
-test fn witness_another_ci_systems_label_namespace_is_not_consulted() -> Bool {
+test fn witness_another_ci_systems_label_namespace_is_not_consulted() -> Bool  {
   let circleci_resource_classes = ["small", "medium", "large", "xlarge", "2xlarge", "arm.medium", "arm.large"]
   count(filter(circleci_resource_classes, l => arm_undetermined(label: l, observed_at: biome_observed_at) == false)) == 0
     && count(filter(circleci_resource_classes, l => resolved_arm(label: l, observed_at: biome_observed_at))) == 0
@@ -510,7 +510,7 @@ data plainly_older_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "constructed for this claim; unambiguously earlier than the observation",
 }
 
-test fn witness_an_unorderable_snapshot_is_not_reported_as_an_old_one() -> Bool {
+test fn witness_an_unorderable_snapshot_is_not_reported_as_an_old_one() -> Bool  {
   let undecidable_is_named = match snapshot_standing_for(snapshot: undecidable_snapshot, observed_at: biome_observed_at) {
     SnapshotOrderUndecidable { cause } => string_length(s: cause) > 0
     SnapshotPredatesObservation => false
@@ -546,7 +546,7 @@ test fn witness_an_unorderable_snapshot_is_not_reported_as_an_old_one() -> Bool 
 // survey is entirely the pre-dating kind. That last conjunct is the actionable reading a consumer
 // wants - it says the remedy is "re-fetch four stale catalogs", not "our clocks are unreadable" -
 // and it is derived from the value rather than parsed out of a sentence.
-test fn witness_the_untrusted_partition_is_readable_from_the_value() -> Bool {
+test fn witness_the_untrusted_partition_is_readable_from_the_value() -> Bool  {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
     RunnerLabelSnapshotStale { label, observed_at, untrusted_snapshots, cause } => {
       let undecidable = filter(untrusted_snapshots, a => assessment_is_undecidable(a: a))
@@ -570,7 +570,7 @@ data circleci_row: RunnerLabelRow = RunnerLabelRow {
   architecture: Aarch64,
 }
 
-test fn witness_the_seam_refuses_a_row_from_another_surface() -> Bool {
+test fn witness_the_seam_refuses_a_row_from_another_surface() -> Bool  {
   match resolve_from_matches(
     label: "arm.medium",
     observed_at: biome_observed_at,
@@ -593,7 +593,7 @@ test fn witness_the_seam_refuses_a_row_from_another_surface() -> Bool {
 // every uppercase form: 't' is 0x74 against 'T' at 0x54, so an OLDER lowercase stamp compares as
 // NEWER. Left unrefused, that reverses a snapshot's standing and turns our own coverage obligation
 // into a finding about somebody else's repository.
-test fn witness_a_lowercase_separator_is_refused_rather_than_misordered() -> Bool {
+test fn witness_a_lowercase_separator_is_refused_rather_than_misordered() -> Bool  {
   let lowercase_t = match rfc3339_compare(left: "2026-07-11t00:00:00Z", right: "2026-09-04T16:04:06Z") {
     Rfc3339OrderUndecidable { cause } => true
     other => false

@@ -18,6 +18,6 @@ import extdeps.languages.rust.emit { rt_function_registry, rt_bridge_name }
 // is by identity over every row, with no count and no tree-copied literal, so a
 // future row whose override is dropped from the derived map goes red here
 // instead of emitting a call to a v1_rt symbol that does not exist.
-test fn rt_bridge_name_agrees_with_registry_on_every_row() -> Bool {
+test fn rt_bridge_name_agrees_with_registry_on_every_row() -> Bool  {
   rt_function_registry |> all(entry => rt_bridge_name(name: entry.name) == entry.bridge_name)
 }

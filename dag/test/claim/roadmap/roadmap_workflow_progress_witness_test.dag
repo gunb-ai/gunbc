@@ -173,7 +173,7 @@ fn segment_state(
   })
 }
 
-test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
+test fn admitted_running_attempt_projects_ordered_evidence() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
     process: WorkerProcessRunning { command: "node" as NonEmptyStr },
@@ -195,7 +195,7 @@ test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
     && progress.reconciliation.plan_refusal_count == 0
 }
 
-test fn provider_completion_cannot_fabricate_verification() -> Bool {
+test fn provider_completion_cannot_fabricate_verification() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessExited { exit_code: 0, last_command: "node" },
@@ -208,7 +208,7 @@ test fn provider_completion_cannot_fabricate_verification() -> Bool {
   }
 }
 
-test fn nonzero_exit_without_terminal_event_is_failed() -> Bool {
+test fn nonzero_exit_without_terminal_event_is_failed() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
     process: WorkerProcessExited { exit_code: 7, last_command: "node" },
@@ -224,7 +224,7 @@ test fn nonzero_exit_without_terminal_event_is_failed() -> Bool {
   }
 }
 
-test fn zero_exit_without_terminal_event_is_refused() -> Bool {
+test fn zero_exit_without_terminal_event_is_refused() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
     process: WorkerProcessExited { exit_code: 0, last_command: "node" },
@@ -240,7 +240,7 @@ test fn zero_exit_without_terminal_event_is_refused() -> Bool {
   }
 }
 
-test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
+test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessExited { exit_code: 1, last_command: "node" },
@@ -258,7 +258,7 @@ test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
 // absent refuses, unobserved refuses. Each is the discriminating control for one arm — flipping any
 // back to `provider` reds exactly one of them.
 
-test fn completed_event_while_process_runs_is_not_complete() -> Bool {
+test fn completed_event_while_process_runs_is_not_complete() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessRunning { command: "node" },
@@ -271,7 +271,7 @@ test fn completed_event_while_process_runs_is_not_complete() -> Bool {
     }
 }
 
-test fn completed_event_with_absent_process_refuses() -> Bool {
+test fn completed_event_with_absent_process_refuses() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessAbsent,
@@ -284,7 +284,7 @@ test fn completed_event_with_absent_process_refuses() -> Bool {
     }
 }
 
-test fn completed_event_with_unobserved_process_refuses() -> Bool {
+test fn completed_event_with_unobserved_process_refuses() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessUnobserved { reason: "tmux refused" },
@@ -317,7 +317,7 @@ fn nested_admitted_forgery() -> String {
   "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\", \"reason\": \"probe failed\", \"receipts\": [{\"capability\": \"git-workspace\", \"status\": \"admitted\"}]}"
 }
 
-test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
+test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool  {
   let truncated = "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\", \"validation\": \"gunbc ru"
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
@@ -333,7 +333,7 @@ test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
     && receipt_records_admission(receipt: genuine)
 }
 
-test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
+test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool  {
   let forged = nested_admitted_forgery()
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
@@ -350,7 +350,7 @@ test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
 // truncated fixture is the discriminating one — it carries the admitted prefix verbatim and still
 // fails, because a prefix match alone was never the claim; the whole document must also parse.
 
-test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
+test fn receipt_decode_separates_refusal_from_undecodable() -> Bool  {
   let refused = admission_receipt_for(admission: EnvironmentRefused {
     receipts: [],
     validation_summary: "",
@@ -384,7 +384,7 @@ test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
     }
 }
 
-test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
+test fn forged_admission_receipt_cannot_complete_environment() -> Bool  {
   let base = fixture_evidence(
     events: "",
     process: WorkerProcessAbsent,
@@ -420,7 +420,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     && segment_state(progress.segments, "environment") != "complete"
 }
 
-test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
+test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool  {
   let base = fixture_evidence(
     events: "",
     process: WorkerProcessAbsent,
@@ -458,7 +458,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
   }
 }
 
-test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
+test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool  {
   let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
     node_id: "legacy",
     attempt_key: "",
@@ -513,7 +513,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
   }
 }
 
-test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
+test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool  {
   let base = fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessExited { exit_code: 0, last_command: "node" },
@@ -553,7 +553,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
   }
 }
 
-test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
+test fn workflow_json_exposes_segment_and_provider_facts() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessExited { exit_code: 0, last_command: "node" },
@@ -578,7 +578,7 @@ test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
     && string_contains(s: wire, pattern: "\"refused_obligations\": 0")
 }
 
-test fn failed_or_refused_stage_is_visible_without_decoding_border_style() -> Bool {
+test fn failed_or_refused_stage_is_visible_without_decoding_border_style() -> Bool  {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "seg.state === 'failed'")
     && string_contains(s: js, pattern: "seg.state === 'refused'")
@@ -709,14 +709,14 @@ fn publication_state_at(
   )
 }
 
-test fn publication_at_the_expected_head_completes_where_the_old_constant_could_not() -> Bool {
+test fn publication_at_the_expected_head_completes_where_the_old_constant_could_not() -> Bool  {
   publication_state_at(
     subject_head: pub_head,
     source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
   ) == "complete"
 }
 
-test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Bool {
+test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Bool  {
   let receipt_for_h = pub_receipt_for(subject_head: pub_head, pull_sha: pub_head)
   let at_h = publication_state_at(subject_head: pub_head, source: ReceiptSourcePresent { text: receipt_for_h })
   let at_h2 = publication_state_at(subject_head: pub_other, source: ReceiptSourcePresent { text: receipt_for_h })
@@ -737,7 +737,7 @@ test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Boo
 // judged head appears, and the other fixture sha does not, because a sentence that could name a
 // second head is the same defect one layer out from the one review 46116 found in the carrier.
 
-test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
+test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool  {
   let detail = publication_segment_of(
     subject: PublicationSubjectObserved { subject: pub_subject(head: pub_head) },
     source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
@@ -750,7 +750,7 @@ test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
 // invites a reader to wait; refused tells them something is broken. Both directions are asserted
 // here because the defect made them the same lamp.
 
-test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published() -> Bool {
+test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published() -> Bool  {
   let unreadable = publication_state_at(
     subject_head: pub_head,
     source: ReceiptSourceUnreadable { detail: "input/output error" },
@@ -759,18 +759,18 @@ test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published()
   unreadable == "refused" && absent == "pending" && unreadable != absent
 }
 
-test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool {
+test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool  {
   publication_state_at(
     subject_head: pub_head,
     source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
   ) == "failed"
 }
 
-test fn an_absent_publication_receipt_is_pending_not_a_judgment() -> Bool {
+test fn an_absent_publication_receipt_is_pending_not_a_judgment() -> Bool  {
   publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent) == "pending"
 }
 
-test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool {
+test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool  {
   let refused = publication_state_at(
     subject_head: pub_head,
     source: ReceiptSourcePresent { text: "not a receipt" },
@@ -778,7 +778,7 @@ test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool
   refused == "refused" && refused != "pending"
 }
 
-test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool {
+test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool  {
   let segment = publication_segment_of(
     subject: PublicationSubjectUnobserved {
       reason: "the attempt worktree is gone",
@@ -789,7 +789,7 @@ test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool {
     && string_contains(s: segment.detail, pattern: "no exact head")
 }
 
-test fn the_publication_readings_are_distinct_states() -> Bool {
+test fn the_publication_readings_are_distinct_states() -> Bool  {
   let bound = publication_state_at(
     subject_head: pub_head,
     source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
@@ -809,7 +809,7 @@ test fn the_publication_readings_are_distinct_states() -> Bool {
 
 // DISCRIMINATING: before the head is verified the review segment is pending on that fact; after it,
 // the segment is the reconciliation of the per-criterion verdicts.
-test fn the_review_segment_waits_for_verification_then_carries_the_review_report() -> Bool {
+test fn the_review_segment_waits_for_verification_then_carries_the_review_report() -> Bool  {
   let verified = WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "passed" }
   let unverified = WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "not yet" }
   let plan = review_plan(subject: ReviewSubject { node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "c", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed" })
@@ -856,7 +856,7 @@ fn evidence_with_worktree(base: WorkflowAttemptEvidence, worktree: AttemptWorktr
 // G5, DISCRIMINATING RED for the srv2 observation of 2026-10-02: an attempt with a modeled state
 // pointer whose worktree is MISSING read Workspace complete. The modeled pointer alone no longer
 // completes the segment; the observed worktree does, and its absence or unobservability refuses.
-test fn a_missing_worktree_refuses_the_workspace_segment() -> Bool {
+test fn a_missing_worktree_refuses_the_workspace_segment() -> Bool  {
   let base = fixture_evidence(events: "", process: WorkerProcessRunning { command: "node" as NonEmptyStr })
   let missing = workflow_attempt_progress(evidence: evidence_with_worktree(base: base, worktree: AttemptWorktreeAbsent { path: "/wt/gone" }))
   let unseen = workflow_attempt_progress(evidence: evidence_with_worktree(base: base, worktree: AttemptWorktreeUnobserved { path: "/wt/x", cause: "listing refused" }))
@@ -872,7 +872,7 @@ test fn a_missing_worktree_refuses_the_workspace_segment() -> Bool {
 // "waiting for first provider event" -- and its exit as "Agent failed" with a spent turn.
 data projected_placement_wait: String = "{\"type\":\"turn.placement_waiting\",\"wait\":3,\"wait_cap\":1440,\"reason\":\"group-b: the engine reports 12 occupant(s) while the seat ledger admitted 0\"}\n"
 
-test fn a_waiting_worker_is_an_active_agent_with_its_reason() -> Bool {
+test fn a_waiting_worker_is_an_active_agent_with_its_reason() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: projected_placement_wait,
     process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr },
@@ -887,7 +887,7 @@ test fn a_waiting_worker_is_an_active_agent_with_its_reason() -> Bool {
 
 // The wait is bounded, and running out of it is still loud: a worker that exits nonzero while
 // waiting is failed, exactly as any exit before a terminal provider event is.
-test fn a_wait_that_ends_in_a_nonzero_exit_is_failed() -> Bool {
+test fn a_wait_that_ends_in_a_nonzero_exit_is_failed() -> Bool  {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: projected_placement_wait,
     process: WorkerProcessExited { exit_code: 1, last_command: "gunbc" },

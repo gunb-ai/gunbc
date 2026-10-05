@@ -92,7 +92,7 @@ fn launcher_unit() -> SystemdUnitFile {
   }
 }
 
-test fn the_slot_unit_execs_the_controller_entry_as_main_pid_with_the_declared_teardown() -> Bool {
+test fn the_slot_unit_execs_the_controller_entry_as_main_pid_with_the_declared_teardown() -> Bool  {
   microvm_slot_unit_execs_controller(file: rendered())
     && has_exec_mode(f: rendered())
     && has_teardown_intent(f: rendered())
@@ -109,7 +109,7 @@ fn carries_spawn_root(f: SystemdUnitFile, release_dir: String) -> Bool {
   })
 }
 
-test fn the_installed_unit_sets_the_checkout_root_at_spawn_and_the_bare_render_does_not() -> Bool {
+test fn the_installed_unit_sets_the_checkout_root_at_spawn_and_the_bare_render_does_not() -> Bool  {
   let dir = "/opt/gunbc/microvm-controller/releases/abc"
   carries_spawn_root(f: microvm_slot_unit_file_with_workspace_root(release_dir: dir), release_dir: dir)
     && !carries_spawn_root(f: rendered(), release_dir: dir)
@@ -126,7 +126,7 @@ fn slice_bytes(f: SystemdUnitFile, wanted: List<SystemdSliceDirective>) -> Bool 
   }
 }
 
-test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell() -> Bool {
+test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell() -> Bool  {
   let joins = fold(service_directives(f: rendered()), init: false, f: (acc, d) => acc || match d {
     ServiceSlice { name: n } => (n as String) == (microvm_controller_slice_unit_name as String)
     _ => false
@@ -143,7 +143,7 @@ test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell
 
 // THE STOP TIMEOUT IS THE SUM OF THE FIVE DECLARED ROWS, re-derived here from those rows rather
 // than transcribed, so a moved bound moves this claim with it.
-test fn the_unit_stop_timeout_covers_the_controllers_declared_bounds() -> Bool {
+test fn the_unit_stop_timeout_covers_the_controllers_declared_bounds() -> Bool  {
   second_count(s: microvm_slot_unit_timeout_stop())
     == second_count(s: runner_attempt_vmm_deadline) + second_count(s: runner_attempt_vmm_kill_grace)
       + second_count(s: attempt_stop_grace) + second_count(s: attempt_force_stop_bound) + second_count(s: attempt_unit_stop_slack)
@@ -156,7 +156,7 @@ fn fleet_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
 }
 
-test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the_fleet_row_stands() -> Bool {
+test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the_fleet_row_stands() -> Bool  {
   let shakedown = gunbc_runner_slot_desired_for(slot: srv1_microvm_shakedown_slot())
   let fleet = gunbc_runner_slot_desired_for(slot: fleet_slot())
   byte_size_count(b: shakedown.memory_max) == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max)
@@ -170,7 +170,7 @@ test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the
 // THE WIDTH CHARGE IS THE CELL PLUS THE CONTROLLER'S SLICE, SPENT FIRST: an envelope holding the
 // charge plus fourteen fleet rows admits fifteen, one byte less admits fourteen, and a host that
 // cannot hold the charge at all admits zero.
-test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fleet_row_divides() -> Bool {
+test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fleet_row_divides() -> Bool  {
   let fleet_row = gunbc_runner_slot_memory_max_bytes
   let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
   charge == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
@@ -184,7 +184,7 @@ test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fl
 // refused; gunbc#12117 (the 2026-09-23 floor sizing receipt) moved the demand so the fleet row's shape
 // resolves too and retired the floor-fit stall, so the fleet half no longer describes the tree and is
 // dropped rather than inverted -- the fleet row's standing is #12117's claim, not this module's.
-test fn the_shakedown_slots_shape_resolves() -> Bool {
+test fn the_shakedown_slots_shape_resolves() -> Bool  {
   match gunbc_runner_microvm_shape_for_slot(slot: srv1_microvm_shakedown_slot()) {
     MicroVmShapeResolved { shape: _ } => true
     MicroVmShapeRefused { refusal: _ } => false
@@ -239,7 +239,7 @@ fn agree(reserved_work: FabricIdentity<NonEmptyStr, WorkKey>, reserved_cell: Cel
 // EVERY REFUSAL THE GRANT JOIN PERFORMS HAS ITS ARM HERE, AND THE TRUST DOMAIN IS CHECKED FIRST:
 // a Work outside the fleet's trust domain -- the untrusted-CI route -- cannot reach the arm even
 // when every identity agrees, which is the control the parent's decision required.
-test fn the_reservation_arm_admits_only_the_fleets_trust_domain_and_refuses_each_disagreement_by_name() -> Bool {
+test fn the_reservation_arm_admits_only_the_fleets_trust_domain_and_refuses_each_disagreement_by_name() -> Bool  {
   let work = microvm_shakedown_work()
   let cell = fabric_cell_id_for_slot(slot: srv1_microvm_shakedown_slot())
   let other_cell = fabric_cell_id_for_slot(slot: fleet_slot())
@@ -254,7 +254,7 @@ test fn the_reservation_arm_admits_only_the_fleets_trust_domain_and_refuses_each
 
 // --- the shakedown identities are deterministic and bound to the slot ---
 
-test fn the_shakedown_demand_and_offer_are_derived_from_the_slot_and_name_the_shakedown_work() -> Bool {
+test fn the_shakedown_demand_and_offer_are_derived_from_the_slot_and_name_the_shakedown_work() -> Bool  {
   let slot = srv1_microvm_shakedown_slot()
   let demand = microvm_shakedown_demand(slot: slot)
   let offer = microvm_shakedown_offer(slot: slot)
@@ -268,7 +268,7 @@ test fn the_shakedown_demand_and_offer_are_derived_from_the_slot_and_name_the_sh
 // EVERY ROSTER MEMBER SELECTS ITSELF BY ITS OWN INSTANCE NAME, as an identity join over the roster
 // rather than a count of it (review 69823, DESIGN 5: a live-population count is not an oracle) --
 // a member the selection cannot reach is the defect, however many members there are.
-test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -> Bool {
+test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -> Bool  {
   let shakedown = match slot_of_instance(instance: "srv1-13") {
     Present { value: s } => (s.host as String) == (operator_host_srv1 as String) && s.slot_index == 13
     Absent => false
@@ -300,7 +300,7 @@ fn delivered_mint() -> Bool {
   }
 }
 
-test fn only_a_delivered_mint_carries_a_registration_into_the_controller() -> Bool {
+test fn only_a_delivered_mint_carries_a_registration_into_the_controller() -> Bool  {
   delivered_mint()
     && minted_registration(mint: JitMintReceived { delivery: JitCredentialMintNotCreated { outcome: jit_config_mint_outcome(status: 409, encoded: "", runner_id: 0, error_body: "taken") } }) == none
     && minted_registration(mint: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: DispatchRefusedCellNotOwned { cause: "unowned" } } }) == none
@@ -330,7 +330,7 @@ fn attempt_launch_property_words(attempt: MicroVmAttempt) -> List<String> {
   ])
 }
 
-test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool {
+test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool  {
   match microvm_attempt(slot: srv1_microvm_shakedown_slot(), attempt_id: "w-42") {
     MicroVmAttemptRefused { refusal: _ } => false
     MicroVmAttemptAccepted { attempt: a } =>
@@ -347,7 +347,7 @@ test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool 
 // directory and a refused read looked the same to the operator. The red is that old text, which ended
 // at the slot key; the receipt now carries the cause through std's one rendering of it, and a payload
 // that does not decode carries its decode detail the same way.
-test fn a_reservation_refusal_names_why_the_store_could_not_be_read() -> Bool {
+test fn a_reservation_refusal_names_why_the_store_could_not_be_read() -> Bool  {
   let unreadable = refusal_text(r: ReservationNotObserved {
     observation: ReservationUnreadable { slot_key: "srv1-13" as NonEmptyStr, cause: CasUnreadableReadRefused { detail: "No such file or directory" as NonEmptyStr } },
   })
@@ -359,7 +359,7 @@ test fn a_reservation_refusal_names_why_the_store_could_not_be_read() -> Bool {
 }
 
 // Launch directives are captured as inert credentials, never interpreted as root environment.
-test fn workspace_launch_directive_uses_the_optional_credential_store() -> Bool {
+test fn workspace_launch_directive_uses_the_optional_credential_store() -> Bool  {
   let unit = microvm_slot_unit_text(release_dir: "/opt/release", timeout_stop_sec: "60")
   string_contains(s: unit, pattern: "LoadCredential=workspace-launch:gunbc-workspace-%i")
     && !string_contains(s: unit, pattern: "EnvironmentFile=")

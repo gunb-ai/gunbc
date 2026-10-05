@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // pattern). The verdict detail names the refusing arm so a live-tree integrity failure is
 // diagnosable without re-running git by hand.
 
-test fn live_roadmap_acceptance_history_integrity_holds() -> Bool {
+test fn live_roadmap_acceptance_history_integrity_holds() -> Bool  {
   roadmap_acceptance_history_integrity_holds()
 }
 

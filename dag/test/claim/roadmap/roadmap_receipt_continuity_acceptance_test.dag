@@ -124,7 +124,7 @@ fn history_with_mutated_first_event_accepted_on(history: List<RoadmapAcceptanceE
   }
 }
 
-test fn witness_fixture_history_loads_with_nonempty_live_set() -> Bool {
+test fn witness_fixture_history_loads_with_nonempty_live_set() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
@@ -138,7 +138,7 @@ test fn witness_fixture_history_loads_with_nonempty_live_set() -> Bool {
   }
 }
 
-test fn witness_deleted_history_event_refuses() -> Bool {
+test fn witness_deleted_history_event_refuses() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -151,7 +151,7 @@ test fn witness_deleted_history_event_refuses() -> Bool {
   }
 }
 
-test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool {
+test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -165,7 +165,7 @@ test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool {
   }
 }
 
-test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
+test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -198,7 +198,7 @@ test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
   }
 }
 
-test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
+test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -223,7 +223,7 @@ test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
   }
 }
 
-test fn witness_duplicate_revocations_refuse() -> Bool {
+test fn witness_duplicate_revocations_refuse() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -246,7 +246,7 @@ test fn witness_duplicate_revocations_refuse() -> Bool {
   }
 }
 
-test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() -> Bool {
+test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -296,7 +296,7 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
   }
 }
 
-test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
+test fn witness_exact_revocation_admits_vanished_receipt() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -327,7 +327,7 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
   }
 }
 
-test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool {
+test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool  {
   git_show_path_absent_at_ref(
     stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
   )
@@ -336,7 +336,7 @@ test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -
     )
 }
 
-test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
+test fn witness_git_refusal_observation_refuses_integrity() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
@@ -349,7 +349,7 @@ test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
   }
 }
 
-test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool {
+test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -360,7 +360,7 @@ test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit(
   }
 }
 
-test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() -> Bool {
+test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -376,7 +376,7 @@ test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prio
   }
 }
 
-test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Bool {
+test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Bool  {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: prior } => {
@@ -388,7 +388,7 @@ test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Boo
   }
 }
 
-test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool {
+test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool  {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -404,7 +404,7 @@ test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool 
   }
 }
 
-test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool {
+test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool  {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -422,7 +422,7 @@ test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool 
 
 // The accepted projection and the document projection read one frontier plan, so over the same
 // history they carry the same accepted set; a live fixture receipt makes the set nonempty.
-test fn witness_accepted_projection_matches_authority_projection_on_fixture_history() -> Bool {
+test fn witness_accepted_projection_matches_authority_projection_on_fixture_history() -> Bool  {
   let history = fixture_history_load()
   match accepted_node_ids_projection(history: history) {
     AcceptedNodeIdsProjectionRefused { detail: _ } => false
@@ -435,7 +435,7 @@ test fn witness_accepted_projection_matches_authority_projection_on_fixture_hist
   }
 }
 
-test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool {
+test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool  {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -451,7 +451,7 @@ test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool 
   }
 }
 
-test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() -> Bool {
+test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() -> Bool  {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
@@ -459,7 +459,7 @@ test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() ->
   }
 }
 
-test fn witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool {
+test fn witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool  {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -475,7 +475,7 @@ test fn witness_authority_projection_refuses_when_receipts_projection_refuses() 
   }
 }
 
-test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
+test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool  {
   match prior_history_from_carrier_text(carrier_text: "not-jsonl-carrier\n") {
     PriorHistoryObserved { prior: _ } => false
     PriorHistoryGitObservationRefused { detail: detail } =>
@@ -488,7 +488,7 @@ test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() 
 // shape over a valid one — so roadmap_authority_projection executed twice per frame and both
 // bills landed on one identity. Each case is now its own claim at its own boundary; the producer
 // still executes exactly once per claim, and the file's coverage is unchanged.
-test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
+test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool  {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -499,7 +499,7 @@ test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
   }
 }
 
-test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
+test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool  {
   match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
     RoadmapAuthorityProjectionRefused { detail: _ } => false
@@ -509,7 +509,7 @@ test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
 // SPLIT THE SAME WAY (DESIGN section 3): the refusal arm and the projected arm are independent
 // cases of roadmap_dispatch_file_content_for_projection over planted fixtures; one claim paid both
 // renders per frame. Two claims, one render each, coverage unchanged.
-test fn witness_dispatch_refusal_arm_hides_the_brief_template() -> Bool {
+test fn witness_dispatch_refusal_arm_hides_the_brief_template() -> Bool  {
   let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let refused_dispatch = roadmap_dispatch_file_content_for_projection(proj: refused)
   string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")
@@ -517,7 +517,7 @@ test fn witness_dispatch_refusal_arm_hides_the_brief_template() -> Bool {
     && !string_contains(s: refused_dispatch, pattern: "\"brief_template\": ")
 }
 
-test fn witness_dispatch_projected_arm_presents_the_dispatch_schema() -> Bool {
+test fn witness_dispatch_projected_arm_presents_the_dispatch_schema() -> Bool  {
   let dispatch = roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjected {
     doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
     accepted: [],
@@ -563,7 +563,7 @@ fn replayable_empty_live_history() -> List<RoadmapAcceptanceEvent> {
 // THE DISCRIMINATING PAIR: both histories yield an empty live list under the pre-repair producer.
 // Asserted through acceptance_receipts_projection_from_events, the single arm both authority
 // wrappers call.
-test fn witness_unreplayable_history_refuses_receipts_projection() -> Bool {
+test fn witness_unreplayable_history_refuses_receipts_projection() -> Bool  {
   match project_live_acceptance_receipts(history: unreplayable_history()) {
     LiveAcceptanceReceiptsReplayed { live: _ } => false
     LiveAcceptanceReceiptsReplayRefused =>
@@ -575,7 +575,7 @@ test fn witness_unreplayable_history_refuses_receipts_projection() -> Bool {
   }
 }
 
-test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool {
+test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool  {
   match project_live_acceptance_receipts(history: replayable_empty_live_history()) {
     LiveAcceptanceReceiptsReplayRefused => false
     LiveAcceptanceReceiptsReplayed { live: live } =>

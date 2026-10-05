@@ -40,7 +40,7 @@ fn expected_row_actuator_block() -> String {
 // Read at the rule list roadmap_css composes (serialize_rules over roadmap_rules): every selector
 // rule of the sheet, including the ones the reduced-motion block re-emits, originates there, and
 // the root variable blocks the sheet adds carry no selectors.
-test fn roadmap_row_grid_structure_holds() -> Bool {
+test fn roadmap_row_grid_structure_holds() -> Bool  {
   let rules = serialize_rules(rules: roadmap_rules())
   string_contains(s: rules, pattern: expected_taskbar_block())
     && string_contains(s: rules, pattern: expected_taskbar_face_block())
@@ -57,12 +57,12 @@ fn actuator_block_derived(block: String) -> Bool {
     && !string_contains(s: block, pattern: "px")
 }
 
-test fn roadmap_row_actuator_scale_derived_not_set() -> Bool {
+test fn roadmap_row_actuator_scale_derived_not_set() -> Bool  {
   return string_contains(s: roadmap_css(), pattern: expected_row_actuator_block())
     && actuator_block_derived(block: expected_row_actuator_block())
 }
 
-test fn roadmap_row_actuator_red_on_hand_scale() -> Bool {
+test fn roadmap_row_actuator_red_on_hand_scale() -> Bool  {
   let hand_scaled = ".taskbar .dispatch-btn { font-size: var(--text-11); min-height: var(--h-control); padding: 3px 8px }"
   return !actuator_block_derived(block: hand_scaled)
 }
@@ -71,7 +71,7 @@ test fn roadmap_row_actuator_red_on_hand_scale() -> Bool {
 // only var() lengths. The module-wide untokened-length census walls the class; this locates the
 // row's own blocks.
 
-test fn roadmap_row_density_all_tokened() -> Bool {
+test fn roadmap_row_density_all_tokened() -> Bool  {
   return !string_contains(s: expected_taskbar_block(), pattern: "px")
     && !string_contains(s: expected_taskbar_face_block(), pattern: "px")
     && !string_contains(s: expected_row_actuator_block(), pattern: "px")

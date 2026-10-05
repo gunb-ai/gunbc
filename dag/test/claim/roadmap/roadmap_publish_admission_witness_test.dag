@@ -6,7 +6,7 @@ import gunbc.roadmap_validation_oracle { ValidationPassed, ValidationFailed, Val
 import gunbc.roadmap_verification_receipt { VerificationReceipt, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmitted, PublishWithheld, verdict_admission, publish_admission }
 
-test fn a_passed_verdict_admits_publication() -> Bool {
+test fn a_passed_verdict_admits_publication() -> Bool  {
   let r = exact_head_receipt(head: "feedfacefeedfacefeedfacefeedfacefeedface" as CommitSha)
   let receipt = VerificationReceipt {
     subject: r.subject,
@@ -20,21 +20,21 @@ test fn a_passed_verdict_admits_publication() -> Bool {
   }
 }
 
-test fn a_not_run_verdict_withholds_publication() -> Bool {
+test fn a_not_run_verdict_withholds_publication() -> Bool  {
   match verdict_admission(verdict: ValidationNotRun) {
     PublishWithheld { reason: _ } => true
     PublishAdmitted => false
   }
 }
 
-test fn a_failed_verdict_withholds_publication() -> Bool {
+test fn a_failed_verdict_withholds_publication() -> Bool  {
   match verdict_admission(verdict: ValidationFailed { command: "x", exit_code: 1, detail: "x" }) {
     PublishWithheld { reason: _ } => true
     PublishAdmitted => false
   }
 }
 
-test fn evidence_for_another_subject_withholds_publication() -> Bool {
+test fn evidence_for_another_subject_withholds_publication() -> Bool  {
   match publish_admission(evidence: VerificationEvidenceForAnotherSubject { field: "head_sha" as std.types.NonEmptyStr, expected: "a", found: "b" }) {
     PublishWithheld { reason: _ } => true
     PublishAdmitted => false

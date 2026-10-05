@@ -178,7 +178,7 @@ fn fabric_slot_is_answered(slot: RunnerSlotIdentity, p: RunnerListenerPopulation
 // derives it, so they agree BY CONSTRUCTION rather than by six authors having typed the same
 // string. This witness compares the surviving projections against the one authority; it goes red
 // if any of them is re-forked, which is the failure the consolidation exists to prevent.
-test fn witness_every_unit_name_projection_agrees() -> Bool {
+test fn witness_every_unit_name_projection_agrees() -> Bool  {
   let slot = srv4_slot(index: 1)
   let expected = "actions-runner@srv4-01.service"
   (runner_slot_unit_name(slot: slot) as String) == expected
@@ -190,7 +190,7 @@ test fn witness_every_unit_name_projection_agrees() -> Bool {
 // THE TEMPLATE, THE GLOBS AND THE DROP-IN DIRECTORY ARE PROJECTIONS OF THE SAME PREFIX AND SUFFIX.
 // The drop-in path is the one that mattered most and was hardest to see: a drop-in written into a
 // directory whose name does not match the unit is never applied and never refused.
-test fn witness_template_glob_and_dropin_share_one_contract() -> Bool {
+test fn witness_template_glob_and_dropin_share_one_contract() -> Bool  {
   (runner_unit_template_name as String) == "actions-runner@.service"
     && gunbc_runner_unit_template == "actions-runner@.service"
     && (runner_all_slots_unit_glob as String) == "actions-runner@*.service"
@@ -206,7 +206,7 @@ test fn witness_template_glob_and_dropin_share_one_contract() -> Bool {
 // THE INVERSE IS THE SAME AUTHORITY READ BACKWARDS, and the round trip is what makes that true
 // rather than merely claimed. The two-digit suffix is exercised on both sides of index 10, because
 // that boundary is exactly where three earlier implementations of the suffix disagreed.
-test fn witness_unit_name_round_trips_across_the_suffix_boundary() -> Bool {
+test fn witness_unit_name_round_trips_across_the_suffix_boundary() -> Bool  {
   runner_unit_name_round_trips(slot: srv4_slot(index: 1))
     && runner_unit_name_round_trips(slot: srv4_slot(index: 9))
     && runner_unit_name_round_trips(slot: srv4_slot(index: 10))
@@ -218,7 +218,7 @@ test fn witness_unit_name_round_trips_across_the_suffix_boundary() -> Bool {
 // that folded both into one absent answer would make this witness unable to tell a neighbouring
 // service from a runner unit that names no slot, and those have opposite remedies -- ignore, versus
 // refuse and report the text.
-test fn witness_unit_name_reading_separates_foreign_from_malformed() -> Bool {
+test fn witness_unit_name_reading_separates_foreign_from_malformed() -> Bool  {
   let foreign = match read_runner_unit_name(observed: "ctrl-jobserver.service" as NonEmptyStr) {
     NotARunnerUnit { observed: o } => (o as String) == "ctrl-jobserver.service"
     RunnerUnitInstanceMalformed { observed: _, cause: _ } => false
@@ -241,7 +241,7 @@ test fn witness_unit_name_reading_separates_foreign_from_malformed() -> Bool {
 // THE LIFECYCLE VOCABULARY
 // ---------------------------------------------------------------------------
 
-test fn witness_kill_mode_and_exit_type_render_upstream_spellings() -> Bool {
+test fn witness_kill_mode_and_exit_type_render_upstream_spellings() -> Bool  {
   systemd_kill_mode_wire(mode: KillModeControlGroup) == "control-group"
     && systemd_kill_mode_wire(mode: KillModeMixed) == "mixed"
     && systemd_kill_mode_wire(mode: KillModeProcess) == "process"
@@ -254,7 +254,7 @@ test fn witness_kill_mode_and_exit_type_render_upstream_spellings() -> Bool {
 // predicate that answered only for `control-group` would report `mixed` as leaky, and one that
 // answered by "is it not none" would report `process` as safe. Both are wrong in the direction that
 // matters -- the second would license the exact configuration that orphans listeners.
-test fn witness_only_cgroup_reaching_kill_modes_reach_the_cgroup() -> Bool {
+test fn witness_only_cgroup_reaching_kill_modes_reach_the_cgroup() -> Bool  {
   systemd_kill_mode_reaches_whole_cgroup(mode: KillModeControlGroup)
     && systemd_kill_mode_reaches_whole_cgroup(mode: KillModeMixed)
     && !systemd_kill_mode_reaches_whole_cgroup(mode: KillModeProcess)
@@ -268,7 +268,7 @@ test fn witness_only_cgroup_reaching_kill_modes_reach_the_cgroup() -> Bool {
 // process survives -- the srv2-02 incident -- so it refuses whatever the kill mode. A kill mode that
 // leaves children behind refuses whatever the exit type. Weakening the predicate to consult either
 // half alone turns one of these arms green.
-test fn witness_stopping_a_finished_incarnation_needs_both_halves() -> Bool {
+test fn witness_stopping_a_finished_incarnation_needs_both_halves() -> Bool  {
   let cg_main = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeControlGroup }
   let cg_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
   let proc_main = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
@@ -281,7 +281,7 @@ test fn witness_stopping_a_finished_incarnation_needs_both_halves() -> Bool {
 // THE DECLARED INTENT STOPS A FINISHED INCARNATION ON THE FLEET AS MEASURED, and this binds the two
 // rows together: an intent sound only under an input the fleet does not satisfy is the interesting
 // failure.
-test fn witness_declared_intent_stops_a_finished_incarnation_on_this_fleet() -> Bool {
+test fn witness_declared_intent_stops_a_finished_incarnation_on_this_fleet() -> Bool  {
   lifecycle_intent_stops_finished_incarnation(
     intent: gunbc_runner_lifecycle_intent,
     main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
@@ -292,7 +292,7 @@ test fn witness_declared_intent_stops_a_finished_incarnation_on_this_fleet() -> 
 // (srv4-04, 2026-08-25: a restart reaped only MainPID) and the ExitType=cgroup drop-in that replaced
 // it (srv2-02 held 2.7 days, srv1-03 and srv1-07 held 16 days) must both read red, or this witness
 // would stay green over a revert to either.
-test fn witness_both_fleet_contracts_are_refused_and_the_declared_one_is_not() -> Bool {
+test fn witness_both_fleet_contracts_are_refused_and_the_declared_one_is_not() -> Bool  {
   let killmode_process = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
   let exittype_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
   !lifecycle_intent_stops_finished_incarnation(intent: killmode_process, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
@@ -310,7 +310,7 @@ test fn witness_both_fleet_contracts_are_refused_and_the_declared_one_is_not() -
 // MultipleListeners CANNOT HOLD FEWER THAN TWO, which is why the size fold needs no guard. The
 // witness states the sizes rather than the shape because a size is what a consumer reaching for a
 // count would have asked for, and it must not be able to get 0 or 1 out of the plural arm.
-test fn witness_population_sizes_are_structural() -> Bool {
+test fn witness_population_sizes_are_structural() -> Bool  {
   let unobserved = match listener_population_size(population: ListenerPopulationUnobserved { cause: "x" as NonEmptyStr }) {
     Present { value: _ } => false
     Absent => true
@@ -336,7 +336,7 @@ test fn witness_population_sizes_are_structural() -> Bool {
 // HOLDS IN EVERY WINDOW. The three settling states are all exercised against the same doubled
 // population, because the failure this guards against is precisely an implementation that consults
 // settling first and lets a transient or unknown window absorb the drift.
-test fn witness_two_listeners_is_hard_drift_in_every_window() -> Bool {
+test fn witness_two_listeners_is_hard_drift_in_every_window() -> Bool  {
   let doubled = population(
     listeners: MultipleListeners { first: in_tree(pid: 4101), second: orphan(pid: 4102), rest: [] },
   )
@@ -347,7 +347,7 @@ test fn witness_two_listeners_is_hard_drift_in_every_window() -> Bool {
 
 // ZERO LISTENERS IS NOT A DEFECT DURING SUCCESSION AND IS ONE ONCE SETTLED. This is the pair a
 // blanket `count != 1` rule cannot express, and the reason the join takes the unit's own state.
-test fn witness_zero_listeners_reads_by_window_not_by_count() -> Bool {
+test fn witness_zero_listeners_reads_by_window_not_by_count() -> Bool  {
   let empty = population(listeners: NoListener)
   let slot = srv4_slot(index: 3)
   let settled = match join_runner_local_standing(
@@ -377,7 +377,7 @@ test fn witness_zero_listeners_reads_by_window_not_by_count() -> Bool {
 // A STOPPED SLOT HOLDING A PROCESS IS RESIDUAL OCCUPANCY AND KEEPS THE IDENTITIES. The population is
 // carried through rather than reduced, which is the difference between this observation and the
 // reaper's `occupied`: a consumer must be able to say WHICH process outlived the stop.
-test fn witness_stopped_slot_reports_residual_occupants_with_identities() -> Bool {
+test fn witness_stopped_slot_reports_residual_occupants_with_identities() -> Bool  {
   let slot = srv4_slot(index: 5)
   let residual = match join_runner_local_standing(
     slot: slot, purpose: SlotServesGitHubActions,
@@ -405,7 +405,7 @@ test fn witness_stopped_slot_reports_residual_occupants_with_identities() -> Boo
 // THE RESERVED FABRIC SLOT NEVER ENTERS THE RUNNER POPULATION. It is answered before any listener
 // question is asked, so an empty fabric slot cannot be reported as a healthy runner and a fabric
 // slot that somehow held processes cannot be reported as runner drift.
-test fn witness_fabric_slot_has_no_listener_population_desired() -> Bool {
+test fn witness_fabric_slot_has_no_listener_population_desired() -> Bool  {
   let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
   fabric_slot_is_answered(slot: slot, p: NoListener)
     && fabric_slot_is_answered(slot: slot, p: SingletonListener { listener: in_tree(pid: 1) })
@@ -415,7 +415,7 @@ test fn witness_fabric_slot_has_no_listener_population_desired() -> Bool {
 // AN UNREAD POPULATION REFUSES RATHER THAN READING AS HEALTHY OR AS DRIFT. Both fabrications are
 // available and both are wrong: reporting healthy hides a stacked slot, reporting drift would
 // restart a slot on no evidence.
-test fn witness_unread_population_refuses() -> Bool {
+test fn witness_unread_population_refuses() -> Bool  {
   let slot = srv4_slot(index: 2)
   match join_runner_local_standing(
     slot: slot, purpose: SlotServesGitHubActions,
@@ -431,7 +431,7 @@ test fn witness_unread_population_refuses() -> Bool {
 // every mutating arm depends on: the rollout must refuse when busy standing is unavailable exactly
 // as it refuses when the slot is busy, and an implementation that returned SlotIdle for an unread
 // population would restart a slot that might be mid-job.
-test fn witness_busy_standing_never_fabricates_idle() -> Bool {
+test fn witness_busy_standing_never_fabricates_idle() -> Bool  {
   let busy = match busy_standing_of(
     observation: RunnerListenerPopulationObservation {
       listeners: SingletonListener { listener: in_tree(pid: 10) },
@@ -465,7 +465,7 @@ test fn witness_busy_standing_never_fabricates_idle() -> Bool {
 // THE ACCEPTANCE PREDICATE FLAGS EXACTLY ONE STANDING. A predicate that also flagged
 // ActiveUnitNotServing or a residual occupant would make the rollout's stop condition fire on
 // states this lane does not own; one that flagged nothing would be inert.
-test fn witness_hard_drift_is_exactly_the_doubled_slot() -> Bool {
+test fn witness_hard_drift_is_exactly_the_doubled_slot() -> Bool  {
   let slot = srv4_slot(index: 1)
   standing_is_hard_drift(
     standing: MultipleListenersInOneSlot {
@@ -491,7 +491,7 @@ test fn witness_hard_drift_is_exactly_the_doubled_slot() -> Bool {
 // opposite directions: calling it in-tree hides a survivor, calling it an orphan is a licence to
 // kill a live successor. The predicate must answer false for unread, and this witness is what goes
 // red if it is ever written as "not in-tree".
-test fn witness_unread_lineage_is_not_an_orphan() -> Bool {
+test fn witness_unread_lineage_is_not_an_orphan() -> Bool  {
   listener_is_orphaned(listener: orphan(pid: 7))
     && !listener_is_orphaned(listener: in_tree(pid: 7))
     && !listener_is_orphaned(
@@ -506,7 +506,7 @@ test fn witness_unread_lineage_is_not_an_orphan() -> Bool {
 // measurement made load-bearing: on a host where the surplus regenerates within the hour, a
 // consumer needs to know WHICH of a slot's listeners are survivors, because the in-tree one is the
 // current incarnation and is doing real work.
-test fn witness_orphan_projection_selects_only_reparented() -> Bool {
+test fn witness_orphan_projection_selects_only_reparented() -> Bool  {
   let stacked = MultipleListeners {
     first: in_tree(pid: 100),
     second: orphan(pid: 101),
@@ -522,7 +522,7 @@ test fn witness_orphan_projection_selects_only_reparented() -> Bool {
 
 // THE STACKED STANDING NAMES ITS ORPHANS RATHER THAN ONLY ITS COUNT, so a reader can act on the
 // survivors without re-deriving which they were.
-test fn witness_stacked_standing_carries_its_orphans() -> Bool {
+test fn witness_stacked_standing_carries_its_orphans() -> Bool  {
   let slot = srv4_slot(index: 19)
   match join_runner_local_standing(
     slot: slot,
@@ -544,7 +544,7 @@ test fn witness_stacked_standing_carries_its_orphans() -> Bool {
 // two survivors, a slot mid-succession and an undecidable read. Reporting one number for both
 // would make "one slot got worse" and "one more slot went bad" the same reading, and those move
 // differently between passes.
-test fn witness_tally_counts_slots_and_survivors_separately() -> Bool {
+test fn witness_tally_counts_slots_and_survivors_separately() -> Bool  {
   let slot = srv4_slot(index: 1)
   let t = tally_standings(
     standings: [
@@ -566,7 +566,7 @@ test fn witness_tally_counts_slots_and_survivors_separately() -> Bool {
 
 // AN EMPTY FLEET TALLIES TO ZEROES AND NOT TO A VERDICT. A fold that answered "healthy" for an
 // unobserved fleet would be the empty-observation narrow: nothing seen rendered as nothing wrong.
-test fn witness_empty_tally_is_zero_not_healthy() -> Bool {
+test fn witness_empty_tally_is_zero_not_healthy() -> Bool  {
   let t = tally_standings(standings: [])
   t.slots_observed == 0
     && t.slots_locally_healthy == 0
@@ -584,7 +584,7 @@ test fn witness_empty_tally_is_zero_not_healthy() -> Bool {
 // -- it constructs a main process and an in-tree listener and reads a ProcessIdentity field off
 // each -- so a revision that weakens either back to a number fails to compile here rather than
 // going quietly green.
-test fn witness_compared_pids_are_carried_at_identity_grain() -> Bool {
+test fn witness_compared_pids_are_carried_at_identity_grain() -> Bool  {
   let slot = srv4_slot(index: 1)
   let unit = loaded_unit(slot: slot, state: Active)
   let main_ok = match unit {
@@ -604,7 +604,7 @@ test fn witness_compared_pids_are_carried_at_identity_grain() -> Bool {
 // AN UNGROUNDABLE MAIN PID IS NEITHER AN UNREAD PROPERTY NOR A RESOLVED IDENTITY. Three states, and
 // the middle one is the whole point: the manager answered with a number the observer could not
 // ground, which must not silently become either neighbour.
-test fn witness_ungrounded_main_pid_is_its_own_state() -> Bool {
+test fn witness_ungrounded_main_pid_is_its_own_state() -> Bool  {
   let ungrounded = MainProcessUngrounded {
     pid: 51,
     cause: "the process exited between the MainPID read and the /proc/51/stat read" as NonEmptyStr,
@@ -620,7 +620,7 @@ test fn witness_ungrounded_main_pid_is_its_own_state() -> Bool {
 // THE REPARENTED PARENT IS TYPED, AND THE INIT CASE CARRIES NO PID AT ALL. A chain reparented to
 // init has one possible parent, so naming it as a number would invite exactly the comparison the
 // identity rule forbids while adding nothing.
-test fn witness_reparented_to_init_carries_no_comparable_pid() -> Bool {
+test fn witness_reparented_to_init_carries_no_comparable_pid() -> Bool  {
   listener_is_orphaned(listener: orphan(pid: 9))
     && match orphan(pid: 9).lineage {
       ReparentedOutsideUnitTree { parent: p } =>
@@ -638,7 +638,7 @@ test fn witness_reparented_to_init_carries_no_comparable_pid() -> Bool {
 // listeners; the only difference is whether systemd knows the unit. If the two ever answer the
 // same standing again, the arm carrying "install this" has been given the remedy for "nothing to
 // do", which is how a unit-name fork becomes invisible to the very model built to catch it.
-test fn witness_absent_unit_is_not_a_stopped_unit() -> Bool {
+test fn witness_absent_unit_is_not_a_stopped_unit() -> Bool  {
   let slot = srv4_slot(index: 4)
   let empty = population(listeners: NoListener)
   let absent = join_runner_local_standing(
@@ -664,7 +664,7 @@ test fn witness_absent_unit_is_not_a_stopped_unit() -> Bool {
 
 // AN ABSENT UNIT WHOSE CGROUP STILL HOLDS PROCESSES KEEPS THEM. Dropping the occupants would lose
 // the only evidence that an incarnation ran before the unit definition went away.
-test fn witness_absent_unit_retains_its_occupants() -> Bool {
+test fn witness_absent_unit_retains_its_occupants() -> Bool  {
   let slot = srv4_slot(index: 4)
   match join_runner_local_standing(
     slot: slot, purpose: SlotServesGitHubActions,

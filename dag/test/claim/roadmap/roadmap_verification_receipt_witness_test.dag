@@ -97,7 +97,7 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
 data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha
 data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha
 
-test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
+test fn complete_exact_head_receipt_constructs_and_matches() -> Bool  {
   let expected = subject_at(head: head_a)
   let receipt = exact_head_receipt(head: head_a)
   match verification_evidence_for(
@@ -114,7 +114,7 @@ test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
   }
 }
 
-test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
+test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool  {
   let evidence = verification_evidence_for(
     expected: subject_at(head: head_b),
     source: ExactHeadVerificationReceipt {
@@ -131,7 +131,7 @@ test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
   }
 }
 
-test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
+test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool  {
   let evidence = verification_evidence_for(
     expected: subject_at(head: head_a),
     source: LegacyAttemptValidationReceipt { verdict_key: "passed" },
@@ -144,7 +144,7 @@ test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
   }
 }
 
-test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
+test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool  {
   let instance = srv2_lab_dashboard_instance()
   let absent_identity = git_diff_window_absent_identity().digest as String
   let path_a = dispatch_attempt_verification_receipt_path_for_instance(
@@ -172,7 +172,7 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
     )
 }
 
-test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
+test fn exact_head_receipt_round_trips_through_json_codec() -> Bool  {
   let receipt = exact_head_receipt(head: head_a)
   let wire = verification_receipt_json(receipt: receipt)
   match verification_receipt_decode(receipt: wire) {
@@ -189,7 +189,7 @@ test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
   }
 }
 
-test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
+test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool  {
   let receipt = VerificationReceipt {
     subject: subject_at(head: head_a),
     oracle_identity: content_hash_of_value(value: "pinned-oracle"),
@@ -215,6 +215,6 @@ test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
   }
 }
 
-test fn verification_receipt_schema_is_v2() -> Bool {
+test fn verification_receipt_schema_is_v2() -> Bool  {
   (verification_receipt_schema as String) == "roadmap-verification-receipt/v2"
 }

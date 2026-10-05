@@ -82,7 +82,7 @@ fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
   }
 }
 
-test fn replace_action_projects_five_step_repair_sequence() -> Bool {
+test fn replace_action_projects_five_step_repair_sequence() -> Bool  {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act: act)
   let action = decide_runner_connectivity_action_for_snapshot(
@@ -123,7 +123,7 @@ test fn replace_action_projects_five_step_repair_sequence() -> Bool {
        }
 }
 
-test fn noop_action_projects_empty_repair_plan() -> Bool {
+test fn noop_action_projects_empty_repair_plan() -> Bool  {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act: act)
   let connected = RunnerSlotConnectivitySnapshot {

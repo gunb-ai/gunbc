@@ -63,11 +63,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // var(--figure-lit); the roadmap's archetype demand excludes it and its rules carry no such var) —
 // the demand profile executes as a real propagation boundary, not paperwork.
 
-test fn witness_roadmap_theme_set_coherent() -> Bool {
+test fn witness_roadmap_theme_set_coherent() -> Bool  {
   themes_coherent(themes: [day_theme, night_theme], roles: theme_roles)
 }
 
-test fn witness_roadmap_colors_all_routed() -> Bool {
+test fn witness_roadmap_colors_all_routed() -> Bool  {
   unthemed_color_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))).length() == 0
 }
 
@@ -75,14 +75,14 @@ fn rogue_hex_rule() -> BuildRule {
   StaticRule { selector: ClassSelector { name: "rogue-link" }, decls: [ decl(prop: Color, value: "#0969da") ] }
 }
 
-test fn witness_local_hex_literal_refused() -> Bool {
+test fn witness_local_hex_literal_refused() -> Bool  {
   let caught = unthemed_color_decls(rules: concat(site_styles_rules(styles: site_styles(rules: roadmap_rules())), [rogue_hex_rule()]))
   caught.length() == 1
     && all(caught, c =>
       c.selector == ".rogue-link" && c.prop == "color" && c.value == "#0969da")
 }
 
-test fn witness_roadmap_lengths_all_tokened() -> Bool {
+test fn witness_roadmap_lengths_all_tokened() -> Bool  {
   untokened_length_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_instance_rules()))).length() == 0
 }
 
@@ -90,7 +90,7 @@ fn rogue_px_rule() -> BuildRule {
   StaticRule { selector: ClassSelector { name: "rogue-pad" }, decls: [ decl(prop: Padding, value: "14px") ] }
 }
 
-test fn witness_local_px_literal_refused() -> Bool {
+test fn witness_local_px_literal_refused() -> Bool  {
   let caught = untokened_length_decls(rules: concat(site_styles_rules(styles: site_styles(rules: roadmap_instance_rules())), [rogue_px_rule()]))
   caught.length() == 1
     && all(caught, c => c.selector == ".rogue-pad" && c.prop == "padding" && c.value == "14px")
@@ -100,13 +100,13 @@ fn rules_consume(rules: List<BuildRule>, token: String) -> Bool {
   any(rules, r => any(rule_decls(rule: r), d => string_contains(s: d.value, pattern: token)))
 }
 
-test fn witness_scale_block_is_the_px_home() -> Bool {
+test fn witness_scale_block_is_the_px_home() -> Bool  {
   string_contains(s: scale_root_css(), pattern: "14px")
     && rules_consume(rules: site_styles_rules(styles: roadmap_styles()), token: "var(--text-14)")
     && untokened_length_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_instance_rules()))).length() == 0
 }
 
-test fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
+test fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool  {
   let rules = filter(site_styles_rules(styles: roadmap_styles()), r => match r {
     ResponseRule { subject, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => selector_subject_wire(s: subject) == ".dispatch-btn"
     StaticRule { selector: _, decls: _ } => false
@@ -119,7 +119,7 @@ test fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
     && string_contains(s: css, pattern: ".dispatch-btn:active")
 }
 
-test fn witness_roadmap_coverage_complete() -> Bool {
+test fn witness_roadmap_coverage_complete() -> Bool  {
   coverage_complete(elements: roadmap_elements, rows: roadmap_behaviors)
     && roadmap_unrealized_behaviors(rows: roadmap_behaviors).length() == 0
 }
@@ -141,7 +141,7 @@ fn rows_without(element: ElementId, verb_label: String) -> List<BehaviorRow> {
     })
 }
 
-test fn witness_dropped_row_gap_is_located() -> Bool {
+test fn witness_dropped_row_gap_is_located() -> Bool  {
   let gaps = coverage_gaps(
     elements: roadmap_elements,
     rows: rows_without(element: DispatchBtnElement, verb_label: "dispatch"))
@@ -149,7 +149,7 @@ test fn witness_dropped_row_gap_is_located() -> Bool {
     && all(gaps, g => element_id_eq(a: g.element, b: DispatchBtnElement) && verb_key(v: g.verb) == "dispatch")
 }
 
-test fn witness_unrealized_row_is_counted() -> Bool {
+test fn witness_unrealized_row_is_counted() -> Bool  {
   let rogue = BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Reveal, timing: respond_fast }
   roadmap_unrealized_behaviors(rows: concat(roadmap_behaviors, [rogue])).length() == 1
 }
@@ -160,11 +160,11 @@ fn demand_matches_for_role(r: ThemeRole) -> Bool {
   demanded == used
 }
 
-test fn witness_archetype_demand_matches_shipped_css() -> Bool {
+test fn witness_archetype_demand_matches_shipped_css() -> Bool  {
   all(theme_roles, r => demand_matches_for_role(r: r))
 }
 
-test fn witness_archetype_verbs_match_declared_elements() -> Bool {
+test fn witness_archetype_verbs_match_declared_elements() -> Bool  {
   all(dashboard_archetype.verbs, v =>
     fold(roadmap_elements, init: false, f: (acc, e) =>
       acc || fold(e.verbs, init: false, f: (acc2, w) => acc2 || verb_key(v: w) == verb_key(v: v))))
@@ -206,7 +206,7 @@ fn header_subtree_carries_wordmark(h: Fragment) -> Bool {
   }
 }
 
-test fn witness_header_carries_wordmark() -> Bool {
+test fn witness_header_carries_wordmark() -> Bool  {
   header_subtree_carries_wordmark(h: site_header(page: "roadmap"))
     && header_subtree_carries_wordmark(h: site_header(page: "daily workspace"))
 }
@@ -217,7 +217,7 @@ test fn witness_header_carries_wordmark() -> Bool {
 // the header tag guard still bites — the exact wordmark node under a non-header root does not
 // satisfy 'the HEADER carries it'. Without both, an always-true search reads like the real claim.
 
-test fn witness_header_wordmark_scan_discriminates() -> Bool {
+test fn witness_header_wordmark_scan_discriminates() -> Bool  {
   !header_subtree_carries_wordmark(h: Element {
     tag: "header",
     attributes: [],
@@ -253,7 +253,7 @@ fn probe_figure_lit_material() -> Material {
   Material { name: "probe-figure-lit", hue: 227, sat_pct: 58, light_pct: 20, area: PointArea }
 }
 
-test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {
+test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool  {
   let base = theme_root_css(base: day_theme, alternate: night_theme)
   let perturbed_day = theme_with_role_material(t: day_theme, target: CanvasRole, m: probe_canvas_material())
   let moved = theme_root_css(base: perturbed_day, alternate: night_theme)
@@ -266,7 +266,7 @@ test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {
     && rules_consume(rules: moodboard_rules(), token: "var(--canvas)")
 }
 
-test fn witness_round_strip_percolates_once_and_pulses_forever() -> Bool {
+test fn witness_round_strip_percolates_once_and_pulses_forever() -> Bool  {
   let css = serialize_rules(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules())))
   string_contains(s: css, pattern: "@keyframes round-fill {")
     && string_contains(s: css, pattern: "scaleX(0)")
@@ -275,7 +275,7 @@ test fn witness_round_strip_percolates_once_and_pulses_forever() -> Bool {
     && string_contains(s: reduced_motion_block(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))), pattern: "animation: none")
 }
 
-test fn witness_propagation_scoped_by_demand() -> Bool {
+test fn witness_propagation_scoped_by_demand() -> Bool  {
   let base = theme_root_css(base: day_theme, alternate: night_theme)
   let perturbed_day = theme_with_role_material(t: day_theme, target: FigureLitRole, m: probe_figure_lit_material())
   let moved = theme_root_css(base: perturbed_day, alternate: night_theme)
@@ -296,7 +296,7 @@ test fn witness_propagation_scoped_by_demand() -> Bool {
 // Read at the rule list roadmap_css composes (serialize_rules over roadmap_rules), not the whole
 // sheet: the stage-segment rule is a selector rule, and the root variable blocks the sheet adds
 // carry none.
-test fn witness_stage_segments_have_a_width_contract() -> Bool {
+test fn witness_stage_segments_have_a_width_contract() -> Bool  {
   let rules = serialize_rules(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules())))
   string_contains(s: rules, pattern: ".stage-segment { min-width: var(--space-0); flex: 1 }")
     && !string_contains(s: rules, pattern: ".stage-segment { min-width: var(--space-0) }")

@@ -44,7 +44,7 @@ fn attempt(i: Nat, id: String) -> MicroVmAttemptResult {
 // red is the shortcut this module was written to prevent: launch the VM anyway and let ownership be
 // something a reviewer checks. A guest launched on an unowned cell runs outside every limit the
 // cell carries, and nothing about it LOOKS wrong until the host runs out of memory.
-test fn a_guest_is_refused_on_a_cell_that_is_not_owned() -> Bool {
+test fn a_guest_is_refused_on_a_cell_that_is_not_owned() -> Bool  {
   match attempt(i: 1, id: "a1") {
     MicroVmAttemptAccepted { attempt: a } =>
       match bind_owned_attempt(attempt: a, owned: false) {
@@ -59,7 +59,7 @@ test fn a_guest_is_refused_on_a_cell_that_is_not_owned() -> Bool {
 // else -- the executor's home, a fixed probe directory -- which is exactly what the boot probe uses
 // and exactly what must not survive into the job path. Two attempts on one slot must not share a
 // single byte of writable storage.
-test fn every_guest_path_is_scoped_to_its_own_attempt() -> Bool {
+test fn every_guest_path_is_scoped_to_its_own_attempt() -> Bool  {
   match attempt(i: 2, id: "first") {
     MicroVmAttemptAccepted { attempt: a } =>
       match attempt(i: 2, id: "second") {
@@ -82,7 +82,7 @@ test fn every_guest_path_is_scoped_to_its_own_attempt() -> Bool {
 // cell carries and to every observation that reads them, so the binding asserts the slice NAME
 // comes from the cell layer rather than being spelled here -- a locally-spelled slice name would
 // drift from the one fabric_cell_converge creates and would silently create a SECOND slice.
-test fn the_vmm_is_placed_in_the_cells_own_slice() -> Bool {
+test fn the_vmm_is_placed_in_the_cells_own_slice() -> Bool  {
   match attempt(i: 3, id: "s1") {
     MicroVmAttemptAccepted { attempt: at } =>
       match bind_owned_attempt(attempt: at, owned: true) {
@@ -96,7 +96,7 @@ test fn the_vmm_is_placed_in_the_cells_own_slice() -> Bool {
 
 // A LEAKED UNIT MUST SAY WHICH ATTEMPT LEAKED IT. A name derived from the slot alone collides
 // across attempts on one slot, which is precisely the case a leak check most needs to tell apart.
-test fn two_attempts_on_one_slot_get_distinct_unit_names() -> Bool {
+test fn two_attempts_on_one_slot_get_distinct_unit_names() -> Bool  {
   match attempt(i: 4, id: "x") {
     MicroVmAttemptAccepted { attempt: a } =>
       match attempt(i: 4, id: "y") {
@@ -113,7 +113,7 @@ test fn two_attempts_on_one_slot_get_distinct_unit_names() -> Bool {
 // cleanup would prove the WRONG subtree empty (review 61259). Each refusing spelling is asserted
 // individually rather than as "not accepted", so an arm quietly widened to admit one of them goes
 // red instead of being absorbed by a negation.
-test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool {
+test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool  {
   let parent = match attempt_segment(spelling: "..") {
     AttemptSegmentRefused { refusal: AttemptSegmentIsRelativeMarker { spelling: _ } } => true
     _ => false
@@ -143,7 +143,7 @@ test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool {
 
 // AND AN ORDINARY ID STILL PASSES. Without this the refusal could be satisfied by refusing
 // everything, which would be a wall that also blocks every legitimate attempt.
-test fn an_ordinary_attempt_id_is_accepted_unchanged() -> Bool {
+test fn an_ordinary_attempt_id_is_accepted_unchanged() -> Bool  {
   match attempt_segment(spelling: "34005820900-1") {
     AttemptSegmentAccepted { segment: seg } => (seg.value as String) == "34005820900-1"
     _ => false

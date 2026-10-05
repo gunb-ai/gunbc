@@ -121,7 +121,7 @@ fn first_width_above_the_fabric_carve() -> Int {
   fabric_second_slot_index + 1
 }
 
-test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
+test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool  {
   let plan = runner_capacity_plan(
     srv3_width: committed_width_of(host: operator_host_srv3) + 1,
     srv4_width: committed_width_of(host: operator_host_srv4) + 1,
@@ -187,7 +187,7 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 //
 // SAME ROSTER MOVE AS THE ROW ABOVE: the managed-pair slice of the 2026-08-06 corpus, which carries
 // the holes this row is about ({01,02,04,05} on both hosts) and nothing about srv2.
-test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
+test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool  {
   let roster = incident_2026_08_06_managed_roster_fixture()
   let width = first_width_above_the_fabric_carve()
   let plan = runner_capacity_plan(srv3_width: width, srv4_width: width, roster: roster)
@@ -227,7 +227,7 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // WHEN srv2'S COMMITMENT IS RE-ESTABLISHED THIS ROW GOES RED, AND THAT IS STILL ITS JOB: the corpus
 // then resolves and the row is re-derived by the change that re-establishes srv2, not by editing the
 // 2026-08-06 rows to fit the fleet of the day.
-test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() -> Bool {
+test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() -> Bool  {
   match runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
     PlanReady { hosts: _ } => false
     PlanRefused { reason: r } =>
@@ -298,7 +298,7 @@ fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
 // of fabric_execution_slot_identities so the control plane has a host it can still land on -- a
 // relation between two placements, recorded there with the reason to revisit it. If srv1 is ever
 // carved, these counts go red and the row beside them is where the purpose difference is asserted.
-test fn the_additions_run_is_general_across_transitions() -> Bool {
+test fn the_additions_run_is_general_across_transitions() -> Bool  {
   nat_range_inclusive(lo: 6, hi: 6) == [6]
     && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
     && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
@@ -321,7 +321,7 @@ test fn the_additions_run_is_general_across_transitions() -> Bool {
 // carve loses nothing even on a carved host, so a version that subtracted a fixed count rather than
 // testing membership would pass the first three and fail the fourth. The width is read from the
 // carve rather than written down, for the reason first_width_above_the_fabric_carve records.
-test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
+test fn the_desired_github_set_excludes_the_fabric_member() -> Bool  {
   desired_github_identities(members: committed_members_of(host: operator_host_srv3), requested_width: first_width_above_the_fabric_carve()).length() == 6
     && desired_github_identities(members: committed_members_of(host: operator_host_srv4), requested_width: first_width_above_the_fabric_carve()).length() == 6
     && desired_github_identities(members: committed_members_of(host: operator_host_srv1), requested_width: first_width_above_the_fabric_carve()).length() == 8
@@ -349,12 +349,12 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
 // BY A DECISION: gunbc.runner_slot_allocation holds it out of the execution population so the
 // control plane keeps a host it can land on. The name moves with the subject rather than keeping a
 // width in it that was never what the row was about.
-test fn the_same_widening_differs_by_purpose_across_a_carved_and_an_uncarved_host() -> Bool {
+test fn the_same_widening_differs_by_purpose_across_a_carved_and_an_uncarved_host() -> Bool  {
   addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 5)).length() == 1
     && addition_actions(members: committed_members_of(host: operator_host_srv3), requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
 }
 
-test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
+test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool  {
   match runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
@@ -365,7 +365,7 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   }
 }
 
-test fn satisfied_observed_width_plans_zero_additions() -> Bool {
+test fn satisfied_observed_width_plans_zero_additions() -> Bool  {
   addition_actions(members: committed_members_of(host: operator_host_srv3), requested_width: 5, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
     && addition_actions(members: committed_members_of(host: operator_host_srv3), requested_width: 7, observed: observed_prefix(host: operator_host_srv3, n: 7)).length() == 0
 }
@@ -406,7 +406,7 @@ fn srv1_slot(i: Nat) -> RunnerSlotIdentity {
 //
 // THE SECOND ROW IS THE CONTROL. The same identity asked about its OWN host must pass, or the
 // refusal is just a broken function rather than a subject binding.
-test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
+test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool  {
   population_is_refused(v: validate_observed_github_slot_members(
     host: operator_host_srv3,
     observed: [srv3_slot(i: 1), RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }],
@@ -427,7 +427,7 @@ test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
 // the AUTHORED fabric identity, not because of where it sits relative to a width. The width moved
 // from six to twenty-one underneath these clauses and they did not notice -- which is the property
 // runner_slot_allocation was built to have, observed rather than asserted.
-test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
+test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool  {
   population_is_refused(v: validate_observed_github_slot_members(
     host: operator_host_srv3,
     observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5), srv3_slot(i: 6)],
@@ -473,7 +473,7 @@ fn width_refuses(value: String) -> Bool {
 // a parser that enumerated {5,6,7} would satisfy the six alone. Zero and negatives refuse because
 // the function is named for a POSITIVE width and its caller reports "must be a positive integer" --
 // an accepted zero made that message false at the layer that printed it.
-test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
+test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool  {
   width_parses_to(value: "6", expected: 6)
     && width_parses_to(value: "5", expected: 5)
     && width_parses_to(value: "7", expected: 7)
@@ -541,7 +541,7 @@ fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRos
 // "the fabric slot was detected" from "this planner refuses every roster I hand it", which is
 // exactly how the previous version stayed green while its subject was unreachable. The two rosters
 // differ in ONE element, srv3-06, and they must disagree.
-test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool {
+test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool  {
   plan_is_refused(
     host: operator_host_srv3,
     width: 5,
@@ -549,7 +549,7 @@ test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool 
   )
 }
 
-test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool {
+test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool  {
   !plan_is_refused(
     host: operator_host_srv3,
     width: 5,
@@ -561,7 +561,7 @@ test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool {
 // is the empty-observation narrow one layer inside the fix: a dropped member is an under-count, and
 // an under-count reads as a host with slots missing, so the planner would propose adding a slot
 // GitHub already holds.
-test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped() -> Bool {
+test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped() -> Bool  {
   plan_is_refused(
     host: operator_host_srv3,
     width: 5,
@@ -573,7 +573,7 @@ test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped
 // another host's registrations, srv3 must observe ZERO. The synthesized form could not express this
 // at all -- it never read the roster, so it answered materialized_width_for_host regardless of what
 // GitHub held, and would have said five.
-test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
+test fn another_hosts_registrations_do_not_widen_this_host() -> Bool  {
   match observed_github_slot_identities(
     host: operator_host_srv3,
     roster: roster_of(names: ["srv1-01", "srv1-02", "srv1-03"]),
@@ -592,7 +592,7 @@ test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
 // inflates the observed width and plans one fewer addition than convergence needs: the same
 // over-counting this whole change removes, arriving by a second route. The control below it is the
 // same roster with the duplicate collapsed, which must NOT refuse.
-test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_set() -> Bool {
+test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_set() -> Bool  {
   plan_is_refused(
     host: operator_host_srv3,
     width: 5,
@@ -600,7 +600,7 @@ test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_se
   )
 }
 
-test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
+test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool  {
   !plan_is_refused(
     host: operator_host_srv3,
     width: 5,
@@ -620,7 +620,7 @@ test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
 // gap; the same case dropped inside a fold is an answer that is wrong, and the fold's own caller
 // cannot tell the two apart. The arm refuses now, and this pair is what proves the refusal is about
 // the unaccounted registration rather than about the planner disliking every roster.
-test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being_dropped() -> Bool {
+test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being_dropped() -> Bool  {
   plan_is_refused(
     host: operator_host_srv4,
     width: 5,
@@ -628,7 +628,7 @@ test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being
   )
 }
 
-test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
+test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool  {
   !plan_is_refused(
     host: operator_host_srv4,
     width: 5,

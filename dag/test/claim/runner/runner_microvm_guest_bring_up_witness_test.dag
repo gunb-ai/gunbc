@@ -67,13 +67,13 @@ fn reached(console: String) -> String {
 
 // A GUEST THAT BOOTED AND WHOSE LISTENER REPORTED READY REACHES RunnerListening, in order, with
 // nothing refused. RunnerStarted and RunnerExited are not phases and move nothing.
-test fn a_booted_listening_guest_reaches_runner_listening() -> Bool {
+test fn a_booted_listening_guest_reaches_runner_listening() -> Bool  {
   reached(console: journal(lines: [booted(), started(), listening(), exited()])) == "runner-listening refused=0"
 }
 
 // THE CASE THE DEADLINE ALONE CANNOT SEPARATE: a guest that booted and never listened stops at
 // GuestBooted, and one that printed nothing stays at VmmStarted -- the host's own last phase.
-test fn a_guest_that_booted_but_never_listened_is_distinguished_from_one_that_never_booted() -> Bool {
+test fn a_guest_that_booted_but_never_listened_is_distinguished_from_one_that_never_booted() -> Bool  {
   reached(console: journal(lines: [booted(), started(), exited()])) == "guest-booted refused=0"
     && reached(console: journal(lines: ["[    0.000000] Linux version 6.1", "kernel panic"])) == "vmm-started refused=0"
     && reached(console: "") == "vmm-started refused=0"
@@ -82,14 +82,14 @@ test fn a_guest_that_booted_but_never_listened_is_distinguished_from_one_that_ne
 // A LISTENING REPORT WITH NO BOOT REPORT BEFORE IT IS REFUSED, NOT ACCEPTED: advance_bring_up refuses
 // a skipped phase, and the fold keeps the refusal instead of dropping it, so the reading stays at
 // VmmStarted and counts one refused report. A boot line arriving after it still advances.
-test fn a_listening_report_before_any_boot_report_is_refused_and_counted() -> Bool {
+test fn a_listening_report_before_any_boot_report_is_refused_and_counted() -> Bool  {
   reached(console: journal(lines: [listening()])) == "vmm-started refused=1"
     && reached(console: journal(lines: [listening(), booted()])) == "guest-booted refused=1"
 }
 
 // A REPEATED REPORT OF THE PHASE ALREADY REACHED IS NEITHER A TRANSITION NOR A REFUSAL: the console is
 // a stream and the listener may print its readiness line more than once.
-test fn a_repeated_report_of_the_current_phase_is_not_a_refusal() -> Bool {
+test fn a_repeated_report_of_the_current_phase_is_not_a_refusal() -> Bool  {
   reached(console: journal(lines: [booted(), booted(), listening(), listening()])) == "runner-listening refused=0"
 }
 
@@ -109,7 +109,7 @@ fn binding_label(env: UnitInvocationReading, systemd_invocation: String) -> Stri
   }
 }
 
-test fn the_console_binds_only_to_this_attempts_invocation() -> Bool {
+test fn the_console_binds_only_to_this_attempts_invocation() -> Bool  {
   binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "abc123") == "bound abc123"
     && binding_label(env: UnitInvocationRead { invocation_id: "inv-2" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
     && binding_label(env: UnitInvocationUnread { reason: "x" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
