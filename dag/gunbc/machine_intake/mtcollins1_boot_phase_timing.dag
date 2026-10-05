@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr, String }
 import std.measure { Millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { ObservedPowerTransition, PoweredOn, PowerCycled }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
+import gunbc.machine_intake_ampere_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent, SmproRequestUnencodable,
 }
 import v2.std.algebra { any }

@@ -40,7 +40,7 @@ import gunbc.auth.request_authentication {
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
-  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
+  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev, AccessPathTailnetUnobserved, TailnetStatusUnreadable, TailnetIngressUnattested, TailnetIngressNotTheProxy, RequestIngress, IngressUnattested, IngressAttestedPeer, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -126,6 +126,11 @@ fn witness_serve_route() -> TailscaleServeRouteKey? {
   Present { value: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount } }
 }
 
+// The ingress tailscale serve produces: a unix-socket connection whose attested peer is tailscaled.
+fn witness_proxy_ingress() -> RequestIngress {
+  IngressAttestedPeer { peer_user: "root" }
+}
+
 fn proxied_status() -> TailscaleServeStatusProjection {
   ServeStatusProxies { targets: ["http://127.0.0.1:8080"] }
 }
@@ -137,6 +142,7 @@ test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readba
   match request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "operator@github",
+    ingress: witness_proxy_ingress(),
     serve_status: proxied_status(),
     serve_route: witness_serve_route(),
     acl_policy: operator_tailscale_acl_policy,
@@ -153,22 +159,62 @@ test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readba
 }
 
 // THE FORGED-HEADER CONTROL: the same header with NO readback is dropped — the path is
-// AccessPathLocalDev, the transport observation is absent, and with no session supplied the
+// AccessPathTailnetUnobserved naming the unreadable status, the transport observation is absent, and with no session supplied the
 // context names no principal anywhere. A Tailscale-User-Login header alone, self-asserted by any
 // co-located process, establishes nothing.
 test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool {
   let path = request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "forged-login@github",
+    ingress: witness_proxy_ingress(),
     serve_status: ServeStatusUnreadable,
     serve_route: witness_serve_route(),
     acl_policy: operator_tailscale_acl_policy,
   )
   let security = RequestSecurityContext { access_path: path, authentication: AuthAbsent }
-  path == AccessPathLocalDev
+  path == AccessPathTailnetUnobserved { gap: TailnetStatusUnreadable }
     && tailnet_transport_observation(security: security) == TailnetIdentityAbsent
     && match security.authentication {
       AuthAbsent => true
+      _ => false
+    }
+}
+
+// THE DIRECT-LOCAL-INGRESS CONTROL. A healthy serve status is a fact about the node, not about a
+// connection: with the SAME proxied status, route and header, a connection on a listener that
+// attests no peer, and one whose attested peer is an ordinary account, mint no tailnet path --
+// each naming its cause -- while the proxy's connection does. RED if a status and a header alone
+// ever suffice.
+test fn a_forged_header_on_direct_local_ingress_mints_no_tailnet_path() -> Bool {
+  let unattested = request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "forged-login@github",
+    ingress: IngressUnattested,
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+  let local_account = request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "forged-login@github",
+    ingress: IngressAttestedPeer { peer_user: "briansrls" },
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+  let proxied = request_access_path_of(
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    tailscale_header: "forged-login@github",
+    ingress: witness_proxy_ingress(),
+    serve_status: proxied_status(),
+    serve_route: witness_serve_route(),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+  unattested == AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+    && local_account == AccessPathTailnetUnobserved { gap: TailnetIngressNotTheProxy { peer_user: "briansrls" } }
+    && tailnet_transport_observation(security: RequestSecurityContext { access_path: unattested, authentication: AuthAbsent }) == TailnetIdentityAbsent
+    && match proxied {
+      AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => true
       _ => false
     }
 }
@@ -179,6 +225,7 @@ test fn a_non_loopback_bind_is_direct_https_regardless_of_the_header() -> Bool {
   match request_access_path_of(
     listen_host: "0.0.0.0" as NonEmptyStr,
     tailscale_header: "operator@github",
+    ingress: witness_proxy_ingress(),
     serve_status: proxied_status(),
     serve_route: witness_serve_route(),
     acl_policy: operator_tailscale_acl_policy,
@@ -194,6 +241,7 @@ test fn an_empty_header_behind_the_proxy_is_local_dev() -> Bool {
   match request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "",
+    ingress: witness_proxy_ingress(),
     serve_status: proxied_status(),
     serve_route: witness_serve_route(),
     acl_policy: operator_tailscale_acl_policy,
@@ -405,6 +453,7 @@ test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
   let proxy_path = request_access_path_of(
     listen_host: "127.0.0.1" as NonEmptyStr,
     tailscale_header: "operator@github",
+    ingress: witness_proxy_ingress(),
     serve_status: proxied_status(),
     serve_route: witness_serve_route(),
     acl_policy: operator_tailscale_acl_policy,

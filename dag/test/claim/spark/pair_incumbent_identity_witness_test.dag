@@ -4,9 +4,9 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { vllm_serving_launch, EndpointIncarnationObservation, endpoint_incarnation_observation }

@@ -63,16 +63,16 @@ use crate::v1_std_core::{
     binop_right, block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
-    foreach_variable_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_file_transport, is_rest_transport,
-    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    param_node_default_value, param_node_name_at, qualified_last_segment, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    field_init_node_value, find_property, foreach_body, foreach_collection, foreach_variable_at,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
+    match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
+    param_node_name_at, qualified_last_segment, record_lit_type_name_at, return_value, slice_base,
+    slice_end, slice_start, transport_stdin, type_name_compatible, unaryop_operand, CallSemantics,
+    Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -2038,7 +2038,16 @@ struct CrossClaimPureMemo {
     /// on process-global pointer identity, and equality no longer depends on which frame
     /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
     /// used to rebuild per consuming frame, at O(1) instead of O(size).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
+    map: std::collections::HashMap<(usize, u64), Vec<CrossClaimEntry>>,
+    /// THE SERVED-INSTANCE REGISTRY: the root of every value this tier serves, mapped to the
+    /// content digest computed once, at publication, from its portable form. A served value is
+    /// handed out by `Rc` clone and retained here for the tier's lifetime, so its root pointer
+    /// names it for as long as the entry stands. It lets a caller that passes a served value as
+    /// an ARGUMENT be verified by digest instead of by reifying the whole argument again.
+    served_instances: std::collections::HashMap<ServedInstanceKey, Rc<str>>,
+    /// Argument rows totally reified on the lookup path. A served instance passed as an argument
+    /// adds nothing here; everything else adds one per composite argument per call.
+    lookup_arg_reifies: u64,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
@@ -2052,9 +2061,156 @@ struct CrossClaimPureMemo {
     /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
+    /// Derived-share fills declined below the declared cost floor (recomputed, not retained).
+    below_cost_floor: u64,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
     /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
     unportable_refusals: u64,
+}
+
+/// One retained call: its argument row in portable form, each composite argument's content digest
+/// (`None` for a scalar, which is compared directly), the served-instance identity each argument
+/// WAS when stored (`None` unless the caller passed a value this tier served), and the value
+/// served. The digest is a 64-bit hash and so only a PRE-FILTER: a match is established by
+/// instance identity or by the portable row, never by digest equality alone.
+struct CrossClaimEntry {
+    args: Vec<(Option<String>, PortableValue)>,
+    arg_digests: Vec<Option<Rc<str>>>,
+    arg_instances: Vec<Option<ServedInstanceKey>>,
+    served: Value,
+}
+
+/// The identity of a served value's root: its container pointer, with the kind and the type and
+/// variant symbols beside it, because a record and a re-branded record may share one field vector.
+type ServedInstanceKey = (usize, u8, Option<Symbol>, Option<Symbol>);
+
+fn served_instance_key(v: &Value) -> Option<ServedInstanceKey> {
+    match v {
+        Value::List(xs) => Some((Rc::as_ptr(xs) as usize, 0, None, None)),
+        Value::Map(m) => Some((Rc::as_ptr(m) as usize, 1, None, None)),
+        Value::Set(s) => Some((Rc::as_ptr(s) as usize, 2, None, None)),
+        Value::Record { type_name, fields } => {
+            Some((Rc::as_ptr(fields) as usize, 3, Some(*type_name), None))
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => Some((
+            Rc::as_ptr(fields) as usize,
+            4,
+            Some(*type_name),
+            Some(*variant_name),
+        )),
+        _ => None,
+    }
+}
+
+fn portable_is_composite(v: &PortableValue) -> bool {
+    matches!(
+        v,
+        PortableValue::List(_)
+            | PortableValue::Map(_)
+            | PortableValue::Set(_)
+            | PortableValue::Record { .. }
+            | PortableValue::Variant { .. }
+    )
+}
+
+/// What the lookup holds for one caller argument: a served instance's identity and digest (no
+/// walk unless an entry needs the structural fallback), or the argument reified in full.
+enum CrossClaimArgProbe {
+    Served {
+        key: ServedInstanceKey,
+        digest: Rc<str>,
+    },
+    Reified(PortableValue),
+}
+
+/// One probe per caller argument. AN ARGUMENT THAT IS ITSELF A VALUE THIS TIER SERVED IS NAMED BY
+/// ITS INSTANCE, with the digest computed once when it was published as a pre-filter; reifying it again on every call re-walked the
+/// whole value each time (a derived site whose argument is a served grammar or target model paid
+/// that per call). Any other argument is reified as before, and refuses the lookup when it is not
+/// portable.
+fn cross_claim_arg_probes(
+    ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> Option<Vec<CrossClaimArgProbe>> {
+    let mut out = Vec::with_capacity(args.len());
+    for (_, value) in args {
+        let served = served_instance_key(value).and_then(|key| {
+            CROSS_CLAIM_PURE_MEMO.with(|m| {
+                m.borrow()
+                    .served_instances
+                    .get(&key)
+                    .map(|digest| (key, digest.clone()))
+            })
+        });
+        match served {
+            Some((key, digest)) => out.push(CrossClaimArgProbe::Served { key, digest }),
+            None => {
+                let portable = portable_value_from_ctx(ctx, value)?;
+                if portable_is_composite(&portable) {
+                    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().lookup_arg_reifies += 1);
+                }
+                out.push(CrossClaimArgProbe::Reified(portable));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Whether a retained entry's argument row is the caller's. A served probe matches an entry that
+/// stored the SAME instance (exact: a registered instance is retained for the tier's lifetime, so
+/// its root pointer cannot be reused while the entry stands). A served probe whose instance the
+/// entry did not store falls back to the structural comparison, reifying the caller's argument at
+/// most once per lookup into `fallback` (counted in `reifies`); the digest only rules a candidate
+/// OUT, because a 64-bit FNV digest is not injective and equality of digests proves nothing.
+/// A reified probe matches structurally, as it always has. Returns `None` when a fallback
+/// reification refuses (the argument is not portable), which refuses the lookup.
+fn cross_claim_entry_matches(
+    ctx: &InterpContext,
+    entry: &CrossClaimEntry,
+    args: &[(Option<String>, Value)],
+    probes: &[CrossClaimArgProbe],
+    fallback: &mut [Option<PortableValue>],
+    reifies: &mut u64,
+) -> Option<bool> {
+    if entry.args.len() != args.len() {
+        return Some(false);
+    }
+    for (i, ((sn, sv), (an, value))) in entry.args.iter().zip(args.iter()).enumerate() {
+        if sn != an {
+            return Some(false);
+        }
+        let matched = match &probes[i] {
+            CrossClaimArgProbe::Reified(p) => portable_value_eq(sv, p),
+            CrossClaimArgProbe::Served { key, digest } => {
+                if entry.arg_digests[i].as_ref() != Some(digest) {
+                    false
+                } else if entry.arg_instances[i].as_ref() == Some(key) {
+                    true
+                } else {
+                    if fallback[i].is_none() {
+                        fallback[i] = Some(portable_value_from_ctx(ctx, value)?);
+                        *reifies += 1;
+                    }
+                    fallback[i]
+                        .as_ref()
+                        .is_some_and(|p| portable_value_eq(sv, p))
+                }
+            }
+        };
+        if !matched {
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
+/// Composite-argument reifications performed by lookups so far (see `lookup_arg_reifies`).
+pub fn cross_claim_lookup_arg_reify_count() -> u64 {
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().lookup_arg_reifies)
 }
 
 /// Entry-count admission for the cross-claim tier: distinct (fn, args) keys stop being STORED
@@ -2161,6 +2317,62 @@ thread_local! {
         RefCell::new(std::collections::HashSet::new());
     static CROSS_CLAIM_SHARE_OBSERVER: RefCell<Option<CrossClaimShareObserver>> =
         const { RefCell::new(None) };
+    /// Producers admitted by the DERIVED share (`v2.workflow.floor_pure_producer_share`
+    /// `derive_cross_claim_share`): fn nodes whose admission is not the producer but specific
+    /// call sites of it, so a call from any other site -- whose argument row the derivation never
+    /// judged closed -- stays outside the tier.
+    static CROSS_CLAIM_SITE_GATED: RefCell<std::collections::HashSet<usize>> =
+        RefCell::new(std::collections::HashSet::new());
+    /// The admitted sites whose fill is NETTED BUT NOT RETAINED: single-claim fill debt. Exactly
+    /// one declared claim demands the identity, so no later claim will ever ask for the value;
+    /// retaining it would spend the tier's byte budget on values nobody reads (floor probe
+    /// 37142207751: 638 stores declined at the byte budget, each leaving its fill on the claim).
+    /// The fill is measured and netted from the claim exactly as a retained one is.
+    static CROSS_CLAIM_NET_ONLY_SITES: RefCell<CrossClaimSiteSet> =
+        RefCell::new(CrossClaimSiteSet::default());
+    /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
+    static CROSS_CLAIM_ADMITTED_SITES: RefCell<CrossClaimSiteSet> =
+        RefCell::new(CrossClaimSiteSet::default());
+}
+
+/// A set of call sites, indexed so that MEMBERSHIP COSTS NO ALLOCATION. The check runs on every
+/// call of every site-gated producer, admitted site or not; keyed on `(String, i64, i64)` it
+/// allocated and hashed the file path each time, which same-revision floor pairs showed as about
+/// 30% more native time per evaluator step across the whole claim fold. The byte span is hashed
+/// first (two integers), and the file is compared as a borrowed string only on a span match.
+#[derive(Default)]
+struct CrossClaimSiteSet {
+    by_span: std::collections::HashMap<(i64, i64), Vec<String>>,
+}
+
+impl CrossClaimSiteSet {
+    fn from_sites(sites: std::collections::HashSet<(String, i64, i64)>) -> CrossClaimSiteSet {
+        let mut by_span: std::collections::HashMap<(i64, i64), Vec<String>> =
+            std::collections::HashMap::new();
+        for (file, start, end) in sites {
+            by_span.entry((start, end)).or_default().push(file);
+        }
+        CrossClaimSiteSet { by_span }
+    }
+
+    fn contains(&self, file: &str, start: i64, end: i64) -> bool {
+        self.by_span
+            .get(&(start, end))
+            .is_some_and(|files| files.iter().any(|f| f == file))
+    }
+
+    fn remove(&mut self, file: &str, start: i64, end: i64) {
+        if let Some(files) = self.by_span.get_mut(&(start, end)) {
+            files.retain(|f| f != file);
+            if files.is_empty() {
+                self.by_span.remove(&(start, end));
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.by_span.clear();
+    }
 }
 
 /// Clears stored values, roster and observer together: the tier's lifetime is ONE prepared
@@ -2171,6 +2383,14 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
+    CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().clear());
+    CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
+    CROSS_CLAIM_COST_FLOOR_CPU_NANOS.with(|c| c.set(0));
+    CROSS_CLAIM_STORE_DECLINES.with(|d| d.borrow_mut().clear());
+    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
+    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(0));
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
     // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
     // outlived its subject would serve a later, differently-prepared evaluation a value acquired
@@ -2198,9 +2418,189 @@ pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(n
     }
 }
 
+/// Install the DERIVED share: each producer node is admitted at the listed call sites only.
+/// Adds to whatever the roster install admitted (carried-input producers keep their own
+/// admission); the site set replaces any previous derivation's.
+pub fn install_cross_claim_derived_share<I: IntoIterator<Item = Rc<Node>>>(
+    nodes: I,
+    sites: std::collections::HashSet<(String, i64, i64)>,
+) {
+    install_cross_claim_derived_share_with_net_only(nodes, sites, std::collections::HashSet::new())
+}
+
+/// As `install_cross_claim_derived_share`, with the subset of `sites` that are net-only (see
+/// `CROSS_CLAIM_NET_ONLY_SITES`). A net-only site must also be in `sites`.
+pub fn install_cross_claim_derived_share_with_net_only<I: IntoIterator<Item = Rc<Node>>>(
+    nodes: I,
+    sites: std::collections::HashSet<(String, i64, i64)>,
+    net_only_sites: std::collections::HashSet<(String, i64, i64)>,
+) {
+    CROSS_CLAIM_NET_ONLY_SITES
+        .with(|n| *n.borrow_mut() = CrossClaimSiteSet::from_sites(net_only_sites));
+    let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
+    // REPLACES the previous derivation rather than adding to it: a producer dropped from the
+    // derived set must leave the roster too, or it would remain admitted with no site gate --
+    // admitted everywhere, the widening this gate exists to prevent.
+    let previous: Vec<usize> =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().iter().copied().collect());
+    // A SITE GATE MAY ONLY NARROW WHAT THE DERIVATION ALONE ADMITS. A producer already admitted
+    // without a gate -- a carried-input producer on the roster, or the built-in `prepare_grammar`
+    // arm admitted by name -- keeps every call site: gating it would withdraw an admission the
+    // derivation never granted, which is how floor probe 37114012751 made 59 claims each
+    // re-prepare the grammar.
+    let gated: Vec<usize> = CROSS_CLAIM_PURE_ROSTER.with(|r| {
+        let mut r = r.borrow_mut();
+        for ptr in &previous {
+            r.remove(ptr);
+        }
+        let mut gated = Vec::new();
+        for node in &nodes {
+            let ptr = Rc::as_ptr(node) as usize;
+            if node.name == "prepare_grammar" || r.contains(&ptr) {
+                continue;
+            }
+            r.insert(ptr);
+            gated.push(ptr);
+        }
+        gated
+    });
+    CROSS_CLAIM_SITE_GATED.with(|g| *g.borrow_mut() = gated.into_iter().collect());
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| *a.borrow_mut() = CrossClaimSiteSet::from_sites(sites));
+    for node in &nodes {
+        keep_cross_claim_fn(node);
+    }
+}
+
+/// Whether THIS call site may use the cross-claim tier for `fn_node`. True for every producer
+/// admitted without a site gate; for a derived producer, only at a site the derivation admitted.
+fn cross_claim_site_admitted(fn_node: &Rc<Node>, call_node: &Node) -> bool {
+    let gated =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+    !gated
+        || CROSS_CLAIM_ADMITTED_SITES.with(|a| {
+            a.borrow().contains(
+                &call_node.span.file,
+                call_node.span.start,
+                call_node.span.end,
+            )
+        })
+}
+
+/// Whether this call site is a net-only (single-claim fill debt) site.
+fn cross_claim_site_is_net_only(call_node: &Node) -> bool {
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| {
+        n.borrow().contains(
+            &call_node.span.file,
+            call_node.span.start,
+            call_node.span.end,
+        )
+    })
+}
+
+/// Retire a derived producer's call site for the rest of the run after its fill came in below the
+/// cost floor. A site carries one closed argument row, so one identity, so the same small work on
+/// every later call; leaving it admitted would make every such call pay the tier's key (argument
+/// hash and total reification), open a fill and be declined again -- several hundred thousand
+/// declined publications on a planning probe. A producer admitted without a site gate is untouched.
+fn retire_cross_claim_site_below_cost_floor(fn_node: &Rc<Node>, call_node: &Node) {
+    let gated =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+    if !gated {
+        return;
+    }
+    let (start, end) = (call_node.span.start, call_node.span.end);
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().remove(&call_node.span.file, start, end));
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().remove(&call_node.span.file, start, end));
+}
+
+/// Whether a fill is BELOW the cost floor: it performed fewer evaluator steps than the step floor
+/// AND spent less thread CPU than the CPU floor. STEPS ALONE UNDERCOUNT A FILL WHOSE COST IS
+/// NATIVE: a nullary wrapper around an already-served producer performs a handful of steps and
+/// still pays the content hash and total reification of that producer's argument row to key the
+/// lookup (`dag_prepared_grammar` over `prepare_grammar(grammar:)`: 466 ms and 1140 ms on two
+/// measured fills). Judged on steps it was declined, so every claim re-paid that keying natively
+/// and outside its step budget. A CPU floor of zero (nothing installed) judges on steps alone.
+fn cross_claim_fill_below_cost_floor(guard: &CrossClaimFillGuard) -> bool {
+    let steps = evaluator_steps().wrapping_sub(guard.steps_started);
+    if steps >= CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.get()) {
+        return false;
+    }
+    let cpu_floor = CROSS_CLAIM_COST_FLOOR_CPU_NANOS.with(|c| c.get());
+    cpu_floor == 0 || thread_cpu_nanos().saturating_sub(guard.cpu_started) < cpu_floor
+}
+
+/// Publish one completed admitted fill: retain it in the tier, or -- at a net-only site -- net its
+/// cost from the paying claim without retaining the value. The cost floor applies to both: a fill
+/// below it is neither retained nor netted. Every declined outcome is counted by producer.
+fn publish_cross_claim_fill(
+    ctx: &InterpContext,
+    call_node: &Node,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    value: &Value,
+    fill_guard: Option<&CrossClaimFillGuard>,
+    net_only: bool,
+) {
+    if net_only {
+        if let Some(guard) = fill_guard {
+            if cross_claim_fill_below_cost_floor(guard) {
+                CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
+                note_cross_claim_store_outcome(
+                    func_name,
+                    &CrossClaimStoreOutcome::RefusedBelowCostFloor,
+                );
+                retire_cross_claim_site_below_cost_floor(fn_node, call_node);
+            } else {
+                guard.mark_stored();
+            }
+        }
+        return;
+    }
+    let outcome = store_cross_claim_pure_memo(ctx, fn_node, func_name, args, value, fill_guard);
+    note_cross_claim_store_outcome(func_name, &outcome);
+    if outcome == CrossClaimStoreOutcome::RefusedBelowCostFloor {
+        retire_cross_claim_site_below_cost_floor(fn_node, call_node);
+    }
+}
+
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
 pub fn install_cross_claim_share_observer(observer: Option<CrossClaimShareObserver>) {
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = observer);
+}
+
+thread_local! {
+    /// Every store the tier DECLINED for an admitted fill, by (producer, cause): the fill ran and
+    /// was not retained, so its cost stayed on the paying claim. Counted here so a claim that pays
+    /// for an admitted identity is explained by the run's own log rather than inferred.
+    static CROSS_CLAIM_STORE_DECLINES: RefCell<std::collections::BTreeMap<(String, &'static str), u64>> =
+        const { RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// The declined stores of admitted fills on this thread, as (producer, cause, count).
+pub fn cross_claim_store_declines() -> Vec<(String, &'static str, u64)> {
+    CROSS_CLAIM_STORE_DECLINES.with(|d| {
+        d.borrow()
+            .iter()
+            .map(|((producer, cause), n)| (producer.clone(), *cause, *n))
+            .collect()
+    })
+}
+
+fn note_cross_claim_store_outcome(func_name: &str, outcome: &CrossClaimStoreOutcome) {
+    if outcome.is_servable() || matches!(outcome, CrossClaimStoreOutcome::NotAdmitted) {
+        return;
+    }
+    CROSS_CLAIM_STORE_DECLINES.with(|d| {
+        *d.borrow_mut()
+            .entry((func_name.to_string(), outcome.cause()))
+            .or_insert(0) += 1;
+    });
+}
+
+/// Derived-share fills declined below the cost floor on this thread — receipt fodder only.
+pub fn cross_claim_below_cost_floor_count() -> u64 {
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().below_cost_floor)
 }
 
 /// (stores, overflow) for the cross-claim tier on this thread — receipt fodder only.
@@ -2246,6 +2646,7 @@ thread_local! {
 struct CrossClaimFillFrame {
     producer: String,
     cpu_started: u128,
+    wall_started: Instant,
     steps_started: u64,
     stored_children_cpu: u128,
     stored_children_wall: u128,
@@ -2271,6 +2672,7 @@ impl CrossClaimFillGuard {
             s.borrow_mut().push(CrossClaimFillFrame {
                 producer: func_name.to_string(),
                 cpu_started,
+                wall_started: Instant::now(),
                 steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
@@ -2306,6 +2708,7 @@ impl Drop for CrossClaimFillGuard {
             .unwrap_or(CrossClaimFillFrame {
                 producer: self.func_name.clone(),
                 cpu_started: self.cpu_started,
+                wall_started: self.wall_started,
                 steps_started: self.steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
@@ -2409,20 +2812,30 @@ fn try_cross_claim_pure_memo(
     };
     let args_hash = cross_claim_args_hash(ctx, args)?;
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
-    // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
-    // the full portable argument row, so an intra-frame hash collision cannot alias either.
-    let portable_args = portable_args_from_ctx(ctx, args)?;
+    // Hash first, then the argument row itself, so a hash collision cannot alias: each argument
+    // is verified by the digest of the served instance it is, or by its full portable form.
+    let probes = cross_claim_arg_probes(ctx, args)?;
     // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
     // per-context hit cache this path used to maintain is gone with the walk it existed to
     // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
     // machinery it obsoletes.
+    let mut fallback: Vec<Option<PortableValue>> = vec![None; args.len()];
+    let mut reifies = 0u64;
     let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
-        m.borrow().map.get(&memo_key).and_then(|bucket| {
-            bucket.iter().find_map(|(stored_args, stored)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
-            })
-        })
-    })?;
+        let m = m.borrow();
+        let bucket = m.map.get(&memo_key)?;
+        for entry in bucket {
+            match cross_claim_entry_matches(ctx, entry, args, &probes, &mut fallback, &mut reifies)
+            {
+                Some(true) => return Some(Some(entry.served.clone())),
+                Some(false) => {}
+                None => return None,
+            }
+        }
+        Some(None)
+    });
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().lookup_arg_reifies += reifies);
+    let value = value.flatten()?;
     cross_claim_observe_hit(func_name);
     Some(value)
 }
@@ -2463,6 +2876,9 @@ pub enum CrossClaimStoreOutcome {
     RefusedEntryCap,
     /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
     RefusedByteBudget,
+    /// A derived share's fill performed fewer evaluator steps than the declared cost floor, so the
+    /// value is recomputed rather than retained (DESIGN section 2's economic realization).
+    RefusedBelowCostFloor,
 }
 
 impl CrossClaimStoreOutcome {
@@ -2495,6 +2911,7 @@ impl CrossClaimStoreOutcome {
             CrossClaimStoreOutcome::RefusedValueNotPortable(_) => "ServeCacheValueNotPortable",
             CrossClaimStoreOutcome::RefusedEntryCap => "EntryCapReached",
             CrossClaimStoreOutcome::RefusedByteBudget => "ByteBudgetExceeded",
+            CrossClaimStoreOutcome::RefusedBelowCostFloor => "BelowCostFloor",
         }
     }
 }
@@ -2509,6 +2926,17 @@ fn store_cross_claim_pure_memo(
 ) -> CrossClaimStoreOutcome {
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return CrossClaimStoreOutcome::NotAdmitted;
+    }
+    // THE COST FLOOR, applied to a derived producer's fill at the moment it would be retained: the
+    // guard measured the fill's evaluator steps AND its thread CPU, so the decision rests on this
+    // fill's own work, native work included (`cross_claim_fill_below_cost_floor`).
+    if let Some(guard) = fill_guard {
+        let gated =
+            CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+        if gated && cross_claim_fill_below_cost_floor(guard) {
+            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
+            return CrossClaimStoreOutcome::RefusedBelowCostFloor;
+        }
     }
     // The same substitution the lookup makes, in the same place in the fold, so a warm and a
     // serve cannot disagree about what the key represents.
@@ -2538,15 +2966,16 @@ fn store_cross_claim_pure_memo(
     };
     // The evaluated value's content identity, recorded for the caller BEFORE the presence
     // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
-    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
-        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
-    });
+    let value_digest = portable_value_digest(&portable);
+    CROSS_CLAIM_LAST_STORE_DIGEST
+        .with(|d| *d.borrow_mut() = Some((func_name.to_string(), value_digest.clone())));
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
-            if bucket.iter().any(|(stored_args, _)| {
-                cross_claim_portable_args_match(stored_args, &portable_args)
-            }) {
+            if bucket
+                .iter()
+                .any(|entry| cross_claim_portable_args_match(&entry.args, &portable_args))
+            {
                 return CrossClaimStoreOutcome::AlreadyPresent;
             }
         }
@@ -2570,10 +2999,29 @@ fn store_cross_claim_pure_memo(
         // The portable form has done its two jobs by here — it proved total portability and it
         // measured the entry — and nothing downstream needs it again.
         let served = value_from_portable_ctx(ctx, &portable);
-        m.map
-            .entry(memo_key)
-            .or_default()
-            .push((portable_args, served));
+        // The served value's root is registered under its digest, so a later call that passes
+        // this value as an argument is verified without walking it; and each composite argument
+        // of THIS entry carries its digest for the same comparison from the other side.
+        if let Some(key) = served_instance_key(&served) {
+            m.served_instances
+                .insert(key, Rc::from(value_digest.as_str()));
+        }
+        let arg_digests = portable_args
+            .iter()
+            .map(|(_, v)| {
+                portable_is_composite(v).then(|| Rc::from(portable_value_digest(v).as_str()))
+            })
+            .collect();
+        let arg_instances = args
+            .iter()
+            .map(|(_, v)| served_instance_key(v).filter(|k| m.served_instances.contains_key(k)))
+            .collect();
+        m.map.entry(memo_key).or_default().push(CrossClaimEntry {
+            args: portable_args,
+            arg_digests,
+            arg_instances,
+            served,
+        });
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -2598,67 +3046,6 @@ pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
     CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| match d.borrow_mut().take() {
         Some((name, digest)) if name == func_name => Some(digest),
         _ => None,
-    })
-}
-
-/// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
-/// dispatched effect is a roster defect with its own remedy, not an evaluation failure.
-#[derive(Debug)]
-pub enum PureProducerWarmRefusal {
-    DispatchedEffect { effects: u64 },
-    Failed(String),
-}
-
-/// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier, under the
-/// same guard protocol as a claim-forced fill — so a preparation warm lands in the ledger as an
-/// outside-fold fill, not on the first claim. Returns the TYPED outcome: a servable tier
-/// (`Stored`, `AlreadyPresent`) vs each refusal by name, not one boolean.
-pub fn warm_cross_claim_pure_producer(
-    ctx: &InterpContext,
-    qualified_fn: &str,
-) -> Result<CrossClaimStoreOutcome, PureProducerWarmRefusal> {
-    with_active_ctx(ctx, || {
-        let fn_node = ctx
-            .lookup_fn(qualified_fn)
-            .ok_or_else(|| {
-                PureProducerWarmRefusal::Failed(format!(
-                    "no declaration named '{qualified_fn}' in this frame"
-                ))
-            })?
-            .clone();
-        let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
-        if !cross_claim_pure_admitted(&fn_node, bare) {
-            return Err(PureProducerWarmRefusal::Failed(format!(
-                "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
-            )));
-        }
-        let guard = CrossClaimFillGuard::enter(bare);
-        let env = Env::empty();
-        // THE SAME GUARD THE FOLD PATH HOLDS. The claim-time store refuses to publish a value
-        // whose evaluation dispatched an effect, because the key `(fn node, argument row)` cannot
-        // see what the effect read. The warm path stored without that guard, so an effectful
-        // nullary row rostered as a plain warm row was stored CONTENT-BLIND under the empty
-        // argument row — the key omitting an input the value depends on. A dispatch here is a
-        // roster defect (the row belongs in the prepared-effect-input rows, where the read is
-        // carried and keyed), so it stops the line rather than declining silently.
-        let effects_before = ctx.effect_dispatch_count.get();
-        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
-            .map_err(|e| PureProducerWarmRefusal::Failed(format!("{qualified_fn}: {e}")))?;
-        let effects = ctx
-            .effect_dispatch_count
-            .get()
-            .saturating_sub(effects_before);
-        if effects != 0 {
-            return Err(PureProducerWarmRefusal::DispatchedEffect { effects });
-        }
-        Ok(store_cross_claim_pure_memo(
-            ctx,
-            &fn_node,
-            bare,
-            &[],
-            &value,
-            Some(&guard),
-        ))
     })
 }
 
@@ -3653,6 +4040,449 @@ mod cross_claim_memo_tests {
                 other => panic!("field '{name}' must resolve via fields_get, got {other:?}"),
             }
         }
+    }
+
+    // THE GATE NEVER NARROWS AN EXISTING ADMISSION: a producer admitted ungated before the derived
+    // share is installed (here, by the roster) keeps every call site even when the derivation also
+    // admits it at one site.
+    #[test]
+    fn a_derived_admission_never_gates_a_producer_already_admitted_ungated() {
+        use super::{
+            cross_claim_site_admitted, install_cross_claim_derived_share,
+            install_cross_claim_pure_share_roster,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node_at = |start: i64, end: i64| {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                Rc::new(crate::std_types::SourceSpan {
+                    file: "workspace/src/g.dag".to_string(),
+                    start,
+                    end,
+                }),
+            )
+        };
+        let carried = node_at(0, 1);
+        install_cross_claim_pure_share_roster([carried.clone()]);
+        let mut sites = std::collections::HashSet::new();
+        sites.insert(("workspace/src/g.dag".to_string(), 10, 20));
+        install_cross_claim_derived_share([carried.clone()], sites);
+        assert!(
+            cross_claim_site_admitted(&carried, &node_at(50, 60)),
+            "an already-admitted producer keeps a site the derivation did not list"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A NET-ONLY FILL IS NETTED AND NOT RETAINED. The pair varies only whether the site is
+    // net-only: the same fill at a net-only site marks the guard (so the claim is netted) and
+    // leaves the tier empty; at a retained site it lands in the tier.
+    #[test]
+    fn a_net_only_fill_is_netted_without_retaining_its_value() {
+        use super::{
+            cross_claim_pure_memo_counts, install_cross_claim_derived_share,
+            publish_cross_claim_fill, CrossClaimFillGuard,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let derived = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+        let guard = CrossClaimFillGuard::enter("tm_debt");
+        publish_cross_claim_fill(
+            &ctx,
+            &derived,
+            &derived,
+            "tm_debt",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+            true,
+        );
+        assert!(
+            guard.stored.get(),
+            "a net-only fill is netted from its claim"
+        );
+        drop(guard);
+        assert_eq!(
+            cross_claim_pure_memo_counts().0,
+            0,
+            "and its value is not retained"
+        );
+        let guard = CrossClaimFillGuard::enter("tm_debt");
+        publish_cross_claim_fill(
+            &ctx,
+            &derived,
+            &derived,
+            "tm_debt",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+            false,
+        );
+        drop(guard);
+        assert_eq!(
+            cross_claim_pure_memo_counts().0,
+            1,
+            "control: a retained site stores"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE COST FLOOR IS APPLIED AT RETENTION, TO THE FILL'S OWN STEPS. The pair varies only the
+    // floor: the same derived producer's fill is declined below it and stored at zero.
+    #[test]
+    fn a_derived_fill_below_the_cost_floor_is_declined_and_one_above_is_stored() {
+        use super::{
+            install_cross_claim_cost_floor_steps, install_cross_claim_derived_share,
+            store_cross_claim_pure_memo, CrossClaimFillGuard, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let derived = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+        install_cross_claim_cost_floor_steps(u64::MAX);
+        let guard = CrossClaimFillGuard::enter("tm_cheap");
+        let below = store_cross_claim_pure_memo(
+            &ctx,
+            &derived,
+            "tm_cheap",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+        );
+        drop(guard);
+        assert_eq!(below, CrossClaimStoreOutcome::RefusedBelowCostFloor);
+        assert_eq!(super::cross_claim_below_cost_floor_count(), 1);
+        install_cross_claim_cost_floor_steps(0);
+        let guard = CrossClaimFillGuard::enter("tm_cheap");
+        let stored = store_cross_claim_pure_memo(
+            &ctx,
+            &derived,
+            "tm_cheap",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+        );
+        drop(guard);
+        assert_eq!(stored, CrossClaimStoreOutcome::Stored);
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A SERVED INSTANCE PASSED AS AN ARGUMENT IS VERIFIED BY ITS INSTANCE, WITH NO REIFY; anything
+    // else is still reified and still refuses on a mismatch. Producer A's value is published and
+    // served; producer B is published over that served value as its argument. Three lookups of B:
+    // with the served instance (hit, zero reifies), with an equal value built afresh (hit, one
+    // reify -- the old path, still sound), and with a different value (miss).
+    #[test]
+    fn a_served_instance_argument_is_verified_by_instance_and_others_still_reify() {
+        use super::{
+            cross_claim_lookup_arg_reify_count, install_cross_claim_pure_share_roster, list_value,
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let node = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let (a, b) = (node(), node());
+        install_cross_claim_pure_share_roster([a.clone(), b.clone()]);
+        let built = || list_value(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&ctx, &a, "tm_a", &[], &built(), None),
+            CrossClaimStoreOutcome::Stored
+        );
+        let served = try_cross_claim_pure_memo(&ctx, &a, "tm_a", &[]).expect("A is served");
+        let over = |v: Value| vec![(Some("x".to_string()), v)];
+        assert_eq!(
+            store_cross_claim_pure_memo(
+                &ctx,
+                &b,
+                "tm_b",
+                &over(served.clone()),
+                &Value::Int(7),
+                None
+            ),
+            CrossClaimStoreOutcome::Stored
+        );
+        let before = cross_claim_lookup_arg_reify_count();
+        assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(served.clone())).is_some());
+        assert_eq!(
+            cross_claim_lookup_arg_reify_count(),
+            before,
+            "a served instance is named by its instance: no reify"
+        );
+        assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(built())).is_some());
+        assert_eq!(
+            cross_claim_lookup_arg_reify_count(),
+            before + 1,
+            "an equal value that is not the served instance is reified, and still hits"
+        );
+        let other = list_value(vec![Value::Int(1), Value::Int(2), Value::Int(4)]);
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(other)).is_none(),
+            "a different argument is not served another call's value"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A DIGEST IS NOT AN IDENTITY. `portable_value_digest` is a 64-bit FNV hash, so two distinct
+    // values can share one. An entry is forged whose argument digest EQUALS the served probe's but
+    // whose stored argument is a different value and a different instance: it must not match (the
+    // structural fallback refuses it). The positive control is the same entry carrying the probe's
+    // instance key, which matches with no reify; and an equal digest over an EQUAL value that is
+    // not the stored instance matches through the fallback, reifying once.
+    #[test]
+    fn two_values_sharing_a_digest_are_not_served_as_one_another() {
+        use super::{
+            cross_claim_entry_matches, list_value, served_instance_key, CrossClaimArgProbe,
+            CrossClaimEntry, PortableValue,
+        };
+        let ctx = fresh_ctx();
+        let probe_value = list_value(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let key = served_instance_key(&probe_value).expect("a list has an instance key");
+        let shared_digest: Rc<str> = Rc::from("forged-collision");
+        let args = vec![(Some("x".to_string()), probe_value.clone())];
+        let probes = vec![CrossClaimArgProbe::Served {
+            key,
+            digest: shared_digest.clone(),
+        }];
+        let stored_as = |stored: Vec<i64>, instance| CrossClaimEntry {
+            args: vec![(
+                Some("x".to_string()),
+                PortableValue::List(stored.into_iter().map(PortableValue::Int).collect()),
+            )],
+            arg_digests: vec![Some(shared_digest.clone())],
+            arg_instances: vec![instance],
+            served: Value::Int(7),
+        };
+        let run = |entry: &CrossClaimEntry| {
+            let mut fallback = vec![None];
+            let mut reifies = 0u64;
+            let hit =
+                cross_claim_entry_matches(&ctx, entry, &args, &probes, &mut fallback, &mut reifies)
+                    .expect("the argument is portable");
+            (hit, reifies)
+        };
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 4], None)),
+            (false, 1),
+            "a digest collision over a different value is refused by the structural fallback"
+        );
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 3], Some(key))),
+            (true, 0),
+            "the same served instance matches by identity, with no reify"
+        );
+        assert_eq!(
+            run(&stored_as(vec![1, 2, 3], None)),
+            (true, 1),
+            "an equal value that is not the stored instance matches structurally"
+        );
+    }
+
+    // THE COST FLOOR COUNTS NATIVE WORK. The pair varies only the CPU rate: one fill that performs
+    // NO evaluator steps but burns thread CPU is declined when CPU is not counted (rate zero) and
+    // retained when it is. This is the `dag_prepared_grammar` shape -- a wrapper whose cost is the
+    // native keying of the producer beneath it -- which a steps-only floor declined on every claim.
+    #[test]
+    fn a_fill_with_native_cost_and_no_steps_is_retained_only_at_or_above_the_cpu_floor() {
+        use super::{
+            install_cross_claim_cost_floor_cpu_ms, install_cross_claim_cost_floor_steps,
+            install_cross_claim_derived_share, store_cross_claim_pure_memo, thread_cpu_nanos,
+            CrossClaimFillGuard, CrossClaimStoreOutcome,
+        };
+        fn burn_two_milliseconds_of_cpu() {
+            let started = thread_cpu_nanos();
+            let mut acc = 0u64;
+            while thread_cpu_nanos().saturating_sub(started) < 2_000_000 {
+                acc = std::hint::black_box(acc.wrapping_mul(31).wrapping_add(7));
+            }
+        }
+        // The fill burns 2 ms of CPU and performs no steps. With no CPU floor it is judged on
+        // steps and declined; under a 1 ms CPU floor it is retained; under a 1000 ms one it is not.
+        for (cpu_floor_ms, expected) in [
+            (0u64, CrossClaimStoreOutcome::RefusedBelowCostFloor),
+            (1u64, CrossClaimStoreOutcome::Stored),
+            (1_000u64, CrossClaimStoreOutcome::RefusedBelowCostFloor),
+        ] {
+            super::clear_cross_claim_pure_memos();
+            let ctx = fresh_ctx();
+            let derived = make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            );
+            install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+            install_cross_claim_cost_floor_steps(1_000);
+            install_cross_claim_cost_floor_cpu_ms(cpu_floor_ms);
+            let guard = CrossClaimFillGuard::enter("tm_native");
+            burn_two_milliseconds_of_cpu();
+            let outcome = store_cross_claim_pure_memo(
+                &ctx,
+                &derived,
+                "tm_native",
+                &[],
+                &Value::Int(1),
+                Some(&guard),
+            );
+            drop(guard);
+            assert_eq!(outcome, expected, "cpu floor {cpu_floor_ms} ms");
+        }
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE EXCUSAL IS BOUNDED BY THE FILL'S OWN WORK. The stalled control is the point: a fill in
+    // flight that performs NO evaluator steps is excused nothing, however long it has run, so the
+    // claim's wall deadline fires on it. The same fill after doing work is excused in proportion
+    // to its steps, and never past the outer cap.
+    #[test]
+    fn a_stalled_in_flight_fill_is_excused_nothing_and_a_working_one_by_its_steps() {
+        use super::{
+            in_flight_cross_claim_fill_wall_nanos, install_cross_claim_in_flight_wall_bound,
+            record_eval_step, CrossClaimFillGuard,
+        };
+        super::clear_cross_claim_pure_memos();
+        let guard = CrossClaimFillGuard::enter("tm_slow");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no bound installed: nothing excused"
+        );
+        install_cross_claim_in_flight_wall_bound(1_000, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "STALLED: 5ms of wall and zero steps is excused nothing"
+        );
+        for _ in 0..1_000 {
+            record_eval_step();
+        }
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            1_000_000,
+            "1000 steps at a 1000ns ceiling excuse exactly 1ms of the 5ms"
+        );
+        install_cross_claim_in_flight_wall_bound(0, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no outer cap: nothing excused"
+        );
+        drop(guard);
+        install_cross_claim_in_flight_wall_bound(1_000, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no fill in flight: nothing excused"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE SITE GATE OF THE DERIVED SHARE. A derived producer is admitted at the call sites the
+    // derivation judged closed and nowhere else: the same producer called from another site has an
+    // argument row nobody judged, so it must stay outside the tier. The discriminating pair varies
+    // only the call site; the control is a producer admitted without a gate (a carried-input
+    // producer), which is unaffected by any site set.
+    #[test]
+    fn a_derived_producer_is_admitted_only_at_its_admitted_sites() {
+        use super::{
+            cross_claim_site_admitted, install_cross_claim_derived_share,
+            install_cross_claim_pure_share_roster,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node_at = |start: i64, end: i64| {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                Rc::new(crate::std_types::SourceSpan {
+                    file: "workspace/src/n7.dag".to_string(),
+                    start,
+                    end,
+                }),
+            )
+        };
+        let derived = node_at(0, 1);
+        let ungated = node_at(2, 3);
+        install_cross_claim_pure_share_roster([ungated.clone()]);
+        let mut sites = std::collections::HashSet::new();
+        sites.insert(("workspace/src/n7.dag".to_string(), 100, 140));
+        install_cross_claim_derived_share([derived.clone()], sites);
+        assert!(
+            cross_claim_site_admitted(&derived, &node_at(100, 140)),
+            "the admitted site uses the tier"
+        );
+        assert!(
+            !cross_claim_site_admitted(&derived, &node_at(200, 240)),
+            "another site of the same derived producer must not"
+        );
+        assert!(
+            cross_claim_site_admitted(&ungated, &node_at(200, 240)),
+            "control: a producer admitted without a site gate is unaffected"
+        );
+        // A SITE WHOSE FILL CAME IN BELOW THE COST FLOOR IS RETIRED, so its later calls skip the
+        // tier instead of keying and being declined again. Only the site named is retired, a
+        // same-span site in another file is a different site, and an ungated producer keeps all.
+        let mut two = std::collections::HashSet::new();
+        two.insert(("workspace/src/n7.dag".to_string(), 100, 140));
+        two.insert(("workspace/src/n7.dag".to_string(), 300, 340));
+        two.insert(("workspace/src/other.dag".to_string(), 100, 140));
+        install_cross_claim_derived_share([derived.clone()], two);
+        super::retire_cross_claim_site_below_cost_floor(&derived, &node_at(100, 140));
+        assert!(!cross_claim_site_admitted(&derived, &node_at(100, 140)));
+        assert!(cross_claim_site_admitted(&derived, &node_at(300, 340)));
+        let other_file = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            Rc::new(crate::std_types::SourceSpan {
+                file: "workspace/src/other.dag".to_string(),
+                start: 100,
+                end: 140,
+            }),
+        );
+        assert!(cross_claim_site_admitted(&derived, &other_file));
+        super::retire_cross_claim_site_below_cost_floor(&ungated, &node_at(200, 240));
+        assert!(cross_claim_site_admitted(&ungated, &node_at(200, 240)));
+        super::clear_cross_claim_pure_memos();
+        assert!(
+            cross_claim_site_admitted(&derived, &node_at(200, 240)),
+            "clearing the tier clears the gate with it"
+        );
     }
 
     // RED (review 57446 F1): admission is by RESOLVED DECLARATION IDENTITY, so a bare-name
@@ -5932,7 +6762,11 @@ impl InterpContext {
         let fill_since =
             crate::cli_run::shared_artifact_fill_wall_nanos().saturating_sub(fill_at_arm);
         Some((
-            start.elapsed().as_nanos().saturating_sub(fill_since),
+            start
+                .elapsed()
+                .as_nanos()
+                .saturating_sub(fill_since)
+                .saturating_sub(in_flight_cross_claim_fill_wall_nanos()),
             budget_ms,
         ))
     }
@@ -5949,6 +6783,22 @@ impl InterpContext {
         let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
         let elapsed = std::time::Duration::from_nanos(elapsed_nanos as u64);
         if elapsed.as_millis() as u64 > budget_ms {
+            // WHEN A FILL IS IN FLIGHT, THE REFUSAL NAMES IT: the producer, the steps it has
+            // performed and its wall, beside what was excused. A fill that stopped advancing, or
+            // outran the outer cap, is then visible as such rather than as an unexplained
+            // interrupted claim.
+            if let Some((producer, fill_steps, fill_wall)) = in_flight_cross_claim_fill_progress() {
+                eprintln!(
+                    "[cross-claim-fill-wall-deadline] entry={} producer={producer} \
+                     fill_steps={fill_steps} fill_wall_ms={} excused_wall_ms={} limit_ms={budget_ms} \
+                     ns_per_step_ceiling={} outer_cap_ms={}",
+                    self.budget_entry_or_unnamed(),
+                    fill_wall / 1_000_000,
+                    in_flight_cross_claim_fill_wall_nanos() / 1_000_000,
+                    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.get()),
+                    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get()) / 1_000_000,
+                );
+            }
             Some(InterpError::EvaluationBudgetExceeded {
                 entry: self.budget_entry_or_unnamed(),
                 clock: EvaluationClock::MonotonicWall,
@@ -6168,6 +7018,20 @@ pub fn run_in_context_with_args(
         };
         with_lexical_base_env(&env, || call_function(ctx, &item_node, args, &env))
     })
+}
+
+/// The authored parameter names `entry_fn` declares, in declaration order; `None` when the
+/// closure holds no such function. A host seam that calls one entry reads this to supply
+/// arguments from the entry's declaration rather than from a host-side list of names.
+pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<Vec<String>> {
+    let fn_node = ctx.lookup_fn(entry_fn)?;
+    Some(
+        fn_node
+            .params
+            .iter()
+            .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .collect(),
+    )
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
@@ -6695,6 +7559,77 @@ pub fn record_shared_artifact_fill_cpu_nanos(nanos: u128) {
 /// The running fill total for this thread.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
+thread_local! {
+    /// THE OUTER HARD CAP on the wall an in-flight admitted fill may be excused from a claim's
+    /// wall deadline, so a fill that advances forever still terminates. Zero (the default)
+    /// excuses nothing. The floor installs its preparation wall safety limit.
+    static CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// THE WORK BOUND: wall is excused only in proportion to the evaluator steps the fill has
+    /// performed, at this declared ceiling of nanoseconds per step
+    /// (`v2.workflow.floor_pure_producer_share`
+    /// `floor_cross_claim_fill_wall_per_step_ceiling`). A fill that is blocked or descheduled
+    /// accrues wall without steps and is therefore not excused. Zero excuses nothing.
+    static CROSS_CLAIM_FILL_NS_PER_STEP_CEILING: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// The declared cost floor (evaluator steps) below which a derived share's fill is not
+    /// retained. Zero (the default) retains every admitted fill.
+    static CROSS_CLAIM_COST_FLOOR_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The declared CPU floor (thread CPU nanoseconds): a fill at or above it is retained however
+    /// few evaluator steps it performed. Zero judges on steps alone.
+    static CROSS_CLAIM_COST_FLOOR_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+}
+
+/// Install the in-flight fill excusal: the outer hard cap and the nanoseconds-per-step ceiling.
+pub fn install_cross_claim_in_flight_wall_bound(cap_ms: u64, ns_per_step_ceiling: u64) {
+    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(u128::from(cap_ms) * 1_000_000));
+    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(u128::from(ns_per_step_ceiling)));
+}
+
+/// Install the derived share's cost floor (see `CROSS_CLAIM_COST_FLOOR_STEPS`).
+pub fn install_cross_claim_cost_floor_steps(steps: u64) {
+    CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(steps));
+}
+
+/// Install the CPU arm of the cost floor, in milliseconds (see `CROSS_CLAIM_COST_FLOOR_CPU_NANOS`).
+pub fn install_cross_claim_cost_floor_cpu_ms(cpu_ms: u64) {
+    CROSS_CLAIM_COST_FLOOR_CPU_NANOS.with(|c| c.set(u128::from(cpu_ms) * 1_000_000));
+}
+
+/// The outermost in-flight admitted fill, as (producer, its own steps so far, its own wall so
+/// far), each less the stored children already netted when they completed.
+fn in_flight_cross_claim_fill_progress() -> Option<(String, u64, u128)> {
+    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
+        frames.borrow().first().map(|outermost| {
+            (
+                outermost.producer.clone(),
+                evaluator_steps()
+                    .wrapping_sub(outermost.steps_started)
+                    .saturating_sub(outermost.stored_children_steps),
+                outermost
+                    .wall_started
+                    .elapsed()
+                    .as_nanos()
+                    .saturating_sub(outermost.stored_children_wall),
+            )
+        })
+    })
+}
+
+/// Wall the outermost in-flight admitted fill is EXCUSED from a claim's wall deadline: its own
+/// wall so far, bounded by its own WORK (steps so far times the declared ceiling) and by the
+/// outer hard cap. This is the wall-clock sibling of `in_flight_cross_claim_fill`: a claim that
+/// first-touches a fill is not charged the fill's wall while the fill is doing work, and is
+/// charged all of it the moment the fill stops advancing.
+fn in_flight_cross_claim_fill_wall_nanos() -> u128 {
+    let cap = CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get());
+    let ceiling = CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.get());
+    if cap == 0 || ceiling == 0 {
+        return 0;
+    }
+    in_flight_cross_claim_fill_progress().map_or(0, |(_, steps, wall)| {
+        wall.min(u128::from(steps).saturating_mul(ceiling)).min(cap)
+    })
 }
 
 fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
@@ -9899,13 +10834,19 @@ fn eval_pure_named_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
-        return Ok(v);
+    // A derived producer is admitted at its admitted call sites only; from any other site the
+    // call neither serves nor stores, exactly as if the producer were not admitted at all.
+    let share_site = cross_claim_site_admitted(fn_node, call_node);
+    let net_only = share_site && cross_claim_site_is_net_only(call_node);
+    if share_site && !net_only {
+        if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
+            return Ok(v);
+        }
     }
     // Guard runs only for admitted calls: a store that lands must carry what it cost, so the
     // paying claim's receipt can net it and the shared-fill ledger can attribute it. Its
     // `Drop` closes the fill on every path out of this function.
-    let fill_guard = if cross_claim_pure_admitted(fn_node, func_name) {
+    let fill_guard = if share_site && cross_claim_pure_admitted(fn_node, func_name) {
         Some(CrossClaimFillGuard::enter(func_name))
     } else {
         None
@@ -9916,17 +10857,19 @@ fn eval_pure_named_call(
         let effects_before = ctx.effect_dispatch_count.get();
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
-            if ctx.effect_dispatch_count.get() == effects_before {
+            if share_site && ctx.effect_dispatch_count.get() == effects_before {
                 // The ordinary call path publishes opportunistically: every outcome,
                 // servable or refused, is already counted inside the store, and this
                 // call recomputes on a refusal exactly as if never enrolled.
-                let _ = store_cross_claim_pure_memo(
+                publish_cross_claim_fill(
                     ctx,
+                    call_node,
                     fn_node,
                     func_name,
                     args,
                     v,
                     fill_guard.as_ref(),
+                    net_only,
                 );
             }
         }
@@ -9944,7 +10887,28 @@ fn eval_pure_named_call(
             // buckets comparable; the earlier count-only form could name a producer it could
             // never rank.
             let partial = eval_recompute_partial_key(ctx, fn_node, args);
+            let effects_before = ctx.effect_dispatch_count.get();
             let result = call_function(ctx, fn_node, args, env);
+            // THE RECOMPUTE LEDGER'S KEY IS NOT THE TIER'S. This branch is taken when the ledger
+            // cannot key the arguments; the tier keys them itself (or refuses, counted), and a
+            // net-only fill needs no key at all. Returning here without publishing left an
+            // admitted fill on the paying claim with nothing said (floor probe 37142207751).
+            if share_site {
+                if let Ok(v) = &result {
+                    if ctx.effect_dispatch_count.get() == effects_before {
+                        publish_cross_claim_fill(
+                            ctx,
+                            call_node,
+                            fn_node,
+                            func_name,
+                            args,
+                            v,
+                            fill_guard.as_ref(),
+                            net_only,
+                        );
+                    }
+                }
+            }
             eval_recompute_record_unkeyed(
                 ctx,
                 fn_node,
@@ -9973,9 +10937,17 @@ fn eval_pure_named_call(
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
-        if ctx.effect_dispatch_count.get() == effects_before {
-            let _ =
-                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+        if share_site && ctx.effect_dispatch_count.get() == effects_before {
+            publish_cross_claim_fill(
+                ctx,
+                call_node,
+                fn_node,
+                func_name,
+                args,
+                v,
+                fill_guard.as_ref(),
+                net_only,
+            );
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
@@ -13618,6 +14590,18 @@ fn dispatch_service_wet(
         return dispatch_env_get_native(op_node, param_env, ctx);
     }
 
+    // Native `posix.Process.StartDetached` + `posix.Process.Reap`: the spawn detaches (own
+    // process group, stdio to declared files, NOT waited) and waitpid is answerable only about
+    // THIS process's own children (otherwise ECHILD). No foreign argv can realize either edge,
+    // so like shell.Env.Get these are native handlers; the modeled authority is
+    // dag/extdeps/posix/process.dag (POSIX spawn anchor), which the seed only realizes.
+    if intent == "posix.Process.StartDetached" {
+        return dispatch_start_detached_native(op_node, param_env, ctx, intent);
+    }
+    if intent == "posix.Process.Reap" {
+        return dispatch_process_reap_native(op_node, param_env, ctx);
+    }
+
     if is_shell_transport(transport.clone()) {
         // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
         // spawn failure as a value, with every other declared field absent; one declaring none
@@ -16889,6 +17873,362 @@ fn shell_spawn_refused(argv0: &str, err: &std::io::Error) -> InterpError {
     }
 }
 
+/// `extdeps.posix.process` `ProcessSpawnOutcome`, projected the way `shell_outcome_variant`
+/// projects `ShellOutcome`.
+fn process_spawn_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ProcessSpawnOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+/// The closed waitpid observation, projected the same way (`ProcessReapOutcome`).
+fn process_reap_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ProcessReapOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+/// Outputs of a detached-spawn operation OTHER than the `ProcessSpawnOutcome` field (StartDetached
+/// declares none today; fail-closed Nulls keep a future extra field honest instead of guessed).
+fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => return Ok(Value::Unit),
+    };
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
+    for child in return_type.children.iter() {
+        let field_name = authored_name_at(ctx.si(), child.clone());
+        let short = field_name.rsplit('.').next().unwrap_or(&field_name);
+        if short == "spawn" {
+            continue;
+        }
+        fields.push((ctx.sym(&field_name), Value::Null));
+    }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(fields),
+    })
+}
+
+/// Detached children of THIS process, keyed by pid. `posix.Process.Reap` is answerable only about
+/// these (waitpid(3) semantics: a pid that is not our child is ECHILD, and an arbitrary pid is
+/// simply not ours to wait on). A spawned-but-never-reaped child stays a zombie until this
+/// process exits; callers that start servers reap them (the node-http smoke does).
+static DETACHED_CHILDREN: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<u32, std::process::Child>>,
+> = std::sync::OnceLock::new();
+
+fn detached_children(
+) -> &'static std::sync::Mutex<std::collections::HashMap<u32, std::process::Child>> {
+    DETACHED_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// The detached half of `extdeps.posix.process` StartDetached: spawn argv into its own process
+/// group with stdio redirected to the declared files and do NOT wait. The upstream is POSIX
+/// spawn(3) with POSIX_SPAWN_SETPGROUP (pgid 0) and stdio file actions -- the child is its own
+/// process group so a wall-deadline group-kill aimed at a LATER transport call cannot reach it,
+/// and a kill can name exactly one process (the fact `&` / `$!` carried in the retired heredoc,
+/// now typed). File actions fail the spawn per POSIX, so an unopenable stdio file is a typed
+/// SpawnRefused, not a panic and not a silent fallback.
+fn spawn_shell_detached(
+    argv: &[String],
+    stdout_path: &str,
+    stderr_path: &str,
+    _ctx: &InterpContext,
+    intent: &str,
+) -> InterpResult<u32> {
+    let open_stdio = |path: &str| -> InterpResult<std::fs::File> {
+        std::fs::File::create(path).map_err(|err| InterpError::ShellSpawnRefused {
+            argv0: argv[0].clone(),
+            cause: format!("posix_spawn file action failed on '{path}': {err}"),
+        })
+    };
+    let stdout_file = open_stdio(stdout_path)?;
+    let stderr_file = open_stdio(stderr_path)?;
+
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(stdout_file))
+        .stderr(std::process::Stdio::from(stderr_file));
+    // The child leads its own process group: detached by contract, killable by exactly one pid.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let child = cmd
+        .spawn()
+        .map_err(|err| shell_spawn_refused(&argv[0], &err))?;
+    let pid = child.id();
+    detached_children()
+        .lock()
+        .expect("detached child registry poisoned")
+        .insert(pid, child);
+
+    render_shell_detached_trace(pid, stdout_path, argv, intent);
+    Ok(pid)
+}
+
+/// Native realization of `extdeps.posix.process` StartDetached. The op is transport-less in the
+/// model: no argv can spawn a process that survives its own transport call while this process
+/// holds the pid, so the seed IS the realization domain (the fact `&` / `$!` carried in the
+/// retired heredoc). Inputs arrive as modeled: the argv is `program` followed by `arguments`
+/// words (never a joined script), stdio lands in the two declared files, and the typed answer is
+/// the ProcessSpawnOutcome field.
+fn dispatch_start_detached_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+    intent: &str,
+) -> InterpResult<Value> {
+    let word_list = |name: &str| -> InterpResult<Vec<String>> {
+        match param_env.lookup(ctx.sym(name)) {
+            Some(Value::List(words)) => words
+                .iter()
+                .map(|w| match w {
+                    Value::Str(s) => Ok(s.to_string()),
+                    other => Err(InterpError::TypeError {
+                        msg: format!(
+                            "posix.Process.StartDetached `{name}` must carry String words, found `{other}`"
+                        ),
+                    }),
+                })
+                .collect(),
+            Some(other) => Err(InterpError::TypeError {
+                msg: format!(
+                    "posix.Process.StartDetached `{name}` must be a List of String words, found `{other}`"
+                ),
+            }),
+            None => Err(InterpError::TypeError {
+                msg: format!("posix.Process.StartDetached requires `{name}`"),
+            }),
+        }
+    };
+    let program = match param_env.lookup(ctx.sym("program")) {
+        Some(Value::Str(s)) if !s.is_empty() => s.to_string(),
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                "posix.Process.StartDetached `program` must be a non-empty String, found `{other}`"
+            ),
+            })
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "posix.Process.StartDetached requires `program`".to_string(),
+            })
+        }
+    };
+    let arguments = word_list("arguments")?;
+    let stdout_path = stdio_path_input(param_env, ctx, "stdout_file")?;
+    let stderr_path = stdio_path_input(param_env, ctx, "stderr_file")?;
+
+    let mut argv: Vec<String> = Vec::with_capacity(arguments.len() + 1);
+    argv.push(program.clone());
+    argv.extend(arguments);
+
+    // Same ceilings as the piped shell transport: no spawn past the receipt wall, no oversized argv.
+    if let Some(err) = ctx.wall_deadline_exceeded_error() {
+        return Err(err);
+    }
+    if let Some(err) = argv_arg_limit_refusal(&argv, HOST_ARG_MAX_STRLEN_BYTES) {
+        return Err(err);
+    }
+
+    spawn_shell_detached(&argv, &stdout_path, &stderr_path, ctx, intent)
+        .and_then(|pid| {
+            let mapped = map_detached_outputs(op_node, ctx)?;
+            let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "posix.Process.StartDetached detached a child (pid {pid}) but the operation declares no `ProcessSpawnOutcome` field to answer with"
+                    ),
+                })?;
+            Ok(attach_transport_outcome(
+                Some(mapped),
+                op_node,
+                &field,
+                process_spawn_outcome_variant(
+                    ctx,
+                    "Spawned",
+                    vec![(ctx.sym("pid"), Value::Int(pid as i64))],
+                ),
+                ctx,
+            ))
+        })
+        .or_else(|err| match err {
+            InterpError::ShellSpawnRefused { argv0, cause } => {
+                let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: format!(
+                            "posix.Process.StartDetached spawn refused ({cause}) but the operation declares no `ProcessSpawnOutcome` field to answer with"
+                        ),
+                    })?;
+                Ok(attach_transport_outcome(
+                    None,
+                    op_node,
+                    &field,
+                    process_spawn_outcome_variant(
+                        ctx,
+                        "SpawnRefused",
+                        vec![
+                            (ctx.sym("program"), str_value(argv0)),
+                            (ctx.sym("cause"), str_value(cause)),
+                        ],
+                    ),
+                    ctx,
+                ))
+            }
+            other => Err(other),
+        })
+}
+
+fn stdio_path_input(param_env: &Rc<Env>, ctx: &InterpContext, name: &str) -> InterpResult<String> {
+    match param_env.lookup(ctx.sym(name)) {
+        Some(Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Some(Value::Str(_)) => Err(InterpError::TypeError {
+            msg: format!("posix.Process.StartDetached `{name}` is empty"),
+        }),
+        Some(other) => Err(InterpError::TypeError {
+            msg: format!(
+                "posix.Process.StartDetached `{name}` must be a String path, found `{other}`"
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("posix.Process.StartDetached requires `{name}`"),
+        }),
+    }
+}
+
+fn render_shell_detached_trace(pid: u32, stdout_path: &str, argv: &[String], intent: &str) {
+    let collapsed = shell_argv_collapsed(argv);
+    let line = format!(
+        "[{intent}] detached pid {pid}: {collapsed} (stdio -> {stdout_path}, own process group, not waited)"
+    );
+    eprintln!("{line}");
+}
+
+/// Native realization of `extdeps.posix.process` `Reap` for THIS process's detached children.
+/// waitpid(3) is parent-only; no argv transport can answer it for a pid that is not our child,
+/// so the registry the detached spawn keeps IS the realization. Non-blocking (WNOHANG): a server
+/// still running answers `StillRunning`; a reaped child is removed from the registry so the pid
+/// cannot be answered twice. The answer is the closed `ProcessReapOutcome`: `Exited { code }`
+/// decomposes by WIFEXITED, `Signaled { signal }` by WIFSIGNALED (SIGTERM is not an exit 143),
+/// and ECHILD -- a pid this process never owned, already reaped, or nonpositive -- answers
+/// `ReapRefused { cause }`, never a fabricated "still running".
+fn dispatch_process_reap_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let pid_value = match param_env.lookup(ctx.sym("pid")) {
+        Some(value) => value.clone(),
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "posix.Process.Reap requires a `pid` argument".to_string(),
+            })
+        }
+    };
+
+    // One waitpid(2) observation, typed exactly as the modeled authority
+    // (dag/extdeps/posix/process.dag ProcessReapOutcome) reports it: StillRunning is WNOHANG's 0,
+    // Exited is WIFEXITED's raw code, Signaled is WIFSIGNALED's signal number (a killed child is
+    // NOT an exit; folding 15 into 128+15 would make SIGTERM indistinguishable from a normal exit
+    // 143), and ReapRefused is ECHILD or any waitpid error -- a typed answer about a pid this
+    // process does not own, never a fabricated "still running". A nonpositive pid is closed over
+    // the same way: it is a ReapRefused answer about a pid no child can have, not an interpreter
+    // error.
+    enum ReapObservation {
+        StillRunning,
+        Exited(i32),
+        Signaled(i32),
+        Refused(String),
+    }
+    let observation: ReapObservation = match pid_value {
+        Value::Int(pid) if pid > 0 => {
+            let pid = pid as u32;
+            let mut registry = detached_children()
+                .lock()
+                .expect("detached child registry poisoned");
+            match registry.get_mut(&pid) {
+                Some(child) => match child.try_wait() {
+                    Ok(Some(status)) => {
+                        registry.remove(&pid);
+                        #[cfg(unix)]
+                        {
+                            match std::os::unix::process::ExitStatusExt::signal(&status) {
+                                Some(signal) => ReapObservation::Signaled(signal),
+                                None => ReapObservation::Exited(status.code().unwrap_or(-1)),
+                            }
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            ReapObservation::Exited(status.code().unwrap_or(-1))
+                        }
+                    }
+                    Ok(None) => ReapObservation::StillRunning,
+                    Err(err) => ReapObservation::Refused(format!(
+                        "waitpid on pid {pid} failed: {err}"
+                    )),
+                },
+                None => ReapObservation::Refused(format!(
+                    "pid {pid} was not started by this process (waitpid ECHILD): Reap answers only about detached children of the calling process"
+                )),
+            }
+        }
+        other => ReapObservation::Refused(format!(
+            "pid `{other}` is not a positive Int (waitpid: no such child)"
+        )),
+    };
+    let outcome = match observation {
+        ReapObservation::StillRunning => {
+            process_reap_outcome_variant(ctx, "StillRunning", Vec::new())
+        }
+        ReapObservation::Exited(code) => process_reap_outcome_variant(
+            ctx,
+            "Exited",
+            vec![(ctx.sym("code"), Value::Int(code as i64))],
+        ),
+        ReapObservation::Signaled(signal) => process_reap_outcome_variant(
+            ctx,
+            "Signaled",
+            vec![(ctx.sym("signal"), Value::Int(signal as i64))],
+        ),
+        ReapObservation::Refused(cause) => process_reap_outcome_variant(
+            ctx,
+            "ReapRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+    };
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "ProcessReapOutcome")
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "posix.Process.Reap declares no ProcessReapOutcome output field".to_string(),
+        })?;
+    Ok(attach_transport_outcome(
+        None,
+        op_node,
+        &outcome_field,
+        outcome,
+        ctx,
+    ))
+}
+
 pub(crate) fn shell_result_from_capture(
     capture: &bounded_shell_host_drain::ShellCaptureResult,
     argv0: &str,
@@ -19080,12 +20420,35 @@ fn dispatch_rest(
             None => None,
         };
 
-    let response_format = find_property_string(
-        transport.properties.clone(),
-        "response_format".to_string(),
+    // THE RESPONSE FORMAT IS THE AUTHORED std.serialization WireFormat VARIANT, READ THE WAY THE
+    // EMITTER READS IT (v1.compiler.emit_rust emit_plain_response_body: transport_response_format,
+    // then authored_name_at), so the interpreter and emitted code cannot disagree on one
+    // declaration. This site used to read only a string literal and default every other spelling
+    // to Json, so `response_format: Text` -- the typed spelling github.Pulls.Diff writes -- was
+    // silently JSON-decoded here while emitted code read it as text
+    // (gunbc.recurring_failure_mode response_format_variant_silently_read_as_json). Absent is
+    // Json, as before; a present value that is not a WireFormat variant refuses rather than
+    // defaulting.
+    let response_format = match crate::v1_std_core::transport_response_format(
+        transport.clone(),
         si.clone(),
-    )
-    .unwrap_or_else(|| "Json".to_string());
+    ) {
+        None => "Json".to_string(),
+        Some(node) => {
+            let authored = crate::v1_std_core::authored_name_at(si.clone(), node.clone());
+            if authored == "Text" || authored == "Json" {
+                authored
+            } else {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "transport rest response_format must be a std.serialization WireFormat variant (Json or Text); \
+                         found {:?} on {}",
+                        authored, op_node.name
+                    ),
+                });
+            }
+        }
+    };
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
     // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution
@@ -24633,6 +25996,12 @@ fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, 
         })
     };
     Some((get("Empty"), get("Cons"), get("head"), get("tail")))
+}
+
+/// The elements of a list value in either representation -- a kernel `List` or the structural
+/// `FreeMonoid` (`Cons`/`Empty`) that `v2.std.algebra` folds return -- read in `ctx`.
+pub fn list_value_items(ctx: &InterpContext, val: &Value) -> Option<Vec<Value>> {
+    with_active_ctx(ctx, || free_monoid_to_vec(val))
 }
 
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {

@@ -28,7 +28,7 @@ import gunbc.spark.serving_deployment_selection {
   RuntimeRevision, runtime_revision, artifact_glm_53_flash_2bit,
 }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
   glm_5_3_flash_vllm_tool_call_parser,
@@ -50,7 +50,7 @@ import gunbc.spark.model_snapshot_acquisition {
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
   SparkMaterializeRefused,
-  SnapshotAcquisitionExecutor, ContainerizedCli,
+  SnapshotAcquisitionExecutor, HostCli, containerized_hub_cli_for, ContainerizedHubCliBuilt, ContainerizedHubCliRefused,
   spark_materialize_member,
   SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
 }
@@ -296,12 +296,14 @@ fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjec
 // A RUNTIME WITH NO HUB CLI READ INSIDE IT GETS THE SAME EXECUTOR AS AN UNMODELLED ONE: no path was
 // read, so none is spelled, and the sentinel the executor runs refuses on the absent program exactly
 // as it does for a runtime with no row.
+// BUILT THROUGH THE SAME CHECKED CONSTRUCTOR as every containerised CLI (containerized_hub_cli_for). A
+// local-directory placement has no cache to disagree with, so the constructor cannot refuse it; the HostCli
+// arm is unreachable for this input and, were it reached, the host has no Hub CLI either, so the sentinel
+// refuses on the absent program the same way.
 fn glm_canary_unmodelled_acquisition_executor() -> SnapshotAcquisitionExecutor {
-  ContainerizedCli {
-    image: "(unmodelled runtime)" as NonEmptyStr,
-    cli_path: "/nonexistent" as NonEmptyStr,
-    host_path: "/nonexistent" as NonEmptyStr,
-    container_path: "/out" as NonEmptyStr,
+  match containerized_hub_cli_for(image: "(unmodelled runtime)" as NonEmptyStr, cli_path: "/nonexistent" as NonEmptyStr, placement: LocalDirectoryPlacement { host_path: "/nonexistent" as NonEmptyStr }, container_path: "/out" as NonEmptyStr) {
+    ContainerizedHubCliBuilt { executor: e } => e
+    ContainerizedHubCliRefused { cause: _ } => HostCli
   }
 }
 
@@ -311,12 +313,15 @@ fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExec
     Present { value: rrow } =>
       match rrow.hub_cli_path {
         Absent => glm_canary_unmodelled_acquisition_executor()
-        Present { value: cli } => ContainerizedCli {
-          image: runtime_artifact_wire(a: rrow.artifact),
-          cli_path: cli,
-          host_path: glm_canary_host_path(arm: arm),
-          container_path: "/out" as NonEmptyStr,
-        }
+        Present { value: cli } =>
+          match serving_checkpoint_row(c: arm.checkpoint) {
+            Absent => glm_canary_unmodelled_acquisition_executor()
+            Present { value: crow } =>
+              match containerized_hub_cli_for(image: runtime_artifact_wire(a: rrow.artifact), cli_path: cli, placement: crow.placement, container_path: "/out" as NonEmptyStr) {
+                ContainerizedHubCliBuilt { executor: e } => e
+                ContainerizedHubCliRefused { cause: _ } => glm_canary_unmodelled_acquisition_executor()
+              }
+          }
       }
   }
 }
@@ -582,7 +587,7 @@ fn glm_canary_observe_serve(ctx: SparkMaterializeContext, arm: GlmCanaryArm) -> 
     Absent => ServeUnreadable { cause: "this arm renders no launch line, so there is nothing to compare the running container against" }
     Present { value: argv } =>
       match spark_remote_run(ctx: ctx, argv: glm_canary_inspect_argv(arm: arm)) {
-        RemoteUnreachable { cause: c } => ServeUnreadable { cause: c }
+        RemoteUnreachable { cause: c, reach: _ } => ServeUnreadable { cause: c }
         RemoteRan { exit_code: e, stdout: out, stderr: err } =>
           if e != 0 {
             ServeNotRunning { detail: join(["docker inspect exited ", to_string(e), " for container ", arm.container_name as String, ": ", err], "") }
@@ -691,7 +696,7 @@ fn glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement
 
 fn glm_canary_replace_container(ctx: SparkMaterializeContext, arm: GlmCanaryArm, run: List<String>) -> CanaryCutover {
   match spark_remote_run(ctx: ctx, argv: glm_canary_inspect_argv(arm: arm)) {
-    RemoteUnreachable { cause: c } => CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", c], "") }
     RemoteRan { exit_code: e, stdout: rollback, stderr: err } =>
       if e != 0 {
         CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", err], "") }
@@ -704,7 +709,7 @@ fn glm_canary_replace_container(ctx: SparkMaterializeContext, arm: GlmCanaryArm,
 fn glm_canary_stop_and_start(ctx: SparkMaterializeContext, arm: GlmCanaryArm, run: List<String>, rollback: String) -> CanaryCutover {
   let removed = spark_remote_run(ctx: ctx, argv: ["docker", "rm", "-f", arm.container_name as String])
   match spark_remote_run(ctx: ctx, argv: run) {
-    RemoteUnreachable { cause: c } => CutoverStartedButNotServing { rollback: rollback, detail: join(["the replacement could not be started: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => CutoverStartedButNotServing { rollback: rollback, detail: join(["the replacement could not be started: ", c], "") }
     RemoteRan { exit_code: e, stdout: _, stderr: err } =>
       if e != 0 {
         CutoverStartedButNotServing { rollback: rollback, detail: join(["docker run exited ", to_string(e), ": ", err], "") }
@@ -728,7 +733,7 @@ fn glm_canary_health_argv(arm: GlmCanaryArm) -> List<String> {
 
 fn glm_canary_await_serving(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollback: String, remaining: Nat) -> CanaryCutover {
   match spark_remote_run(ctx: ctx, argv: glm_canary_health_argv(arm: arm)) {
-    RemoteUnreachable { cause: c } =>
+    RemoteUnreachable { cause: c, reach: _ } =>
       if remaining == 0 {
         CutoverStartedButNotServing { rollback: rollback, detail: join(["the health probe never reached the host: ", c], "") }
       } else {

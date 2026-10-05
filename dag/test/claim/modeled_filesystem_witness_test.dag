@@ -25,7 +25,7 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, FileHoldAcquired, FileHoldOccupied,
 }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { boot_run_owner }
+import gunbc.managed_host_unit_hold { boot_run_owner }
 import gunbc.filesystem_model {
   ModeledFilesystem, ModeledFile, filesystem_bindings, filesystem_operation,
 }

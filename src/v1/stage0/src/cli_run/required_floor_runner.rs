@@ -65,7 +65,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -282,14 +281,6 @@ pub fn floor_walk_attempt_id_from_env() -> String {
     std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
         .or_else(|_| std::env::var("GUNBC_WALK_ATTEMPT_ID"))
         .unwrap_or_else(|_| "local".to_string())
-}
-
-pub(crate) fn floor_drain_retention_detail_enabled() -> bool {
-    std::env::var("GUNBC_FLOOR_DRAIN_RETENTION")
-        .ok()
-        .as_deref()
-        .map(|v| matches!(v, "1" | "true" | "TRUE"))
-        .unwrap_or(false)
 }
 
 pub fn make_eval_context(
@@ -1033,7 +1024,6 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     diff_text: &str,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
-    let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
     // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
@@ -1042,7 +1032,6 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
-        &changed,
         &departed,
         &added,
         None,
@@ -1056,14 +1045,12 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
-    let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
     let rename_from = parse_unified_diff_rename_sources(diff_text);
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
-        &changed,
         &departed,
         &added,
         Some(base_test_decl_names),
@@ -1083,7 +1070,6 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
     floor_diff_edits_from_line_ranges_reading(
         index,
         &parse_unified_diff_line_ranges(diff_text),
-        &parse_unified_diff_changed_new_lines(diff_text),
         &parse_unified_diff_departed_paths(diff_text),
         &parse_unified_diff_added_paths(diff_text),
         Some(base_test_decl_names),
@@ -1098,7 +1084,6 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
 pub(crate) fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
@@ -1107,7 +1092,6 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     floor_diff_edits_from_line_ranges_reading(
         index,
         line_ranges_by_file,
-        changed_new_lines_by_file,
         departed_paths,
         added_paths,
         base_test_decl_names,
@@ -1135,7 +1119,6 @@ fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
 pub(crate) fn floor_diff_edits_from_line_ranges_reading(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
@@ -1213,21 +1196,16 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m
         });
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        // (start line, name, is_data, last line). The last line is filled after sorting: the
-        // last non-blank line before the next declaration starts. It is what lets a
-        // pure-deletion gap between two declarations be told from one inside a declaration. It
-        // errs toward CHARGING: a leading comment of the next declaration counts as the
-        // previous one's tail, so deleting it over-selects, never under-selects.
-        let mut decls: Vec<(i64, String, bool, Option<i64>)> = Vec::new();
+        let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data, None));
+            decls.push((line, name, is_data));
         }
         for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _, _)| n == &name) {
-                decls.push((line, name, false, None));
+            if !decls.iter().any(|(_, n, _)| n == &name) {
+                decls.push((line, name, false));
             }
         }
         if decls.is_empty() {
@@ -1240,42 +1218,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             touched_entry_files.insert(file_norm.clone());
             continue;
         }
-        decls.sort_by_key(|(line, _, _, _)| *line);
-        {
-            let lines: Vec<&str> = content.lines().collect();
-            let count = decls.len();
-            for i in 0..count {
-                let start = decls[i].0;
-                let next = if i + 1 < count {
-                    decls[i + 1].0 - 1
-                } else {
-                    lines.len() as i64
-                };
-                let mut last = start;
-                for l in start..=next {
-                    if lines
-                        .get((l - 1).max(0) as usize)
-                        .is_some_and(|t| !t.trim().is_empty())
-                    {
-                        last = l;
-                    }
-                }
-                decls[i].3 = Some(last);
-            }
-        }
-        let first_decl_line = decls[0].0;
-        let mut changed =
-            changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
-        // Deletion-only hunks (`-` rows, zero `+` width) still carry a new-side anchor in the
-        // hunk header; fall back to parsed ranges when no `+`/`-` rows were attributed.
-        if changed.is_empty() {
-            for r in ranges {
-                let end = if r.end < r.start { r.start } else { r.end };
-                for l in r.start..=end {
-                    changed.insert(l);
-                }
-            }
-        }
+        decls.sort_by_key(|(line, _, _)| *line);
         // A PATH WHOSE DECLARATION SET IS ESTABLISHED FRESH CONTRIBUTES EVERY DECLARATION IT
         // CARRIES, and the line ranges do not establish that set — they only report which lines
         // the diff happened to print.
@@ -1306,71 +1249,33 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         // THIS NARROWS NOTHING AND WIDENS NOTHING BEYOND THE PATH'S OWN DECLARATIONS: the
         // universe is this file's parsed decl list, not the corpus, so it is the precise answer
         // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
-        if added_paths.contains(&file_norm) {
-            for (line, _, _, _) in &decls {
-                changed.insert(*line);
-            }
-        }
-        // Module-line edits (line 1) stay fail-closed for modifies — renaming can
-        // change entry identity. Wholly-added files necessarily touch line 1.
-        if changed.contains(&1) && !added_paths.contains(&file_norm) {
-            return Err(format!("diff before first declaration in {file_path}"));
-        }
-        // PURE-DELETION GAPS ARE CHARGED BY WHERE THE GAP LIES, NOT BY THE LINE AFTER IT. Under
-        // `-U0` a deletion-only hunk names no surviving line; both parsers anchor it at L+1, the
-        // line after the gap, which charged the NEXT declaration whenever whole declarations were
-        // deleted between two others -- force-running an unchanged neighbour under the
-        // changed-witness policy (`gunbc.recurring_failure_mode`
-        // `a_pure_deletion_force_runs_its_unchanged_neighbour`, measured on gunbc#13103). A gap
-        // at or before the first declaration stays a pre-declaration (file-grain) edit; a gap
-        // strictly inside a declaration's span charges that declaration; a gap between
-        // declarations charges none, because what it removed no longer exists to select.
-        // The module-line refusal above already read the gap at line 1.
-        let gaps: HashSet<i64> = if added_paths.contains(&file_norm) {
-            HashSet::new()
+        let charged: HashSet<usize> = if added_paths.contains(&file_norm) {
+            (0..decls.len()).collect()
         } else {
-            ranges
-                .iter()
-                .filter(|r| r.deletion_gap)
-                .map(|r| r.start)
-                .collect()
+            // A DECLARATION IS CHANGED WHEN ITS OWN TEXT DIFFERS AT BASE AND HEAD, joined by
+            // name -- never by which lines a hunk names. Git's `-U0` alignment is free to print a
+            // deletion between two similar declarations as a hunk that starts or ends inside the
+            // neighbour, and any line-ownership rule then charges a declaration nobody touched
+            // (`gunbc.recurring_failure_mode` `a_pure_deletion_force_runs_its_unchanged_neighbour`,
+            // both the gap form of gunbc#13103 and the leading-comment form of gunbc#13126). The
+            // base is reconstructed from the head and the diff's own removed lines, so this is
+            // the same single observation, read without its alignment.
+            let head_lines: Vec<&str> = content.lines().collect();
+            let starts: Vec<(i64, String)> =
+                decls.iter().map(|(l, n, _)| (*l, n.clone())).collect();
+            let attribution = declaration_text_attribution(&head_lines, &starts, ranges);
+            // Module-line edits stay fail-closed for modifies — renaming can change entry
+            // identity. Wholly-added files necessarily touch line 1.
+            if attribution.module_line_changed {
+                return Err(format!("diff before first declaration in {file_path}"));
+            }
+            if attribution.pre_declaration_changed {
+                touched_entry_files.insert(file_norm.clone());
+            }
+            attribution.changed
         };
-        let mut gap_pre_decl = false;
-        let mut gap_charged: HashSet<usize> = HashSet::new();
-        for &g in &gaps {
-            changed.remove(&g);
-            if g <= first_decl_line {
-                gap_pre_decl = true;
-                continue;
-            }
-            for (i, (start, _, _, last)) in decls.iter().enumerate() {
-                let bound = last.unwrap_or_else(|| {
-                    decls
-                        .get(i + 1)
-                        .map(|(l, _, _, _)| l - 1)
-                        .unwrap_or(i64::MAX)
-                });
-                if *start < g && g <= bound {
-                    gap_charged.insert(i);
-                }
-            }
-        }
-        let has_pre_decl = gap_pre_decl || changed.iter().any(|&l| l < first_decl_line);
-        let has_post_decl =
-            !gap_charged.is_empty() || changed.iter().any(|&l| l >= first_decl_line);
-        if has_pre_decl {
-            touched_entry_files.insert(file_norm.clone());
-            if !has_post_decl {
-                continue;
-            }
-        }
-        for i in 0..decls.len() {
-            let (line, name, is_data, _) = &decls[i];
-            let decl_end = decls
-                .get(i + 1)
-                .map(|(l, _, _, _)| l - 1)
-                .unwrap_or(i64::MAX);
-            if !gap_charged.contains(&i) && !changed.iter().any(|&l| l >= *line && l <= decl_end) {
+        for (i, (_, name, is_data)) in decls.iter().enumerate() {
+            if !charged.contains(&i) {
                 continue;
             }
             if test_fn_names.contains(name) {
@@ -1414,6 +1319,126 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         touched_entry_files,
         touched_declarations,
     })
+}
+
+/// What one modified file's declarations look like once each is compared with itself at the
+/// diff base. `changed` holds indices into the head declaration list the caller supplied.
+struct DeclarationTextAttribution {
+    module_line_changed: bool,
+    pre_declaration_changed: bool,
+    changed: HashSet<usize>,
+}
+
+/// A declaration's OWN text: from its first line up to the next declaration, without the
+/// trailing blank and `//` lines. Those trailing lines are the NEXT declaration's leading
+/// annotation (DESIGN §4c: an annotation is not program data), so deleting a neighbour and its
+/// comment never changes this declaration's text.
+fn declaration_own_text(lines: &[String], start: usize, next: usize) -> String {
+    let mut end = next.min(lines.len());
+    while end > start {
+        let t = lines[end - 1].trim();
+        if t.is_empty() || t.starts_with("//") {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    lines[start..end].join("\n")
+}
+
+/// Whether a line REMOVED by the diff opens a declaration at the base. Removed lines are not
+/// parsed, so this reads layout: a column-0 line that is not a comment or a closing bracket. It
+/// errs toward splitting -- a false split shortens a base declaration and so CHARGES its head
+/// counterpart, and a missed one lengthens it and charges too; neither direction un-charges an
+/// edited declaration.
+fn removed_line_opens_declaration(line: &str) -> Option<String> {
+    let first = line.chars().next()?;
+    if first.is_whitespace() || matches!(first, '}' | ')' | ']' | '"') || line.starts_with("//") {
+        return None;
+    }
+    const MARKERS: [&str; 6] = ["test", "pub", "fn", "data", "type", "probe"];
+    line.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty() && !MARKERS.contains(w))
+        .map(str::to_string)
+        .next()
+        .or_else(|| Some(String::new()))
+}
+
+/// Compare every head declaration with the base declaration of the same name. The base file is
+/// the head with each hunk's new-side lines replaced by its removed lines, which `-U0` carries
+/// in full, so the comparison needs no second read and no alignment.
+fn declaration_text_attribution(
+    head: &[&str],
+    decls: &[(i64, String)],
+    ranges: &[FileLineRange],
+) -> DeclarationTextAttribution {
+    let mut hunks: Vec<&FileLineRange> = ranges.iter().collect();
+    hunks.sort_by_key(|r| r.new_start);
+    let mut base: Vec<String> = Vec::new();
+    let mut base_opens: Vec<(usize, String)> = Vec::new();
+    let mut head_to_base: Vec<Option<usize>> = vec![None; head.len()];
+    let mut h = 0usize;
+    for r in hunks {
+        let before = if r.new_count > 0 {
+            r.new_start - 1
+        } else {
+            r.new_start
+        };
+        let before = (before.max(0) as usize).min(head.len());
+        while h < before {
+            head_to_base[h] = Some(base.len());
+            base.push(head[h].to_string());
+            h += 1;
+        }
+        for line in &r.removed {
+            if let Some(name) = removed_line_opens_declaration(line) {
+                base_opens.push((base.len(), name));
+            }
+            base.push(line.clone());
+        }
+        h = (h + r.new_count.max(0) as usize).min(head.len());
+    }
+    while h < head.len() {
+        head_to_base[h] = Some(base.len());
+        base.push(head[h].to_string());
+        h += 1;
+    }
+    let head_owned: Vec<String> = head.iter().map(|l| l.to_string()).collect();
+    for (line, name) in decls {
+        if let Some(Some(b)) = head_to_base.get((*line - 1).max(0) as usize) {
+            base_opens.push((*b, name.clone()));
+        }
+    }
+    base_opens.sort();
+    base_opens.dedup_by_key(|(b, _)| *b);
+    let first_head = (decls[0].0 - 1).max(0) as usize;
+    let first_base = base_opens.first().map(|(b, _)| *b).unwrap_or(base.len());
+    let pre_declaration_changed =
+        head_owned[..first_head.min(head_owned.len())] != base[..first_base.min(base.len())];
+    let module_line_changed = head_owned.first() != base.first();
+    let mut changed = HashSet::new();
+    for (i, (line, name)) in decls.iter().enumerate() {
+        let start = (*line - 1).max(0) as usize;
+        let next = decls
+            .get(i + 1)
+            .map(|(l, _)| (*l - 1).max(0) as usize)
+            .unwrap_or(head_owned.len());
+        let text = declaration_own_text(&head_owned, start, next);
+        let unchanged = base_opens.iter().enumerate().any(|(j, (b, n))| {
+            n == name && {
+                let next_b = base_opens.get(j + 1).map(|(x, _)| *x).unwrap_or(base.len());
+                declaration_own_text(&base, *b, next_b) == text
+            }
+        });
+        if !unchanged {
+            changed.insert(i);
+        }
+    }
+    DeclarationTextAttribution {
+        module_line_changed,
+        pre_declaration_changed,
+        changed,
+    }
 }
 
 /// One projected row of the CHANGED-WITNESS PROJECTION. The standing vocabulary is
@@ -1482,7 +1507,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     for path in &changed_paths {
         line_ranges_by_file.entry(path.clone()).or_default();
     }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let rename_from = parse_unified_diff_rename_sources(&diff_text);
     // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
@@ -1511,7 +1535,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
-        &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
         Some(&base_test_decl_names),
@@ -2294,12 +2317,12 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 }
 
 /// One roster row as the host reads it -- only the fields it needs to gather FACTS (which file a
-/// row names, and whether it is an ImportsFixed retirement whose file must be re-derived). Every
+/// row names, and whether it is a retirement whose file must be re-derived). Every
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
-    /// `NotAReference`, read from the row view's own fields.
+    /// A retirement the host re-derives on every run to hold it true, read from the row view's
+    /// `rechecked` field, which the `.dag` derives from the row's standing.
     rechecked: bool,
 }
 
@@ -2319,7 +2342,7 @@ impl UnimportedBareProviderRosterReading {
     /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
     /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
     /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
-    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    /// before a view field existed (`rechecked`, gunbc#13116) is still a readable base.
     fn read(
         index: &MultiEntryIndex,
         entry: &str,
@@ -2354,28 +2377,16 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
-            let imports_fixed = match ctx.field(fields, "imports_fixed") {
+            let rechecked = match ctx.field(fields, "rechecked") {
                 Some(v1_interpreter::Value::Bool(b)) => *b,
                 other => {
                     return Err(format!(
-                        "{function}: row `imports_fixed` is not a Bool ({})",
+                        "{function}: row `rechecked` is not a Bool ({})",
                         floor_value_shape(other)
                     ))
                 }
             };
-            let not_a_reference = match ctx.field(fields, "not_a_reference") {
-                Some(v1_interpreter::Value::Bool(b)) => *b,
-                other => {
-                    return Err(format!(
-                        "{function}: row `not_a_reference` is not a Bool ({})",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            rows.push(RosterRow {
-                file,
-                rechecked: imports_fixed || not_a_reference,
-            });
+            rows.push(RosterRow { file, rechecked });
         }
         Ok(Self {
             ctx,
@@ -2489,9 +2500,13 @@ fn unimported_bare_provider_standing_refusals(
     let mut carried: Vec<String> = Vec::new();
     let mut route_carried: Vec<String> = Vec::new();
     let mut hints: HashMap<String, String> = HashMap::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     for path in &checked {
         let sf = &lookup[path.as_str()];
-        for v in unimported_bare_providers(sf, index)? {
+        let judgment = unimported_bare_provider_judgment(sf, index)?;
+        suppressed_builtin += judgment.suppressed_builtin;
+        suppressed_kernel_method_only += judgment.suppressed_kernel_method_only;
+        for v in judgment.rows {
             let id = head.identity(&v.file, &v.name)?;
             hints.insert(
                 id.clone(),
@@ -2507,6 +2522,15 @@ fn unimported_bare_provider_standing_refusals(
             carried.push(id);
         }
     }
+    // THE DECLARED COVERAGE FRONTIER (`gunbc.rung_drop`
+    // `unimported_bare_provider_gate_admits_kernel_method_names_untyped`): counted on every run over
+    // the files this run judged, so growth in the kernel-method-only population is visible.
+    eprintln!(
+        "[floor-phase] phase=unimported-bare-provider-frontier judged_files={} \
+         suppressed_builtin={suppressed_builtin} \
+         suppressed_kernel_method_only={suppressed_kernel_method_only}",
+        checked.len()
+    );
     let strings = |xs: Vec<String>| list_value_from_vec(xs.iter().map(str_value).collect());
     let verdict = head.refusals(
         "unimported_bare_provider_roster_standing",
@@ -4404,611 +4428,6 @@ pub(crate) fn emit_changed_witness_projection(
     Ok(())
 }
 
-pub fn run_discovery_corpus_with_options(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-    width_policy: DiscoveryWidthPolicy,
-    options: DiscoveryCorpusOptions,
-) -> Result<DiscoverySummary, String> {
-    let pump_started = std::time::Instant::now();
-    let out = run_discovery_corpus_with_options_inner(
-        source_roots,
-        scan_dirs,
-        explicit_entries,
-        execution_mode,
-        width_policy,
-        options,
-    );
-    discovery_phase_totals::add(
-        &discovery_phase_totals::PUMP_WALL_MS,
-        pump_started.elapsed(),
-    );
-    out
-}
-
-pub(crate) fn run_discovery_corpus_with_options_inner(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-    width_policy: DiscoveryWidthPolicy,
-    options: DiscoveryCorpusOptions,
-) -> Result<DiscoverySummary, String> {
-    let mut rows =
-        if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
-            Vec::new()
-        } else {
-            let t = std::time::Instant::now();
-            let walked = discover_floor_witness_roster(
-                source_roots,
-                scan_dirs,
-                &options.exclude_substrings,
-                &options.discovery_scope_dirs,
-            );
-            discovery_phase_totals::add(&discovery_phase_totals::ROSTER_WALK_MS, t.elapsed());
-            walked?
-        };
-    let mut seen: std::collections::BTreeSet<(String, String)> = rows
-        .iter()
-        .map(|r| (r.entry.clone(), r.function.clone()))
-        .collect();
-    // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
-    let expanded_explicit = test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)?;
-    for (entry, function) in &expanded_explicit {
-        if seen.insert((entry.clone(), function.clone())) {
-            rows.push(DiscoveryRow {
-                label: function.clone(),
-                entry: entry.clone(),
-                function: function.clone(),
-                reads_live_tree: read_entry_live_tree_disposition(entry)?,
-            });
-        }
-    }
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    if rows.is_empty() {
-        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
-    }
-    let width_policy = match width_policy {
-        DiscoveryWidthPolicy::DerivedSchedule => {
-            let pairs: Vec<(String, String)> = rows
-                .iter()
-                .map(|r| (r.entry.clone(), r.function.clone()))
-                .collect();
-            let derived = crate::derived_realization_schedule::derive_discovery_schedule_width(
-                source_roots,
-                &pairs,
-            )?;
-            if let Some(msg) = derived.refuse_if_budget_unreadable() {
-                return Err(msg);
-            }
-            eprintln!(
-                "run_discovery_corpus: derived schedule width={} verdict={} max_derived_bound={}",
-                derived.width,
-                derived.verdict,
-                derived
-                    .max_derived_bound_bytes
-                    .map(|b| b.to_string())
-                    .unwrap_or_else(|| "unknown".into()),
-            );
-            DiscoveryWidthPolicy::FixedWidth(derived.width.max(1))
-        }
-        other => other,
-    };
-    let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
-        Vec::new()
-    } else {
-        collect_deferred_discovery_rows(source_roots, &options.exclude_substrings)?
-    };
-    let admission_orphans = collect_unexecuted_deferred_witnesses(&deferred_rows);
-    refuse_unexecuted_deferred_witnesses(&admission_orphans)?;
-    if !deferred_rows.is_empty() {
-        refuse_stale_frozen_path_deferrals(&collect_stale_frozen_path_deferrals())?;
-        refuse_frozen_path_deferral_additions(&collect_frozen_path_deferral_additions()?)?;
-    }
-    eprintln_deferred_discovery_rows(&deferred_rows);
-    set_phase(FloorPhase::Discovery, "discovery-roster");
-    if options.execution_authority_source_roots.is_empty() {
-        return Err(
-            "discovery execution requires an explicit executor-authority source-root universe"
-                .to_string(),
-        );
-    }
-    let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
-    // Union-resolve S1 (resolver-graph-major-design (deleted) §7): ONE index for the whole
-    // process step on the pump thread — prelude-warmed parse/typed caches instead of a
-    // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
-    // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
-    // (serde byte transport). The pump thread keeps `process_shared_index` (private per-
-    // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
-    // read/write the shared store as the typed-cache authority (no local Rc duplicate).
-    // Store creation lives in the Adaptive match arm below — unrepresentable on Serial.
-    let index = if p1_cohort_experiment_active()
-        && matches!(width_policy, DiscoveryWidthPolicy::Serial)
-        && p1_experimental_arm_shared_typed_store(1)
-    {
-        let store = new_shared_typecheck_caches();
-        Rc::new(build_multi_entry_index_with_shared_caches(
-            source_roots,
-            store,
-        ))
-    } else {
-        process_shared_index(source_roots)
-    };
-    // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
-    // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
-    // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
-    // the transitive import-CLOSURE size — never the roster/entry count (pairing an
-    // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
-    // factor). Skip-before-resolve (run_discovery_rows) elides cold resolve for
-    // import-closure-unaffected entries while folding their module-graph closure into
-    // the post-resolve union so this pre-resolve count stays paired with calibration.
-    let preresolve_calibration_started = std::time::Instant::now();
-    let pre_resolve_closure_nodes = {
-        let n = roster_import_closure_nodes_pre_resolve(&rows, &[], &index)?;
-        eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
-            n,
-            rows.len()
-        );
-        n
-    };
-    discovery_phase_totals::add(
-        &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
-        preresolve_calibration_started.elapsed(),
-    );
-    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
-        Ok(keys) if keys.is_empty() => None,
-        Ok(keys) => Some(keys),
-        Err(e) => {
-            return Err(format!(
-                "whole-tree published mock corpus precompute failed: {e}"
-            ));
-        }
-    };
-    // Derive every leg for the WHOLE roster here, above the width dispatch, while this
-    // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
-    // of rows, so priming inside `run_discovery_rows` would build one interpreter context
-    // per worker — and width is adaptive, so "n is small here" is not a fact that stays
-    // true (§6). One build covers the run; workers only read the process-wide memo.
-    prime_witness_execution_legs_from_authority(
-        &index,
-        (!execution_authority_is_subject)
-            .then_some(options.execution_authority_source_roots.as_slice()),
-        rows.iter().map(|row| row.entry.as_str()),
-    );
-
-    let floor_color = floor_color_enabled();
-    let floor_stream = floor_stream_enabled();
-    return match width_policy {
-        DiscoveryWidthPolicy::DerivedSchedule => {
-            unreachable!("DerivedSchedule is lowered to FixedWidth before the pool match")
-        }
-        DiscoveryWidthPolicy::Serial => {
-            // Arm retention over the WHOLE serial schedule (all rows) before the single drain
-            // call — a shared module stays resident until its last scheduled entry consumes it.
-            index_arm_schedule_retention(&index, &rows);
-            let summary = run_discovery_rows(
-                &rows,
-                &index,
-                execution_mode,
-                whole_tree_published_keys.clone(),
-                options.witness_budget_policy(),
-                ShardStyle {
-                    shard_id: 0,
-                    shard_count: 1,
-                    color: floor_color,
-                    stream: floor_stream,
-                },
-            )?;
-            // Definition-drift oracle (single-authority reconciliation, executable): on a
-            // COMPLETED serial run the pre-resolve import walk and the post-resolve
-            // resolved-graph union must agree — resolve resolves exactly the transitive
-            // imports. Serial only: the merged multi-worker field is max-over-workers, not
-            // the process union, so the comparison is ill-posed there. A mismatch means one
-            // closure definition is wrong (an implicit prelude module the walk missed, or a
-            // resolve seeding change) and the space-lens calibration pair would silently
-            // skew — refuse rather than emit a lying receipt.
-            if summary.roster_closure_nodes != pre_resolve_closure_nodes {
-                return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve loader-closure union = {} nodes, \
-                     post-resolve resolved union = {} — the two closure definitions diverged \
-                     (loader fork or seeding change: resolve loaded a module set the loader \
-                     both-closure fixpoint did not produce, or vice versa); reconcile the \
-                     definitions before trusting bytes-per-node calibration \
-                     (roster_import_closure_nodes_pre_resolve is the shared authority)",
-                    pre_resolve_closure_nodes, summary.roster_closure_nodes
-                ));
-            }
-            eprintln!(
-                "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
-                pre_resolve_closure_nodes
-            );
-            Ok(finalize_discovery_summary(summary, &rows, deferred_rows))
-        }
-        DiscoveryWidthPolicy::ControlledWidthTwo => {
-            const CONTROLLED_WIDTH: usize = 2;
-            let arm_shared_store = if p1_cohort_experiment_active() {
-                p1_experimental_arm_shared_typed_store(CONTROLLED_WIDTH)
-            } else {
-                true
-            };
-            let groups = entry_row_groups(&rows);
-            eprintln!(
-                "run_discovery_corpus: controlled width-2 pool over {} entry-group(s), {} row(s), shared_typed_store={}",
-                groups.len(),
-                rows.len(),
-                arm_shared_store,
-            );
-            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
-            if floor_stream {
-                eprintln!(
-                    "{} [affected-set] controlled width-2 pool (fixed {} workers; shared typed-module store={})",
-                    floor_ts(),
-                    CONTROLLED_WIDTH,
-                    arm_shared_store,
-                );
-            }
-            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
-                std::sync::Arc::new(Mutex::new(
-                    groups
-                        .into_iter()
-                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
-                        .collect(),
-                ));
-            let abort = std::sync::Arc::new(AtomicBool::new(false));
-            let source_roots_owned = source_roots.to_vec();
-            let budget_policy_for_workers = options.witness_budget_policy();
-            let mut handles = Vec::with_capacity(CONTROLLED_WIDTH);
-            for worker_ordinal in 0..CONTROLLED_WIDTH {
-                let queue_for_worker = queue.clone();
-                let abort_for_worker = abort.clone();
-                let roots = source_roots_owned.clone();
-                let keys = whole_tree_published_keys.clone();
-                let store = cross_worker_store.clone();
-                let arm_shared_for_worker = arm_shared_store;
-                let style = ShardStyle {
-                    shard_id: worker_ordinal,
-                    shard_count: CONTROLLED_WIDTH,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                handles.push(std::thread::spawn(
-                    move || -> Result<Vec<DiscoverySummary>, String> {
-                        let index = if arm_shared_for_worker {
-                            let store = store
-                                .expect("shared typed store armed but cross_worker_store missing");
-                            build_multi_entry_index_with_shared_caches(&roots, store)
-                        } else {
-                            build_multi_entry_index(&roots)
-                        };
-                        let mut worker_summaries = Vec::new();
-                        loop {
-                            if abort_for_worker.load(Ordering::SeqCst) {
-                                break;
-                            }
-                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
-                            else {
-                                break;
-                            };
-                            match run_discovery_rows(
-                                &group_rows,
-                                &index,
-                                execution_mode,
-                                keys.clone(),
-                                budget_policy_for_workers,
-                                style,
-                            ) {
-                                Ok(summary) => worker_summaries.push(summary),
-                                Err(e) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Ok(worker_summaries)
-                    },
-                ));
-            }
-            let mut summaries = Vec::new();
-            let mut first_err: Option<String> = None;
-            for handle in handles {
-                match handle
-                    .join()
-                    .map_err(|_| "controlled-width discovery worker panicked".to_string())
-                {
-                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
-                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
-                }
-            }
-            if let Some(e) = first_err {
-                return Err(e);
-            }
-            let leftover = queue.lock().unwrap().len();
-            if leftover > 0 {
-                return Err(format!(
-                    "controlled width-2 pool exited with {leftover} undrained entry-group(s)"
-                ));
-            }
-            Ok(finalize_discovery_summary(
-                merge_discovery_summaries(summaries),
-                &rows,
-                deferred_rows,
-            ))
-        }
-        DiscoveryWidthPolicy::FixedWidth(pool_width) => {
-            // Derived schedule pool: entry-groups drain through a fixed worker count chosen
-            // up front by std.realize_pack over the roster's derived space bounds.
-            let groups = entry_row_groups(&rows);
-            let spawn_target_width = pool_width;
-            eprintln!(
-                "run_discovery_corpus: derived schedule pool over {} entry-group(s), {} row(s) (scheduled width={})",
-                groups.len(),
-                rows.len(),
-                spawn_target_width,
-            );
-            // Width=1: drain inline on the pump thread reusing `process_shared_index` (already
-            // warmed for calibration + floor runner). Spawning a worker thread duplicates the
-            // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
-            // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
-            // when plural workers run (below).
-            //
-            // This width read is deliberately SAMPLED ONCE, and at width 1 that makes the
-            // window an absorbing state for this pool: the only path that grows it (a slot
-            // completion) lives past the branch below, so the governor's AIMD controller is
-            // not reachable from the corpus. That is a real defect in the controller — and
-            // un-latching it is nonetheless a MEASURED LOSS, so the latch stays until the
-            // cost it hides is gone. Same branch, same 621 entry-groups, same .rs-forced
-            // whole-tree path: serial 11.75min GREEN (CI 29707161743 — max_width_reached=1,
-            // admissions=1, peak 6.97 GB) vs un-latched 47min+ without finishing (CI
-            // 29714863168), vs un-latched with per-unit window growth OOM-killed at
-            // 101.6 GB in 11min (CI 29710324768).
-            //
-            // The reason is Amdahl, not a bug: a worker's front cost is its own whole-tree
-            // index build (~10.7 GB, minutes) and the entire corpus is ~12 minutes of work,
-            // so every added worker costs more setup than the parallelism it buys. Width is
-            // not worth reaching for while the index is per-worker; the governor's job here
-            // is to be correct when it IS reachable — see `CompletionKind` in
-            // `memory_governor`, where the window tracks landed worker cost and never the
-            // unit-completion rate.
-            // 🟡 dissolve-on: Rc→Arc retires the width gate — sharing the index removes the
-            // per-worker front cost, which is the thing that makes width unprofitable. Priced
-            // FIRST by the share spike (cross-worker-typecheck-share-design (plan doc deleted 2026-08-28) §9
-            // open decision 2), because that design's §7 warns a shared store also INCREASES
-            // co-resident retention: the win is a crossover in width, not a given.
-            if spawn_target_width <= 1 {
-                eprintln!(
-                    "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
-                );
-                eprintln!(
-                    "run_discovery_corpus: cross_worker_store withheld (scheduled width={spawn_target_width}) — per-index typed cache until width > 1"
-                );
-                let style = ShardStyle {
-                    shard_id: 0,
-                    shard_count: 1,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                let mut summaries = Vec::new();
-                let drain_detail = floor_drain_retention_detail_enabled();
-                let total_groups = groups.len();
-                let mut drain_prev = index_retention_snapshot(&index);
-                let mut drain_peaks = drain_prev;
-                // Arm retention over the WHOLE batch schedule (every group's rows) ONCE, before
-                // the inline drain — NOT per group. The drain reuses the one process-shared index
-                // across all entry-groups, so a shared compiler-core module reached by many
-                // entries keeps a refcount > 1 and stays resident until its LAST consumer's entry
-                // completes; only an entry's genuinely-unique tail evicts when that entry finishes.
-                // Per-group arming instead gave each entry a one-entry schedule (refcount 1 on the
-                // whole closure), evicting and cold-recomputing the shared core once per entry.
-                index_arm_schedule_retention(&index, &rows);
-                let p1_cohort_detail = p1_cohort_receipt_enabled();
-                let mut p1_cohort_seen_subjects: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
-                for (group_idx, group_indices) in groups.into_iter().enumerate() {
-                    let group_rows: Vec<DiscoveryRow> =
-                        group_indices.iter().map(|&i| rows[i].clone()).collect();
-                    let group_entry_label = group_rows
-                        .first()
-                        .map(|r| r.entry.clone())
-                        .unwrap_or_default();
-                    let group_wall_start = p1_cohort_detail.then(std::time::Instant::now);
-                    let typecheck_misses_before = p1_cohort_detail.then(typecheck_compute_count);
-                    let summary = run_discovery_rows(
-                        &group_rows,
-                        &index,
-                        execution_mode,
-                        whole_tree_published_keys.clone(),
-                        options.witness_budget_policy(),
-                        style,
-                    )?;
-                    // The rest of this block is P1 scaffold bookkeeping (per-group wall
-                    // timing, typecheck-memo before/after, and the resolved-graph-hit
-                    // subject-set scan) — computed only under the same opt-in gate as
-                    // its emission (review 47844), not on the default production path.
-                    let (group_wall_ms, typecheck_misses_after, resolved_graph_hit) =
-                        if p1_cohort_detail {
-                            let group_wall_ms = group_wall_start
-                                .expect("set above under the same p1_cohort_detail gate")
-                                .elapsed()
-                                .as_millis();
-                            let typecheck_misses_after = typecheck_compute_count();
-                            // Cohort-scoped "have we already resolved a closure sharing this
-                            // subject earlier in THIS run" fact — a resolved-graph-memo hit
-                            // proxy at the granularity the P1 receipt needs (whether entry N
-                            // is reusing prior entries' module universe), not a raw
-                            // `resolved_graph_memo` cache-slot read (that memo is entry-scoped
-                            // and evicted on completion by design, so a raw post-hoc read
-                            // cannot distinguish "reused" from "inserted then evicted").
-                            let resolved_graph_hit =
-                                summary.entry_resolve_receipts.iter().any(|r| {
-                                    !p1_cohort_seen_subjects.insert(r.closure_subject.clone())
-                                });
-                            for r in &summary.entry_resolve_receipts {
-                                p1_cohort_seen_subjects.insert(r.closure_subject.clone());
-                            }
-                            (group_wall_ms, typecheck_misses_after, resolved_graph_hit)
-                        } else {
-                            (0, 0, false)
-                        };
-                    let resolve_ms = summary.total_resolve_nanos / 1_000_000;
-                    let eval_ms = summary.total_measured_nanos / 1_000_000;
-                    summaries.push(summary);
-                    let snap = index_retention_snapshot(&index);
-                    if drain_detail {
-                        emit_floor_drain_group_line(
-                            group_idx + 1,
-                            total_groups,
-                            &drain_prev,
-                            &snap,
-                        );
-                    }
-                    if p1_cohort_detail {
-                        let modules_evicted = snap
-                            .schedule_evictions
-                            .saturating_sub(drain_prev.schedule_evictions);
-                        let graphs_evicted = snap
-                            .resolved_graph_evictions
-                            .saturating_sub(drain_prev.resolved_graph_evictions);
-                        let (cgroup_current, cgroup_peak) = p1_cohort_cgroup_memory();
-                        emit_p1_cohort_entry_line(
-                            group_idx + 1,
-                            total_groups,
-                            &group_entry_label,
-                            group_wall_ms,
-                            resolve_ms,
-                            eval_ms,
-                            Some(typecheck_misses_after) == typecheck_misses_before,
-                            resolved_graph_hit,
-                            modules_evicted,
-                            graphs_evicted,
-                            snap.peak_rss_bytes,
-                            cgroup_current,
-                            cgroup_peak,
-                        );
-                    }
-                    drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
-                    drain_prev = snap;
-                }
-                emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
-                return Ok(finalize_discovery_summary(
-                    merge_discovery_summaries(summaries),
-                    &rows,
-                    deferred_rows,
-                ));
-            }
-            let arm_shared_store = if p1_cohort_experiment_active() {
-                p1_experimental_arm_shared_typed_store(spawn_target_width)
-            } else {
-                true
-            };
-            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
-            if floor_stream {
-                eprintln!(
-                    "{} [affected-set] streaming run-witnesses live across the derived schedule pool (width {}; ▎shard N, one color each)",
-                    floor_ts(),
-                    spawn_target_width,
-                );
-            }
-            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
-                std::sync::Arc::new(Mutex::new(
-                    groups
-                        .into_iter()
-                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
-                        .collect(),
-                ));
-            let abort = std::sync::Arc::new(AtomicBool::new(false));
-            let source_roots_owned = source_roots.to_vec();
-            let budget_policy_for_workers = options.witness_budget_policy();
-            let mut handles = Vec::with_capacity(spawn_target_width);
-            for worker_ordinal in 0..spawn_target_width {
-                let queue_for_worker = queue.clone();
-                let abort_for_worker = abort.clone();
-                let roots = source_roots_owned.clone();
-                let keys = whole_tree_published_keys.clone();
-                let store = cross_worker_store.clone();
-                let arm_shared_for_worker = arm_shared_store;
-                let style = ShardStyle {
-                    shard_id: worker_ordinal,
-                    shard_count: spawn_target_width,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                handles.push(std::thread::spawn(
-                    move || -> Result<Vec<DiscoverySummary>, String> {
-                        let index = if arm_shared_for_worker {
-                            let store = store
-                                .expect("shared typed store armed but cross_worker_store missing");
-                            build_multi_entry_index_with_shared_caches(&roots, store)
-                        } else {
-                            build_multi_entry_index(&roots)
-                        };
-                        let mut worker_summaries = Vec::new();
-                        loop {
-                            if abort_for_worker.load(Ordering::SeqCst) {
-                                break;
-                            }
-                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
-                            else {
-                                break;
-                            };
-                            match run_discovery_rows(
-                                &group_rows,
-                                &index,
-                                execution_mode,
-                                keys.clone(),
-                                budget_policy_for_workers,
-                                style,
-                            ) {
-                                Ok(summary) => worker_summaries.push(summary),
-                                Err(e) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Ok(worker_summaries)
-                    },
-                ));
-            }
-            let mut summaries = Vec::new();
-            let mut first_err: Option<String> = None;
-            for handle in handles {
-                match handle
-                    .join()
-                    .map_err(|_| "discovery corpus worker thread panicked".to_string())
-                {
-                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
-                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
-                }
-            }
-            if let Some(e) = first_err {
-                return Err(e);
-            }
-            // The pump exits when the queue is empty OR on abort; with no error the queue must be
-            // fully drained (workers only exit early on retire/abort, and the pump re-admits while
-            // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
-            let leftover = queue.lock().unwrap().len();
-            if leftover > 0 {
-                return Err(format!(
-            "derived-schedule discovery pool exited with {leftover} undrained entry-group(s) and no \
-             worker error — scheduler invariant violated; refusing a partial corpus"
-        ));
-            }
-            Ok(finalize_discovery_summary(
-                merge_discovery_summaries(summaries),
-                &rows,
-                deferred_rows,
-            ))
-        }
-    };
-}
-
 /// Per-witness selection detail (the `SKIP`/`SKIP-RESOLVE`/`PREDICT` lines and the
 /// per-resolve `[binding-fork-ledger]` census) is opt-in. The default floor output is the
 /// upfront `[affected-set]` categorization plus the final `[measurement]` tally — a wide
@@ -5036,17 +4455,6 @@ pub(crate) fn floor_ts() -> String {
     format!("{h:02}:{m:02}:{s:02}.{millis:03}")
 }
 
-/// Live realization view: stream affected witnesses to stderr as they finish, one colored
-/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
-/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
-/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
-/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
-pub(crate) fn floor_stream_enabled() -> bool {
-    !std::env::var("GUNBC_FLOOR_QUIET")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false)
-}
-
 pub(crate) fn floor_color_enabled() -> bool {
     if std::env::var("NO_COLOR").is_ok() {
         return false;
@@ -5064,262 +4472,15 @@ pub(crate) fn floor_color_enabled() -> bool {
             .unwrap_or(false)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_discovery_rows(
-    rows: &[DiscoveryRow],
-    index: &MultiEntryIndex,
-    execution_mode: v1_interpreter::ExecutionMode,
-    whole_tree_published_keys: Option<std::collections::HashSet<String>>,
-    budgets: WitnessBudgetPolicy,
-    style: ShardStyle,
-) -> Result<DiscoverySummary, String> {
-    let mut summary = DiscoverySummary {
-        total: rows.len(),
-        passed: 0,
-        skipped: 0,
-        deferred_rows: Vec::new(),
-        divergences: Vec::new(),
-        failures: Vec::new(),
-        witness_outcomes: Vec::with_capacity(rows.len()),
-        entry_resolve_receipts: Vec::new(),
-        total_resolve_nanos: 0,
-        total_stage_nanos: ResolveStageNanos::default(),
-        performance_receipts: Vec::new(),
-        total_measured_nanos: 0,
-        roster_closure_nodes: 0,
-        total_entry_groups: 0,
-        selected_entry_groups: 0,
-    };
-    // This shard's SUBJECT union closure, accumulated from the graphs it resolves as each
-    // entry is loaded. It once also folded in a floor-runner prefix context, resolved before the
-    // roster so the affected-set machinery was available to every row; that prefix is gone with
-    // selection, so the closure is exactly the rows' own graphs.
-    let mut closure_modules: HashSet<String> = HashSet::new();
-    // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
-    // (Serial: the single call; Adaptive width=1: once before the entry-group loop), so a
-    // shared module's refcount spans every entry that reaches it and it stays resident until
-    // its genuinely-last consumer. Arming here (per `run_discovery_rows` call) would hand the
-    // Adaptive inline drain a ONE-ENTRY schedule per group — refcount 1 on every module,
-    // evicted the instant its entry finished — collapsing "keep shared state until last use"
-    // into "cold-recompute the shared closure once per entry" (the entries=1 churn that held
-    // batch-3 wall over budget while RSS was already bounded). Rows are sorted by entry, so an
-    // entry's rows are contiguous and, once passed, the entry can never be read again; the
-    // per-entry completion below decrements against the caller-armed refcount (a no-op when
-    // unarmed — the plural/shared-store worker path).
-    // The entry whose per-module state becomes unreachable once `row.entry` moves on.
-    let mut schedule_prev_entry: Option<String> = None;
-    let mut current_entry: Option<String> = None;
-    let mut current_closure_subject: Option<String> = None;
-    let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    let pool_roots = witness_layer_roots();
-    let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
-    for row in rows {
-        // Schedule-derived eviction: when the entry advances, the previous entry's
-        // rows are all behind us (rows are sorted by entry), so its per-module state
-        // can never be read again — drop everything no remaining entry's closure
-        // reaches. A schedule underflow refuses here (typed, located).
-        if schedule_prev_entry.as_deref() != Some(row.entry.as_str()) {
-            if let Some(prev) = schedule_prev_entry.take() {
-                // `current_closure_subject` still holds the PREVIOUS entry's subject here
-                // (it is reassigned only in the resolve block below), so it keys the
-                // previous entry's ResolvedGraph for eviction; None when that entry was
-                // skip-before-resolved (no graph to drop).
-                index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
-            }
-            schedule_prev_entry = Some(row.entry.clone());
-        }
-        if current_entry.as_deref() != Some(row.entry.as_str()) {
-            {
-                let resolved = resolve_discovery_entry_for_corpus_row(
-                    index,
-                    &row.entry,
-                    execution_mode,
-                    whole_tree_published_keys.clone(),
-                    &mut closure_modules,
-                )?;
-                summary.total_resolve_nanos += resolved.resolve_nanos;
-                summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
-                summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                    entry: row.entry.clone(),
-                    closure_subject: resolved.closure_subject.clone(),
-                    resolve_nanos: resolved.resolve_nanos,
-                    stage_nanos: resolved.stage_nanos,
-                });
-                current_closure_subject = Some(resolved.closure_subject);
-                ctx = Some(resolved.ctx);
-                if let Some(c) = ctx.as_ref() {
-                    c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
-                    c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
-                }
-                current_entry = Some(row.entry.clone());
-            }
-        }
-        if ctx.is_none() {
-            let resolved = resolve_discovery_entry_for_corpus_row(
-                index,
-                &row.entry,
-                execution_mode,
-                whole_tree_published_keys.clone(),
-                &mut closure_modules,
-            )?;
-            summary.total_resolve_nanos += resolved.resolve_nanos;
-            summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
-            summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                entry: row.entry.clone(),
-                closure_subject: resolved.closure_subject.clone(),
-                resolve_nanos: resolved.resolve_nanos,
-                stage_nanos: resolved.stage_nanos,
-            });
-            current_closure_subject = Some(resolved.closure_subject);
-            ctx = Some(resolved.ctx);
-            if let Some(c) = ctx.as_ref() {
-                c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
-                c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
-            }
-        }
-        let ctx_ref = ctx.as_ref().expect("ctx set above");
-        let closure_subject = current_closure_subject
-            .as_deref()
-            .expect("closure subject set above");
-        set_phase(
-            FloorPhase::Eval,
-            &format!("{}::{}", row.entry, row.function),
-        );
-        active_workset_admit(&row.entry, &row.function);
-        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        active_workset_complete(&row.entry, &row.function);
-        let wall_nanos = receipt.wall_nanos;
-        summary.total_measured_nanos += wall_nanos;
-        summary.performance_receipts.push(receipt);
-        let execution_leg = witness_execution_leg_label(&row.entry);
-        let entry_repo_path = workspace_relative_repo_path(&row.entry);
-        let module_path = index
-            .module_graph_facts
-            .path_to_module
-            .get(&entry_repo_path)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "{}: discovery witness entry has no module identity in the live module graph (refuse; DeclarationRef cannot be fabricated)",
-                    row.entry
-                )
-            })?;
-        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
-            entry: row.entry.clone(),
-            module_path: module_path.clone(),
-            function: row.function.clone(),
-            outcome: outcome.clone(),
-            execution_leg: execution_leg.clone(),
-        });
-        // enrolled=false is a STATEMENT, not a default: this is the discovery/claim_batch path
-        // and `floor_expected_red` is a required-floor roster that is not in scope here, so no
-        // row on this path can be KNOWN-RED. The typed outcome still survives to the console,
-        // which is the part that was being lost on both paths.
-        style.stream_witness(
-            &row.function,
-            &module_path,
-            &execution_leg,
-            wall_nanos,
-            CiWitnessVerdict::from_outcome(&outcome, false),
-        );
-        match outcome {
-            ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => {
-                let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
-                append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
-                append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
-                summary.failures.push(failure);
-            }
-            // A GATE-CLASS ROW'S REASON IS ITS OWN RECEIPT. The companion-loudness appends the
-            // `Fail` arm makes are for Bool witnesses whose verdict carries nothing; a typed
-            // `ExitFailure` refusal already carries the `.dag`-authored reason, so appending a
-            // second, derived receipt beside it would be two authorities over one fact.
-            ClaimOutcome::ExitFailure { code, reason } => summary.failures.push(format!(
-                "{} ({}) returned ProcessExit::ExitFailure (code {}): {}",
-                row.function,
-                row.entry,
-                code,
-                reason.unwrap_or_else(|| "(no reason)".to_string())
-            )),
-            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
-                "{} ({}) returned `{}`, not Bool",
-                row.function, row.entry, got
-            )),
-            ClaimOutcome::RuntimeError { message, .. } => summary.failures.push(format!(
-                "{} ({}) runtime error: {}",
-                row.function, row.entry, message
-            )),
-            ClaimOutcome::HostToolUnresolved { name, probed } => summary.failures.push(format!(
-                "{} ({}) host tool unresolved: {:?} (probed: {})",
-                row.function,
-                row.entry,
-                name,
-                probed.join(", ")
-            )),
-            ClaimOutcome::HostEffectRefused { operation, ground } => {
-                summary.failures.push(format!(
-                    "{} ({}) hermetic route has no arm for {}: {}",
-                    row.function,
-                    row.entry,
-                    operation,
-                    hermetic_effect_ground_label(&ground)
-                ))
-            }
-            // BOTH BUDGET ARMS RENDER THROUGH `budget_figure_phrase` AND NEITHER SPELLS ITS
-            // OWN SENTENCE. This site used to hand-write `cost is at least {n}ms against a
-            // {budget}ms budget`, which is the bound-in-the-cost-field defect that renderer
-            // exists to remove; keeping a local format string here would let this transport
-            // disagree with the floor's about one outcome, which has happened before.
-            ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
-                summary.failures.push(format!(
-                    "{} ({}) {}",
-                    row.function,
-                    row.entry,
-                    // SAFE BY CONSTRUCTION: the two arms matched here are exactly the two the
-                    // renderer answers `Some` for. The fallback text is unreachable and says so
-                    // rather than fabricating a figure.
-                    outcome
-                        .budget_figure_phrase()
-                        .unwrap_or_else(|| "budget outcome carried no figure".to_string())
-                ))
-            }
-            // THIS PATH DOES NOT STOP THE LINE ON AN UNWIND THE WAY THE REQUIRED FLOOR DOES, and
-            // the difference is deliberate rather than an oversight: discovery runs rows across
-            // worker threads with no single ordered fold to halt, and a `NotAttempted` population
-            // here would have no ledger to be published into. What it does have is the same
-            // obligation not to render an unwind as a witness answering false, so it goes to
-            // `failures` naming what happened. The floor's stronger treatment is the floor's.
-            ClaimOutcome::Panicked { payload } => summary.failures.push(format!(
-                "{} ({}) PANICKED during evaluation: {}. The host unwound, so this is not a \
-                 verdict and not a runtime error the evaluator raised.",
-                row.function, row.entry, payload
-            )),
-            // Never produced on this path — nothing here mints not-attempted rows — and named
-            // rather than wildcarded so a future producer cannot arrive silently.
-            ClaimOutcome::NotAttempted { halted_by } => summary.failures.push(format!(
-                "{} ({}) was published as not-attempted behind {}, which this path never mints",
-                row.function, row.entry, halted_by
-            )),
-        }
-    }
-    // Per-shard input-size receipt: distinct modules in THIS shard's union closure, counted from the
-    // graphs resolved above rather than from the thread's typecheck-miss counter (see the field doc
-    // on `DiscoverySummary::roster_closure_nodes` for why the counter is not bounded to this window).
-    // The final entry's rows are done — its state is now unreachable too.
-    if let Some(prev) = schedule_prev_entry.take() {
-        index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
-    }
-    if let Some(ctx) = ctx.as_ref() {
-        let stats = ctx.interner_stats_snapshot();
-        eprintln!(
-            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
-            stats.canonical_entries,
-            stats.canonical_retained_spelling_bytes,
-            stats.canonical_spelling_cap_bytes,
-        );
-    }
-    summary.roster_closure_nodes = closure_modules.len();
-    Ok(summary)
+/// Live realization view: stream affected witnesses to stderr as they finish, one colored
+/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
+/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
+/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
+/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
+pub(crate) fn floor_stream_enabled() -> bool {
+    !std::env::var("GUNBC_FLOOR_QUIET")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
 }
 
 /// THE SEEDS OF THE REQUIRED FLOOR'S NOMINAL PREPARED SUBJECT -- what the floor prepares when a
@@ -6380,16 +5541,6 @@ pub(crate) fn install_pure_producer_share(
                  seed and must be in every required-floor subject: {why}"
             )
         })?;
-    let warm_rows = floor_decode_module_prefix_roster(
-        &roster_frame,
-        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"),
-    )?;
-    let claim_forced_rows = floor_decode_module_prefix_roster(
-        &roster_frame,
-        &format!(
-            "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
-        ),
-    )?;
     // The two carried-input rosters are decoded HERE, beside the other two, because their
     // producers are part of the ADMITTED population: admission is one node set, and a producer
     // that warms into the tier but is not admitted would store nothing while the receipt read
@@ -6442,18 +5593,44 @@ pub(crate) fn install_pure_producer_share(
         .iter()
         .map(|m| (m.type_env.module_path.as_str(), m.as_ref()))
         .collect();
-    let mut admitted_by_qualified: std::collections::HashMap<
-        String,
-        std::rc::Rc<crate::v1_std_core::Node>,
-    > = std::collections::HashMap::new();
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
-    for qualified in warm_rows
-        .iter()
-        .chain(claim_forced_rows.iter())
-        .chain(carried_producers.iter())
-    {
+    // The frozen runtime-identity residual: producers whose every call site carries arguments
+    // computed inside the claim, so the derivation cannot join their demand before the run. The
+    // population is closed in `.dag` (`FrozenRuntimeIdentityProducer`); the tier keys and verifies
+    // their fills by declaration and argument row like any other.
+    let residual_name = format!(
+        "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_runtime_identity_residual_producers"
+    );
+    let residual_producers: Vec<String> = {
+        let value = v1_interpreter::run_in_context(&roster_frame, &residual_name, false).map_err(
+            |e| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} did not evaluate: {e}"
+                )
+            },
+        )?;
+        let items = v1_interpreter::list_value_items(&roster_frame, &value).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                  {residual_name} is not a list"
+            )
+        })?;
+        let mut out = Vec::new();
+        for item in &items {
+            let v1_interpreter::Value::Str(producer) = item else {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} carries a member that is not a String"
+                ));
+            };
+            out.push(producer.to_string());
+        }
+        out
+    };
+    // THE PRODUCERS ADMITTED HERE ARE THE CARRIED-INPUT ONES AND THE FROZEN RESIDUAL. Plain pure
+    // producers are no longer a roster: they are derived from the planned claims' call-site
+    // demand once planning has fixed the claims (`derive_and_install_cross_claim_share`).
+    for qualified in carried_producers.iter().chain(residual_producers.iter()) {
         let (module, decl) = match qualified.rsplit_once('.') {
             Some((module, decl)) => (module.to_string(), decl),
             None => (qualified.clone(), qualified.as_str()),
@@ -6481,7 +5658,6 @@ pub(crate) fn install_pure_producer_share(
                      module; fix or delete the roster row"
                 )
             })?;
-        admitted_by_qualified.insert(qualified.clone(), node.clone());
         admitted_nodes.push(node);
         admitted_qualified.push(qualified.clone());
     }
@@ -6569,7 +5745,6 @@ pub(crate) fn install_pure_producer_share(
         .iter()
         .map(|i| module_of(&i.acquisition))
         .chain(carried_rows.iter().map(|r| module_of(&r.producer)))
-        .chain(warm_rows.iter().map(|q| module_of(q)))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -6773,134 +5948,6 @@ pub(crate) fn install_pure_producer_share(
                 }
             }
         }
-
-        for qualified in warm_rows.iter().filter(|q| &module_of(q) == group) {
-            let module = match qualified.rsplit_once('.') {
-                Some((module, _)) => module.to_string(),
-                None => qualified.clone(),
-            };
-            // Resolution above either framed this row's module or recorded it as outside the
-            // prepared subject (not evaluated here, counted below); a stale row already refused.
-            let Some(producer_frame) = frames.frame(
-                prepared,
-                corpus_modules,
-                &mut outside_subject,
-                &module,
-                "producer",
-                qualified,
-            )?
-            else {
-                continue;
-            };
-            let framed = producer_frame.lookup_fn_node(qualified);
-            let admitted = admitted_by_qualified.get(qualified.as_str());
-            if !matches!((&framed, admitted), (Some(f), Some(a)) if std::rc::Rc::ptr_eq(f, a)) {
-                return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameLookupDiverges producer={qualified} \
-                 — the module frame resolves the producer to a different declaration than admission \
-                 read from the prepared graph, so the admitted identity is not the one evaluated"
-            ));
-            }
-            // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
-            // first revision of this line got that wrong in the direction DESIGN section 4b names.
-            // It passed `already_built: false` unconditionally, on the reasoning that the outcome
-            // below is the authority for whether the value was already retained. THAT REASONING
-            // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
-            // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
-            // Two representations of one fact with one of them lying is worse than either alone, and
-            // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
-            // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
-            //
-            // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
-            // does not exist until the call returns. So the observation is corrected AFTER the fact,
-            // from the outcome that owns it.
-            //
-            // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
-            // and not who caused it, so the label names the boundary that is knowable rather than
-            // fabricating a call site -- inside this loop the only writer that can already have
-            // stored a rostered producer's value is an earlier rostered producer whose traversal
-            // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
-            // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
-            // deliberately weaker than a call-site name because a call site is not recorded.
-            let (warm_result, mut warm_observation) =
-                observe_shared_build(false, "floor-preparation", || {
-                    v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
-                });
-            if let Ok(outcome) = &warm_result {
-                if matches!(
-                    outcome,
-                    v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
-                ) {
-                    warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
-                        triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
-                    };
-                }
-            }
-            match warm_result {
-                Ok(outcome) => {
-                    // A NON-SERVABLE outcome means nothing is retained for later claims, so a
-                    // silent decline would relocate the fill onto the first toucher: stop the
-                    // line, naming the ONE cause rather than a disjunction of three. An
-                    // `AlreadyPresent` outcome is servable and therefore not a refusal — a
-                    // rostered producer reachable from an earlier rostered producer is stored
-                    // by that traversal, and its own warm correctly finds the work done.
-                    if !outcome.is_servable() {
-                        // The located detail comes from the OUTCOME, so a cause can only ever be
-                        // paired with its own evidence. Reading the retained slot here instead
-                        // would decorate a byte-budget or entry-cap refusal with a stale path
-                        // left by an earlier producer's unportable value (review 57554).
-                        let detail = match outcome.not_portable_detail() {
-                            Some(refusal) => format!(
-                                "{} path={} kind={}",
-                                outcome.cause(),
-                                if refusal.path_into_value.is_empty() {
-                                    "<root>"
-                                } else {
-                                    refusal.path_into_value.as_str()
-                                },
-                                refusal.encountered_kind
-                            ),
-                            None => outcome.cause().to_string(),
-                        };
-                        return Err(format!(
-                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
-                         producer={qualified} — the rostered producer evaluated but its value \
-                         was refused by the cross-claim store: {detail}"
-                        ));
-                    }
-                    floor_warm_row_identity(qualified);
-                    eprintln!(
-                        "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} disposition={} cpu_ms={} wall_ms={} \
-                     rss_growth_bytes={} provenance={}",
-                        outcome.cause(),
-                        warm_observation.cpu_ms,
-                        warm_observation.wall_ms,
-                        warm_observation.rss_growth_bytes,
-                        warm_observation.provenance.render(),
-                    );
-                    warm_observations.push((
-                        format!("CrossClaimPureProducerWarm/{qualified}"),
-                        warm_observation,
-                    ));
-                }
-                Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
-                     producer={qualified} effects={effects} — the warm row reached the world, \
-                     so the value depends on an input its empty argument row cannot represent; \
-                     roster the read as a prepared effect input and the fold as a carried-input \
-                     warm row instead"
-                    ));
-                }
-                Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
-                     producer={qualified} — {why}"
-                    ));
-                }
-            }
-        }
     }
     // Disposition 2 is COUNTED, one line, so a subject that quietly stopped evaluating rows
     // it should carry is visible in the run's own announcement.
@@ -6937,6 +5984,465 @@ pub(crate) fn install_pure_producer_share(
     );
     drop(frames);
     Ok(warm_observations)
+}
+
+/// THE DERIVED CROSS-CLAIM SHARE: admit, for this run, exactly the pure computations its PLANNED
+/// claims demand from more than one claim with one closed identity.
+///
+/// The seed observes (`claim_call_site_demand`, one realization of the `.dag` row type
+/// `CallSiteDemandObservation`) and `v2.workflow.floor_pure_producer_share`
+/// `floor_cross_claim_share_derivation` decides; the seed then admits the decided rows at their call
+/// sites. There is no warm: the first planned claim that evaluates an admitted site fills it (see the
+/// install note at the end of this function). Every arm refuses: a planned claim the prepared subject does not carry, a fold
+/// that does not evaluate or decode, a partition that does not reconcile, and an admitted producer
+/// with no declaration node or an unparseable site.
+pub(crate) fn derive_and_install_cross_claim_share(
+    prepared: &PreparedRepository,
+    claims: &[RequiredFloorClaim],
+    declared: &[(String, String)],
+    in_flight_wall_cap_ms: u64,
+) -> Result<(), String> {
+    use super::claim_call_site_demand::{
+        CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
+    };
+    use v1_interpreter::Value;
+    const MODULE: &str = "v2.workflow.floor_pure_producer_share";
+    let started = std::time::Instant::now();
+    let mut population: Vec<(String, String)> = claims
+        .iter()
+        .map(|c| (c.module_path.clone(), c.function.clone()))
+        .collect();
+    let planned_count = population.len();
+    let mut observer =
+        CallSiteDemandObserver::new(&prepared.graph, prepared.source_indices.clone());
+    // THE DECLARED POPULATION: every other claim declared in a module the prepared subject carries.
+    // Recurrence is judged over it (so a claim's budget does not depend on which other claims a diff
+    // plans); a declared claim whose module is outside the subject cannot be walked and is counted.
+    let planned_set: std::collections::HashSet<(String, String)> =
+        population.iter().cloned().collect();
+    let mut declared_outside_subject = 0usize;
+    for d in declared {
+        if planned_set.contains(d) {
+            continue;
+        }
+        if observer.decl(&d.0, &d.1).is_some() {
+            population.push(d.clone());
+        } else {
+            declared_outside_subject += 1;
+        }
+    }
+    let (rows, unresolved) = observer.observe(&population, planned_count);
+    if !unresolved.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CallSiteDemandClaimUnresolved claims=[{}] -- a planned \
+             claim's declaration is not in the prepared subject, so its call-site demand cannot be \
+             observed and the derived share would omit it",
+            unresolved.join(",")
+        ));
+    }
+    let observe_ms = started.elapsed().as_millis();
+    for (producer, cause, claims_n, sites_n) in observer.open_producers() {
+        eprintln!(
+            "[cross-claim-share-unadmissible] producer={producer} cause={} claims={claims_n} \
+             sites={sites_n}",
+            cause.variant()
+        );
+    }
+    let frame = floor_authority_frame(prepared, MODULE).map_err(|why| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRosterOutsidePreparedSubject \
+             module={MODULE} -- {why}"
+        )
+    })?;
+    let ctx = &frame;
+    let sym = |s: &str| ctx.sym(s);
+    let unit = |ty: &str, variant: &str| Value::Variant {
+        type_name: sym(ty),
+        variant_name: sym(variant),
+        fields: std::rc::Rc::new(vec![]),
+    };
+    let closed_rows = rows
+        .iter()
+        .filter(|r| matches!(r, CallSiteDemandRow::Closed { .. }))
+        .count();
+    let values: Vec<Value> = rows
+        .iter()
+        .map(|row| match row {
+            CallSiteDemandRow::Closed {
+                producer,
+                argument_preimage,
+                claims,
+                planned_claims,
+                sites,
+            } => Value::Variant {
+                type_name: sym("CallSiteDemandObservation"),
+                variant_name: sym("ClosedCallSiteDemand"),
+                fields: std::rc::Rc::new(vec![
+                    (sym("producer"), str_value(producer)),
+                    (sym("argument_preimage"), str_value(argument_preimage)),
+                    (
+                        sym("identity"),
+                        Value::Variant {
+                            type_name: sym("ComputationIdentity"),
+                            variant_name: sym("NormalizedIdentical"),
+                            fields: std::rc::Rc::new(vec![(
+                                sym("normalizer"),
+                                str_value(CLOSED_ARGUMENT_NORMALIZER),
+                            )]),
+                        },
+                    ),
+                    (
+                        sym("claims"),
+                        list_value_from_vec(claims.iter().map(str_value).collect()),
+                    ),
+                    (sym("planned_claims"), Value::Int(*planned_claims as i64)),
+                    (
+                        sym("sites"),
+                        list_value_from_vec(sites.iter().map(str_value).collect()),
+                    ),
+                ]),
+            },
+            CallSiteDemandRow::Unadmissible {
+                cause,
+                claims,
+                sites,
+            } => Value::Variant {
+                type_name: sym("CallSiteDemandObservation"),
+                variant_name: sym("UnadmissibleCallSiteDemand"),
+                fields: std::rc::Rc::new(vec![
+                    (sym("cause"), unit("CallSiteDemandCause", cause.variant())),
+                    (sym("claims"), Value::Int(*claims as i64)),
+                    (sym("sites"), Value::Int(*sites as i64)),
+                ]),
+            },
+        })
+        .collect();
+    let result = v1_interpreter::run_in_context_with_args(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_derivation"),
+        &[(
+            Some("observations".to_string()),
+            list_value_from_vec(values),
+        )],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationFailed -- \
+             floor_cross_claim_share_derivation did not evaluate: {e}"
+        )
+    })?;
+    let derive_ms = started.elapsed().as_millis() - observe_ms;
+    let malformed = |what: &str| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationUndecodable -- {what} (got `{}`)",
+            ctx.format_value(&result)
+        )
+    };
+    let Value::Record { fields, .. } = &result else {
+        return Err(malformed("expected a CrossClaimShareDerivation record"));
+    };
+    // The fold's lists may be kernel lists or v2.std.algebra FreeMonoid chains; both decode.
+    let list_of = |name: &str| -> Result<Vec<Value>, String> {
+        ctx.field(fields, name)
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed(&format!("no `{name}` list")))
+    };
+    let text_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
+        match ctx.field(row, name) {
+            Some(Value::Str(s)) => Ok(s.to_string()),
+            _ => Err(malformed(&format!("a row has no `{name}` String"))),
+        }
+    };
+    let int_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<i64, String> {
+        match ctx.field(row, name) {
+            Some(Value::Int(n)) => Ok(*n),
+            _ => Err(malformed(&format!("a row has no `{name}` Int"))),
+        }
+    };
+    let variant_of =
+        |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
+            match ctx.field(row, name) {
+                Some(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(*variant_name)),
+                _ => Err(malformed(&format!("a row has no `{name}` variant"))),
+            }
+        };
+    let admitted = list_of("admitted")?;
+    let declined = list_of("declined")?;
+    let unadmissible = list_of("unadmissible")?;
+    if admitted.len() + declined.len() != closed_rows {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareDerivationDoesNotReconcile \
+             closed_observations={closed_rows} admitted={} declined={} -- every closed observation \
+             must be admitted or declined exactly once",
+            admitted.len(),
+            declined.len()
+        ));
+    }
+    let mut nodes = Vec::new();
+    let mut sites: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
+    let mut admitted_qualified = Vec::new();
+    let mut billed_debt_claims: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut net_only_sites: std::collections::HashSet<(String, i64, i64)> =
+        std::collections::HashSet::new();
+    for row in &admitted {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed("an admitted row is not a DerivedShareRow record"));
+        };
+        let producer = text_of(r, "producer")?;
+        let preimage = text_of(r, "argument_preimage")?;
+        let claims_n = int_of(r, "claims")?;
+        let (module, decl) = producer.rsplit_once('.').ok_or_else(|| {
+            malformed(&format!("admitted producer `{producer}` is not qualified"))
+        })?;
+        let node = observer.decl(module, decl).cloned().ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=DerivedShareProducerUnresolved producer={producer} \
+                 -- the derivation admitted a producer the prepared subject carries no declaration for"
+            )
+        })?;
+        let row_sites = ctx
+            .field(r, "sites")
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed("an admitted row has no `sites` list"))?;
+        let mut row_keys: Vec<(String, i64, i64)> = Vec::new();
+        for site in &row_sites {
+            let Value::Str(text) = site else {
+                return Err(malformed("a site is not a String"));
+            };
+            let parsed = text.rsplit_once(':').and_then(|(file, span)| {
+                let (start, end) = span.split_once('-')?;
+                Some((file.to_string(), start.parse().ok()?, end.parse().ok()?))
+            });
+            let Some(key) = parsed else {
+                return Err(malformed(&format!(
+                    "site `{text}` is not <file>:<start>-<end>"
+                )));
+            };
+            row_keys.push(key);
+        }
+        // WHY the row is admitted, printed so a single-claim fill debt is never read as sharing.
+        let mut row_is_debt = false;
+        let basis = match ctx.field(r, "basis") {
+            Some(Value::Variant {
+                variant_name,
+                fields: b,
+                ..
+            }) => {
+                let variant = ctx.resolve(*variant_name);
+                if variant == "SingleClaimFillDebt" {
+                    let claim = text_of(b, "claim")?;
+                    billed_debt_claims.insert(claim.clone());
+                    row_is_debt = true;
+                    format!("SingleClaimFillDebt:{claim}")
+                } else {
+                    variant
+                }
+            }
+            _ => return Err(malformed("an admitted row has no `basis` variant")),
+        };
+        // A debt row's sites are NET-ONLY: the fill is netted from its one claim and no value is
+        // retained, since no other claim will ever ask for it.
+        for key in row_keys {
+            if row_is_debt {
+                net_only_sites.insert(key.clone());
+            }
+            sites.insert(key);
+        }
+        eprintln!(
+            "[cross-claim-share-admitted] producer={producer} basis={basis} claims={claims_n} \
+             sites={} argument_preimage={preimage}",
+            row_sites.len()
+        );
+        admitted_qualified.push(producer);
+        nodes.push(node);
+    }
+    let mut decline_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for row in &declined {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed("a declined row is not a DeclinedShareRow record"));
+        };
+        *decline_counts.entry(variant_of(r, "decline")?).or_default() += 1;
+        // EVERY decline is printed, single-claim ones included, so each producer's disposition is
+        // readable by identity from the run's own log.
+        {
+            eprintln!(
+                "[cross-claim-share-declined] producer={} decline={} argument_preimage={}",
+                text_of(r, "producer")?,
+                variant_of(r, "decline")?,
+                text_of(r, "argument_preimage")?
+            );
+        }
+    }
+    let mut unadmissible_rendered = Vec::new();
+    for row in &unadmissible {
+        let Value::Record { fields: r, .. } = row else {
+            return Err(malformed(
+                "an unadmissible row is not an UnadmissibleDemandCount record",
+            ));
+        };
+        unadmissible_rendered.push(format!(
+            "{}:claims={}:sites={}",
+            variant_of(r, "cause")?,
+            int_of(r, "claims")?,
+            int_of(r, "sites")?
+        ));
+    }
+    eprintln!(
+        "[floor-phase] phase=cross-claim-share-derivation state=completed planned_claims={} \
+         declared_claims_observed={} declared_outside_subject={declared_outside_subject} \
+         closed_identities={closed_rows} admitted={} admitted_sites={} declined=[{}] \
+         unadmissible=[{}] observe_ms={observe_ms} derive_ms={derive_ms}",
+        claims.len(),
+        population.len(),
+        admitted.len(),
+        sites.len(),
+        decline_counts
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(","),
+        unadmissible_rendered.join(",")
+    );
+    // THE DEBT CONTRACT'S IDENTITY JOIN (v2.workflow.floor_pure_producer_share
+    // floor_single_claim_fill_debt, a monotone debt set): every ACTIVE member this run PLANS must
+    // have at least one single-claim fixture identity admitted on its behalf. A planned member with
+    // none is STALE -- it was restructured, or its fixture became shared, or its cost is not a
+    // closed fixture at all -- and a stale row would keep asserting a transfer that no longer
+    // happens, so it stops the line and names the remedy.
+    let active_debt = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_single_claim_fill_debt_active_claims"),
+        false,
+    ) {
+        Ok(v) => v1_interpreter::list_value_items(ctx, &v)
+            .ok_or_else(|| malformed("floor_single_claim_fill_debt_active_claims is not a list"))?,
+        Err(e) => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtUnreadable -- \
+                 floor_single_claim_fill_debt_active_claims did not evaluate: {e}"
+            ))
+        }
+    };
+    let planned_identities: std::collections::HashSet<String> = claims
+        .iter()
+        .map(|c| format!("{}.{}", c.module_path, c.function))
+        .collect();
+    let mut active_planned = 0usize;
+    let mut stale_debt: Vec<String> = Vec::new();
+    for member in &active_debt {
+        let Value::Str(member) = member else {
+            return Err(malformed("a fill-debt member is not a String"));
+        };
+        let member = member.to_string();
+        if planned_identities.contains(&member) {
+            active_planned += 1;
+            if !billed_debt_claims.contains(&member) {
+                stale_debt.push(member);
+            }
+        }
+    }
+    eprintln!(
+        "[floor-phase] phase=single-claim-fill-debt state=completed active_members={} \
+         planned_members={active_planned} billed_members={} stale_members={}",
+        active_debt.len(),
+        billed_debt_claims.len(),
+        stale_debt.len()
+    );
+    if !stale_debt.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtStale members=[{}] -- each is an ACTIVE \
+             member of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt that this \
+             run plans, and no single-claim fixture identity was admitted for it, so the row asserts \
+             a cost transfer that no longer happens. Retire the row with its typed disposition \
+             (RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted).",
+            stale_debt.join(",")
+        ));
+    }
+    v1_interpreter::install_cross_claim_derived_share_with_net_only(nodes, sites, net_only_sites);
+    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+        if let Some(roster) = r.borrow_mut().as_mut() {
+            roster.admitted_qualified.extend(admitted_qualified);
+        }
+    });
+    // NO WARM. An admitted site fills on the FIRST planned claim that actually evaluates it, so a
+    // site the static reach over-approximates costs nothing, and no frame is built just to measure
+    // a value (the first derived runs built one frame per site module -- 169 -- to warm 2523
+    // identities and then discarded 2404 below the floor). The fill's evaluator steps are netted
+    // from the paying claim's budget by the existing fill guard, so budgets stay deterministic; its
+    // wall is excused from the claim's wall deadline only in proportion to the steps it has
+    // performed (a declared ns-per-step ceiling), under the preparation wall safety limit as the
+    // outer hard cap, so a stalled fill and a runaway one both still interrupt; and the cost floor
+    // is applied to the fill's own measured steps at the moment it would be retained.
+    let cost_floor_steps = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_eval_steps"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorUnreadable -- \
+                 floor_cross_claim_share_cost_floor_eval_steps must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
+    // The floor has a CPU arm: a fill whose thread CPU reaches the declared floor is retained
+    // however few steps it performed. A fill whose cost is native (keying a served producer's
+    // argument row) is otherwise declined on its step count and re-paid by every claim.
+    let cost_floor_cpu_ms = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_cpu_millisecond_count"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorCpuUnreadable -- \
+                 floor_cross_claim_share_cost_floor_cpu_millisecond_count must be a positive \
+                 Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_cpu_ms(cost_floor_cpu_ms);
+    let ns_per_step_ceiling = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimFillWallCeilingUnreadable -- \
+                 floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_in_flight_wall_bound(
+        in_flight_wall_cap_ms,
+        ns_per_step_ceiling,
+    );
+    eprintln!(
+        "[floor-phase] phase=cross-claim-share-install state=completed \
+         cost_floor_eval_steps={cost_floor_steps} fill_wall_ns_per_step_ceiling={ns_per_step_ceiling} \
+         in_flight_wall_outer_cap_ms={in_flight_wall_cap_ms}"
+    );
+    Ok(())
 }
 
 /// One row of `v2.workflow.floor_pure_producer_share.floor_cross_claim_refused_candidates`:
@@ -10439,6 +9945,25 @@ pub fn run_required_floor(
         );
     }
     let claims_planned = claims.len();
+    // THE DERIVED CROSS-CLAIM SHARE, admitted now that planning has fixed the claims: the share's
+    // demand is these claims' reach and nothing wider (`derive_and_install_cross_claim_share`).
+    floor_seam("cross-claim-share-derivation");
+    // The derived warms are shared builds like every preparation warm, so they answer to the same
+    // three preparation limits; they run here only because their demand is the planned claims.
+    let declared_claims: Vec<(String, String)> = files
+        .iter()
+        .flat_map(|f| {
+            f.functions
+                .iter()
+                .map(move |function| (f.module_path.clone(), function.clone()))
+        })
+        .collect();
+    derive_and_install_cross_claim_share(
+        &prepared,
+        &claims,
+        &declared_claims,
+        preparation_wall_limit_ms,
+    )?;
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
@@ -11523,6 +11048,22 @@ pub fn run_required_floor(
     // next claim to touch it pays the same seconds — so a paring decision that reads only the
     // per-row wall time is deciding on an attribution artifact.
     eprint!("{}", shared_fill::report());
+    // WHAT THE TIER DECLINED TO RETAIN. An admitted fill whose store is declined stays on the
+    // claim that paid it; without these lines such a claim reads as over budget for no visible
+    // reason. One line per (producer, cause), then the tier's own totals.
+    for (producer, cause, count) in v1_interpreter::cross_claim_store_declines() {
+        eprintln!(
+            "[cross-claim-share-store-declined] producer={producer} cause={cause} count={count}"
+        );
+    }
+    {
+        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
+        eprintln!(
+            "[cross-claim-share-tier] retained_keys={stores} overflow_refusals={overflow} \
+             below_cost_floor={}",
+            v1_interpreter::cross_claim_below_cost_floor_count()
+        );
+    }
     // AND THE LEDGER IS ADJUDICATED, NOT ONLY RENDERED. The lines above are what a paring
     // decision reads; this call is what refuses one. It runs after the render so an operator has
     // the whole ledger in the log above the refusal that cites two of its rows.
@@ -12804,7 +12345,8 @@ mod pure_producer_share_tests {
     /// The base-comparison half of the unimported-bare-provider gate, executed through the path the
     /// floor takes: each roster is evaluated ALONE from its source, its rows cross into the real
     /// verdict frame as values, and the `.dag` edit judgment decides. An unchanged roster admits;
-    /// a gained row refuses by name; a rewritten retirement cause refuses. Two reads at distinct
+    /// a gained row refuses by name; a rewritten retirement cause refuses, except a retirement
+    /// moving to FileDeleted. Two reads at distinct
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
@@ -12867,12 +12409,21 @@ mod pure_producer_share_tests {
                     .expect("verdict"),
                 vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
             );
+            // A retirement whose file was later deleted may become FileDeleted (gunbc#12787, the
+            // one admitted transition in `unimported_bare_provider_roster_edit`); any other
+            // rewritten cause, including the reverse, refuses.
             assert_eq!(
                 judge
                     .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
                     .expect("verdict"),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_deleted)), &read(roster(&a_fixed)))
+                    .expect("verdict"),
                 vec![
-                "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
+                "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
                     .to_string()
             ]
             );
@@ -13003,78 +12554,6 @@ mod pure_producer_share_tests {
         extra.iter().map(|m| m.to_string()).collect()
     }
 
-    const EMPTY_ROSTER_TAIL: &str =
-        "data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n";
-
-    fn roster_naming(row: &str) -> String {
-        format!(
-            "module v2.workflow.floor_pure_producer_share\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"{row}\"]\n{EMPTY_ROSTER_TAIL}"
-        )
-    }
-
-    /// THE gunbc#11452 SHAPE: a row naming a LIVE producer whose module the corpus carries but
-    /// this narrow subject does not is not evaluated, and the install succeeds.
-    #[test]
-    fn a_live_row_outside_the_prepared_subject_is_not_evaluated() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
-        )]);
-        let warms =
-            install_pure_producer_share(&prepared, &fixture_corpus(&["test.claim.elsewhere.emit"]))
-                .expect("a live row outside the subject must not stop the line");
-        assert!(warms.is_empty(), "nothing outside the subject warms");
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// The discriminating RED beside it: the SAME row, with its module absent from the corpus,
-    /// is stale and refuses with the cause that tells the author to delete it.
-    #[test]
-    fn a_row_whose_module_no_root_carries_refuses_as_stale() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            &roster_naming("test.claim.elsewhere.emit.witness_apply_script"),
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("a row naming no corpus module must refuse");
-        assert!(
-            err.contains("PureProducerShareRowModuleAbsentFromCorpus") && err.contains("stale"),
-            "refusal must name the stale cause: {err}"
-        );
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
     /// THE CLOSURE RED the review asked for: a prepared subject WITHOUT the roster module
     /// must REFUSE, never skip — a skip leaves admission empty while the floor reads green,
     /// memoizing nothing.
@@ -13094,235 +12573,6 @@ mod pure_producer_share_tests {
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
-    /// Positive control: a subject carrying the roster module warms its nullary rows into
-    /// the cross-claim store.
-    #[test]
-    fn a_carried_roster_warms_and_stores_its_nullary_rows() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             fn tm_local() -> Bool { true }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [\n\
-               RefusedShareCandidate {\n\
-                 producer: \"v2.workflow.floor_pure_producer_share.tm_refused\",\n\
-                 verdict: MeasuredServeAboveRecompute,\n\
-                 carrier_modules: [\"v2.test.fixture.a_consumer\"],\n\
-                 measurement: \"fixture\",\n\
-                 next_trigger: \"fixture\"\n\
-               }\n\
-             ]\n",
-        )]);
-        let observations = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("carried roster installs and warms");
-        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
-        assert_eq!(overflow, 0);
-        assert!(stores >= 1, "the warm must land in the store, got {stores}");
-        // THE DISCRIMINATING ASSERTION, and it is why this control is no longer only positive:
-        // the warm is a shared preparation build, and a shared build that produces no
-        // observation is bounded by nothing -- the preparation refusal is denominated over the
-        // observations collected here. Before the observation existed this function returned
-        // `()`, so this assertion could not be written at all, which is precisely the shape of
-        // the gap: the cost was real, printed, and invisible to the only wall that could stop it.
-        assert_eq!(
-            observations.len(),
-            1,
-            "one observation per warm row, got {observations:?}"
-        );
-        let (label, observed) = &observations[0];
-        assert_eq!(
-            label, "CrossClaimPureProducerWarm/v2.workflow.floor_pure_producer_share.tm_local",
-            "the label must name the ROW, since the refusal names one phase and a reader must \
-             reach one roster row from it"
-        );
-        // The three axes the preparation refusal reads. Asserting they are PRESENT rather than
-        // asserting a magnitude: a fixture's absolute cost is a property of the fixture and the
-        // runner it ran on, and a threshold copied from this tree would be the measurement-as-
-        // oracle DESIGN section 5 refuses.
-        let _: u64 = observed.cpu_ms;
-        let _: u64 = observed.wall_ms;
-        let _: u64 = observed.rss_growth_bytes;
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// THE RED FOR THE CONTENT-BLIND WARM: a nullary row that performs one confirmed checkout
-    /// read, rostered as a PLAIN warm row. Before the guard the warm path stored it under the
-    /// empty argument row — `Stored`, no refusal — so a changed file would have been served the
-    /// old value by every later claim. The read is a real hermetic checkout-input dispatch (the
-    /// test's cwd is inside the checkout and `Cargo.toml` is committed), not a stubbed counter,
-    /// so the wall is exercised on the path the floor runs. The positive control is
-    /// `a_carried_roster_warms_and_stores_its_nullary_rows`: a pure nullary row still stores.
-    #[test]
-    fn a_plain_warm_row_that_dispatches_an_effect_stops_the_line() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             service Filesystem {\n\
-               operation Read {\n\
-                 input { path: String }\n\
-                 output {\n\
-                   content: String from \"content\"\n\
-                   success: Bool from \"read_success\"\n\
-                   error: String from \"error\"\n\
-                   error_kind: String from \"error_kind\"\n\
-                 }\n\
-                 readonly\n\
-                 transport file { path: \"{path}\" }\n\
-               }\n\
-             }\n\
-             fn reads_checkout() -> String {\n\
-               let read = Filesystem.Read(path: \"Cargo.toml\")\n\
-               read.content\n\
-             }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.reads_checkout\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("an effectful plain warm row must refuse, never store content-blind");
-        assert!(
-            err.contains("cause=PureProducerShareWarmDispatchedEffect")
-                && err.contains("producer=v2.workflow.floor_pure_producer_share.reads_checkout")
-                && err.contains("effects=1"),
-            "the refusal must name the cause, the row and the dispatch it saw: {err}"
-        );
-        let (stores, _) = v1_interpreter::cross_claim_pure_memo_counts();
-        assert_eq!(stores, 0, "nothing may be retained for the refused row");
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
-    /// The discriminating red for review 59035: before the fix this asserted
-    /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
-    /// produced an artifact it merely found. Running the install TWICE without clearing the
-    /// memos in between is what puts the second warm on that path, and nothing else in this
-    /// module reaches it — which is why the defect survived the first round of tests.
-    #[test]
-    fn a_second_warm_of_the_same_producer_reports_that_it_was_found_not_built() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             fn tm_local() -> Bool { true }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type ShareRefusalVerdict =\n\
-                 MeasuredServeAboveRecompute\n\
-               | NoMeasuredEffectOverItsConsumers\n\
-             type RefusedShareCandidate {\n\
-               producer: String\n\
-               verdict: ShareRefusalVerdict\n\
-               carrier_modules: List<String>\n\
-               measurement: String\n\
-               next_trigger: String\n\
-             }\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
-        )]);
-
-        let first = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("first install warms");
-        assert!(
-            matches!(
-                first[0].1.provenance,
-                SharedBuildProvenance::BuiltByPreparation
-            ),
-            "the first warm BUILDS it: {:?}",
-            first[0].1.provenance
-        );
-
-        // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
-        // whole subject of this test.
-        let second = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect("second install re-warms");
-        match &second[0].1.provenance {
-            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
-                // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
-                // establishes presence and not cause. Asserting the exact string keeps a
-                // future edit from quietly upgrading it into a fabricated attribution.
-                assert_eq!(
-                    *triggered_by,
-                    "an-earlier-rostered-producer-in-this-warm-loop"
-                );
-            }
-            other => panic!("a warm that found the value must not claim it built it: {other:?}"),
-        }
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
     /// The fixture roster for the carried-input tests: one acquisition (`carrier_a`), one
     /// producer that reaches it nullary (`projection`), and a SECOND acquisition returning
     /// different content (`carrier_b`) which exists only so a test can bind a different carrier
@@ -13337,8 +12587,6 @@ mod pure_producer_share_tests {
                  fn carrier_b() -> String {{ \"content-B\" }}\n\
                  fn projection() -> String {{ concat(\"projected:\", carrier_a()) }}\n\
                  fn consumer() -> String {{ projection() }}\n\
-                 data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-                 data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
                  type CarriedInputDependence =\n\
                      BoundParameter {{ parameter: String }}\n\
                    | ImplicitAcquisition\n\
@@ -13380,7 +12628,8 @@ mod pure_producer_share_tests {
                    measurement: String\n\
                    next_trigger: String\n\
                  }}\n\
-                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+                 fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {{ [] }}\n",
                 dependence = dependence,
                 dependence_input = "v2.workflow.floor_pure_producer_share.carrier_a",
             ),
@@ -13557,8 +12806,6 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn carrier_a() -> String { \"content-A\" }\n\
              fn projection() -> String { concat(\"projected:\", carrier_a()) }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
              type CarriedInputDependence =\n\
                  BoundParameter { parameter: String }\n\
                | ImplicitAcquisition\n\
@@ -13593,7 +12840,8 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a row naming an unprepared input must stop the line");
@@ -13614,8 +12862,6 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn carrier_a(seed: String) -> String { concat(\"content-\", seed) }\n\
              fn projection() -> String { \"projected\" }\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = []\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
              type CarriedInputDependence =\n\
                  BoundParameter { parameter: String }\n\
                | ImplicitAcquisition\n\
@@ -13650,52 +12896,14 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a non-nullary acquisition must stop the line");
         assert!(
             err.contains("PreparedEffectInputAcquisitionFailed") && err.contains("NULLARY"),
             "refusal must name the cause and the reason: {err}"
-        );
-        v1_interpreter::clear_cross_claim_pure_memos();
-    }
-
-    /// A warm row naming a producer the subject cannot resolve stops the line.
-    #[test]
-    fn a_stale_warm_row_stops_the_line() {
-        v1_interpreter::clear_cross_claim_pure_memos();
-        let prepared = prepared_from(&[(
-            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
-            "module v2.workflow.floor_pure_producer_share\n\
-             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_gone\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
-             type CarriedInputDependence =\n\
-                 BoundParameter { parameter: String }\n\
-               | ImplicitAcquisition\n\
-             type PreparedEffectInput {\n\
-               acquisition: String\n\
-               checkout_input: String\n\
-               ground: String\n\
-               measurement: String\n\
-             }\n\
-             type CarriedInputWarmRow {\n\
-               producer: String\n\
-               carried_input: String\n\
-               dependence: CarriedInputDependence\n\
-               measurement: String\n\
-             }\n\
-             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
-",
-        )]);
-        let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
-            .expect_err("a stale warm row must stop the line");
-        // The stop now lands at roster RESOLUTION (admission is by resolved declaration
-        // identity), before any warm runs — same line-stop, more precisely located.
-        assert!(
-            err.contains("PureProducerShareProducerUnresolved"),
-            "refusal must name the cause: {err}"
         );
         v1_interpreter::clear_cross_claim_pure_memos();
     }

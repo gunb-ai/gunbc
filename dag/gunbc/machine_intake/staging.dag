@@ -1,7 +1,7 @@
 module gunbc.machine_intake_staging
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String, list_length }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.boot_artifact_delivery {
   BootArtifactDelivery,
   MegaRacRestRemoteMedia,

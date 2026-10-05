@@ -11,6 +11,9 @@ import v2.std.bounded_lattice_completeness {
   partial_bounded_lattice_instances_in_tree
 }
 import v2.std.compilers.target_model {
+  AlgebraPrimitive,
+  CanonicalOperation,
+  canonical_operation_from_wire_node,
   canonical_operation_op_add,
   canonical_operation_op_coerce,
   canonical_operation_wire_matches_operation,
@@ -26,7 +29,11 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_reading }
+import v2.std.model_core { AlgebraInhabitanceDecl }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
+  dag_algebra_inhabitance_decls,
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
   DagCanonicalSymbolLiteral,
@@ -106,6 +113,7 @@ import v2.std.inhabitance {
   application_parameter_order_malformed_reason,
   declared_type_inhabitance,
   inhabitance_node_undecidable_reason,
+  inhabitance_node_mentions_type_variable,
   inhabitance_undecidable_diagnostic,
   position_binder_default,
   position_declared_return,
@@ -2851,39 +2859,108 @@ fn infer_loop_iteration(
   }
 }
 
-// First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int
-// add derives the unified Int type as the expression result — the add_probe body vertical. Operator
-// recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
-// (03_resolve.resolve_transform_operator_child). Every reached Transform awaits the transform row
-// so application-argument inhabitance runs; add-shape result derivation is selected inside
-// infer_gather_transform_row_on_entries, and non-add Transforms stay GroundingNotDerived as the
-// application's result type after the inhabitance judgment. dissolve-on: general operator/operand
-// typing table subsumes the add-only result rule.
+// Binary algebra-operator derivation (v2-inferred-tree-completeness): a binary infix Transform whose
+// operator is an algebra primitive derives its result through the operand type's structure, by the one
+// route below (infer_binary_algebra_field, infer_algebra_field_result_type) -- `+` and `||` alike, with no
+// per-operator or per-type arm. Operator recognition accepts dag_token_plus pre-resolve and the canonical
+// operation wire post-resolve (03_resolve.resolve_transform_operator_child). Every reached Transform awaits
+// the transform row so application-argument inhabitance runs; this derivation is selected inside
+// infer_gather_transform_row_on_entries, and a Transform that is not a binary algebra primitive stays
+// GroundingNotDerived as the application's result type after the inhabitance judgment.
 
-fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
-  match op_node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == ^dag_token_plus
-        || canonical_operation_wire_matches_operation(
-          wire: op_node,
-          operation: canonical_operation_op_add()
-        )
-    _ =>
-      canonical_operation_wire_matches_operation(
-        wire: op_node,
-        operation: canonical_operation_op_add()
-      )
+// A BINARY ALGEBRA OPERATOR NAMES ONE FIELD OF A STRUCTURE, and the field is the whole of what it says: the
+// lowered operator is a canonical-operation wire (v2.std.compilers.target_model canonical_operation_from_wire_node)
+// whose AlgebraPrimitive carries the signature field -- ^ring_field_add for `+`, ^lattice_field_join for `||`,
+// ^lattice_field_meet for `&&`. The bare `+` token is the add field's surface spelling
+// (canonical_operation_op_add). Anything else is not an algebra primitive and stays out of this arm.
+fn infer_binary_algebra_field(op_node: Node) -> Optional<Symbol> {
+  if infer_operator_is_plus_token(op_node: op_node) {
+    infer_canonical_operation_field(operation: canonical_operation_op_add())
+  } else {
+    infer_wire_algebra_field(wire: op_node)
   }
 }
 
-fn infer_transform_is_binary_infix_int_add_shape(node: Node) -> Bool {
+fn infer_operator_is_plus_token(op_node: Node) -> Bool {
+  match node_atom_identity_optional(node: op_node) {
+    Present { value: id } => id == ^dag_token_plus
+    Absent => false
+  }
+}
+
+fn infer_wire_algebra_field(wire: Node) -> Optional<Symbol> {
+  match canonical_operation_from_wire_node(wire: wire) {
+    Accepted { value: decoded, diagnostics: _ } => infer_canonical_operation_field(operation: decoded)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Symbol> {
+  match operation {
+    AlgebraPrimitive { algebra_field: field } => optional_present(value: field)
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
+    OrderingComparison { compare_field: _, predicate: _ } => optional_absent()
+    EqualityComparison { eq_field: _, predicate: _ } => optional_absent()
+    CoercionCrossing { homomorphism_rule: _ } => optional_absent()
+  }
+}
+
+// THE OPERAND TYPE CARRIES THE FIELD WHEN ITS LANGUAGE MODEL SAYS SO: a row in
+// v2.extdeps.languages.dag dag_algebra_inhabitance_decls inhabits a structure that DECLARES the field, read
+// through v2.std.algebra_structure_signature algebra_inhabitance_field_reading (the structure's binders and
+// the sub-structures it composes -- never a name found inside an operation's signature). The row is SELECTED by
+// the carrier its own inhabitance node is over (the ^inhabitant_edge target, read in the same call), never by the
+// row's outer `inhabitant` field: that field is a second copy of the carrier, and selecting by it let a row whose
+// copy disagreed with its structure lend the structure's fields to a type the structure is not over. The result is the
+// operand type because every binary algebra primitive these structures carry is closed on the carrier: a
+// lattice join is algebra_binary_fn_node(domain: T, T, codomain: T), and ring add is the operation of the
+// abelian group the ring composes. This replaces the Int-only arm that hard-coded `+` over
+// ^dag_binding_type_int: Int add derives through Int's ordered-ring row and Bool join through Bool's
+// boolean-algebra row, by one route; a type with no row declaring the field (Bool `+`, Int `||`) is refused as
+// an operand mismatch exactly as a non-Int `+` was.
+// What the operand type's row answers for the field: the result type, no row carrying it, or a row whose
+// inhabitance node is malformed -- the last refused with ITS cause, never as an operand mismatch.
+type InferAlgebraFieldResult
+  = AlgebraFieldResultType { result: Node }
+  | AlgebraFieldNotCarried
+  | AlgebraFieldRowMalformed { cause: Symbol }
+
+fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_type: Node, field: Symbol) -> InferAlgebraFieldResult {
+  fold(rows, init: AlgebraFieldNotCarried, f: fn(acc, decl) {
+    match acc {
+      AlgebraFieldResultType { result: _ } => acc
+      AlgebraFieldRowMalformed { cause: _ } => acc
+      AlgebraFieldNotCarried =>
+        match algebra_inhabitance_field_reading(inhabitance: decl.algebra, field: field) {
+          InhabitanceFieldReadMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+          InhabitanceFieldRead { carrier: carrier, declaration: declaration } =>
+            if infer_branch_type_atoms_equal(a: carrier, b: operand_type) {
+              match declaration {
+                FieldDeclared => AlgebraFieldResultType { result: operand_type }
+                FieldNotDeclared => AlgebraFieldNotCarried
+                InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+              }
+            } else {
+              AlgebraFieldNotCarried
+            }
+        }
+    }
+  })
+}
+
+
+fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     false
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {
       Absent => false
-      Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
+      Present { value: op_target } =>
+        match infer_binary_algebra_field(op_node: op_target) {
+          Present { value: _ } => true
+          Absent => false
+        }
     }
   }
 }
@@ -3235,15 +3312,7 @@ fn infer_judge_declared_position(
             reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
-          let obligation = DeclaredTypeObligation {
-            position: position,
-            parameter_identity: formal.parameter_identity,
-            declared: infer_declared_type_denotation(declared: formal.declared),
-            produced: produced,
-            produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
-            application: application,
-            type_variables: type_params
-          }
+          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: produced, application: application, type_variables: type_params, declarations: declarations)
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
@@ -3268,6 +3337,281 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
   Empty
 }
 
+// A FORMAL THAT CONTAINS A TYPE PARAMETER INSIDE A CONSTRUCTOR (`xs: List<T>`) IS MATCHED, THEN JUDGED.
+// Handed to the declared-position judge as written it mentions a type variable, so the judge answered
+// UndecidableGenericFormal and the application was ACCEPTED whatever the argument was: `g<T>(a: List<T>)`
+// called with an Int, or with `List<Int>` and `List<Pair>` at two `List<T>` formals, passed silently --
+// below the floor (values inhabit declared types, DESIGN section 4b; gunbc.recurring_failure_mode
+// generic_formal_containing_a_type_variable_unjudged). The match is first-order over the argument's derived
+// type: an Instantiation formal needs an Instantiation argument with the same constructor and arity and
+// recurses pairwise; a bare type variable binds its first instance (a later occurrence is judged against
+// it, so two different instances refuse); a formal leaf that mentions no variable is left to the judge.
+// After matching, the formal is instantiated and handed to the SAME judge every formal uses -- one judge,
+// no second inhabitance relation. A constructor or arity mismatch refuses there, typed and located, with
+// the judge's own application_argument_does_not_inhabit. An argument whose type is not derived stays the
+// counted frontier and binds nothing; a variable inside a shape this match does not open (an Arrow, an
+// optional) stays the judge's UndecidableGenericFormal, as before.
+type InferFormalMatch
+  = InferFormalMatched { instances: List<TypeVariableInstance> }
+  | InferFormalShapeMismatch
+
+fn infer_type_variable_binder(t: Node, type_params: List<Symbol>) -> Optional<Symbol> {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(t.children) == 0 && fold(type_params, init: false, f: fn(acc, p) { acc || (p == id) }) {
+        optional_present(value: id)
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
+  match infer_type_variable_binder(t: formal, type_params: type_params) {
+    Present { value: binder } =>
+      match type_variable_instance_lookup(instances: instances, binder: binder) {
+        Present { value: _ } => InferFormalMatched { instances: instances }
+        Absent => InferFormalMatched { instances: list_snoc_item(xs: instances, item: TypeVariableInstance { binder: binder, instance: produced }) }
+      }
+    Absent =>
+      match formal.kind {
+        TypeNode { connective: Instantiation } =>
+          match produced.kind {
+            TypeNode { connective: Instantiation } =>
+              let f = infer_type_head_and_args(t: formal)
+              let p = infer_type_head_and_args(t: produced)
+              if length(xs: f.args) != length(xs: p.args) {
+                InferFormalShapeMismatch
+              } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
+                InferFormalMatched { instances: instances }
+              } else if !infer_type_equal_ignoring_provenance(a: f.head, b: p.head) {
+                InferFormalShapeMismatch
+              } else {
+                fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
+                  match acc {
+                    InferFormalShapeMismatch => acc
+                    InferFormalMatched { instances: so_far } => infer_match_generic_formal(formal: pair.formal, produced: pair.produced, type_params: type_params, instances: so_far, declarations: declarations)
+                  }
+                })
+              }
+            TypeNode { connective: _ } => InferFormalShapeMismatch
+            ComputationNode { behavior: _ } => InferFormalShapeMismatch
+          }
+        TypeNode { connective: _ } => InferFormalMatched { instances: instances }
+        ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }
+      }
+  }
+}
+
+// A TRANSPARENT ALIAS IS ITS RIGHT-HAND SIDE. `type List<T> = std.algebra.FreeMonoid<T>` is one type under two
+// spellings. The head that names a transparent alias unfolds one step -- its declaration read from the index the
+// obligation's producer holds (a TypeAlias wrapper, v2.std.type_binder type_decl_view), its binders
+// instantiated at the use's arguments. A refinement or brand does not unfold (infer_alias_is_refined); a
+// generic, opaque or plain declaration is not an alias. Resolution refuses an alias cycle (ExpectedHead), so
+// the unfolding terminates.
+fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Node> {
+  let ha = infer_type_head_and_args(t: t)
+  match declaration_reference_path_optional(node: ha.head) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match symbol_index_lookup(index: declarations, qualified_path: path) {
+        Absent => optional_absent()
+        Present { value: declared } =>
+          match type_decl_view(target: declared) {
+            TypeAlias { binders: _, aliased: aliased } =>
+              if infer_alias_is_refined(declared: declared, aliased: aliased) {
+                optional_absent()
+              } else {
+              let params = type_param_names(n: declared)
+              if length(xs: params) != length(xs: ha.args) {
+                optional_absent()
+              } else {
+                optional_present(value: infer_type_instantiated(t: aliased, instances: zip_map(a: params, b: ha.args, f: fn(p, a) { TypeVariableInstance { binder: p, instance: a } })))
+              }
+              }
+            GenericTypeDecl { binders: _, member: _ } => optional_absent()
+            OpaqueTypeDecl { binders: _ } => optional_absent()
+            PlainTypeDecl { member: _ } => optional_absent()
+          }
+      }
+  }
+}
+
+// A TYPE WITH EVERY TRANSPARENT ALIAS UNFOLDED, at its head and inside every Instantiation argument: the ONE
+// alias rule, applied by the producer of every DeclaredTypeObligation (infer_judge_declared_position) to both the
+// declared and the produced type, so every declared position -- argument, return, record field, let annotation,
+// binder default -- and both the plain and the generic routes see one type per alias family (review 75435;
+// calm-boar-904, option 1). v2.std.inhabitance holds no index, so the reading is supplied by the producer,
+// exactly as produced_declared_carrier is.
+fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
+  match infer_type_alias_unfolded(t: t, declarations: declarations) {
+    Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Instantiation } =>
+          Node {
+            kind: t.kind,
+            children: fold(t.children, init: Empty, f: fn(acc, e) {
+              list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
+            }),
+            occurrence_id: t.occurrence_id
+          }
+        TypeNode { connective: _ } => t
+        ComputationNode { behavior: _ } => t
+      }
+  }
+}
+
+// A REFINED ARGUMENT MATCHES THROUGH ITS DECLARED CARRIER, by the judge's own subsumption fact. The judge
+// widens a produced refinement to the carrier its declaration states (refinement_declared_carrier, one
+// step, never walked) after an exact comparison refuses; the generic match asks the SAME fact on a shape
+// mismatch, so `type Ns = List<Int> where nonempty` at `xs: List<T>` binds T to Int exactly as it would
+// inhabit a declared `List<Int>`. A mismatch is refused only when neither the argument nor its declared
+// carrier matches. Routing a mismatch to the judge with T still unbound would not decide it: a formal that
+// mentions a type variable is UndecidableGenericFormal there, which re-admits `g(1)` at `List<T>`.
+fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
+  match infer_match_generic_formal(formal: formal, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
+    InferFormalMatched { instances: matched } => InferFormalMatched { instances: matched }
+    InferFormalShapeMismatch =>
+      match refinement_declared_carrier(index: declarations, source_type: produced) {
+        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized(t: carrier, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations)
+        Absent => InferFormalShapeMismatch
+      }
+  }
+}
+
+// THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
+// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
+// reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
+// all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
+// refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
+fn infer_declared_type_obligation(
+  position: DeclaredTypePosition,
+  parameter_identity: Symbol,
+  declared: Node,
+  produced: Node,
+  application: Node,
+  type_variables: List<Symbol>,
+  declarations: SymbolIndex
+) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position,
+    parameter_identity: parameter_identity,
+    declared: infer_type_alias_normalized(t: declared, declarations: declarations),
+    produced: infer_type_alias_normalized(t: produced, declarations: declarations),
+    produced_declared_carrier: match refinement_declared_carrier(index: declarations, source_type: produced) {
+      Present { value: c } => Present { value: infer_type_alias_normalized(t: c, declarations: declarations) }
+      Absent => Absent
+    },
+    application: application,
+    type_variables: type_variables
+  }
+}
+
+// A REFINEMENT IS NOT A TRANSPARENT ALIAS. `type Pos = Int where positive` -- and a nominal brand, which is
+// spelled the same way (`where brand(..)`, std.types WherePredicateMarker) -- denotes a type distinct from its
+// carrier, so it never unfolds: normalizing it would admit a raw carrier where the refined or branded type is
+// declared (silent widening). Its carrier is reached only by the judge's one-step subsumption
+// (refinement_declared_carrier), in the widening direction alone.
+fn infer_alias_is_refined(declared: Node, aliased: Node) -> Bool {
+  match refinement_declaration_of_node(decl: declared) {
+    Present { value: _ } => true
+    Absent =>
+      match refinement_declaration_of_node(decl: aliased) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+type InferTypePair {
+  formal: Node
+  produced: Node
+}
+
+// A formal with each bound type variable replaced by its instance; an unbound one stays as written.
+fn infer_type_instantiated(t: Node, instances: List<TypeVariableInstance>) -> Node {
+  fold_node(
+    n: t,
+    algebra: NodeFold {
+      init: fn(self) {
+        match self.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if count(self.children) == 0 {
+              match type_variable_instance_lookup(instances: instances, binder: id) {
+                Present { value: instance } => instance
+                Absent => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+              }
+            } else {
+              Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+            }
+          TypeNode { connective: _ } => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+          ComputationNode { behavior: _ } => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+        }
+      },
+      step: fn(acc, edge, sub) {
+        Node {
+          kind: acc.kind,
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub }),
+          occurrence_id: acc.occurrence_id
+        }
+      }
+    }
+  )
+}
+
+fn infer_judge_generic_formal(
+  position: DeclaredTypePosition,
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
+  formal: InhabitanceFormal,
+  arg: Node,
+  type_params: List<Symbol>,
+  instances: List<TypeVariableInstance>
+) -> Outcome<List<TypeVariableInstance>> {
+  let produced_optional = match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+    Absent => optional_absent()
+    Present { value: facts } =>
+      match inferred_facts_resolved_type(facts: facts) {
+        Violates { diagnostic: _ } => optional_absent()
+        Holds { value: produced } => optional_present(value: produced)
+      }
+  }
+  match produced_optional {
+    Absent =>
+      match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+      }
+    Present { value: produced } =>
+      match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized(t: formal.declared, declarations: declarations), produced: infer_type_alias_normalized(t: produced, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations) {
+        InferFormalShapeMismatch =>
+          outcome_rejected(
+            application_argument_does_not_inhabit_diagnostic(
+              obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations),
+              find_witness_reason: ^find_witness_reason_no_candidate
+            )
+          )
+        InferFormalMatched { instances: matched } =>
+          match infer_judge_declared_position(
+            position: position,
+            application: application,
+            entries: entries,
+            declarations: declarations,
+            formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: infer_type_instantiated(t: formal.declared, instances: matched) },
+            produced_at: arg,
+            type_params: type_params
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: _, diagnostics: d } => Accepted { value: matched, diagnostics: d }
+          }
+      }
+  }
+}
+
 // A FORMAL DECLARED AS ONE OF THE CALLEE'S TYPE PARAMETERS IS INSTANTIATED, NOT COMPARED. Judged as
 // an ordinary declared type, `x: T` would demand the argument's type be structurally the Atom `T`
 // and refuse every real argument application_argument_does_not_inhabit -- a loud refusal for the
@@ -3286,10 +3630,14 @@ fn infer_judge_application_argument_instantiating(
   instances: List<TypeVariableInstance>
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
-    DeclaredType { declared: _ } =>
-      match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+    DeclaredType { declared: declared } =>
+      if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_params) {
+        infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, formal: formal, arg: arg, type_params: type_params, instances: instances)
+      } else {
+        match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+        }
       }
     DeclaredTypeVariable { binder: binder } =>
       match type_variable_instance_lookup(instances: instances, binder: binder) {
@@ -3528,9 +3876,9 @@ fn infer_transform_binary_infix(
             match list_at_optional(xs: positional_targets, index: 2) {
               Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
               Present { value: right_target } =>
-                if !infer_transform_operator_is_int_add(op_node: op_target) {
-                  outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
-                } else {
+                match infer_binary_algebra_field(op_node: op_target) {
+                  Absent => outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
+                  Present { value: field } =>
                   match lookup_inferred_facts_in_entries(entries: entries, key: left_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
                     Present { value: left_facts } =>
@@ -3550,11 +3898,18 @@ fn infer_transform_binary_infix(
                               ) {
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                                 Accepted { value: unified_type, diagnostics: ud } =>
-                                  if !infer_branch_type_is_int(type_node: unified_type) {
-                                    outcome_rejected(
-                                      infer_transform_operand_type_mismatch_diagnostic(node: node)
-                                    )
-                                  } else {
+                                  match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field) {
+                                    AlgebraFieldNotCarried =>
+                                      outcome_rejected(
+                                        infer_transform_operand_type_mismatch_diagnostic(node: node)
+                                      )
+                                    AlgebraFieldRowMalformed { cause: cause } =>
+                                      outcome_rejected(Diagnostic {
+                                        reason: cause,
+                                        at: node_locus(node: node),
+                                        correction: Unavailable { reason: CorrectionNotModeled }
+                                      })
+                                    AlgebraFieldResultType { result: result_type } =>
                                     match infer_descent_witness_for_node(n: node) {
                                       Violates { diagnostic: d } =>
                                         Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -3562,7 +3917,7 @@ fn infer_transform_binary_infix(
                                         bind_outcome(
                                           o: inferred_facts_from_derived_type(
                                             node: node,
-                                            derived_type: unified_type,
+                                            derived_type: result_type,
                                             descent: Holds { value: descent_proof }
                                           ),
                                           f: fn(facts) {
@@ -4164,7 +4519,7 @@ fn infer_transform_derived_optional(
   resolved: ResolvedTree,
   arguments_decided: Bool,
 ) -> Optional<Outcome<InferredFacts>> {
-  if infer_transform_is_binary_infix_int_add_shape(node: node) {
+  if infer_transform_is_binary_infix_algebra_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, resolved: resolved))
   } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries, resolved: resolved)
@@ -5759,15 +6114,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
 }
 
 fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, member: Node, step: Node, resolved: ResolvedTree) -> InferFrame {
-  let obligation = DeclaredTypeObligation {
-    position: PositionDirectCallArgument,
-    parameter_identity: formal.formal.name,
-    declared: infer_declared_type_denotation(declared: formal.formal.type_node),
-    produced: member,
-    produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: member),
-    application: formal.formal.type_node,
-    type_variables: type_param_names(n: step)
-  }
+  let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, entering: InferFrameEnteredPlain }
     InhabitanceUndecidable { reason: _ } =>
@@ -5892,15 +6239,7 @@ fn infer_fold_bind_check(node: Node, entries: List<InferredFactsEntry>, resolved
 }
 
 fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolved: ResolvedTree) -> Outcome<Bool> {
-  let obligation = DeclaredTypeObligation {
-    position: position_declared_return(),
-    parameter_identity: ^fold_carrier,
-    declared: infer_declared_type_denotation(declared: declared),
-    produced: produced,
-    produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: produced),
-    application: at,
-    type_variables: type_param_names(n: step)
-  }
+  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: declared), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
