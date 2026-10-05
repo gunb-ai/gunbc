@@ -2226,6 +2226,10 @@ fn floor_route_gap_roster() -> List<String> {
 fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_network_real_reader_witness_test.real_reader_takes_the_route_the_reader_identity_dictates", operation: "Read", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_transcript_rate_real_execution.a_real_tree_grows_gains_a_transcript_and_truncates_one_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_transcript_rate_real_execution.a_root_that_does_not_exist_refuses_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
-  }
+  } } }
 }
