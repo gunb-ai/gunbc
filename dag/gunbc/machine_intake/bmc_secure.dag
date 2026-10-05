@@ -1380,8 +1380,7 @@ type BmcSecureStateRefusal
 // channel-access write" is now a typed plan refusal rather than an assessment refusal. Putting the
 // factory password back is still not an admitted action, so that deviation still refuses with the
 // missing operation named.
-type MissingAccountOperation
-  = PublishedFactoryCredentialRestore
+type MissingAccountOperation = | PublishedFactoryCredentialRestore
 
 type ConjunctionCauseClass
   = CauseRemediableByAccountAction
