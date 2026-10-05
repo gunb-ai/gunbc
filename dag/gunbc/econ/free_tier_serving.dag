@@ -124,6 +124,6 @@ fn average_serving_cost_per_registered_user_year_micros_upper_bound(
         Present { value: (((cost_whole_usd * 1000000) + user_floor) - 1) / user_floor }
       }
     }
-    _ => none
+    Absent => none
   }
 }

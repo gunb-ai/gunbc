@@ -1,5 +1,6 @@
 module test.claim.html_roundtrip
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr, MarkupBracket }
 import extdeps.languages.html {
   serialize_html_source,

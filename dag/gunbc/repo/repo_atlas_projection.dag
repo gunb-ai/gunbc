@@ -462,7 +462,9 @@ fn atlas_impact_is_exact(overlay: AtlasImpactOverlay) -> Bool {
     AtlasImpactComputed { reached: _, standing: standing } =>
       match standing {
         ExactForGraphSubject => true
-        _ => false
+        ProvisionalForObservedPool => false
+        Incomplete { causes: _ } => false
+        PoolIndependentProjectionUnavailable { trigger: _ } => false
       }
   }
 }
