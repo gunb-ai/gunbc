@@ -19,9 +19,9 @@ import std.render { Document, RenderCapability }
 import std.symbols { Ascii }
 import extdeps.render.surface { serialize_document, PlainTerminal, GithubActions }
 import gunbc.scm.object_store {
-  empty_store, store_node, Stored, LocatorCollision, ObjectId, ObjectStore,
+  empty_store,
+  store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
 }
-import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import extdeps.render.ansi { ansi_escape }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -65,13 +65,9 @@ data plain_cap: RenderCapability = RenderCapability {
   color: false, tier: Ascii, cursor_addressable: false
 }
 
-fn render_witness_atom(name: Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
-}
-
 // THE FIXTURE CANNOT FABRICATE A ROOT REFERENCE, so the collision arm answers with the whole
 // STATUS rather than with a reference it does not have. `CheckedOutCommit.root` is a
-// SemanticNodeObjectRef and only the store mints one; a fixture that could invent one would be the
+// CorpusManifestObjectRef and only the store mints one; a fixture that could invent one would be the
 // forge the seal exists to prevent. The arm is unreachable -- the store is empty -- and it now says
 // so by producing the no-checkout status instead of a plausible-looking identity.
 // THE CORPUS FIELD HERE IS THE MINIMAL RENDERABLE VALUE AND IS NOT A MODEL CLAIM. This fixture's
@@ -82,21 +78,22 @@ fn render_witness_atom(name: Symbol) -> Node {
 // NoCandidateAndNoBase; nothing here should be read as evidence that it can. The same caveat already
 // governs the checkout field above, for the reason its own note gives.
 fn render_witness_checked_out(message: String) -> RepositoryStatus {
-  match store_node(store: empty_store(), n: render_witness_atom(name: ^r1)) {
-    Stored { store: _, node: node } =>
+  let unreached = RepositoryStatus {
+    checkout: NothingCheckedOut,
+    commit_count: 1,
+    staged: [],
+    corpus: CorpusStageReadable { standing: NoCandidateAndNoBase, paths: [] },
+  }
+  match store_corpus_manifest(store: empty_store(), entries: []) {
+    CorpusManifestStored { store: _, manifest: manifest } =>
       RepositoryStatus {
-        checkout: CheckedOutCommit { root: node, message: message },
+        checkout: CheckedOutCommit { root: manifest, message: message },
         commit_count: 1,
         staged: [],
         corpus: CorpusStageReadable { standing: NoCandidateAndNoBase, paths: [] },
       }
-    LocatorCollision { identity: _, existing: _, incoming: _ } =>
-      RepositoryStatus {
-        checkout: NothingCheckedOut,
-        commit_count: 1,
-        staged: [],
-        corpus: CorpusStageReadable { standing: NoCandidateAndNoBase, paths: [] },
-      }
+    CorpusManifestDuplicatePath { path: _ } => unreached
+    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => unreached
   }
 }
 

@@ -8,7 +8,7 @@ module test.probe.jit_deregistration_forged_probe
 // strict-resolve exclusion, so this source reaches the compiler only through that witness.
 
 import std.types { Int, List, NonEmptyStr, String }
-import extdeps.transports.rest { RestExchangeSucceeded }
+import extdeps.transports.rest { RestAnswered }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitWorkFolder }
@@ -62,8 +62,7 @@ fn forged_listing(app: DeclaredGitHubApp, installation: GitHubAppInstallationId)
     name: "victim-runner",
     app: app,
     installation: installation,
-    performance: RestExchangeSucceeded,
-    body: OrganizationRunnerListWire { total_count: 0, runners: [] },
+    listing: RestAnswered { answer: OrganizationRunnerListWire { total_count: 0, runners: [] } },
   }
 }
 

@@ -679,7 +679,14 @@ pub fn render_rust_type_without_applied_binding(
                                 let key_node = crate::v1_compiler_infer_types::child_type_node(
                                     key_child.clone(),
                                 );
-                                let val_node = match n.children.clone().get((1) as usize).cloned() {
+                                let val_node = match n
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .next()
+                                {
                                     Some(val_child) => {
                                         if rust_type_node_is_arrow(val_child.clone()) {
                                             val_child.clone()
@@ -2864,7 +2871,7 @@ if peel.clone() {
                                                             } else {
                                                                 if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
                                                     match arg_list.clone().first().cloned() {
-    Some(k) => match arg_list.clone().get((1) as usize).cloned() {
+    Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
     Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(name.clone(), k.clone(), v.clone(), base.clone(), RenderTarget::Rust),
     std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), arg_list.clone().join(&", ".to_string())), ">".to_string()),
 },
@@ -3279,7 +3286,7 @@ pub fn rust_alias_rhs_applied_container_or_base(
 ) -> String {
     if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
         match arg_list.clone().first().cloned() {
-            Some(k) => match arg_list.clone().get((1) as usize).cloned() {
+            Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
                 Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(
                     leaf.clone(),
                     k.clone(),
@@ -5904,7 +5911,13 @@ pub fn emit_rust_block_stmts(
                 let next_scope =
                     crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = registry;
@@ -5957,7 +5970,14 @@ pub fn emit_rust_init_block_stmts(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -10525,10 +10545,16 @@ pub fn qualified_type_reference_rows(
                                     .map(|s| s.to_string())
                                     .collect::<Vec<_>>(),
                             );
-                            let qualifier = Rc::new(v1_rt::list_take(
-                                &segments.clone(),
-                                v1_rt::int_sub((segments.clone().len() as i64), 1),
-                            ))
+                            let qualifier = Rc::new(
+                                segments
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .take(
+                                        v1_rt::int_sub((segments.clone().len() as i64), 1) as usize
+                                    )
+                                    .collect::<Vec<_>>(),
+                            )
                             .join(&".".to_string());
                             if ((((qualifier.clone() == this_module_name.clone())
                                 || crate::v1_compiler_infer_types::emit_map_has(
@@ -10726,8 +10752,8 @@ pub fn qualified_type_reference_use_lines(
             .cloned()
             {
                 __result.extend(
-                    (*Rc::new(v1_rt::list_take(
-                        &Rc::new({
+                    (*Rc::new(
+                        Rc::new({
                             let mut __result = Vec::new();
                             for l in typed.iter().cloned() {
                                 if (l.text.clone() == text.clone()) {
@@ -10735,9 +10761,12 @@ pub fn qualified_type_reference_use_lines(
                                 }
                             }
                             __result
-                        }),
-                        1,
-                    )))
+                        })
+                        .iter()
+                        .cloned()
+                        .take(1 as usize)
+                        .collect::<Vec<_>>(),
+                    ))
                     .iter()
                     .cloned(),
                 );
@@ -14594,8 +14623,10 @@ pub fn rust_use_after_crate(line: String) -> String {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             )
-            .get((1) as usize)
+            .iter()
             .cloned()
+            .skip(1 as usize)
+            .next()
             {
                 Some(rest) => rest.clone(),
                 std::option::Option::None => "".to_string(),
@@ -14740,8 +14771,10 @@ pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .get((1) as usize)
+        .iter()
         .cloned()
+        .skip(1 as usize)
+        .next()
         {
             Some(rest) => match Rc::new(
                 rest.clone()
@@ -14937,8 +14970,10 @@ pub fn rust_use_bound_symbol(entry: String) -> String {
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
-    .get((1) as usize)
+    .iter()
     .cloned()
+    .skip(1 as usize)
+    .next()
     {
         Some(bound_name) => bound_name.clone(),
         std::option::Option::None => entry.clone(),
@@ -18858,8 +18893,20 @@ pub fn v1_record_decl_slot_arg_name(
                         );
                     } else {
                         {
-                            let __tco_0 = Rc::new(v1_rt::list_skip(&decl_params, 1));
-                            let __tco_1 = Rc::new(v1_rt::list_skip(&type_args, 1));
+                            let __tco_0 = Rc::new(
+                                decl_params
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_1 = Rc::new(
+                                type_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
                             let __tco_2 = slot_name;
                             let __tco_3 = source_indices;
                             __tco_loop_decl_params = __tco_0;
@@ -18933,8 +18980,22 @@ pub fn v1_positional_bound_forwarded_names(
                     v1_rt::concat(
                         here.clone(),
                         v1_positional_bound_forwarded_names(
-                            Rc::new(v1_rt::list_skip(&callee_names.clone(), 1)),
-                            Rc::new(v1_rt::list_skip(&wrapper_names.clone(), 1)),
+                            Rc::new(
+                                callee_names
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                wrapper_names
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
                             callee_bound_param_names.clone(),
                             wrapper_generic_param_names.clone(),
                         ),
@@ -24170,7 +24231,14 @@ pub fn rust_empty_map_value_type_str(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match map_type.children.clone().get((1) as usize).cloned() {
+    match map_type
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(1 as usize)
+        .next()
+    {
         Some(value_child) => {
             let rendered = render_rust_type(
                 crate::v1_compiler_infer_types::child_type_node(value_child.clone()),
@@ -25907,8 +25975,10 @@ pub fn rust_call_arg_fail_closed_unwrap(
 ) -> String {
     match callee.clone() {
         Some(info) => match function_value_params(info.params.clone())
-            .get((idx.clone()) as usize)
+            .iter()
             .cloned()
+            .skip(idx.clone() as usize)
+            .next()
         {
             Some(param) => {
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
@@ -25952,8 +26022,10 @@ pub fn rust_call_arg_function_value_adapt(
         }
         match callee.clone() {
             Some(info) => match function_value_params(info.params.clone())
-                .get((idx.clone()) as usize)
+                .iter()
                 .cloned()
+                .skip(idx.clone() as usize)
+                .next()
             {
                 Some(param) => {
                     let arity = (crate::v1_std_core::param_node_type_expr(param.clone())
@@ -26063,7 +26135,14 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
                 arg.clone(),
                 scope.type_env.clone().source_indices.clone(),
             ),
-            Rc::new(v1_rt::list_skip(&arg.children.clone(), 1)),
+            Rc::new(
+                arg.children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            ),
         ),
         _ => scope.clone(),
     }
@@ -26104,7 +26183,7 @@ pub fn emit_typed_call(
                     scope.clone(),
                 );
                 let get_list = get_args.clone().first().cloned();
-                let get_idx = get_args.clone().get((1) as usize).cloned();
+                let get_idx = get_args.clone().iter().cloned().skip(1 as usize).next();
                 let get_result = match get_list.clone() {
                     Some(list_arg) => match get_idx.clone() {
                         Some(idx_arg) => {
@@ -26168,8 +26247,10 @@ pub fn emit_typed_call(
                 let update_arg = crate::v1_std_core::arg_value(
                     with_args
                         .clone()
-                        .get((1) as usize)
+                        .iter()
                         .cloned()
+                        .skip(1 as usize)
+                        .next()
                         .clone()
                         .unwrap(),
                 );
@@ -26397,8 +26478,10 @@ pub fn emit_typed_call(
                     let a = pair.1.clone();
                     let arg_emit_info = match application_plan
                         .clone()
-                        .get((idx.clone()) as usize)
+                        .iter()
                         .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
                     {
                         Some(application) => {
                             crate::v1_compiler_infer_emit_info::emit_info_with_expected_type(
@@ -26852,7 +26935,13 @@ pub fn emit_nested_rt_concat(
                     )
                 };
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = next_acc.clone();
                     let __tco_2 = shared_types;
                     __tco_loop_remaining = __tco_0;
@@ -27227,7 +27316,13 @@ pub fn lambda_scope_from_children(
     .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
-        let param_type = match param_nodes.clone().get((idx.clone()) as usize).cloned() {
+        let param_type = match param_nodes
+            .clone()
+            .iter()
+            .cloned()
+            .skip(idx.clone() as usize)
+            .next()
+        {
             Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: resolved_type,
@@ -27276,7 +27371,13 @@ pub fn lambda_param_type_strs(
                 let inferred_type = if (fold_acc_uses_fallback.clone() && (idx.clone() == 0)) {
                     std::option::Option::None
                 } else {
-                    match param_nodes.clone().get((idx.clone()) as usize).cloned() {
+                    match param_nodes
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
+                    {
                         Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved {
                                 node: param_type, ..
@@ -27331,11 +27432,16 @@ pub fn lambda_param_type_strs(
                         std::option::Option::None => std::option::Option::None,
                     }
                 };
-                let fallback_type =
-                    match fallback_types.clone().get((idx.clone()) as usize).cloned() {
-                        Some(ty) => ty.clone(),
-                        std::option::Option::None => "_".to_string(),
-                    };
+                let fallback_type = match fallback_types
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(idx.clone() as usize)
+                    .next()
+                {
+                    Some(ty) => ty.clone(),
+                    std::option::Option::None => "_".to_string(),
+                };
                 let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
                 let ident =
                     crate::v1_compiler_emit::emit_ident(param_name.clone(), RenderTarget::Rust);
@@ -27375,7 +27481,15 @@ pub fn emit_typed_collection_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = crate::v1_std_core::lambda_body(lambda_expr.clone());
-            let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
+            let pn = Rc::new(
+                lambda_expr
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            );
             let param_strs = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
@@ -27446,7 +27560,15 @@ pub fn emit_typed_fold_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = crate::v1_std_core::lambda_body(lambda_expr.clone());
-            let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
+            let pn = Rc::new(
+                lambda_expr
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            );
             let safe_acc_type = rust_fold_safe_acc_type(acc_type_str.clone());
             let fallback_types = Rc::new({
                 let mut __result = Vec::new();
@@ -27708,7 +27830,7 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.clone().source_indices.clone(),
             acc_type_node.clone(),
         );
-        let fold_lambda_node = match args.clone().get((1) as usize).cloned() {
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => type_variable_node("".to_string()),
         };
@@ -28002,7 +28124,7 @@ pub fn emit_rust_fold_method_call(
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing
             .clone();
-        let elem_unused = match args.clone().get((1) as usize).cloned() {
+        let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => fold_lambda_element_unused(
                 crate::v1_std_core::arg_value(a.clone()),
                 scope.type_env.clone().source_indices.clone(),
@@ -28022,7 +28144,7 @@ pub fn emit_rust_fold_method_call(
             iter_template.clone(),
             recv_str.clone(),
         );
-        let step_awaits = match args.clone().get((1) as usize).cloned() {
+        let step_awaits = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => rust_expr_reaches_awaited_call(
                 crate::v1_std_core::arg_value(a.clone()),
                 registry.clone(),
@@ -28044,7 +28166,7 @@ pub fn emit_rust_fold_method_call(
             )
         } else {
             {
-                let fold_fn = match args.clone().get((1) as usize).cloned() {
+                let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
                     Some(a) => emit_typed_fold_lambda(
                         crate::v1_std_core::arg_value(a.clone()),
                         lambda_acc_type_str.clone(),
@@ -28093,13 +28215,13 @@ pub fn emit_rust_effectful_fold_loop(
     ExprData::ExprLambda => {
         let si = scope.type_env.clone().source_indices.clone();
 let ps = crate::v1_std_core::lambda_param_names_at(lambda_expr.clone(), si.clone());
-let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
+let pn = Rc::new(lambda_expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let acc_param_type = rust_fold_safe_acc_type(acc_type_str.clone());
 let acc_name = match ps.clone().first().cloned() {
     Some(n) => n.clone(),
     std::option::Option::None => "_".to_string(),
 };
-let elem_name = match ps.clone().get((1) as usize).cloned() {
+let elem_name = match ps.clone().iter().cloned().skip(1 as usize).next() {
     Some(n) => n.clone(),
     std::option::Option::None => "_".to_string(),
 };
@@ -28200,7 +28322,7 @@ pub fn fold_lambda_element_unused(
                 lambda_expr.clone(),
                 source_indices.clone(),
             );
-            match ps.clone().get((1) as usize).cloned() {
+            match ps.clone().iter().cloned().skip(1 as usize).next() {
                 Some(elem_name) => (elem_name.clone() == "_".to_string()),
                 std::option::Option::None => false,
             }
@@ -28414,10 +28536,15 @@ pub fn emit_rust_map_method_call(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(v1_rt::list_skip(
-                                &crate::v1_std_core::arg_value(a.clone()).children.clone(),
-                                1,
-                            )),
+                            Rc::new(
+                                crate::v1_std_core::arg_value(a.clone())
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
                         );
                         let body_str = emit_typed_expr(
                             bd.clone(),
@@ -28508,10 +28635,15 @@ pub fn emit_rust_map_method_call(
                             let lambda_scope = lambda_scope_from_children(
                                 scope.clone(),
                                 ps.clone(),
-                                Rc::new(v1_rt::list_skip(
-                                    &crate::v1_std_core::arg_value(a.clone()).children.clone(),
-                                    1,
-                                )),
+                                Rc::new(
+                                    crate::v1_std_core::arg_value(a.clone())
+                                        .children
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(1 as usize)
+                                        .collect::<Vec<_>>(),
+                                ),
                             );
                             let body_str = emit_typed_expr(
                                 bd.clone(),
@@ -28627,10 +28759,15 @@ pub fn emit_rust_higher_order_method(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(v1_rt::list_skip(
-                                &crate::v1_std_core::arg_value(a.clone()).children.clone(),
-                                1,
-                            )),
+                            Rc::new(
+                                crate::v1_std_core::arg_value(a.clone())
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
                         );
                         let body_str = emit_typed_expr(
                             bd.clone(),
@@ -28942,10 +29079,10 @@ pub fn emit_rust_first_method_call(
                     );
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(recv_str.clone(), ".get((".to_string()),
+                            v1_rt::concat(recv_str.clone(), ".iter().cloned().skip(".to_string()),
                             n_str.clone(),
                         ),
-                        ") as usize).cloned()".to_string(),
+                        " as usize).next()".to_string(),
                     )
                 }
             } else {
@@ -34742,7 +34879,14 @@ pub fn emit_tco_init_block_stmts(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -35918,7 +36062,13 @@ pub fn emit_typed_tco_reassign(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push({
-                    let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };
@@ -36402,7 +36552,7 @@ pub fn emit_operation_method(
         } else {
             v1_rt::concat("&self, ".to_string(), params_str.clone())
         };
-        let ret_type = render_rust_type(
+        let output_type = render_rust_type(
             crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
             shared_types.clone(),
             env.source_indices.clone(),
@@ -36417,6 +36567,24 @@ pub fn emit_operation_method(
             op_node.clone(),
             env.source_indices.clone(),
         );
+        let is_rest = match (*bound.clone()).clone() {
+            BoundOperation::RestBound { transport: _, .. } => true,
+            _ => false,
+        };
+        let ret_type = if is_rest.clone() {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("std::rc::Rc<".to_string(), rust_rest_result_path()),
+                        "<".to_string(),
+                    ),
+                    output_type.clone(),
+                ),
+                ">>".to_string(),
+            )
+        } else {
+            output_type.clone()
+        };
         let real_body = emit_transport_call(
             bound.clone(),
             op_text.clone(),
@@ -36442,7 +36610,7 @@ pub fn emit_operation_method(
             }
             __result
         });
-        let dry_run_body = emit_dry_run_branch_from_props(
+        let mock_body = emit_dry_run_branch_from_props(
             op_text.clone(),
             crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
             mock_props.clone(),
@@ -36453,6 +36621,11 @@ pub fn emit_operation_method(
             shared_types.clone(),
             emit_info.clone(),
         );
+        let dry_run_body = if is_rest.clone() {
+            emit_rust_rest_answered_mock(mock_body.clone(), output_type.clone())
+        } else {
+            mock_body.clone()
+        };
         let body = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -36779,10 +36952,16 @@ pub fn emit_rest_call(
                     }
                     __result
                 });
-                let send_line = "let response = request.send().await?;".to_string();
-                let response_handling = emit_response_code_handling(
+                let output_type = render_rust_type(
+                    crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                );
+                let result_lowering = emit_rust_rest_result_lowering(
                     op_node.clone(),
                     transport.clone(),
+                    output_type.clone(),
                     source_indices.clone(),
                     shared_types.clone(),
                     env.clone(),
@@ -36802,8 +36981,7 @@ pub fn emit_rest_call(
                         Rc::new(vec![
                             query_line.clone(),
                             body_line.clone(),
-                            send_line.clone(),
-                            response_handling.clone(),
+                            result_lowering.clone(),
                         ]),
                     )
                     .iter()
@@ -37280,14 +37458,6 @@ v1_rt::concat(v1_rt::concat(Rc::new(vec![body_init.clone()]), opt_lines.clone())
 }
 }
 
-pub fn has_response_prefix(name: String) -> bool {
-    if (v1_rt::string_length(&name) < 9) {
-        false
-    } else {
-        (v1_rt::substring(&name, 0, 9) == "response_".to_string())
-    }
-}
-
 pub fn has_from_key_fields(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -37759,20 +37929,20 @@ pub fn emit_from_key_extraction(
                 let prelude = match wire_opt.clone() {
                     Some(tn) => {
                         if is_json_wire_declaration_type(tn.clone(), source_indices.clone()) {
-                            "let json_body: serde_json::Value = response.json().await?;\n"
-                                .to_string()
+                            "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n".to_string()
                         } else {
                             {
                                 let wire_ty = match tn.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
                                     _ => tn.clone(),
                                 };
-                                v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())), " = response.json().await?;\n".to_string())
+                                v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())), " = serde_json::from_str(&__rest_text)?;\n".to_string())
                             }
                         }
                     }
                     std::option::Option::None => {
-                        "let json_body: serde_json::Value = response.json().await?;\n".to_string()
+                        "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
+                            .to_string()
                     }
                 };
                 let extract_lines = Rc::new({
@@ -37814,13 +37984,7 @@ match ch.inferred.clone().as_deref().cloned() {
                     __result
                 });
                 let tuple_body = if ((field_names.clone().len() as i64) == 1) {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "(".to_string(),
-                            field_names.clone().first().cloned().clone().unwrap(),
-                        ),
-                        ",)".to_string(),
-                    )
+                    field_names.clone().first().cloned().clone().unwrap()
                 } else {
                     v1_rt::concat(
                         v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())),
@@ -37862,9 +38026,9 @@ pub fn emit_plain_response_body(
             std::option::Option::None => false,
         };
         if is_text.clone() {
-            "let result = response.text().await?;\nOk(result)".to_string()
+            "Ok(__rest_text.clone())".to_string()
         } else {
-            "let result = response.json().await?;\nOk(result)".to_string()
+            "let result = serde_json::from_str(&__rest_text)?;\nOk(result)".to_string()
         }
     }
 }
@@ -37876,167 +38040,100 @@ pub fn emit_rust_boxed_error_return(message_expr: String) -> String {
     )
 }
 
-pub fn emit_response_code_handling(
-    op_node: Rc<Node>,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-) -> String {
-    {
-        let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
-        let response_props = Rc::new({
-            let mut __result = Vec::new();
-            for p in op_node.properties.clone().iter().cloned() {
-                if has_response_prefix(crate::v1_std_core::field_init_node_name_at(
-                    p.clone(),
-                    source_indices.clone(),
-                )) {
-                    __result.push(p);
-                }
-            }
-            __result
-        });
-        if ((response_props.clone().len() as i64) == 0) {
-            if use_from_key.clone() {
-                emit_from_key_extraction(
-                    op_node.clone(),
-                    source_indices.clone(),
-                    shared_types.clone(),
-                    env.clone(),
-                )
-            } else {
-                emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
-            }
-        } else {
-            {
-                let arms = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in response_props.iter().cloned() {
-                        __result.push(emit_response_arm(
-                            p.clone(),
-                            op_node.clone(),
-                            use_from_key.clone(),
-                            transport.clone(),
-                            source_indices.clone(),
-                            shared_types.clone(),
-                            env.clone(),
-                        ));
-                    }
-                    __result
-                });
+pub fn rust_rest_result_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "crate::".to_string(),
+            crate::gunbc_rust_emitted_edge::module_to_filename(
+                "extdeps.transports.rest".to_string(),
+            ),
+        ),
+        "::RestResult".to_string(),
+    )
+}
+
+pub fn rust_rest_refused(refusal_arm: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
+                        "::RestRefused { refusal: std::rc::Rc::new(crate::".to_string(),
+                    ),
+                    crate::gunbc_rust_emitted_edge::module_to_filename(
+                        "extdeps.transports.rest".to_string(),
+                    ),
+                ),
+                "::RestRefusal::".to_string(),
+            ),
+            refusal_arm.clone(),
+        ),
+        ") })".to_string(),
+    )
+}
+
+pub fn rust_rest_answered(answer_expr: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
+                "::RestAnswered { answer: ".to_string(),
+            ),
+            answer_expr.clone(),
+        ),
+        " })".to_string(),
+    )
+}
+
+pub fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(
-                                        "let status = response.status().as_u16();\n".to_string(),
-                                        "match status {\n".to_string(),
-                                    ),
-                                    arms.clone().join(&"\n".to_string()),
+                                    "let __rest_answer = (|| -> Result<".to_string(),
+                                    output_type.clone(),
                                 ),
-                                "\n    _ => ".to_string(),
+                                ", Box<dyn std::error::Error>> {\n".to_string(),
                             ),
-                            emit_rust_boxed_error_return(
-                                "format!(\"unexpected status code: {}\", status)".to_string(),
-                            ),
+                            mock_body.clone(),
                         ),
                         "\n".to_string(),
                     ),
-                    "}".to_string(),
-                )
-            }
-        }
-    }
+                    "})();\n".to_string(),
+                ),
+                "Ok(".to_string(),
+            ),
+            rust_rest_answered("__rest_answer?".to_string()),
+        ),
+        ")".to_string(),
+    )
 }
 
-pub fn emit_response_arm(
-    prop: Rc<Node>,
+pub fn emit_rust_rest_result_lowering(
     op_node: Rc<Node>,
-    use_from_key: bool,
     transport: Rc<Node>,
+    output_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
-        let name =
-            crate::v1_std_core::field_init_node_name_at(prop.clone(), source_indices.clone());
-        let code_str = v1_rt::substring(&name, 9, v1_rt::string_length(&name));
-        let is_success = if (v1_rt::string_length(&code_str) >= 1) {
-            (v1_rt::substring(&code_str, 0, 1) == "2".to_string())
-        } else {
-            false
-        };
-        let pattern = if (code_str.clone() == "nonzero".to_string()) {
-            "_".to_string()
-        } else {
-            if ((v1_rt::string_length(&code_str) == 3)
-                && (v1_rt::substring(&code_str, 1, 3) == "xx".to_string()))
-            {
-                {
-                    let prefix = v1_rt::substring(&code_str, 0, 1);
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(prefix.clone(), "00..=".to_string()),
-                            prefix.clone(),
-                        ),
-                        "99".to_string(),
-                    )
-                }
-            } else {
-                code_str.clone()
-            }
-        };
-        if is_success.clone() {
-            if use_from_key.clone() {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("    ".to_string(), pattern.clone()),
-                            " => { ".to_string(),
-                        ),
-                        emit_from_key_extraction(
-                            op_node.clone(),
-                            source_indices.clone(),
-                            shared_types.clone(),
-                            env.clone(),
-                        ),
-                    ),
-                    " },".to_string(),
-                )
-            } else {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("    ".to_string(), pattern.clone()),
-                            " => { ".to_string(),
-                        ),
-                        emit_plain_response_body(
-                            op_node.clone(),
-                            transport.clone(),
-                            source_indices.clone(),
-                        ),
-                    ),
-                    " },".to_string(),
-                )
-            }
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("    ".to_string(), pattern.clone()),
-                        " => { let err_body = response.text().await.unwrap_or_default(); "
-                            .to_string(),
-                    ),
-                    emit_rust_boxed_error_return(
-                        "format!(\"HTTP {}: {}\", status, err_body)".to_string(),
-                    ),
-                ),
-                " },".to_string(),
+        let decode = if has_from_key_fields(op_node.clone(), source_indices.clone()) {
+            emit_from_key_extraction(
+                op_node.clone(),
+                source_indices.clone(),
+                shared_types.clone(),
+                env.clone(),
             )
-        }
+        } else {
+            emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
+        };
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> Result<".to_string()), output_type.clone()), ", Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
     }
 }
 
@@ -38283,7 +38380,16 @@ pub fn emit_shell_call(
         let arg_lines = if ((argv.clone().len() as i64) > 1) {
             Rc::new({
                 let mut __result = Vec::new();
-                for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
+                for arg in Rc::new(
+                    argv.clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
                     __result.push(
                         if shell_argv_element_is_word_list(
                             arg.clone(),

@@ -837,12 +837,16 @@ pub fn order_typed_call_args_from_semantics(
             for app in plan.iter().cloned() {
                 __result.extend(
                     (*match app.matched_argument_index.clone() {
-                        Some(argument_index) => {
-                            match args.clone().get((argument_index.clone()) as usize).cloned() {
-                                Some(arg) => Rc::new(vec![arg.clone()]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            }
-                        }
+                        Some(argument_index) => match args
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(argument_index.clone() as usize)
+                            .next()
+                        {
+                            Some(arg) => Rc::new(vec![arg.clone()]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        },
                         std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
@@ -888,7 +892,7 @@ pub fn has_nested_records_node(
                     source_indices.clone(),
                 );
                 if is_map.clone() {
-                    match n.children.clone().get((1) as usize).cloned() {
+                    match n.children.clone().iter().cloned().skip(1 as usize).next() {
                         Some(val_child) => {
                             let __tco_0 =
                                 crate::v1_compiler_infer_types::child_type_node(val_child.clone());
@@ -1957,26 +1961,29 @@ pub fn render_node_type(
                             }
                             std::option::Option::None => "_".to_string(),
                         };
-                        let second_child = match n.children.clone().get((1) as usize).cloned() {
-                            Some(c) => {
-                                if (c.inferred.clone() != std::option::Option::None) {
-                                    render_node_type(
-                                        crate::v1_compiler_infer_types::resolved_type(c.clone()),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
-                                } else {
-                                    render_node_type(
-                                        c.clone(),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
+                        let second_child =
+                            match n.children.clone().iter().cloned().skip(1 as usize).next() {
+                                Some(c) => {
+                                    if (c.inferred.clone() != std::option::Option::None) {
+                                        render_node_type(
+                                            crate::v1_compiler_infer_types::resolved_type(
+                                                c.clone(),
+                                            ),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    } else {
+                                        render_node_type(
+                                            c.clone(),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    }
                                 }
-                            }
-                            std::option::Option::None => "_".to_string(),
-                        };
+                                std::option::Option::None => "_".to_string(),
+                            };
                         let tuple_str = render_tuple_parts(
                             Rc::new(vec![first_child.clone(), second_child.clone()]),
                             target.clone(),
@@ -2134,7 +2141,7 @@ pub fn render_node_type(
                     ),
                     std::option::Option::None => "_".to_string(),
                 };
-                let v = match n.children.clone().get((1) as usize).cloned() {
+                let v = match n.children.clone().iter().cloned().skip(1 as usize).next() {
                     Some(vn) => render_node_type(
                         crate::v1_compiler_infer_types::child_type_node(vn.clone()),
                         target.clone(),
@@ -2261,7 +2268,7 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
         if ((parts.clone().len() as i64) > 0) {
             if ((parts.clone().len() as i64) == 2) {
                 match parts.clone().first().cloned() {
-                    Some(p0) => match parts.clone().get((1) as usize).cloned() {
+                    Some(p0) => match parts.clone().iter().cloned().skip(1 as usize).next() {
                         Some(p1) => crate::v1_compiler_emit_core_support::apply_type_template2(
                             ts.pair_template.clone(),
                             p0.clone(),
@@ -3464,10 +3471,14 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     if ((stmts.clone().len() as i64) <= 1) {
         Rc::new(vec![])
     } else {
-        Rc::new(v1_rt::list_take(
-            &stmts.clone(),
-            v1_rt::int_sub((stmts.clone().len() as i64), 1),
-        ))
+        Rc::new(
+            stmts
+                .clone()
+                .iter()
+                .cloned()
+                .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -5838,6 +5849,169 @@ pub fn unmodeled_file_transport_diagnostics(
     }
 }
 
+pub fn target_realizes_rest_result(target: RenderTarget) -> bool {
+    match target.clone() {
+        RenderTarget::Rust => true,
+        RenderTarget::Python => false,
+        RenderTarget::Go => false,
+        RenderTarget::Dag => false,
+    }
+}
+
+pub fn rest_result_not_realized_fact(target: RenderTarget) -> String {
+    v1_rt::concat(v1_rt::concat("the ".to_string(), render_target_name(target.clone())), " target has no realization of extdeps.transports.rest RestResult: a rest operation's answered and refused arms are lowered only by the rust renderer".to_string())
+}
+
+pub fn rest_result_module_in_closure(typed: Rc<ResolvedGraph>) -> bool {
+    {
+        let mut __found = false;
+        for tm in typed.modules.clone().iter().cloned() {
+            if (crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                == "extdeps.transports.rest".to_string())
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn rest_emission_refusal_fact(
+    target: RenderTarget,
+    result_module_in_closure: bool,
+) -> Option<String> {
+    if !target_realizes_rest_result(target.clone()) {
+        Some(rest_result_not_realized_fact(target.clone()))
+    } else {
+        if !result_module_in_closure.clone() {
+            Some("extdeps.transports.rest is not in the emitted closure, so the operation's RestResult has no emitted declaration: import RestResult from extdeps.transports.rest in the module that declares this service".to_string())
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn unmodeled_rest_transport_operation_diagnostics(
+    tm: Rc<TypedModule>,
+    item: Rc<Node>,
+    target: RenderTarget,
+    result_module_in_closure: bool,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let env = tm.type_env.clone();
+        let si = env.source_indices.clone();
+        let module_name =
+            crate::v1_compiler_infer_env::authored_name(env.clone(), tm.module.clone());
+        let service_name = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
+        let fallback = service_fallback_transport(item.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op_node in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let t = effective_operation_transport(op_node.clone(), fallback.clone());
+                        match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
+                            Some(TransportKind::RestTransport) => match rest_emission_refusal_fact(
+                                target.clone(),
+                                result_module_in_closure.clone(),
+                            ) {
+                                Some(fact) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                        transport_kind: "rest".to_string(),
+                                        service: service_name.clone(),
+                                        operation: crate::v1_compiler_infer_env::authored_name(
+                                            env.clone(),
+                                            op_node.clone(),
+                                        ),
+                                        declaring_module: module_name.clone(),
+                                        target: render_target_name(target.clone()),
+                                        missing_realization_fact: fact.clone(),
+                                        span: op_node.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                                std::option::Option::None => Rc::new(vec![]),
+                            },
+                            _ => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn unmodeled_rest_transport_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => {
+            let in_closure = rest_result_module_in_closure(typed.clone());
+            Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    __result.extend(
+                        (*Rc::new({
+                            let mut __result = Vec::new();
+                            for item in Rc::new({
+                                let mut __result = Vec::new();
+                                for item in tm.items.clone().iter().cloned() {
+                                    if (item.module_item_kind.clone()
+                                        == ParsedModuleItemKind::ModuleItemService)
+                                    {
+                                        __result.push(item);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.extend(
+                                    (*unmodeled_rest_transport_operation_diagnostics(
+                                        tm.clone(),
+                                        item.clone(),
+                                        target.clone(),
+                                        in_closure.clone(),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        }))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+        }
+    }
+}
+
+pub fn emit_unrealized_rest_result_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "rest transport emission is not modeled for operation '".to_string(),
+                    op_name.clone(),
+                ),
+                "' -- ".to_string(),
+            ),
+            rest_result_not_realized_fact(target.clone()),
+        ),
+        target.clone(),
+    )
+}
+
 pub fn emit_unmodeled_file_transport_refusal_with_cause(
     op_name: String,
     target: RenderTarget,
@@ -6639,7 +6813,13 @@ pub fn emit_block_stmts_shared(
                 };
                 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = depth;
@@ -6687,7 +6867,14 @@ pub fn emit_init_block_stmts_shared(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -8430,7 +8617,13 @@ pub fn emit_typed_tco_reassign_shared(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push({
-                    let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };

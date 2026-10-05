@@ -16037,12 +16037,18 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
+  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: env.source_indices)
+  let is_rest = match bound {
+    RestBound { transport: _ } => true
+    _ => false
+  }
+  let ret_type = if is_rest { concat("std::rc::Rc<", rust_rest_result_path(), "<", output_type, ">>") } else { output_type }
   let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
+  let mock_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
+  let dry_run_body = if is_rest { emit_rust_rest_answered_mock(mock_body: mock_body, output_type: output_type) } else { mock_body }
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -16171,10 +16177,10 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     let val_str = emit_simple_expr(expr: hval, target: Rust, source_indices: source_indices)
     concat("let request = request.header(\"", field_init_node_name_at(n: h, source_indices: source_indices), "\", ", val_str, ");")
   )
-  let send_line = "let response = request.send().await?;"
-  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
+  let output_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+  let result_lowering = emit_rust_rest_result_lowering(op_node: op_node, transport: transport, output_type: output_type, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line, basic_auth_line],
-    header_lines, [query_line, body_line, send_line, response_handling])
+    header_lines, [query_line, body_line, result_lowering])
     |> filter(l => l != "")
   all_lines |> join(separator: "\n")
   }
@@ -16369,11 +16375,6 @@ fn emit_rest_body_line(transport: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
-fn has_response_prefix(name: String) -> Bool {
-  if string_length(s: name) < 9 { false }
-  else { substring(s: name, start: 0, end: 9) == "response_" }
-}
-
 fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let rt = resolved_type(n: op_node)
   let is_conj = rt.connective == Conj
@@ -16522,15 +16523,15 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   let prelude = match wire_opt {
     Present { value: tn } =>
       if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
-        "let json_body: serde_json::Value = response.json().await?;\n"
+        "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
       } else {
         let wire_ty = match tn.inferred {
           Present { value: Resolved { node: rt } } => rt
           _ => tn
         }
-        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = response.json().await?;\n")
+        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), " = serde_json::from_str(&__rest_text)?;\n")
       }
-    Absent => "let json_body: serde_json::Value = response.json().await?;\n"
+    Absent => "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
   }
   let extract_lines = children |> map(ch =>
     let ch_name = authored_name_at(source_indices: source_indices, node: ch)
@@ -16555,7 +16556,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   )
   let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
   let tuple_body = if field_names |> count == 1 {
-    concat("(", field_names |> first.value, ",)")
+    field_names |> first.value
   } else {
     concat("(", field_names |> join(separator: ", "), ")")
   }
@@ -16569,9 +16570,9 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
     Absent => false
   }
   if is_text {
-    "let result = response.text().await?;\nOk(result)"
+    "Ok(__rest_text.clone())"
   } else {
-    "let result = response.json().await?;\nOk(result)"
+    "let result = serde_json::from_str(&__rest_text)?;\nOk(result)"
   }
 }
 
@@ -16596,50 +16597,71 @@ fn emit_rust_boxed_error_return(message_expr: String) -> String {
   concat("Err(", message_expr, ".into())")
 }
 
-fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
-  let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
-  let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
-  if response_props |> count == 0 {
-    if use_from_key {
-      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
-    } else {
-      emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
-    }
-  } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env))
-    concat(
-      "let status = response.status().as_u16();\n",
-      "match status {\n",
-      arms |> join(separator: "\n"),
-      "\n    _ => ",
-      emit_rust_boxed_error_return(message_expr: "format!(\"unexpected status code: {}\", status)"),
-      "\n",
-      "}")
-  }
+// THE RUST SPELLING OF extdeps.transports.rest RestResult AND RestRefusal. The emitted operation
+// method names the declared coproduct by its module path, so the arms a caller eliminates are the
+// model's own and this emitter restates none of them as a second type.
+fn rust_rest_result_path() -> String {
+  concat("crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestResult")
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
-  let name = field_init_node_name_at(n: prop, source_indices: source_indices)
-  let code_str = substring(s: name, start: 9, end: string_length(s: name))
-  let is_success = if string_length(s: code_str) >= 1 {
-    substring(s: code_str, start: 0, end: 1) == "2"
-  } else { false }
-  let pattern = if code_str == "nonzero" { "_" }
-    else if string_length(s: code_str) == 3 && substring(s: code_str, start: 1, end: 3) == "xx" {
-      let prefix = substring(s: code_str, start: 0, end: 1)
-      concat(prefix, "00..=", prefix, "99")
-    }
-    else { code_str }
-  if is_success {
-    if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env), " },")
-    } else {
-      concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
-    }
+// Both coproducts are spelled the way emitted code holds a nominal coproduct value: reference
+// counted, as a field and as a result. A caller's match derefs the operation's result exactly as
+// it derefs any other coproduct, so the method returns the same holding. This spelling is checked
+// by rustc against the emitted declaration and the emitted callers, so a change in how either is
+// held refuses the emitted crate rather than drifting.
+fn rust_rest_refused(refusal_arm: String) -> String {
+  concat("std::rc::Rc::new(", rust_rest_result_path(), "::RestRefused { refusal: std::rc::Rc::new(crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestRefusal::", refusal_arm, ") })")
+}
+
+fn rust_rest_answered(answer_expr: String) -> String {
+  concat("std::rc::Rc::new(", rust_rest_result_path(), "::RestAnswered { answer: ", answer_expr, " })")
+}
+
+// A REST operation's mock is its decoded-2xx body, so the dry-run branch yields it in the answered
+// arm. The mock decode keeps its own `?` exits; they are evaluated inside a closure of the output
+// type so a mock that does not decode stays a host error and never reads as a remote refusal.
+fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> String {
+  concat(
+    "let __rest_answer = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
+    mock_body, "\n",
+    "})();\n",
+    "Ok(", rust_rest_answered(answer_expr: "__rest_answer?"), ")")
+}
+
+// EVERY OBSERVATION OF THE EXCHANGE LANDS IN ONE ARM OF RestResult, AND NONE LEAVES THROUGH Err.
+// No response at all is RestTransportRefused, and it carries no status because none arrived. A
+// status with an unreadable body is RestBodyUndecodable under that status. A status outside 2xx is
+// RestStatusRefused with the body the remote sent. A 2xx whose body does not inhabit the declared
+// output is RestBodyUndecodable -- the decode runs inside a closure of the output type so each of
+// its `?` exits becomes that arm rather than escaping as an untyped error. Only a decoded body
+// reaches RestAnswered, so the output's fields are constructed in the one arm that has them. This
+// is the same decision the interpreter's decide_rest_exchange makes, arm for arm.
+fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: String, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
+  let decode = if has_from_key_fields(op_node: op_node, source_indices: source_indices) {
+    emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
   } else {
-    concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); ",
-      emit_rust_boxed_error_return(message_expr: "format!(\"HTTP {}: {}\", status, err_body)"), " },")
+    emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
   }
+  concat(
+    "let response = match request.send().await {\n",
+    "    Ok(response) => response,\n",
+    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestTransportRefused { cause: error.to_string() }"), "),\n",
+    "};\n",
+    "let status = response.status().as_u16();\n",
+    "let __rest_text = match response.text().await {\n",
+    "    Ok(text) => text,\n",
+    "    Err(error) => return Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: error.to_string() }"), "),\n",
+    "};\n",
+    "if !(200..300).contains(&status) {\n",
+    "    return Ok(", rust_rest_refused(refusal_arm: "RestStatusRefused { status: status as i64, body: __rest_text }"), ");\n",
+    "}\n",
+    "let __rest_decoded = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
+    decode, "\n",
+    "})();\n",
+    "match __rest_decoded {\n",
+    "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
+    "    Err(error) => Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }"), "),\n",
+    "}")
 }
 
 fn has_exit_prefix(name: String) -> Bool {

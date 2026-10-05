@@ -2,7 +2,7 @@ module test.claim.auth.gcp_iam_bootstrap_witness_test
 
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.auth.oidc { OidcStandardClaims }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
@@ -131,22 +131,22 @@ test fn bootstrap_authority_requires_an_organization_resource() -> Bool {
 }
 
 test fn definite_publication_rejection_is_distinct_from_unknown_commit() -> Bool {
-  bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 400, body: "unsupported role scope" })
-    && bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 403, body: "permission denied" })
-    && bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 409, body: "etag conflict" })
-    && !bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 500, body: "unknown" })
-    && !bootstrap_authority_publication_refused(outcome: RestTransportRefused { cause: "connection lost" })
-    && !bootstrap_authority_publication_refused(outcome: RestBodyUndecodable { status: 200, cause: "lost success body" })
+  bootstrap_authority_publication_refused(refusal: RestStatusRefused { status: 400, body: "unsupported role scope" })
+    && bootstrap_authority_publication_refused(refusal: RestStatusRefused { status: 403, body: "permission denied" })
+    && bootstrap_authority_publication_refused(refusal: RestStatusRefused { status: 409, body: "etag conflict" })
+    && !bootstrap_authority_publication_refused(refusal: RestStatusRefused { status: 500, body: "unknown" })
+    && !bootstrap_authority_publication_refused(refusal: RestTransportRefused { cause: "connection lost" })
+    && !bootstrap_authority_publication_refused(refusal: RestBodyUndecodable { status: 200, cause: "lost success body" })
 }
 
 
 test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() -> Bool {
   let refused = RestStatusRefused { status: 403, body: "permission not established" }
-  bootstrap_deny_retry_admitted(outcome: refused, remaining: 2, live: true)
-    && !bootstrap_deny_retry_admitted(outcome: refused, remaining: 1, live: true)
-    && !bootstrap_deny_retry_admitted(outcome: refused, remaining: 30, live: false)
-    && !bootstrap_deny_retry_admitted(outcome: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
-    && !bootstrap_deny_retry_admitted(outcome: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
+  bootstrap_deny_retry_admitted(refusal: refused, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
 }
 
 
@@ -166,9 +166,9 @@ test fn authority_beneficiary_requires_the_verified_stable_google_subject() -> B
 
 
 test fn empty_pool_policy_does_not_authorize_unconditional_publication() -> Bool {
-  let missing = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Absent, version: Absent)
-  let empty = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Present { value: "" }, version: Absent)
-  let observed = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Present { value: "observed-revision" }, version: Absent)
+  let missing = iam_bootstrap_pool_policy_reading(bindings: Absent, etag: Absent, version: Absent)
+  let empty = iam_bootstrap_pool_policy_reading(bindings: Absent, etag: Present { value: "" }, version: Absent)
+  let observed = iam_bootstrap_pool_policy_reading(bindings: Absent, etag: Present { value: "observed-revision" }, version: Absent)
   (match missing { PolicyUnreadable { cause: reason } => reason != "" _ => false })
     && (match empty { PolicyUnreadable { cause: _ } => true _ => false })
     && (match observed { PolicyObserved { policy } => policy.etag == "observed-revision" _ => false })
