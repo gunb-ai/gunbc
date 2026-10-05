@@ -286,13 +286,16 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
         Present { value: identity } => TypeDeclRoutedResolution { route: RouteDeclaringSpan, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
         Absent =>
           let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
-          match resolve_type_decl_leaf(index: index, leaf: leaf) {
-            TypeDeclLeafAmbiguous { leaf: l } =>
-              match type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) {
-                Present { value: identity } => TypeDeclRoutedResolution { route: RouteReferencingModuleDeclarer, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
-                Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: TypeDeclLeafAmbiguous { leaf: l } }
-              }
-            other => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: other }
+          let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
+          let referencing_module_identity = match by_spelling {
+            TypeDeclLeafAmbiguous { leaf: l } => type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr)
+            TypeDeclResolved { identity: _, decl: _ } => none
+            TypeDeclKernelSpellingUndecided { leaf: _ } => none
+            TypeDeclNotDeclared => none
+          }
+          match referencing_module_identity {
+            Present { value: identity } => TypeDeclRoutedResolution { route: RouteReferencingModuleDeclarer, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
+            Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: by_spelling }
           }
       }
   }
