@@ -2123,6 +2123,16 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
     }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "required-floor: COST-DEBT-ROW-REFUSED {} cause={} — this change admits or restores a \
+             floor_cost_debt row, and its claim did not pass when run for its verdict without the \
+             eval-step budget. A cost row withholds a witness for COST; standing over a failing or \
+             verdict-less claim it hides a semantic red. Repair the claim, or keep the row out of \
+             the roster and name the red where reds are carried.",
+            blocker.identity, blocker.cause
+        );
+    }
     for blocker in &outcome.enrolment_margin_blocking {
         eprintln!(
             "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
@@ -2208,70 +2218,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
 }
 
-/// Whether the floor outcome permits a green run.
-///
-/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
-/// caller, because a mode that forgot one of them would green a run the other refused. (The
-/// count is stated because a reader checks it; it was five before main added `route_gap` and
-/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
-/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// were wired in here directly; that was reverted and the count returned to seven.)
-///
-/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
-/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
-/// an enrolled claim produced no verdict — and gating on them directly would red every lane
-/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
-/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
-/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
-/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
-/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
-/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
-///
-/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
-/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
-/// today and, should it stop producing a verdict again, it is already rostered and the eighth
-/// conjunct admits it. Repayment and deletion are therefore one act, which is what
-/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
-/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
-/// — it requires the fix to be complete, and the diagnostic names every row to delete.
-fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
-    outcome.failures.is_empty()
-        && outcome.reach_differential_blocking.is_empty()
-        && outcome.non_verdict_unenrolled.is_empty()
-        && outcome.stale_non_verdict.is_empty()
-        && outcome.stale_quarantine.is_empty()
-        && outcome.interrupted_before_verdict.is_empty()
-        && outcome.completed_over_cost_requirement.is_empty()
-        && outcome.host_tool_unresolved.is_empty()
-        && outcome.route_gap.is_empty()
-        && outcome.stale_route_gap.is_empty()
-        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
-        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
-        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
-        // roster that has stopped describing the tree, which voids the contract's monotone
-        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
-        && outcome.stale_cost_debt.is_empty()
-        // A CHANGED witness identity that did not execute to a passing verdict — declined,
-        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
-        // required context. The classification authority is
-        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
-        // is only the identities this change's diff touched, never the standing declined
-        // corpus, so this conjunct cannot red a PR for debt it did not author.
-        && outcome.changed_witness_blocking.is_empty()
-        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
-        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
-        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
-        // the line every one of the fifteen incident rows cleared on the run that measured them
-        // and crossed on the run that did not. Three refusing states, deliberately distinct:
-        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
-        // the one that must not be folded into the others — absence of a measurement is not
-        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
-        //
-        // The population is only what this change enrols, so this conjunct cannot red a PR for
-        // debt it did not author. Authority:
-        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
-        && outcome.enrolment_margin_blocking.is_empty()
-}
+// Moved to `v1_compiler::cli_run::required_floor_outcome_is_clean` so the floor's integration
+// controls drive the same predicate this binary gates on.
+use v1_compiler::cli_run::required_floor_outcome_is_clean;
 
 fn required_floor_measurement_blockers(
     outcome: &v1_compiler::cli_run::RequiredFloorOutcome,
@@ -2325,6 +2274,9 @@ fn required_floor_measurement_blockers(
     // The distinction was computed in `changed_witness_projection_rows` and dropped on the way
     // out (`gunbc.recurring_failure_mode` `non_verdict_disposition_surfaces_as_refusal`).
     for blocker in &outcome.changed_witness_blocking {
+        add(&blocker.identity, &blocker.cause);
+    }
+    for blocker in &outcome.cost_debt_verdict_refused {
         add(&blocker.identity, &blocker.cause);
     }
     // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes
