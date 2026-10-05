@@ -132,6 +132,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "sort_program"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_program"),
     decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_program"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_program"),

@@ -80,9 +80,10 @@ import gunbc.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
   run_argv_transport_succeeded, RunArgvTransportOutcome,
 }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_command, ProgramIdentity }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
+import extdeps.tools.gnu_coreutils { tee_program }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
@@ -1227,9 +1228,36 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
 // runner whose toolchain is absent can no longer take the floor's real-Chromium wet claims.
 data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
 
+// THE ELEVATION POSTURE IS A PARAMETER, NOT A GLOBAL: SudoElevated is the production posture --
+// the legs wrap in sudo -n through sudo_elevate_command, the carrier the deleted privileged
+// intents rendered; Unprivileged is the receipt posture -- the SAME program and arguments, bare,
+// so a scratch-root receipt executes the same legs without touching the host's configuration.
+// The reload leg answers the posture: an unprivileged receipt SKIPS daemon-reload with a typed
+// cause rather than fabricating a reload it did not run.
+type BrowserReadyLabelsPosture
+  = ReadyLabelsSudoElevated
+  | ReadyLabelsUnprivileged
+
+type BrowserReadyLabelsReload
+  = ReadyLabelsReloadRun { command: ArgvCommand }
+  | ReadyLabelsReloadPostureSkipped { cause: String }
+
+// THE DESTINATION IS A PARAMETER TOO. The production target names the privileged system constant;
+// a receipt names a path inside a mktemp scratch root, so the converge's legs execute for real
+// against a directory the receipt created and removes.
+type BrowserReadyLabelsTarget {
+  dropin: NonEmptyStr
+  posture: BrowserReadyLabelsPosture
+}
+
+data browser_ready_labels_production_target: BrowserReadyLabelsTarget = BrowserReadyLabelsTarget {
+  dropin: browser_ready_labels_dropin_path,
+  posture: ReadyLabelsSudoElevated,
+}
+
 type BrowserReadyLabelsPlan
-  = BrowserReadyLabelsGrantReady { write: ArgvCommand, content: String, reload: ArgvCommand }
-  | BrowserReadyLabelsRevokeReady { remove: ArgvCommand, reload: ArgvCommand }
+  = BrowserReadyLabelsGrantReady { write: ArgvCommand, content: String, reload: BrowserReadyLabelsReload }
+  | BrowserReadyLabelsRevokeReady { remove: ArgvCommand, reload: BrowserReadyLabelsReload }
   | BrowserReadyLabelsUnrenderable { cause: String }
 
 // THE PLANS ARE TYPED ARGV STEPS, NOT SCRIPT TEXT. The deleted plan rendered intents to a script
@@ -1243,22 +1271,36 @@ type BrowserReadyLabelsPlan
 // the converge's own fold: each leg runs only if the previous succeeded, and a failed leg is the
 // failed outcome. Elevation keeps the sudo -n posture through sudo_elevate_command, the same
 // carrier the deleted privileged intents rendered.
-fn browser_ready_labels_grant_plan(host: HostIdentity) -> BrowserReadyLabelsPlan {
+fn browser_ready_labels_posture_argv(posture: BrowserReadyLabelsPosture, program: ProgramIdentity, arguments: List<String>) -> ArgvCommand {
+  match posture {
+    ReadyLabelsSudoElevated => sudo_elevate_command(command: [(program.invocation) as String] ++ arguments)
+    ReadyLabelsUnprivileged => argv_command(program: program, arguments: arguments)
+  }
+}
+
+fn browser_ready_labels_reload_leg(posture: BrowserReadyLabelsPosture) -> BrowserReadyLabelsReload {
+  match posture {
+    ReadyLabelsSudoElevated => ReadyLabelsReloadRun { command: sudo_elevate_command(command: systemctl_daemon_reload_argv()) }
+    ReadyLabelsUnprivileged => ReadyLabelsReloadPostureSkipped { cause: "unprivileged posture: daemon-reload requires root and is skipped, not fabricated" as String }
+  }
+}
+
+fn browser_ready_labels_grant_plan(host: HostIdentity, target: BrowserReadyLabelsTarget) -> BrowserReadyLabelsPlan {
   match runner_host_browser_ready_labels_dropin_text(host: host) {
     RunnerUnitTextRefused { reason: r } => BrowserReadyLabelsUnrenderable { cause: r as String }
     RunnerUnitText { text: content } =>
       BrowserReadyLabelsGrantReady {
-        write: sudo_elevate_command(command: ["tee", browser_ready_labels_dropin_path as String]),
+        write: browser_ready_labels_posture_argv(posture: target.posture, program: tee_program(), arguments: [target.dropin as String]),
         content: content,
-        reload: sudo_elevate_command(command: systemctl_daemon_reload_argv()),
+        reload: browser_ready_labels_reload_leg(posture: target.posture),
       }
   }
 }
 
-fn browser_ready_labels_revoke_plan() -> BrowserReadyLabelsPlan {
+fn browser_ready_labels_revoke_plan(target: BrowserReadyLabelsTarget) -> BrowserReadyLabelsPlan {
   BrowserReadyLabelsRevokeReady {
-    remove: sudo_elevate_command(command: ["rm", "-f", browser_ready_labels_dropin_path as String]),
-    reload: sudo_elevate_command(command: systemctl_daemon_reload_argv()),
+    remove: browser_ready_labels_posture_argv(posture: target.posture, program: rm_program(), arguments: ["-f", target.dropin as String]),
+    reload: browser_ready_labels_reload_leg(posture: target.posture),
   }
 }
 
@@ -1286,32 +1328,43 @@ fn browser_ready_labels_outcome_holds(o: BrowserReadyLabelsOutcome, ready: Bool)
   }
 }
 
-// THE CONVERGE'S REAL EXECUTION IS WITHHELD ON CI (typed, review round on gunbc#13401): the row
-// below declares it with its trigger. The hermetic witness reads the plans' steps, so the plan
-// pairing is asserted every run; what no CI lane does is EXECUTE the steps, because the drop-in
-// destination is a privileged system constant (browser_ready_labels_dropin_path under the unit's
-// service.d directory) and every leg is elevated (sudo -n through sudo_elevate_command) -- a real
-// execution writes the host's systemd configuration. The module's own converge site (the
-// browser_toolchain_admin_transport leg at the converge call) executes the steps for real only in
-// a runner bootstrap on a real host. The removed shell path had the same posture: the old witness
-// searched the rendered script text and no CI lane ran the wall, so this change's evidence posture
-// is not a regression.
-data browser_ready_label_converge_ci_execution_withholding: DissolutionCondition = unbound_dissolution(description: "the readiness-label converge takes a parameterized destination root and an explicit elevation posture, so a LocalRepoWet receipt can drive the SAME write-then-reload and remove-then-reload sequences for real against a mktemp scratch root with no sudo (the fleet authorized-key real-path envelope: shell.Mktemp.Dir for the scratch root, the production plan functions for the steps, both sequences invoked, the drop-in bytes read back, the second run a no-op, the scratch removed with shell.Remove.RecursiveForce). The receipt's WetScheduledClaim row, its floor_route_gap expectation, and this withholding close together; Mktemp.Dir, Filesystem.Write or git mock coverage alone cannot discharge the trigger.")
+// THE PRODUCTION FLEET ROUTE IS A DECLARED STALL (typed, review round on gunbc#13401): the row
+// below names it. In a real bootstrap the converge's transport is always FleetSsh
+// (browser_toolchain_admin_transport), and BOTH shared host-effect runners -- the argv runner and
+// the argv+stdin runner -- return RunArgvTransportRefused for FleetSsh before any leg runs (the
+// arm's own fail-closed note: admitting the capability "is its own change with its own analysis").
+// So the converge executes NOWHERE over fleet: grant, revoke and daemon-reload never run in a
+// bootstrap, and the outcome on that route is always BrowserReadyLabelsFailed. The deleted shell
+// path refused FleetSsh too, so this PR newly breaks nothing -- it declares the stall the route
+// already had. The steps DO execute for real in the changed-witness receipts
+// (test.claim.runner.browser_ready_label_real_path_witness): the converge over LocalShell, the
+// unprivileged posture, against a mktemp scratch destination -- the parameterization the plans
+// and this converge now take.
+data browser_ready_labels_fleet_route_stall: DissolutionCondition = unbound_dissolution(description: "the shared host-effect transport admits the FleetSsh arm -- argv execution and argv+stdin execution over exec_as_fleet_principal -- by the fleet_subsumption arc's own change, with no per-consumer bypass; a safe reload realization or an isolated manager is the companion question that admission names. Until then the readiness-label converge executes nowhere over fleet, and its only real executions are the LocalRepoWet receipts over LocalShell against a parameterized scratch destination.")
 
-fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport) -> BrowserReadyLabelsOutcome {
-  let plan = if ready { browser_ready_labels_grant_plan(host: (host as String) as HostIdentity) } else { browser_ready_labels_revoke_plan() }
+fn browser_ready_labels_reload_then(success: BrowserReadyLabelsOutcome, reload: BrowserReadyLabelsReload, transport: HostEffectTransport) -> BrowserReadyLabelsOutcome {
+  match reload {
+    ReadyLabelsReloadRun { command: rc } => {
+      let reloaded = run_argv_over_host_effect_transport(command: rc, transport: transport)
+      if run_argv_transport_succeeded(outcome: reloaded) {
+        success
+      } else {
+        browser_ready_labels_step_failed(step: "daemon-reload", outcome: reloaded)
+      }
+    }
+    ReadyLabelsReloadPostureSkipped { cause: _ } => success
+  }
+}
+
+fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport, target: BrowserReadyLabelsTarget) -> BrowserReadyLabelsOutcome {
+  let plan = if ready { browser_ready_labels_grant_plan(host: (host as String) as HostIdentity, target: target) } else { browser_ready_labels_revoke_plan(target: target) }
   match plan {
     BrowserReadyLabelsUnrenderable { cause: c } =>
       BrowserReadyLabelsFailed { cause: concat("the readiness labels drop-in does not render: ", c) }
     BrowserReadyLabelsGrantReady { write: w, content: payload, reload: r } => {
       let written = run_argv_stdin_over_host_effect_transport(command: w, stdin_payload: payload, transport: transport)
       if run_argv_transport_succeeded(outcome: written) {
-        let reloaded = run_argv_over_host_effect_transport(command: r, transport: transport)
-        if run_argv_transport_succeeded(outcome: reloaded) {
-          BrowserReadyLabelsGranted
-        } else {
-          browser_ready_labels_step_failed(step: "daemon-reload", outcome: reloaded)
-        }
+        browser_ready_labels_reload_then(success: BrowserReadyLabelsGranted, reload: r, transport: transport)
       } else {
         browser_ready_labels_step_failed(step: "the readiness labels drop-in write", outcome: written)
       }
@@ -1319,12 +1372,7 @@ fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: 
     BrowserReadyLabelsRevokeReady { remove: rm, reload: r } => {
       let removed = run_argv_over_host_effect_transport(command: rm, transport: transport)
       if run_argv_transport_succeeded(outcome: removed) {
-        let reloaded = run_argv_over_host_effect_transport(command: r, transport: transport)
-        if run_argv_transport_succeeded(outcome: reloaded) {
-          BrowserReadyLabelsRevoked
-        } else {
-          browser_ready_labels_step_failed(step: "daemon-reload", outcome: reloaded)
-        }
+        browser_ready_labels_reload_then(success: BrowserReadyLabelsRevoked, reload: r, transport: transport)
       } else {
         browser_ready_labels_step_failed(step: "the readiness labels drop-in removal", outcome: removed)
       }
@@ -1388,7 +1436,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
-              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(host: host, context: context))
+              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(host: host, context: context), target: browser_ready_labels_production_target)
               let retirement_text = superseded_trees_text(r: observe_superseded_trees_wet(location: location))
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)

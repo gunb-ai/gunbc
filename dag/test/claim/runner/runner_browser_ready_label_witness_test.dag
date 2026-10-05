@@ -12,8 +12,10 @@ import gunbc.runner_registration_labels {
 }
 import gunbc.runner_browser_toolchain {
   BrowserReadyLabelsPlan, BrowserReadyLabelsGrantReady, BrowserReadyLabelsRevokeReady,
-  BrowserReadyLabelsUnrenderable,
+  BrowserReadyLabelsUnrenderable, BrowserReadyLabelsReload, ReadyLabelsReloadRun, ReadyLabelsReloadPostureSkipped,
+  BrowserReadyLabelsPosture, ReadyLabelsSudoElevated, ReadyLabelsUnprivileged, BrowserReadyLabelsTarget,
   browser_ready_labels_grant_plan, browser_ready_labels_revoke_plan, browser_ready_labels_outcome_holds,
+  browser_ready_labels_production_target,
   BrowserReadyLabelsGranted, BrowserReadyLabelsRevoked, BrowserReadyLabelsFailed,
 }
 import extdeps.exec.command { argv_words }
@@ -24,13 +26,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE gunbc-browser-ready LABEL IS GRANTED BY A READY BROWSER-TOOLCHAIN CONVERGE AND NOTHING ELSE.
 // Each claim supplies its subject at one interface: the plan's typed steps, the conformance
 // relation, the converge verdict. The wet write is the converge's own and is not re-run here.
-// EXECUTION STANDING (typed in gunbc.runner_browser_toolchain's
-// browser_ready_label_converge_ci_execution_withholding row): what executes the converge for real
-// is the module's own runner converge flow on a real host -- never CI. The drop-in destination is
-// a privileged system constant and every leg is elevated, so no receipt can enroll until the route
-// takes a parameterized destination root and an explicit elevation posture; the removed shell path
-// had the same posture (the old witness only searched script text), so the evidence does not
-// regress. The trigger that closes the withholding is typed on that row.
+// EXECUTION STANDING: the converge's REAL executions are the wet receipts
+// (test.claim.runner.browser_ready_label_real_path_witness) -- the production converge over
+// LocalShell, the unprivileged posture, against a mktemp scratch destination. The production FLEET
+// route is the declared stall browser_ready_labels_fleet_route_stall in
+// gunbc.runner_browser_toolchain: both shared host-effect runners refuse FleetSsh before any leg,
+// so the converge executes nowhere over fleet until that arm is admitted by its own change.
 // The plan is typed argv steps (the retained-shell text is gone), so these claims read the STEPS:
 // the elevated write's words, the drop-in bytes on stdin, the reload, the removal -- pure over the
 // rendered plan, no transport. The revoke's no-write property is now TYPED: a RevokeReady carries
@@ -52,12 +53,53 @@ fn plan_payload(p: BrowserReadyLabelsPlan) -> String {
   }
 }
 
+fn reload_words(r: BrowserReadyLabelsReload) -> List<String> {
+  match r {
+    ReadyLabelsReloadRun { command: c } => argv_words(command: c)
+    ReadyLabelsReloadPostureSkipped { cause: _ } => []
+  }
+}
+
 fn plan_reload_words(p: BrowserReadyLabelsPlan) -> List<String> {
   match p {
-    BrowserReadyLabelsGrantReady { write: _, content: _, reload: r } => argv_words(command: r)
-    BrowserReadyLabelsRevokeReady { remove: _, reload: r } => argv_words(command: r)
+    BrowserReadyLabelsGrantReady { write: _, content: _, reload: r } => reload_words(r: r)
+    BrowserReadyLabelsRevokeReady { remove: _, reload: r } => reload_words(r: r)
     BrowserReadyLabelsUnrenderable { cause: _ } => []
   }
+}
+
+// THE POSTURE IS PART OF THE PLAN'S PAIRING, NOT A FLAG THE CALLER FORGETS: the production target
+// elevates every leg and runs the reload; the unprivileged target runs the SAME programs bare and
+// SKIPS the reload with a typed cause -- skipping is an arm, not a fabricated success. The
+// scratch path here is an inert string: the plans are pure, no host effect is reached.
+fn browser_ready_labels_unprivileged_target() -> BrowserReadyLabelsTarget {
+  BrowserReadyLabelsTarget { dropin: "/tmp/hermetic-scratch/85-browser-ready-labels.conf" as NonEmptyStr, posture: ReadyLabelsUnprivileged }
+}
+
+fn words_carry_no_sudo(words: List<String>) -> Bool {
+  match words {
+    Empty {} => true
+    Cons { head: "sudo", tail: _ } => false
+    Cons { head: _, tail: rest } => words_carry_no_sudo(words: rest)
+  }
+}
+
+fn grant_reload_is_posture_skipped(p: BrowserReadyLabelsPlan) -> Bool {
+  match p {
+    BrowserReadyLabelsGrantReady { write: _, content: _, reload: ReadyLabelsReloadPostureSkipped { cause: c } } =>
+      string_contains(s: c, pattern: "unprivileged posture")
+    BrowserReadyLabelsRevokeReady { remove: _, reload: _ } => false
+    BrowserReadyLabelsUnrenderable { cause: _ } => false
+  }
+}
+
+// Discriminating: a sudo word under the unprivileged posture, or a reload command where the
+// posture says skip, reds.
+test fn unprivileged_posture_runs_bare_and_skips_the_reload() -> Bool {
+  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_unprivileged_target())
+  let revoke = browser_ready_labels_revoke_plan(target: browser_ready_labels_unprivileged_target())
+  words_carry_no_sudo(words: plan_write_words(p: grant) ++ plan_remove_words(p: revoke))
+    && grant_reload_is_posture_skipped(p: grant)
 }
 
 fn plan_remove_words(p: BrowserReadyLabelsPlan) -> List<String> {
@@ -73,8 +115,8 @@ fn plan_remove_words(p: BrowserReadyLabelsPlan) -> List<String> {
 // Discriminating: a grant without the label, a revoke whose removal misses the path, or a revoke
 // that carries a write leg, reds.
 test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
-  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3)
-  let revoke = browser_ready_labels_revoke_plan()
+  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_production_target)
+  let revoke = browser_ready_labels_revoke_plan(target: browser_ready_labels_production_target)
   let write = join(plan_write_words(p: grant), " ")
   let payload = plan_payload(p: grant)
   let reload = join(plan_reload_words(p: grant), " ")

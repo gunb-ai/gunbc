@@ -362,6 +362,7 @@ fn dd_overwrite_path_command(path: String) -> ArgvCommand {
 // weaker rm -r; -rf removes a tree. Choosing -rf where -d was meant turns a loud refusal into
 // silent destruction, so the three carry separate names rather than a flags parameter a caller
 // fills in.
+fn tee_program() -> ProgramIdentity = uncataloged_program(invocation: "tee")
 fn rm_program() -> ProgramIdentity = uncataloged_program(invocation: "rm")
 data coreutils_rm_force_flag: NonEmptyStr = "-f"
 data coreutils_rm_empty_directory_flag: NonEmptyStr = "-d"

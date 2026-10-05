@@ -2765,6 +2765,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/roadmap/allocation_client_execution_wet_witness_test.dag",
       function: "client_typed_unavailable_disables_create",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.browser_ready_label_real_path_witness", function: "grant_executes_the_dropin_write_for_real_on_a_scratch_root" },
+      entry: "dag/test/claim/runner/browser_ready_label_real_path_witness_test.dag",
+      function: "grant_executes_the_dropin_write_for_real_on_a_scratch_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.browser_ready_label_real_path_witness", function: "revoke_executes_the_dropin_removal_for_real_on_a_scratch_root" },
+      entry: "dag/test/claim/runner/browser_ready_label_real_path_witness_test.dag",
+      function: "revoke_executes_the_dropin_removal_for_real_on_a_scratch_root",
+      expectation: ExpectedToHold {}
     }
   ]
 }
