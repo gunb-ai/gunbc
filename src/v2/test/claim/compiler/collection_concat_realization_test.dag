@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.collection_concat_realization
 
-import v2.compiler.fold_lowering { collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
+import v2.compiler.fold_lowering { CollectionRosterRow, NotARosterPrimitiveCallRow, RosterFreeMonoidPrimitiveCall, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_row_optional, collection_roster_primitive_call_signature_at, collection_roster_signature_arrow }
 import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal, infer_type_instantiated }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import std.types { Bool, List }
@@ -16,7 +16,8 @@ import v2.std.list_introduction { list_introduction_head_path }
 import v2.extdeps.languages.dag { dag_binding_denotation }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.primitives { CarrierSensitive, concat_contract }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, NamedTemplate }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -176,5 +177,38 @@ test fn cca_bound_row_is_the_concat_primitive_at_log_cost() -> Bool {
   row_is_concat && match concat_contract.carrier_cost {
     CarrierSensitive { ephemeral_work: _, persistent_work: w } => w == "log(n + m)"
     _ => false
+  }
+}
+
+// SUPPLIED, THE THREE-WAY LOOKUP (review 76235): a primitive-call row's path answers its signature, and a fold row's
+// path (map) answers NotARosterPrimitiveCallRow -- the indexed declaration's business. Neither may fall through to the
+// row's template VALUE.
+test fn cca_signature_lookup_tells_a_primitive_row_from_a_fold_row() -> Bool {
+  (match collection_roster_primitive_call_signature_at(path: "std.algebra.collection_concat_shape") {
+    RosterPrimitiveCallSignature { arrow: _ } => true
+    RosterPrimitiveCallSignatureUnreadable => false
+    NotARosterPrimitiveCallRow => false
+  }) && (match collection_roster_primitive_call_signature_at(path: "std.algebra.collection_map_shape") {
+    NotARosterPrimitiveCallRow => true
+    RosterPrimitiveCallSignature { arrow: _ } => false
+    RosterPrimitiveCallSignatureUnreadable => false
+  })
+}
+
+// SUPPLIED, RED: a primitive-call row whose template the projection cannot read (here a result named by a
+// spelling no kernel row carries) yields NO signature -- the input that the lookup turns into
+// RosterPrimitiveCallSignatureUnreadable and infer into a located refusal
+// (infer_reason_roster_row_signature_unreadable), never a typing by the template. No live row reaches that arm today;
+// this pins the projection that would feed it.
+test fn cca_unreadable_template_yields_no_signature() -> Bool {
+  let row = CollectionRosterRow {
+    head: symbol_intern_lexeme(lexeme: "cca_unreadable"),
+    template: { name: "cca_unreadable", param_types: [], return_type: NamedTemplate { name: "cca_no_such_kernel_type" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    row: DeclarationRef { module_path: "std.algebra", decl_name: "cca_unreadable", field: WholeDeclaration },
+    form: RosterFreeMonoidPrimitiveCall
+  }
+  match collection_roster_signature_arrow(row: row) {
+    Absent => true
+    Present { value: _ } => false
   }
 }

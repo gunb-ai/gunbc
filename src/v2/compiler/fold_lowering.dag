@@ -365,11 +365,29 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
   }
 }
 
-// The signature a resolved reference to a primitive-call row denotes, keyed on the row's declaring path.
-fn collection_roster_primitive_call_signature_at(path: String) -> Optional<Node> {
+// The signature a resolved reference to a primitive-call row denotes, keyed on the row's declaring path. THREE
+// answers, never two (review 76235): a path that is no roster row is the indexed declaration's business; a row whose
+// signature reads is typed by it; a row whose template the projection cannot read REFUSES -- it must never fall
+// through to the indexed declaration, which is the row's template VALUE, not the operation (DESIGN section 5: a
+// failure arm refuses, it does not widen).
+type RosterSignatureLookup
+  = NotARosterPrimitiveCallRow
+  | RosterPrimitiveCallSignature { arrow: Node }
+  | RosterPrimitiveCallSignatureUnreadable
+
+fn collection_roster_primitive_call_signature_at(path: String) -> RosterSignatureLookup {
   match collection_roster_row_at(path: path) {
-    Present { value: r } => collection_roster_signature_arrow(row: r)
-    Absent => optional_absent()
+    Absent => NotARosterPrimitiveCallRow
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => NotARosterPrimitiveCallRow
+        RosterCallbackStep { realization: _ } => NotARosterPrimitiveCallRow
+        RosterFreeMonoidPrimitiveCall =>
+          match collection_roster_signature_arrow(row: r) {
+            Present { value: arrow } => RosterPrimitiveCallSignature { arrow: arrow }
+            Absent => RosterPrimitiveCallSignatureUnreadable
+          }
+      }
   }
 }
 
