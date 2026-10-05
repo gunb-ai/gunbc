@@ -31,7 +31,14 @@ import gunbc.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_stale_power_off_allowance, mtcollins1_media_gate, mtcollins1_observe_presentation }
+import gunbc.machine_intake_megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation }
+import gunbc.machine_intake_megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir }
+import gunbc.fleet_reach { srv2_lan_ipv4 }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult, handoff_not_issued }
@@ -93,7 +100,7 @@ import gunbc.host_boot_attempt_admission {
 }
 import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
-  MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
+  MtCollins1BootDiagnosticBundle, mtcollins1_kvm_observer_dir, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
@@ -109,13 +116,13 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.owned_process { owned_process_record, OwnedRecorded, OwnedUnrecorded }
 import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet, RunnerBrowserToolchainResolution }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
   KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
-  mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
+  megarac_kvm_observer_start, megarac_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
-  mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
+  megarac_kvm_still_allowance,
 }
 
 data mtcollins1_boot_label: String = "mtcollins1 boot"
@@ -158,6 +165,25 @@ data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
 
 data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
 
+// THE SHARE THIS UNIT BOOTS FROM, derived from its authorities rather than typed: srv2's LAN
+// address (gunbc.fleet_reach) and the export this lane publishes into
+// (gunbc.machine_intake_mtcollins1_boot_artifact), over NFS. The controller answered exactly this on
+// 2026-09-27 (15:40Z and 18:37Z reads, test.claim.machine_intake.megarac_media_convergence_witness_test
+// mtcollins1_media_general_2026_09_27). The generic attach (gunbc.machine_intake_megarac_boot_media_attach)
+// takes it as the boot's fact.
+data mtcollins1_media_share: MegaRacShareBinding = MegaRacShareBinding {
+  server_address: render_ipv4_address(addr: srv2_lan_ipv4),
+  source_path: mtcollins1_boot_export_dir,
+  share_type: MegaRacShareNfs,
+}
+
+// THE BOUND ON ONE ipmitool READ OF THIS UNIT'S CONTROLLER, as the generic attach takes it
+// (gunbc.machine_intake_mtcollins1_access_observation is its authority).
+data mtcollins1_boot_ipmi_read_bound: MegaRacIpmiReadBound = MegaRacIpmiReadBound {
+  deadline: mtcollins1_boot_ipmi_read_deadline,
+  kill_after: mtcollins1_boot_ipmi_kill_after,
+}
+
 // NO APPROVAL WINDOW IS BUDGETED ANY MORE (operator ruling 2026-09-23): the boot is a recurring
 // automated effect under workload identity (gunbc.auth.privileged_effect_census derives
 // FederatedScopedGrant for it), so the step no longer waits on a human.
@@ -166,7 +192,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: megarac_convergence_allowance())
-    + second_count(s: mtcollins1_stale_power_off_allowance())
+    + second_count(s: megarac_stale_power_off_allowance(bound: mtcollins1_boot_ipmi_read_bound))
     + 3 * second_count(s: megarac_presentation_look_allowance())
     + second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
     + second_count(s: oob_power_readback_allowance())
@@ -174,7 +200,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: mtcollins1_boot_diagnostics_allowance())
-    + second_count(s: mtcollins1_kvm_still_allowance())
+    + second_count(s: megarac_kvm_still_allowance())
     + second_count(s: mtcollins1_sol_notice_final_allowance)
   minute(count: (secs + 59) / 60)
 }
@@ -1850,7 +1876,7 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 
 // THE OBSERVER, STARTED BEFORE THE HANDOFF (acceptance (a)). mtcollins1_boot_actuate calls this after
 // the boot parameter 5 read and before the attach, so the phase clock counts its bounded wait
-// (mtcollins1_kvm_observer_establish_wait) inside media_attach. Bound to the BMC host, the web session
+// (megarac_kvm_observer_establish_wait) inside media_attach. Bound to the BMC host, the web session
 // it logs in with (the established line carries its id) and the attempt. The toolchain is resolved,
 // never assumed (gunbc.runner_browser_toolchain). FOR THIS DIAGNOSTIC PROFILE THE OBSERVER IS
 // REQUIRED: mtcollins1_boot_actuate re-reads it through kvm_handoff_admission immediately before the
@@ -1858,14 +1884,13 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 // runner without the browser toolchain, a busy viewer seat, a mismatched subject or a lost connection
 // all stop the boot there, with that standing as the cause. It gates on the witness existing, never on
 // what the screen shows.
-fn mtcollins1_boot_screen_start(password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
-  match mtcollins1_bmc_username {
-    Absent => KvmObserverNotStarted { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to log in to the viewer with" }
-    Present { value: user } =>
-      mtcollins1_kvm_observer_start(
-        firmware: mtcollins1_bmc_firmware,
-        bmc_host: mtcollins1_endpoint.host,
-        username: user,
+fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
+  match admit_megarac_host(host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
+    MegaRacHostRefused { cause: c } => KvmObserverNotStarted { reason: megarac_host_refusal_text(cause: c) }
+    MegaRacHostAdmitted { host: h } =>
+      megarac_kvm_observer_start(
+        host: h,
+        dir: mtcollins1_kvm_observer_dir(attempt: attempt),
         password_file: password_file,
         toolchain: resolve_toolchain(),
         attempt: attempt,
@@ -2230,11 +2255,11 @@ fn mtcollins1_boot_handoff_when_media_ready(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
-  match mtcollins1_media_gate(record: media) {
+  match megarac_boot_media_gate(record: media) {
     MediaGateWithheld { reason: why } =>
       MediaGatedHandoff { result: handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
-      let before = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "before-handoff")
+      let before = megarac_observe_boot_presentation(proof: proof, image_name: image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff")
       match presentation_still_served(result: before) {
         PresentationStillReady => {
           let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
@@ -2252,7 +2277,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
             capability_row: mtcollins1_capability_row,
             selection: selection,
           )
-          let after = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "after-handoff")
+          let after = megarac_observe_boot_presentation(proof: proof, image_name: image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff")
           MediaGatedHandoff {
             result: handed,
             media: HandoffMediaAttempted {
@@ -2326,21 +2351,37 @@ fn mtcollins1_boot_actuate(
       let acquired_at = clock_now_probed_at_or_unknown() as String
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_before_read = proc_uptime_read()
-      let screen = mtcollins1_boot_screen_start(password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain)
+      let screen = mtcollins1_boot_screen_start(proof: proof, password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain)
       let before_attach = mtcollins1_sol_supervised(stage: SolLostBeforeAttach, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: acquired_at)
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
           match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
-            Absent => mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt)
+            Absent =>
+              if subject.image_name != mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) {
+                MediaAttachNotAttempted { reason: "the boot subject names a different image than the medium row; controller untouched" }
+              } else if subject.image_sha256 != mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium) {
+                MediaAttachNotAttempted { reason: "the boot subject names a different image digest than the medium row; controller untouched" }
+              } else {
+                megarac_attach_boot_image(
+                  proof: proof,
+                  image_name: subject.image_name,
+                  image_sha256: subject.image_sha256,
+                  share: mtcollins1_media_share,
+                  replaceable_seeded_stem: mtcollins1_census_image_stem,
+                  bound: mtcollins1_boot_ipmi_read_bound,
+                  password_file: password_file,
+                  attempt: attempt,
+                )
+              }
           }
       }
       let attach_live_at = match before_attach {
         SolHeldAt { at: a } => a as String
         SolLostAt { outcome: _ } => acquired_at
       }
-      let attached = match mtcollins1_media_gate(record: media) {
+      let attached = match megarac_boot_media_gate(record: media) {
         MediaGateReady { evidence: _ } => ExitSuccess
         MediaGateWithheld { reason: why } => exit_failure(reason: why as String)
       }
@@ -2406,9 +2447,9 @@ fn mtcollins1_boot_actuate(
           terminal_step: PhaseStepSkipped { reason: "power on was never verified" },
         }
       }
-      let screen_record = mtcollins1_kvm_observer_finish(start: screen, attempt: attempt, terminal_order: 3)
+      let screen_record = megarac_kvm_observer_finish(start: screen, attempt: attempt, terminal_order: 3)
       let end_media = if end_media_is_owed(media: media) {
-        EndMediaObserved { look: mtcollins1_observe_presentation(proof: proof, image_name: subject.image_name, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+        EndMediaObserved { look: megarac_observe_boot_presentation(proof: proof, image_name: subject.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
       } else {
         EndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
       }
@@ -2630,7 +2671,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sel_before: before,
         sel_after: sel_after,
         sdr_cache: sdr,
-        sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
+        sensors: mtcollins1_boot_sensors(password_file: pf, sdr: sdr),
         smpro: match power_after {
           PoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
           PoweredOffWithoutCensusEnd => mtcollins1_boot_smpro_read(username: user, password_file: pf)

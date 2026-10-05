@@ -1,6 +1,6 @@
 module gunbc.ci_spec
 
-import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -3255,7 +3255,7 @@ fn bhold(script_var: String, label: String, record: Node) -> Node {
 // runs as a checked condition, so a failed removal is reported beside the others instead of aborting
 // the trap under errexit before they are reported.
 //
-// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
+// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_megarac_kvm_still)
 // through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
 // not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
 // 1 survived KILL, 2 unobservable -- and reported, never read as released.

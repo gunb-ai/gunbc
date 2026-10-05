@@ -230,7 +230,7 @@ type BmcWatchdogDisposition
   | WatchdogUnobserved { reason: NonEmptyStr }
 
 // THE ANOMALIES THE BMC'S OWN VIEW REPORTS. Each is decided by the module that owns its reading
-// (the sensor rule in gunbc.machine_intake_mtcollins1_bmc_sensor_observation mtcollins1_sensor_anomalies;
+// (the sensor rule in gunbc.machine_intake_megarac_sensor_observation megarac_sensor_anomalies;
 // the inventory and SEL rules in the bundle) and only placed here.
 type BmcAnomaly
   = ProcessorMissingOnExpectedSocket { socket: Int }
