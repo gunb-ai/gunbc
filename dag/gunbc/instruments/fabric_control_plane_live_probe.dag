@@ -901,7 +901,7 @@ fn fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
 
 fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String, held_wire: String) -> AllocationStoreRestoration {
   match decode_fabric_ci_evidence_wire(wire: before_wire) {
-    FabricCiEvidenceUndecodable => AllocationStoreRestorationRefused { path: root }
+    FabricCiEvidenceUndecodable { cause: _ } => AllocationStoreRestorationRefused { path: root }
     FabricCiEvidenceDecoded { value: before } => {
       let prestate = fci1_decode_allocation_prestate(wire: before as String)
       let poststate = fci1_allocation_prestate(root: root)
@@ -1047,7 +1047,7 @@ fn fci1_canonical_cleanup_disposition(
   let observed = fci1_allocation_slot_observation(root: root)
   let observed_prestate = fci1_slot_observation_prestate(observed: observed)
   let disposition = match before_decoded {
-    FabricCiEvidenceUndecodable => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: root }, observed: observed }
+    FabricCiEvidenceUndecodable { cause: _ } => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: root }, observed: observed }
     FabricCiEvidenceDecoded { value: before_value } => {
       let prestate = fci1_decode_allocation_prestate(wire: before_value as String)
       let initial_disposition = if fci1_slot_prestate_equal(a: prestate, b: observed_prestate) {
@@ -1185,7 +1185,7 @@ fn fci1_grade_and_write_allocation_receipt(
   let held_decoded = fci1_decode_transport_sample(wire: held_wire)
   let post = fci1_allocation_prestate(root: root)
   match before_decoded {
-    FabricCiEvidenceUndecodable => exit_failure(reason: "allocation receipt before observation undecodable")
+    FabricCiEvidenceUndecodable { cause: _ } => exit_failure(reason: "allocation receipt before observation undecodable")
     FabricCiEvidenceDecoded { value: before_value } => match held_decoded {
       RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "allocation receipt held observation undecodable")
       RequiredBuildCellLifetimeSampleDecoded { sample: held } => {
@@ -1269,7 +1269,7 @@ fn fci1_assert_extra_generation_refused_control() -> ProcessExit {
 
 fn fci1_decode_transport_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   match decode_fabric_ci_evidence_wire(wire: wire) {
-    FabricCiEvidenceUndecodable => RequiredBuildCellLifetimeSampleUndecodable
+    FabricCiEvidenceUndecodable { cause: _ } => RequiredBuildCellLifetimeSampleUndecodable
     FabricCiEvidenceDecoded { value: value } => decode_required_build_cell_lifetime_sample(wire: value as String)
   }
 }
@@ -1539,7 +1539,7 @@ fn fci1_assert_cell_unchanged(before_wire: String) -> ProcessExit {
       cpu_quota_per_sec: _,
       base_owner_group: _, cell_owner_group: _, attempt_owner_group: _,
     } => match decode_fabric_ci_evidence_wire(wire: before_wire) {
-    FabricCiEvidenceUndecodable => exit_failure(reason: "persistent cell substrate before-wire undecodable")
+    FabricCiEvidenceUndecodable { cause: _ } => exit_failure(reason: "persistent cell substrate before-wire undecodable")
     FabricCiEvidenceDecoded { value: before } => if observed == (before as String) { ExitSuccess } else {
       exit_failure(reason: join(["persistent cell substrate changed; before=", before as String, "; after=", observed as String], ""))
     }
@@ -1555,7 +1555,7 @@ fn fci1_grade_and_write_cell_receipt(before_wire: String, phase: NonEmptyStr, pa
       base_owner_group: base_owner,
       cell_owner_group: cell_owner, attempt_owner_group: attempt_owner,
     } => match decode_fabric_ci_evidence_wire(wire: before_wire) {
-    FabricCiEvidenceUndecodable => exit_failure(reason: "persistent cell substrate before-wire undecodable")
+    FabricCiEvidenceUndecodable { cause: _ } => exit_failure(reason: "persistent cell substrate before-wire undecodable")
     FabricCiEvidenceDecoded { value: before } => {
       let write = Filesystem.Write(
         path: path,

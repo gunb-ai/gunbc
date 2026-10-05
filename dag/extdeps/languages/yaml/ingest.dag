@@ -4,6 +4,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.optional { Present, Absent }
 import std.algebra { trim }
+import std.types { Char }
+import std.error_primitives { Ok, Err }
+import std.unicode.scalar { SurrogateCodePoint, CodePointOutOfRange, char_text, from_code_point }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
@@ -63,18 +66,26 @@ type YamlScalarResult
 // paragraph separators, the byte-order mark and the two noncharacters -- are refused because the
 // host's trim treats them as whitespace (or, for the BOM, because it is only legal at the start of
 // a stream), so a reader that accepted them could not tell their content from indentation.
-data yaml_refused_code_points: List<Int> = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 30, 31, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142,
-  143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 5760,
-  8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288,
-  65279, 65534, 65535
-]
+data yaml_refused_text: String = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{B}\u{C}\u{D}\u{E}\u{F}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1A}\u{1B}\u{1C}\u{1D}\u{1E}\u{1F}\u{7F}\u{80}\u{81}\u{82}\u{83}\u{84}\u{85}\u{86}\u{87}\u{88}\u{89}\u{8A}\u{8B}\u{8C}\u{8D}\u{8E}\u{8F}\u{90}\u{91}\u{92}\u{93}\u{94}\u{95}\u{96}\u{97}\u{98}\u{99}\u{9A}\u{9B}\u{9C}\u{9D}\u{9E}\u{9F}\u{A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}\u{FFFE}\u{FFFF}"
 
-data yaml_refused_characters: List<String> = map(yaml_refused_code_points, cp => from_code_point(cp: cp))
+// Each refused character is a Unicode scalar by construction (an element of the literal above), so
+// it is spelled as text through std.unicode.scalar char_text, which cannot refuse.
+data yaml_refused_code_points: List<Char> = chars(s: yaml_refused_text)
+
+data yaml_refused_characters: List<String> = map(yaml_refused_code_points, c => char_text(c: c))
+
+fn yaml_first_refused(text: String) -> Char? {
+  fold(yaml_refused_code_points, init: none, f: (acc, c) => match acc {
+    Present { value: found } => Present { value: found }
+    Absent => if string_contains(s: text, pattern: char_text(c: c)) { Present { value: c } } else { none }
+  })
+}
 
 fn yaml_first_refused_character(text: String) -> Int {
-  fold(yaml_refused_code_points, init: -1, f: (acc, cp) => if (acc == -1) && string_contains(s: text, pattern: from_code_point(cp: cp)) { cp } else { acc })
+  match yaml_first_refused(text: text) {
+    Absent => -1
+    Present { value: c } => c
+  }
 }
 
 fn yaml_contains_refused_character(text: String) -> Bool {
@@ -358,7 +369,7 @@ fn yaml_double_quoted_escape(pieces: List<String>, index: Int, p: String, acc: L
   if width == 0 {
     match map_get(yaml_double_quoted_escapes, c) {
       Absent => YamlScalarRefused { reason: join(["`\\", c, "` is not a YAML escape (section 5.7)"], "") }
-      Present { value: cp } => yaml_double_quoted_rest(pieces: pieces, index: index, rest: substring(s: p, start: 1, end: p.length()), acc: concat(acc, [from_code_point(cp: cp)]))
+      Present { value: cp } => yaml_double_quoted_scalar(pieces: pieces, index: index, escape: c, cp: cp, rest: substring(s: p, start: 1, end: p.length()), acc: acc)
     }
   } else if p.length() < width + 1 {
     YamlScalarRefused { reason: join(["`\\", c, "` needs ", to_string(width), " hexadecimal digits"], "") }
@@ -366,11 +377,24 @@ fn yaml_double_quoted_escape(pieces: List<String>, index: Int, p: String, acc: L
     let cp = yaml_hex_value(s: substring(s: p, start: 1, end: width + 1), i: 0, acc: 0)
     if cp < 0 {
       YamlScalarRefused { reason: join(["`\\", substring(s: p, start: 0, end: width + 1), "` is not a hexadecimal escape"], "") }
-    } else if ((cp >= 55296) && (cp <= 57343)) || (cp > 1114111) {
-      YamlScalarRefused { reason: join(["`\\", substring(s: p, start: 0, end: width + 1), "` does not name a Unicode scalar value"], "") }
     } else {
-      yaml_double_quoted_rest(pieces: pieces, index: index, rest: substring(s: p, start: width + 1, end: p.length()), acc: concat(acc, [from_code_point(cp: cp)]))
+      yaml_double_quoted_scalar(pieces: pieces, index: index, escape: substring(s: p, start: 0, end: width + 1), cp: cp, rest: substring(s: p, start: width + 1, end: p.length()), acc: acc)
     }
+  }
+}
+
+// AN ESCAPE NAMES A UNICODE SCALAR OR THE SCALAR REFUSES. YAML 1.2.2 section 5.7 defines \x, \u and
+// \U as the escaped Unicode character, and section 5.1 restricts the character set to Unicode
+// scalars, so a surrogate or a value past U+10FFFF is not a YAML character. The one scalar
+// authority is std.unicode.scalar from_code_point; its NotUnicodeScalar arm becomes this parser's
+// own refusal, naming the escape and which way it failed.
+fn yaml_double_quoted_scalar(pieces: List<String>, index: Int, escape: String, cp: Int, rest: String, acc: List<String>) -> YamlScalarResult {
+  match from_code_point(cp: cp) {
+    Ok { value: text } => yaml_double_quoted_rest(pieces: pieces, index: index, rest: rest, acc: concat(acc, [text]))
+    Err { value: SurrogateCodePoint { code_point: _ } } =>
+      YamlScalarRefused { reason: join(["`\\", escape, "` names a surrogate code point, not a Unicode scalar value (sections 5.1, 5.7)"], "") }
+    Err { value: CodePointOutOfRange { code_point: _ } } =>
+      YamlScalarRefused { reason: join(["`\\", escape, "` is past U+10FFFF, not a Unicode scalar value (sections 5.1, 5.7)"], "") }
   }
 }
 
@@ -624,7 +648,7 @@ fn yaml_empty_line_count(text: String) -> Int {
   (split(s: replace(concat("\n", concat(text, "\n")), "\n", concat("\n", yaml_line_start_mark)), delimiter: concat(yaml_line_start_mark, "\n")) |> count) - 1
 }
 
-data yaml_line_start_mark: String = from_code_point(cp: 2)
+data yaml_line_start_mark: String = "\u{2}"
 
 fn yaml_literal_body(chomping: String, cont: String, col: Int) -> YamlBlockResult {
   let lines = split(s: cont, delimiter: "\n")
@@ -700,7 +724,7 @@ type YamlEntryRead
 // text of one block, and the document it came from cannot already hold it (ingest_yaml_source refuses
 // U+0001 anywhere). It never appears in a value, a key or a refusal: a decoded scalar may hold U+0001
 // (a double-quoted `\x01`), and that is ordinary content.
-data yaml_line_join_mark: String = from_code_point(cp: 1)
+data yaml_line_join_mark: String = "\u{1}"
 
 fn yaml_is_ignorable_line(l: String) -> Bool {
   let t = trim(l)
@@ -852,7 +876,7 @@ fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
 // U+0003 separates the keys. A decoded key may itself hold it (a double-quoted `\x03`), and the
 // spelled sequence then splits into more keys than the block has; that block's keys are then read one
 // by one by yaml_map_block_keys rather than trusted to the spelling.
-data yaml_key_separator: String = from_code_point(cp: 3)
+data yaml_key_separator: String = "\u{3}"
 
 // True exactly when the spelled keys split back into `count` keys and no key repeats.
 fn yaml_key_sequence_is_clean(keys: String, count: Int) -> Bool {
@@ -1395,29 +1419,30 @@ fn yaml_line_ending_in_whitespace(lines: List<String>, index: Int) -> Int {
 }
 
 fn ingest_yaml_source(src: String) -> YamlIngestResult {
-  if yaml_contains_refused_character(text: src) {
-    let cp = yaml_first_refused_character(text: src)
-    YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: from_code_point(cp: cp), index: 0), reason: yaml_refused_character_reason(cp: cp) }
-  } else if yaml_has_leading_tab(src: src) {
-    YamlIngestRejected { line: yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0), reason: "a tab in a line's leading whitespace is outside the supported subset (YAML indents with spaces only; a literal line may not begin with a tab either)" }
-  } else if yaml_has_trailing_whitespace(src: src) {
-    YamlIngestRejected { line: yaml_line_ending_in_whitespace(lines: yaml_source_lines(src: src), index: 0), reason: "a line ends in whitespace, which is outside the supported subset (it would make an empty line indistinguishable from literal content)" }
-  } else {
-    let lines = yaml_source_lines(src: src)
-    let at = yaml_first_content_offset(lines: lines, index: 0)
-    if at < 0 {
-      YamlIngestRejected { line: 0, reason: "the document has no content node" }
-    } else {
-      let root = if at == 0 { join(lines, "\n") } else { join(lines.skip(n: at), "\n") }
-      if starts_with(s: root, prefix: " ") || starts_with(s: root, prefix: "\t") {
-        YamlIngestRejected { line: at + 1, reason: "the root block must start at column 0" }
+  match yaml_first_refused(text: src) {
+    Present { value: c } => YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: char_text(c: c), index: 0), reason: yaml_refused_character_reason(cp: c) }
+    Absent =>
+      if yaml_has_leading_tab(src: src) {
+        YamlIngestRejected { line: yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0), reason: "a tab in a line's leading whitespace is outside the supported subset (YAML indents with spaces only; a literal line may not begin with a tab either)" }
+      } else if yaml_has_trailing_whitespace(src: src) {
+        YamlIngestRejected { line: yaml_line_ending_in_whitespace(lines: yaml_source_lines(src: src), index: 0), reason: "a line ends in whitespace, which is outside the supported subset (it would make an empty line indistinguishable from literal content)" }
       } else {
-        match yaml_block(text: root, n: 0, seq: yaml_starts_seq(text: root), base: 0) {
-          YamlBlockParsed { value: v } => IngestedYaml { value: v }
-          YamlBlockRefused { line: l, reason: why } => YamlIngestRejected { line: at + l + 1, reason: why }
+        let lines = yaml_source_lines(src: src)
+        let at = yaml_first_content_offset(lines: lines, index: 0)
+        if at < 0 {
+          YamlIngestRejected { line: 0, reason: "the document has no content node" }
+        } else {
+          let root = if at == 0 { join(lines, "\n") } else { join(lines.skip(n: at), "\n") }
+          if starts_with(s: root, prefix: " ") || starts_with(s: root, prefix: "\t") {
+            YamlIngestRejected { line: at + 1, reason: "the root block must start at column 0" }
+          } else {
+            match yaml_block(text: root, n: 0, seq: yaml_starts_seq(text: root), base: 0) {
+              YamlBlockParsed { value: v } => IngestedYaml { value: v }
+              YamlBlockRefused { line: l, reason: why } => YamlIngestRejected { line: at + l + 1, reason: why }
+            }
+          }
         }
       }
-    }
   }
 }
 
