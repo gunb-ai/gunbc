@@ -8,9 +8,22 @@ import gunbc.machine_intake_host_capture_envelope {
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_terminal_verdict, MtCollins1BootTerminalVerdict, TerminalPending,
 }
-import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject_for, MtCollins1CensusMedium }
+import gunbc.boot_medium { BootMedium }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
+// the medium the claim needs; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// sole_constructor). Absent fails the claim that asked for it.
+fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+    BootSubjectAdmitted { subject: s } => Present { value: s }
+    BootSubjectRefused { host: _, cause: _ } => none
+  }
+}
 
 // SUPPLIED INPUT, REAL BYTES: lines of the SOL capture from mtcollins1_boot run 35793279839
 // (artifact mtcollins1-boot-receipts, mtcollins1-boot-sol.capture), each carrying the CR NL the
@@ -65,10 +78,13 @@ test fn sol_crlf_sections_complete_with_exit_zero() -> Bool {
 // refuse as "exited 0" -- either way the verdict would be TerminalRefused, never pending. The trimmed
 // capture never opens numa, workload or edac-after, which is why it pends rather than accepts.
 test fn sol_crlf_capture_refuses_nothing_it_carries() -> Bool {
-  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
-  match mtcollins1_boot_terminal_verdict(capture: sol_crlf_capture(), subject: subject, medium: medium) {
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
+  match mtcollins1_boot_terminal_verdict(capture: sol_crlf_capture(), subject: subject) {
     TerminalPending { reason: _ } => true
     _ => false
+  }
+  }
   }
 }
