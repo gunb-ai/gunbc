@@ -2,7 +2,7 @@ module test.claim.self_host_00_compile_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (00_compile): the driver (the roster's driver_rel) checks the
+// Wet self-host behavioral receipt (00_compile): the rendered driver (the roster row's contract, also run interpreted) checks the
 // .dag contract on the EMITTED module with no seed oracle -- join_required_lens_coverage closes over
 // the required roster observed once per lens at its grain, and refuses with
 // RootLensObservedMoreThanOnce when a root-grain lens is observed twice; --inject-fault asserts only
