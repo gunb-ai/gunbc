@@ -553,8 +553,11 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // say more. Its scope beyond those words is the operator's own second ruling, decided through
 // escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb: no agent's reading discharges a site (review
 // 76234, DESIGN §5: approval is external to the diff, so the row cites where the operator decided).
-// covers is the single source of which census sites take the 10-03 discharge; narrowing it is an
-// edit to one list that changes the discharge of exactly the sites it names. The interlock is the
+// covers is the single source of the operator's scope: no census row may take the 10-03 discharge
+// unless covers names its site. The converse does not hold, on purpose: a covered site whose effect
+// the selection already federates on its own parameters -- registration, deregistration and the
+// reversible branch create and delete -- does not consume the discharge, and only a consumer owes a
+// rostered interlock. The dispatch, being irreversible, is the one consumer. The interlock is the
 // host-generic unit hold (gunbc.managed_host_unit_hold UnitHoldProof): the dispatch takes the proof
 // and refuses unless it is the slot's own host's.
 data runner_lifecycle_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
@@ -678,10 +681,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
-      witness_discharge: ruling_discharge_for(
-        scope: runner_lifecycle_scope_ruling,
-        site_ref: site(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
-      ),
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -696,10 +696,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
-      witness_discharge: ruling_discharge_for(
-        scope: runner_lifecycle_scope_ruling,
-        site_ref: site(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "remove_qualification_ref_pin"),
-      ),
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
