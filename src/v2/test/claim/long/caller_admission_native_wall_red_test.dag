@@ -254,7 +254,7 @@ fn dbg_decl_lookup() -> ProcessExit {
           ) {
             Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-NORMALIZE", d: d))
             Accepted { value: t, diagnostics: _ } =>
-              match resolve_program_from_ingest(tree: t, symbol_index: t.symbol_index) {
+              match wall_red_assembled(subject_src: wall_red_subject_text(), peer_src: wall_red_peer_text()) {
                 Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-RESOLVE", d: d))
                 Accepted { value: rt, diagnostics: _ } =>
                   match find_named_child(root: rt.root, name: ^unlisted_caller) {
