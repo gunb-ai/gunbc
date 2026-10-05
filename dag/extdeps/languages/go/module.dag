@@ -71,6 +71,7 @@ data go_module_version_scheme: VersionScheme = VersionScheme {
   compare: (a, b) => if a == b { Present { value: Equal } } else { Present { value: Less } }
 }
 }
+}
 
 type GoModulePath = NonEmptyStr where brand("GoModulePath")
 

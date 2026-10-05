@@ -10,6 +10,7 @@ import extdeps.languages.go.module {
   emit_host_bootstrap_toolchain,
   emit_host_min_go_language_version,
   go_major_suffix_str,
+  go_module_version_scheme,
   go_mvs_properties,
   go_semver_compare,
   go_semver_label,
@@ -150,3 +151,21 @@ test fn w_emit_host_bootstrap_toolchain() -> Bool {
   emit_host_bootstrap_toolchain == "go1.22.5"
 }
 
+
+// The scheme parses the identity label back into GoSemVer and routes through go_semver_compare —
+// the ONE implementation of the cited rule — so unequal labels get the real numeric order.
+test fn w_go_module_version_scheme_orders_patch_numerically() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.2.4", b: "v1.2.3") {
+    Present { value: v } => v == Greater
+    Absent => false
+  }
+}
+
+// A label outside the go module grammar (not "vMAJOR.MINOR.PATCH[-pre][+build]") yields none —
+// a refusal of the precedence question, never a fabricated order.
+test fn w_go_module_version_scheme_refuses_unparsable_label() -> Bool {
+  match go_module_version_scheme.compare(a: "not-a-go-version", b: "v1.2.3") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

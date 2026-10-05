@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import std.nat { nat_compare }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -63,8 +64,97 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
   }
 }
 
+// ---- identity compare -----------------------------------------------------------------------
+// The label is a VersionScheme's only handle, so the comparison parses the label back into the
+// typed form and routes through git_release_version_compare — the ONE implementation of the cited
+// numeric rule. A label that is not a bare MAJOR.MINOR.PATCH triple (three dot-separated digit
+// runs, no leading zeroes) is outside the grammar this scheme covers, so the compare yields none:
+// a typed refusal of the precedence question, never a fabricated order.
+
+fn git_release_index_of(cp: Int, cps: List<Int>, n: Int) -> Int? {
+  if cps.count() == 0 {
+    none
+  } else {
+    match cps.first() {
+      Present { value: h } =>
+        if h == cp {
+          Present { value: n }
+        } else {
+          git_release_index_of(cp: cp, cps: cps.skip(n: 1), n: n + 1)
+        }
+      Absent => none
+    }
+  }
+}
+
+fn git_release_split_dots(cps: List<Int>, acc: List<List<Int>>) -> List<List<Int>> {
+  match git_release_index_of(cp: 46, cps: cps, n: 0) {
+    Present { value: i } =>
+      git_release_split_dots(cps: cps.skip(n: i + 1), acc: concat(acc, [cps.take(n: i)]))
+    Absent => concat(acc, [cps])
+  }
+}
+
+fn git_release_nat_field_parse(cps: List<Int>) -> NonNegativeInt? {
+  if cps.count() == 0 {
+    none
+  } else if !all(cps, cp => 48 <= cp && cp <= 57) {
+    none
+  } else {
+    match cps.first() {
+      Absent => none
+      Present { value: h } =>
+        if cps.count() > 1 && h == 48 {
+          none
+        } else {
+          checked_int_to_nat(n: cps |> fold(init: 0, f: (acc, cp) => acc * 10 + (cp - 48)))
+        }
+    }
+  }
+}
+
+fn git_release_identity_parse(identity: VersionIdentity) -> GitReleaseVersion? {
+  let fields = git_release_split_dots(cps: chars(s: identity as String), acc: [])
+  if fields.count() != 3 {
+    none
+  } else {
+    match fields.first() {
+      Absent => none
+      Present { value: f0 } =>
+        match git_release_nat_field_parse(cps: f0) {
+          Absent => none
+          Present { value: major } =>
+            match fields.skip(n: 1).first() {
+              Absent => none
+              Present { value: f1 } =>
+                match git_release_nat_field_parse(cps: f1) {
+                  Absent => none
+                  Present { value: minor } =>
+                    match fields.skip(n: 2).first() {
+                      Absent => none
+                      Present { value: f2 } =>
+                        match git_release_nat_field_parse(cps: f2) {
+                          Absent => none
+                          Present { value: patch } =>
+                            Present { value: GitReleaseVersion { major: major, minor: minor, patch: patch } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
 fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering? {
-  if a == b { Present { value: Equal } } else { Present { value: Greater } }
+  match git_release_identity_parse(identity: a) {
+    Absent => none
+    Present { value: va } =>
+      match git_release_identity_parse(identity: b) {
+        Absent => none
+        Present { value: vb } => Present { value: git_release_version_compare(a: va, b: vb) }
+      }
+  }
 }
 
 data git_release_version_scheme: VersionScheme = VersionScheme {

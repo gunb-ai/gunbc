@@ -292,7 +292,14 @@ fn semver_core_parse(cps: List<Int>) -> SemVerVersion? {
 
 // ---- pre-release and build identifiers ------------------------------------
 
-fn semver_identifier_parse(cps: List<Int>) -> SemVerIdentifier? {
+// One identifier parse for both §9 pre-release and §10 build identifiers; the only real
+// difference between the two grammars is carried by strict_numeric. A no-leading-zero digit run
+// is numeric (§9, §10). In strict mode — pre-release — an all-digit run WITH a leading zero is
+// neither numeric ("Numeric identifiers MUST NOT include leading zeroes", §9) nor alphanumeric
+// (the §2 grammar requires an alphanumeric identifier to contain a non-digit), so it refuses.
+// §10 permits leading zeroes in build metadata ("1.0.0+0130"), so permissive mode keeps such a
+// run as an alphanumeric identifier.
+fn semver_identifier_parse(cps: List<Int>, strict_numeric: Bool) -> SemVerIdentifier? {
   if cps.count() == 0 {
     none
   } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
@@ -302,23 +309,8 @@ fn semver_identifier_parse(cps: List<Int>) -> SemVerIdentifier? {
       Absent => none
       Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
     }
-  } else {
-    Present { value: SemVerAlphanumericIdentifier { label: semver_label_from_code_points(cps: cps) } }
-  }
-}
-
-// Build identifiers follow the same character class, but §2 permits leading zeroes there, so
-// only no-leading-zero digit runs parse as numeric and anything else stays alphanumeric.
-fn semver_build_identifier_parse(cps: List<Int>) -> SemVerIdentifier? {
-  if cps.count() == 0 {
+  } else if strict_numeric && semver_all_digits(cps: cps) {
     none
-  } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
-    none
-  } else if semver_numeric_run_without_leading_zero(cps: cps) {
-    match checked_int_to_nat(n: semver_digits_to_int(cps: cps, acc: 0)) {
-      Absent => none
-      Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
-    }
   } else {
     Present { value: SemVerAlphanumericIdentifier { label: semver_label_from_code_points(cps: cps) } }
   }
@@ -334,7 +326,7 @@ fn semver_identifier_list_parse(
       match st {
         Absent => Absent
         Present { value: acc } =>
-          match (if strict_numeric { semver_identifier_parse(cps: seg) } else { semver_build_identifier_parse(cps: seg) }) {
+          match semver_identifier_parse(cps: seg, strict_numeric: strict_numeric) {
             Absent => Absent
             Present { value: id } => Present { value: concat(acc, [id]) }
           }

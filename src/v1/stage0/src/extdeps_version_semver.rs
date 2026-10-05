@@ -478,7 +478,10 @@ pub fn semver_core_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {
     }
 }
 
-pub fn semver_identifier_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerIdentifier>> {
+pub fn semver_identifier_parse(
+    cps: Rc<Vec<i64>>,
+    strict_numeric: bool,
+) -> Option<Rc<SemVerIdentifier>> {
     if ((cps.clone().len() as i64) == 0) {
         std::option::Option::None
     } else {
@@ -505,44 +508,13 @@ pub fn semver_identifier_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerIdentifier>
                     })),
                 }
             } else {
-                Some(Rc::new(SemVerIdentifier::SemVerAlphanumericIdentifier {
-                    label: semver_label_from_code_points(cps.clone()),
-                }))
-            }
-        }
-    }
-}
-
-pub fn semver_build_identifier_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerIdentifier>> {
-    if ((cps.clone().len() as i64) == 0) {
-        std::option::Option::None
-    } else {
-        if !{
-            let mut __all = true;
-            for cp in cps.iter().cloned() {
-                if !(semver_is_identifier_char(cp.clone())) {
-                    __all = false;
-                    break;
+                if (strict_numeric.clone() && semver_all_digits(cps.clone())) {
+                    std::option::Option::None
+                } else {
+                    Some(Rc::new(SemVerIdentifier::SemVerAlphanumericIdentifier {
+                        label: semver_label_from_code_points(cps.clone()),
+                    }))
                 }
-            }
-            __all
-        } {
-            std::option::Option::None
-        } else {
-            if semver_numeric_run_without_leading_zero(cps.clone()) {
-                match crate::std_checked_arithmetic::checked_int_to_nat(semver_digits_to_int(
-                    cps.clone(),
-                    0,
-                )) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(n) => Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
-                        value: n.clone(),
-                    })),
-                }
-            } else {
-                Some(Rc::new(SemVerIdentifier::SemVerAlphanumericIdentifier {
-                    label: semver_label_from_code_points(cps.clone()),
-                }))
             }
         }
     }
@@ -558,11 +530,7 @@ pub fn semver_identifier_list_parse(
         .fold(Some(Rc::new(vec![])), |st: _, seg: Rc<Vec<i64>>| {
             match st.clone() {
                 std::option::Option::None => std::option::Option::None,
-                Some(acc) => match if strict_numeric.clone() {
-                    semver_identifier_parse(seg.clone())
-                } else {
-                    semver_build_identifier_parse(seg.clone())
-                } {
+                Some(acc) => match semver_identifier_parse(seg.clone(), strict_numeric.clone()) {
                     std::option::Option::None => std::option::Option::None,
                     Some(id) => Some(v1_rt::concat(acc.clone(), Rc::new(vec![id.clone()]))),
                 },

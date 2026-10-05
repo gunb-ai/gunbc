@@ -228,3 +228,24 @@ test fn w_semver_scheme_out_of_grammar_label_refuses_precedence() -> Bool {
   }
 }
 
+
+// §9: "Numeric identifiers MUST NOT include leading zeroes." An all-digit pre-release identifier
+// with a leading zero is neither numeric (§9) nor alphanumeric (the §2 grammar requires an
+// alphanumeric identifier to contain a non-digit), so the LABEL is out of grammar: it must refuse,
+// never rank lexically under the numeric-identifier-vs-alphanumeric rule of §11.
+test fn w_semver_pre_release_leading_zero_numeric_label_refuses() -> Bool {
+  match semver_scheme.compare("1.0.0-01", "1.0.0-1") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// §10 permits leading zeroes in build metadata ("1.0.0+0130"), so the permissive arm must keep
+// parsing them; the pre-release refusal must not leak into build identifiers. Build is ignored
+// by §11, so the pair is Equal.
+test fn w_semver_build_leading_zero_identifier_still_parses() -> Bool {
+  match semver_scheme.compare("1.0.0+0130", "1.0.0") {
+    Present { value: v } => v == Equal
+    Absent => false
+  }
+}
