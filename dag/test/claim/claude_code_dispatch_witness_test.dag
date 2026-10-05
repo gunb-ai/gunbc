@@ -17,6 +17,11 @@ import extdeps.llm.claude_code_stream_json {
   claude_code_stream_line,
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
+import gunbc.roadmap_belt_actuate {
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  belt_snapshot_disposition, SnapshotConsumedByChild, SnapshotDiscardRequired,
+}
+import gunbc.roadmap_launch_admission { launch_identity_exemplar, LaunchTransitionInhibited }
 import gunbc.claude_code_limit_standing {
   ClaudeCodeStandingReading,
   ClaudeCodeStandingRead,
@@ -435,6 +440,35 @@ test fn only_a_posix_name_is_admitted_into_the_env_wrapper() -> Bool {
     && name_refused(spelling: "A B")
     && name_refused(spelling: "9A")
     && name_refused(spelling: "")
+}
+
+// SNAPSHOT LIFECYCLE: only a launched child consumes the snapshot; every other post-selection
+// outcome requires its discard (side-chat finding). Every arm of BeltSpawnOutcome, by name.
+fn discard_required(o: BeltSpawnOutcome) -> Bool {
+  match belt_snapshot_disposition(outcome: o) {
+    SnapshotDiscardRequired => true
+    SnapshotConsumedByChild => false
+  }
+}
+
+test fn only_a_launched_child_consumes_the_snapshot() -> Bool {
+  let id = launch_identity_exemplar()
+  !discard_required(o: Spawned { node_id: "x", session_name: "gunbc-dispatch-x", provider: "claude", launch: id })
+    && discard_required(o: SupervisorConvened { node_id: "x", unit: "u", provider: "claude", launch: id })
+    && discard_required(o: SpawnFailed { node_id: "x", step: "claude-cli", detail: "preflight refused", provider: "claude", launch: id })
+    && discard_required(o: SpawnNotAdmitted { node_id: "x", refusal: LaunchTransitionInhibited { reason: "r" } })
+}
+
+// The removal is a precondition of the exec: the program carries the removal's own failure arm.
+test fn a_snapshot_that_cannot_be_removed_refuses_the_launch() -> Bool {
+  match claude_inner_argv_for_credential(credential: claude_dispatch_credential(), snapshot: witness_snapshot_path, argv: spawn_argv_tail) {
+    DispatchProviderInnerArgvReady { argv } =>
+      any(argv, a => string_contains(s: a, pattern: "'rm' '-f' '--' \"$0\" || exit 79"))
+    ClaudeProviderCredentialUnbound { reason: _ } => false
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
 }
 
 // ── Inventory and selection (gunbc.dispatch_selection) ──────────────────────────────────────────
