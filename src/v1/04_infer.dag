@@ -13617,7 +13617,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
+          Present { value: ac } => unify_generics(formal: fc, actual: child_type_node(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
       Absent => acc
