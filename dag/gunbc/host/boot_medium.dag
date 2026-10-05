@@ -1,7 +1,6 @@
 module gunbc.boot_medium
 
 import std.types { Bool, NonEmptyStr, String }
-import v2.std.optional { Present }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -90,10 +89,3 @@ fn boot_medium_readback(medium: BootMedium, observed: NonEmptyStr) -> BootMedium
   }
 }
 
-fn boot_medium_readback_refusal(readback: BootMediumReadback) -> NonEmptyStr? {
-  match readback {
-    BootMediumReadbackHeld => none
-    BootMediumReadbackDigestDiffers { image_name: n, expected: e, observed: o } =>
-      Present { value: join(["boot medium ", n as String, " read back sha256 ", o as String, " but the boot was admitted with ", e as String], "") as NonEmptyStr }
-  }
-}
