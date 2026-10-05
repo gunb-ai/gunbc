@@ -1,12 +1,7 @@
 module v2.workflow.floor_cost_debt_verdict
 
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.algebra { any, list_reverse }
-import v2.std.diagnostic { Accepted, Rejected }
-import std.types { GitRef, FilePath, List }
-import extdeps.git
+import std.types { List }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
@@ -88,80 +83,29 @@ fn cost_debt_verdict_refuses(standing: CostDebtVerdictStanding) -> Bool {
 
 // ── ADMISSION: WHICH HEAD ROWS THE BASE DID NOT CARRY ──────────────────────────────────────────
 //
-// THE HEAD SIDE IS THE ROSTER ITSELF, EVALUATED. The base side is the roster file as it stood at the
-// floor's comparison base, and it cannot be evaluated beside the head: both declare
-// `v2.workflow.floor_cost_debt`, so they cannot resolve in one pool. It is read at TOKEN grain
-// instead, the way `v2.workflow.floor_cost_debt_edit` reads a base declaration -- and only through
-// the roster's one supported structure: a member is a string literal in the `head:` position of a
-// chunk's `Cons` cell. A literal anywhere else (a prose string, a population-report label) is not
-// membership, so it can never mark a head row as already carried (review on gunbc#13332: an
-// uncertain reading must never count as carried).
+// MEMBERSHIP AT BOTH ENDS IS THE ROSTER'S OWN RESULT, EVALUATED. The head side is
+// `floor_cost_debt_roster` here; the base side is the same function evaluated over the roster file
+// as it stood at the floor's comparison base, in an isolated pool under a scratch module name, by
+// the host (`v1_compiler.cli_run.required_floor_runner` `cost_debt_roster_at_base`) -- the two
+// revisions declare one module path, so they cannot share a pool under it. An earlier revision of
+// this file read the base at token grain (any string literal, then any `head:` literal) and review
+// on gunbc#13332 showed both readings mark rows as carried that the base roster never selected (a
+// literal in an unselected chunk). Reading the result removes the approximation instead of
+// narrowing it: a base the host cannot evaluate refuses, and is never read as already carrying.
 //
-// A BASE WITH NO SUCH MEMBER IS NOT READ AS EMPTY. A roster written in some other structure would
-// yield no `head:` literals, and reading that as "carries nothing" would be a guess; it refuses
-// with `CostDebtRosterStructureUnrecognizedAtBase` instead. The next rung is evaluating the base
-// roster in its own pool, which waits on a pool that can hold two revisions of one module.
-//
-// A BASE THAT CANNOT BE SHOWN REFUSES. `git show` exits non-zero both for a path absent at the
-// base and for a bad ref (`extdeps.git` `Show`), so the read cannot tell those apart and does not
-// guess: the floor asks only when the diff modified (not added) the roster, and an unreadable base
-// is its own arm, never an empty roster.
-type CostDebtAdmissionReading =
-    CostDebtAdmittedIdentities { identities: List<String> }
-  | CostDebtRosterUnreadableAtBase { stderr: String }
-  | CostDebtRosterUntokenizableAtBase
-  | CostDebtRosterStructureUnrecognizedAtBase
-
-fn cost_debt_string_literal_spells(lexeme: String, identity: String) -> Bool {
-  lexeme == concat(concat("\"", identity), "\"")
-}
-
-// The scan's two-token window: a literal is a member exactly when the two tokens before it are
-// `head` and `:`. Members accumulate in reverse; order is irrelevant to membership.
-type CostDebtRosterMemberScan {
-  before_previous: String
-  previous: String
-  members: List<String>
-}
-
-fn cost_debt_base_roster_members(tokens: List<Token>) -> List<String> {
-  fold(tokens, init: CostDebtRosterMemberScan { before_previous: "", previous: "", members: [] }, f: fn(acc, tok) {
-    let is_member = (tok.class == ^dag_token_string_literal) && (acc.before_previous == "head") && (acc.previous == ":")
-    let members = if is_member { concat([tok.lexeme], acc.members) } else { acc.members }
-    CostDebtRosterMemberScan { before_previous: acc.previous, previous: tok.lexeme, members: members }
-  }).members
-}
-
-// The head rows the base roster's members do not spell, in roster order.
-fn cost_debt_admitted_identities(base_source: String, head_roster: List<String>) -> CostDebtAdmissionReading {
-  match tokenize(text: base_source, file: ^cost_debt_admission_base, rules: dag_language_model().lex) {
-    Rejected { diagnostics: _ } => CostDebtRosterUntokenizableAtBase {}
-    Accepted { value: stream, diagnostics: _ } => {
-      let members = cost_debt_base_roster_members(tokens: token_stream_all(stream: stream))
-      if !any(xs: members, predicate: fn(m) { true }) {
-        CostDebtRosterStructureUnrecognizedAtBase {}
-      } else {
-        CostDebtAdmittedIdentities {
-          identities: list_reverse(xs: fold(head_roster, init: [], f: fn(acc, identity) {
-            if any(xs: members, predicate: fn(lexeme) { cost_debt_string_literal_spells(lexeme: lexeme, identity: identity) }) {
-              acc
-            } else {
-              concat([identity], acc)
-            }
-          }))
-        }
-      }
+// The head rows the base roster's result does not carry, in roster order.
+fn cost_debt_admitted_identities(base_roster: List<String>, head_roster: List<String>) -> List<String> {
+  list_reverse(xs: fold(head_roster, init: [], f: fn(acc, identity) {
+    if any(xs: base_roster, predicate: fn(row) { row == identity }) {
+      acc
+    } else {
+      concat([identity], acc)
     }
-  }
+  }))
 }
 
-// THE WET ENTRY THE FLOOR CALLS when its diff modified the roster file: show the base, then compare
-// it with the head roster as evaluated.
-fn cost_debt_admitted_identities_at_base(base: String, path: String) -> CostDebtAdmissionReading {
-  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
-  if shown.success {
-    cost_debt_admitted_identities(base_source: shown.content, head_roster: floor_cost_debt_roster())
-  } else {
-    CostDebtRosterUnreadableAtBase { stderr: shown.stderr }
-  }
+// THE ENTRY THE FLOOR CALLS when its diff modified the roster file, with the base roster's
+// evaluated result.
+fn cost_debt_admitted_identities_against_base(base_roster: List<String>) -> List<String> {
+  cost_debt_admitted_identities(base_roster: base_roster, head_roster: floor_cost_debt_roster())
 }
