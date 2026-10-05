@@ -1757,8 +1757,8 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
 
 // A TYPE PARAMETER CARRIES ITS OWN CARDINALITY, AND EVERY ARM THAT SPELLS ONE WRAPS IT HERE. `K?` on a
 // declared parameter is a leaf whose return_cardinality is CardOptional. The four arms that spell a
-// type parameter -- the declared-generic leaf in render_rust_decl_type and in the signature
-// renderer below it, and the TypeVariable arms of render_rust_type and render_rust_applied_type_arg
+// type parameter -- the declared-generic leaf in render_rust_decl_type and in
+// render_rust_alias_rhs_type, and the TypeVariable arms of render_rust_type and render_rust_applied_type_arg
 // -- returned the bare name, so `get: K?` in a generic record emitted `K`: an absent value had no
 // representation (gunbc.recurring_failure_mode optional_type_parameter_emitted_without_its_cardinality).
 fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
