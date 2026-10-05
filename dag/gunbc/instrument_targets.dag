@@ -53,6 +53,7 @@ import gunbc.target_binding {
   V2NativeCensusProducer, ResolveRefusalReading, TypeDeclarationUseReading,
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
+  InterpolationHoleCensusProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -486,6 +487,20 @@ fn generic_identity_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "generic-identity-census" } }
 }
 
+// THE XL-2 STEP-2 INSTRUMENT: the interpolation hole-type census. For every interpolation hole in
+// the dag and src/v2 corpus, the seed's own v1.tests.claim.interpolation_hole_census records the
+// hole's identity (file, line, declaration, ordinal), its expression shape and the type v1 infer gave
+// the hole expression itself, flags each typed non-String hole v1 stringifies implicitly (the
+// explicit-conversion population DESIGN section 4 makes a decision input), and reads each
+// transport-block hole against its operation's declared inputs (XL-2 ruling 4). It is the v1 ORACLE:
+// v2 does not yet lex a hole, and PR2b's v2 infer owes agreement with every row. Completeness is a
+// per-file join of observed against lexed templates and holes, so an unreached hole is a located
+// UNOBSERVED row, never a smaller count. Run by name, on no lane: its consumers are the XL-2
+// conversion decision and PR2b. `gunbc test //gunbc/instruments:interpolation-hole-census`.
+fn interpolation_hole_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "interpolation-hole-census" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -572,6 +587,10 @@ fn dependency_demand_census_binding() -> TargetBinding {
 
 fn generic_identity_census_binding() -> TargetBinding {
   TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
+}
+
+fn interpolation_hole_census_binding() -> TargetBinding {
+  TargetBinding { target: interpolation_hole_census_label() producer: InterpolationHoleCensusProducer {} }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -755,7 +774,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
@@ -772,7 +791,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),

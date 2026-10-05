@@ -1,0 +1,524 @@
+module v1.tests.claim.interpolation_hole_census
+
+import v1.compiler.compile { SourceFile, compile_to_resolved }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer { type_node_label }
+import v1.compiler.tokenize { tokenize }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.std.core {
+  Node, NewlineIndex, Token, Resolved, authored_name_at, param_node_name_at, source_text_at, byte_to_line_col,
+  ShStrBegin, ShStrMid, ShStrEnd,
+  ExprStringInterp, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprLiteral
+}
+import std.types { List, String, Map, Bool, Int }
+
+// THE XL-2 STEP-2 INSTRUMENT: THE INTERPOLATION HOLE-TYPE CENSUS, READ FROM THE v1 ORACLE.
+// For every interpolation hole in the subject corpus it records the hole's identity (file, line,
+// enclosing declaration, ordinal), its expression shape, and the type v1 infer gave the hole
+// EXPRESSION ITSELF -- v1.compiler.infer ExprStringInterp runs infer_expr on each hole with no
+// expected type and stores the result on the part's child, before the template is typed String.
+// It reads; it changes no infer function and no byte of the seed.
+//
+// WHY v1 AND NOT v2. At main v2 lexes a template as one plain string literal, so a hole is not a node
+// and has no type to read. v1 parses each hole as an ordinary expression and types it. This is the
+// v1 ORACLE (DESIGN section 7: the seed is evidence, not specification). PR2b owes the cross-check:
+// its v2 infer must agree on every row here, or name each disagreement as a v1 defect or a v2
+// regression.
+//
+// THE COERCION v1 PERFORMS. v1 accepts a hole of any type and stringifies it at emission
+// (v1.compiler.emit_rust emit_typed_string_interp hands the hole to a format argument). DESIGN
+// section 4 forbids that implicit route, so every hole whose own type is not String is flagged
+// v1_implicit_stringify: exactly the population an explicit-conversion change would have to name.
+//
+// TRANSPORT HOLES ARE A SEPARATE SUBSET. A hole inside an operation's transport block is never typed
+// (v1 does not infer transports), so it carries no type; what it carries instead is whether it is a
+// bare name matching one of the operation's declared inputs -- the only form XL-2 ruling 4 admits
+// (Template of OperationInputName).
+
+type HoleShape = HoleIdentifier | HoleDotted | HoleCall | HoleOtherShape { label: String }
+
+type HoleTypeReading
+  = HoleTypedString
+  | HoleTypedInt
+  | HoleTypedBool
+  | HoleTypedOther { label: String }
+  | HoleUntyped
+
+type HoleSite
+  = HoleInBody
+  | HoleInTransport { operation: String, inputs: List<String> }
+
+type HoleRow {
+  file: String
+  line: Int
+  decl: String
+  ordinal: Int
+  text: String
+  shape: HoleShape
+  reading: HoleTypeReading
+  site: HoleSite
+}
+
+type HoleWalkContext {
+  file_decl: String
+  si: Map<String, NewlineIndex>
+  site: HoleSite
+}
+
+// One observed template: the file it is in and its holes. Its count is joined against the lexer's
+// count per file, so a template the walk did not reach is a located mismatch, not a smaller total.
+type ObservedTemplate {
+  file: String
+  holes: List<HoleRow>
+}
+
+// What the v1 lexer says one file holds: interpolating templates and holes.
+type LexicalTemplateCount {
+  file: String
+  templates: Int
+  holes: Int
+}
+
+fn ihc_token_is_template_start(t: Token) -> Bool {
+  match t.shape {
+    ShStrBegin => true
+    _ => false
+  }
+}
+
+fn ihc_token_closes_hole(t: Token) -> Bool {
+  match t.shape {
+    ShStrMid => true
+    ShStrEnd => true
+    _ => false
+  }
+}
+
+fn ihc_lexical_count(s: SourceFile) -> LexicalTemplateCount {
+  let tokens = tokenize(source: s.content, file: s.path, env: dag_parse_environment)
+  LexicalTemplateCount {
+    file: s.path,
+    templates: tokens |> filter(t => ihc_token_is_template_start(t: t)) |> count,
+    holes: tokens |> filter(t => ihc_token_closes_hole(t: t)) |> count
+  }
+}
+
+// THE SUBJECT POPULATION, decided here and not by the driver: every source whose v1 lexing yields at
+// least one interpolating template. The driver hands in every corpus file and compiles the closures
+// of the paths this returns.
+fn interpolation_hole_census_subjects(sources: List<SourceFile>) -> List<String> {
+  sources |> filter(s => ihc_lexical_count(s: s).templates > 0) |> map(s => s.path)
+}
+
+fn ihc_shape(e: Node) -> HoleShape {
+  match e.expr_data {
+    ExprVar { binding_kind: _ } => HoleIdentifier
+    ExprFieldAccess { summary: _ } => HoleDotted
+    ExprCall { call_semantics: _, descent_evidence: _ } => HoleCall
+    ExprMethodCall { method_semantics: _ } => HoleCall
+    _ => HoleOtherShape { label: ihc_expr_data_label(e: e) }
+  }
+}
+
+fn ihc_expr_data_label(e: Node) -> String {
+  match e.expr_data {
+    ExprLiteral { value: _ } => "literal"
+    ExprStringInterp => "template"
+    _ => "other_expression"
+  }
+}
+
+fn ihc_reading(e: Node, si: Map<String, NewlineIndex>) -> HoleTypeReading {
+  match e.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let label = type_node_label(n: rt, source_indices: si)
+      if label == "String" { HoleTypedString }
+      else if label == "Int" { HoleTypedInt }
+      else if label == "Bool" { HoleTypedBool }
+      else { HoleTypedOther { label: label } }
+    _ => HoleUntyped
+  }
+}
+
+// THE HOLE'S SPELLING, rebuilt from the node rather than sliced from its span: a field access's span
+// covers only its dot, so a slice would name every dotted hole the same. A variable is its authored
+// name; a field access is its receiver's spelling, a dot and its field; a call is its callee's
+// spelling and its arity. Anything else falls back to the span slice.
+fn ihc_hole_text(e: Node, si: Map<String, NewlineIndex>) -> String {
+  match e.expr_data {
+    ExprVar { binding_kind: _ } => ihc_named_or_span(e: e, si: si)
+    ExprFieldAccess { summary: _ } =>
+      match e.children |> first {
+        Present { value: receiver } => concat(concat(ihc_hole_text(e: receiver, si: si), "."), authored_name_at(source_indices: si, node: e))
+        Absent => concat(".", authored_name_at(source_indices: si, node: e))
+      }
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      concat(concat(concat(ihc_named_or_span(e: e, si: si), "/"), to_string(e.children |> count)), "-arg call")
+    ExprMethodCall { method_semantics: _ } =>
+      concat(concat(concat(ihc_named_or_span(e: e, si: si), "/"), to_string(e.children |> count)), "-arg method call")
+    _ => ihc_span_text(e: e, si: si)
+  }
+}
+
+fn ihc_named_or_span(e: Node, si: Map<String, NewlineIndex>) -> String {
+  let named = authored_name_at(source_indices: si, node: e)
+  if named != "" { named } else { ihc_span_text(e: e, si: si) }
+}
+
+fn ihc_span_text(e: Node, si: Map<String, NewlineIndex>) -> String {
+  match map_get(si, e.span.file) {
+    Present { value: index } => source_text_at(index: index, span: e.span)
+    Absent => ""
+  }
+}
+
+fn ihc_line(e: Node, si: Map<String, NewlineIndex>) -> Int {
+  match map_get(si, e.span.file) {
+    Present { value: index } => byte_to_line_col(index: index, offset: e.span.start).line
+    Absent => 0
+  }
+}
+
+fn ihc_is_text_part(part: Node) -> Bool {
+  match part.expr_data {
+    ExprLiteral { value: _ } => true
+    _ => false
+  }
+}
+
+// The holes of one template, in source order. A part that is not a text literal is a hole part, whose
+// only child is the hole expression infer typed.
+fn ihc_template_holes(ctx: HoleWalkContext, template: Node) -> List<Node> {
+  template.children |> filter(p => !ihc_is_text_part(part: p)) |> flat_map(p => p.children |> take(1))
+}
+
+fn ihc_template_observation(ctx: HoleWalkContext, template: Node) -> ObservedTemplate {
+  let holes = ihc_template_holes(ctx: ctx, template: template)
+  ObservedTemplate {
+    file: template.span.file,
+    holes: holes |> map(h => HoleRow {
+      file: h.span.file,
+      line: ihc_line(e: h, si: ctx.si),
+      decl: ctx.file_decl,
+      ordinal: 0,
+      text: ihc_hole_text(e: h, si: ctx.si),
+      shape: ihc_shape(e: h),
+      reading: ihc_reading(e: h, si: ctx.si),
+      site: ctx.site
+    })
+  }
+}
+
+// THE WALK visits every node reachable from a module item -- children, params, body, properties and
+// transport -- because a template can sit in a function body, a data row's value, or an operation's
+// transport. Entering an operation's transport switches the site to that operation, carrying its
+// declared input names.
+fn ihc_walk(ctx: HoleWalkContext, n: Node) -> List<ObservedTemplate> {
+  let own = match n.expr_data {
+    ExprStringInterp => [ihc_template_observation(ctx: ctx, template: n)]
+    _ => []
+  }
+  let nested = concat(
+    concat(
+      n.children |> flat_map(c => ihc_walk(ctx: ctx, n: c)),
+      n.params |> flat_map(p => ihc_walk(ctx: ctx, n: p))
+    ),
+    concat(
+      match n.body {
+        Present { value: b } => ihc_walk(ctx: ctx, n: b)
+        Absent => []
+      },
+      n.properties |> flat_map(p => ihc_walk(ctx: ctx, n: p))
+    )
+  )
+  let transport = match n.transport {
+    Present { value: t } =>
+      ihc_walk(
+        ctx: HoleWalkContext {
+          file_decl: concat(concat(ctx.file_decl, "."), n.name),
+          si: ctx.si,
+          site: HoleInTransport {
+            operation: n.name,
+            inputs: n.params |> map(p => param_node_name_at(n: p, source_indices: ctx.si))
+          }
+        },
+        n: t)
+    Absent => []
+  }
+  concat(concat(own, nested), transport)
+}
+
+fn ihc_module_templates(m: TypedModule, si: Map<String, NewlineIndex>) -> List<ObservedTemplate> {
+  m.items |> flat_map(item =>
+    ihc_walk(ctx: HoleWalkContext { file_decl: authored_name_at(source_indices: si, node: item), si: si, site: HoleInBody }, n: item))
+}
+
+// Ordinals are assigned per declaration in source order, so (file, decl, ordinal) names one hole.
+fn ihc_number_holes(rows: List<HoleRow>) -> List<HoleRow> {
+  let numbered = fold(rows, init: IhcNumbering { seen: empty_map(), out: [] }, f: (acc, r) =>
+    let key = concat(concat(r.file, "::"), r.decl)
+    let next = match map_get(acc.seen, key) {
+      Present { value: k } => k + 1
+      Absent => 1
+    }
+    IhcNumbering {
+      seen: map_insert(acc.seen, key, next),
+      out: list_push(acc.out, HoleRow { file: r.file, line: r.line, decl: r.decl, ordinal: next, text: r.text, shape: r.shape, reading: r.reading, site: r.site })
+    })
+  numbered.out
+}
+
+type IhcNumbering {
+  seen: Map<String, Int>
+  out: List<HoleRow>
+}
+
+type IhcCensus {
+  templates: List<ObservedTemplate>
+  rows: List<HoleRow>
+  lexical: List<LexicalTemplateCount>
+}
+
+fn ihc_census_of_graph(g: ResolvedGraph, si: Map<String, NewlineIndex>, sources: List<SourceFile>, subjects: List<String>) -> IhcCensus {
+  let subject_set = fold(subjects, init: empty_map(), f: (acc, p) => map_insert(acc, p, true))
+  let templates = g.modules |> flat_map(m => ihc_module_templates(m: m, si: si)) |> filter(t => ihc_in(set: subject_set, key: t.file))
+  IhcCensus {
+    templates: templates,
+    rows: ihc_number_holes(rows: templates |> flat_map(t => t.holes)),
+    lexical: sources |> filter(s => ihc_in(set: subject_set, key: s.path)) |> map(s => ihc_lexical_count(s: s))
+  }
+}
+
+fn ihc_in(set: Map<String, Bool>, key: String) -> Bool {
+  match map_get(set, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ihc_shape_label(s: HoleShape) -> String {
+  match s {
+    HoleIdentifier => "identifier"
+    HoleDotted => "dotted"
+    HoleCall => "call"
+    HoleOtherShape { label: l } => l
+  }
+}
+
+fn ihc_type_category(r: HoleTypeReading) -> String {
+  match r {
+    HoleTypedString => "String"
+    HoleTypedInt => "Int"
+    HoleTypedBool => "Bool"
+    HoleTypedOther { label: _ } => "other"
+    HoleUntyped => "untyped"
+  }
+}
+
+fn ihc_type_label(r: HoleTypeReading) -> String {
+  match r {
+    HoleTypedString => "String"
+    HoleTypedInt => "Int"
+    HoleTypedBool => "Bool"
+    HoleTypedOther { label: l } => l
+    HoleUntyped => ""
+  }
+}
+
+// THE CONVERSION FLAG, three-valued: a String hole needs no conversion; a typed non-String hole is
+// one v1 stringifies implicitly; an untyped body hole is cannot-tell, never counted as either.
+fn ihc_v1_coercion(r: HoleRow) -> String {
+  match r.site {
+    HoleInTransport { operation: _, inputs: _ } => "transport_untyped"
+    HoleInBody =>
+      match r.reading {
+        HoleTypedString => "none"
+        HoleUntyped => "cannot_tell"
+        _ => "v1_implicit_stringify"
+      }
+  }
+}
+
+// RULING 4 AT ONE TRANSPORT HOLE: a bare identifier naming a declared input of its operation.
+fn ihc_transport_reading(r: HoleRow) -> String {
+  match r.site {
+    HoleInBody => ""
+    HoleInTransport { operation: _, inputs: inputs } =>
+      match r.shape {
+        HoleIdentifier =>
+          if inputs |> any(i => i == r.text) { "bare_name_matches_input" } else { "bare_name_not_an_input" }
+        _ => "not_a_bare_name"
+      }
+  }
+}
+
+fn ihc_site_label(s: HoleSite) -> String {
+  match s {
+    HoleInBody => "body"
+    HoleInTransport { operation: _, inputs: _ } => "transport"
+  }
+}
+
+fn ihc_tsv_escape(v: String) -> String {
+  replace(replace(v, "\t", " "), "\n", " ")
+}
+
+fn interpolation_hole_census_header() -> String {
+  "oracle\tfile\tline\tdecl\thole\tsite\tshape\ttype_category\ttype_label\tv1_coercion\ttransport_reading\ttext"
+}
+
+fn ihc_row_tsv(r: HoleRow) -> String {
+  [
+    "v1",
+    r.file,
+    to_string(r.line),
+    ihc_tsv_escape(v: r.decl),
+    to_string(r.ordinal),
+    ihc_site_label(s: r.site),
+    ihc_shape_label(s: r.shape),
+    ihc_type_category(r: r.reading),
+    ihc_tsv_escape(v: ihc_type_label(r: r.reading)),
+    ihc_v1_coercion(r: r),
+    ihc_transport_reading(r: r),
+    ihc_tsv_escape(v: r.text)
+  ] |> join(separator: "\t")
+}
+
+fn ihc_tally(keys: List<String>) -> Map<String, Int> {
+  fold(keys, init: empty_map(), f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: n } => map_insert(acc, k, n + 1)
+      Absent => map_insert(acc, k, 1)
+    })
+}
+
+fn ihc_tally_lines(prefix: String, tally: Map<String, Int>) -> List<String> {
+  map_keys(tally) |> sort_by(k => k) |> map(k =>
+    match map_get(tally, k) {
+      Present { value: n } => concat(concat(concat(concat(prefix, " "), k), " "), to_string(n))
+      Absent => concat(prefix, " ")
+    })
+}
+
+fn ihc_observed_count(templates: List<ObservedTemplate>, file: String) -> Int {
+  templates |> filter(t => t.file == file) |> count
+}
+
+fn ihc_observed_hole_count(templates: List<ObservedTemplate>, file: String) -> Int {
+  templates |> filter(t => t.file == file) |> flat_map(t => t.holes) |> count
+}
+
+// THE COMPLETENESS JOIN, per file: the templates and holes the walk observed against what the v1
+// lexer counted in the same file. Every disagreement is a located row, so an unreached template is
+// never a smaller total.
+fn ihc_completeness_lines(c: IhcCensus) -> List<String> {
+  c.lexical |> flat_map(l =>
+    let ot = ihc_observed_count(templates: c.templates, file: l.file)
+    let oh = ihc_observed_hole_count(templates: c.templates, file: l.file)
+    if ot == l.templates && oh == l.holes { [] }
+    else {
+      [[
+        "UNOBSERVED", l.file,
+        concat("lexed_templates=", to_string(l.templates)), concat("observed_templates=", to_string(ot)),
+        concat("lexed_holes=", to_string(l.holes)), concat("observed_holes=", to_string(oh)),
+        concat("observed_texts=", c.templates |> filter(t => t.file == l.file) |> map(t => t.holes |> map(h => h.text) |> join(separator: "+")) |> join(separator: " | "))
+      ] |> join(separator: "\t")]
+    })
+}
+
+fn ihc_summary_lines(c: IhcCensus) -> List<String> {
+  let body = c.rows |> filter(r => ihc_site_label(s: r.site) == "body")
+  let transport = c.rows |> filter(r => ihc_site_label(s: r.site) == "transport")
+  let other_labels = body |> filter(r => ihc_type_category(r: r.reading) == "other") |> map(r => ihc_type_label(r: r.reading))
+  concat(
+    concat(
+      concat(
+        [
+          "oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)",
+          concat("subjects ", to_string(c.lexical |> count)),
+          concat("holes ", to_string(c.rows |> count)),
+          concat("body_holes ", to_string(body |> count)),
+          concat("transport_holes ", to_string(transport |> count))
+        ],
+        ihc_tally_lines(prefix: "body_type", tally: ihc_tally(keys: body |> map(r => ihc_type_category(r: r.reading))))
+      ),
+      concat(
+        ihc_tally_lines(prefix: "body_shape_by_type", tally: ihc_tally(keys: body |> map(r => concat(concat(ihc_shape_label(s: r.shape), " "), ihc_type_category(r: r.reading))))),
+        ihc_tally_lines(prefix: "body_other_type", tally: ihc_tally(keys: other_labels))
+      )
+    ),
+    concat(
+      concat(
+        ihc_tally_lines(prefix: "v1_coercion", tally: ihc_tally(keys: body |> map(r => ihc_v1_coercion(r: r)))),
+        ihc_tally_lines(prefix: "transport_reading", tally: ihc_tally(keys: transport |> map(r => ihc_transport_reading(r: r))))
+      ),
+      ihc_completeness_lines(c: c)
+    )
+  )
+}
+
+fn ihc_census_from_sources(sources: List<SourceFile>, subjects: List<String>) -> IhcCensus? {
+  let result = compile_to_resolved(sources: sources)
+  match result.graph {
+    Absent => none
+    Present { value: g } => Present { value: ihc_census_of_graph(g: g, si: result.source_indices, sources: sources, subjects: subjects) }
+  }
+}
+
+// THE ENTRY THE DRIVER CALLS for the corpus: the closure sources and the subject paths in, the
+// receipt (summary, then one row per hole) out. A compile that produces no graph REFUSES in the
+// return value.
+fn interpolation_hole_census_from_sources(sources: List<SourceFile>, subjects: List<String>) -> String {
+  match ihc_census_from_sources(sources: sources, subjects: subjects) {
+    Absent => "REFUSED\tcompile_to_resolved produced no graph"
+    Present { value: c } =>
+      concat(
+        concat(ihc_summary_lines(c: c), [interpolation_hole_census_header()]),
+        c.rows |> map(r => ihc_row_tsv(r: r))
+      ) |> join(separator: "\n")
+  }
+}
+
+fn ihc_control_line(name: String, held: Bool) -> String {
+  concat(concat(concat("control ", name), ": "), if held { "held" } else { "UNMET" })
+}
+
+fn ihc_row_is(rows: List<HoleRow>, decl: String, ordinal: Int, category: String, shape: String) -> Bool {
+  rows |> any(r => r.decl == decl && r.ordinal == ordinal && ihc_type_category(r: r.reading) == category && ihc_shape_label(s: r.shape) == shape)
+}
+
+fn ihc_transport_row_is(rows: List<HoleRow>, text: String, reading: String) -> Bool {
+  rows |> any(r => r.text == text && ihc_transport_reading(r: r) == reading)
+}
+
+// THE INSTRUMENT'S OWN CONTROLS, over fixtures/interpolation_hole_census. Each is a POSITIVE
+// observation of one named hole, so none holds because a hole went missing. own_type_not_joined_type
+// is the discriminator the manager's condition names: had the census read the template's String
+// instead of the hole's own type, int_hole would read String and the control would be UNMET.
+fn interpolation_hole_fixture_standing(sources: List<SourceFile>) -> String {
+  let subjects = interpolation_hole_census_subjects(sources: sources)
+  match ihc_census_from_sources(sources: sources, subjects: subjects) {
+    Absent => "REFUSED\tcompile_to_resolved produced no graph"
+    Present { value: c } =>
+      let rows = c.rows
+      let string_ident = ihc_row_is(rows: rows, decl: "string_hole", ordinal: 1, category: "String", shape: "identifier")
+      let own_type = ihc_row_is(rows: rows, decl: "int_hole", ordinal: 1, category: "Int", shape: "identifier")
+        && ihc_row_is(rows: rows, decl: "bool_hole", ordinal: 1, category: "Bool", shape: "identifier")
+      let dotted = ihc_row_is(rows: rows, decl: "dotted_hole", ordinal: 1, category: "String", shape: "dotted")
+        && ihc_row_is(rows: rows, decl: "dotted_hole", ordinal: 2, category: "Int", shape: "dotted")
+      let call = ihc_row_is(rows: rows, decl: "call_hole", ordinal: 1, category: "String", shape: "call")
+      let transport = ihc_transport_row_is(rows: rows, text: "path", reading: "bare_name_matches_input")
+        && ihc_transport_row_is(rows: rows, text: "missing", reading: "bare_name_not_an_input")
+      let complete = (ihc_completeness_lines(c: c) |> count) == 0 && (rows |> count) == 8
+      let held = string_ident && own_type && dotted && call && transport && complete
+      concat(concat([
+        concat("STANDING ", if held { "held" } else { "unmet" }),
+        ihc_control_line(name: "string_identifier_hole", held: string_ident),
+        ihc_control_line(name: "own_type_not_joined_type", held: own_type),
+        ihc_control_line(name: "dotted_holes_typed_by_field", held: dotted),
+        ihc_control_line(name: "call_hole_typed_by_return", held: call),
+        ihc_control_line(name: "transport_holes_read_against_inputs", held: transport),
+        ihc_control_line(name: "every_lexed_hole_observed", held: complete)
+      ], rows |> map(r => concat("fixture_row ", ihc_row_tsv(r: r)))), ihc_completeness_lines(c: c)) |> join(separator: "\n")
+  }
+}
