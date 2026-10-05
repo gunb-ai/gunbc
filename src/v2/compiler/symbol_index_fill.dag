@@ -497,23 +497,6 @@ fn symbol_index_bind_pending_round(
   )
 }
 
-// THE FIXED POINT IS WHAT MAKES ORDER-INDEPENDENCE TRUE ONE LEVEL UP, and one level up is where the
-// first version of this was wrong (review 69735 on gunbc#12009). Splitting declarations from
-// bindings removes the order dependence only for a row whose target is a DECLARATION -- pass A
-// writes every one of those before any row is tried. It does not remove it for a RE-EXPORT CHAIN,
-// where a row's target is another row's binding: `v2.std.collection` imports `Absent` from
-// `v2.std.optional` and declares it nowhere, and `v2.compiler.normalize` imports `Absent` from
-// `v2.std.collection`, so normalize's row can only bind after collection's has. A single pass over
-// the roots resolves that pair in one root order and silently not in the other, and the loser binds
-// NOTHING -- the quiet failure again, surfacing far away as an unbound reference.
-//
-// Retrying the deferred rows removes it for chains of any depth without needing the dependency
-// order computed: each round binds every row whose target has become available. It TERMINATES
-// because each recursion is entered only when the deferred list got strictly shorter, so the
-// measure decreases and the last round is either empty or made no progress. Rows still deferred at
-// the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
-// reference that wanted them refuses, located, at the reference site -- which is where
-
 // PASS A -- WHAT THIS ROOT DECLARES. Every path here is rooted at this module's own qualified name,
 // so no other root can write it and the result does not depend on when this root is visited.
 // A RECORD IS MARKED FROM THE CARRIER, AND BY THE ARM THAT ALREADY DECIDED THE MODULE'S NAME.
