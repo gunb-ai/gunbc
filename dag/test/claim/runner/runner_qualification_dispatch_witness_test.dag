@@ -1,6 +1,7 @@
 module test.claim.runner_qualification_dispatch_witness
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import extdeps.transports.rest {
@@ -43,6 +44,8 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_dispatch_standing, QualificationDispatchStanding,
   DispatchStandingSucceeded, DispatchStandingRefused, DispatchStandingCommitAmbiguous,
   hold_covers_slot_host, token_names_registration,
+  plan_qualification_collection, planned_collection_reads, CollectionRefusedBeforeAnyRead,
+  ReadQualificationRun, ReadQualificationAttemptJobs, RunCollectedUnderAnotherInstallation,
   decide_qualification_run, QualificationRunVerdict, RunVerdictCollected, RunVerdictRefused,
   RunReadUnreadable, RunSubjectMismatch, RunAdvancedPastDispatchedAttempt, RunRevisionNotPinned, RunOnAnotherBranch, RunNotCompleted,
   RunCompletedWithoutConclusion, RunJobsUnreadable, RunJobsTruncated, RunFloorJobNotUnique,
@@ -167,6 +170,16 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && token_names_registration(token_app: s.registration.app, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: gunbai_ci_declared, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: s.registration.app, token_installation: other_installation_id, subject: s)
+                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: gunbai_ci_declared, token_installation: s.registration.installation))) == 0
+                && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: s.registration.app, token_installation: other_installation_id))) == 0
+                && (match plan_qualification_collection(subject: s, run_id: 77, token_app: gunbai_ci_declared, token_installation: s.registration.installation) {
+                  CollectionRefusedBeforeAnyRead { refusal: RunCollectedUnderAnotherInstallation { token_app: a, token_installation: _ } } => a == gunbai_ci_declared
+                  _ => false
+                })
+                && (match planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: 77, token_app: s.registration.app, token_installation: s.registration.installation)) {
+                  Cons { head: ReadQualificationRun { run_id: 77 }, tail: Cons { head: ReadQualificationAttemptJobs { run_id: 77, attempt: 1 }, tail: Empty {} } } => true
+                  _ => false
+                })
                 && (s.host as String) == (h.host as String)
                 && (expected.registered_runner as String) == (ephemeral_slot_unit(host: h.host, attempt: attempt) as String)
                 && (expected.floor_job_name as String) == "qualification floor"

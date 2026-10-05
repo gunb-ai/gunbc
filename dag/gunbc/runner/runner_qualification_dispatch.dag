@@ -683,21 +683,54 @@ fn token_names_registration(token_app: DeclaredGitHubApp, token_installation: Gi
   token_app == subject.registration.app && token_installation == subject.registration.installation
 }
 
-// ONE EFFECTFUL ENTRY. The join is not a wrapper a caller may route around: the reads and the mint of
-// CollectedQualificationRun live in the arm the join admits, so there is no second function that
-// reads under an unchecked token (a split helper was exactly that bypass).
-fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
-  if !token_names_registration(token_app: token.app, token_installation: token.installation, subject: dispatched.subject) {
-    QualificationRunRefused {
-      run_id: dispatched.receipt.workflow_run_id,
-      refusal: RunCollectedUnderAnotherInstallation { token_app: token.app, token_installation: token.installation },
+// THE COLLECTION'S ADMISSION IS A PLAN, DECIDED WITHOUT I/O: the reads it will make, or the refusal
+// that makes none. collect_qualification_run performs exactly the planned reads and nothing else, so
+// "a token for another App or installation reads nothing" is a claim about this pure function a
+// witness executes over a really minted subject (test.claim.runner_qualification_dispatch_witness
+// the_real_mint_admits_the_attempt_through_the_sealed_subject), not a property of an effectful path
+// no test can reach.
+type QualificationCollectionRead
+  = ReadQualificationRun { run_id: Int }
+  | ReadQualificationAttemptJobs { run_id: Int, attempt: Int }
+
+type QualificationCollectionPlan
+  = CollectionRefusedBeforeAnyRead { refusal: QualificationRunRefusal }
+  | CollectionReadsPlanned { run_id: Int, attempt: Int }
+
+fn plan_qualification_collection(subject: QualificationDispatchSubject, run_id: Int, token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId) -> QualificationCollectionPlan {
+  if !token_names_registration(token_app: token_app, token_installation: token_installation, subject: subject) {
+    CollectionRefusedBeforeAnyRead {
+      refusal: RunCollectedUnderAnotherInstallation { token_app: token_app, token_installation: token_installation },
     }
   } else {
-    let run_id = dispatched.receipt.workflow_run_id
+    CollectionReadsPlanned { run_id: run_id, attempt: dispatched_run_attempt }
+  }
+}
+
+fn planned_collection_reads(plan: QualificationCollectionPlan) -> List<QualificationCollectionRead> {
+  match plan {
+    CollectionRefusedBeforeAnyRead { refusal: _ } => []
+    CollectionReadsPlanned { run_id: id, attempt: n } =>
+      [ReadQualificationRun { run_id: id }, ReadQualificationAttemptJobs { run_id: id, attempt: n }]
+  }
+}
+
+// ONE EFFECTFUL ENTRY, AND IT PERFORMS ONLY WHAT THE PLAN NAMES: the reads take their run id and
+// attempt from the CollectionReadsPlanned arm, and the refusal arm reaches no read. The reads and the
+// mint of CollectedQualificationRun live in that arm, so there is no second function that reads under
+// an unchecked token (a split helper was exactly that bypass).
+fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
+  match plan_qualification_collection(
+    subject: dispatched.subject, run_id: dispatched.receipt.workflow_run_id,
+    token_app: token.app, token_installation: token.installation,
+  ) {
+    CollectionRefusedBeforeAnyRead { refusal: r } =>
+      QualificationRunRefused { run_id: dispatched.receipt.workflow_run_id, refusal: r }
+    CollectionReadsPlanned { run_id: run_id, attempt: attempt } => {
     let owner = gunbc_repository.owner as NonEmptyStr
     let repo = gunbc_repository.name as NonEmptyStr
     let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
-    let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: dispatched_run_attempt)
+    let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: attempt)
     match decide_qualification_run(
       subject: qualification_run_expectation(subject: dispatched.subject),
       run_id: run_id,
