@@ -1,0 +1,26 @@
+module gunbc.site.status
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette { Swatch, swatch_paint }
+import gunbc.design.material { CssDecl, decl }
+import extdeps.languages.css.properties { CustomProperty }
+
+// One semantic palette for issue lists, detail summaries and dependency labels.
+// Blue also paints the graph's selected-node ink. Completion remains subdued.
+fn status_tone(label: String) -> String {
+  if label == "Ready" || label == "ready" { "ready" }
+  else if label == "Assigned" || label == "assigned" || label == "Active" || label == "active" || label == "Review" || label == "review" { "assigned" }
+  else if label == "Blocked" || label == "blocked" || label == "Returned" || label == "returned" || label == "not-ready" { "blocked" }
+  else { "neutral" }
+}
+fn status_badge(label: String) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: "site-status"), attr(name: "data-status-tone", value: status_tone(label: label))], [txt(label)])
+}
+fn status_palette(night: Bool) -> List<CssDecl> {
+  [
+    decl(prop: CustomProperty { name: "status-assigned-ink" }, value: swatch_paint(sw: Swatch { name: "status-assigned", color: if night { Srgb8 { r: 146, g: 181, b: 238 } } else { Srgb8 { r: 54, g: 90, b: 155 } } })),
+    decl(prop: CustomProperty { name: "status-ready-ink" }, value: swatch_paint(sw: Swatch { name: "status-ready", color: if night { Srgb8 { r: 146, g: 201, b: 166 } } else { Srgb8 { r: 38, g: 105, b: 68 } } })),
+    decl(prop: CustomProperty { name: "status-blocked-ink" }, value: swatch_paint(sw: Swatch { name: "status-blocked", color: if night { Srgb8 { r: 226, g: 181, b: 109 } } else { Srgb8 { r: 142, g: 83, b: 21 } } })),
+  ]
+}

@@ -148,6 +148,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // later stage -- and it carries the object id, so a population read out of a revision can name each
 // member by content identity instead of by path alone.
 //
+// ListTreeEntryAtPath is the same record for ONE path: a consumer that needs one file's mode and
+// object id at a revision asks for that path rather than enumerating the tree.
+//
 // BOTH OPERATIONS SURVIVE. A consumer that only needs paths pays neither the wider output nor the
 // parse, and asking for identity when you wanted names is the same collapse ResolveRefCommit and
 // ShowTree are kept apart to prevent. The record separator is NUL and the fields are separated by
@@ -355,6 +358,22 @@ service git.Inspect {
     }
     readonly
     transport shell { argv: ["git", "ls-tree", "-rz", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreeEntryAtPath {
+    requires opaque
+    input { ref: GitRef, path: String }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-z", "{ref}", "--", "{path}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"

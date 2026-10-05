@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor, measure_le }
 import std.interval { IntervalConstruction, OrderedClosedInterval, closed_interval, interval_high }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }

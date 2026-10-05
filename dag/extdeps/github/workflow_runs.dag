@@ -2,7 +2,6 @@ module extdeps.github.workflow_runs
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome }
 import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
@@ -16,6 +15,7 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto
@@ -400,7 +400,6 @@ service github.WorkflowRuns {
     }
     output {
       result: WorkflowJobRunList
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -428,7 +427,6 @@ service github.WorkflowRuns {
     }
     output {
       result: WorkflowJobRunList
-      outcome: RestOutcome
     }
     readonly
     transport rest {

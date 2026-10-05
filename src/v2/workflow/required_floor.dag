@@ -748,6 +748,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.coproduct_payload_soundness_witness_test",
     "test.claim.action_use_admission_witness",
     "test.claim.host_budget_source_witness",
+    "test.claim.text_boundary_identity_wall_witness_test",
   ]
 }
 
@@ -902,6 +903,14 @@ fn required_gate_prefixes() -> List<String> {
 // duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
 // so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
 // test-reference wall: a family prefix would silently widen to any future sibling.
+//
+// THE CALIBRATION SPECIMEN (node adhoc-c9504740-637; sharp-raven-357 ruling with the operator's
+// go-ahead, 2026-10-05). The enrolment margin is judged in calibrated CPU ms, and the factor comes
+// ONLY from `test.claim.floor_eval_step_calibration_specimen_test` measured in the same run on the
+// same runner (`v2.workflow.floor_eval_step_calibration` `HostSpeedCalibration`). Outside the gate it
+// dispositions DeclinedOutsideRequiredGate and every gated run would refuse
+// host_speed_specimen_not_measured, so it is admitted here, at exact module grain. One claim of about
+// 55,011 eval steps with no imports beyond std.types; it adds nothing to preparation.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -920,6 +929,7 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
+    "test.claim.floor_eval_step_calibration_specimen_test",
   ]
 }
 

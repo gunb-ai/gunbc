@@ -46,7 +46,7 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_bucket_item_write_permi
 // r2_s3_access_pair_from_created_token were Create-triggered frontier subjects. They dissolve on the
 // THIRD Create's executed evidence: gunbc.cloudflare.r2_token_mint_run ExitSuccess, token value
 // stored through gunbc.secret_provision, origin read pin at fabric_durable_origin_read_secret_version.
-// The first two Creates were RestOk with unread nested fields and were revoked; they are not this
+// The first two Creates were answered successes with unread nested fields and were revoked; they are not this
 // census. An empty list here is the membership of a retired population, not a missing declaration.
 //
 // THE WRITE MINT RETIRED ON THE SAME EVIDENCE, 2026-09-19: run_object_write exited 0, the token value
