@@ -35,6 +35,7 @@ use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_container_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_unicode_scalar::char_text;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
@@ -4907,9 +4908,9 @@ pub fn emit_suffix_escape_ident(
 
 pub fn hex_digit_char(d: i64) -> String {
     if (d.clone() < 10) {
-        v1_rt::from_code_point(v1_rt::int_add(48, d.clone()))
+        crate::std_unicode_scalar::char_text(v1_rt::int_add(48, d.clone()))
     } else {
-        v1_rt::from_code_point(v1_rt::int_add(55, d.clone()))
+        crate::std_unicode_scalar::char_text(v1_rt::int_add(55, d.clone()))
     }
 }
 

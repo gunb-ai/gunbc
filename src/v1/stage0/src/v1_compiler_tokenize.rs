@@ -13,6 +13,7 @@ pub use crate::std_source_annotation::{
 pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
 pub use crate::std_syntax::ParseEnvironment;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_unicode_scalar::char_text;
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
@@ -117,7 +118,7 @@ pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<T
 }
 
 pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
-    v1_rt::from_code_point(source.source_chars.clone()[(pos.clone()) as usize].clone())
+    crate::std_unicode_scalar::char_text(source_code_point(source.clone(), pos.clone()))
 }
 
 pub fn source_code_point(source: Rc<SourceRef>, pos: i64) -> i64 {
