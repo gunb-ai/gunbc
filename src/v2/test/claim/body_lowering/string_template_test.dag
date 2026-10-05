@@ -2,10 +2,9 @@ module v2.test.claim.body_lowering.string_template
 
 import std.types { List }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module, grammar_choice_ambiguity_count }
+import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_grammar_root,
   dag_language_model,
   dag_string_literal_node_from_lexeme,
   dag_string_literal_value_optional,
@@ -133,15 +132,6 @@ test fn each_template_part_decodes_inside_its_frame() -> Bool {
 // A part framed as another part refuses: a head's lexeme is not a tail.
 test fn a_misframed_template_part_refuses() -> Bool {
   st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\"a\{") == "dag_string_literal_lexeme_unframed"
-}
-
-// ---- the grammar: no new choice ambiguity ------------------------------------------------------
-
-// The template's FIRST key is its own head token class, so adding it adds no choice-overlap row.
-// The count is the grammar's own: zero, held by the overlap program (gunbc#13126) for the whole
-// grammar, and this production must not be the one that breaks it.
-test fn the_dag_grammar_has_no_choice_ambiguity() -> Bool {
-  grammar_choice_ambiguity_count(root: dag_grammar_root()) == 0
 }
 
 // ---- the real route ----------------------------------------------------------------------------
