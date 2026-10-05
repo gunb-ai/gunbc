@@ -75,8 +75,8 @@ data nfbcp_fn_type_param_source: String = "module m\nfn g(h: fn(Int) -> Int) -> 
 // specification-without-execution.
 data nfbcp_no_return_type_source: String = "module m\nfn g(h: fn(Int) -> Int) { true }\n"
 
-// The PREPARED grammar, not the whole language model. dag_prepared_grammar is enrolled in
-// floor_cross_claim_pure_producers_warm, so the required floor fills it during strict
+// The PREPARED grammar, not the whole language model. dag_prepared_grammar is admitted by the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share), so the required floor fills it during strict
 // preparation -- outside every per-claim budget -- and a claim here pays the lookup rather
 // than the construction. Building dag_language_model() per claim instead charged ~107k eval
 // steps to every probe below, which is the parse subject and not this claim's.

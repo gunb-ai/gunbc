@@ -1399,12 +1399,14 @@ type DashboardAuthStore
   | DashboardAuthLoginTransactions
   | DashboardAuthJwksCache
   | DashboardAuthProfiles
+  | DashboardIssueViewPreferences
 
 data dashboard_auth_stores: List<DashboardAuthStore> = [
   DashboardAuthSessions,
   DashboardAuthLoginTransactions,
   DashboardAuthJwksCache,
   DashboardAuthProfiles,
+  DashboardIssueViewPreferences,
 ]
 
 fn dashboard_auth_store_segment(store: DashboardAuthStore) -> String {
@@ -1413,6 +1415,7 @@ fn dashboard_auth_store_segment(store: DashboardAuthStore) -> String {
     DashboardAuthLoginTransactions => "auth-login-transactions"
     DashboardAuthJwksCache => "auth-jwks"
     DashboardAuthProfiles => "auth-profiles"
+    DashboardIssueViewPreferences => "issue-view-preferences"
   }
 }
 

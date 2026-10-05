@@ -39,8 +39,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // whole row's floor budget, and re-ran production these rows are not about. THE PAIRING
 // OBLIGATION is kept by tsic_real_raw_parse_route_reaches_the_classifier at the bottom: the real
 // raw parse of one small real importer, through tree_atoms, into the classifier. The parse is
-// paid once by a warm pure producer (v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm): grammar validation alone measured about 1M eval steps,
+// paid once by a nullary pure producer the derived cross-claim share admits
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share): grammar validation alone measured about 1M eval steps,
 // a fixed product independent of the module read.
 //
 // Each row asserts the EXACT arm its input exists for, never "not" another arm.
