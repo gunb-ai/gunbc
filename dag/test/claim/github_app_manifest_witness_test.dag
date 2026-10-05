@@ -27,7 +27,9 @@ import std.page_fold {
   page_fold_run,
 }
 import extdeps.transports.rest {
-  RestOk,
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestStatusRefused,
   RestTransportRefused,
   RestBodyUndecodable,
@@ -1489,8 +1491,7 @@ test fn w_an_unreadable_public_read_is_inaccessible_not_absent() -> Bool {
 
 test fn w_a_404_becomes_absent_and_a_401_becomes_unreadable() -> Bool {
   let absent = match observe_census_app(
-    record: agreeing_record,
-    outcome: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" },
+    outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" } },
   ) {
     AppRecordAbsent => true
     AppRecordObserved { record: _ } => false
@@ -1498,15 +1499,14 @@ test fn w_a_404_becomes_absent_and_a_401_becomes_unreadable() -> Bool {
     AppNotYetAddressable => false
   }
   let unreadable = match observe_census_app(
-    record: agreeing_record,
-    outcome: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
+    outcome: RestRefused { refusal: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" } },
   ) {
     AppRecordUnreadable { reason: r } => string_contains(s: r as String, pattern: "401")
     AppRecordAbsent => false
     AppRecordObserved { record: _ } => false
     AppNotYetAddressable => false
   }
-  let reached = match observe_census_app(record: agreeing_record, outcome: RestTransportRefused { cause: "dns" as NonEmptyStr }) {
+  let reached = match observe_census_app(outcome: RestRefused { refusal: RestTransportRefused { cause: "dns" as NonEmptyStr } }) {
     AppRecordUnreadable { reason: _ } => true
     AppRecordAbsent => false
     AppRecordObserved { record: _ } => false
@@ -1551,8 +1551,7 @@ data issued_conversion: GitHubAppManifestConversion = conversion(slug: "gunbc-gl
 
 test fn w_a_404_on_the_conversion_is_a_spent_code_not_a_missing_app() -> Bool {
   match classify_census_app_exchange(
-    conversion: issued_conversion,
-    outcome: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" },
+    outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" } },
   ) {
     ExchangeCodeNotLive { body: b } => string_contains(s: b, pattern: "Not Found")
     ExchangeIssued { issuance: _ } => false
@@ -1563,15 +1562,14 @@ test fn w_a_404_on_the_conversion_is_a_spent_code_not_a_missing_app() -> Bool {
 }
 
 // THE CUSTODY-CRITICAL ARM, AND IT IS A MUTATION FACT RATHER THAN A CHOICE THIS MODULE MADE. A POST
-// whose response never arrived is folded by classify_rest_outcome into RestExchangeCommitAmbiguous,
+// whose response never arrived is folded by classify_rest_refusal into RestExchangeCommitAmbiguous,
 // because the write may have landed; the App may exist and its only private key was in the reply
 // nobody read. So the outcome is unknown rather than failed, and the detail names the read that must
 // happen before any retry. A classifier that reported this as a plain failure would send the operator
 // back to the registration form and lose an App.
 test fn w_an_unreached_conversion_is_commit_ambiguous_and_warns_about_the_key() -> Bool {
   match classify_census_app_exchange(
-    conversion: issued_conversion,
-    outcome: RestTransportRefused { cause: "connection reset" as NonEmptyStr },
+    outcome: RestRefused { refusal: RestTransportRefused { cause: "connection reset" as NonEmptyStr } },
   ) {
     ExchangeOutcomeUnknown { detail: d } =>
       string_contains(s: d as String, pattern: "may or may not have landed")
@@ -1586,8 +1584,7 @@ test fn w_an_unreached_conversion_is_commit_ambiguous_and_warns_about_the_key() 
 
 test fn w_an_undecodable_conversion_body_warns_that_the_key_was_in_it() -> Bool {
   match classify_census_app_exchange(
-    conversion: issued_conversion,
-    outcome: RestBodyUndecodable { status: 201, cause: "unexpected field" as NonEmptyStr },
+    outcome: RestRefused { refusal: RestBodyUndecodable { status: 201, cause: "unexpected field" as NonEmptyStr } },
   ) {
     ExchangeOutcomeUnknown { detail: d } =>
       string_contains(s: d as String, pattern: "no endpoint will return it again")
@@ -1600,7 +1597,7 @@ test fn w_an_undecodable_conversion_body_warns_that_the_key_was_in_it() -> Bool 
 }
 
 test fn w_a_201_with_no_slug_is_incomplete_rather_than_issued() -> Bool {
-  match classify_census_app_exchange(conversion: conversion(slug: "", client_id: "Iv1.x"), outcome: RestOk) {
+  match classify_census_app_exchange(outcome: RestAnswered { answer: conversion(slug: "", client_id: "Iv1.x") }) {
     ExchangeReplyIncomplete { issuance: i } =>
       match i {
         IssuanceSlugEmpty => true
@@ -1615,7 +1612,7 @@ test fn w_a_201_with_no_slug_is_incomplete_rather_than_issued() -> Bool {
 }
 
 test fn w_a_201_issues_the_credential_once_with_its_app_id_and_slug() -> Bool {
-  match classify_census_app_exchange(conversion: issued_conversion, outcome: RestOk) {
+  match classify_census_app_exchange(outcome: RestAnswered { answer: issued_conversion }) {
     ExchangeIssued { issuance: i } =>
       match i {
         CredentialIssuedOnce { app_id: id, slug: s, pem: _, webhook_secret: ws, client_id: cid, client_secret: _ } =>

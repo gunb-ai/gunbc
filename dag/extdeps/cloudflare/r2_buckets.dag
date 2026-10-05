@@ -2,7 +2,7 @@ module extdeps.cloudflare.r2_buckets
 import std.resources { Network }
 
 import std.types { NonEmptyStr, String, List, Secret, HttpStatus }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
   CloudflareApiError,
@@ -90,7 +90,6 @@ service cloudflare.R2Buckets {
       name: String from "result/name"
       jurisdiction: String? from "result/jurisdiction"
       location: String? from "result/location"
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -118,7 +117,6 @@ service cloudflare.R2Buckets {
       name: String from "result/name"
       jurisdiction: String? from "result/jurisdiction"
       location: String? from "result/location"
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -172,17 +170,17 @@ fn classify_r2_bucket_refusal(status: HttpStatus, body: String) -> R2BucketRead 
   }
 }
 
-fn classify_r2_bucket_get(outcome: RestOutcome, bucket: R2BucketResponse) -> R2BucketRead {
+fn classify_r2_bucket_get(outcome: RestResult<R2BucketResponse>) -> R2BucketRead {
   match outcome {
-    RestOk => R2BucketPresent { bucket: bucket }
-    RestStatusRefused { status: status, body: body } => classify_r2_bucket_refusal(status: status, body: body)
-    RestTransportRefused { cause: cause } =>
-      R2BucketReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
-    RestBodyUndecodable { status: status, cause: cause } =>
-      R2BucketReadRefused {
-        cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr
-      }
+    RestAnswered { answer } => R2BucketPresent { bucket: answer }
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: status, body: body } => classify_r2_bucket_refusal(status: status, body: body)
+      RestTransportRefused { cause: cause } =>
+        R2BucketReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
+      RestBodyUndecodable { status: status, cause: cause } =>
+        R2BucketReadRefused {
+          cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr
+        }
+    }
   }
 }
-
-

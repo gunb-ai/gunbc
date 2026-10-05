@@ -3,7 +3,7 @@ module extdeps.google.userinfo
 import std.types { String, Email, Bool, Secret }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.transports.rest { RestOutcome }
+
 import extdeps.ietf.http_semantics { GET }
 import extdeps.cloud.gcp.errors { GcpOAuth2ErrorShape }
 import std.resources { Network }
@@ -24,7 +24,7 @@ service google.OidcUserInfo {
   operation Get {
     requires Network
     input { access_token: Secret }
-    output { subject: String from "sub", email: Email?, email_verified: Bool?, outcome: RestOutcome }
+    output { subject: String from "sub", email: Email?, email_verified: Bool? }
     readonly
     transport rest { method: GET, path: "/v1/userinfo" }
     response {

@@ -420,8 +420,56 @@ fn scm_object_ref(object: ScmObject) -> ScmObjectRef {
 // interior and the claim is structural rather than aspirational.
 // dissolve-on: a determinism-admitted keyed collection; find_object and insert_derived are then the
 // only sites that change.
+// THE ROSTER: OBJECTS THIS STORE KNOWS ARE PERSISTED BUT DOES NOT HOLD (2026-10-03, the affected-
+// set capture). A store loaded through gunbc.scm.repository_load load_repository_indexed holds only
+// the objects an operation demanded (`objects`, the RESIDENT population) and knows every other
+// persisted object by identity, kind and shard alone (`rostered`). Before this field a capture had to
+// decode the whole repository to record one candidate -- a cost denominated in the repository, not
+// the change, which held every srv2 belt tick at its 90-minute TimeoutStart from 2026-10-03 06:50 UTC.
+//
+// WHAT THE ROSTER MAY ANSWER, AND WHAT IT MAY NOT. It answers KIND questions at identity grain --
+// "is a corpus manifest persisted at this locator", "does this manifest entry's source resolve to an
+// authored source" -- because its entries were written by the saver from the objects themselves (or
+// derived by gunbc.scm.repository_migrate decoding every shard once). It never answers a CONTENT
+// question: find_object stays resident-only, so a caller that needs bytes must materialize the one
+// object first (store_admit_materialized). A store with a non-empty roster is PARTIAL, and a partial
+// store refuses the whole-store encoder (gunbc.scm.repository_envelope encode_repository_checked
+// RepositoryEncodeStoreIsPartial): writing it whole would roster away every object it does not hold.
+// Every store built by the whole loaders and by the producers in this module has an empty roster.
+type ScmObjectKind
+  = SemanticNodeKind
+  | AuthoredSourceKind
+  | CorpusManifestKind
+
+type RosteredObject {
+  identity: ObjectId
+  kind: ScmObjectKind
+  shard: String
+}
+
+// WHOLE OR PARTIAL IS ONE DECLARED FACT, NOT TWO FIELDS AND A PREDICATE (review 74931). A whole store
+// holds every object of its repository; a partial store holds a resident subset and knows the rest by
+// its roster plus the persisted shard roster in document order (carried so an append-only save
+// extends it rather than re-deriving an order from the map, whose traversal order is not a fact).
+// The roster and the shard roster exist together or not at all, so they live in one arm.
+//
+// `materialized` names the rostered identities whose persisted object was READ BACK and admitted
+// (store_admit_materialized), as opposed to an object some producer built in memory. The difference
+// is the collision wall (ruling on #13111, 2026-10-04): insert_admission compares an incoming object
+// only against RESIDENT objects, so a produced object whose identity the roster already holds -- and
+// whose persisted object was never read -- would be admitted unchecked, and the append-only save would
+// then keep the roster's row, so the identity would answer with the OLD object while the in-memory
+// commit was minted against the NEW one. A produced object under a rostered identity that was not
+// materialized is a SHADOW, and the append-only admission refuses every shadow
+// (gunbc.scm.repository_envelope RepositoryEncodeAppendShadowsRosteredIdentity) -- at the one
+// boundary every producer and every kind must cross to persist, so no caller has to remember.
+type StoreResidence
+  = WholeResidence
+  | PartialResidence { rostered: Map<String, RosteredObject>, shards: List<String>, materialized: Map<String, Bool> }
+
 type ObjectStore sole_constructor {
   objects: List<ScmObject>
+  residence: StoreResidence
 }
 
 // How many objects a store holds, without naming how it holds them.
@@ -557,7 +605,117 @@ fn store_records_in_dependency_order(store: ObjectStore) -> List<ScmObject> {
 }
 
 fn empty_store() -> ObjectStore {
-  ObjectStore { objects: [] }
+  ObjectStore { objects: [], residence: WholeResidence }
+}
+
+fn scm_object_kind(object: ScmObject) -> ScmObjectKind {
+  match object {
+    SemanticNodeObject(_) => SemanticNodeKind
+    AuthoredSourceObject(_) => AuthoredSourceKind
+    CorpusManifestObject(_) => CorpusManifestKind
+  }
+}
+
+// THE INDEXED STORE'S ONE CONSTRUCTOR: nothing resident, every persisted object rostered. The roster
+// is handed in already decoded and digest-validated (gunbc.scm.repository_envelope
+// decode_object_roster); this module seals the carrier, it does not re-read the document.
+fn rostered_store(rostered: Map<String, RosteredObject>, shards: List<String>) -> ObjectStore {
+  ObjectStore { objects: [], residence: PartialResidence { rostered: rostered, shards: shards, materialized: empty_map() } }
+}
+
+fn store_rostered_shards(store: ObjectStore) -> List<String> {
+  match store.residence {
+    WholeResidence => []
+    PartialResidence { rostered: _, shards, materialized: _ } => shards
+  }
+}
+
+// The roster as a map: empty for a whole store, which rosters nothing it does not hold.
+fn store_roster_map(store: ObjectStore) -> Map<String, RosteredObject> {
+  match store.residence {
+    WholeResidence => empty_map()
+    PartialResidence { rostered, shards: _, materialized: _ } => rostered
+  }
+}
+
+// THE ROSTER AS ROWS, in digest order: the map's own traversal order is not a fact, so the rows are
+// ordered by the one key every row carries, and an encoder emitting them is deterministic.
+fn store_rostered_rows(store: ObjectStore) -> List<RosteredObject> {
+  sort_by(map_values(store_roster_map(store: store)), fn(r) { r.identity.digest as String })
+}
+
+fn store_rostered_lookup(store: ObjectStore, identity: ObjectId) -> RosteredObject? {
+  map_lookup(m: store_roster_map(store: store), key: identity.digest as String)
+}
+
+// THE RESIDENT OBJECTS THE ROSTER DOES NOT ALREADY CARRY -- what an append-only save must persist.
+// A materialized object is resident AND rostered; it is already on disk and is not written again.
+fn store_unrostered_objects(store: ObjectStore) -> List<ScmObject> {
+  match store.residence {
+    WholeResidence => store.objects
+    PartialResidence { rostered, shards: _, materialized: _ } =>
+      filter(store.objects, o => match map_lookup(m: rostered, key: scm_object_identity(object: o).digest as String) {
+        Present { value: _ } => false
+        Absent => true
+      })
+  }
+}
+
+// THE SHADOWS: resident objects under a rostered identity that were produced, not materialized. An
+// append-only save refuses while any exists; a whole store has none by construction.
+fn store_shadowing_objects(store: ObjectStore) -> List<ScmObject> {
+  match store.residence {
+    WholeResidence => []
+    PartialResidence { rostered, shards: _, materialized } =>
+      filter(store.objects, o => {
+        let key = scm_object_identity(object: o).digest as String
+        match map_lookup(m: rostered, key: key) {
+          Absent => false
+          Present { value: _ } =>
+            match map_lookup(m: materialized, key: key) {
+              Present { value: _ } => false
+              Absent => true
+            }
+        }
+      })
+  }
+}
+
+fn store_with_materialized(store: ObjectStore, identity: ObjectId) -> ObjectStore {
+  match store.residence {
+    WholeResidence => store
+    PartialResidence { rostered, shards, materialized } =>
+      ObjectStore {
+        objects: store.objects,
+        residence: PartialResidence { rostered: rostered, shards: shards, materialized: map_insert(materialized, identity.digest as String, true) },
+      }
+  }
+}
+
+// ADMITTING ONE OBJECT READ BACK FROM ITS SHARD. The object must be rostered at exactly its own
+// identity and kind -- a shard answering a demanded identity with a different object, or a kind the
+// roster does not record, is store damage and refuses rather than being admitted under the roster's
+// name. Re-admitting an already-resident equal object is idempotent, by insert_admission's own rule.
+type MaterializedAdmission
+  = MaterializedAdmitted { store: ObjectStore }
+  | MaterializedNotRostered { identity: ObjectId }
+  | MaterializedKindDisagrees { identity: ObjectId, rostered: ScmObjectKind, found: ScmObjectKind }
+  | MaterializedCollision { identity: ObjectId }
+
+fn store_admit_materialized(store: ObjectStore, object: ScmObject) -> MaterializedAdmission {
+  let identity = scm_object_identity(object: object)
+  match store_rostered_lookup(store: store, identity: identity) {
+    Absent => MaterializedNotRostered { identity: identity }
+    Present { value: entry } =>
+      if entry.kind != scm_object_kind(object: object) {
+        MaterializedKindDisagrees { identity: identity, rostered: entry.kind, found: scm_object_kind(object: object) }
+      } else {
+        match insert_admission(store: store, object: object) {
+          AdmitStored(next) => MaterializedAdmitted { store: store_with_materialized(store: next, identity: identity) }
+          AdmitCollision { existing: _ } => MaterializedCollision { identity: identity }
+        }
+      }
+  }
 }
 
 fn object_id_eq(left: ObjectId, right: ObjectId) -> Bool {
@@ -736,21 +894,43 @@ type CorpusSourceCompletenessAcc {
   refusal: CorpusEntrySourceRefusal?
 }
 
+// A NON-RESIDENT SOURCE IS ANSWERED BY THE ROSTER'S KIND, NEVER BY ABSENCE. Completeness is a kind
+// question (does this locator hold an authored source), so a partial store answers it from the
+// roster at map cost without decoding the source -- the same three arms, located by path, as the
+// resident route. A whole store's roster is empty, so this arm is the resident route unchanged.
+fn rostered_entry_source_refusal(
+  rostered: Map<String, RosteredObject>,
+  entry: CorpusManifestEntry,
+) -> CorpusEntrySourceRefusal? {
+  let source = authored_source_target_locator(target: entry.source)
+  match map_lookup(m: rostered, key: source.digest as String) {
+    Absent => Present { value: CorpusEntrySourceMissing { path: entry.path, source: source } }
+    Present { value: held } =>
+      match held.kind {
+        AuthoredSourceKind => none
+        SemanticNodeKind => Present { value: CorpusEntrySourceIsSemanticNode { path: entry.path, source: source } }
+        CorpusManifestKind => Present { value: CorpusEntrySourceIsCorpusManifest { path: entry.path, source: source } }
+      }
+  }
+}
+
 fn corpus_source_completeness_step(
   index: Map<String, ScmObject>,
+  rostered: Map<String, RosteredObject>,
   acc: CorpusSourceCompletenessAcc,
   entry: CorpusManifestEntry,
 ) -> CorpusSourceCompletenessAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match resolve_manifest_entry_source_of(
-        object: find_object_via(index: index, identity: authored_source_target_locator(target: entry.source)),
-        entry: entry,
-      ) {
-        CorpusEntrySourceResolved(_) => acc
-        CorpusEntrySourceUnresolved { cause: c } =>
-          CorpusSourceCompletenessAcc { refusal: Present { value: c } }
+      match find_object_via(index: index, identity: authored_source_target_locator(target: entry.source)) {
+        Absent => CorpusSourceCompletenessAcc { refusal: rostered_entry_source_refusal(rostered: rostered, entry: entry) }
+        Present { value: object } =>
+          match resolve_manifest_entry_source_of(object: Present { value: object }, entry: entry) {
+            CorpusEntrySourceResolved(_) => acc
+            CorpusEntrySourceUnresolved { cause: c } =>
+              CorpusSourceCompletenessAcc { refusal: Present { value: c } }
+          }
       }
   }
 }
@@ -763,7 +943,7 @@ fn observe_corpus_source_completeness(
   match fold(
     entries,
     init: CorpusSourceCompletenessAcc { refusal: none },
-    f: fn(acc, e) { corpus_source_completeness_step(index: index, acc: acc, entry: e) },
+    f: fn(acc, e) { corpus_source_completeness_step(index: index, rostered: store_roster_map(store: store), acc: acc, entry: e) },
   ) {
     CorpusSourceCompletenessAcc { refusal: r } =>
       match r {
@@ -785,6 +965,35 @@ type CorpusManifestLookup
   | CorpusManifestAbsent { identity: ObjectId }
   | CorpusManifestIsSemanticNode { identity: ObjectId }
   | CorpusManifestIsAuthoredSource { identity: ObjectId }
+
+// THE MANIFEST BRAND WITHOUT THE MANIFEST: a commit root or a staged reference needs only the
+// branded locator, never the entries, so a partial store answers it from the roster at map cost. A
+// resident manifest answers first through the record route; a rostered one mints its brand from the
+// roster's recorded kind, which is the persisted fact the saver wrote from the object itself. The
+// wrong-kind arms are the record route's, so the two routes classify one locator identically.
+type CorpusManifestRefLookup
+  = CorpusManifestRefFound(CorpusManifestObjectRef)
+  | CorpusManifestRefAbsent { identity: ObjectId }
+  | CorpusManifestRefIsSemanticNode { identity: ObjectId }
+  | CorpusManifestRefIsAuthoredSource { identity: ObjectId }
+
+fn find_corpus_manifest_ref(store: ObjectStore, identity: ObjectId) -> CorpusManifestRefLookup {
+  match find_corpus_manifest_record(store: store, identity: identity) {
+    CorpusManifestFound(record) => CorpusManifestRefFound(record.identity)
+    CorpusManifestIsSemanticNode { identity: i } => CorpusManifestRefIsSemanticNode { identity: i }
+    CorpusManifestIsAuthoredSource { identity: i } => CorpusManifestRefIsAuthoredSource { identity: i }
+    CorpusManifestAbsent { identity: i } =>
+      match store_rostered_lookup(store: store, identity: i) {
+        Absent => CorpusManifestRefAbsent { identity: i }
+        Present { value: held } =>
+          match held.kind {
+            CorpusManifestKind => CorpusManifestRefFound(CorpusManifestObjectRef { locator: i })
+            SemanticNodeKind => CorpusManifestRefIsSemanticNode { identity: i }
+            AuthoredSourceKind => CorpusManifestRefIsAuthoredSource { identity: i }
+          }
+      }
+  }
+}
 
 fn find_corpus_manifest_record(store: ObjectStore, identity: ObjectId) -> CorpusManifestLookup {
   match find_object(store: store, identity: identity) {
@@ -892,7 +1101,7 @@ type InsertAdmission
 
 fn insert_admission(store: ObjectStore, object: ScmObject) -> InsertAdmission {
   match find_object(store: store, identity: scm_object_identity(object: object)) {
-    Absent => AdmitStored(ObjectStore { objects: concat(store.objects, [object]) })
+    Absent => AdmitStored(ObjectStore { objects: concat(store.objects, [object]), residence: store.residence })
     Present { value: existing } =>
       if objects_equal(left: existing, right: object) {
         AdmitStored(store)
@@ -951,7 +1160,7 @@ fn store_admission_admit(admission: StoreAdmission, object: ScmObject) -> StoreA
 // restored, so the mid-fold representation cannot leak to a consumer that would read it as
 // document order.
 fn store_admission_store(admission: StoreAdmission) -> ObjectStore {
-  ObjectStore { objects: reverse(admission.admitted) }
+  ObjectStore { objects: reverse(admission.admitted), residence: WholeResidence }
 }
 
 // Record equality is the substrate's own structural equality over both fields. StoredEdge is a
@@ -1189,7 +1398,7 @@ fn store_authored_sources_batch(store: ObjectStore, texts: List<String>) -> Sour
     Present { value: identity } => SourceBatchCollision { identity: identity }
     Absent =>
       SourcesBatched {
-        store: ObjectStore { objects: concat(store.objects, reverse(acc.new_objects)) },
+        store: ObjectStore { objects: concat(store.objects, reverse(acc.new_objects)), residence: store.residence },
         sources: acc.sources,
       }
   }
@@ -1548,6 +1757,12 @@ fn insert_canonical_manifest(
         incoming: object,
       }
   }
+}
+
+// The identity a path-unique manifest WILL have, derived exactly as insert_canonical_manifest derives
+// it -- so a producer can materialize a rostered identity before inserting under it.
+fn path_unique_manifest_identity(unique: PathUniqueManifestEntries) -> ObjectId {
+  corpus_manifest_identity(entries: admit_path_unique_entries(unique: unique).entries)
 }
 
 fn store_path_unique_manifest(
