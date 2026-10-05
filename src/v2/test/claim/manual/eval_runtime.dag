@@ -179,7 +179,10 @@ fn eval_arg_is_two_literal(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 2)
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 

@@ -1,6 +1,6 @@
 module gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.dissolution { dissolution_description }
 import std.materialization_provider { resolved_graph_disk_format_unqualified_frontier }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }

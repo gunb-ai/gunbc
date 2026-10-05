@@ -2,8 +2,8 @@ module test.claim.spark.rank_memory_path_join_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10 }
 import gunbc.spark.serving_rank_observe {
   ContainerIncarnationId, container_incarnation_id, ObservedRankIncarnation,
   RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, RankProbeReply, ProbeReplied,
