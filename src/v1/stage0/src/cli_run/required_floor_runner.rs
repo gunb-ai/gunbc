@@ -9583,9 +9583,9 @@ pub fn run_required_floor(
     // THE ADMISSION PARTITION IS THE RECEIPT. `suppress_withheld` returns exactly which
     // identities it removed and why; this was the one call site that dropped the list
     // (`let _ =`), so the reverse join below decided only over the identities a gate-bounded
-    // run can observe while every other enrollment sat in no ledger the run publishes.
-    // Measured on required run 37236808750: 546 decoded enrollments = 536 outside-gate +
-    // 5 cost-debt withheld + 5 carried, and the carried 5 were the join's entire universe.
+    // run can observe while every other enrollment sat in no ledger the run publishes. The
+    // two `[floor-route-gap]` suppressed lines below are the instrument that re-derives the
+    // split at identity grain on every run — cite them, never a copied count.
     let mut route_gap_suppressed = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     route_gap_suppressed.extend(suppress_declined_no_ci_wet_lane(
         &mut route_gap_roster,
@@ -16377,7 +16377,9 @@ mod route_gap_admission_partition_tests {
     /// DECLARED DORMANCY IS NOT REFUSED: the 2026-08-29 gate cut owns the outside-gate arm and
     /// the cost-debt roster owns the withheld arm, so an enrollment the tree declares comes
     /// back from the classifier clean and is carried to the per-identity measurement record
-    /// instead. Refusing declared rows here would red every run on 536 pre-existing rows.
+    /// instead. Refusing declared rows here would red every required run on the gate-cut
+    /// population — name the instrument for its size, never a copied count: the
+    /// `[floor-route-gap]` suppressed lines this repair added re-derive it per run.
     #[test]
     fn a_declared_suppressed_enrollment_is_not_refused() {
         let suppressed = vec![
