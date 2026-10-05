@@ -1,37 +1,40 @@
 module v2.test.claim.body_lowering.string_template
 
 import std.types { List }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
+import v2.compiler.body_lowering_fold { body_lower_string_template }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
   dag_string_literal_node_from_lexeme,
   dag_string_literal_value_optional,
   dag_string_template_part_node_from_lexeme,
-  dag_string_template_part_value_optional
+  dag_string_template_part_value_optional,
+  string_template_parts_optional,
+  StringTemplateHole,
+  StringTemplatePart,
+  StringTemplateText
 }
+import std.occurrence_identity { OccurrenceSynthetic, NodeOccurrenceIdentity, OccurrenceId, OccurrencePending, node_occurrence_identity_minted }
+import v2.std.algebra { length }
+import v2.std.collection { list_at_optional }
 import std.algebra { Cons, Empty }
-import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_lexeme }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.optional { Absent, Present }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
+import v2.std.grammar { grammar_named_edge, node_atom_identity_optional }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// STRING TEMPLATES: LEXED DISJOINTLY FROM PLAIN LITERALS, PARSED AS ONE NODE, LOWERED TO A CONCAT
-// CHAIN BEFORE NORMALIZE ENDS (XL-2 PR2b).
+// STRING TEMPLATES: LEXED DISJOINTLY FROM PLAIN LITERALS, READ AS ONE NODE, LOWERED TO A CONCAT CHAIN
+// (XL-2 PR2b).
 //
-// One claim runs the real route -- tokenize -> parse -> normalize over a module whose function body
-// is a template -- and asserts the ROUTE, not only the answer: the parse carries one
-// ^dag_string_template node, and the normalized tree carries none but does carry the concat
-// operator and both text parts as string literals. Every other claim supplies its input at one
-// interface: the lexer over a short source, or the part decoder over a lexeme (DESIGN section 3, a
-// witness discriminates at one interface).
-//
+// Every claim here supplies its input at ONE interface (DESIGN section 3, a witness discriminates at
+// one interface): the lexer over a short source, the part decoder over a lexeme, and the reader and
+// the lowering over a supplied template shell. The ONE real-path claim -- lexer, parse, normalize,
+// infer, end to end -- is v2.test.claim.compiler.string_template_hole_type.
+
 // Fixture sources are written with every brace escaped (`\{`), so THIS module's own literals stay
 // plain; the tokenizer reads the unescaped text shown beside each.
 
@@ -134,83 +137,122 @@ test fn a_misframed_template_part_refuses() -> Bool {
   st_part_value(token_class: ^dag_token_string_template_tail, lexeme: "\"a\{") == "dag_string_literal_lexeme_unframed"
 }
 
-// ---- the real route ----------------------------------------------------------------------------
+// ---- the reader and the lowering, over a supplied template shell -----------------------------------
+//
+// The shell is built here exactly as the parser builds one (v2.compiler.parse parse_wrap_production_captured:
+// a Conj carrying the production's identity and its captured child), for the template "x{a}y": a head
+// part, one hole whose expression is the reference `a`, a tail part. Each piece carries its own minted
+// occurrence, so the claims can see where the lowering puts its generated nodes. The real route --
+// lexer, parse, normalize, infer -- runs once, in v2.test.claim.compiler.string_template_hole_type.
 
-// The fixture's own text:
-//   fn greet(name: String) -> String {
-//     "hello, {name}!"
-//   }
-data string_template_source: String = "module chunk\n\nfn greet(name: String) -> String {\n  \"hello, \{name\}!\"\n}\n"
-
-type StringTemplateRoute {
-  outcome: Symbol
-  parsed_templates: Int
-  normalized_templates: Int
-  normalized_concats: Int
-  normalized_texts: List<String>
+fn st_minted(n: Int) -> NodeOccurrenceIdentity {
+  node_occurrence_identity_minted(id: OccurrenceId { value: n })
 }
 
-fn st_count_atom(nodes: List<Node>, identity: Symbol) -> Int {
-  fold(nodes, init: 0, f: fn(acc, n) {
-    match node_atom_identity_optional(node: n) {
-      Present { value: id } => if id == identity { acc + 1 } else { acc }
-      Absent => acc
-    }
-  })
+fn st_production(emitted: Symbol, captured: Node, occurrence: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      grammar_named_edge(name: ^grammar_production_identity_node_projection, target: node_synthetic(kind: TypeNode { connective: Atom { identity: emitted } }, children: [])),
+      grammar_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
+    ],
+    occurrence_id: occurrence
+  )
 }
 
-fn st_count_template(nodes: List<Node>) -> Int {
-  fold(nodes, init: 0, f: fn(acc, n) {
-    match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
-      Present { value: id } => if id == ^dag_string_template { acc + 1 } else { acc }
-      Absent => acc
-    }
-  })
-}
-
-fn st_texts(nodes: List<Node>) -> List<String> {
-  fold(nodes, init: [], f: fn(acc, n) {
-    match dag_string_literal_value_optional(node: n) {
-      Present { value: v } => concat(acc, [v])
-      Absent => acc
-    }
-  })
-}
-
-fn st_route_marker(marker: Symbol) -> StringTemplateRoute {
-  StringTemplateRoute { outcome: marker, parsed_templates: 0, normalized_templates: 0, normalized_concats: 0, normalized_texts: [] }
-}
-
-fn st_route() -> StringTemplateRoute {
-  let lm = dag_language_model()
-  match tokenize(text: string_template_source, file: ^string_template_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => st_route_marker(marker: ^st_tokenize_refused)
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => st_route_marker(marker: ^st_parse_refused)
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: d } => st_route_marker(marker: diagnostics_fatal_reason(d: d))
-            Accepted { value: normalized, diagnostics: _ } =>
-              StringTemplateRoute {
-                outcome: ^st_accepted,
-                parsed_templates: st_count_template(nodes: node_subtree_nodes(root: artifact.tree)),
-                normalized_templates: st_count_template(nodes: node_subtree_nodes(root: normalized.root)),
-                normalized_concats: st_count_atom(nodes: node_subtree_nodes(root: normalized.root), identity: ^concat),
-                normalized_texts: st_texts(nodes: node_subtree_nodes(root: normalized.root))
-              }
-          }
-      }
+fn st_part(token_class: Symbol, lexeme: String, occurrence: NodeOccurrenceIdentity) -> Node {
+  match dag_string_template_part_node_from_lexeme(token_class: token_class, lexeme: lexeme, occurrence_id: occurrence) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Atom { identity: ^st_part_refused } }, children: [])
   }
 }
 
-// THE ROUTE: the parser builds one template node; normalize leaves none, and in its place is the
-// concat chain over the head and tail text ("hello, " then the hole then "!": two concats).
-test fn a_string_template_lowers_to_a_concat_chain_through_normalize() -> Bool {
-  let r = st_route()
-  (r.outcome == ^st_accepted)
-    && (r.parsed_templates == 1)
-    && (r.normalized_templates == 0)
-    && (r.normalized_concats == 2)
-    && (r.normalized_texts == ["hello, ", "!"])
+fn st_hole() -> Node {
+  st_production(
+    emitted: ^dag_surface_expr,
+    captured: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^a } }, children: [], occurrence_id: st_minted(n: 3)),
+    occurrence: st_minted(n: 2)
+  )
+}
+
+fn st_shell() -> Node {
+  st_production(
+    emitted: ^dag_string_template,
+    captured: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)) },
+        Edge { label: Positional, target: st_hole() },
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)) }
+      ]
+    ),
+    occurrence: st_minted(n: 0)
+  )
+}
+
+fn st_part_kind(part: StringTemplatePart) -> String {
+  match part {
+    StringTemplateText { value: v, at: _ } => concat("text:", v)
+    StringTemplateHole { expr: _ } => "hole"
+  }
+}
+
+// THE READER: text, hole, text, in source order, with each text decoded.
+test fn the_reader_yields_text_hole_text() -> Bool {
+  match string_template_parts_optional(node: st_shell()) {
+    Present { value: parts } => fold(parts, init: [], f: fn(acc, p) { concat(acc, [st_part_kind(part: p)]) }) == ["text:x", "hole", "text:y"]
+    Absent => false
+  }
+}
+
+// The reader answers Absent for anything that is not a template, so a consumer cannot mistake a plain
+// production for one.
+test fn the_reader_is_absent_off_a_template() -> Bool {
+  match string_template_parts_optional(node: st_hole()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn st_child(n: Node, index: Int) -> Optional<Node> {
+  match list_at_optional(xs: n.children, index: index) {
+    Present { value: e } => optional_present(value: e.target)
+    Absent => optional_absent()
+  }
+}
+
+fn st_is_concat_of(n: Node, cause: Int) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      (length(xs: n.children) == 3)
+        && (match st_child(n: n, index: 0) {
+              Present { value: op } => node_atom_identity_optional(node: op) == optional_present(value: ^concat)
+              Absent => false
+            })
+        && (n.occurrence_id == OccurrencePending { caused_by: OccurrenceId { value: cause } })
+    _ => false
+  }
+}
+
+fn st_text_is(n: Optional<Node>, value: String) -> Bool {
+  match n {
+    Present { value: t } => dag_string_literal_value_optional(node: t) == optional_present(value: value)
+    Absent => false
+  }
+}
+
+// THE LOWERING: "x{a}y" becomes concat(concat("x", a), "y"). The texts are string literals at their
+// parts' own occurrences; each concat and its operator are PENDING members caused by the part they
+// append (the inner one by the hole, 2; the outer by the tail, 4), never a second minted copy of it.
+test fn a_template_lowers_to_a_located_concat_chain() -> Bool {
+  match body_lower_string_template(shell: st_shell()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: outer, diagnostics: _ } =>
+      st_is_concat_of(n: outer, cause: 4)
+        && st_text_is(n: st_child(n: outer, index: 2), value: "y")
+        && (match st_child(n: outer, index: 1) {
+              Present { value: inner } => st_is_concat_of(n: inner, cause: 2) && st_text_is(n: st_child(n: inner, index: 1), value: "x")
+              Absent => false
+            })
+  }
 }
