@@ -86,19 +86,17 @@ import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_secret }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
+import gunbc.deployment_risk { DeploymentRiskClass, ProdRisk, TestRisk }
 import gunbc.machine_intake_phase {
   Arrival,
   BmcAccess,
   BmcSecure,
-  DevelopmentAndTest,
   IntakePhase,
-  IntakeQualificationPolicy,
-  MachineOperatingEnvironment,
+  MachineQualificationPolicy,
   OperatorAction,
-  Production,
   QualificationPolicy,
   QualificationRefusalOwner,
-  intake_qualification_policy_digest,
+  machine_qualification_policy_digest,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -235,7 +233,7 @@ type RetainedCredentialKind
 // (PublishedCredentialAccountPrecedesRotation); a pre-rotation user-list cannot
 // label the post-rotation standing.
 // RetainedByPolicy is a third arm: it satisfies the BMC-secure conjunct
-// ONLY under DevelopmentAndTest. Production refuses it; that refusal is the
+// ONLY under a TestRisk-admitting policy. A ProdRisk-admitting policy refuses it; that refusal is the
 // discriminating control for the day a machine is promoted.
 type PublishedCredentialAccountObservation
   = PublishedCredentialRetired { evidence: EvidenceRef, observed_at: EpochMs }
@@ -349,7 +347,7 @@ type BmcSecureRefusalCause
   | PublishedCredentialCensusMemberUnprobed { channel: IpmiChannelNumber }
   | PublishedCredentialProbeDuplicate { channel: IpmiChannelNumber }
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
-  | PublishedCredentialRetainedNotAdmittedForProduction
+  | PublishedCredentialRetainedNotAdmittedByProdRiskPolicy
   | PublishedCredentialNotRetained { channel: IpmiChannelNumber }
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
@@ -385,7 +383,7 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialCensusMemberUnprobed { channel: _ } => BmcAccess
     PublishedCredentialProbeDuplicate { channel: _ } => QualificationPolicy
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
-    PublishedCredentialRetainedNotAdmittedForProduction => QualificationPolicy
+    PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => QualificationPolicy
     PublishedCredentialNotRetained { channel: _ } => OperatorAction
   }
 }
@@ -415,7 +413,7 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialCensusMemberUnprobed { channel: _ } => "a census LAN member has no matching published-credential probe"
     PublishedCredentialProbeDuplicate { channel: _ } => "more than one published-credential probe matched the same census LAN member"
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
-    PublishedCredentialRetainedNotAdmittedForProduction => "a retained BMC backdoor is not admitted for production; a fresh census pass that retires or disables the published credential is required"
+    PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => "a retained BMC backdoor is not admitted under a ProdRisk-admitting qualification policy; a fresh census pass that retires or disables the published credential is required"
     PublishedCredentialNotRetained { channel: _ } => "the declared factory-credential retention was not observed on a census LAN member"
   }
 }
@@ -451,13 +449,13 @@ type BmcSecureOutcome
 // outcome alone and had bmc_secure_phase_receipt take the subject as a
 // separate argument, so a standing legitimately derived for host A could be
 // handed to the receipt function beside host B's subject. The same hatch
-// existed for policy: derive wrote DevelopmentAndTest and the receipt took a
-// second Production policy, restamping the digest. The receipt now reads
+// existed for policy: derive wrote a TestRisk-admitting policy and the receipt took a
+// second ProdRisk-admitting policy, restamping the digest. The receipt now reads
 // subject and policy off the standing; there is no parameter left to swap.
-// Promotion is a fresh derive_bmc_secure under Production, which refuses
-// RetainedByPolicy. There is no observed environment on the unit; the policy
+// Promotion is a fresh derive_bmc_secure under a ProdRisk-admitting policy, which refuses
+// RetainedByPolicy. There is no observed risk class on the unit, and a machine never holds one; the policy
 // is the declared qualification (FleetAdmissionReceipt already binds its
-// digest). A caller can still declare DevelopmentAndTest — that is the policy
+// digest). A caller can still declare admits: TestRisk — that is the policy
 // fact, not a second knob beside the receipt.
 //
 // So the subject and the outcome are ONE record and the record is
@@ -487,7 +485,7 @@ type BmcSecureOutcome
 // the construction and not the type's usability.
 type BmcSecureStanding sole_constructor {
   subject: MachineIntakeSubject
-  policy: IntakeQualificationPolicy
+  policy: MachineQualificationPolicy
   outcome: BmcSecureOutcome
 }
 
@@ -952,7 +950,7 @@ fn adjudicate_published_census(
   probes: List<PublishedCredentialLanProbe>,
   published_user: IpmiUserId,
   published_account: PublishedCredentialAccountObservation,
-  environment: MachineOperatingEnvironment,
+  admits: DeploymentRiskClass,
 ) -> BmcSecureOutcome {
   let account_at = published_account_observed_at(account: published_account)
   if account_at < applied_at {
@@ -962,9 +960,9 @@ fn adjudicate_published_census(
   } else {
     match published_account {
     PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: _ } =>
-      match environment {
-        Production => BmcSecureRefused { cause: PublishedCredentialRetainedNotAdmittedForProduction }
-        DevelopmentAndTest =>
+      match admits {
+        ProdRisk => BmcSecureRefused { cause: PublishedCredentialRetainedNotAdmittedByProdRiskPolicy }
+        TestRisk =>
           adjudicate_published_census_join(
             endpoint: endpoint,
             reference: reference,
@@ -1023,7 +1021,7 @@ fn adjudicate_managed_probe(
   applied_at: EpochMs,
   rotation_evidence: EvidenceRef,
   managed: CredentialProbeOutcome,
-  environment: MachineOperatingEnvironment,
+  admits: DeploymentRiskClass,
 ) -> BmcSecureOutcome {
   match managed {
     CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
@@ -1045,7 +1043,7 @@ fn adjudicate_managed_probe(
           probes: observation.published_probes,
           published_user: observation.published_user,
           published_account: observation.published_account,
-          environment: environment,
+          admits: admits,
         )
       }
   }
@@ -1056,7 +1054,7 @@ fn adjudicate_rotation(
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
   rotation_evidence: EvidenceRef,
-  environment: MachineOperatingEnvironment,
+  admits: DeploymentRiskClass,
 ) -> BmcSecureOutcome {
   if (reference.credential_epoch <= observation.previous_credential_epoch) {
     BmcSecureRefused {
@@ -1072,14 +1070,14 @@ fn adjudicate_rotation(
       applied_at: applied_at,
       rotation_evidence: rotation_evidence,
       managed: observation.managed_probe,
-      environment: environment,
+      admits: admits,
     )
   }
 }
 
 fn adjudicate_bootstrap(
   observation: BmcCredentialRotationObservation,
-  environment: MachineOperatingEnvironment,
+  admits: DeploymentRiskClass,
 ) -> BmcSecureOutcome {
   match observation.bootstrap_probe {
     CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: CredentialStateUnknown { detail: d } }
@@ -1094,7 +1092,7 @@ fn adjudicate_bootstrap(
             reference: r,
             applied_at: at,
             rotation_evidence: e,
-            environment: environment,
+            admits: admits,
           )
       }
   }
@@ -1103,12 +1101,12 @@ fn adjudicate_bootstrap(
 fn derive_bmc_secure(
   subject: MachineIntakeSubject,
   observation: BmcCredentialRotationObservation,
-  policy: IntakeQualificationPolicy,
+  policy: MachineQualificationPolicy,
 ) -> BmcSecureStanding {
   let outcome = if same_intake_subject(left: subject, right: observation.subject) == false {
     BmcSecureRefused { cause: RotationObservationForOtherAttempt { expected: subject, found: observation.subject } }
   } else {
-    adjudicate_bootstrap(observation: observation, environment: policy.environment)
+    adjudicate_bootstrap(observation: observation, admits: policy.admits)
   }
   BmcSecureStanding { subject: subject, policy: policy, outcome: outcome }
 }
@@ -1142,7 +1140,7 @@ fn bmc_secure_phase_receipt(
     subject: standing.subject,
     phase: bmc_secure_phase,
     producer: producer,
-    policy_digest: intake_qualification_policy_digest(policy: standing.policy),
+    policy_digest: machine_qualification_policy_digest(policy: standing.policy),
     started_at: started_at,
     ended_at: ended_at,
     observations: bmc_secure_receipt_observations(standing: standing),
@@ -1341,7 +1339,7 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
 type BmcSecureGoal {
   managed: ManagedCredentialReference
   published_break_glass: ManagedCredentialReference
-  policy: IntakeQualificationPolicy
+  policy: MachineQualificationPolicy
 }
 
 // WHAT AN ASSESSMENT FOUND. The conjunction's own causes, plus the published account's replacement:
@@ -1383,7 +1381,7 @@ type BmcSecureStateRefusal
 // published one still accepted or still holding channel access). An unknown is a reading that did not
 // establish a state; it is never a deviation, because writing on an unread controller is the
 // absorbing fallback DESIGN §5 forbids. Everything else -- an ordering, a duplicated or unmatched
-// reading, a production retention -- refuses the assessment.
+// reading, a retention under a ProdRisk-admitting policy -- refuses the assessment.
 // TWO ADMITTED ACTIONS: a password write (IpmiSetUserPassword) and, since cut O1a-2, a channel-access
 // write (the privilege-limit-only Set User Access, IpmiSetUserPrivilegeLimit). A published account still
 // holding access on a LAN channel -- addressed or not -- is therefore a DEVIATION the plan remedies, and
@@ -1426,7 +1424,7 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
     PublishedCredentialCensusMemberUnprobed { channel: _ } => CauseUnestablishedReading
     PublishedCredentialProbeDuplicate { channel: _ } => CauseRefusesAssessment
     PublishedCredentialProbeUnmatched { channel: _ } => CauseRefusesAssessment
-    PublishedCredentialRetainedNotAdmittedForProduction => CauseRefusesAssessment
+    PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => CauseRefusesAssessment
     PublishedCredentialNotRetained { channel: _ } => CauseNeedsUngroundedOperation { operation: PublishedFactoryCredentialRestore }
   }
 }
@@ -1455,7 +1453,7 @@ fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateOb
           probes: map(observed.published_probes, p => PublishedCredentialLanProbe { channel: p.channel, address: p.address, outcome: observed_probe_at_join(probe: p.probe) }),
           published_user: observed.published_user,
           published_account: observed_published_account_at_join(account: observed.published_account),
-          environment: goal.policy.environment,
+          admits: goal.policy.admits,
         )
       }
     }

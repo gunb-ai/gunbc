@@ -1,0 +1,54 @@
+module gunbc.roadmap_view_preference_store
+
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import gunbc.roadmap_view_preferences { IssueViewPreferences, issue_view_preferences_json, issue_view_preferences_of }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardIssueViewPreferences }
+import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import std.durable_compare_and_set { CasExpectation, CasObservedUnreadable, CasObservedReadable, CasReadableAbsent, CasReadablePresent, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+
+type IssueViewStored = IssueViewAbsent | IssueViewFound { prefs: IssueViewPreferences, revision: Int, expected: CasExpectation } | IssueViewUnread
+type IssueViewSaved = IssueViewSaveOk { revision: Int } | IssueViewSaveConflict | IssueViewSaveRefused
+
+// Stable principal identity, never display name/email or a caller-supplied account id.
+fn issue_view_store_key(principal: PrincipalRef) -> NonEmptyStr? {
+  match sha256sum_stdin_digest_via_shell(content: principal_ref_label(p: principal)) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+    Sha256FileDigest { digest } => Present { value: digest.hex as NonEmptyStr }
+  }
+}
+fn issue_view_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_instance_auth_store_root(instance: instance, store: DashboardIssueViewPreferences) as NonEmptyStr
+}
+fn issue_view_store_read(root: NonEmptyStr, key: NonEmptyStr) -> IssueViewStored {
+  match observe_cas_slot_state(root: root, key: key) {
+    CasObservedUnreadable { cause: _ } => IssueViewUnread
+    CasObservedReadable { readable } => match readable {
+      CasReadableAbsent => IssueViewAbsent
+      CasReadablePresent { version } => match issue_view_preferences_of(text: version.value as String) {
+        Absent => IssueViewUnread
+        Present { value: prefs } => IssueViewFound { prefs: prefs, revision: cas_generation_count(g: version.generation), expected: ExpectSlotGeneration { generation: version.generation } }
+      }
+    }
+  }
+}
+// A stale tab cannot silently replace a newer account view; the caller refreshes explicitly.
+fn issue_view_store_save(root: NonEmptyStr, key: NonEmptyStr, prefs: IssueViewPreferences, revision: String) -> IssueViewSaved {
+  match issue_view_store_read(root: root, key: key) {
+    IssueViewUnread => IssueViewSaveRefused
+    IssueViewAbsent => if revision != "0" { IssueViewSaveConflict } else { issue_view_store_commit(root: root, key: key, prefs: prefs, expected: ExpectSlotAbsent) }
+    IssueViewFound { prefs: _, revision: current, expected } => if revision != to_string(current) { IssueViewSaveConflict } else { issue_view_store_commit(root: root, key: key, prefs: prefs, expected: expected) }
+  }
+}
+fn issue_view_store_commit(root: NonEmptyStr, key: NonEmptyStr, prefs: IssueViewPreferences, expected: CasExpectation) -> IssueViewSaved {
+  match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: serialize_json(v: issue_view_preferences_json(prefs: prefs)) as NonEmptyStr) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => IssueViewSaveRefused
+    DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: verified) {
+      CasCommitted { committed } => IssueViewSaveOk { revision: cas_generation_count(g: committed.generation) }
+      CasPreconditionFailed { expected: _, observed: _ } => IssueViewSaveConflict
+      CasStoreRefused { cause: _ } => IssueViewSaveRefused
+    }
+  }
+}
