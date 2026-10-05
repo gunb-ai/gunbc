@@ -2456,7 +2456,7 @@ pub(crate) fn cost_debt_admitted_by_fold(
         resolve_entry_graph_shared(&default_source_roots(), &entry.to_string_lossy())
             .map_err(|e| format!("floor_cost_debt_verdict resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    let list = |xs: &[String]| list_value_from_vec(xs.iter().map(|s| str_value(s)).collect());
+    let list = |xs: &[String]| list_value_from_vec(xs.iter().map(str_value).collect());
     let mut args = vec![(Some("base_roster".to_string()), list(base_roster))];
     let function = match head_roster {
         None => "cost_debt_admitted_identities_against_base",
