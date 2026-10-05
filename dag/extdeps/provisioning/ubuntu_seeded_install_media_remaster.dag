@@ -16,6 +16,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaBuildInput,
 }
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.decl_ref { decl_ref }
 import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import v2.std.optional { Present }
@@ -259,7 +260,9 @@ fn install_media_remaster_write_seeds(host: CommandHost, writes: List<SeedWrite>
 // EACH ARTIFACT IS FETCHED, THEN READ BACK: the fetch's success is not the bytes' identity, so the
 // member is admitted only when its measured sha256 equals the one the input names. The first
 // artifact that does not hold ends the seed.
-fn install_media_remaster_fetch_artifact(host: CommandHost, nocloud_dir: NonEmptyStr, artifact: AdmittedSeedArtifact) -> String? {
+fn install_media_remaster_fetch_artifact(host: CommandHost, nocloud_dir: NonEmptyStr, artifact: AdmittedSeedArtifact) -> String? admit_callers: [
+  decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media_remaster", decl_name: "install_media_remaster_fetch_artifacts"),
+] {
   let path = concat(nocloud_dir as String, "/", artifact.basename.value as String) as NonEmptyStr
   match host_command(host: host, command: curl_download_command(url: artifact.source_url as String, destination: path as String)) {
     HostCommandDone { stdout: _ } =>
@@ -272,7 +275,16 @@ fn install_media_remaster_fetch_artifact(host: CommandHost, nocloud_dir: NonEmpt
   }
 }
 
-fn install_media_remaster_fetch_artifacts(host: CommandHost, nocloud_dir: NonEmptyStr, artifacts: List<AdmittedSeedArtifact>) -> String? {
+// THE FETCH IS SEALED TO THE CHECKED ROUTE. An AdmittedSeedArtifact was admitted against ONE input's
+// seed population, and the destination is that input's seed directory under the remaster's work
+// directory; a caller that could hand either helper a different directory could replay an
+// admission against a seed it was never checked against (a name refused there as a collision would
+// become a write) or point a valid basename outside the seed. So the only caller of the pair is
+// install_media_remaster_write_nocloud_seed, which admits, derives the directory, and fetches in one
+// body (compile probe: test.probe.seed_artifact_fetch_forged_probe).
+fn install_media_remaster_fetch_artifacts(host: CommandHost, nocloud_dir: NonEmptyStr, artifacts: List<AdmittedSeedArtifact>) -> String? admit_callers: [
+  decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media_remaster", decl_name: "install_media_remaster_write_nocloud_seed"),
+] {
   fold(artifacts, init: none, f: (acc, a) => match acc {
     Present { value: r } => Present { value: r }
     Absent => install_media_remaster_fetch_artifact(host: host, nocloud_dir: nocloud_dir, artifact: a)
