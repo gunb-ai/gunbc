@@ -233,7 +233,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer_or_false, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
-  TypeDeclIndex, type_decl_identity,
+  TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
   TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
@@ -566,6 +566,17 @@ fn declaration_is_grounded_coproduct_native_alias(module_path: String, decl_name
     || declaration_owns_host_option(module_path: module_path, decl_name: decl_name)
     || declaration_ref_in_list(target: decl_ref(module_path: module_path, decl_name: decl_name), refs: rust_host_option_carrier_declarations)
   }
+}
+
+// A parent named only by its leaf, reached through a module that may re-export rather than declare
+// it: it is a host carrier when every declaration of that leaf in the closure is one. Nothing is
+// chosen, so nothing is guessed; where declarations disagree the reader keeps its own declaring-module
+// check.
+fn every_declarer_is_grounded_coproduct_native_alias(decls: TypeDeclIndex, name: String) -> Bool {
+  let identities = type_decl_identities_of_leaf(index: decls, leaf: qualified_last_segment(name: name))
+  (identities |> count) > 0 && identities |> all(identity =>
+    declaration_is_grounded_coproduct_native_alias(module_path: "", decl_name: identity)
+  )
 }
 
 // A TypeSummary key is `<module>.<name>`: the identity type_decl_identity minted for it.
@@ -6939,7 +6950,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let main_lines = concat(direct_lines, parent_main_lines)
     let variant_lines = parent_list |> flat_map(parent =>
-      if declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: parent) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: parent) { [] } else {
+      if declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: parent) || every_declarer_is_grounded_coproduct_native_alias(decls: emit_info.type_decl_items, name: parent) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: parent) { [] } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false

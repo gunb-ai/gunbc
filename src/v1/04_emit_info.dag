@@ -21,6 +21,8 @@ import v1.std.core {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.types { is_kernel_type }
+import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
+import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
@@ -380,6 +382,7 @@ type TypeDeclReferenceRoute
   | RouteDeclaringSpan
   | RouteReferencingModuleDeclarer
   | RouteQualifiedSpelling
+  | RouteKernelMint
   | RouteLeafSpelling
 
 type TypeDeclRoutedResolution {
@@ -409,13 +412,19 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
           let leaf = qualified_last_segment(name: authored)
           let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
           let referencing_module_identity = match by_spelling {
-            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { type_decl_qualifier_declarer(index: index, authored: authored) }
+            TypeDeclLeafAmbiguous { leaf: l } =>
+              if authored == l {
+                match type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) {
+                  Present { value: identity } => Present { value: identity }
+                  Absent => type_decl_kernel_mint_declarer(index: index, leaf: l)
+                }
+              } else { type_decl_qualifier_declarer(index: index, authored: authored) }
             TypeDeclResolved { identity: _, decl: _ } => none
             TypeDeclKernelSpellingUndecided { leaf: _ } => none
             TypeDeclNotDeclared => none
           }
           match referencing_module_identity {
-            Present { value: identity } => TypeDeclRoutedResolution { route: if authored == leaf { RouteReferencingModuleDeclarer } else { RouteQualifiedSpelling }, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
+            Present { value: identity } => TypeDeclRoutedResolution { route: type_decl_spelling_route(index: index, authored: authored, leaf: leaf, reference: type_expr), resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
             Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: by_spelling }
           }
       }
@@ -458,11 +467,41 @@ fn type_decl_qualifier_declarer(index: TypeDeclIndex, authored: String) -> Strin
   }
 }
 
+// THE KERNEL MINT'S DECLARER. A bare kernel-mint spelling (`Optional`, what `T?` resolves to) that a
+// module uses without declaring or importing it is the kernel type, and which corpus declaration the
+// kernel type IS is a modeled fact: gunbc.structural_realization_bindings kernel_mint_declaration_rows,
+// the row the pattern side reads through kernel_mint_ownership. A module that declares the leaf itself
+// was answered by type_decl_referencing_module_declarer first; a spelling no row mints, or two rows
+// mint, stays LeafAmbiguous and refuses. Counted as kernel_mint; interim under
+// referencing_module_declarer_route_dissolves_on.
+fn type_decl_kernel_mint_declarer(index: TypeDeclIndex, leaf: String) -> String? {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: leaf) {
+    KernelMintDeclarationFound { declaration: d } =>
+      let identity = type_decl_identity(owner_module: d.module_path as String, decl_name: d.decl_name as String)
+      match map_get(index.by_identity, identity) {
+        Present { value: _ } => Present { value: identity }
+        Absent => none
+      }
+    KernelMintDeclarationAbsent => none
+    KernelMintDeclarationAmbiguous { row_count: _ } => none
+  }
+}
+
+fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String, reference: Node) -> TypeDeclReferenceRoute {
+  if authored != leaf { RouteQualifiedSpelling }
+  else {
+    match type_decl_referencing_module_declarer(index: index, leaf: leaf, reference: reference) {
+      Present { value: _ } => RouteReferencingModuleDeclarer
+      Absent => RouteKernelMint
+    }
+  }
+}
+
 fn type_decl_index_with_qualified_names(index: TypeDeclIndex, qualified_names: SymbolIndex) -> TypeDeclIndex {
   TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names }
 }
 
-data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
+data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
 
 fn type_decl_referencing_module_declarer(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
   let local = type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
@@ -485,6 +524,7 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
     RouteDeclaringSpan => "declaring_span"
     RouteReferencingModuleDeclarer => "referencing_module_declarer"
     RouteQualifiedSpelling => "qualified_spelling"
+    RouteKernelMint => "kernel_mint"
     RouteLeafSpelling => "leaf_spelling"
   }
   match routed.resolution {
