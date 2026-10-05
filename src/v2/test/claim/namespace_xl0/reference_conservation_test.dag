@@ -27,7 +27,8 @@ import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
-import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
 import extdeps.communication.medium { Lossless, Medium }
 import std.process { ProcessExit, exit_failure }
 
@@ -174,7 +175,7 @@ test fn a_block_with_a_second_statement_is_refused_not_accepted_holds() -> Bool 
 // how the report counts a refused body.
 fn block_second_statement_numbers() -> ProcessExit {
   let r = block_second_statement_report()
-  exit_failure(reason: "authored=" + integer_int_to_decimal_string(value: r.authored) + " conserved=" + integer_int_to_decimal_string(value: r.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: r.locus_erased) + " refused=" + integer_int_to_decimal_string(value: r.refused) + " dropped=" + integer_int_to_decimal_string(value: length(xs: r.dropped)))
+  exit_failure(reason: "authored=" + int_to_decimal_string(value: r.authored) + " conserved=" + int_to_decimal_string(value: r.conserved) + " locus_erased=" + int_to_decimal_string(value: r.locus_erased) + " refused=" + int_to_decimal_string(value: r.refused) + " dropped=" + int_to_decimal_string(value: length(xs: r.dropped)))
 }
 
 // ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ---------------------

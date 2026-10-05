@@ -215,20 +215,8 @@ import v2.std.diagnostic {
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
-import v2.std.integer {
-  decimal_digits_to_magnitude,
-  integer_decimal_magnitude_node,
-  integer_decimal_magnitude_node_to_int,
-  integer_int_to_decimal_string,
-  integer_int_type_node,
-  integer_string_to_decimal_digits_optional,
-  DecimalMagnitude,
-  DecimalNonZero,
-  DecimalNonZeroMagnitude,
-  Int,
-  NonZeroD1,
-  NonZeroD2
-}
+import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_node, integer_decimal_magnitude_node_to_int, integer_int_type_node, integer_string_to_decimal_digits_optional, DecimalMagnitude, DecimalNonZero, DecimalNonZeroMagnitude, Int, NonZeroD1, NonZeroD2 }
+import std.integer { int_to_decimal_string }
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.types { unicode_scalar }
@@ -7718,7 +7706,7 @@ fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured
       Present { value: _ } =>
         bind_outcome(
           o: dag_int_literal_magnitude_int_from_node(node: captured),
-          f: fn(v) { outcome_accepted(value: integer_int_to_decimal_string(value: v)) }
+          f: fn(v) { outcome_accepted(value: int_to_decimal_string(value: v)) }
         )
     }
   } else if token_class == ^dag_token_string_literal {

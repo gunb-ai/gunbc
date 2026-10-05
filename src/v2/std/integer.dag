@@ -18,7 +18,7 @@ import v2.std.optional {
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
 import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
-import std.integer { Signedness, Signed, Unsigned }
+import std.integer { Signedness, Signed, Unsigned, decimal_digit_of_units, int_to_decimal_string }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
 import std.types { NonEmptyStr, List }
 import v2.std.machine {
@@ -31,7 +31,7 @@ import v2.std.machine {
   Word64,
   Word128
 }
-import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
+import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ, DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.bit { Word64 }
 type Int = GroupCompletion<Nat>
@@ -67,18 +67,6 @@ type IntegerBoundSign
 type IntegerRangeEndpoint
   = IntegerRangeInclusiveMin
   | IntegerRangeInclusiveMax
-
-type DecimalDigit
-  = D0
-  | D1
-  | D2
-  | D3
-  | D4
-  | D5
-  | D6
-  | D7
-  | D8
-  | D9
 
 type NonZeroDecimalDigit
   = NonZeroD1
@@ -126,38 +114,9 @@ fn integer_signed_i32_le_decode_invalid_diagnostic() -> Diagnostic {
   }
 }
 
-fn decimal_digit_value(d: DecimalDigit) -> Int {
-  match d {
-    D0 => 0
-    D1 => 1
-    D2 => 2
-    D3 => 3
-    D4 => 4
-    D5 => 5
-    D6 => 6
-    D7 => 7
-    D8 => 8
-    D9 => 9
-  }
-}
-
-data decimal_digit_roster: List<DecimalDigit> = [D0, D1, D2, D3, D4, D5, D6, D7, D8, D9]
-
 data nonzero_decimal_digit_roster: List<NonZeroDecimalDigit> = [
   NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD5, NonZeroD6, NonZeroD7, NonZeroD8, NonZeroD9
 ]
-
-fn decimal_digit_of_units(value: Int) -> DecimalDigit {
-  if value >= 10 {
-    decimal_digit_of_units(value: value - 10)
-  } else {
-    fold_list(
-      xs: decimal_digit_roster,
-      empty: D0,
-      cons: fn(acc, d) { if decimal_digit_value(d: d) == value { d } else { acc } }
-    )
-  }
-}
 
 fn nonzero_decimal_digit_of_positive_units(value: Int) -> NonZeroDecimalDigit {
   fold_list(
@@ -1422,101 +1381,6 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
   }
 }
 
-// ONE GLYPH TABLE for the ten decimal digits, keyed on the DecimalDigit coproduct this module
-// already owns; both the Peano and the machine-integer renderings below reach it through their
-// own digit selection rather than each carrying a second copy of the ten glyphs.
-fn decimal_digit_glyph(d: DecimalDigit) -> String {
-  match d {
-    D0 => "0"
-    D1 => "1"
-    D2 => "2"
-    D3 => "3"
-    D4 => "4"
-    D5 => "5"
-    D6 => "6"
-    D7 => "7"
-    D8 => "8"
-    D9 => "9"
-  }
-}
-
-// The Peano value of each decimal digit. Every arm is a kernel integer literal at a
-// Nat return boundary: the literal elaborates through the declared homomorphism
-// (gunbc.structural_realization_bindings literal_homomorphism_rows) to its Zero/Succ image --
-// this function is the return-position exemplar of std.literal_elaboration.
-fn decimal_digit_nat(d: DecimalDigit) -> Nat {
-  match d {
-    D0 => 0
-    D1 => 1
-    D2 => 2
-    D3 => 3
-    D4 => 4
-    D5 => 5
-    D6 => 6
-    D7 => 7
-    D8 => 8
-    D9 => 9
-  }
-}
-
-// A Peano digit (a Nat below ten) to its glyph: select the DecimalDigit whose Peano value equals
-// the digit by STRUCTURAL equality (std.operator_realization StructuralEquality on Nat),
-// then read the one glyph table. A digit outside the roster (ten or more) is not a decimal digit
-// and this function is not its authority: the caller obtains digits from nat_div_rem_by_succ by
-// ten, whose remainder is below ten by construction, so the fold's D0 seed is never the answer
-// for an in-domain input.
-fn integer_nat_decimal_digit_char(digit: Nat) -> String {
-  decimal_digit_glyph(d: fold_list(
-    xs: decimal_digit_roster,
-    empty: D0,
-    cons: fn(acc, d) { if decimal_digit_nat(d: d) == digit { d } else { acc } }
-  ))
-}
-
-// PEANO NAT TO DECIMAL TEXT over the DECLARED structural operations: division by ten is
-// nat_div_rem_by_succ with divisor predecessor nine (the divisor Succ { prev: 9 } is nonzero by
-// construction, so no zero-divisor arm exists to be handled), and the recursion descends on the
-// quotient. The literal 9 elaborates at the argument boundary (std.literal_elaboration). No host
-// operator is applied to a Nat here: the previous body spelled `value == 0`, `value < 10`,
-// `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10, E0369) and
-// which the operator realization authority now refuses at emission by typed diagnostic instead.
-fn integer_nat_to_decimal_string(value: Nat) -> String {
-  let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
-  match q.quotient {
-    Zero => integer_nat_decimal_digit_char(digit: q.remainder)
-    Succ { prev: _ } =>
-      concat(
-        integer_nat_to_decimal_string(value: q.quotient),
-        integer_nat_decimal_digit_char(digit: q.remainder)
-      )
-  }
-}
-
-// MACHINE INTEGER TO DECIMAL TEXT. Int realizes as the host integer, so host division and
-// remainder are its declared operations (std.operator_realization HostOperator); the digit glyph
-// comes from the same one table. This is the formatter the two Int-valued callers that previously
-// passed an Int into the Nat renderer's parameter (v2.std.native_agreement octet_display,
-// v2.workflow.realization_sweep sweep_histogram_tsv) actually asked for -- the interpreter's
-// numeric grounding made that mismatch invisible there, and the emitted closure refused it
-// (E0308 Rc<Nat> vs integer).
-fn integer_int_to_decimal_string(value: Int) -> String {
-  if value < 0 {
-    concat("-", integer_int_magnitude_to_decimal_string(value: 0 - value))
-  } else {
-    integer_int_magnitude_to_decimal_string(value: value)
-  }
-}
-
-fn integer_int_magnitude_to_decimal_string(value: Int) -> String {
-  let rest = value / 10
-  let digit = decimal_digit_glyph(d: decimal_digit_of_units(value: value - (rest * 10)))
-  if rest == 0 {
-    digit
-  } else {
-    concat(integer_int_magnitude_to_decimal_string(value: rest), digit)
-  }
-}
-
 // THE CONTENT IDENTITY OF AN Int, at cost proportional to its digits. The digests already in the
 // corpus that take an integer are unary -- v2.std.node byte_limb_hash_peano_digest (one
 // combine_hash per unit, one shared tag for every value outside 0..255) and the byte-offset cache
@@ -1526,6 +1390,6 @@ fn integer_int_magnitude_to_decimal_string(value: Int) -> String {
 fn integer_int_content_digest(value: Int) -> Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "integer-int-decimal",
-    payload: content_hash_atom(value: integer_int_to_decimal_string(value: value) as NonEmptyStr)
+    payload: content_hash_atom(value: int_to_decimal_string(value: value) as NonEmptyStr)
   )
 }

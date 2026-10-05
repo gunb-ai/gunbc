@@ -27,7 +27,8 @@ import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optio
 import v2.std.optional { Optional }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.algebra { contains, fold_list, length, list_reverse }
-import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -1412,7 +1413,7 @@ fn site_tokens(k: SiteKind) -> String {
 }
 
 fn int_text(n: Int) -> String {
-  integer_int_to_decimal_string(value: n)
+  int_to_decimal_string(value: n)
 }
 
 // One module's lines: an `M` row carrying the verdict and the counts (host, structural, OTHER,

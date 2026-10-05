@@ -1,6 +1,6 @@
 module std.nat
 
-import std.types { List, Bool }
+import std.types { List, Bool, Int, String }
 import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater }
 
 // THE NATURALS, DECLARED AS WHAT THEY ARE (operator ruling A, 2026-09-30). The carrier is the
@@ -156,5 +156,125 @@ fn nat_range_accumulate(lo: Nat, hi: Nat, acc: List<Nat>) -> List<Nat> {
     acc
   } else {
     nat_range_accumulate(lo: lo + 1, hi: hi, acc: concat(acc, [lo]))
+  }
+}
+
+// THE DECIMAL DIGITS OF A NATURAL, AND ITS DECIMAL TEXT. These lived in v2.std.integer, where a
+// dag module compiled into the seed could not reach them (the seed's closure does not contain
+// src/v2), so a seed-emitted module had no declared route from a Nat to its text and an
+// interpolation hole over one fell back to v1's implicit stringify (DESIGN section 4, the coercion
+// law). A natural's decimal spelling is a fact about the naturals, so it lives beside Nat, at the
+// lowest layer that needs it (DESIGN section 3: a fact's home is its layer); v2.std.integer
+// imports the digit coproduct and its tables from here rather than declaring a second copy.
+type DecimalDigit
+  = D0
+  | D1
+  | D2
+  | D3
+  | D4
+  | D5
+  | D6
+  | D7
+  | D8
+  | D9
+
+fn decimal_digit_value(d: DecimalDigit) -> Int {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+// The Peano value of each decimal digit. Every arm is a kernel integer literal at a
+// Nat return boundary: the literal elaborates through the declared homomorphism
+// (gunbc.structural_realization_bindings literal_homomorphism_rows) to its Zero/Succ image --
+// this function is the return-position exemplar of std.literal_elaboration.
+fn decimal_digit_nat(d: DecimalDigit) -> Nat {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+// ONE GLYPH TABLE for the ten decimal digits, keyed on the DecimalDigit coproduct; the Peano
+// rendering below and the machine-integer rendering in std.integer reach it through their own
+// digit selection rather than each carrying a second copy of the ten glyphs.
+fn decimal_digit_glyph(d: DecimalDigit) -> String {
+  match d {
+    D0 => "0"
+    D1 => "1"
+    D2 => "2"
+    D3 => "3"
+    D4 => "4"
+    D5 => "5"
+    D6 => "6"
+    D7 => "7"
+    D8 => "8"
+    D9 => "9"
+  }
+}
+
+// A Peano digit (a Nat below ten) to its DecimalDigit, by STRUCTURAL equality against each
+// digit's Peano value (std.operator_realization StructuralEquality on Nat). A value of ten or more
+// is not a decimal digit and this function is not its authority: its one caller obtains digits
+// from nat_div_rem_by_succ by ten, whose remainder is below ten by construction, so the final D9
+// arm is reached only by D9 itself for an in-domain input.
+fn nat_decimal_digit(digit: Nat) -> DecimalDigit {
+  if decimal_digit_nat(d: D0) == digit {
+    D0
+  } else if decimal_digit_nat(d: D1) == digit {
+    D1
+  } else if decimal_digit_nat(d: D2) == digit {
+    D2
+  } else if decimal_digit_nat(d: D3) == digit {
+    D3
+  } else if decimal_digit_nat(d: D4) == digit {
+    D4
+  } else if decimal_digit_nat(d: D5) == digit {
+    D5
+  } else if decimal_digit_nat(d: D6) == digit {
+    D6
+  } else if decimal_digit_nat(d: D7) == digit {
+    D7
+  } else if decimal_digit_nat(d: D8) == digit {
+    D8
+  } else {
+    D9
+  }
+}
+
+// A NATURAL TO ITS DECIMAL TEXT over the declared structural operations: division by ten is
+// nat_div_rem_by_succ with divisor predecessor nine (the divisor Succ { prev: 9 } is nonzero by
+// construction, so no zero-divisor arm exists to be handled), and the recursion descends on the
+// quotient. No host operator is applied to a Nat here: an earlier body spelled `value == 0`,
+// `value < 10`, `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10,
+// E0369) and which the operator realization authority now refuses at emission by typed diagnostic.
+// EXACT AND LOSSLESS: the canonical decimal spelling (no leading zeros, no sign) is injective over
+// the naturals, so this is the declared conversion an interpolation hole over a Nat names.
+fn nat_to_decimal_string(value: Nat) -> String {
+  let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
+  match q.quotient {
+    Zero => decimal_digit_glyph(d: nat_decimal_digit(digit: q.remainder))
+    Succ { prev: _ } =>
+      concat(
+        nat_to_decimal_string(value: q.quotient),
+        decimal_digit_glyph(d: nat_decimal_digit(digit: q.remainder))
+      )
   }
 }

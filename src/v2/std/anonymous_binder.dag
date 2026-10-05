@@ -3,7 +3,8 @@ module v2.std.anonymous_binder
 import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_reverse }
-import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
 import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
 import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
 
@@ -34,7 +35,7 @@ fn anonymous_param_label_prefix() -> String {
 // minted slots.
 fn anonymous_param_label(slot: Int) -> Symbol {
   symbol_intern_lexeme(
-    lexeme: anonymous_param_label_prefix() + integer_int_to_decimal_string(value: slot) + ">"
+    lexeme: anonymous_param_label_prefix() + int_to_decimal_string(value: slot) + ">"
   )
 }
 
@@ -59,7 +60,7 @@ fn fresh_type_variable_prefix() -> String {
 
 fn fresh_type_variable(path: List<Int>, label: Symbol) -> Symbol {
   let p = fold(path, init: "", f: fn(acc, i) {
-    if acc == "" { integer_int_to_decimal_string(value: i) } else { acc + "." + integer_int_to_decimal_string(value: i) }
+    if acc == "" { int_to_decimal_string(value: i) } else { acc + "." + int_to_decimal_string(value: i) }
   })
   symbol_intern_lexeme(lexeme: fresh_type_variable_prefix() + p + ":" + symbol_lexeme(sym: label) + ">")
 }

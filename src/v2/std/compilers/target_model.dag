@@ -215,10 +215,8 @@ import v2.std.host_transport {
   TargetEmitHostRuntimeRow,
   configured_emit_host_runtime_row_from_target_row
 }
-import v2.std.integer {
-  integer_decimal_magnitude_node_to_int,
-  integer_int_to_decimal_string
-}
+import v2.std.integer { integer_decimal_magnitude_node_to_int }
+import std.integer { int_to_decimal_string }
 import v2.std.fold_assembly {
   node_list_from_node
 }
@@ -14782,7 +14780,7 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
             Absent =>
               outcome_accepted(
                 target_value_expression_int_literal(
-                  lexeme: integer_int_to_decimal_string(value: magnitude),
+                  lexeme: int_to_decimal_string(value: magnitude),
                   source: node
                 )
               )

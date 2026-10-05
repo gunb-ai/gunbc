@@ -9,7 +9,7 @@ import extdeps.tcgplayer.pricing
 import extdeps.tcgplayer.store
 import extdeps.tcgplayer.tcgplayer
 import std.credentials { CredentialSource }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 
 data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }
 
@@ -175,7 +175,7 @@ fn intake_binder_photo(
         RestAnswered { answer: search } =>
           match tcgplayer.Pricing.GetProductPrices(
             bearer_token: bearer_token,
-            product_ids: integer_int_to_decimal_string(value: search.first_product_id)
+            product_ids: int_to_decimal_string(value: search.first_product_id)
           ) {
             RestRefused { refusal } =>
               return BinderPhotoIntakeRefused { step: CardIntakeReadProductPrices, refusal: refusal }

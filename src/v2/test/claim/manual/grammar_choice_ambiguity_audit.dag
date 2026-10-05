@@ -56,7 +56,7 @@ fn grammar_choice_terminals_text(xs: FreeMonoid<Symbol>) -> String {
 }
 
 fn grammar_choice_ambiguity_row_identity(row: GrammarChoiceAmbiguityRow, ordinal: Int) -> String {
-  symbol_lexeme(sym: row.production) + "#" + integer_int_to_decimal_string(value: ordinal)
+  symbol_lexeme(sym: row.production) + "#" + int_to_decimal_string(value: ordinal)
     + ": overlap=[" + grammar_choice_terminals_text(xs: row.overlap_terminals)
     + "] left=[" + grammar_choice_terminals_text(xs: row.left_first_terminals)
     + "] right=[" + grammar_choice_terminals_text(xs: row.right_first_terminals) + "]"

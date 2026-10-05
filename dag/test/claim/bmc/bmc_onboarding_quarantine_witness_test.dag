@@ -6,7 +6,8 @@ import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.node { Node }
 import v2.std.algebra { any, list_map }
 import v2.lens.effect_reach { atom_identities_in_node }
-import v2.std.integer { integer_int_to_decimal_string, integer_nat_to_decimal_string }
+import std.nat { nat_to_decimal_string }
+import std.integer { int_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -284,7 +285,7 @@ fn onboarding_quarantine_report() -> String {
   let intake_count = length(xs: live_wall.intake_vocabulary)
   let shared_count = length(xs: live_wall.shared_spellings)
   concat(
-    "onboarding quarantine wall: {integer_int_to_decimal_string(value: examined)} declarations examined; onboarding vocabulary {integer_nat_to_decimal_string(value: onboarding_count)}, intake vocabulary {integer_nat_to_decimal_string(value: intake_count)}, shared spellings {integer_nat_to_decimal_string(value: shared_count)}\n",
+    "onboarding quarantine wall: {int_to_decimal_string(value: examined)} declarations examined; onboarding vocabulary {nat_to_decimal_string(value: onboarding_count)}, intake vocabulary {nat_to_decimal_string(value: intake_count)}, shared spellings {nat_to_decimal_string(value: shared_count)}\n",
     "intake consumers of onboarding:\n", onboarding_quarantine_render_findings(findings: live_wall.intake_consumers_of_onboarding),
     "bridging declarations:\n", onboarding_quarantine_render_findings(findings: live_wall.bridging_declarations),
     "fixture control consumers:\n", onboarding_quarantine_render_findings(findings: fixture_control_wall.intake_consumers_of_onboarding),

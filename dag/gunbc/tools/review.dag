@@ -4,7 +4,7 @@ import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, render_cron_schedule }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 
@@ -84,7 +84,7 @@ fn build_user_message(
   base_ref: String,
   diff: String
 ) -> String {
-  "PR #{integer_int_to_decimal_string(value: pr_number)}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
+  "PR #{int_to_decimal_string(value: pr_number)}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
 }
 
 // A REST REFUSAL TAKES THE SAME EXIT AS A REFUSED CONTEXT READ: reviewed is false and comment_url

@@ -1,7 +1,7 @@
 module gunbc.contributor_onboarding_path
 
 import std.types { String, List, NonEmptyStr }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import v2.std.optional { Optional, Absent, Present }
 import std.markdown { MarkdownDocument, MarkdownBlock }
 import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, ol, hr }
@@ -111,11 +111,11 @@ type OnboardingBlocker
 
 // THE ORDINAL IS AN Int, AND THAT IS A CORRECTION RATHER THAN A PREFERENCE (review 64609).
 // It was first declared `std.nat` `Nat` -- `CommutativeSemiring<Magnitude>` -- and rendered with
-// `integer_nat_to_decimal_string`, whose parameter is `v2.std.nat.Nat`, the Peano `Zero | Succ`
+// `nat_to_decimal_string`, whose parameter is `v2.std.nat.Nat`, the Peano `Zero | Succ`
 // coproduct. Two materially different types sharing one spelling is the DESIGN section 3 meaning
 // fork, and this instance is invisible exactly where it is authored: under the interpreter's
 // numeric grounding the projection rendered 1 through 10 correctly, while the emitted closure
-// refuses it. `v2.std.integer` `integer_int_to_decimal_string` records that same class as already
+// refuses it. `v2.std.integer` `int_to_decimal_string` records that same class as already
 // repaired for two Int-valued callers, so re-introducing it would have been a silent regression of
 // that fix. Every other `dag/gunbc` caller consumes the Int renderer; this one now does too.
 //
@@ -653,7 +653,7 @@ fn obstacles_with_undeclared_step() -> List<OnboardingObstacle> {
 // repair the rule roster above received, and the step ordinal was the last authored position left.
 
 fn step_blocks(s: OnboardingStep, position: Int) -> List<MarkdownBlock> {
-  let head = h3(text: join([integer_int_to_decimal_string(value: position), ". ", (s.id as String)], ""))
+  let head = h3(text: join([int_to_decimal_string(value: position), ". ", (s.id as String)], ""))
   let goal = p(text: (s.goal as String))
   let who = p(text: join(["Who is needed: ", blocker_rendered(b: s.blocker)], ""))
   let verify = p(text: join(["Done when: ", (s.verification as String)], ""))
@@ -690,7 +690,7 @@ fn onboarding_preamble_blocks() -> List<MarkdownBlock> {
     p(text: "Generated from `gunbc.contributor_onboarding_path`. Do not hand-edit — the generated-artifact phase adjudicates this file against that authority. Every command below is derived from the authority that owns it, so this page moves when the build, the lane partition or the source roots move."),
     p(text: "This page is an index of a path, not the proof that it works. What establishes the path is walking it: clone, build, run the lanes, make one change, get it reviewed, land it. If a step here does not work, that is a defect in the path and worth reporting as one — the obstacle roster below exists because each of its rows was hit rather than imagined."),
     p(text: "`DESIGN.md` is the authority for every judgement about a change and is not a first-day document. The reading order at the end of this page says what you need before your first build, what you need before your first commit, and what can wait."),
-    p(text: join(["**", integer_int_to_decimal_string(value: count(onboarding_rules)), " RULES APPLY TO EVERY STEP BELOW, because three strangers walking this page lost their build to them.**"], "")),
+    p(text: join(["**", int_to_decimal_string(value: count(onboarding_rules)), " RULES APPLY TO EVERY STEP BELOW, because three strangers walking this page lost their build to them.**"], "")),
     ol(items: map(onboarding_rules, r => li(text: join(["**", (r.name as String), ".** ", (r.rule as String)], "")))),
     hr(),
   ]
@@ -723,7 +723,7 @@ fn onboarding_step_blocks() -> List<MarkdownBlock> {
     [
       [
         h2(text: "The path"),
-        p(text: join([integer_int_to_decimal_string(value: count(onboarding_steps)), " steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause."], "")),
+        p(text: join([int_to_decimal_string(value: count(onboarding_steps)), " steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause."], "")),
       ],
       rendered_step_blocks(steps: onboarding_steps),
     ],

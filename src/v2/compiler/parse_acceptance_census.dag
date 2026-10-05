@@ -19,7 +19,7 @@ import v2.std.diagnostic {
   WholeFile,
   diagnostics_fatal
 }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
 
@@ -81,7 +81,7 @@ fn parse_acceptance_locus_text(at: Locus) -> String {
 
 fn parse_acceptance_extent_text(extent: v2.std.diagnostic.Extent) -> String {
   match extent {
-    ByteRange { start: s, end: e } => integer_int_to_decimal_string(value: s) + ".." + integer_int_to_decimal_string(value: e)
+    ByteRange { start: s, end: e } => int_to_decimal_string(value: s) + ".." + int_to_decimal_string(value: e)
     WholeFile => "whole-file"
   }
 }

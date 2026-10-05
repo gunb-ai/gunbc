@@ -5,7 +5,8 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import v2.std.optional { Optional, Present, Absent }
-import v2.std.integer { integer_lexeme_to_int_optional, integer_nat_to_decimal_string }
+import v2.std.integer { integer_lexeme_to_int_optional }
+import std.nat { nat_to_decimal_string }
 import std.algebra { trim }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -100,11 +101,11 @@ fn posix_group_id_from_text(text: String) -> Optional<PosixGroupId> {
 }
 
 fn posix_user_id_text(user: PosixUserId) -> String {
-  integer_nat_to_decimal_string(value: user.value)
+  nat_to_decimal_string(value: user.value)
 }
 
 fn posix_group_id_text(group: PosixGroupId) -> String {
-  integer_nat_to_decimal_string(value: group.value)
+  nat_to_decimal_string(value: group.value)
 }
 
 // THE ONE SPELLING OF chown(1)'s OWNER[:GROUP] SEPARATOR. Both forms below -- numeric ids and names

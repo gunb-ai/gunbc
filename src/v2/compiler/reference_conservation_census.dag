@@ -48,7 +48,7 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.namespace_step0_subject_collector { Step0SubjectCollected, Step0SubjectCollectionRefused, collect_step0_subject_vector_at }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.text { String }
@@ -243,9 +243,9 @@ fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
 fn changed_scope_verdict_line(observation: ChangedScopeConservationObservation) -> String {
   match observation {
     NoBodyLoweringChange { rows: _ } => "observation no-body-lowering-change"
-    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + integer_int_to_decimal_string(value: n)
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + int_to_decimal_string(value: n)
     ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } =>
-      "observation dropped in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
+      "observation dropped in_scope=" + int_to_decimal_string(value: n) + " refused=" + int_to_decimal_string(value: k)
   }
 }
 
@@ -811,7 +811,7 @@ fn reference_conservation_sample_by_rule_at_pin_exit() -> ProcessExit {
       if length(xs: missing) == 0 && length(xs: extra) == 0 && length(xs: derived) == length(xs: pinned) {
         ExitSuccess
       } else {
-        exit_failure(reason: "the rule at " + reference_conservation_stratified_sample_revision + " selects " + integer_int_to_decimal_string(value: length(xs: derived)) + " paths; the pin lists " + integer_int_to_decimal_string(value: length(xs: pinned)) + "; rule-only " + integer_int_to_decimal_string(value: length(xs: missing)) + fold_list(xs: missing, empty: "", cons: fn(a, p) { a + " " + p }) + "; pin-only " + integer_int_to_decimal_string(value: length(xs: extra)) + fold_list(xs: extra, empty: "", cons: fn(a, p) { a + " " + p }))
+        exit_failure(reason: "the rule at " + reference_conservation_stratified_sample_revision + " selects " + int_to_decimal_string(value: length(xs: derived)) + " paths; the pin lists " + int_to_decimal_string(value: length(xs: pinned)) + "; rule-only " + int_to_decimal_string(value: length(xs: missing)) + fold_list(xs: missing, empty: "", cons: fn(a, p) { a + " " + p }) + "; pin-only " + int_to_decimal_string(value: length(xs: extra)) + fold_list(xs: extra, empty: "", cons: fn(a, p) { a + " " + p }))
       }
   }
 }

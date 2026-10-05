@@ -1,6 +1,6 @@
 module extdeps.filesystem.rust_realization
 
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 
 // THE RUST REALIZATION OF create-new PUBLISH, AS ONE AUTHORITY BOTH CONSUMERS COPY.
 //
@@ -120,7 +120,7 @@ data rust_file_create_staging_candidate_attempt_limit: Int = 1024
 fn rust_file_create_staging_candidate_attempt_limit_def() -> String {
   concat(
     "pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = ",
-    integer_int_to_decimal_string(value: rust_file_create_staging_candidate_attempt_limit),
+    int_to_decimal_string(value: rust_file_create_staging_candidate_attempt_limit),
     ";\n",
   )
 }

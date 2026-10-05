@@ -1,7 +1,7 @@
 module product.spatial_dimension
 
 import std.types { Bool, NonEmptyStr, brand }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure { Millimeter, millimeter_count }
 import std.interval {
   OrderedClosedInterval,
@@ -33,7 +33,6 @@ import std.spatial_knowledge {
   project_spatial_rendering,
   admit_spatial_decision_input,
 }
-import v2.std.integer { integer_nat_to_decimal_string }
 
 // The first product-layer binding of SPATIAL-1, and the reason it is not an unconsumed generic
 // guard. It supplies the four things std cannot: the room IDENTITY (from placement_supply, the
@@ -149,11 +148,11 @@ fn render_wire(dimension: RoomDimensionKnowledge) -> String {
   let style = render_style_wire(style: render_style(rendering: rendering))
   match rendering {
     RenderMeasured { value: v, uncertainty: _ } =>
-      "<line class={style} data-mm={integer_nat_to_decimal_string(value: millimeter_count(m: v))}/>"
+      "<line class={style} data-mm={nat_to_decimal_string(value: millimeter_count(m: v))}/>"
     RenderEstimated { region: r } =>
-      "<band class={style} data-low={integer_nat_to_decimal_string(value: millimeter_count(m: interval_low(interval: r)))} data-high={integer_nat_to_decimal_string(value: millimeter_count(m: interval_high(interval: r)))}/>"
+      "<band class={style} data-low={nat_to_decimal_string(value: millimeter_count(m: interval_low(interval: r)))} data-high={nat_to_decimal_string(value: millimeter_count(m: interval_high(interval: r)))}/>"
     RenderHypothesis { value: v, purpose: _ } =>
-      "<line class={style} data-mm={integer_nat_to_decimal_string(value: millimeter_count(m: v))}/>"
+      "<line class={style} data-mm={nat_to_decimal_string(value: millimeter_count(m: v))}/>"
     RenderUnknown { obligation: o } =>
       "<obligation class={style} data-survey={o as String}/>"
   }

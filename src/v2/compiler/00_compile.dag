@@ -36,7 +36,7 @@ import extdeps.bazel.target_pattern {
   SingleTarget, PackageTargets, SubtreeTargets,
   parse_target_pattern, target_pattern_matches, target_pattern_refusal_text, render_target_pattern
 }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { InferredTree }
@@ -2864,9 +2864,9 @@ fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> 
   }
   concat(
     "import-closure walk exhausted its budget of ",
-    integer_int_to_decimal_string(value: budget),
+    int_to_decimal_string(value: budget),
     " rounds with ",
-    integer_int_to_decimal_string(value: length(xs: frontier)),
+    int_to_decimal_string(value: length(xs: frontier)),
     " module(s) still unexpanded, first: ",
     first
   )
