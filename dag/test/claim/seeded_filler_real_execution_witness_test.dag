@@ -22,9 +22,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn with_temp_dir(scenario: fn(String) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let observed = scenario(dir.path as String)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && observed && cleaned.success
+  if dir.success == false {
+    false
+  } else {
+    let observed = scenario(dir.path as String)
+    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+    observed && cleaned.success
+  }
 }
 
 fn written_at(seed: String, size: Int, path: String) -> Bool {
