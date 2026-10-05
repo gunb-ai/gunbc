@@ -4,10 +4,10 @@ import std.types { String, NonEmptyStr, Int, Bool, List }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { byte_size }
+import std.measure { byte_size, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock }
 import std.content_hash { sha256_hex_digest }
 import std.fabric_blob { FabricBlobAddress }
-import std.checkpointed_workspace { WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceRevision, workspace_head_entry_object, workspace_head_entry_decode }
+import std.checkpointed_workspace { WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceRevision, workspace_head_entry_object, workspace_head_entry_decode, WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // THE COST CONTROL FOR std.checkpointed_workspace's HEAD-ENTRY DECODER, RE-RUN BY NAME:
@@ -33,7 +33,7 @@ data decode_scaling_step_bound_ratio: Int = 6
 
 type DecodeScalingStep {
   entries: Int
-  nanos: Int
+  elapsed: Nanosecond
 }
 
 type DecodeScalingVerdict
@@ -46,7 +46,7 @@ fn decode_scaling_first_breach(steps: List<DecodeScalingStep>) -> DecodeScalingV
     Empty => none
     Cons { head: _, tail: Empty } => none
     Cons { head: a, tail: Cons { head: b, tail: rest } } =>
-      if b.nanos > a.nanos * decode_scaling_step_bound_ratio {
+      if nanosecond_count(n: b.elapsed) > nanosecond_count(n: a.elapsed) * decode_scaling_step_bound_ratio {
         Present { value: DecodeScalingSuperlinear { from: a, to: b } }
       } else {
         decode_scaling_first_breach(steps: Cons { head: b, tail: rest })
@@ -59,6 +59,10 @@ fn decode_scaling_verdict(steps: List<DecodeScalingStep>) -> DecodeScalingVerdic
     Present { value: v } => v
     Absent => DecodeScalingLinear { steps: steps }
   }
+}
+
+fn decode_scaling_instant(label: String) -> ObservationInstant {
+  ObservationInstant { domain: ProcessMonotonic { process: "workspace-entry-decode-scaling" }, basis: WallClock, since_origin: nanosecond(count: observed_monotonic_nanos(label)) }
 }
 
 fn decode_scaling_address() -> FabricBlobAddress? {
@@ -77,29 +81,37 @@ fn decode_scaling_entries(n: Int, chunk: FabricBlobAddress, acc: List<WorkspaceE
 type DecodeScalingRun
   = DecodeScalingTimed { step: DecodeScalingStep }
   | DecodeScalingWrong { entries: Int }
+  | DecodeScalingUntimed { entries: Int }
 
 fn decode_scaling_run(n: Int, chunk: FabricBlobAddress) -> DecodeScalingRun {
   let object = workspace_head_entry_object(entry: WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: "\u{e9}quipe", epoch: 1 }, parent: none, entries: decode_scaling_entries(n: n, chunk: chunk, acc: []) })
-  let start = observed_monotonic_nanos(join(["decode-scaling-start-", to_string(n)], ""))
+  let start = decode_scaling_instant(label: join(["decode-scaling-start-", to_string(n)], ""))
   let decoded = workspace_head_entry_decode(object: object)
-  let nanos = observed_monotonic_nanos(join(["decode-scaling-end-", to_string(n)], "")) - start
+  let age = workspace_age_between(from: start, to: decode_scaling_instant(label: join(["decode-scaling-end-", to_string(n)], "")))
   match decoded {
     Present { value: WorkspaceRevision { writer: _, parent: _, entries: es } } =>
-      if length(es) == n { DecodeScalingTimed { step: DecodeScalingStep { entries: n, nanos: nanos } } } else { DecodeScalingWrong { entries: n } }
+      if length(es) != n {
+        DecodeScalingWrong { entries: n }
+      } else {
+        match age {
+          WorkspaceAgeOf { age: a } => DecodeScalingTimed { step: DecodeScalingStep { entries: n, elapsed: a } }
+          WorkspaceAgeUndefined { order: _ } => DecodeScalingUntimed { entries: n }
+        }
+      }
     Present { value: _ } => DecodeScalingWrong { entries: n }
     Absent => DecodeScalingWrong { entries: n }
   }
 }
 
 fn decode_scaling_step_words(s: DecodeScalingStep) -> String {
-  join(["entries=", to_string(s.entries), " decode_ms=", to_string(s.nanos / 1000000)], "")
+  join(["entries=", to_string(s.entries), " decode_ms=", to_string(nanosecond_count(n: s.elapsed) / 1000000)], "")
 }
 
 fn decode_scaling_verdict_words(v: DecodeScalingVerdict) -> String {
   match v {
     DecodeScalingLinear { steps: _ } => join(["verdict=linear bound_ratio=", to_string(decode_scaling_step_bound_ratio)], "")
     DecodeScalingSuperlinear { from: a, to: b } => join(["verdict=SUPERLINEAR from ", decode_scaling_step_words(s: a), " to ", decode_scaling_step_words(s: b), " bound_ratio=", to_string(decode_scaling_step_bound_ratio)], "")
-    DecodeScalingIncorrect { entries: n } => join(["verdict=INCORRECT the decode of ", to_string(n), " entries did not return them all"], "")
+    DecodeScalingIncorrect { entries: n } => join(["verdict=INCORRECT the decode of ", to_string(n), " entries did not return them all, or its span did not order in one clock domain"], "")
   }
 }
 
@@ -108,8 +120,8 @@ fn decode_scaling() -> ProcessExit {
     Absent => exit_failure(reason: "decode_scaling: the fixture chunk address did not parse")
     Present { value: chunk } => {
       let runs = map(decode_scaling_sizes, n => decode_scaling_run(n: n, chunk: chunk))
-      let wrong = flat_map(runs, r => match r { DecodeScalingWrong { entries: n } => [n]  DecodeScalingTimed { step: _ } => [] })
-      let steps = flat_map(runs, r => match r { DecodeScalingTimed { step: s } => [s]  DecodeScalingWrong { entries: _ } => [] })
+      let wrong = flat_map(runs, r => match r { DecodeScalingWrong { entries: n } => [n]  DecodeScalingUntimed { entries: n } => [n]  DecodeScalingTimed { step: _ } => [] })
+      let steps = flat_map(runs, r => match r { DecodeScalingTimed { step: s } => [s]  DecodeScalingWrong { entries: _ } => []  DecodeScalingUntimed { entries: _ } => [] })
       let verdict = match wrong { Cons { head: n, tail: _ } => DecodeScalingIncorrect { entries: n }  Empty => decode_scaling_verdict(steps: steps) }
       let receipt = join([
         "workspace_entry_decode_scaling paths=non-ascii\n",

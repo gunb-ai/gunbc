@@ -4,7 +4,8 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, measure_count, nanosecond, nanosecond_count }
+import std.measure { ByteSize, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock }
+import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
 import std.content_hash { Sha256Digest }
 import std.fabric_blob {
   FabricBlobAddress, FabricBlobReading, fabric_blob_object_name, fabric_blob_reading_digest, fabric_blob_reading_size,
@@ -246,6 +247,19 @@ fn fabric_workspace_source_key(address: FabricBlobAddress) -> NonEmptyStr {
 
 data workspace_source_receipt_path: String = "target/workspace-source-pack-receipt.txt"
 
+// Spans on this process's monotonic clock, derived by std.checkpointed_workspace
+// workspace_age_between from two typed instants; an underivable span is named, never zero.
+fn workspace_source_instant(label: String) -> ObservationInstant {
+  ObservationInstant { domain: ProcessMonotonic { process: "workspace-source-pack" }, basis: WallClock, since_origin: nanosecond(count: observed_monotonic_nanos(label)) }
+}
+
+fn workspace_source_span_words(start: ObservationInstant, end_label: String) -> String {
+  match workspace_age_between(from: start, to: workspace_source_instant(label: end_label)) {
+    WorkspaceAgeOf { age: a } => join([to_string(nanosecond_count(n: a) / 1000000), "ms"], "")
+    WorkspaceAgeUndefined { order: _ } => "unmeasured(instants did not order in one clock domain)"
+  }
+}
+
 // ── THE PACK, ON THE SOURCE HOST ───────────────────────────────────────────────────────────────
 
 type WorkspaceSourceEnumeration
@@ -382,9 +396,9 @@ fn workspace_source_pack_readable(head: String, tallies: List<WorkspaceSourceTal
     if listed.success == false {
       workspace_source_finish(receipt: concat(head, "verdict=refused-member-list-unwritten\n"), outcome: exit_failure(reason: concat("workspace_source_pack: the member list could not be written: ", listed.error)))
     } else {
-      let pack_start = observed_monotonic_nanos("workspace-source-pack-start")
+      let pack_start = workspace_source_instant(label: "workspace-source-pack-start")
       let packed = workspace_run_ok(run: run_shell_command_observe_outcome(command: tar_create_from_list_command(archive: archive, from_directory: "/", member_list: list_path), transport: LocalExec))
-      let pack_elapsed = nanosecond(count: observed_monotonic_nanos("workspace-source-pack-end") - pack_start)
+      let pack_span = workspace_source_span_words(start: pack_start, end_label: "workspace-source-pack-end")
       match packed {
         Present { value: why } => workspace_source_finish(receipt: concat(head, "verdict=refused-pack-failed\n"), outcome: exit_failure(reason: concat("workspace_source_pack: tar refused: ", why)))
         Absent =>
@@ -403,7 +417,7 @@ fn workspace_source_pack_readable(head: String, tallies: List<WorkspaceSourceTal
                     if n != length(members) {
                       workspace_source_finish(receipt: concat(head, "verdict=refused-member-count-mismatch\n"), outcome: exit_failure(reason: join(["workspace_source_pack: the archive holds ", to_string(n), " members but the list named ", to_string(length(members))], "")))
                     } else {
-                      workspace_source_publish(head: concat(head, join(["archive_members=", to_string(n), " pack_ms=", to_string(nanosecond_count(n: pack_elapsed) / 1000000), "\n"], "")), archive: archive, staging: staging.path as String)
+                      workspace_source_publish(head: concat(head, join(["archive_members=", to_string(n), " pack=", pack_span, "\n"], "")), archive: archive, staging: staging.path as String)
                     }
                 }
               }
@@ -422,11 +436,11 @@ fn workspace_source_publish(head: String, archive: String, staging: String) -> P
       match select_access_token_source() {
         AccessTokenSourceUnavailable { cause: c } => workspace_source_finish(receipt: concat(head2, "verdict=refused-no-token-source\n"), outcome: exit_failure(reason: concat("workspace_source_pack: ", c as String)))
         AccessTokenSourceSelected { source: s } => {
-          let up_start = observed_monotonic_nanos("workspace-source-upload-start")
+          let up_start = workspace_source_instant(label: "workspace-source-upload-start")
           let put = put_fabric_blob(address: address, reading: r, key: fabric_workspace_source_key(address: address), bound: fabric_workspace_object_bound(), purpose: FabricWorkspace {}, token_source: s)
-          let up_elapsed = nanosecond(count: observed_monotonic_nanos("workspace-source-upload-end") - up_start)
+          let up_span = workspace_source_span_words(start: up_start, end_label: "workspace-source-upload-end")
           let removed = shell.Remove.RecursiveForce(path: staging as FilePath)
-          let receipt = join([head2, "upload=", workspace_put_words(put: put.verdict), " upload_ms=", to_string(nanosecond_count(n: up_elapsed) / 1000000), " staging_removed=", if removed.success { "yes" } else { "no" }, "\n"], "")
+          let receipt = join([head2, "upload=", workspace_put_words(put: put.verdict), " upload_span=", up_span, " staging_removed=", if removed.success { "yes" } else { "no" }, "\n"], "")
           match put.credential {
             WriteCredentialResidueRemains { cause: why } =>
               workspace_source_finish(receipt: join([receipt, "credential=RESIDUE ", why as String, "\nverdict=", if workspace_put_landed(put: put.verdict) { "published-with-residue" } else { "refused-upload-with-residue" }, "\n"], ""), outcome: exit_failure(reason: join(["workspace_source_pack: the write credential was left behind and requires cleanup: ", why as String, " (upload=", workspace_put_words(put: put.verdict), ")"], "")))

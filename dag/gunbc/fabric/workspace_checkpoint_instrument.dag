@@ -33,6 +33,7 @@ import std.checkpointed_workspace {
   WorkspaceCommitResultMismatch, WorkspaceCommitFailed, workspace_commit_classify, workspace_receipt_revision,
   WorkspaceDurabilityState, WorkspaceClean, CheckpointPathMaintainingCoverage, workspace_state_after_commit,
   WorkspaceRestorePoint, WorkspaceRestoreRevision, WorkspaceRestoreEmpty, workspace_restore_point,
+  WorkspaceAge, WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
@@ -364,10 +365,25 @@ fn workspace_object_put_words(v: FabricObjectR2PutVerdict) -> String {
 // The commit instant is read from this process's own monotonic clock. Coverage arithmetic compares
 // it only with instants of the same process, which is the one domain this run has.
 fn workspace_instrument_now() -> ObservationInstant {
+  workspace_instant(label: "workspace-instrument-commit-at")
+}
+
+// EVERY INSTANT THIS RUN READS IS A std.measure ObservationInstant OF ONE DOMAIN, the process's own
+// monotonic clock, and every span is derived from two of them by std.checkpointed_workspace
+// workspace_age_between -- never by subtracting bare counts. A span that cannot be derived (instants
+// out of order, or of another domain) is a named unmeasured part, never zero.
+fn workspace_instant(label: String) -> ObservationInstant {
   ObservationInstant {
     domain: ProcessMonotonic { process: "workspace-checkpoint-instrument" },
     basis: WallClock,
-    since_origin: nanosecond(count: observed_monotonic_nanos("workspace-instrument-commit-at")),
+    since_origin: nanosecond(count: observed_monotonic_nanos(label)),
+  }
+}
+
+fn workspace_part_since(part: NonEmptyStr, start: ObservationInstant, end_label: String) -> WorkspaceMeasuredPart {
+  match workspace_age_between(from: start, to: workspace_instant(label: end_label)) {
+    WorkspaceAgeOf { age: a } => PartMeasured { label: part, elapsed: a }
+    WorkspaceAgeUndefined { order: _ } => PartUnmeasured { label: part, reason: "the span's two monotonic instants did not order within one clock domain" }
   }
 }
 
@@ -712,12 +728,6 @@ fn workspace_run_local(command: ArgvCommand) -> ProcessRunOutcome {
   run_shell_command_observe_outcome(command: command, transport: LocalExec)
 }
 
-// THE ELAPSED SPAN SINCE A MONOTONIC READING OF THIS PROCESS, as the canonical std.measure carrier.
-// The receipt renders it in milliseconds; the value is never carried as a bare count.
-fn workspace_elapsed_since(start: Int, label: String) -> Nanosecond {
-  nanosecond(count: observed_monotonic_nanos(label) - start)
-}
-
 fn workspace_ms_words(n: Nanosecond) -> String {
   join([to_string(nanosecond_count(n: n) / 1000000), "ms"], "")
 }
@@ -840,7 +850,7 @@ fn kopia_place(scratch: NonEmptyStr) -> KopiaPlacement {
 // the read-only snapshot, so the tool reads the same frozen tree the chunk upload reads. Only the
 // snapshot create is timed; repository creation is setup.
 type KopiaScan
-  = KopiaScanned { elapsed: Nanosecond, summary: KopiaSnapshotSummary? }
+  = KopiaScanned { part: WorkspaceMeasuredPart, summary: KopiaSnapshotSummary? }
   | KopiaScanRefused { cause: String }
 
 fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
@@ -854,13 +864,13 @@ fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
       match workspace_run_refusal(run: workspace_run_local(command: kopia_repository_create_filesystem_command(program: program, repository: join([scratch as String, "/kopia-repo"], ""), config_file: config, password: password, cache_directory: join([scratch as String, "/kopia-cache"], ""), log_directory: logs))) {
         Present { value: why } => KopiaScanRefused { cause: concat("kopia repository create: ", why) }
         Absent => {
-          let start = observed_monotonic_nanos("workspace-kopia-scan-start")
+          let start = workspace_instant(label: "workspace-kopia-scan-start")
           let run = workspace_run_local(command: kopia_snapshot_create_command(program: program, source: source as String, config_file: config, password: password, log_directory: logs))
-          let elapsed = workspace_elapsed_since(start: start, label: "workspace-kopia-scan-end")
+          let scanned = workspace_part_since(part: "scan", start: start, end_label: "workspace-kopia-scan-end")
           match run {
             ProcessNotSpawned { program: p, cause: c } => KopiaScanRefused { cause: join([p as String, " did not run: ", c as String], "") }
             ProcessRan { observation: o } =>
-              if o.exit_code != 0 { KopiaScanRefused { cause: join(["kopia snapshot create exit ", to_string(o.exit_code), ": ", o.stderr], "") } } else { KopiaScanned { elapsed: elapsed, summary: kopia_snapshot_summary_of(manifest: o.stdout) } }
+              if o.exit_code != 0 { KopiaScanRefused { cause: join(["kopia snapshot create exit ", to_string(o.exit_code), ": ", o.stderr], "") } } else { KopiaScanned { part: scanned, summary: kopia_snapshot_summary_of(manifest: o.stdout) } }
           }
         }
       }
@@ -871,8 +881,8 @@ fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
 fn kopia_scan_words(scan: KopiaScan) -> String {
   match scan {
     KopiaScanRefused { cause: c } => join(["scan=refused ", c], "")
-    KopiaScanned { elapsed: e, summary: s } =>
-      join(["scan_tool=kopia-", kopia_release.version as String, " scan=", workspace_ms_words(n: e), match s {
+    KopiaScanned { part: p, summary: s } =>
+      join(["scan_tool=kopia-", kopia_release.version as String, " ", workspace_part_words(p: p), match s {
         Present { value: k } => join([" kopia_files=", to_string(k.files), " kopia_bytes=", to_string(measure_count(m: k.bytes))], "")
         Absent => " kopia_summary=unread"
       }], "")
@@ -881,7 +891,7 @@ fn kopia_scan_words(scan: KopiaScan) -> String {
 
 fn kopia_scan_part(scan: KopiaScan) -> WorkspaceMeasuredPart {
   match scan {
-    KopiaScanned { elapsed: e, summary: _ } => PartMeasured { label: "scan", elapsed: e }
+    KopiaScanned { part: p, summary: _ } => p
     KopiaScanRefused { cause: c } => PartUnmeasured { label: "scan", reason: c }
   }
 }
@@ -960,29 +970,29 @@ fn workspace_measure_on_btrfs(parent: NonEmptyStr, run: NonEmptyStr, token_sourc
 }
 
 fn workspace_measure_extracted(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, custody: WorkspaceCustody, head: String) -> ProcessExit {
-  let snap_start = observed_monotonic_nanos("workspace-snapshot-start")
+  let snap_start = workspace_instant(label: "workspace-snapshot-start")
   let snap_refusal = workspace_run_refusal(run: workspace_run_local(command: btrfs_subvolume_snapshot_read_only_command(source: workspace as String, destination: snapshot as String)))
-  let snap = workspace_elapsed_since(start: snap_start, label: "workspace-snapshot-end")
+  let snap = workspace_part_since(part: "snapshot", start: snap_start, end_label: "workspace-snapshot-end")
   match snap_refusal {
     Present { value: why } => workspace_measure_fail(head: concat(head, "snapshot_method=btrfs-subvolume-snapshot-ro\n"), verdict: "refused-snapshot", why: concat("the snapshot failed: ", why), custody: custody)
     Absent => {
       let scan = kopia_scan(scratch: scratch, source: snapshot)
-      let up_start = observed_monotonic_nanos("workspace-upload-start")
+      let up_start = workspace_instant(label: "workspace-upload-start")
       let upload = workspace_upload_tree(root: snapshot, token_source: token_source)
-      let upload_elapsed = workspace_elapsed_since(start: up_start, label: "workspace-upload-end")
-      workspace_measure_report(workspace: workspace, snapshot: snapshot, scratch: scratch, run: run, token_source: token_source, custody: custody, head: head, snap: snap, scan: scan, upload: upload, upload_elapsed: upload_elapsed)
+      let upload_timed = workspace_part_since(part: "upload", start: up_start, end_label: "workspace-upload-end")
+      workspace_measure_report(workspace: workspace, snapshot: snapshot, scratch: scratch, run: run, token_source: token_source, custody: custody, head: head, snap: snap, scan: scan, upload: upload, upload_timed: upload_timed)
     }
   }
 }
 
-fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, custody: WorkspaceCustody, head: String, snap: Nanosecond, scan: KopiaScan, upload: WorkspaceUpload, upload_elapsed: Nanosecond) -> ProcessExit {
+fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, custody: WorkspaceCustody, head: String, snap: WorkspaceMeasuredPart, scan: KopiaScan, upload: WorkspaceUpload, upload_timed: WorkspaceMeasuredPart) -> ProcessExit {
   let writer = WorkspaceWriterEpoch { workspace: join(["stage0-", run as String], "") as NonEmptyStr, epoch: 1 }
   let timed_commit = match upload {
     WorkspaceUploadRefused { detail: d, custody: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: concat("the upload refused: ", d) }, custody: workspace_custody_clean }
     WorkspaceUploaded { entries: es, stored: _, occupied: _, bytes: _, symlinks: _, custody: _ } => workspace_timed_commit(writer: writer, entries: es, token_source: token_source)
   }
   let upload_part = match upload {
-    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: _, symlinks: _, custody: _ } => PartMeasured { label: "upload", elapsed: upload_elapsed }
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: _, symlinks: _, custody: _ } => upload_timed
     WorkspaceUploadRefused { detail: d, custody: _ } => PartUnmeasured { label: "upload", reason: d }
   }
   let upload_custody = match upload {
@@ -990,12 +1000,12 @@ fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scrat
     WorkspaceUploadRefused { detail: _, custody: c } => c
   }
   let run_custody = workspace_custody_all(cs: [custody, upload_custody, timed_commit.custody])
-  let snapshot_parts = [PartMeasured { label: "snapshot", elapsed: snap }, upload_part, timed_commit.part]
+  let snapshot_parts = [snap, upload_part, timed_commit.part]
   let scan_parts = [kopia_scan_part(scan: scan), upload_part, timed_commit.part]
   let n = workspace_draft_numbers
   let upload_words = match upload {
     WorkspaceUploaded { entries: es, stored: st, occupied: oc, bytes: b, symlinks: sl, custody: _ } =>
-      join(["files=", to_string(length(es)), " bytes=", to_string(measure_count(m: b)), " chunks_uploaded=", to_string(st), " chunks_already_present=", to_string(oc), " symlinks_not_carried=", to_string(sl), " upload=", workspace_ms_words(n: upload_elapsed)], "")
+      join(["files=", to_string(length(es)), " bytes=", to_string(measure_count(m: b)), " chunks_uploaded=", to_string(st), " chunks_already_present=", to_string(oc), " symlinks_not_carried=", to_string(sl), " ", workspace_part_words(p: upload_timed)], "")
     WorkspaceUploadRefused { detail: d, custody: _ } => join(["upload=refused ", d], "")
   }
   let quota_line = match upload {
@@ -1009,7 +1019,7 @@ fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scrat
   ], "")
   let receipt = join([
     head,
-    "snapshot_method=btrfs-subvolume-snapshot-ro snapshot=", workspace_ms_words(n: snap), "\n",
+    "snapshot_method=btrfs-subvolume-snapshot-ro ", workspace_part_words(p: snap), "\n",
     kopia_scan_words(scan: scan), "\n",
     upload_words, "\n",
     "commit=", match timed_commit.commit { Present { value: c } => workspace_commit_words(c: c)  Absent => "not-attempted" }, " ", workspace_part_words(p: timed_commit.part), "\n",
@@ -1050,12 +1060,12 @@ fn workspace_timed_commit(writer: WorkspaceWriterEpoch, entries: List<WorkspaceE
     WorkspaceHeadBound { binding: b } =>
       match workspace_advance_plan(writer: writer, change: WorkspaceCommitRevision { entries: entries }, built_on: none) {
         WorkspaceAdvancePlanned { plan: plan } => {
-          let start = observed_monotonic_nanos("workspace-commit-start")
+          let start = workspace_instant(label: "workspace-commit-start")
           let attempt = workspace_instrument_commit(admission: r2_head_cas_admission(ground: r2_head_cas_ground()), plan: plan, binding: b, token_source: token_source)
-          let elapsed = workspace_elapsed_since(start: start, label: "workspace-commit-end")
+          let commit_timed = workspace_part_since(part: "commit", start: start, end_label: "workspace-commit-end")
           WorkspaceTimedCommit {
             commit: Present { value: attempt.commit },
-            part: if workspace_commit_is_committed(c: attempt.commit) { PartMeasured { label: "commit", elapsed: elapsed } } else { PartUnmeasured { label: "commit", reason: workspace_commit_words(c: attempt.commit) } },
+            part: if workspace_commit_is_committed(c: attempt.commit) { commit_timed } else { PartUnmeasured { label: "commit", reason: workspace_commit_words(c: attempt.commit) } },
             custody: attempt.custody,
           }
         }

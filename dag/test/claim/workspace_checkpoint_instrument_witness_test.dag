@@ -371,11 +371,11 @@ test fn residue_survives_a_committed_advance_into_the_exit() -> Bool {
 // THE DECODE COST CONTROL'S JUDGEMENT (gunbc.instruments.workspace_entry_decode_scaling): 4x steps
 // at about 4x time are linear; a 16x step -- the shape a quadratic decode produces -- is the red.
 test fn the_decode_scaling_verdict_refuses_a_quadratic_step() -> Bool {
-  let linear = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, nanos: 271000000 }, DecodeScalingStep { entries: 1000, nanos: 1098000000 }, DecodeScalingStep { entries: 4000, nanos: 4537000000 }]) {
+  let linear = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, elapsed: nanosecond(count: 271000000) }, DecodeScalingStep { entries: 1000, elapsed: nanosecond(count: 1098000000) }, DecodeScalingStep { entries: 4000, elapsed: nanosecond(count: 4537000000) }]) {
     DecodeScalingLinear { steps: _ } => true
     other => false
   }
-  let quadratic = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, nanos: 113000000 }, DecodeScalingStep { entries: 1000, nanos: 1379000000 }, DecodeScalingStep { entries: 4000, nanos: 20206000000 }]) {
+  let quadratic = match decode_scaling_verdict(steps: [DecodeScalingStep { entries: 250, elapsed: nanosecond(count: 113000000) }, DecodeScalingStep { entries: 1000, elapsed: nanosecond(count: 1379000000) }, DecodeScalingStep { entries: 4000, elapsed: nanosecond(count: 20206000000) }]) {
     DecodeScalingSuperlinear { from: a, to: _ } => a.entries == 250
     other => false
   }
