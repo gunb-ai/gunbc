@@ -90,7 +90,11 @@ import gunbc.managed_host {
 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text }
-import gunbc.machine_intake_mtcollins1_power_on_account { CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
+import gunbc.host_boot_attempt_admission {
+  BootAttemptCleared, BootAttemptRefused, admit_boot_attempt, attempt_configuration_receipt,
+  attempt_configuration_not_recorded, attempt_configuration_refused, attempt_receipt_refusal_text,
+}
+import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
@@ -2321,7 +2325,7 @@ fn mtcollins1_boot_actuate(
   resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
 ) -> MtCollins1BootActuation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate_held"),
   ]
 {
   let hold_acquired = proc_uptime_read()
@@ -2478,6 +2482,25 @@ fn mtcollins1_boot_actuate(
 // the only arm that reaches a BMC write is UnitHeld, whose proof exists only because the
 // compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
 // caller could author. The hold is freed whatever the actuation answered.
+// THE ACTUATION AND THE ATTEMPT CONFIGURATION IT RAN UNDER, frozen by gunbc.host_boot_attempt_admission
+// before any pre-power read or write.
+type MtCollins1HeldBoot {
+  actuation: MtCollins1BootActuation
+  configuration: AttemptConfigurationReceipt
+  baseline: MtCollins1BootBaseline
+}
+
+// THE ATTEMPT'S BMC BASELINE (the SDR cache and the SEL before), taken only under the unit hold and
+// after the attempt's configuration is admitted: a refused receipt reads nothing from the controller.
+type MtCollins1BootBaseline {
+  sdr: SdrCacheReading
+  sel_before: SelSnapshotReading
+}
+
+fn baseline_not_taken(reason: NonEmptyStr) -> MtCollins1BootBaseline {
+  MtCollins1BootBaseline { sdr: SdrCacheNotTaken { reason: reason }, sel_before: SelSnapshotNotTaken { reason: reason } }
+}
+
 fn mtcollins1_boot_under_live_unit_hold(
   run_id: NonEmptyStr,
   subject: AdmittedBootSubject,
@@ -2485,26 +2508,67 @@ fn mtcollins1_boot_under_live_unit_hold(
   sol_pid_path: String,
   sol_capture_path: String,
   resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
-) -> MtCollins1BootActuation
+  baseline: fn() -> MtCollins1BootBaseline,
+) -> MtCollins1HeldBoot
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
   ]
 {
   match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id) {
-    UnitHoldRefused { reason: r } => actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written")
-    UnitHeld { proof: p } => {
-      let act = mtcollins1_boot_actuate(
-        proof: p,
-        subject: subject,
-        password_file: password_file,
-        attempt: run_id as String,
-        sol_pid_path: sol_pid_path,
-        sol_capture_path: sol_capture_path,
-        resolve_toolchain: resolve_toolchain,
-      )
-      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), media: act.media, handoff_media: act.handoff_media, end_media: act.end_media, stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing, screen: act.screen, runner_host: act.runner_host  }
-    }
+    UnitHoldRefused { reason: r } =>
+      MtCollins1HeldBoot {
+        actuation: actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written"),
+        configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: run_id, reason: "the unit hold was refused, so the attempt receipt was not admitted"),
+        baseline: baseline_not_taken(reason: "the unit hold was refused, so the controller was not read"),
+      }
+    UnitHeld { proof: p } =>
+      match admit_boot_attempt(proof: p, revision: subject.execution_revision) {
+        BootAttemptRefused { cause: c } => {
+          let why = concat("mtcollins1 boot: attempt receipt refused: ", attempt_receipt_refusal_text(cause: c))
+          MtCollins1HeldBoot {
+            actuation: actuation_not_powered_on(outcome: unit_hold_release(proof: p, outcome: exit_failure(reason: why)), reason: "the named attempt receipt was refused, so nothing was written"),
+            configuration: attempt_configuration_refused(host: operator_host_mtcollins1 as NonEmptyStr, attempt: run_id, cause: c),
+            baseline: baseline_not_taken(reason: "the named attempt receipt was refused, so the controller was not read"),
+          }
+        }
+        BootAttemptCleared { clearance: clearance } => {
+          let configuration = attempt_configuration_receipt(clearance: clearance, attempt: run_id)
+          let taken = baseline()
+          let actuation = mtcollins1_boot_actuate_held(proof: p, subject: subject, password_file: password_file, run_id: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
+          MtCollins1HeldBoot { actuation: actuation, configuration: configuration, baseline: taken }
+        }
+      }
   }
+}
+
+fn mtcollins1_boot_baseline(username: NonEmptyStr, password_file: NonEmptyStr) -> MtCollins1BootBaseline {
+  let sdr = mtcollins1_boot_sdr_cache(username: username, password_file: password_file, path: concat(password_file as String, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
+  MtCollins1BootBaseline { sdr: sdr, sel_before: mtcollins1_boot_sel_snapshot(username: username, password_file: password_file, sdr: sdr) }
+}
+
+fn mtcollins1_boot_actuate_held(
+  proof: UnitHoldProof,
+  subject: MtCollins1BootSubject,
+  password_file: String,
+  run_id: NonEmptyStr,
+  sol_pid_path: String,
+  sol_capture_path: String,
+  resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
+) -> MtCollins1BootActuation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+  ]
+{
+  let act = mtcollins1_boot_actuate(
+    proof: proof,
+    subject: subject,
+    password_file: password_file,
+    attempt: run_id as String,
+    sol_pid_path: sol_pid_path,
+    sol_capture_path: sol_capture_path,
+    resolve_toolchain: resolve_toolchain,
+  )
+  MtCollins1BootActuation { outcome: unit_hold_release(proof: proof, outcome: act.outcome), media: act.media, handoff_media: act.handoff_media, end_media: act.end_media, stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing, screen: act.screen, runner_host: act.runner_host }
 }
 
 // EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
@@ -2535,6 +2599,7 @@ type MtCollins1BootAttempt {
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
+  configuration: AttemptConfigurationReceipt
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -2546,7 +2611,7 @@ fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
 
 // THE ACTUATION AS THE ATTEMPT RESULT, PURE: every field the actuation observed, the runner-host
 // reading among them, beside the BMC access the attempt held.
-fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootBmcAccess) -> MtCollins1BootAttempt {
+fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootBmcAccess, configuration: AttemptConfigurationReceipt) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: act.outcome,
     media: act.media,
@@ -2560,6 +2625,7 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
     timing: act.timing,
     screen: act.screen,
     runner_host: act.runner_host,
+    configuration: configuration,
   }
 }
 
@@ -2577,6 +2643,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     timing: boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
     screen: kvm_observer_record_not_started(attempt: "", reason: "the attempt ended before the unit hold"),
     runner_host: none,
+    configuration: attempt_configuration_not_recorded(host: operator_host_mtcollins1 as NonEmptyStr, attempt: "not reached", reason: "the attempt ended before the unit hold, so no attempt receipt was admitted"),
   }
 }
 
@@ -2596,6 +2663,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         console: mtcollins1_boot_console(path: capture_path),
         run: run_record_not_taken(reason: why),
         screen: attempt.screen,
+        configuration: attempt.configuration,
       }
     BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before } => {
       let sel_after = mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr)
@@ -2618,6 +2686,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         console: mtcollins1_boot_console(path: capture_path),
         run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing),
         screen: attempt.screen,
+        configuration: attempt.configuration,
       }
     }
   }
@@ -2787,14 +2856,14 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
   }
   match mtcollins1_secured_account() {
     Absent => {
-      let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
-      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" })
+      let held = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { baseline_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with") })
+      let act = held.actuation
+      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }, configuration: held.configuration)
     }
     Present { value: user } => {
-      let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
-      let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
-      let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
-      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before })
+      let held = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { mtcollins1_boot_baseline(username: user, password_file: cred as NonEmptyStr) })
+      let act = held.actuation
+      mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: held.baseline.sdr, sel_before: held.baseline.sel_before }, configuration: held.configuration)
     }
   }
 }

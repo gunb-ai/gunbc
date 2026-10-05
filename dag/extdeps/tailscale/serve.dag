@@ -114,9 +114,49 @@ fn tailscale_serve_unix_target(path: NonEmptyStr) -> NonEmptyStr {
   concat(tailscale_serve_unix_target_prefix, path as String) as NonEmptyStr
 }
 
+// The socket path a unix target names, or nothing for a port backend: the inverse of
+// tailscale_serve_unix_target.
+fn tailscale_serve_unix_target_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr? {
+  let backend = endpoint.backend as String
+  if starts_with(s: backend, prefix: tailscale_serve_unix_target_prefix) && length(backend) > length(tailscale_serve_unix_target_prefix) {
+    Present { value: substring(s: backend, start: length(tailscale_serve_unix_target_prefix), end: length(backend)) as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+// The backend word that produces a status proxy target: the inverse of tailscale_serve_proxy_url.
+// A unix target is its own word and a loopback port URL is its port; any other target (another
+// host, another scheme) is not a backend this module's endpoint form can restate, and answers
+// nothing rather than an approximation.
+data tailscale_serve_port_proxy_prefix: String = "http://127.0.0.1:"
+
+fn tailscale_serve_backend_of_proxy_target(target: String) -> NonEmptyStr? {
+  if starts_with(s: target, prefix: tailscale_serve_unix_target_prefix) && length(target) > length(tailscale_serve_unix_target_prefix) {
+    Present { value: target as NonEmptyStr }
+  } else if starts_with(s: target, prefix: tailscale_serve_port_proxy_prefix) {
+    let port = substring(s: target, start: length(tailscale_serve_port_proxy_prefix), end: length(target))
+    match parse_int(s: port) {
+      Present { value: n } => if n > 0 && to_string(n) == port { Present { value: port as NonEmptyStr } } else { none }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+// THE PEER A UNIX TARGET SEES. tailscaled runs as root and it is tailscaled that dials the target,
+// so a connection Serve proxies to a unix socket arrives with root as its kernel-attested peer;
+// since v1.98.9 only root may configure a unix target at all (TS-2026-005).
+data tailscale_serve_unix_proxy_peer: NonEmptyStr = "root" as NonEmptyStr
+
+fn tailscale_serve_backend_is_unix_target(endpoint: TailscaleServeEndpoint) -> Bool {
+  starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix)
+}
+
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
   if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
-  else { concat("http://127.0.0.1:", endpoint.backend as String) }
+  else { concat(tailscale_serve_port_proxy_prefix, endpoint.backend as String) }
 }
 
 fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {
@@ -205,6 +245,38 @@ fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleSer
       match json_unique_member_value(v: doc, key: "Web") {
         Present { value: web } =>
           ServeStatusProxies { targets: tailscale_status_web_proxies(web: web, mount: mount) }
+        Absent => ServeStatusProxies { targets: [] }
+      }
+    JsonDocumentUnreadable { gap: _ } => ServeStatusUnreadable
+  }
+}
+
+// THE SAME PROJECTION, KEYED BY THE ROUTE RATHER THAN THE MOUNT ALONE. Web is tailscale
+// ipn.ServeConfig Web, map[HostPort]*WebServerConfig, so every member key is "<dns>:<port>" and the
+// port after the last colon is the listener. tailscale_serve_status_proxy_targets reads a mount
+// across every listener, which cannot answer whether THIS route (listener x mount) is proxied: a
+// handler at the same mount on another listener would read as this one. Only members whose
+// HostPort ends in the key's listener port contribute here; DNS is still not identity.
+fn tailscale_status_web_listener_proxies(web: JsonValue, key: TailscaleServeRouteKey) -> List<String> {
+  match web {
+    JsonObject { members } => flat_map(
+      filter(members, member => ends_with(s: member.key, suffix: concat(":", to_string(key.https_port)))),
+      member => tailscale_status_web_entry_proxies(entry: member.value, mount: key.mount),
+    )
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
+  }
+}
+
+fn tailscale_serve_status_route_proxy_targets(status_json: String, key: TailscaleServeRouteKey) -> TailscaleServeStatusProjection {
+  match parse_json_document(s: status_json) {
+    JsonDocumentParsed { value: doc } =>
+      match json_unique_member_value(v: doc, key: "Web") {
+        Present { value: web } =>
+          ServeStatusProxies { targets: tailscale_status_web_listener_proxies(web: web, key: key) }
         Absent => ServeStatusProxies { targets: [] }
       }
     JsonDocumentUnreadable { gap: _ } => ServeStatusUnreadable

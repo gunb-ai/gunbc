@@ -5,6 +5,7 @@ import std.measure { kibibyte_count, hardware_thread_count_value }
 import std.process { ExitSuccess }
 import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import v2.std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
@@ -282,7 +283,7 @@ fn through(subject: AdmittedBootSubject, reading: RunnerHostUp?) -> RunnerHostUp
   let aw = actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: SmproNotTaken { reason: "supplied" }, smpro_read: UptimeRefused { detail: "supplied" }, terminal_read: UptimeRefused { detail: "supplied" })
   let base = actuation_not_powered_on(outcome: aw.outcome, reason: "supplied")
   let act = MtCollins1BootActuation { outcome: base.outcome, media: base.media, handoff_media: base.handoff_media, end_media: base.end_media, stage: aw.stage, override_before: base.override_before, override_after: base.override_after, power_after: base.power_after, timing: base.timing, screen: base.screen, runner_host: aw.runner_host }
-  mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "supplied" }).runner_host
+  mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied")).runner_host
 }
 
 // THE READING REACHES THE COMPLETED ATTEMPT, through the real post-watch projections: the accepted
