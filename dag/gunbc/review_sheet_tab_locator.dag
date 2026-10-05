@@ -4,14 +4,15 @@ import std.types { NonEmptyStr, String, Int, List }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import extdeps.transports.rest {
-  RestOutcome,
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestReadExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.sheets
 import extdeps.google.sheets {
@@ -323,47 +324,53 @@ data review_tab_locator_field_mask: String = sheets_field_mask(paths: [sheets_fi
 // the transport's own account of why, because a locator that answered TabAbsent to a 403 would
 // send an operator to look for a missing tab in a spreadsheet they cannot open.
 fn locate_review_tab(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding uses net: Network {
-  let meta = sheets.Spreadsheets.GetSpreadsheetMetadata(
-    spreadsheet_id: spreadsheet_id as String,
-    fields: review_tab_locator_field_mask,
+  review_tab_standing_of_outcome(
+    spreadsheet_id: spreadsheet_id,
+    outcome: match sheets.Spreadsheets.GetSpreadsheetMetadata(
+      spreadsheet_id: spreadsheet_id as String,
+      fields: review_tab_locator_field_mask,
+    ) {
+      RestAnswered { answer } => RestAnswered { answer: answer.result }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
   )
-  review_tab_standing_of_outcome(spreadsheet_id: spreadsheet_id, outcome: meta.outcome, read: meta.result)
 }
 
 // SEALED FOR THE SAME REASON THE MINT IS. This function calls the mint, so leaving it open would
-// be a second door into a located tab: a caller handing it RestOk beside an authored response
+// be a second door into a located tab: a caller handing it RestAnswered over an authored response
 // would obtain exactly what sole_constructor exists to prevent. A seal with an unsealed caller is
 // not a weaker seal, it is no seal.
 fn review_tab_standing_of_outcome(
   spreadsheet_id: NonEmptyStr,
-  outcome: RestOutcome,
-  read: SpreadsheetRead,
+  outcome: RestResult<SpreadsheetRead>,
 ) -> ReviewTabStanding admit_callers: [
   decl_ref(module_path: "gunbc.review_sheet_tab_locator", decl_name: "locate_review_tab"),
   decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent")
 ] {
-  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
-    RestExchangeSucceeded =>
+  match outcome {
+    RestAnswered { answer } =>
       review_tab_standing_from_classification(
         spreadsheet_id: spreadsheet_id,
-        classified: classify_review_tabs(read: read),
+        classified: classify_review_tabs(read: answer),
       )
-    RestExchangeStatusRefused { status, body } =>
-      TabUnreadable {
-        cause: join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      TabUnreadable {
-        cause: join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      TabUnreadable {
-        cause: join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      TabUnreadable {
-        cause: join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
-      }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        TabUnreadable {
+          cause: join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        TabUnreadable {
+          cause: join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        TabUnreadable {
+          cause: join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        TabUnreadable {
+          cause: join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 

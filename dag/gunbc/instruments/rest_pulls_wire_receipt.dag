@@ -5,10 +5,10 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.pulls { Open }
 import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
-// Wet github.Pulls.List against gunbc_repository. RestOk is the live green; a 200 whose body
+// Wet github.Pulls.List against gunbc_repository. RestAnswered is the live green; a 200 whose body
 // does not inhabit the declared List is RestBodyUndecodable. An entry point rather than a shell
 // script because DESIGN rules an ad-hoc .sh in this repository unmodeled realization: a
 // measurement worth re-deriving is worth an entry point. Run it as
@@ -23,13 +23,15 @@ fn list_open_pulls_wire_receipt() -> ProcessExit {
     repo: gunbc_repository.name,
     state: Open,
   )
-  match result.outcome {
-    RestOk => ExitSuccess
-    RestBodyUndecodable { status: _, cause } =>
-      exit_failure(reason: cause as String)
-    RestStatusRefused { status: _, body } =>
-      exit_failure(reason: body)
-    RestTransportRefused { cause } =>
-      exit_failure(reason: cause as String)
+  match result {
+    RestAnswered { answer: _ } => ExitSuccess
+    RestRefused { refusal } => match refusal {
+      RestBodyUndecodable { status: _, cause } =>
+        exit_failure(reason: cause as String)
+      RestStatusRefused { status: _, body } =>
+        exit_failure(reason: body)
+      RestTransportRefused { cause } =>
+        exit_failure(reason: cause as String)
+    }
   }
 }
