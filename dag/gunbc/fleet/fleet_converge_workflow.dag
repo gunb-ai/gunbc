@@ -35,7 +35,7 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
-import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_observer_release_allowance }
+import gunbc.machine_intake_megarac_kvm_still { megarac_kvm_observer_release_allowance }
 import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_artifact_glob, mtcollins1_ui_bundle_read_bound }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
@@ -2424,7 +2424,7 @@ fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Step {
     working_directory: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_kvm_observer_observe_step_if], "") },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [mtcollins1_kvm_observer_release_allowance]) }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [megarac_kvm_observer_release_allowance]) }
   }
 }
 

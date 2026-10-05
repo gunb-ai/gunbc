@@ -10,6 +10,10 @@ import std.process { ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.systemctl
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.workspace_allocation { workspace_request_from_json }
+import gunbc.workspace_host_offer_observe { workspace_observe_host_offers }
+import gunbc.workspace_offer_producer { workspace_host_offer_text }
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_decode, workspace_commissioning_input_read, workspace_commissioning_input_publish, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputAbsent, WorkspaceCommissioningInputRefused }
 import gunbc.workspace_commissioning_executor_input { workspace_executor_input_from_plan, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
@@ -177,4 +181,21 @@ fn workspace_dispatch_plan_cli() -> CliWireResponse {
       WorkspaceCommissioningFleetRefused { reason: _ } => workspace_dispatch_refused(reason: "privileged commissioning observation refused")
     } }
   }
+}
+
+// Read-only preparation observer. stdin is the admitted request the coordinator is preparing;
+// stdout is one canonical host-offer line per designated slot on this host. It writes nothing.
+fn workspace_dispatch_offer_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  if !input.success { workspace_dispatch_refused(reason: "offer request is unreadable") }
+  else { match parse_json_document(s: trim(s: input.content)) {
+    JsonDocumentUnreadable { gap: _ } => workspace_dispatch_refused(reason: "offer request is not one JSON document")
+    JsonDocumentParsed { value: doc } => match workspace_request_from_json(value: doc) {
+      Absent => workspace_dispatch_refused(reason: "offer request is not an admitted workspace request")
+      Present { value: request } => CliWirePrintable {
+        bytes: concat(join(map(workspace_observe_host_offers(request: request), read => workspace_host_offer_text(read: read)), "\n"), "\n"),
+        exit: ExitSuccess,
+      }
+    }
+  } }
 }

@@ -24,7 +24,10 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
+  live_deploy_health_url_over_socket,
 }
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import extdeps.tailscale.serve { ServeRootMount, ServeSetPath }
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
@@ -52,6 +55,7 @@ import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffec
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_plan_listen_port,
+  deployment_tailnet_door_socket,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.ci_deploy_access {
@@ -77,7 +81,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.http.client
-import extdeps.http.client { http_client_get_argv, http_client_max_time_flag }
+import extdeps.http.client { http_client_get_argv, http_client_get_unix_socket_argv, http_client_max_time_flag }
 import gunbc.serve_liveness {
   ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
 }
@@ -99,6 +103,7 @@ type HealthzRefusalCause
 type ServiceReadinessPending
   = ServiceProbeUnanswered { detail: String }
   | ServiceReadinessIdentityPending { cause: HealthzRefusalCause }
+  | ServiceTailnetDoorPending { socket: NonEmptyStr, detail: String }
 
 type ServiceReadinessRefusal
   = ServiceReadinessAccessDenied { reason: String }
@@ -113,6 +118,8 @@ fn service_readiness_reason(r: ServiceReadiness) -> String {
     Pending { cause: ServiceProbeUnanswered { detail } } => detail
     Pending { cause: ServiceReadinessIdentityPending { cause } } =>
       healthz_refusal_reason(cause: cause)
+    Pending { cause: ServiceTailnetDoorPending { socket, detail } } =>
+      join(["the tailnet door at ", socket as String, " is not serving this release: ", detail], "")
     Refused { cause: ServiceReadinessAccessDenied { reason } } => reason
     Refused { cause: ServiceReadinessPollBound { refusal } } =>
       service_not_ready_reason(refusal: refusal)
@@ -249,6 +256,116 @@ fn live_deploy_healthz_get_for_port(port: Int, spec: DeploymentSpec, transport: 
       HealthzProbeRefused {
         probe_error: "health probe refused EmitArtifactThenThinRun transport",
       }
+  }
+}
+
+// ── THE TAILNET DOOR IS PART OF READINESS ───────────────────────────────────────────────────
+// A deployment whose serve route targets a unix socket has two serving processes, and every
+// tailnet request goes to the door. The loopback probe above says nothing about it, so a dead door
+// would be a deploy that reports ready while the dashboard is unreachable. The same /healthz is
+// therefore read over the door's socket and held to the same release and surface identity: an
+// answer proves the socket exists and is connectable by the probing principal, and that the
+// process bound to it is this release. The deployment is ready only when both listeners are.
+fn live_deploy_healthz_get_for_socket(socket: NonEmptyStr, spec: DeploymentSpec, transport: HostEffectTransport) -> HealthzEffectiveRead {
+  let url = live_deploy_health_url_over_socket()
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
+    Present { value: deadline } =>
+      match transport {
+        LocalShell => {
+          let got = http.Client.GetWithinUnixSocket(socket: socket, url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
+          healthz_effective_read_from_get(
+            success: got.success,
+            body: got.body,
+            error: join(["http client GET over the unix socket failed within the ", http_client_max_time_flag(max_time: deadline) as String, " s probe deadline derived from the serve wall limit"], "")
+          )
+        }
+        SshShell { ssh_host: h } => {
+          let argv = http_client_get_unix_socket_argv(socket: socket, url: url, max_time: deadline)
+          match typed_argv_shell_safe_refusal_argv(argv: argv) {
+            Present { value: why } => HealthzProbeRefused { probe_error: why }
+            Absent => healthz_effective_read_from_outcome(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
+          }
+        }
+        FleetSsh { target: t, context: c } =>
+          healthz_effective_read_from_outcome(
+            outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_unix_socket_argv(socket: socket, url: url, max_time: deadline)),
+          )
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }
+      }
+  }
+}
+
+// THE JOIN. A loopback listener that is not ready is the answer as it stands. A ready one with no
+// door is ready. A ready one with a door is ready only if the door's own observation is; a door
+// that is unanswered or serving another release is pending under its own arm naming the socket,
+// so the poll bound refuses the deploy with the door as its last probe. A door observation never
+// upgrades a loopback one.
+fn service_readiness_with_tailnet_door(loopback: ServiceReadiness, door_socket: NonEmptyStr?, door: fn() -> ServiceReadiness) -> ServiceReadiness {
+  match loopback {
+    Pending { cause: _ } => loopback
+    Refused { cause: _ } => loopback
+    Ready { evidence: _ } =>
+      match door_socket {
+        Absent => loopback
+        Present { value: socket } =>
+          match door() {
+            Ready { evidence: _ } => loopback
+            Pending { cause: c } => Pending { cause: ServiceTailnetDoorPending { socket: socket, detail: service_readiness_reason(r: Pending { cause: c }) } }
+            Refused { cause: c } => Refused { cause: c }
+          }
+      }
+  }
+}
+
+// ── THE TWO READS THE DOOR CUTOVER TAKES AFTER READINESS ────────────────────────────────────
+// The proxied path: the same /healthz, asked for at the deployment's own tailnet name so the
+// request crosses tailscale serve and arrives through the route under test. A target with no
+// tailnet domain has no such name, and the probe refuses rather than probing something else.
+fn live_deploy_proxied_health_url(spec: DeploymentSpec) -> NonEmptyStr? {
+  match spec.target.tailnet_domain {
+    Absent => none
+    Present { value: domain } => {
+      let endpoint = spec.names.tailscale_serve_endpoint
+      Present { value: join([
+        "https://", spec.target.ssh_host as String, ".", domain as String,
+        if endpoint.https_port == 443 { "" } else { concat(":", to_string(endpoint.https_port)) },
+        match endpoint.mount { ServeRootMount => "" ServeSetPath { path } => path as String },
+        roadmap_site_health_path,
+      ], "") as NonEmptyStr }
+    }
+  }
+}
+
+fn live_deploy_healthz_get_for_url(url: NonEmptyStr, spec: DeploymentSpec, transport: HostEffectTransport) -> HealthzEffectiveRead {
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
+    Present { value: deadline } =>
+      match transport {
+        LocalShell => {
+          let got = http.Client.GetWithin(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
+          healthz_effective_read_from_get(success: got.success, body: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
+        }
+        SshShell { ssh_host: h } => live_deploy_healthz_get_ssh_within(url: url, host: h, deadline: deadline)
+        FleetSsh { target: t, context: c } =>
+          healthz_effective_read_from_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_argv(url: url, max_time: deadline)))
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }
+      }
+  }
+}
+
+fn live_deploy_proxied_readiness(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> ServiceReadiness {
+  match live_deploy_proxied_health_url(spec: spec) {
+    Absent => Pending { cause: ServiceProbeUnanswered { detail: "the deployment target declares no tailnet domain, so the proxied path has no name to be asked at" } }
+    Present { value: url } =>
+      observe_service_readiness_from_healthz(
+        read: live_deploy_healthz_get_for_url(url: url, spec: spec, transport: transport),
+        bundle: materialize_live_roadmap_site_surface_bundle(),
+        expected_revision: candidate.revision,
+        expected_surface_identity: candidate.expected_surface_identity,
+      )
   }
 }
 
@@ -556,15 +673,30 @@ fn live_deploy_service_ready_once_for_deploy(
         },
       }
     Permit =>
-      observe_service_readiness_from_healthz(
-        read: live_deploy_healthz_get_for_port(
-          port: deployment_plan_listen_port(spec: spec),
-          spec: spec,
-          transport: transport,
+      service_readiness_with_tailnet_door(
+        loopback: observe_service_readiness_from_healthz(
+          read: live_deploy_healthz_get_for_port(
+            port: deployment_plan_listen_port(spec: spec),
+            spec: spec,
+            transport: transport,
+          ),
+          bundle: materialize_live_roadmap_site_surface_bundle(),
+          expected_revision: candidate.revision,
+          expected_surface_identity: candidate.expected_surface_identity,
         ),
-        bundle: materialize_live_roadmap_site_surface_bundle(),
-        expected_revision: candidate.revision,
-        expected_surface_identity: candidate.expected_surface_identity,
+        door_socket: deployment_tailnet_door_socket(names: spec.names),
+        door: fn() {
+          match deployment_tailnet_door_socket(names: spec.names) {
+            Absent => Pending { cause: ServiceProbeUnanswered { detail: "this deployment has no tailnet door" } }
+            Present { value: socket } =>
+              observe_service_readiness_from_healthz(
+                read: live_deploy_healthz_get_for_socket(socket: socket, spec: spec, transport: transport),
+                bundle: materialize_live_roadmap_site_surface_bundle(),
+                expected_revision: candidate.revision,
+                expected_surface_identity: candidate.expected_surface_identity,
+              )
+          }
+        },
       )
   }
 }
