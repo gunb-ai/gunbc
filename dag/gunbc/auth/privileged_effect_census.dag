@@ -310,6 +310,27 @@ fn route_qualification_effect() -> PrivilegedEffect {
   }
 }
 
+// BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
+// account to a stored and exact-fetched generation and retire the published account to a break-glass
+// generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
+// value each write replaces is gone, and the published factory value is not restorable by a reapply
+// (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's accounts, so its reach is one
+// resource. No dispatched run carries it: in this cut it is modeled, with a dry realization only, and
+// the plan mint takes an operator-approved capability (gunbc.auth.approval_broker Redemption) per write,
+// bound to the exact controller, build and request.
+fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "rotate a BMC's managed account to a stored generation and retire its published account, over admitted routes on one controller at one firmware build" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the BmcSecure account rotation; in cut O1b it is modeled with a dry realization only" as NonEmptyStr },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // ── INTERLOCKS: the state an effect's parameters are honest only under ─────────────────────────
 // A row's reversibility can depend on a fact about the world rather than about the call: the boot
 // above is reversible by reapply only while nobody is working on the unit. That condition is not a
@@ -627,6 +648,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
+    effect: bmc_secure_account_rotation_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     effect: mtcollins1_boot_effect(),
     realized: RealizedFederatedGrant,
@@ -673,12 +700,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedRunSelected,
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.cloudflare.r2_mint_secret_access", decl_name: "r2_mint_bootstrap_read_access_converge"),
-    effect: accessor_grant(subject: "the four R2 mint cells (bootstrap read, container read, version add, readback)" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
@@ -872,7 +893,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"),
     effect: PrivilegedEffect {
-      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, under one operator approval of the exact diff" as NonEmptyStr,
+      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, including the grant sets (the R2 mint custody cells), under one operator approval of the exact diff" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
