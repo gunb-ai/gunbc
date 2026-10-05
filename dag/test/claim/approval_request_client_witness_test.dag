@@ -3,7 +3,7 @@ module test.claim.approval_request_client_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.auth.approval_request_client {
-  approval_submit_url, approval_status_url, approval_loopback_origin, approval_request_submit_path,
+  approval_submit_url, approval_status_url, approval_loopback_origin, approval_loopback_origin_for,
   approval_poll_standing, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
@@ -12,6 +12,8 @@ import gunbc.auth.approval_status_wire {
   StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.auth.approval_writer_authority { approval_writer_authority, approval_writer_process, RoadmapProcess, BrokerProcess }
+import gunbc.auth.approval_broker_endpoint { approval_broker_loopback_base_url, approval_broker_listen_port }
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_decision_store { approval_mac_key_id }
 import std.scoped_authorization { AttemptIdentity }
@@ -32,12 +34,23 @@ fn fixture_stored() -> StoredApprovalRequest {
   }
 }
 
-test fn submit_and_status_urls_follow_the_srv1_instance_listen_bind() -> Bool {
+test fn submit_and_status_urls_follow_the_srv1_instance_listen_bind_while_the_roadmap_writes() -> Bool {
   let instance = srv1_live_dashboard_instance()
+  approval_loopback_origin_for(writer: RoadmapProcess) as String
+    == concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port)))
+}
+
+// THE REGRESSION run 37265259209 hit: with the broker as writer the client must dial the broker's
+// listen port, never the roadmap's -- the two ports differ, so a client still on the roadmap is red.
+test fn submit_and_status_urls_dial_the_declared_writer() -> Bool {
   let origin = approval_loopback_origin() as String
-  origin == concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port)))
-    && approval_submit_url() as String == concat(origin, approval_request_submit_path as String)
-    && approval_status_url(escalation_id: "esc-1") as String == concat(concat(origin, concat(approval_request_submit_path as String, "/")), "esc-1")
+  let writer_origin = approval_loopback_origin_for(writer: approval_writer_process(authority: approval_writer_authority)) as String
+  let broker_origin = approval_broker_loopback_base_url(port: approval_broker_listen_port) as String
+  origin == writer_origin
+    && approval_loopback_origin_for(writer: BrokerProcess) as String == broker_origin
+    && broker_origin != approval_loopback_origin_for(writer: RoadmapProcess) as String
+    && approval_submit_url() as String == concat(origin, "/approvals")
+    && approval_status_url(escalation_id: "esc-1") as String == concat(origin, "/approvals/esc-1")
 }
 
 test fn submit_body_nests_the_stored_request_as_a_json_string() -> Bool {
