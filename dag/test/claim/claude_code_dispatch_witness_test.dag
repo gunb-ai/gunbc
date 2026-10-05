@@ -16,6 +16,7 @@ import extdeps.llm.claude_code_stream_json {
   StreamLineMemberMalformed,
   claude_code_stream_line,
 }
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import gunbc.claude_code_limit_standing {
   ClaudeCodeStandingReading,
   ClaudeCodeStandingRead,
@@ -405,6 +406,23 @@ test fn an_ambient_profile_tree_is_not_a_bindable_credential() -> Bool {
     CursorProviderSpawnUnwired { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
+}
+
+// The env-var name reaches the sh script only as an admitted POSIX name (review 76372).
+fn name_refused(spelling: String) -> Bool {
+  match admit_posix_shell_name(spelling: spelling) {
+    PosixShellNameRefused { spelling: _ } => true
+    PosixShellNameAdmitted { name: _ } => false
+  }
+}
+
+test fn only_a_posix_name_is_admitted_into_the_env_wrapper() -> Bool {
+  !name_refused(spelling: "CLAUDE_CODE_OAUTH_TOKEN")
+    && name_refused(spelling: "A;B")
+    && name_refused(spelling: "$(x)")
+    && name_refused(spelling: "A B")
+    && name_refused(spelling: "9A")
+    && name_refused(spelling: "")
 }
 
 // ── Inventory and selection (gunbc.dispatch_selection) ──────────────────────────────────────────

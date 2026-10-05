@@ -9,6 +9,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.posix.shell_command_language { PosixShellName }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -95,6 +96,14 @@ data posix_sh_export_from_file_unreadable_exit: Int = 78
 // process's argument vector (tmux -e, systemd-run --setenv, tmux set-environment). DISSOLVES ON: a
 // modeled sh command emission (structured command substitution, export and exec) from which this
 // script is projected; when it lands this declaration is deleted, and the trigger below FIRES.
+//
+// WHY THIS IS HOMED IN extdeps AND NOT IN THE CREDENTIAL LAYER (review 76372 point 3, stated
+// divergence). The ArgvCommand mint (extdeps.exec.command argv_command) admits only per-tool
+// builders homed in the tool's own extdeps module, and what this builds is one POSIX sh operation --
+// command substitution, export, exec -- parameterized by a name, a path and a command. The POLICY
+// (which variable, which credential, which custody file) is not here: it is supplied by
+// gunbc.claude_code_credential, which owns all three. The name is a PosixShellName, so no caller can
+// splice shell text through it.
 data posix_sh_export_from_file_then_exec_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -108,14 +117,14 @@ data posix_sh_export_from_file_then_exec_dissolution_trigger: DissolutionConditi
   ref: decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_script")
 )
 
-fn posix_sh_export_from_file_then_exec_script(name: NonEmptyStr) -> String {
+fn posix_sh_export_from_file_then_exec_script(name: PosixShellName) -> String {
   join([
-    name as String, "=\"$(cat -- \"$0\")\" || exit ", to_string(value: posix_sh_export_from_file_unreadable_exit),
-    "; export ", name as String, "; exec \"$@\"",
+    name.spelling as String, "=\"$(cat -- \"$0\")\" || exit ", to_string(value: posix_sh_export_from_file_unreadable_exit),
+    "; export ", name.spelling as String, "; exec \"$@\"",
   ], "")
 }
 
-fn posix_sh_export_from_file_then_exec_command(name: NonEmptyStr, path: NonEmptyStr, command: List<String>) -> ArgvCommand {
+fn posix_sh_export_from_file_then_exec_command(name: PosixShellName, path: NonEmptyStr, command: List<String>) -> ArgvCommand {
   argv_command(
     program: posix_sh_program(),
     arguments: concat(["-c", posix_sh_export_from_file_then_exec_script(name: name), path as String], command),
