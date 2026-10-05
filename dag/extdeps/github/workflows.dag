@@ -3,12 +3,9 @@ module extdeps.github.workflows
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
-import std.types { CommitSha, List, NonEmptyStr }
+import std.types { Map, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.transports.rest { RestResult }
@@ -41,19 +38,13 @@ type WorkflowDispatchReceipt {
 // WorkflowDispatchReceipt would fabricate a run that was refused. The owning workflow may be
 // retriggered after diagnosis; this operation never assumes a git push created a run.
 //
-// FROZEN UPSTREAM SHAPE: tools.ci_heal_dispatch, the only production caller, is deleted. Restoring
-// heal auto-dispatch does not consume this operation. `expected_healed_sha` is the `inputs`
-// key GitHub accepts for this repository's workflow_dispatch contract; it is not a second heal
-// policy and must not grow more heal-specific keys here. Disposition:
-// create_dispatch_unconsumed_frontier_rows.
-
-data create_dispatch_unconsumed_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.workflows", decl_name: "WorkflowDispatchReceipt"),
-    reason: "github.Workflows CreateDispatch and WorkflowDispatchReceipt are the cited REST shape with no production caller after tools.ci_heal_dispatch was deleted; frozen: no new heal-specific keys or auto-invoke rows",
-    dissolution: unbound_dissolution(description: "a production fold that is not heal auto-dispatch calls github.Workflows CreateDispatch, or CreateDispatch and WorkflowDispatchReceipt are deleted. NOT satisfied by restoring tools.ci_heal_dispatch, nor by a witness constructing WorkflowDispatchReceipt"),
-  )
-]
+// `inputs` IS THE UPSTREAM SHAPE: "Input keys and values configured in the workflow file", an
+// object of at most 25 keys. It was once a single `expected_healed_sha` key -- one workflow's
+// contract spelled into the interface, which is policy leaked into extdeps (DESIGN section 3). Which
+// keys a dispatch carries is the dispatching workflow's fact and is passed as a parameter
+// (gunbc.runner.runner_qualification_dispatch qualification_dispatch_inputs). Values are strings:
+// GitHub coerces every workflow_dispatch input from its string form, and no caller here sends
+// another JSON kind.
 
 service github.Workflows {
   config {
@@ -69,7 +60,7 @@ service github.Workflows {
       repo: String
       workflow_id: String
       ref: String
-      expected_healed_sha: CommitSha
+      inputs: Map<String, String>
     }
     output {
       workflow_run_id: Int
@@ -82,7 +73,7 @@ service github.Workflows {
       headers: { "X-GitHub-Api-Version": workflows_api_version },
       body: {
         ref: ref,
-        inputs: { expected_healed_sha: expected_healed_sha }
+        inputs: inputs
       }
     }
     response {

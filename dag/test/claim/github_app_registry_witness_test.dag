@@ -63,6 +63,11 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_argv }
+import gunbc.runner.runner_qualification_dispatch {
+  QualificationWorkflowTarget, QualificationDispatchPlanned, QualificationDispatchNotPlanned,
+  DispatchRegistrationNotDelivered, DispatchSlotIsNotAHostUnit, DispatchWorkflowIsNotTheSlots,
+  plan_qualification_dispatch, qualification_dispatch_inputs, qualification_target_workflow_file,
+}
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotRefused, HostUnitSlotHostNotBound, host_unit_slot_for, host_unit_slot_listener_argv,
@@ -1473,3 +1478,80 @@ test fn witness_a_readback_for_another_subject_is_refused() -> Bool {
         && readback_for_another_subject_refuses(reg: reg, org: reg.organization.login, name: reg.name.value, app: reg.app, i: other_installation_id)
   }
 }
+
+// ── THE DISPATCH LEG: THE ATTEMPT IT SENDS IS THE DELIVERED REGISTRATION'S ────────────────────
+//
+// gunbc.runner.runner_qualification_dispatch plan_qualification_dispatch takes the delivery the mint
+// produced, so these claims reach it through the real mint and the real receive fold over a
+// host-unit slot on the managed-host roster -- the route, not a constructed delivery.
+fn host_unit_dispatched(h: ManagedHost) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "host_unit_delivery"),
+] {
+  dispatch_jit_mint(
+    binding: HostUnitSlotBinding { standing: host_unit_slot(h: h) },
+    authority: app_credential,
+    control_plane: observed_grant(perms: runner_grant),
+    organization: gunbai_org_ref,
+    runner_group: group_restricted_to(workflow: qualification_workflow),
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  )
+}
+
+fn host_unit_delivery(h: ManagedHost, outcome: JitConfigMintOutcome) -> JitCredentialDelivery {
+  receive_jit_mint(dispatch: host_unit_dispatched(h: h), outcome: outcome)
+}
+
+data qualification_target: QualificationWorkflowTarget = QualificationWorkflowTarget {
+  owner: "gunb-ai",
+  repo: "gunbc",
+  path: ".github/workflows/runner-qualification.yml",
+  branch: "main",
+}
+
+// POSITIVE CONTROL, AND IT ASSERTS THE ROUTE: the planned dispatch sends the slot's attempt label as
+// the workflow's attempt input, targets the workflow file by name, and expects the registration the
+// route names (ephemeral_slot_unit) with the runner id GitHub minted.
+test fn witness_qualification_dispatch_sends_the_delivered_registrations_attempt() -> Bool {
+  let hosts = managed_hosts()
+  count(hosts) > 0 && hosts |> all(h =>
+    match plan_qualification_dispatch(delivery: host_unit_delivery(h: h, outcome: minted_outcome), target: qualification_target) {
+      QualificationDispatchPlanned { plan: p } =>
+        (p.attempt as String) == "q-1"
+          && (p.runner.value as String) == (ephemeral_slot_unit(host: h.host, attempt: "q-1") as String)
+          && p.runner_id == 4242
+          && match map_get(qualification_dispatch_inputs(attempt: p.attempt), "attempt") { Present { value: v } => v == "q-1" Absent => false }
+          && qualification_target_workflow_file(target: p.target) == "runner-qualification.yml"
+      _ => false
+    })
+}
+
+// RED: NO DELIVERED REGISTRATION, NO DISPATCH. A mint GitHub did not create leaves nothing whose
+// runs-on the job could name, so dispatching would queue a job no runner can serve.
+test fn witness_qualification_dispatch_refuses_without_a_delivered_registration() -> Bool {
+  managed_hosts() |> all(h =>
+    match plan_qualification_dispatch(delivery: host_unit_delivery(h: h, outcome: conflicting_outcome), target: qualification_target) {
+      QualificationDispatchNotPlanned { refusal: DispatchRegistrationNotDelivered } => true
+      _ => false
+    })
+}
+
+// RED: ANOTHER WORKFLOW. The slot's runner group is restricted to the qualification workflow; a
+// dispatch of any other file at its attempt label would never be routed to it.
+test fn witness_qualification_dispatch_refuses_a_workflow_that_is_not_the_slots() -> Bool {
+  let other = QualificationWorkflowTarget { owner: "gunb-ai", repo: "gunbc", path: ".github/workflows/witnesses.yml", branch: "main" }
+  managed_hosts() |> all(h =>
+    match plan_qualification_dispatch(delivery: host_unit_delivery(h: h, outcome: minted_outcome), target: other) {
+      QualificationDispatchNotPlanned { refusal: DispatchWorkflowIsNotTheSlots { target: t, slot: s } } =>
+        t == "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main" && (s as String) == (qualification_workflow as String)
+      _ => false
+    })
+}
+
+// RED: A microVM REGISTRATION IS THE SHAKEDOWN'S, NOT THIS ROUTE'S.
+test fn witness_qualification_dispatch_refuses_a_microvm_registration() -> Bool {
+  match plan_qualification_dispatch(delivery: receive_jit_mint(dispatch: dispatched(owned: true, perms: runner_grant), outcome: minted_outcome), target: qualification_target) {
+    QualificationDispatchNotPlanned { refusal: DispatchSlotIsNotAHostUnit } => true
+    _ => false
+  }
+}
+

@@ -1,0 +1,152 @@
+module test.claim.runner_qualification_dispatch_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions_jit_runner { JitRunnerName }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowJobRun, WorkflowJobRunList, WorkflowRunArtifact,
+  WorkflowRunStatus, WorkflowRunConclusion, Completed, InProgress, Success, Failure,
+}
+import gunbc.runner_throughput_qualification_route {
+  FloorPhaseRows, ClaimCostArtifactEvalSteps, GuestIdleMeminfoAndNproc,
+}
+import gunbc.runner.runner_qualification_dispatch {
+  run_readback_refusal, CollectRunNeverReachedAttemptRunner, CollectRunNotCompleted,
+  CollectRunNotSuccessful, CollectRunHasNoJobs, CollectJobListingIncomplete,
+  collect_instrument, InstrumentCollected, InstrumentAbsentFromRun, InstrumentNotInOneRun,
+  InstrumentLogLines, InstrumentArtifactListed,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE READBACK VERDICT IS PURE OVER WHAT GitHub REPORTED, so every arm is decided here on supplied
+// run and job objects (DESIGN section 3: a witness discriminates at one interface). The real reads
+// are gunbc.runner.runner_qualification_dispatch collect_qualification_run's, which needs a run to
+// exist and follows the boot leg.
+
+data attempt_runner: JitRunnerName = JitRunnerName { value: "gunbc-qualification-mtcollins1-q-1.service" }
+
+fn run_of(status: WorkflowRunStatus, conclusion: WorkflowRunConclusion?) -> WorkflowRun {
+  WorkflowRun {
+    id: 77,
+    name: Present { value: "runner-qualification" },
+    path: Present { value: ".github/workflows/runner-qualification.yml" },
+    head_sha: "0123456789abcdef0123456789abcdef01234567",
+    head_branch: Present { value: "main" },
+    event: "workflow_dispatch",
+    status: status,
+    conclusion: conclusion,
+    workflow_id: 5,
+    run_number: 1,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/77",
+    created_at: "2026-10-05T00:00:00Z",
+    updated_at: "2026-10-05T00:30:00Z",
+    pull_requests: [],
+  }
+}
+
+fn job_on(runner: String?) -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 900,
+    run_id: 77,
+    run_attempt: 1,
+    name: "floor",
+    status: Completed,
+    conclusion: Present { value: Success },
+    labels: ["self-hosted", "q-1"],
+    runner_name: runner,
+    created_at: none,
+    started_at: none,
+    completed_at: none,
+  }
+}
+
+fn jobs_of(jobs: List<WorkflowJobRun>) -> WorkflowJobRunList {
+  WorkflowJobRunList { total_count: count(jobs), jobs: jobs }
+}
+
+fn reached(runner: String?) -> Bool {
+  match run_readback_refusal(run: run_of(status: Completed, conclusion: Present { value: Success }), jobs: jobs_of(jobs: [job_on(runner: runner)]), expected: attempt_runner) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: a completed, successful run whose one job GitHub says the attempt's registration
+// took is admitted. Without it every red below is satisfied by a verdict that always refuses.
+test fn witness_a_run_on_the_attempts_runner_is_admitted() -> Bool {
+  reached(runner: Present { value: "gunbc-qualification-mtcollins1-q-1.service" })
+}
+
+// RED: ANOTHER RUNNER, OR NONE. The job's labels say q-1 in both cases -- they echo runs-on -- so
+// only runner_name can discriminate, and both arms carry what GitHub named.
+test fn witness_a_run_that_never_reached_the_attempts_runner_is_refused() -> Bool {
+  let other = match run_readback_refusal(run: run_of(status: Completed, conclusion: Present { value: Success }), jobs: jobs_of(jobs: [job_on(runner: Present { value: "srv1-slot-3" })]), expected: attempt_runner) {
+    Present { value: CollectRunNeverReachedAttemptRunner { job: j, expected: e, observed: Present { value: o } } } =>
+      j == "floor" && (e as String) == "gunbc-qualification-mtcollins1-q-1.service" && o == "srv1-slot-3"
+    _ => false
+  }
+  let unassigned = match run_readback_refusal(run: run_of(status: Completed, conclusion: Present { value: Failure }), jobs: jobs_of(jobs: [job_on(runner: none)]), expected: attempt_runner) {
+    Present { value: CollectRunNeverReachedAttemptRunner { job: _, expected: _, observed: Absent } } => true
+    _ => false
+  }
+  other && unassigned && !reached(runner: Present { value: "srv1-slot-3" })
+}
+
+// RED: THE READBACK, NOT THE DISPATCH, SAYS HOW THE RUN ENDED. An unfinished run is not collected,
+// a failed one on the right runner is refused with its conclusion, an empty or short job listing is
+// not read as "no job reached another runner".
+test fn witness_an_unfinished_failed_or_unlisted_run_is_refused() -> Bool {
+  let right = job_on(runner: Present { value: "gunbc-qualification-mtcollins1-q-1.service" })
+  let unfinished = match run_readback_refusal(run: run_of(status: InProgress, conclusion: none), jobs: jobs_of(jobs: [right]), expected: attempt_runner) {
+    Present { value: CollectRunNotCompleted { status: InProgress } } => true
+    _ => false
+  }
+  let failed = match run_readback_refusal(run: run_of(status: Completed, conclusion: Present { value: Failure }), jobs: jobs_of(jobs: [right]), expected: attempt_runner) {
+    Present { value: CollectRunNotSuccessful { conclusion: Present { value: Failure } } } => true
+    _ => false
+  }
+  let empty = match run_readback_refusal(run: run_of(status: Completed, conclusion: Present { value: Success }), jobs: jobs_of(jobs: []), expected: attempt_runner) {
+    Present { value: CollectRunHasNoJobs } => true
+    _ => false
+  }
+  let short = match run_readback_refusal(run: run_of(status: Completed, conclusion: Present { value: Success }), jobs: WorkflowJobRunList { total_count: 2, jobs: [right] }, expected: attempt_runner) {
+    Present { value: CollectJobListingIncomplete { listed: 1, total: 2 } } => true
+    _ => false
+  }
+  unfinished && failed && empty && short
+}
+
+// EACH INSTRUMENT IS READ WHERE ITS SOURCE SAYS: a log instrument from the marked lines only, the
+// claim-cost instrument from the listed (unexpired) artifact, and the host-side instrument is
+// reported as outside the run rather than as missing from it.
+data floor_log: String = "boot\n[floor-phase] phase=parse state=completed wall_ms=12\nnoise\n[floor-phase] phase=check state=completed wall_ms=34\n"
+
+data claim_cost_artifact: WorkflowRunArtifact = WorkflowRunArtifact { id: 5, name: "required-floor-claim-cost", size_in_bytes: 10, expired: false }
+
+test fn witness_instruments_are_read_from_their_declared_source() -> Bool {
+  let phases = match collect_instrument(instrument: FloorPhaseRows, log: floor_log, artifacts: []) {
+    InstrumentCollected { instrument: _, reading: InstrumentLogLines { lines: l } } => count(l) == 2
+    _ => false
+  }
+  let phases_absent = match collect_instrument(instrument: FloorPhaseRows, log: "boot\nnoise\n", artifacts: [claim_cost_artifact]) {
+    InstrumentAbsentFromRun { instrument: _, looked_for: m } => (m as String) == "[floor-phase]"
+    _ => false
+  }
+  let cost = match collect_instrument(instrument: ClaimCostArtifactEvalSteps, log: floor_log, artifacts: [claim_cost_artifact]) {
+    InstrumentCollected { instrument: _, reading: InstrumentArtifactListed { artifact: a } } => a.id == 5
+    _ => false
+  }
+  let cost_expired = match collect_instrument(instrument: ClaimCostArtifactEvalSteps, log: floor_log, artifacts: [WorkflowRunArtifact { id: 5, name: "required-floor-claim-cost", size_in_bytes: 10, expired: true }]) {
+    InstrumentAbsentFromRun { instrument: _, looked_for: _ } => true
+    _ => false
+  }
+  let guest = match collect_instrument(instrument: GuestIdleMeminfoAndNproc, log: "MemTotal: 1 kB\n", artifacts: []) {
+    InstrumentNotInOneRun { instrument: _, read_by: _ } => true
+    _ => false
+  }
+  phases && phases_absent && cost && cost_expired && guest
+}

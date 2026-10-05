@@ -15,6 +15,7 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import std.resources { Network }
+import std.serialization { Text }
 import extdeps.transports.rest { RestResult }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
@@ -194,6 +195,13 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
+//
+// runner_name IS WHICH REGISTRATION TOOK THE JOB, and labels cannot say it. labels echo the job's
+// runs-on, which every candidate runner had to match, so a job whose runs-on names a per-attempt
+// label is evidence about which runners COULD serve it and nothing about which one DID. The job
+// object publishes runner_name as string-or-null: null until a runner is assigned, so Absent here
+// is GitHub's own "no runner yet", never "not read" (gunbc.runner.runner_qualification_dispatch
+// reads it to refuse a run that never reached the attempt's runner).
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -202,6 +210,7 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
+  runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
@@ -210,6 +219,22 @@ type WorkflowJobRun {
 type WorkflowJobRunList {
   total_count: Int
   jobs: List<WorkflowJobRun>
+}
+
+// THE RUN'S ARTIFACTS, as the Artifacts REST resource lists them
+// (docs.github.com/en/rest/actions/artifacts#list-workflow-run-artifacts, X-GitHub-Api-Version
+// 2026-03-10). Only the fields a consumer reads are modeled; the archive itself is a zip behind
+// archive_download_url and is not decoded here.
+type WorkflowRunArtifact {
+  id: Int
+  name: String
+  size_in_bytes: Int
+  expired: Bool
+}
+
+type WorkflowRunArtifactList {
+  total_count: Int
+  artifacts: List<WorkflowRunArtifact>
 }
 
 data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = TranscribedUncited {
@@ -440,6 +465,60 @@ service github.WorkflowRuns {
       403 => GitHubErrorShape
       404 => GitHubErrorShape
       500 => GitHubErrorShape
+    }
+  }
+
+  operation ListRunArtifacts {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      per_page: Int = max_per_page
+    }
+    output {
+      result: WorkflowRunArtifactList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/artifacts",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => WorkflowRunArtifactList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation DownloadJobLogs {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      job_id: String
+    }
+    output {
+      log: String
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/jobs/\{job_id\}/logs",
+      response_format: Text
+    }
+    response {
+      200 => String
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
     }
   }
 }

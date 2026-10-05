@@ -579,6 +579,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "perform_qualification_dispatch"),
+    effect: PrivilegedEffect {
+      subject: "dispatch the qualification workflow with the delivered JIT registration's attempt label as its runs-on input, under the dispatching run's own GITHUB_TOKEN (actions: write), pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "the dispatching workflow run's GITHUB_TOKEN, minted by GitHub for that run's job and scoped to this repository" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
     effect: PrivilegedEffect {
       subject: "on every slot exit, delete the slot's JIT runner registration from the organization under the controller's installation token and confirm it absent from the organization's runner listing, pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
