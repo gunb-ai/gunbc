@@ -4599,32 +4599,63 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
 // (^infer_reason_admit_callers_entries_unreadable at the clause) — a malformed clause is never a
 // shorter roster (DESIGN section 5: a failure arm must refuse, never widen).
 // THE CARRIER (v2 body lowering): a fn's authored `admit_callers` clause becomes one AdmitCallersEdge
-// on the fn's Arrow, whose target is the clause's lowered image. The outer Absent (no clause
-// captured) is the only silence: a fn without the clause has nothing to judge. Once a clause IS
-// captured, every failure to read it hangs the clause-fallback marker instead -- the reader refuses
-// it as ^infer_reason_admit_callers_entries_unreadable at the clause (DESIGN §5: a failure arm must
-// refuse, never widen). A grammar or graft change that reshapes the clause shell switches the wall
-// to REFUSING, never off.
+// on the fn's Arrow, whose target is the clause's lowered roster. The clause is an OPTIONAL ELEMENT of
+// the fn-decl production, so it is read off the fn shell's optional-element projection — identified by
+// its own production identity (^dag_surface_admit_callers_clause), which distinguishes it from the
+// fn header's other optional (the return type). The outer Absent (no such optional) is the only
+// silence: a fn without the clause has nothing to judge. Once a clause IS present, every failure to
+// read it hangs the clause-fallback marker instead -- the reader refuses it as
+// ^infer_reason_admit_callers_entries_unreadable at the clause (DESIGN §5: a failure arm must refuse,
+// never widen). A grammar or graft change that reshapes the clause shell switches the wall to
+// REFUSING, never off.
 fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
-  match body_lower_unwrap_captured(shell: shell) {
+  match body_lower_admit_clause_shell_optional(shell: shell) {
     Absent => []
-    Present { value: captured } =>
-      match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
+    Present { value: clause } =>
+      match body_lower_admit_clause_roster_optional(clause: clause) {
         Absent =>
           [core_edge(
             marker: AdmitCallersEdge,
-            target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: captured)
+            target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: clause)
           )]
-        Present { value: image } =>
-          match sugar_named_child_optional(root: image, name: ^admit_callers_clause_body) {
-            Absent =>
-              [core_edge(
-                marker: AdmitCallersEdge,
-                target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: image)
-              )]
-            Present { value: roster } => [core_edge(marker: AdmitCallersEdge, target: roster)]
-          }
+        Present { value: roster } => [core_edge(marker: AdmitCallersEdge, target: roster)]
       }
+  }
+}
+
+// THE FN SHELL'S ADMIT CLAUSE, among its optionals: the optional-element projection whose target's
+// production identity is ^dag_surface_admit_callers_clause.
+fn body_lower_admit_clause_shell_optional(shell: Node) -> Optional<Node> {
+  fold(shell.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match e.label {
+          Authored { name: name } =>
+            if symbol_eq(a: name, b: ^grammar_optional_element_node_projection) {
+              match parse_production_emitted_identity_optional(node: e.target) {
+                Present { value: id } =>
+                  if symbol_eq(a: id, b: ^dag_surface_admit_callers_clause) {
+                    optional_present(value: e.target)
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+  })
+}
+
+// THE CLAUSE'S ROSTER: the clause shell's named body value (the bracketed entry list), else its
+// captured child.
+fn body_lower_admit_clause_roster_optional(clause: Node) -> Optional<Node> {
+  match sugar_named_child_optional(root: clause, name: ^admit_callers_clause_body) {
+    Present { value: roster } => optional_present(value: roster)
+    Absent => parse_production_captured_child_optional(node: clause)
   }
 }
 
