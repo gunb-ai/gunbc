@@ -93,6 +93,16 @@ test fn red_an_invalid_escape_refuses_and_names_itself() -> Bool {
     && refuses_at(src: "a: \"a\" \"b\"\n", line: 1, reason_part: "unescaped")
 }
 
+// A HEX ESCAPE MUST NAME A UNICODE SCALAR (YAML 1.2.2 sections 5.1, 5.7). A surrogate \uD800 and a
+// \U past U+10FFFF each refuse at their line, and the refusal names the escape and which way it
+// failed (std.unicode.scalar NotUnicodeScalar). Neither may decode to fabricated text. The
+// neighbouring scalars U+D7FF and U+10FFFF still decode.
+test fn red_a_non_scalar_hex_escape_refuses_typed_and_located() -> Bool {
+  refuses_at(src: "a: 1\nb: \"x \\uD800\"\n", line: 2, reason_part: "`\\uD800` names a surrogate code point")
+    && refuses_at(src: "a: \"\\U00110000\"\n", line: 1, reason_part: "`\\U00110000` is past U+10FFFF")
+    && reads(src: "a: \"\\uD7FF\\U0010FFFF\"\n", v: one(key: "a", v: str(s: "\u{D7FF}\u{10FFFF}")))
+}
+
 test fn quoted_keys_decode() -> Bool {
   reads(src: "\"uses\": x\n'on': y\n", v: YamlMapping { entries: [
     YamlKeyValue { key: "uses", value: str(s: "x") },
