@@ -75,7 +75,7 @@ import gunbc.spark.arm_convergence {
   ArmRankDesired, ArmRankObservation, ArmRankRead, ArmRankUnread, ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal,
   ArmRankReadbackRefusal, ArmCommittedReading, ArmCommitted, ArmNotCommitted,
   arm_rank_observe_script, arm_rank_observation_of, arm_rank_observation_line, arm_retired_files, arm_retired_transaction_suffixes,
-  arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_ranks, arm_assessment_text,
+  arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, arm_converge_apply_text, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval, arm_assessment_text,
   arm_committed_reading, arm_committed_reproduced, arm_unit_path, arm_committed_record_path, arm_committed_record_dir,
 }
 import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
@@ -310,6 +310,7 @@ data spark_native_readback_dir: String = "/run/gunbc-native-readback"
 type SparkNativeStage
   = NativeStageObserve
   | NativeStagePreflight
+  | NativeStageRemoveRetired
   | NativeStageStop
   | NativeStageApply
   | NativeStageReadback
@@ -319,6 +320,7 @@ fn spark_native_stage_wire(st: SparkNativeStage) -> NonEmptyStr {
   match st {
     NativeStageObserve => "observe every rank against the desired arm (the serving arm is not mutated)" as NonEmptyStr
     NativeStagePreflight => "preflight (the serving arm is not mutated)" as NonEmptyStr
+    NativeStageRemoveRetired => "remove the retired transaction files and read them absent (no unit or container is touched)" as NonEmptyStr
     NativeStageStop => "stop every rank of the arm and read each container gone" as NonEmptyStr
     NativeStageApply => "apply the arm, head before workers" as NonEmptyStr
     NativeStageReadback => "readback of the complete realization, the incarnation-bound transport verdict and the front door" as NonEmptyStr
@@ -538,6 +540,23 @@ fn spark_native_stop_script(unit_name: NonEmptyStr, container_name: NonEmptyStr)
   ], "")
 }
 
+// ── REMOVE THE RETIRED FILES, AND ONLY THEM ─────────────────────────────────────────────────
+//
+// THE REMEDY FOR ONE COMPONENT, NOT A RESTART (valiant-crab-775, 2026-10-05): a rank whose only
+// deviation is a retired transaction file gets the file removed and read back absent, and nothing else
+// -- no systemctl, no docker. The paths are this rank's own unit path with the retired suffixes
+// (gunbc.spark.arm_convergence arm_retired_transaction_suffixes), built from the model and never from
+// what the host printed, so a host cannot steer a removal.
+fn spark_native_remove_retired_script(unit_name: NonEmptyStr) -> String {
+  let paths = map(arm_retired_transaction_suffixes, sfx => join([arm_unit_path(unit_name: unit_name), sfx], ""))
+  join([
+    "set -e\n",
+    "rm -f", join(map(paths, x => join([" ", shell_quote(arg: x)], "")), ""), "\n",
+    join(map(paths, x => join(["if [ -e ", shell_quote(arg: x), " ]; then echo REMOVE-REFUSED-still-present-", x, "; exit 1; fi\n"], "")), ""),
+    "echo retired-files-removed-and-read-absent\n",
+  ], "")
+}
+
 // ── THE COMMIT WRITES THE COMMITTED-ARM RECORD, AND NOTHING ELSE DOES ────────────────────────
 //
 // The record names the committed step's label and the sha256 of the unit file installed on this rank,
@@ -682,6 +701,12 @@ fn spark_native_observe_plans(steps: List<SparkNativeHostStep>) -> List<SparkPai
 
 fn spark_native_stop_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
   map(steps, st => spark_native_plan_of(step: st, script: spark_native_stop_script(unit_name: st.unit_name, container_name: st.launch.container.name)))
+}
+
+fn spark_native_remove_retired_plans(steps: List<SparkNativeHostStep>, removals: List<ArmRetiredRemoval>) -> List<SparkPairHostApplyPlan> {
+  flat_map(steps, st =>
+    if any(removals, r => (r.host as String) == (st.host as String)) { [spark_native_plan_of(step: st, script: spark_native_remove_retired_script(unit_name: st.unit_name))] }
+    else { [] as List<SparkPairHostApplyPlan> })
 }
 
 fn spark_native_commit_record_plans(steps: List<SparkNativeHostStep>, label: NonEmptyStr) -> List<SparkPairHostApplyPlan> {
@@ -1319,15 +1344,34 @@ fn spark_native_apply_path(
 fn spark_native_decided(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>, subject: SparkNativeArmSubject, before: List<ArmRankObservation>,
-  assessment: GoalAssessment<ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal>, so_far: String,
+  assessment: GoalAssessment<ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal>, after_removal: Bool, so_far: String,
 ) -> SparkNativeArmTransaction
 {
   let body = join([so_far, "  assessment: ", arm_assessment_text(a: assessment), "\n"], "")
-  match arm_converge_decision(desired: spark_native_desired_ranks(steps: steps), assessment: assessment) {
+  match arm_converge_decision(desired: spark_native_desired_ranks(steps: steps), assessment: assessment, after_removal: after_removal) {
     Noop => spark_native_commit(trust: trust, path: path, administrator: administrator, steps: steps, label: subject.label, so_far: join([body, "  decision: Noop -- the arm already realizes this step; NO UNIT WAS TOUCHED\n"], ""))
     Refuse { reason: why } => NativeArmRefusedBeforeActuation { stage: NativeStageObserve, receipt: join([body, "  decision: Refuse -- ", why as String, "\n"], "") }
-    Apply { plan: p } => spark_native_apply_path(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before,
-      so_far: join([body, "  decision: Apply -- the whole arm (", to_string(count(arm_converge_apply_ranks(p: p))), " ranks) is stopped and started again, head first\n"], ""))
+    Apply { plan: p } => {
+      let decided = join([body, "  decision: Apply -- ", arm_converge_apply_text(p: p), "\n"], "")
+      match arm_converge_apply_restart(p: p) {
+        ArmRestartWhole { ranks: _ } => spark_native_apply_path(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, so_far: decided)
+        ArmNoRestart =>
+          match spark_native_run_stage(trust: trust, path: path, administrator: administrator,
+            credential_file_name: "gunbc-spark-native-remove-retired-admin-password" as NonEmptyStr, plans: spark_native_remove_retired_plans(steps: steps, removals: arm_converge_apply_removals(p: p))) {
+            NativeStageCredentialRefused { cause: c } =>
+              NativeArmRefusedBeforeActuation { stage: NativeStageRemoveRetired, receipt: join([decided, "  stage: ", spark_native_stage_wire(st: NativeStageRemoveRetired) as String, "\n  CREDENTIAL REFUSED, nothing was removed: ", c as String, "\n"], "") }
+            NativeStageRan { legs: rl } => {
+              let removed = join([decided, spark_native_stage_body(st: NativeStageRemoveRetired, legs: rl)], "")
+              if spark_pair_apply_all_applied(outcomes: spark_native_leg_outcomes(legs: rl)) {
+                spark_native_converge_pass(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, after_removal: true,
+                  so_far: join([removed, "  re-observing the arm after the removal (units untouched)\n"], ""))
+              } else {
+                NativeArmRefusedBeforeActuation { stage: NativeStageRemoveRetired, receipt: removed }
+              }
+            }
+          }
+      }
+    }
   }
 }
 
@@ -1338,20 +1382,31 @@ fn spark_native_converge(
   steps: List<SparkNativeHostStep>, subject: SparkNativeArmSubject,
 ) -> SparkNativeArmTransaction
 {
+  spark_native_converge_pass(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, after_removal: false, so_far: "")
+}
+
+// ONE PASS: observe, assess, decide. The second pass follows only a remove-only action, and the
+// decision refuses a removal on it, so there are at most two passes.
+fn spark_native_converge_pass(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, subject: SparkNativeArmSubject, after_removal: Bool, so_far: String,
+) -> SparkNativeArmTransaction
+{
   match spark_native_observe(trust: trust, path: path, administrator: administrator, steps: steps) {
     NativeObserveCredentialRefused { cause: c } =>
-      NativeArmRefusedBeforeActuation { stage: NativeStageObserve, receipt: join(["  stage: ", spark_native_stage_wire(st: NativeStageObserve) as String, "\n  CREDENTIAL REFUSED, no rank was read: ", c as String, "\n"], "") }
-    NativeObserved { ranks: before, receipt: observed } => {
+      NativeArmRefusedBeforeActuation { stage: NativeStageObserve, receipt: join([so_far, "  stage: ", spark_native_stage_wire(st: NativeStageObserve) as String, "\n  CREDENTIAL REFUSED, no rank was read: ", c as String, "\n"], "") }
+    NativeObserved { ranks: before, receipt: observed_only } => {
+      let observed = join([so_far, observed_only], "")
       let structural = arm_structural_assessment(desired: spark_native_desired_ranks(steps: steps), observed: before)
       match structural {
         GoalSatisfied { evidence: _ } =>
           match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: steps, so_far: join([observed, "  every rank already carries this step's unit, active, with one running container; reading it back before treating it as satisfied\n"], "")) {
-            NativeVerified { receipt: v } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, so_far: v)
-            NativeNotVerified { receipt: v, refusals: rs } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: arm_assessment_after_readback(structural: structural, refusals: rs), so_far: v)
+            NativeVerified { receipt: v } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, after_removal: after_removal, so_far: v)
+            NativeNotVerified { receipt: v, refusals: rs } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: arm_assessment_after_readback(structural: structural, refusals: rs), after_removal: after_removal, so_far: v)
           }
-        GoalDiverged { deviations: _ } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, so_far: observed)
-        GoalIndeterminate { known_deviations: _, unknowns: _ } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, so_far: observed)
-        GoalAssessmentRefused { cause: _ } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, so_far: observed)
+        GoalDiverged { deviations: _ } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, after_removal: after_removal, so_far: observed)
+        GoalIndeterminate { known_deviations: _, unknowns: _ } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, after_removal: after_removal, so_far: observed)
+        GoalAssessmentRefused { cause: _ } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, after_removal: after_removal, so_far: observed)
       }
     }
   }

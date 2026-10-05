@@ -16,7 +16,7 @@ import gunbc.spark.native_serving_apply {
   spark_native_leg_with_retry, spark_native_leg_attempt_count,
   spark_native_unreached_leg_attempt_budget,
   spark_native_host_apply_script, spark_native_transport_announcement_script, spark_native_front_door_script,
-  spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg,
+  spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg, spark_native_remove_retired_script,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_rank_observation_of, arm_observe_complete_word, ArmRankObservation, ArmRankRead, ArmRankUnread, FactRead, FactAbsent, FactUnread }
@@ -208,6 +208,7 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
     arm_rank_observe_script(unit_name: unit, container_name: glm_native_container_name, planned_unit_text: "[Unit]\n"),
     spark_native_stop_script(unit_name: unit, container_name: glm_native_container_name),
     spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr),
+    spark_native_remove_retired_script(unit_name: unit),
     spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800),
     spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1800, container: glm_native_container_name),
   ]
@@ -267,4 +268,16 @@ test fn w_the_observation_reads_the_legs_stdout_as_data() -> Bool {
   let rendered = trim(s: spark_pair_host_apply_outcome_line(o: outcome))
   w_planned_hash(o: spark_native_observation_of_leg(o: outcome))
     && !w_planned_hash(o: arm_rank_observation_of(host: operator_host_srv9, stdout: rendered))
+}
+
+// THE REMOVE-ONLY REMEDY TOUCHES NO UNIT AND NO CONTAINER, removes exactly this unit's retired paths
+// (from the model, never from host output) and reads each absent.
+test fn w_the_retired_file_removal_touches_nothing_else() -> Bool {
+  let r = spark_native_remove_retired_script(unit_name: "gunbc-glm53-stair-rank.service" as NonEmptyStr)
+  string_contains(s: r, pattern: "'/etc/systemd/system/gunbc-glm53-stair-rank.service.gunbc-unresolved-rollback'")
+    && string_contains(s: r, pattern: "'/etc/systemd/system/gunbc-glm53-stair-rank.service.gunbc-transaction'")
+    && string_contains(s: r, pattern: "REMOVE-REFUSED-still-present-")
+    && !string_contains(s: r, pattern: "systemctl")
+    && !string_contains(s: r, pattern: "docker")
+    && !string_contains(s: r, pattern: "rm -f /etc/systemd/system/gunbc-glm53-stair-rank.service ")
 }

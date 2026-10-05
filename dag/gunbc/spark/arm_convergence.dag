@@ -173,6 +173,7 @@ type ArmRankDeviation
   | RankContainerNotRunning { host: HostIdentity, reading: String }
   | RankContainerRestarted { host: HostIdentity, reading: String }
   | RankNotVerified { host: HostIdentity, cause: String }
+  | RankRetiredFilesPresent { host: HostIdentity, files: List<String> }
 
 type ArmRankUnknown
   = RankFactUnread { host: HostIdentity, fact: NonEmptyStr, cause: String }
@@ -258,7 +259,8 @@ fn arm_container_deviations(r: ArmRankObserved) -> List<ArmRankDeviation> {
 fn arm_rank_deviations(o: ArmRankObservation) -> List<ArmRankDeviation> {
   match o {
     ArmRankUnread { host: _, cause: _ } => [] as List<ArmRankDeviation>
-    ArmRankRead { observed: r } => concat(concat(arm_unit_deviations(r: r), arm_active_deviations(r: r)), arm_container_deviations(r: r))
+    ArmRankRead { observed: r } => concat(concat(concat(arm_unit_deviations(r: r), arm_active_deviations(r: r)), arm_container_deviations(r: r)),
+      if count(r.retired_files) > 0 { [RankRetiredFilesPresent { host: r.host, files: r.retired_files }] } else { [] as List<ArmRankDeviation> })
   }
 }
 
@@ -312,31 +314,101 @@ fn arm_assessment_after_readback(
   }
 }
 
-// ── THE DECISION, AT ARM GRAIN ────────────────────────────────────────────────────────────────
+// ── THE DECISION: THE SMALLEST ACTION SET PER DIVERGED COMPONENT ─────────────────────────────
 //
-// THE PLAN HAS ONE SHAPE AND NO SUBSET. Whatever the deviations are, the action is the whole desired
-// arm: every rank stopped, then started head first. The type carries the roster and nothing that could
-// select part of it, and its sole constructor is the decision below, which always hands it the whole
-// desired arm -- so "start only the head" has no spelling here.
-type ArmConvergeApply sole_constructor {
-  ranks: List<ArmRankDesired>
+// THE DESIRED ARM HAS COMPONENTS, AND EACH HAS ITS OWN REMEDY (valiant-crab-775, 2026-10-05). A rank's
+// unit, its active state, its container and its verified epoch are one component -- the serving arm --
+// and its only remedy is the WHOLE arm stopped and started again head first. The absence of the retired
+// transaction files is another component, and its remedy is to remove them: no stop, no restart. A
+// planner that knew only the first remedy would turn every non-unit divergence into a restart or a
+// special case, so the plan carries one action per diverged component and nothing more.
+//
+// THE RESTART STILL HAS NO SUBSET. ArmRestart is the whole desired roster or nothing, and its sole
+// constructor is the decision below -- so "start only the head" has no spelling. A whole-arm restart
+// also removes the retired files (the stop step does), so the removals ride along with it.
+fn arm_deviation_needs_restart(d: ArmRankDeviation) -> Bool {
+  match d {
+    RankRetiredFilesPresent { host: _, files: _ } => false
+    RankUnitAbsent { host: _ } => true
+    RankUnitDiffers { host: _ } => true
+    RankUnitInactive { host: _, state: _ } => true
+    RankContainerAbsent { host: _ } => true
+    RankContainerNotRunning { host: _, reading: _ } => true
+    RankContainerRestarted { host: _, reading: _ } => true
+    RankNotVerified { host: _, cause: _ } => true
+  }
 }
 
+type ArmRestart sole_constructor
+  = ArmRestartWhole { ranks: List<ArmRankDesired> }
+  | ArmNoRestart
+
+type ArmRetiredRemoval {
+  host: HostIdentity
+  files: List<String>
+}
+
+type ArmConvergeApply sole_constructor {
+  restart: ArmRestart
+  removals: List<ArmRetiredRemoval>
+}
+
+fn arm_retired_removals(deviations: List<ArmRankDeviation>) -> List<ArmRetiredRemoval> {
+  flat_map(deviations, d => match d {
+    RankRetiredFilesPresent { host: h, files: f } => [ArmRetiredRemoval { host: h, files: f }]
+    RankUnitAbsent { host: _ } => [] as List<ArmRetiredRemoval>
+    RankUnitDiffers { host: _ } => [] as List<ArmRetiredRemoval>
+    RankUnitInactive { host: _, state: _ } => [] as List<ArmRetiredRemoval>
+    RankContainerAbsent { host: _ } => [] as List<ArmRetiredRemoval>
+    RankContainerNotRunning { host: _, reading: _ } => [] as List<ArmRetiredRemoval>
+    RankContainerRestarted { host: _, reading: _ } => [] as List<ArmRetiredRemoval>
+    RankNotVerified { host: _, cause: _ } => [] as List<ArmRetiredRemoval>
+  })
+}
+
+// AFTER_REMOVAL is true on the pass that re-observes the arm after a remove-only action. A retired file
+// still read there was removed and read back present, so removing it again would loop: the decision
+// refuses instead, naming the files.
 fn arm_converge_decision(
   desired: List<ArmRankDesired>,
   assessment: GoalAssessment<ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal>,
+  after_removal: Bool,
 ) -> UpsertDecision<ArmConvergeApply> {
   match assessment {
     GoalSatisfied { evidence: _ } => Noop
-    GoalDiverged { deviations: _ } => Apply { plan: ArmConvergeApply { ranks: desired } }
+    GoalDiverged { deviations: ds } => {
+      let all_ds = concat([ds.head], ds.tail)
+      let removals = arm_retired_removals(deviations: all_ds)
+      if any(all_ds, d => arm_deviation_needs_restart(d: d)) {
+        Apply { plan: ArmConvergeApply { restart: ArmRestartWhole { ranks: desired }, removals: removals } }
+      } else if after_removal {
+        Refuse { reason: join(["retired transaction files were removed and read back present: ", join(map(removals, r => join([r.host as String, ":", join(r.files, ",")], "")), "; ")], "") as NonEmptyStr }
+      } else {
+        Apply { plan: ArmConvergeApply { restart: ArmNoRestart, removals: removals } }
+      }
+    }
     GoalIndeterminate { known_deviations: _, unknowns: u } =>
       Refuse { reason: join(["the arm's state is not established, and remediation over an unread rank is refused: ", join(map(concat([u.head], u.tail), x => arm_rank_unknown_text(u: x)), "; ")], "") as NonEmptyStr }
     GoalAssessmentRefused { cause: c } => Refuse { reason: arm_assess_refusal_text(r: c) as NonEmptyStr }
   }
 }
 
-fn arm_converge_apply_ranks(p: ArmConvergeApply) -> List<ArmRankDesired> {
-  p.ranks
+fn arm_converge_apply_restart(p: ArmConvergeApply) -> ArmRestart {
+  p.restart
+}
+
+fn arm_converge_apply_removals(p: ArmConvergeApply) -> List<ArmRetiredRemoval> {
+  p.removals
+}
+
+fn arm_converge_apply_text(p: ArmConvergeApply) -> String {
+  join([
+    match p.restart {
+      ArmRestartWhole { ranks: rs } => join(["the whole arm (", to_string(count(rs)), " ranks) is stopped and started again, head first"], "")
+      ArmNoRestart => "no restart: every unit and container is left untouched"
+    },
+    if count(p.removals) > 0 { join(["; retired files removed on ", join(map(p.removals, r => r.host as String), ", ")], "") } else { "" },
+  ], "")
 }
 
 // ── WHICH ARM WAS LAST COMMITTED ─────────────────────────────────────────────────────────────
@@ -434,6 +506,7 @@ fn arm_rank_deviation_text(d: ArmRankDeviation) -> String {
     RankContainerNotRunning { host: h, reading: r } => join([h as String, ": the container is not running (", r, ")"], "")
     RankContainerRestarted { host: h, reading: r } => join([h as String, ": the container has restarted (", r, ")"], "")
     RankNotVerified { host: h, cause: c } => join([h as String, ": the readback refused: ", c], "")
+    RankRetiredFilesPresent { host: h, files: f } => join([h as String, ": retired transaction files present (", join(f, ", "), ")"], "")
   }
 }
 

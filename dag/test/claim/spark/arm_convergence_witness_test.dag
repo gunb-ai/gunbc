@@ -10,7 +10,7 @@ import gunbc.spark.arm_convergence {
   ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal, ArmRankReadbackRefusal, ArmConvergeApply,
   ArmCommittedReading, ArmCommitted, ArmNotCommitted,
   arm_rank_observation_of, arm_rank_observe_script, arm_observe_complete_word,
-  arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_ranks,
+  arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, ArmRestart, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval,
   arm_committed_reading, arm_committed_reproduced,
 }
 
@@ -39,12 +39,17 @@ data w_sha_other: String = "2222222222222222222222222222222222222222222222222222
 
 // One rank's observation leg stdout, exactly as arm_rank_observe_script prints it.
 fn w_leg(unit_sha: String, active: String, container: String, committed: String) -> String {
+  w_leg_retired(unit_sha: unit_sha, active: active, container: container, committed: committed, retired: [] as List<String>)
+}
+
+fn w_leg_retired(unit_sha: String, active: String, container: String, committed: String, retired: List<String>) -> String {
   join([
     "desired_unit_sha=", w_sha_planned, "\n",
     "unit_sha=", unit_sha, "\n",
     "active_state=", active, "\n",
     "container=", container, "\n",
     "committed=", committed, "\n",
+    join(map(retired, f => join(["retired_file=", f, "\n"], "")), ""),
     arm_observe_complete_word, "\n",
   ], "")
 }
@@ -58,17 +63,18 @@ fn w_running(host: String) -> ArmRankObservation {
 }
 
 fn w_decide(observed: List<ArmRankObservation>) -> UpsertDecision<ArmConvergeApply> {
-  arm_converge_decision(desired: w_desired(), assessment: arm_structural_assessment(desired: w_desired(), observed: observed))
+  arm_converge_decision(desired: w_desired(), assessment: arm_structural_assessment(desired: w_desired(), observed: observed), after_removal: false)
 }
 
 // THE PLAN IS THE WHOLE ARM: Apply, carrying every desired rank, head included, in the desired order.
 fn w_applies_the_whole_arm(d: UpsertDecision<ArmConvergeApply>) -> Bool {
   match d {
-    Apply { plan: p } => {
-      let ranks = arm_converge_apply_ranks(p: p)
-      count(ranks) == count(w_hosts)
-        && all(zip_hosts(ranks: ranks), x => x)
-        && count(filter(ranks, r => r.is_head)) == 1
+    Apply { plan: p } => match arm_converge_apply_restart(p: p) {
+      ArmRestartWhole { ranks: ranks } =>
+        count(ranks) == count(w_hosts)
+          && all(zip_hosts(ranks: ranks), x => x)
+          && count(filter(ranks, r => r.is_head)) == 1
+      ArmNoRestart => false
     }
     Noop => false
     Refuse { reason: _ } => false
@@ -142,7 +148,7 @@ test fn w_a_restarted_container_or_a_refused_readback_restarts_the_whole_arm() -
     structural: arm_structural_assessment(desired: w_desired(), observed: all_running),
     refusals: [ArmRankReadbackRefusal { host: "srv8" as HostIdentity, cause: "the transport verdict is unread" }])
   w_applies_the_whole_arm(d: w_decide(observed: restarted))
-    && w_applies_the_whole_arm(d: arm_converge_decision(desired: w_desired(), assessment: after_readback))
+    && w_applies_the_whole_arm(d: arm_converge_decision(desired: w_desired(), assessment: after_readback, after_removal: false))
 }
 
 // A UNIT FILE THAT IS NOT THE DESIRED STEP'S is a deviation even with everything running: the arm
@@ -159,7 +165,7 @@ test fn w_another_steps_unit_restarts_the_whole_arm() -> Bool {
 test fn w_a_realized_arm_is_noop() -> Bool {
   let all_running = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")]
   match arm_converge_decision(desired: w_desired(), assessment: arm_assessment_after_readback(
-    structural: arm_structural_assessment(desired: w_desired(), observed: all_running), refusals: [] as List<ArmRankReadbackRefusal>)) {
+    structural: arm_structural_assessment(desired: w_desired(), observed: all_running), refusals: [] as List<ArmRankReadbackRefusal>), after_removal: false) {
     Noop => true
     Apply { plan: _ } => false
     Refuse { reason: _ } => false
@@ -224,4 +230,52 @@ test fn w_the_observe_script_prints_every_key_the_parser_reads() -> Bool {
   all(["desired_unit_sha=", "unit_sha=", "active_state=", "container=", "committed=", "retired_file="], k => string_contains(s: o, pattern: k))
     && string_contains(s: o, pattern: join(["echo ", arm_observe_complete_word], ""))
     && string_contains(s: o, pattern: "/var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service")
+}
+
+// ── THE SMALLEST ACTION PER DIVERGED COMPONENT (valiant-crab-775, 2026-10-05) ──────────────────
+//
+// THE STATE run 37275627394 COMMITTED OVER: every rank serving as planned, but srv6 carrying the retired
+// fence and srv5/7/8 the retired unresolved-rollback marker. The retired files' absence is part of the
+// desired arm, so that arm is NOT satisfied -- it is diverged in one component whose remedy is to remove
+// the files. The plan is remove-only: no restart, and a removal on exactly the hosts carrying one.
+fn w_running_retired(host: String, file: String) -> ArmRankObservation {
+  w_obs(host: host, stdout: w_leg_retired(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 0", committed: "absent", retired: [file]))
+}
+
+fn w_tonight_after_the_hand_start() -> List<ArmRankObservation> {
+  [w_running_retired(host: "srv6", file: "/etc/systemd/system/gunbc-glm53-stair-head.service.gunbc-transaction"),
+   w_running_retired(host: "srv5", file: "/etc/systemd/system/gunbc-glm53-stair-rank.service.gunbc-unresolved-rollback"),
+   w_running_retired(host: "srv8", file: "/etc/systemd/system/gunbc-glm53-stair-rank.service.gunbc-unresolved-rollback"),
+   w_running_retired(host: "srv7", file: "/etc/systemd/system/gunbc-glm53-stair-rank.service.gunbc-unresolved-rollback")]
+}
+
+test fn w_retired_files_alone_are_removed_without_a_restart() -> Bool {
+  match w_decide(observed: w_tonight_after_the_hand_start()) {
+    Apply { plan: p } =>
+      (match arm_converge_apply_restart(p: p) { ArmNoRestart => true  ArmRestartWhole { ranks: _ } => false })
+        && count(arm_converge_apply_removals(p: p)) == 4
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// THE RED FOR THE OVER-REACH: a retired file beside a real serving deviation is still the WHOLE arm's
+// restart (the stop removes the files too), never a removal that leaves a broken arm serving.
+test fn w_a_retired_file_beside_a_serving_deviation_restarts_the_whole_arm() -> Bool {
+  let observed = [
+    w_obs(host: "srv6", stdout: w_leg_retired(unit_sha: w_sha_planned, active: "inactive", container: "absent", committed: "absent", retired: ["/etc/systemd/system/gunbc-glm53-stair-head.service.gunbc-transaction"])),
+    w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7"),
+  ]
+  w_applies_the_whole_arm(d: w_decide(observed: observed))
+    && match w_decide(observed: observed) { Apply { plan: p } => count(arm_converge_apply_removals(p: p)) == 1  Noop => false  Refuse { reason: _ } => false }
+}
+
+// THE PASS AFTER A REMOVAL: a retired file read back present was removed and is still there, so removing
+// it again would loop; the decision refuses, naming it. The same arm with the files gone is Noop.
+test fn w_a_retired_file_present_after_its_removal_refuses() -> Bool {
+  let still = arm_converge_decision(desired: w_desired(), assessment: arm_structural_assessment(desired: w_desired(), observed: w_tonight_after_the_hand_start()), after_removal: true)
+  let gone = arm_converge_decision(desired: w_desired(), assessment: arm_structural_assessment(desired: w_desired(),
+    observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")]), after_removal: true)
+  w_refuses_naming(d: still, fragment: "removed and read back present")
+    && match gone { Noop => true  Apply { plan: _ } => false  Refuse { reason: _ } => false }
 }
